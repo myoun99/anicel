@@ -148,13 +148,7 @@ class _WorkspaceDocks {
             // sat at the top. Both strips read from the top down now, which is
             // the only way they read as one family.
             if (hasTools)
-              Flexible(
-                child: Builder(
-                  builder: (context) => _state._tabs
-                      .tabFor(_state._layout.tabsIn(dockId).first)
-                      .builder(context),
-                ),
-              ),
+              Flexible(child: _toolColumn(_state._layout.tabsIn(dockId).first)),
             // 도구툴그룹밑에도 (유저, R3 #15). The tool column already ends its
             // history cluster with one of these; the panel buttons under it
             // are a third kind of thing and were the only seam on the strip
@@ -169,6 +163,17 @@ class _WorkspaceDocks {
           ],
         ),
       ),
+    );
+  }
+
+  /// The tool column: [tabId]'s content, held open as a dock's is
+  /// ([OpenTabContent]) — the strip is rebuilt by every layout notify.
+  Widget _toolColumn(String tabId) {
+    final tab = _state._tabs.tabFor(tabId);
+    return OpenTabContent(
+      tabId: tab.id,
+      identity: tab.contentIdentity,
+      build: () => Builder(builder: tab.builder),
     );
   }
 

@@ -199,7 +199,7 @@ class _LayerGridRailRows {
   /// The rail column: every layer row is its controls, inside the window
   /// the splitter sizes.
   ///
-  /// One of the four slots `TimelineLayerFrameBodyLayout` lays out. It
+  /// The first of the three slots `TimelineLayerFrameBodyLayout` lays out. It
   /// takes the row window as ONE value rather than the seven locals it
   /// unpacks below — that is what [_RowWindow] is for, and unpacking under
   /// the same names is what lets the tree below move verbatim.

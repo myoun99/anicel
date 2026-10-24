@@ -38,7 +38,6 @@ void main() {
     required bool collapsed,
     double tabCollapsedExtent = collapsedExtent,
     double? minContentHeight = 200,
-    bool cachesContent = false,
   }) {
     final height =
         EditorPanelTabs.stripHeight +
@@ -63,7 +62,6 @@ void main() {
                     icon: Icons.abc,
                     minContentHeight: minContentHeight,
                     collapsedExtent: tabCollapsedExtent,
-                    cachesContent: cachesContent,
                     staticRaster: false,
                     builder: panel,
                   ),
@@ -137,9 +135,9 @@ void main() {
     );
   });
 
-  testWidgets('a CACHED panel with a floor folds without a crop and '
+  testWidgets('an open panel with a floor folds without a crop and '
       'opens to its floor, whichever way it was first built', (tester) async {
-    // A cached tab's content is built when it opens and served from the
+    // An open tab's content is built when it opens and served from the
     // cache while it stays open, so a fold decided where the content is built
     // held the first build's answer: built open, it folded into a crop; built
     // folded, it opened under its floor with nothing to scroll. The fold is
@@ -151,7 +149,6 @@ void main() {
           tester,
           collapsed: collapsed,
           minContentHeight: 400,
-          cachesContent: true,
         );
         final first = firstFolded ? 'folded' : 'open';
         final now = collapsed ? 'folded' : 'open';
@@ -168,24 +165,17 @@ void main() {
     tester,
   ) async {
     // 유저 확정 for 콘티·뷰어: 「진짜 깔끔하게 내용물 안 보이게」 — and a panel is
-    // built only while it shows (유저 2026-10-14), cached or not: nothing of
-    // it is in the tree, offstage included.
-    for (final cachesContent in const [false, true]) {
-      await pumpGroup(
-        tester,
-        collapsed: true,
-        tabCollapsedExtent: 0,
-        cachesContent: cachesContent,
-      );
-      expect(find.text('BAR', skipOffstage: false), findsNothing);
-      expect(find.text('BODY', skipOffstage: false), findsNothing);
-    }
+    // built only while it shows (유저 2026-10-14): nothing of it is in the
+    // tree, offstage included.
+    await pumpGroup(tester, collapsed: true, tabCollapsedExtent: 0);
+    expect(find.text('BAR', skipOffstage: false), findsNothing);
+    expect(find.text('BODY', skipOffstage: false), findsNothing);
   });
 
-  testWidgets('collapsing reaches a CACHED panel through the scope', (
+  testWidgets('collapsing reaches an open panel through the scope', (
     tester,
   ) async {
-    // The trap this pins: an open cached tab is served from a widget cache,
+    // The trap this pins: an open tab is served from a widget cache,
     // so the instance handed to the framework is identical across folds. An
     // inherited dependency is what still reaches it — which is why the scope
     // sits OUTSIDE that cache.
@@ -208,7 +198,6 @@ void main() {
                       id: 'a',
                       label: 'A',
                       icon: Icons.abc,
-                      cachesContent: true,
                       collapsedExtent: 36,
                       staticRaster: false,
                       builder: panel,

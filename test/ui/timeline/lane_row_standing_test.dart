@@ -241,9 +241,14 @@ void main() {
       expect(find.byKey(laneMark), findsOneWidget);
       expect(find.byKey(cellRing), findsNothing);
 
-      // And back: pressing the layer's own row takes it home.
+      // And back: pressing the layer's own row takes it home — on its
+      // name's letters, as the middle of a camera's name area is its path
+      // button since the names gave a third up (F-409).
       await tester.tap(
-        find.named('timeline-layer-name-$_cameraId'),
+        find.descendant(
+          of: find.named('timeline-layer-name-$_cameraId'),
+          matching: find.text('Camera'),
+        ),
       );
       await tester.pumpAndSettle();
       expect(find.byKey(cellRing), findsOneWidget);

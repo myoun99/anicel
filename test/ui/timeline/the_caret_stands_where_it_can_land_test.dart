@@ -5,6 +5,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
+import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 
 /// 🚨A5-2 · 결정 6 (유저 확정 2026-08-22) — **THE CARET STANDS WHERE THE ROW
 /// CAN ACTUALLY LAND.**
@@ -116,5 +117,38 @@ void main() {
       before.sublist(3),
       reason: 'and nothing outside the drawing section moved',
     );
+  });
+
+  // 🗣️F-372 ② (검증 2026-10-23): the track's transition row stands between
+  // the camera row and the Direction rows on screen and nowhere in the cut,
+  // so the line over it named the seat the line under it does — and a
+  // Direction row is drawn under it.
+  test('a Direction row carried over the transition row stands its line '
+      'under it, where the row lands', () {
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    session.layerStack.addLayerOfKind(LayerKind.instruction);
+    final rail = horizontalLayerDisplayOrder(session.layers);
+    final directions = [
+      for (final layer in rail)
+        if (layer.kind == LayerKind.instruction) layer,
+    ];
+    final transition = rail.indexWhere(
+      (layer) => layer.kind == LayerKind.transition,
+    );
+    expect(
+      (directions.length, rail.indexOf(directions.first)),
+      (2, transition + 1),
+      reason: 'CONTROL: two Direction rows, right under the transition row',
+    );
+    session.layerRowDragVerbs.beginLayerRowDrag(
+      LayerRowSubject(directions.last.id),
+    );
+    addTearDown(session.layerRowDragVerbs.cancelLayerRowDrag);
+
+    session.layerRowDragVerbs.updateLayerRowDrag(rail, transition);
+
+    final state = session.layerRowDragVerbs.inFlight.value;
+    expect((state?.caretSlot, state?.legal), (transition + 1, true));
   });
 }

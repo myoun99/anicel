@@ -331,9 +331,9 @@ void main() {
       'film thins it (conte-playback-hides-the-pasteboard)', (tester) async {
     final s = await runningIntoAnOl(tester, cameraView: false);
 
-    final (_, unit, _, _, _) =
+    final (_, unit, _, _, _, _) =
         propsOf(tester, '_CutFadeWashPainter')
-            as (CanvasViewport, Rect, Object, Color, double);
+            as (CanvasViewport, Rect, Object, Object, double, double);
     expect(
       unit,
       s.activeCutOrNull!.canvasSize.pasteboardAt(PasteboardReach.whole).rect,
@@ -370,9 +370,9 @@ void main() {
     final (tagsView, _, _, _) =
         propsOf(tester, '_SeNameTagOverlayPainter')
             as (CanvasViewport, CanvasSize, double, Object);
-    final (washView, unit, _, _, _) =
+    final (washView, unit, _, _, _, _) =
         propsOf(tester, '_CutFadeWashPainter')
-            as (CanvasViewport, Rect, Object, Color, double);
+            as (CanvasViewport, Rect, Object, Object, double, double);
     expect(
       tagsView,
       shot.frameView,

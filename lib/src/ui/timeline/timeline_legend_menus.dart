@@ -27,8 +27,6 @@ class LayerLegendCallbacks {
     required this.onSheetAllOff,
     required this.onClearMarkFilter,
     required this.onClearAllFillReferences,
-    required this.onMuteAllSe,
-    required this.onUnmuteAllSe,
     required this.onBypassAllFx,
     required this.onEnableAllFx,
     required this.onToggleMarkFilter,
@@ -53,8 +51,6 @@ class LayerLegendCallbacks {
   final VoidCallback onSheetAllOff;
   final VoidCallback onClearMarkFilter;
   final VoidCallback onClearAllFillReferences;
-  final VoidCallback onMuteAllSe;
-  final VoidCallback onUnmuteAllSe;
   final VoidCallback onBypassAllFx;
   final VoidCallback onEnableAllFx;
 
@@ -404,7 +400,10 @@ class TimelineLegendMenus {
   );
 
   /// The onion column's flyout (UI-R17 #5) — only where the host wires the
-  /// sweep: the storyboard's rail carries no onion column.
+  /// sweep: the timeline's, and the conte panel's since F-443 (유저
+  /// 2026-10-23: 「이거는 자리차지하고 레전드행에도 버튼있는거 감수」) — the
+  /// same session sweep its other bulk rows already are. ↩️The conte panel's
+  /// heading stood over its conte rows' onions with no flyout (I-89-Q22).
   LegendFlyout? get onion {
     final legend = this.legend;
     final toggle = legend?.onToggleOnionSkinForDisplayed;

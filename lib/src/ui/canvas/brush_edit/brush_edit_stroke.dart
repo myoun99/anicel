@@ -321,11 +321,7 @@ class _BrushEditStroke {
   }
 
   /// What the pen reads now.
-  PenReadings get _readings => (
-    pressure: _state._currentPressure,
-    lean: _state._currentTilt,
-    speed: _state._currentSpeed,
-  );
+  PenReadings get _readings => _state._readings;
 
   /// Runs [paint] with [readings] standing for the pen's, and puts the
   /// pen's own back after — THE way a stroke lays what was read elsewhere
@@ -333,16 +329,10 @@ class _BrushEditStroke {
   /// ([_BrushEditOpening._paintWaiting]), the steadied line behind the pen
   /// ([_paintSteadied]), the line its 後補正 lays anew ([postCorrect]).
   void paintReading(PenReadings readings, void Function() paint) {
-    final pen = _readings;
-    _read(readings);
+    final pen = _state._readings;
+    _state._readings = readings;
     paint();
-    _read(pen);
-  }
-
-  void _read(PenReadings readings) {
-    _state._currentPressure = readings.pressure;
-    _state._currentTilt = readings.lean;
-    _state._currentSpeed = readings.speed;
+    _state._readings = pen;
   }
 
   /// Lays the line the [way] it went, with what it reads along it.

@@ -4,18 +4,21 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/item_beside.dart';
 import '../../core/mapped_or_same.dart';
 import '../../models/brush_group.dart';
 import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_library_tabs.dart';
 import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
 import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
+import '../dialogs/open_file_flow.dart' show fileIsSupported;
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
 import 'picked_file.dart';
@@ -427,20 +430,28 @@ class BrushPresetLibrary extends ChangeNotifier {
     return tab.firstOrNull?.id;
   }
 
-  /// The preset beside [id] in the tab it shows in — the next one, or the
-  /// one before when it is the last — or null when it stands alone: what a
-  /// hand holding [id] takes up when it is deleted (F-250).
+  /// The preset beside [id] in the tab it shows in ([itemBeside]), or null
+  /// when it stands alone: what a hand holding [id] takes up when it is
+  /// deleted (F-250).
   BrushPresetId? presetBeside(BrushPresetId id) {
     final preset = _presets.where((each) => each.id == id).firstOrNull;
     if (preset == null) {
       return null;
     }
     final tab = presetsInGroup(preset.groupShownAmong(_groups));
-    final at = tab.indexWhere((each) => each.id == id);
-    if (at + 1 < tab.length) {
-      return tab[at + 1].id;
-    }
-    return at > 0 ? tab[at - 1].id : null;
+    return itemBeside(tab, tab.indexWhere((each) => each.id == id))?.id;
+  }
+
+  /// The tab beside group [id]'s in the rail ([brushLibraryTabs],
+  /// [itemBeside]) — a record, since the root section's is a null group —
+  /// or null when it stands alone: the tab a hand holding a brush of [id]
+  /// enters when the group is deleted (F-426).
+  ({BrushGroupId? group})? groupBeside(BrushGroupId id) {
+    final tabs = [
+      for (final tab in brushLibraryTabs(_presets, _groups)) (group: tab?.id),
+    ];
+    final at = tabs.indexOf((group: id));
+    return at < 0 ? null : itemBeside(tabs, at);
   }
 
   String _groupNameFor(Set<BrushGroupId?> groupIds) {
@@ -462,16 +473,13 @@ class BrushPresetLibrary extends ChangeNotifier {
     // 🚨The picker shows every file (유저 2026-08-29), so THIS is where a
     // wrong one is refused — by name, before any decoder sees the bytes.
     // ⛔It used to fall through to the ABR decoder, which failed with
-    // whatever ABR happened to say about a JPEG's first bytes.
-    if (!FileTypeGroups.brushes.extensions!.any(
-      (extension) => lowerName.endsWith('.$extension'),
-    )) {
-      return AppText.strings.unsupportedFileMessageTemplate.replaceAll(
-        '{kinds}',
-        FileTypeGroups.brushes.extensions!
-            .map((extension) => '.$extension')
-            .join(', '),
-      );
+    // whatever ABR happened to say about a JPEG's first bytes. Judged and
+    // said as every picker's refusal is ([fileIsSupported]); ↩️this kept a
+    // judgement and a sentence of its own, and the sentence showed its
+    // `{name}` (card open-door-windows-open-with, 2026-10-23).
+    final kinds = FileTypeGroups.brushes.extensions!;
+    if (!fileIsSupported(pick.name, kinds)) {
+      return AppText.strings.unsupportedFileMessage(kinds);
     }
     final List<BrushPreset> imported;
     final List<String> warnings;

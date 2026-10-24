@@ -5,8 +5,9 @@ import '../models/brush_input_source.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_shape.dart';
 
-/// Scales a dab's size, opacity, flow, hardness and roundness by its INPUTS,
-/// through the per-(setting, source) response curves.
+/// Scales a dab's size, opacity, flow, hardness, roundness and texture
+/// density by its INPUTS, through the per-(setting, source) response
+/// curves.
 ///
 /// The dab is expected to still carry the base tool values in those fields,
 /// with the inputs it was sampled with beside them. Applied as a
@@ -30,16 +31,22 @@ import '../models/brush_shape.dart';
 ///
 /// Returns the dab unchanged when it carries no curves at all, so the plain
 /// path allocates nothing.
+///
+/// [sources] are the inputs the reading HAS — every one for a dab a stroke
+/// lays. A pen that has not touched yet has only how it is held, and the
+/// brush cursor reads it so (`poisedTip`, F-176-Q7): the others are skipped
+/// as a source the device cannot answer is.
 BrushDab applyBrushInputDynamics(
   BrushDab dab, {
   required BrushShape shape,
   math.Random? random,
+  Iterable<BrushInputSource> sources = BrushInputSource.values,
 }) {
   if (shape.curves.isEmpty) {
     return dab;
   }
   double factor(BrushPressureTarget target) =>
-      brushInputFactor(dab, shape, target, random: random);
+      brushInputFactor(dab, shape, target, random: random, sources: sources);
   return dab.copyWith(
     // ⚠️SIZE IS THE ONLY ONE THAT MAY EXCEED ITS BASE, which is why it alone
     // is unclamped: a tilt curve carries Clip Studio's 最大値 (up to 1000%)
@@ -62,20 +69,25 @@ BrushDab applyBrushInputDynamics(
       0.01,
       1.0,
     ),
+    textureDensity:
+        (dab.textureDensity * factor(BrushPressureTarget.textureDensity))
+            .clamp(0.0, 1.0),
   );
 }
 
 /// The product of every source's response for [target] — 1.0 when none drive
 /// it, so the caller can multiply unconditionally. [random] throws for the
-/// ランダム row; without it that row is skipped.
+/// ランダム row; without it that row is skipped. Only [sources] are read
+/// ([applyBrushInputDynamics]).
 double brushInputFactor(
   BrushDab dab,
   BrushShape shape,
   BrushPressureTarget target, {
   math.Random? random,
+  Iterable<BrushInputSource> sources = BrushInputSource.values,
 }) {
   var factor = 1.0;
-  for (final source in BrushInputSource.values) {
+  for (final source in sources) {
     final curve = shape.curveFor(target, source);
     if (curve == null) {
       continue;

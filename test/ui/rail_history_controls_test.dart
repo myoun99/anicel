@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -77,6 +79,37 @@ void main() {
       );
     },
   );
+
+  // 🗣️I-89-Q22 (유저 2026-10-16): 「어니언도 콘티행 기본적으로 버튼
+  // 글로벌이니까 넣음」 — a conte row's onion is the track's conte rows' one.
+  testWidgets('on a conte row, the onion button shows the onion turned on '
+      'through another cut\'s conte', (tester) async {
+    await pumpHome(tester);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    LayerId standOnTheConte() {
+      if (storyboardLayerForCut(session.requireActiveCut) == null) {
+        session.layerStack.addLayerOfKind(LayerKind.storyboard);
+      }
+      final conte = storyboardLayerForCut(session.requireActiveCut)!.id;
+      session.selectLayer(conte);
+      return conte;
+    }
+
+    final first = standOnTheConte();
+    session.cutVerbs.createCut();
+    final second = standOnTheConte();
+    expect(second, isNot(first), reason: '⛔전제: two cuts, two contes');
+
+    session.onionSkin.toggleLayerOnionSkin(first);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<RailButton>(railButton('rail-onion-skin-button')).selected,
+      isTrue,
+    );
+  });
 
   // ㉜ (user, 2026-08-12): 「선택 해제 버튼이 없다」. The verb was already
   // bound to Ctrl+D; this is the entrance and nothing else.

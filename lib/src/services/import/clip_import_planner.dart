@@ -65,6 +65,7 @@ library;
 import 'dart:collection';
 import 'dart:math' as math;
 
+import '../../core/neighbour_pairs.dart';
 import '../../models/attached_layer_resolve.dart'
     show attachedLayerNameAmong, attachedMirrorCelId;
 import '../../models/attached_mode.dart';
@@ -102,9 +103,15 @@ import 'media_import_planner.dart' show ImportIdMint;
 
 /// What a CLIP STUDIO composite number blends as here — the program's own
 /// menu order (memory `csp-clip-format-notes` §4; 0 · 2 · 30 measured on
-/// the samples, the rest from the table MoArt reads by). A number with no
-/// formula here is absent, and arrives as normal and said — the .tvpp and
-/// PSD law.
+/// the samples, the rest from the table MoArt reads by). A number absent
+/// here arrives as normal and said — the .tvpp and PSD law.
+///
+/// ⚠️Absent now means NOBODY HAS READ WHICH MODE IT IS, not that we lack the
+/// mode: since brush-fidelity-Q4 (유저 2026-10-17 「레이어까지 같이」) a
+/// layer takes every mode the brush does, but MoArt's table stops at the
+/// ones below, and the numbers of linear burn, subtract, the lights, hard
+/// mix, darker / lighter colour and divide are not in it. The brush menu's
+/// numbers (`sut_decoder.dart`) are a different list and do not line up.
 const Map<int, LayerBlendMode> clipBlendModes = {
   0: LayerBlendMode.normal,
   1: LayerBlendMode.darken,
@@ -119,6 +126,10 @@ const Map<int, LayerBlendMode> clipBlendModes = {
   16: LayerBlendMode.hardLight,
   21: LayerBlendMode.difference,
   22: LayerBlendMode.exclusion,
+  23: LayerBlendMode.hue,
+  24: LayerBlendMode.saturation,
+  25: LayerBlendMode.chroma,
+  26: LayerBlendMode.luminosity,
   30: LayerBlendMode.passThrough,
 };
 
@@ -1051,7 +1062,7 @@ final class _Planner {
           if (line.visible) at[line]!,
       ];
       return [
-        for (var i = 1; i < shown.length; i += 1) shown[i - 1] > shown[i],
+        for (final (upper, lower) in neighbourPairs(shown)) upper > lower,
       ].any((crossed) => crossed);
     }
 
@@ -1087,8 +1098,8 @@ final class _Planner {
   static List<_Line> _ordered(List<_Line> lines, List<List<_Line>> stacks) {
     final above = {for (final line in lines) line: <_Line>{}};
     for (final stack in stacks) {
-      for (var i = 1; i < stack.length; i += 1) {
-        above[stack[i]]!.add(stack[i - 1]);
+      for (final (upper, lower) in neighbourPairs(stack)) {
+        above[lower]!.add(upper);
       }
     }
     final made = {for (final (i, line) in lines.indexed) line: i};

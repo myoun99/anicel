@@ -5,6 +5,7 @@ import '../../models/cut_piece.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../models/pixel_verb_settings.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
@@ -76,7 +77,8 @@ class PixelVerbs {
        _pixelBoard = pixelBoard,
        _solo = solo;
 
-  /// The eyes an edit asks — the user's, not the solo's ([_celOf]).
+  /// The eyes an edit asks — the user's and the screen's, not the solo's
+  /// alone ([_celOf]).
   final VisibilitySolo _solo;
 
   /// 픽셀 복사's board — the app clipboard's, one for every open project.
@@ -100,7 +102,7 @@ class PixelVerbs {
   /// 🚨The colour's ALPHA is ignored downstream — RGB only (유저 확정).
   PixelVerbCanvas Function()? pixelVerbCanvas;
 
-  /// WHICH cels the two PIXEL verbs would act on — see [PixelVerbSubject].
+  /// WHICH cels the PIXEL verbs would act on — see [PixelVerbSubject].
   PixelVerbSubject get pixelVerbSubject {
     if (pixelVerbCellKeys().isEmpty) {
       return PixelVerbSubject.nothing;
@@ -201,13 +203,13 @@ class PixelVerbs {
     if (cut == null) {
       return const [];
     }
-    final asSet = _asSet(cut);
+    final seen = _asAnEditSees(cut);
     final range = _selection.frameRangeSelection.value;
     if (range == null) {
       final standing = _standingLayer();
       return standing == null
           ? const []
-          : _rowCels(asSet, standing, null, intoFolders: intoFolders);
+          : _rowCels(seen, standing, null, intoFolders: intoFolders);
     }
     final byId = {for (final layer in _project.layers) layer.id: layer};
     final rows = range.layerIds.isEmpty ? [range.layerId] : range.layerIds;
@@ -215,7 +217,7 @@ class PixelVerbs {
       for (final layerId in rows)
         if (byId[layerId] case final layer?)
           for (var i = range.startIndex; i < range.endIndexExclusive; i++)
-            ..._rowCels(asSet, layer, i, intoFolders: intoFolders),
+            ..._rowCels(seen, layer, i, intoFolders: intoFolders),
     ];
   }
 
@@ -239,13 +241,14 @@ class PixelVerbs {
   /// The cel you are standing on: the ACTIVE layer's, at the playhead.
   BrushFrameKey? _standingCel(Cut cut) => switch (_standingLayer()) {
     null => null,
-    final layer => _celOf(_asSet(cut), layer, null),
+    final layer => _celOf(_asAnEditSees(cut), layer, null),
   };
 
-  /// [cut] with each eye as the user set it — the eyes an edit asks
-  /// ([VisibilitySolo.layersAsSet]: the solo is display, F-399).
-  Cut _asSet(Cut cut) {
-    final layers = _solo.layersAsSet(cut.layers);
+  /// [cut] with each eye as an edit sees it — on where the user set it on
+  /// or the screen shows it ([VisibilitySolo.layersAsAnEditSees]: the solo
+  /// is display, F-399, and what it shows is on screen, F-458).
+  Cut _asAnEditSees(Cut cut) {
+    final layers = _solo.layersAsAnEditSees(cut.layers);
     return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
   }
 
@@ -269,9 +272,9 @@ class PixelVerbs {
   /// [layer]'s cel at [frameIndex] (the playhead when null), if a pixel verb
   /// may reach it.
   ///
-  /// [cut]'s eyes say what is switched on: the user's for an edit
-  /// ([_asSet]), the solo's for what the canvas shows. [layer] is asked
-  /// by its id there — a row handed in from the session wears the solo's.
+  /// [cut]'s eyes say what is switched on: an edit's ([_asAnEditSees]),
+  /// or the solo's for what the canvas shows. [layer] is asked by its id
+  /// there — a row handed in from the session wears the solo's.
   BrushFrameKey? _celOf(Cut cut, Layer layer, int? frameIndex) {
     // 🚨HIDDEN ROWS ARE NOT TOUCHED. 유저 2026-08-27: 「해당 두 버튼은
     // 비지블이 on인 레이어만 활성화되야함. **기본적으로 그림 조작하는건
@@ -308,13 +311,13 @@ class PixelVerbs {
   ///
   /// ⛔The head RUNS NOTHING (I-8-Q3/Q4), so it opens when any of its rows
   /// could. Since I-55 the list holds two kinds of verb, and a head that
-  /// read the four overwrite verbs alone would lock the clipboard rows out
+  /// read the overwrite verbs alone would lock the clipboard rows out
   /// of a blank cel — which is exactly where a paste goes.
   bool get canOpenColourEdit =>
       canRunPixelVerb || _standingDrawing() != null || _canPastePixels;
 
-  /// 색 변환 (`CelPixelChannel.colour`) and 픽셀 비우기 (`.alpha`) — one
-  /// operation with the channel swapped, which is why they are one method.
+  /// A pixel verb of the colour edit list ([CelPixelVerb]) — one operation
+  /// with the channel, the value and the pixels swapped, so one method.
   ///
   /// 🚨The colour's ALPHA is ignored, RGB only (유저 확정): 「알파만 남기고
   /// 색을 그대로 바꿔버리는거야. 그냥 진짜 색을 변환. 해당색으로. **문답무용**」.
@@ -354,14 +357,17 @@ class PixelVerbs {
         // have got.
         argb: canvas?.argb ?? 0xFF000000,
         // 🚨THE SELECTION'S SOFTNESS TRAVELS WITH IT. A Ctrl+T lift on the
-        // same marquee already honoured 확장·페더·AA and these four verbs
-        // did not, so one outline meant two things. Read at the press for
+        // same marquee already honoured 확장·페더·AA and these verbs did
+        // not, so one outline meant two things. Read at the press for
         // the same reason the colour is (the panel can change it while the
         // popover is open). ⛔The fallback is `none`, which is also every
         // option's own default — a host with nothing wired behaves exactly
         // as it did. 유저 확정 2026-09-09 (`pixel-verbs-mask-options` = 가).
         options:
             canvas?.mask ?? SelectionMaskOptions.none,
+        // What the list's knobs hold (I-13) — read at the press too, since
+        // a knob turns while the list is open.
+        settings: PixelVerbSettings.settings.value,
       ),
     );
   }

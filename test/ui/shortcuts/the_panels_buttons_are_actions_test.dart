@@ -45,6 +45,7 @@ import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/cel_text_tool_harness.dart';
+import '../../helpers/rail_group_button.dart';
 
 const k = LogicalKeyboardKey.keyK;
 
@@ -120,11 +121,7 @@ Future<void> openRailGroup(
   required int slot,
 }) async {
   await tester.tap(
-    find.byKey(
-      ValueKey<String>(
-        'rail-group-${EditorWorkspace.railGroupId(right: right, slot: slot)}',
-      ),
-    ),
+    railGroupButton(EditorWorkspace.railGroupId(right: right, slot: slot)),
   );
   await tester.pumpAndSettle();
 }
@@ -312,10 +309,10 @@ void main() {
         editorActionLabel(EditorActionIds.guideAddSymmetry),
         '새 대칭 가이드',
       );
-      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트…');
-      expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식…');
-      expect(editorActionLabel(EditorActionIds.conteFormat), '콘티 용지 서식…');
-      expect(editorActionLabel(EditorActionIds.envelopeFormat), '컷 봉투 서식…');
+      expect(editorActionLabel(EditorActionIds.mediaPoolImport), '임포트');
+      expect(editorActionLabel(EditorActionIds.timesheetFormat), '타임시트 서식');
+      expect(editorActionLabel(EditorActionIds.conteFormat), '콘티 용지 서식');
+      expect(editorActionLabel(EditorActionIds.envelopeFormat), '컷 봉투 서식');
       expect(
         editorActionLabel(EditorActionIds.timesheetDataMode),
         '표기 시트 / 데이터 시트',
@@ -332,7 +329,7 @@ void main() {
           '변형 초기화',
           '원래 위치에 붙여넣기',
           '스탬프 초기화',
-          '팁으로 등록…',
+          '팁으로 등록',
           '새 소실점',
           '래스터라이즈',
           '가로 가운데',
@@ -454,7 +451,8 @@ void main() {
     ) async {
       await pumpTextToolApp(tester);
       // The tool's settings ship shut — their 🗑 is not on screen.
-      await openRailGroup(tester, right: false, slot: 2);
+      await pressToolSettingsButton(tester);
+      await tester.pumpAndSettle();
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
       await clickAt(tester, c.dx, c.dy);
@@ -479,7 +477,8 @@ void main() {
       tester,
     ) async {
       await pumpTextToolApp(tester);
-      await openRailGroup(tester, right: false, slot: 2);
+      await pressToolSettingsButton(tester);
+      await tester.pumpAndSettle();
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
       await clickAt(tester, c.dx, c.dy);
@@ -498,7 +497,8 @@ void main() {
     testWidgets('the text tool\'s 가로 가운데 and 세로 가운데 stand the text in '
         'hand on the canvas\'s middle lines', (tester) async {
       await pumpTextToolApp(tester);
-      await openRailGroup(tester, right: false, slot: 2);
+      await pressToolSettingsButton(tester);
+      await tester.pumpAndSettle();
       await takeTextTool(tester);
       final c = canvasPixelInView(tester);
       await clickAt(tester, c.dx, c.dy);

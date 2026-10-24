@@ -92,36 +92,6 @@ void main() {
         reason: 'the bar runs along the rail, as the drag did (F-408 ②)',
       );
     });
-
-    testWidgets('$orientation: the mute cell reads the SE rows of the grid '
-        'it heads — every one muted, it unmutes; one sounding, it mutes', (
-      tester,
-    ) async {
-      Layer se(int row, {required bool muted}) => Layer(
-        id: LayerId('one-$row'),
-        name: 'SE $row',
-        frames: const [],
-        kind: LayerKind.se,
-        muted: muted,
-      );
-      final pressed = <String>[];
-      for (final muted in const [true, false]) {
-        await _show(
-          tester,
-          _panel(
-            'one',
-            [],
-            orientation: orientation,
-            layers: [se(1, muted: true), se(2, muted: muted)],
-            onSeMute: pressed.add,
-          ),
-        );
-        await tester.tap(find.byKey(const ValueKey<String>('legend-mute')));
-        await tester.pumpAndSettle();
-      }
-
-      expect(pressed, ['unmute', 'mute']);
-    });
   }
 
   testWidgets('the menus the header tells go with the panel — not with a '
@@ -348,7 +318,6 @@ Widget _panel(
   Key? key,
   List<double>? values,
   List<Layer>? layers,
-  ValueChanged<String>? onSeMute,
 }) => MaterialApp(
   home: Scaffold(
     body: TimelinePanel(
@@ -377,8 +346,6 @@ Widget _panel(
         onSheetAllOff: () {},
         onClearMarkFilter: () {},
         onClearAllFillReferences: () {},
-        onMuteAllSe: () => onSeMute?.call('mute'),
-        onUnmuteAllSe: () => onSeMute?.call('unmute'),
         onBypassAllFx: () {},
         onEnableAllFx: () {},
         onToggleMarkFilter: (_) {},

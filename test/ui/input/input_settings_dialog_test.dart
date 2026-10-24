@@ -6,6 +6,13 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/input_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart'
+    show DragVerbClaim;
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// PEN-2: the Input Settings dialog's tablet-service switch (Windows
 /// only — the CSP-style dual backend).
@@ -23,8 +30,15 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SingleChildScrollView(
-            child: InputSettingsSection(session: session),
+          // In the content's own lane, as the window holds it (F-440): a
+          // bare scroll view lays the framework's bar OVER the content on a
+          // desktop, and over the ring at the row's end (F-439).
+          body: ContentScrollbar(
+            builder: (context, controller) => SingleChildScrollView(
+              controller: controller,
+              primary: false,
+              child: InputSettingsSection(session: session),
+            ),
           ),
         ),
       ),
@@ -49,11 +63,11 @@ void main() {
     // The dialog scrolls now (PEN-7a grew it) — bring the row into view.
     await tester.ensureVisible(wintab);
     await tester.pumpAndSettle();
-    await tester.tap(wintab);
+    await tester.pressRingIn(wintab);
     await tester.pumpAndSettle();
     expect(AppInput.settings.value.tabletService, TabletService.wintab);
 
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-tablet-standard')),
     );
     await tester.pumpAndSettle();
@@ -62,7 +76,7 @@ void main() {
     // A press SELECTS — pressing the one that is on leaves it on: there is
     // always a service, and the radio this pair used to be never let go of
     // one either.
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-tablet-standard')),
     );
     await tester.pumpAndSettle();
@@ -100,12 +114,8 @@ void main() {
       final snaps = tester.getRect(
         find.byKey(const ValueKey<String>('settings-snap-zoom')),
       );
-      final brushSizes = tester.getRect(
-        find.byKey(const ValueKey<String>('settings-snap-size')),
-      );
       final number = tester.getRect(lockNumber);
       expect(number.top, greaterThan(snaps.bottom - 1));
-      expect(number.bottom, lessThan(brushSizes.top + 1));
       expect(number.left, snaps.left, reason: 'in the column of the fields');
     });
 
@@ -125,7 +135,7 @@ void main() {
       await tester.ensureVisible(lockSwitch);
       await tester.pumpAndSettle();
 
-      await tester.tap(lockSwitch);
+      await tester.pressRingIn(lockSwitch);
       await tester.pumpAndSettle();
       expect(AppInput.settings.value.zoomCeiling, 100);
       expect(tester.widget<TextField>(lockNumber).enabled, isTrue);
@@ -133,7 +143,7 @@ void main() {
       await type(tester, '250');
       expect(AppInput.settings.value.zoomCeiling, 250);
 
-      await tester.tap(lockSwitch);
+      await tester.pressRingIn(lockSwitch);
       await tester.pumpAndSettle();
       expect(AppInput.settings.value.zoomCeiling, isNull);
       expect(tester.widget<TextField>(lockNumber).controller!.text, '250');
@@ -158,6 +168,206 @@ void main() {
         tester.widget<TextField>(lockNumber).controller!.text,
         '33.3',
         reason: 'the field shows every digit it holds',
+      );
+    });
+  });
+
+  // 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 … 쓰기쉽게」 — one number,
+  // the bar the window's other single numbers are.
+  testWidgets('the rotation snap is ONE number: a bar whose steps move it a '
+      'degree, kept when let go', (tester) async {
+    await pumpDialog(tester);
+    final bar = find.byKey(const ValueKey<String>('settings-snap-rotation'));
+    await tester.ensureVisible(bar);
+    await tester.pumpAndSettle();
+    expect(tester.widget<FieldSlider>(bar).value, 15);
+
+    await tester.tap(
+      find.descendant(
+        of: bar,
+        matching: find.byKey(const ValueKey<String>('field-slider-step-up')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(AppInput.settings.value.rotationSnapDegrees, 16);
+    expect(tester.widget<FieldSlider>(bar).value, 16);
+  });
+
+  // The window's bars are one code (`_SettingsBar`): what one does while
+  // held, they all do. Its let-go is `a_setting_survives_a_restart_test`'s.
+  testWidgets('a bar moves its setting while it is held, before it is let '
+      'go', (tester) async {
+    await pumpDialog(tester);
+    final bar = find.descendant(
+      of: find.byKey(const ValueKey<String>('settings-snap-rotation')),
+      matching: find.byType(DragVerbClaim),
+    );
+    await tester.ensureVisible(bar);
+    await tester.pumpAndSettle();
+    expect(AppInput.settings.value.rotationSnapDegrees, 15);
+
+    final hand = await tester.startGesture(tester.getCenter(bar));
+    await hand.moveBy(const Offset(30, 0));
+    await hand.moveBy(const Offset(30, 0));
+    await tester.pump();
+    expect(AppInput.settings.value.rotationSnapDegrees, isNot(15));
+
+    await hand.up();
+    await tester.pumpAndSettle();
+  });
+
+  // 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거 … 리스트팝오버형식으로?
+  // 추가/삭제 할수있게?」 — F-391-Q1 a: a list that stays open.
+  group('the zoom snaps are a list edited where it opens', () {
+    final button = find.byKey(const ValueKey<String>('settings-snap-zoom'));
+    Finder row(String percent) =>
+        find.byKey(ValueKey<String>('settings-zoom-snap-$percent'));
+    Finder remove(String percent) =>
+        find.byKey(ValueKey<String>('settings-zoom-snap-$percent-remove'));
+    final add = find.byKey(const ValueKey<String>('settings-zoom-snap-add'));
+    final toPutIn = find.byKey(
+      const ValueKey<String>('settings-zoom-snap-new'),
+    );
+
+    Future<void> open(WidgetTester tester) async {
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> typeToPutIn(WidgetTester tester, String text) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('settings-zoom-snap-new-edit')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('settings-zoom-snap-new-input')),
+        text,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    bool canPress(WidgetTester tester, Finder command) =>
+        tester.widget<AppIconButtonFace>(command).onPressed != null;
+
+    Color? glyphOf(WidgetTester tester, Finder command) => tester
+        .widget<Icon>(find.descendant(of: command, matching: find.byType(Icon)))
+        .color;
+
+    testWidgets('the button writes the list, 800 and 1600 at its end', (
+      tester,
+    ) async {
+      await pumpDialog(tester);
+      expect(
+        tester.widget<PanelFlyoutButton>(button).label,
+        '10, 25, 50, 75, 100, 125, 150, 200, 300, 400, 800, 1600',
+      );
+    });
+
+    testWidgets('🚨a − takes its number away and the list stays open for '
+        'the next', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+      expect(row('25'), findsOneWidget);
+
+      await tester.tap(remove('25'));
+      await tester.pumpAndSettle();
+      expect(row('25'), findsNothing, reason: 'the row goes where it stood');
+      expect(row('75'), findsOneWidget, reason: 'and the list is still open');
+
+      await tester.tap(remove('75'));
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomSnapPercents, [
+        10,
+        50,
+        100,
+        125,
+        150,
+        200,
+        300,
+        400,
+        800,
+        1600,
+      ]);
+    });
+
+    testWidgets('🚨the foot puts its number in where it belongs, once — and '
+        'the list stays open', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+      expect(
+        canPress(tester, add),
+        isFalse,
+        reason: 'it starts at 100%, which the list has',
+      );
+
+      await typeToPutIn(tester, '600');
+      expect(
+        find.descendant(of: toPutIn, matching: find.text('600%')),
+        findsOneWidget,
+      );
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      expect(row('600'), findsOneWidget);
+      expect(
+        AppInput.settings.value.zoomSnapPercents.sublist(9),
+        [400, 600, 800, 1600],
+        reason: 'in order, not at the end',
+      );
+      expect(canPress(tester, add), isFalse, reason: 'once');
+      expect(
+        glyphOf(tester, add),
+        AppColors.addGlyph(enabled: false),
+        reason: 'and dim, where it stands',
+      );
+    });
+
+    testWidgets('a drag on the number to put in stops where a view can '
+        'stand', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+
+      await tester.drag(toPutIn, const Offset(-300, 0));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(of: toPutIn, matching: find.text('10%')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a number no view stands on is put in as the nearest one a '
+        'view can', (tester) async {
+      await pumpDialog(tester);
+      await open(tester);
+
+      await typeToPutIn(tester, '5');
+      expect(
+        find.descendant(of: toPutIn, matching: find.text('10%')),
+        findsOneWidget,
+      );
+      await typeToPutIn(tester, '33.3');
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomSnapPercents.take(3), [10, 25, 33.3]);
+    });
+
+    testWidgets('the last one cannot be taken away', (tester) async {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        zoomSnapPercents: const [100],
+      );
+      await pumpDialog(tester);
+      await open(tester);
+
+      expect(canPress(tester, remove('100')), isFalse);
+      expect(
+        glyphOf(tester, remove('100')),
+        AppColors.deleteGlyph(enabled: false),
+        reason: 'dim, where every row\'s − stands',
       );
     });
   });
@@ -193,31 +403,25 @@ void main() {
     final navigation = AppInput.settings.value.extraFingerModifier;
     expect(AppInput.settings.value.strokeFingerModifier, isFalse);
 
-    await tester.tap(row);
+    await tester.pressRingIn(row);
     await tester.pumpAndSettle();
 
     expect(AppInput.settings.value.strokeFingerModifier, isTrue);
     expect(AppInput.settings.value.extraFingerModifier, navigation);
   });
 
-  // 🗣️size-rack-0-7-under-the-brush-floor (유저 2026-10-12 · 10-17): a brush
-  // reaches a tenth of a pixel, so a snap under one is a size as well.
-  testWidgets('a size snap under a pixel reads as itself, not a whole '
-      'pixel', (tester) async {
-    AppInput.settings.value = AppInput.settings.value.copyWith(
-      brushSizeSnaps: const [0.5, 2, 4],
-    );
+  // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」.
+  testWidgets('ignoring every finger is a switch in the touch section: off '
+      'as it comes, and pressed it is on', (tester) async {
     await pumpDialog(tester);
+    final row = find.byKey(const ValueKey<String>('settings-ignore-touch'));
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    expect(AppInput.settings.value.touchIgnored, isFalse);
 
-    expect(
-      tester
-          .widget<TextField>(
-            find.byKey(const ValueKey<String>('settings-snap-size')),
-          )
-          .controller!
-          .text,
-      '0.5, 2, 4',
-      reason: '↩️0.5 was written 「1」 — every snap rounded to a pixel',
-    );
+    await tester.pressRingIn(row);
+    await tester.pumpAndSettle();
+
+    expect(AppInput.settings.value.touchIgnored, isTrue);
   });
 }

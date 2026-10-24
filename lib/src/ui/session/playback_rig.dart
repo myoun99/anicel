@@ -11,17 +11,18 @@
 // acyclic: `Standing` and `RangeSelections` reach IN here for the warmer,
 // and if the rig reached back out for `selectCut` neither could be built.
 
-import 'dart:io';
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
+import '../../services/flutter_test_run.dart';
 import '../../models/cut.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart'
-    show QaAudioDevice, audioOutputUnlessTesting;
+    show QaAudioDevice, audioDeviceUnlessTesting;
 import '../audio/audio_conform_store.dart';
+import '../audio/sound_cannot_play.dart';
 import '../playback/audio_device_transport.dart';
 import '../playback/audio_scrubber.dart';
 import '../../services/playback/frame_demand.dart';
@@ -170,7 +171,7 @@ class PlaybackRig implements PlaybackRun {
         // line only picks which one, and no suite that names the rig arms
         // the quiet-window poll. A test that noticed would have to assert
         // on a timer, which is the shape those unit tests already are.
-        idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
+        idleDelay: underFlutterTest
             ? Duration.zero
             : const Duration(milliseconds: 1200),
         // A movie kept as a reference decodes before its frame composes.
@@ -284,14 +285,14 @@ class PlaybackRig implements PlaybackRun {
         frameRateDenominator: _settings.projectFrameRate.denominator,
       );
 
-  /// The output [audioDeviceTransport] plays on: [audioOutputUnlessTesting],
+  /// The output [audioDeviceTransport] plays on: [audioDeviceUnlessTesting],
   /// or what a test hands in — a device IT opened on the null backend, so
   /// the bench can hear a run the session plays (the transport's own tests
   /// hand theirs in the same way). ⛔Never the hardware: the transport plays
   /// on an open device as it stands and opens only a closed one — ahead of
   /// a run or at it — or reopens one open for another output setting, which
   /// a test that hands one in leaves alone.
-  QaAudioDevice? Function() debugTransportOutput = audioOutputUnlessTesting;
+  QaAudioDevice? Function() debugTransportOutput = audioDeviceUnlessTesting;
 
   /// The native device transport (audio program wiring): when it carries a
   /// run, playback rides the audio master clock — the picture follows the
@@ -302,8 +303,9 @@ class PlaybackRig implements PlaybackRun {
   /// 🗣️유저 2026-10-16 (se-fallback-opens-the-original-path-Q2): 「대체
   /// 재생을 안 쓰고, 소리가 준비될 때까지 기다린다」. ↩️A run the device did
   /// not carry stood down onto the platform players (`AudioPlaybackSync`),
-  /// on the wall clock — the stack is the 저장 lane's to delete
-  /// (playback-waits-for-its-sound).
+  /// on the wall clock — playback stopped calling them in
+  /// playback-waits-for-its-sound, and the stack and its `audioplayers`
+  /// went with se-fallback-opens-the-original-path (2026-10-23).
   late final AudioDeviceTransport audioDeviceTransport = AudioDeviceTransport(
     controller: playback,
     resolveFrameRate: () => _settings.projectFrameRate,
@@ -319,12 +321,27 @@ class PlaybackRig implements PlaybackRun {
         _appSettings.audioSyncSettings.value.outputDeviceName,
   );
 
+  /// Why the sound at [filePath] cannot be played — the one verdict
+  /// ([AudioConformStore.cannotPlayAt]) at the rate a run plays at
+  /// ([AudioDeviceTransport.soundRate]): what a sound's cell shows, before
+  /// any run as well as during one (playback-says-the-sound-it-cannot-play,
+  /// 유저 2026-10-17: 「재생하지 않을 때도 늘」).
+  SoundCannotPlay? soundCannotPlay(String filePath) => _audioConformStore
+      .cannotPlayAt(filePath, audioDeviceTransport.soundRate);
+
+  /// Fires when [soundCannotPlay]'s answers may have moved: a conform or a
+  /// conversion landed, or a run armed the output at another rate.
+  late final Listenable soundsMoved = Listenable.merge([
+    _audioConformStore,
+    audioDeviceTransport.armedRate,
+  ]);
+
   /// The output/input device lists for the Preferences pickers (AUDIO-PRO
   /// R4); empty without a native binary (widget tests, engine-less runs).
   List<({String name, bool isDefault})> audioDevicesOf({
     required bool capture,
   }) =>
-      audioOutputUnlessTesting()?.devicesOf(capture: capture) ?? const [];
+      audioDeviceUnlessTesting()?.devicesOf(capture: capture) ?? const [];
 
   /// Scrubbing the playhead plays each crossed frame's slice of the mix
   /// (2D): one `play(frame, frame+1)` per crossed frame on the same
@@ -336,7 +353,7 @@ class PlaybackRig implements PlaybackRun {
     resolveProject: () => _project.repository.currentProject,
     conformStore: _audioConformStore,
     // Widget tests must never open a real OS audio device.
-    resolveDevice: audioOutputUnlessTesting,
+    resolveDevice: audioDeviceUnlessTesting,
     resolveSoloedLayerIds: () => _soloedSeLayerIds.value,
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>

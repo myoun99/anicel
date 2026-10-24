@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★★A PICTURE BUILT FRESH IS A PLACE A TEXT CAN FALL (R9-rest).
 ///
@@ -169,16 +170,19 @@ void main() {
       'ledger, as many times as it is written there', () {
     final found = freshUnder('lib')..remove(model);
 
-    expect(
+    expectCountsMatchLedger(
       found,
       {for (final entry in ledger.entries) entry.key: entry.value.count},
-      reason:
+      grew:
           'a surface built fresh carries NO texts and NO photos unless it is '
           'handed them. '
           'If the new one is made from another picture\'s tiles, derive it '
           'instead (`putTiles`, `withRebuiltTiles`, `withTexts`) or pass '
           '`texts:`; if it really starts a picture, name it in the ledger '
           'with the reason',
+      paidOff:
+          'these build fewer pictures fresh than the ledger says — lower '
+          'the count, or take the line out',
     );
     expect(found.values.fold<int>(0, (sum, count) => sum + count), 19);
   });

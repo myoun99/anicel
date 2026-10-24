@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart'
     show DragGestureRecognizer, DragStartBehavior, kDoubleTapTimeout;
 
+import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart' show acrossBox, partAlong;
 import '../timeline/timeline_edge_auto_pan.dart' show edgeAutoPanApply;
@@ -321,6 +322,59 @@ class TravelDebt {
 
   /// A new drag owes nothing.
   void clear() => _owed = 0;
+}
+
+/// The edges of a panel its splitters lie along, each as deep as the band
+/// reaches — the room a panel's content leaves them.
+///
+/// 🗣️F-452 (유저 2026-10-23): 「브러시 도구 라이브러리의 스크롤바는 스플리터
+/// 자리를 따로 두고 스크롤바 둬서 서로 안겹치는데, 다른 라이브러리나
+/// 도구설정패널도 동일하게 … 스플리터가 생길때는 자리 안겹치게 공간 주도록.
+/// 패널들 기본 그런식이지만, 타임라인/콘티패널은 예외」.
+///
+/// Whoever lays a panel's grips says, from the same place, which edges they
+/// are on; the tab group keeps its content off them unless the tab opts
+/// out (`EditorPanelTab.sparesSplitters`).
+class DockSplitterEdges extends InheritedWidget {
+  DockSplitterEdges({
+    super.key,
+    bool left = false,
+    bool top = false,
+    bool right = false,
+    bool bottom = false,
+    required super.child,
+  }) : edges = EdgeInsets.only(
+         left: left ? DockEdgeSplitter.thickness : 0,
+         top: top ? DockEdgeSplitter.thickness : 0,
+         right: right ? DockEdgeSplitter.thickness : 0,
+         bottom: bottom ? DockEdgeSplitter.thickness : 0,
+       );
+
+  final EdgeInsets edges;
+
+  /// Nothing outside any panel a splitter lies on. Each side is a whole
+  /// number of device pixels ([DeviceGrid.position]): the content's origin
+  /// moves by it, and a rail-docked canvas is framed past it — 5 × 1.125 is
+  /// 5.625.
+  static EdgeInsets of(BuildContext context) {
+    final edges = context
+        .dependOnInheritedWidgetOfExactType<DockSplitterEdges>()
+        ?.edges;
+    if (edges == null) {
+      return EdgeInsets.zero;
+    }
+    final grid = DeviceGrid.of(context);
+    return EdgeInsets.fromLTRB(
+      grid.position(edges.left),
+      grid.position(edges.top),
+      grid.position(edges.right),
+      grid.position(edges.bottom),
+    );
+  }
+
+  @override
+  bool updateShouldNotify(DockSplitterEdges oldWidget) =>
+      edges != oldWidget.edges;
 }
 
 /// A panel's CORNER, where its two grips meet: one drag moves both edges.

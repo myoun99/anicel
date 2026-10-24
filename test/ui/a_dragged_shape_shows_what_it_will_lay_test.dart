@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -15,6 +17,7 @@ import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/plain_line_region.dart';
@@ -54,6 +57,7 @@ void main() {
       ActiveStrokeOverlayModel overlay,
       ValueNotifier<BrushToolState> brush,
       ValueNotifier<double> opacity,
+      CanvasSelectionCommands selection,
     })
   >
   pumpPanel(WidgetTester tester, {ShapeToolOptions options = plain}) async {
@@ -116,6 +120,7 @@ void main() {
       overlay: overlay,
       brush: brush,
       opacity: opacity,
+      selection: selection,
     );
   }
 
@@ -219,6 +224,47 @@ void main() {
       isNull,
       reason: 'what landed is the shape tool\'s own area, exactly',
     );
+  });
+
+  // R26 #18 (「선택하고 그리면 선택 내부만 그려진다」) while it is dragged
+  // too: the maker cuts its pieces at the marquee, and the view lays what it
+  // is handed (brush-fidelity-Q9's round took the cut out of the view, which
+  // would have cut a held picture twice).
+  testWidgets('under a marquee the dragged shape shows only what lands '
+      'inside it', (tester) async {
+    final env = await pumpPanel(tester);
+    env.selection.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 100, top: 0, right: 200, bottom: 300),
+      ),
+    );
+    await tester.pump();
+
+    final gesture = await press(tester, const Offset(50, 50));
+    await moveTo(tester, gesture, const Offset(330, 250));
+    for (var frame = 0; frame < 40 && !env.overlay.hasStrokeContent; frame++) {
+      await tester.pump();
+    }
+    expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise: shown');
+    Future<int> shownAlphaAt(int x, int y) async {
+      final side = env.overlay.tileSize;
+      final picture =
+          env.overlay.tileImages[TileCoord(x: x ~/ side, y: y ~/ side)];
+      if (picture == null) {
+        return 0;
+      }
+      final data = await tester.runAsync(
+        () => picture.toByteData(format: ui.ImageByteFormat.rawRgba),
+      );
+      return data!.getUint8(((y % side) * side + x % side) * 4 + 3);
+    }
+
+    expect(await shownAlphaAt(150, 50), isNonZero, reason: 'its top, inside');
+    expect(await shownAlphaAt(50, 150), 0, reason: 'its left side, outside');
+    await gesture.up();
+    await tester.pump();
+    expect(alphaAt(env.coordinator, 150, 50), isNonZero, reason: 'landed');
+    expect(alphaAt(env.coordinator, 50, 150), 0, reason: 'as shown');
   });
 
   // 🗣️F-419 (유저 2026-10-21): 「현재 선 레이어 불투명도 100에서 80정도로

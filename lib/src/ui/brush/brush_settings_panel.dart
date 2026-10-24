@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show listEquals, mapEquals;
 import 'package:flutter/material.dart';
 
@@ -9,6 +11,7 @@ import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
 import '../../models/brush_tip_entry.dart';
 import '../../models/brush_tip_order.dart';
+import '../../models/brush_texture_mode.dart';
 import '../../models/separable_blend_mode.dart';
 import '../panels/editor_panel_frame.dart';
 import '../widgets/settings_rows.dart';
@@ -316,6 +319,22 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
     ),
     // How the dabs take the tips above (F-176-Q3).
     _TipOrderRow(state: state, onChanged: onChanged),
+    // How many of those tips each turn holds, one thrown per dab
+    // (F-456-Q4). ⛔ALWAYS HERE, DEAD below two tips: one tip has nothing
+    // to throw between.
+    _PanelSlider(
+      label: AppText.strings.brTipsPerTurn,
+      value: state.tipsPerTurn
+          .clamp(1, math.max(2, state.tips.length))
+          .toDouble(),
+      min: 1,
+      max: math.max(2, state.tips.length).toDouble(),
+      divisions: math.max(1, state.tips.length - 1),
+      keyValue: 'brush-tool-tips-per-turn-slider',
+      onChanged: state.tips.length < 2
+          ? null
+          : (value) => onChanged(state.copyWith(tipsPerTurn: value.round())),
+    ),
     _PanelSlider(
       label: AppText.strings.brHardness,
       unit: '%',
@@ -566,7 +585,9 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
       onChanged: state.textureMaskSource == null
           ? null
           : (value) => onChanged(state.copyWith(textureDensity: value)),
+      trailing: _pressureButton(BrushPressureTarget.textureDensity),
     ),
+    _TextureModeRow(state: state, onChanged: onChanged),
     // The three LEVELS both source formats carry and neither could
     // reach: the importers baked them into the mask, which left no
     // original to re-bake from. Clip Studio calls them 濃度反転 /
@@ -725,6 +746,7 @@ class _TipOrderRow extends StatelessWidget {
     BrushTipOrder.random => AppText.strings.brTipOrderRandom,
     BrushTipOrder.oneLap => AppText.strings.brTipOrderOneLap,
     BrushTipOrder.shuffledLap => AppText.strings.brTipOrderShuffledLap,
+    BrushTipOrder.lean => AppText.strings.brTipOrderLean,
   };
 
   @override
@@ -788,6 +810,38 @@ class _AntiAliasRow extends StatelessWidget {
         (value: step, key: step.name, label: _labelFor(step)),
     ],
     onPick: (step) => () => onChanged(step),
+  );
+}
+
+/// テクスチャの合成モード — the paper multiplied into the coverage, or its
+/// HEIGHT cutting the silhouette ([BrushTextureMode], F-451). Dims with no
+/// texture to meet, as the texture's sliders above it do.
+class _TextureModeRow extends StatelessWidget {
+  const _TextureModeRow({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  String _labelFor(BrushTextureMode mode) => switch (mode) {
+    BrushTextureMode.multiply => SeparableBlendMode.multiply.labelFor(
+      AppText.language,
+    ),
+    BrushTextureMode.height => AppText.strings.brTextureModeHeight,
+  };
+
+  @override
+  Widget build(BuildContext context) => ToolSettingChoiceRow<BrushTextureMode>(
+    tool: 'brush-tool',
+    name: 'texture-mode',
+    label: AppText.strings.brTextureMode,
+    current: state.textureMode,
+    answers: [
+      for (final mode in BrushTextureMode.values)
+        (value: mode, key: mode.name, label: _labelFor(mode)),
+    ],
+    onPick: (mode) => state.textureMaskSource == null
+        ? null
+        : () => onChanged(state.copyWith(textureMode: mode)),
   );
 }
 

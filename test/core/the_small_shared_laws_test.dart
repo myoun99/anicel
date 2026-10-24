@@ -10,6 +10,7 @@ import 'package:anicel/src/core/contain_rect.dart';
 import 'package:anicel/src/core/copy_with_sentinel.dart';
 import 'package:anicel/src/core/identity_memo.dart';
 import 'package:anicel/src/core/inserted_at.dart';
+import 'package:anicel/src/core/item_beside.dart';
 import 'package:anicel/src/core/mapped_or_same.dart';
 import 'package:anicel/src/core/rgba_premultiply.dart';
 import 'package:anicel/src/core/set_toggle.dart';
@@ -549,6 +550,20 @@ void main() {
       expect(indexOfBytes(bytes, [3, 4], 0, 7), 5);
       expect(indexOfBytes(bytes, [3, 4], 0, 6), -1);
       expect(indexOfBytes(bytes, [9], 0), -1);
+    });
+  });
+
+  group('itemBeside — what takes the place of an item that goes', () {
+    test('the one after it, the one before for the last, none alone', () {
+      expect(itemBeside(['a', 'b', 'c'], 0), 'b');
+      expect(itemBeside(['a', 'b', 'c'], 1), 'c');
+      expect(itemBeside(['a', 'b', 'c'], 2), 'b', reason: 'the last');
+      expect(itemBeside(['a'], 0), isNull);
+    });
+
+    test('an index outside the list is refused, not answered', () {
+      expect(() => itemBeside(['a', 'b'], -1), throwsRangeError);
+      expect(() => itemBeside(['a', 'b'], 2), throwsRangeError);
     });
   });
 }

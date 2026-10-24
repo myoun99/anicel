@@ -6,7 +6,9 @@ import 'dart:typed_data';
 import '../core/rgba_premultiply.dart';
 import '../models/bitmap_surface.dart';
 import '../models/brush_blend_mode.dart';
+import '../models/non_separable_blend_mode.dart';
 import '../models/separable_blend_mode.dart';
+import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import 'brush_stamp_span_kernel.dart';
 
@@ -171,7 +173,10 @@ int strokeBlendModeNativeId(BrushBlendMode mode) {
       'mode',
       'color/erase land through the ordinary stamp kernels',
     ),
-    _ => separableBlendModeNativeId(mode.separable!),
+    _ => switch (mode.separable) {
+      final separable? => separableBlendModeNativeId(separable),
+      null => nonSeparableBlendModeNativeId(mode.nonSeparable!),
+    },
   };
 }
 
@@ -181,8 +186,8 @@ int strokeBlendModeNativeId(BrushBlendMode mode) {
 /// coverages through the very same `qa_stroke_blend_channel` the stroke
 /// kernel reads, so it needs the very same ids — and a second switch
 /// spelling them out would be a copy the moment either one gained a mode.
-/// [strokeBlendModeNativeId] is now this plus the two porter-duff answers
-/// its own callers need.
+/// [strokeBlendModeNativeId] is now this and [nonSeparableBlendModeNativeId]
+/// plus the two porter-duff answers its own callers need.
 int separableBlendModeNativeId(SeparableBlendMode mode) {
   return switch (mode) {
     SeparableBlendMode.add => 1,
@@ -197,6 +202,32 @@ int separableBlendModeNativeId(SeparableBlendMode mode) {
     SeparableBlendMode.hardLight => 10,
     SeparableBlendMode.difference => 11,
     SeparableBlendMode.exclusion => 12,
+    SeparableBlendMode.linearBurn => 13,
+    SeparableBlendMode.subtract => 14,
+    SeparableBlendMode.vividLight => 15,
+    SeparableBlendMode.linearLight => 16,
+    SeparableBlendMode.pinLight => 17,
+    SeparableBlendMode.hardMix => 18,
+    SeparableBlendMode.divide => 19,
+  };
+}
+
+/// The same fixed ids for the six that mix the three channels, which have
+/// no separable row; they follow the separable table's (brush-fidelity).
+///
+/// ↩️Spelled inside [strokeBlendModeNativeId] while only the brush had
+/// them. brush-fidelity-Q4 gave the layer list two of the six, composed by
+/// `shaders/layer_blend.frag` reading these very ids — so this is the
+/// third door onto the one table, for the same reason the separable door
+/// is the second.
+int nonSeparableBlendModeNativeId(NonSeparableBlendMode mode) {
+  return switch (mode) {
+    NonSeparableBlendMode.darkerColor => 20,
+    NonSeparableBlendMode.lighterColor => 21,
+    NonSeparableBlendMode.hue => 22,
+    NonSeparableBlendMode.saturation => 23,
+    NonSeparableBlendMode.chroma => 24,
+    NonSeparableBlendMode.luminosity => 25,
   };
 }
 
@@ -254,6 +285,50 @@ double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
           : (2 * cs - 1) + cd - (2 * cs - 1) * cd;
     case SeparableBlendMode.difference:
       return (cs - cd).abs();
+    case SeparableBlendMode.linearBurn:
+      final sum = cs + cd - 1;
+      return sum > 0 ? sum : 0.0;
+    case SeparableBlendMode.subtract:
+      final rest = cd - cs;
+      return rest > 0 ? rest : 0.0;
+    case SeparableBlendMode.vividLight:
+      // colorBurn(2cs, cd) below the pivot, colorDodge(2cs-1, cd) above —
+      // hardLight's split with the two dodge/burn heads in place of
+      // multiply/screen.
+      return cs <= 0.5
+          ? blendSeparableChannel(SeparableBlendMode.colorBurn, 2 * cs, cd)
+          : blendSeparableChannel(
+              SeparableBlendMode.colorDodge,
+              2 * cs - 1,
+              cd,
+            );
+    case SeparableBlendMode.linearLight:
+      final sum = cd + 2 * cs - 1;
+      return sum < 0 ? 0.0 : (sum > 1 ? 1.0 : sum);
+    case SeparableBlendMode.pinLight:
+      if (cs <= 0.5) {
+        final doubled = 2 * cs;
+        return cd < doubled ? cd : doubled;
+      }
+      final raised = 2 * cs - 1;
+      return cd > raised ? cd : raised;
+    case SeparableBlendMode.hardMix:
+      // Every channel goes all the way: white where the two reach a whole,
+      // black where they fall short — on bytes, s + d >= 255. 🔬Every pair
+      // of bytes summing to 255 lands on exactly 1.0 here (all 256 checked,
+      // 2026-10-17), so the plain comparison is the byte rule.
+      return cs + cd >= 1 ? 1.0 : 0.0;
+    case SeparableBlendMode.divide:
+      // The destination divided by the source. Nothing divided is nothing;
+      // anything divided by nothing is as bright as a channel goes.
+      if (cd <= 0) {
+        return 0;
+      }
+      if (cs <= 0) {
+        return 1;
+      }
+      final quotient = cd / cs;
+      return quotient < 1 ? quotient : 1.0;
     case SeparableBlendMode.exclusion:
       return cs + cd - 2 * cs * cd;
     case SeparableBlendMode.add:
@@ -269,6 +344,130 @@ double blendSeparableChannel(SeparableBlendMode mode, double cs, double cd) {
         'add is a premultiplied saturating add, not a channel blend — see '
             'blendDualCoverage / the stroke kernel',
       );
+  }
+}
+
+/// The six that mix the three channels (brush-fidelity) — their B is a
+/// COLOUR of three, so they are not in [blendSeparableChannel]: W3C
+/// Compositing and Blending Level 1's non-separable modes (Lum, ClipColor,
+/// SetLum, Sat, SetSat) plus Photoshop's darker/lighter colour, which keep
+/// one of the two colours whole. SetSat is written the way Skia writes it
+/// (every channel (c - min) * s / (max - min)): the spec's max/mid/min
+/// assignment without ranking the three, ties included.
+///
+/// 🚨The C mirror is `qa_stroke_blend_triple`, every expression in the same
+/// grouping; the parity suite pins the pair byte for byte.
+final class _ChannelMix {
+  final b = Float64List(3);
+  final _cs = Float64List(3);
+  final _cd = Float64List(3);
+
+  /// B for [mode] from the stroke pixel at [s] in [src] and the cel pixel at
+  /// [d] in [dst], into [b]. Reads the BYTES because darker/lighter colour
+  /// compare the two colours' channel totals, and a total of thirds of 255
+  /// in doubles can call two equal totals unequal.
+  void blend(BrushBlendMode mode, Uint8List src, int s, Uint8List dst, int d) {
+    final cs = _cs;
+    final cd = _cd;
+    for (var k = 0; k < 3; k += 1) {
+      cs[k] = src[s + k] / 255.0;
+      cd[k] = dst[d + k] / 255.0;
+    }
+    final sourceTotal = src[s] + src[s + 1] + src[s + 2];
+    final destTotal = dst[d] + dst[d + 1] + dst[d + 2];
+    switch (mode) {
+      case BrushBlendMode.darkerColor:
+        // A tie keeps what is there.
+        b.setAll(0, sourceTotal < destTotal ? cs : cd);
+      case BrushBlendMode.lighterColor:
+        b.setAll(0, sourceTotal > destTotal ? cs : cd);
+      case BrushBlendMode.hue:
+        b.setAll(0, cs);
+        _setSat(b, _sat(cd));
+        _setLum(b, _lum(cd));
+      case BrushBlendMode.saturation:
+        b.setAll(0, cd);
+        _setSat(b, _sat(cs));
+        _setLum(b, _lum(cd));
+      case BrushBlendMode.chroma:
+        b.setAll(0, cs);
+        _setLum(b, _lum(cd));
+      case BrushBlendMode.luminosity:
+        b.setAll(0, cd);
+        _setLum(b, _lum(cs));
+      case BrushBlendMode.color ||
+          BrushBlendMode.behind ||
+          BrushBlendMode.erase ||
+          BrushBlendMode.darken ||
+          BrushBlendMode.multiply ||
+          BrushBlendMode.colorBurn ||
+          BrushBlendMode.linearBurn ||
+          BrushBlendMode.subtract ||
+          BrushBlendMode.lighten ||
+          BrushBlendMode.screen ||
+          BrushBlendMode.colorDodge ||
+          BrushBlendMode.add ||
+          BrushBlendMode.overlay ||
+          BrushBlendMode.softLight ||
+          BrushBlendMode.hardLight ||
+          BrushBlendMode.difference ||
+          BrushBlendMode.vividLight ||
+          BrushBlendMode.linearLight ||
+          BrushBlendMode.pinLight ||
+          BrushBlendMode.hardMix ||
+          BrushBlendMode.exclusion ||
+          BrushBlendMode.divide:
+        throw ArgumentError.value(mode, 'mode', 'mixes no channels');
+    }
+  }
+
+  static double _min(Float64List c) {
+    final low = c[0] < c[1] ? c[0] : c[1];
+    return low < c[2] ? low : c[2];
+  }
+
+  static double _max(Float64List c) {
+    final high = c[0] > c[1] ? c[0] : c[1];
+    return high > c[2] ? high : c[2];
+  }
+
+  static double _lum(Float64List c) => 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+
+  /// ⚠️The two `!= 0` guards are Skia's: a grey whose luminosity landed an
+  /// ulp under 0 (or over 1) would otherwise divide 0 by 0, and
+  /// [_clampByte]'s `round()` throws on NaN.
+  static void _clip(Float64List c) {
+    final l = _lum(c);
+    final low = _min(c);
+    final high = _max(c);
+    for (var k = 0; k < 3; k += 1) {
+      var v = c[k];
+      if (low < 0 && l - low != 0) {
+        v = l + (v - l) * l / (l - low);
+      }
+      if (high > 1 && high - l != 0) {
+        v = l + (v - l) * (1 - l) / (high - l);
+      }
+      c[k] = v;
+    }
+  }
+
+  static void _setLum(Float64List c, double l) {
+    final d = l - _lum(c);
+    c[0] = c[0] + d;
+    c[1] = c[1] + d;
+    c[2] = c[2] + d;
+    _clip(c);
+  }
+
+  static double _sat(Float64List c) => _max(c) - _min(c);
+
+  static void _setSat(Float64List c, double s) {
+    final low = _min(c);
+    final sat = _max(c) - low;
+    for (var k = 0; k < 3; k += 1) {
+      c[k] = sat > 0 ? (c[k] - low) * s / sat : 0.0;
+    }
   }
 }
 
@@ -373,6 +572,9 @@ Uint8List blendStrokeRegionPixels({
   assert(mode != BrushBlendMode.color && mode != BrushBlendMode.erase,
       'color/erase land through the ordinary stamp kernels');
   final result = Uint8List(pixelCount * 4);
+  // Null for the six that mix the channels — their B comes from [mix].
+  final separable = mode.separable;
+  final mix = separable == null ? _ChannelMix() : null;
   for (var i = 0; i < pixelCount; i += 1) {
     final o = i * 4;
     final sa = src[o + 3];
@@ -434,10 +636,14 @@ Uint8List blendStrokeRegionPixels({
       continue;
     }
     final ao = as_ + ad * (1 - as_);
+    // One composite for both kinds of B: per channel, or a colour of three.
+    mix?.blend(mode, src, o, dst, o);
     for (var c = 0; c < 3; c += 1) {
       final cs = src[o + c] / 255.0;
       final cd = dst[o + c] / 255.0;
-      final b = blendSeparableChannel(mode.separable!, cs, cd);
+      final b = mix == null
+          ? blendSeparableChannel(separable!, cs, cd)
+          : mix.b[c];
       result[o + c] = _clampByte(
         (as_ * (1 - ad) * cs + ad * (1 - as_) * cd + as_ * ad * b) / ao,
       );
@@ -474,3 +680,24 @@ double blendDualCoverage(
   }
   return blendSeparableChannel(mode, dual, coverage);
 }
+
+/// What a dab lays where the paper stands [sample] high, under the
+/// [BrushTextureMode.height] texture: its [coverage] times the [density] is
+/// how deep it reaches into the paper, and it touches where the paper rises
+/// above that floor — fully once the paper stands [paperHeightBand] above
+/// it.
+///
+/// 🚨The C mirror is the texture block of `qa_dab_blend_spans`, written
+/// with this grouping, and the parity suite pins the pair.
+double paperHeightCoverage(double coverage, double sample, double density) {
+  final touched = (sample + density * coverage - 1.0) / paperHeightBand;
+  if (touched <= 0.0) {
+    return 0.0;
+  }
+  return touched >= 1.0 ? 1.0 : touched;
+}
+
+/// How far above a dab's floor the paper must stand to take the dab fully
+/// ([paperHeightCoverage]): narrow, so the dab's edge is the paper's edge —
+/// a grain one texel across stays one texel, not a soft blur of it.
+const double paperHeightBand = 0.25;

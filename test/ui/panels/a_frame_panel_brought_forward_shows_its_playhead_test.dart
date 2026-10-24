@@ -18,6 +18,8 @@ import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 import 'package:anicel/src/ui/timeline/timeline_vertical_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/rail_group_button.dart';
+
 /// 🚨A FRAME PANEL BROUGHT FORWARD AGAIN SHOWS ITS PLAYHEAD (유저
 /// 2026-10-14, panels-are-built-only-while-open-Q1: 「다시 열 때 플레이헤드를
 /// 드러낸다」). A panel is built only while it shows, so one put back in
@@ -261,7 +263,7 @@ void main() {
     // Dragged by its grip onto the closed group's button: the group takes
     // it and opens.
     const group = EditorWorkspace.rightGroupId;
-    final button = find.byKey(const ValueKey<String>('rail-group-$group'));
+    final button = railGroupButton(group);
     expect(button, findsOneWidget, reason: '⛔전제: the group has a button');
     expect(find.byType(StoryboardPanel), findsNothing,
         reason: '⛔전제: the storyboard is not built behind the timeline');

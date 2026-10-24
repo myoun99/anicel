@@ -361,7 +361,7 @@ class MediaViewerTabHost extends StatefulWidget {
   /// Injectable sound (tests) — the same seam as [filePicker].
   ///
   /// 🚨★★★**WITHOUT THIS THE SOUND HALF IS UNMEASURED.** A widget test
-  /// never gets an audio device (`audioOutputUnlessTesting`), so every
+  /// never gets an audio device (`audioDeviceUnlessTesting`), so every
   /// call this panel makes into [ViewerSound] is a no-op on the bench:
   /// deleting the hold, the resume or the stop leaves the whole suite
   /// green. That is not 「no test was needed」, it is 「the bench cannot

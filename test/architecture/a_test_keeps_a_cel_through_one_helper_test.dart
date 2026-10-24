@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
 import '../helpers/project_scratch_folder.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨**A TEST KEEPS A CEL THROUGH ONE HELPER** — in a file, `keepInAFile`
 /// (`test/helpers/cels_kept_in_a_file.dart`); parked cold in RAM, `parkCold`
@@ -128,39 +129,29 @@ void main() {
     return calls;
   }
 
-  /// The files of [calls] that call the store more often than [allowed]
-  /// says they may.
-  List<String> overTheLedger(
+  /// Fails unless [calls] are as many as [allowed] says, file by file — a
+  /// copy beside a counted call is one more, and a call that went to the
+  /// helper is one fewer.
+  void expectAsLedgered(
     Map<String, int> calls,
-    Map<String, (int, String)> allowed,
-  ) => [
-    for (final MapEntry(key: path, value: count) in calls.entries)
-      if (count > (allowed[path]?.$1 ?? 0)) '$path ($count)',
-  ]..sort();
+    Map<String, (int, String)> allowed, {
+    required String helper,
+  }) => expectCountsMatchLedger(
+    calls,
+    {
+      for (final MapEntry(key: path, value: (count, _)) in allowed.entries)
+        path: count,
+    },
+    grew: 'keep the cel with $helper — it answers what it handed the store, '
+        'for a test that needs it',
+    paidOff: 'a call that went to the helper takes its line out of the '
+        'ledger, so the ceiling never stands above what is there',
+  );
 
   for (final (:call, :helper, :ledger) in families) {
     test('a test reaches $call through $helper, or the ledger says why it '
-        'calls the store itself', () {
-      expect(
-        overTheLedger(callsUnder('test', call), ledger),
-        isEmpty,
-        reason: 'keep the cel with $helper — it answers what it handed the '
-            'store, for a test that needs it',
-      );
-    });
-
-    test('the $call ledger is exact: every file it names calls the store as '
-        'many times as it says', () {
-      final calls = callsUnder('test', call);
-      expect(
-        {for (final path in ledger.keys) path: calls[path] ?? 0},
-        {
-          for (final MapEntry(key: path, value: (count, _)) in ledger.entries)
-            path: count,
-        },
-        reason: 'a call that went to the helper takes its line out of the '
-            'ledger, so the ceiling never stands above what is there',
-      );
+        'calls the store itself — exactly as many times as it says', () {
+      expectAsLedgered(callsUnder('test', call), ledger, helper: helper);
     });
   }
 
@@ -191,20 +182,26 @@ void main() {
       reason: 'each entrance is counted on its own — the other one in the '
           'same file is no part of its count',
     );
+    void asLedgered(Map<String, (int, String)> allowed) =>
+        expectAsLedgered(calls, allowed, helper: 'keepInAFile');
+    final overBy = throwsA(
+      isA<TestFailure>().having(
+        (failure) => failure.message,
+        'message',
+        contains('test/by_hand_test.dart: found 2'),
+      ),
+    );
     expect(
-      overTheLedger(calls, const {}),
-      ['test/by_hand_test.dart (2)'],
+      () => asLedgered(const {}),
+      overBy,
       reason: 'the scan reads files and counts the call, so an empty answer '
           'above means there is none',
     );
     expect(
-      overTheLedger(calls, const {'test/by_hand_test.dart': (1, 'one')}),
-      ['test/by_hand_test.dart (2)'],
+      () => asLedgered(const {'test/by_hand_test.dart': (1, 'one')}),
+      overBy,
       reason: 'a copy beside a counted call is one more than the ledger says',
     );
-    expect(
-      overTheLedger(calls, const {'test/by_hand_test.dart': (2, 'two')}),
-      isEmpty,
-    );
+    asLedgered(const {'test/by_hand_test.dart': (2, 'two')});
   });
 }

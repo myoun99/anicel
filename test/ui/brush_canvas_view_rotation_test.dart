@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/canvas_pill.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/viewport_point.dart';
@@ -273,11 +274,12 @@ void main() {
   ) async {
     final commands = await pumpPanel(tester);
 
-    commands.rotateBy(15);
+    commands.rotateStep(clockwise: true);
     await tester.pumpAndSettle();
     expect(viewportOf(tester).rotationDegrees, 15);
 
-    commands.rotateBy(-30);
+    commands.rotateStep(clockwise: false);
+    commands.rotateStep(clockwise: false);
     await tester.pumpAndSettle();
     expect(viewportOf(tester).rotationDegrees, -15);
 
@@ -286,11 +288,87 @@ void main() {
     expect(viewportOf(tester).flipHorizontal, isTrue);
   });
 
+  group('🗣️F-391: ⟲ / ⟳ and the keys step by the ONE rotation snap, on '
+      'its grid 「회전 스냅은 하나만」', () {
+    tearDown(() {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+    });
+
+    /// Types [degrees] into the pill's angle readout — a view off the grid
+    /// in one move, the way a person puts it there.
+    Future<void> typeAngle(WidgetTester tester, String degrees) async {
+      final pencil = find.byKey(
+        const ValueKey<String>('canvas-viewport-rotation-label-edit'),
+      );
+      if (!tester.any(pencil)) {
+        await openViewSettings(tester);
+      }
+      await tester.ensureVisible(pencil);
+      await tester.pumpAndSettle();
+      await tester.tap(pencil);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(
+          const ValueKey<String>('canvas-viewport-rotation-label-input'),
+        ),
+        degrees,
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('from an angle off the grid, a step lands on the grid\'s '
+        'next line — the button and the key alike', (tester) async {
+      final commands = await pumpPanel(tester);
+
+      await typeAngle(tester, '7');
+      expect(viewportOf(tester).rotationDegrees, 7);
+      await tapToolbarButton(tester, 'canvas-viewport-rotate-cw');
+      expect(
+        viewportOf(tester).rotationDegrees,
+        15,
+        reason: 'the line past 7, not 7 + 15 = 22',
+      );
+
+      await typeAngle(tester, '7');
+      expect(viewportOf(tester).rotationDegrees, 7);
+      commands.rotateStep(clockwise: false);
+      await tester.pumpAndSettle();
+      expect(
+        viewportOf(tester).rotationDegrees,
+        0,
+        reason: 'the key presses the same step — not 7 − 15 = −8',
+      );
+
+      await typeAngle(tester, '-7');
+      expect(viewportOf(tester).rotationDegrees, -7);
+      await tapToolbarButton(tester, 'canvas-viewport-rotate-ccw');
+      expect(viewportOf(tester).rotationDegrees, -15);
+    });
+
+    testWidgets('the step IS the setting — a 30° snap turns the button and '
+        'the key by 30°', (tester) async {
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+        rotationSnapDegrees: 30,
+      );
+      final commands = await pumpPanel(tester);
+
+      await tapToolbarButton(tester, 'canvas-viewport-rotate-cw');
+      expect(viewportOf(tester).rotationDegrees, 30);
+
+      commands.rotateStep(clockwise: true);
+      await tester.pumpAndSettle();
+      expect(viewportOf(tester).rotationDegrees, 60);
+    });
+  });
+
   testWidgets('Fit resets rotation and flip (v1: Fit straightens)', (
     tester,
   ) async {
     final commands = await pumpPanel(tester);
-    commands.rotateBy(45);
+    for (var step = 0; step < 3; step += 1) {
+      commands.rotateStep(clockwise: true);
+    }
     commands.toggleFlipHorizontal();
     await tester.pumpAndSettle();
     expect(viewportOf(tester).rotationDegrees, 45);
@@ -314,7 +392,9 @@ void main() {
       },
       onEyedropperPick: (_) {},
     );
-    commands.rotateBy(90);
+    for (var step = 0; step < 6; step += 1) {
+      commands.rotateStep(clockwise: true);
+    }
     commands.toggleFlipHorizontal();
     await tester.pumpAndSettle();
     final viewport = viewportOf(tester);

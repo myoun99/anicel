@@ -265,7 +265,7 @@ void main() {
   ///
   /// ⚠️387 → 388 on 2026-10-09, one named as the rule above asks (F-282,
   /// the one door): `pickFileGrantsForUser` (five) took `initialDirectory`.
-  /// 「파일 열기…」 is that pick now — every kind, several at once — and it
+  /// 「파일 열기」 is that pick now — every kind, several at once — and it
   /// keeps the starting folder the project Open had on a desktop, which
   /// `pickProjectGrantForUser` already takes for the same reason. The Open
   /// pick that passed it, `pickProjectToOpen`, is gone.
@@ -618,7 +618,61 @@ void main() {
   /// its child's key as `stripAlong` does. 🔬`clean_code_diff` against
   /// master (`41c4dfa72`, at 410) named those two added and nothing gone.
   /// ⛔Not split to fit: each parameter is one of the widget it turns.
-  const wideSignatures = 412;
+  /// ⚠️412 → 413 on 2026-10-22, named as the rule above asks (F-176-Q7 —
+  /// the brush cursor is the tip a hovering pen would lay down).
+  /// `brushInputFactor` (five) takes the sources the reading HAS: a pen
+  /// that has not touched yet has only how it is held, so its pressure and
+  /// speed rows are skipped as a source the device cannot answer is.
+  /// ⛔Not bundled with `random`: the throw is the stroke's, which sources
+  /// a reading has is the reading's — two questions. 🔬`clean_code_diff`
+  /// against the lane's base (`fdbdd1a3d`, at 408) named that one added and
+  /// nothing gone; the lane laid over master at 412, 413.
+  /// ⚠️413 → 415 on 2026-10-22, named as the rule above asks (card
+  /// a-blurred-folder-cut-by-the-view-moves-on-vulkan — a row in an
+  /// advanced blend is composed over its backdrop in the shader).
+  /// `drawBlendOverBackdrop` (eight) is `drawSubtreeAsImage` with two
+  /// pictures where that has one: the canvas, the grid's bounds, scale and
+  /// cap, the backdrop and the row, the blend, and what the canvas still
+  /// shows. `_composeInTheFrame` (six) is its road where the engine reads
+  /// the backdrop: the canvas, the grid and its scale, the backdrop, the row
+  /// already rasterised, the blend. `LayerBlendShader.shaderFor` (five)
+  /// hands the program what its formula reads: the two pictures, the blend
+  /// and the grid's size. 🔬`clean_code_diff` against master (`44668f9da`,
+  /// at 413) named those three added and
+  /// `LayerStackPaintPass._layLevelPixels` gone. ⛔Not bundled to fit: each
+  /// parameter is one the draw reads, and a value made of them would be
+  /// built by every caller out of the same fields first.
+  /// ⚠️415 → 416 on 2026-10-23, named as the rule above asks (the same
+  /// card — the row handed to the shader as it is where it lands texel for
+  /// texel). `_composeInARaster` (five) is `_composeInTheFrame`'s sibling,
+  /// the road where the frame cannot be read: the canvas, the grid, the
+  /// backdrop already rasterised, the row (made inside, so a raster of it
+  /// is disposed with the rest), the blend. The same change widened two
+  /// already counted: `drawBlendOverBackdrop` (nine) takes the row's own
+  /// image, and `LayerBlendShader.shaderFor` (six) where the row lies on
+  /// the draw; the row `_composeInTheFrame` takes may now be that image.
+  /// 🔬`clean_code_diff` against the lane's base (`6f900eab3`, at 415)
+  /// named that one added and nothing gone. ⛔Not kept inside
+  /// `drawBlendOverBackdrop` to save the count: there its body ran past
+  /// sixty lines, and the two roads read better side by side, each named.
+  /// ⚠️416 → 420 on 2026-10-23, five named as the rule above asks (card
+  /// nested-folder-buffers-read-past-the-view — a buffered row inside a
+  /// blurred folder holds its ink past the view, as the camera's does).
+  /// The editing stack's walk carries what reads the nodes, beside the
+  /// scale it already carried, and each node hands its own buffer down:
+  /// `_paintNodesWith` (five) — the canvas, the nodes, the scale, what
+  /// reads them, and the walk that paints a node's children;
+  /// `_paintGroupNode`, `_paintAdjustmentNode` and
+  /// `_paintBackdropBlendNode` (five each) — the canvas, the node, the
+  /// scale, what reads it and that walk; `_paintSplit` (five) — the canvas,
+  /// the nodes, the depth its slots are named by, the scale and what reads
+  /// them. 🔬`clean_code_diff` against master (`f8e059c22`, at 415) named
+  /// those five added and nothing gone. ⛔Not bundled to fit: the camera's
+  /// walk carries the same scale and reader side by side
+  /// (`renderThroughCamera`'s `paintNodes`), and a buffer hands its
+  /// children a scale of its own (`drawSubtreeAsImage`'s `paintSubtree`),
+  /// so a value of the two would be built at every hand-down first.
+  const wideSignatures = 420;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -888,7 +942,32 @@ void main() {
   /// one the cel's picture and its PSD's rows are both laid from.
   /// 🔬`clean_code_diff` against master (`66c6c2063`, at 413) named that one
   /// gone and nothing added.
-  const longBodies = 412;
+  ///
+  /// ⚠️412 → 414 on 2026-10-22, three named as the rule above asks (card
+  /// a-blurred-folder-cut-by-the-view-moves-on-vulkan — a row in an
+  /// advanced blend is composed over its backdrop in the shader, a node
+  /// kind every walk of the tree answers for). `composeOverTheirBackdrops`
+  /// (70) is the law that gathers it: a list is a scope, a group's and an
+  /// adjustment's lists are scopes of their own, and a row in such a blend
+  /// takes what stands before it in its list. `mapCompositeLeaves` (66) and
+  /// `_EditorCanvasAreaState._stackNodesWithGhosts` (90) crossed the line
+  /// taking that node's case — the fold leaves what lay below a row that
+  /// mapped to nothing where it was, the onion ghosts go under the active
+  /// row where it is the blend's source. 🔬`clean_code_diff` against master
+  /// (`44668f9da`, at 411 — one under the ceiling) named those three added
+  /// and nothing gone. ⛔Not split to fit: each is one switch over the node
+  /// kinds, and a case taken out would be read beside the rest anyway.
+  ///
+  /// ⚠️414 → 415 on 2026-10-23, named as the rule above asks (card
+  /// nested-folder-buffers-read-past-the-view). The editing stack's
+  /// `LayerStackPaintPass._paintNodesWith` (65) crossed the line handing
+  /// what reads the nodes to each buffered kind's case — a group, an
+  /// adjustment, a row composed over its backdrop — whose calls no longer
+  /// fit a line. 🔬`clean_code_diff` against master (`f8e059c22`, at 414)
+  /// named that one added and nothing gone. ⛔Not split to fit: it is the
+  /// walk's one switch over the node kinds, the shape the camera's walk
+  /// keeps too.
+  const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
@@ -1176,7 +1255,26 @@ void main() {
   /// base (`fdbdd1a3d`) names this one and no other class. ⛔Not split to
   /// fit: the half ahead asks its step's own question of the cut the step
   /// reads in one place (`ActiveCutEdits`), so the two are read side by side.
-  const longClasses = 71;
+  ///
+  /// ⚠️71 → 72 on 2026-10-24, ONE name: `QaAudioDevice` crossed (584 → 601)
+  /// when a recording cue's end silenced a viewer's sound it did not make
+  /// (card `a-cue-ending-silences-a-viewer-sound-it-did-not-make`): `play`
+  /// now hands back the run it starts, and every player's end silences its
+  /// own run alone (`stopRun`, bound beside `stop`). 🔬`clean_code_diff`
+  /// against the lane's base (`d719704c1`) names this one and no other
+  /// class. ⛔Not split to fit: the class is the engine's audio surface, one
+  /// binding a native call, and the run's end is one more native call.
+  ///
+  /// ⚠️72 → 73 on 2026-10-24, ONE name: `_StoryboardSeRow` crossed
+  /// (590 → 624) when it came to build the pieces of its window's sounds
+  /// alone (card `frame-panels-build-in-one-frame` — the row spans the whole
+  /// film and built every sound's paper, waveform, words, grips and drop
+  /// places, about a fifth of reopening the storyboard on the AMMI OP): the
+  /// window is read where the row builds, and each kind of piece is held to
+  /// it. 🔬`clean_code_diff` against master (`f6c483e4d`) names this one and
+  /// no other class. ⛔Not split to fit: the window is the row's own panel
+  /// window, and every piece of the row is held to it in the one build.
+  const longClasses = 73;
 
   late CleanCodeScan scan;
   setUpAll(() {

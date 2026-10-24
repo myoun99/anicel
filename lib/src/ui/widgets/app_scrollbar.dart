@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../timeline/axis_turn.dart'
-    show extentAlong, partAlong, sizeAlong, stripAlong;
+    show extentAcross, extentAlong, partAlong, stripAlong;
 import 'app_scrollbar_lane.dart';
 import 'owning_axis_grip.dart';
 import 'tick_layer.dart';
@@ -12,23 +12,34 @@ import 'tick_layer.dart';
 /// the vocabulary too.
 export 'app_scrollbar_lane.dart';
 
-/// Where the thumb sits ACROSS its lane.
-enum AppScrollbarThumbSeat {
-  /// Down the middle. For a RESERVED lane — the timeline rails, the canvas
-  /// panbars — where the lane is part of the grid and the thumb is what
-  /// fills it.
-  centered,
+/// The lane the bars under it are given where they are not given one —
+/// the bar laid over an overflowing scrollable, the content column's, the
+/// canvas panel's panbars — [AppScrollbarLane.thin] outside any scope.
+///
+/// The PANEL says it, once, for everything laid in it: F-440 (유저
+/// 2026-10-23) 「뒷 배경에 깔리는 패널만 두꺼운 스크롤바 사용. 나중에
+/// 콘티용지패널을 뒤에 깔수있게 할거기 때문에 입구를 그런식으로 설계」 — a
+/// panel that finds itself on the workspace's floor (`CanvasFloorInsets`)
+/// says thick, and the same panel docked passes on the lane its seat gives.
+/// ↩️The preferences window said thick here from F-409 (10-20) to F-440.
+class AppScrollbarLaneScope extends InheritedWidget {
+  const AppScrollbarLaneScope({
+    super.key,
+    required this.lane,
+    required super.child,
+  });
 
-  /// On the lane's far edge: the bottom of a horizontal lane, the right of
-  /// a vertical one.
-  ///
-  /// ㉔ (user, 2026-08-12): 「넘칠 때 뜨는 스크롤바의 아래 패딩을 없애고
-  /// 영역 바닥에 딱 붙인다 (…) 겹치는 건 문제없음」. An OVERLAY lane is
-  /// pointer reach laid over content, not geometry — so its 12px say
-  /// nothing about where the bar belongs, and centring a 4px thumb in them
-  /// left 4px of air under a bar the user reads as sitting on the edge of
-  /// the area.
-  endEdge,
+  final double lane;
+
+  static double of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<AppScrollbarLaneScope>()
+          ?.lane ??
+      AppScrollbarLane.thin;
+
+  @override
+  bool updateShouldNotify(AppScrollbarLaneScope oldWidget) =>
+      lane != oldWidget.lane;
 }
 
 /// How a press on the lane (outside the thumb) behaves.
@@ -104,12 +115,14 @@ class AppScrollbarGeometry {
       axisPosition >= thumbStart && axisPosition <= thumbStart + thumbExtent;
 }
 
-/// The app-wide scrollbar visual: no track, a thin grey thumb whose ONLY
-/// state signal is colour — grey at rest, white under the pointer, accent
-/// while pressed. The thickness never changes (유저 지시: 어떤 레일이든
-/// 눌렀다고 크기가 바뀌지 않는다), so a press cannot nudge the layout of
-/// whatever sits beside the lane. Parents supply the hit lane
-/// ([AppScrollbarLane]) — the thumb stays visually thin inside it.
+/// The app-wide scrollbar visual: no track, a grey thumb whose ONLY state
+/// signal is colour — grey at rest, white under the pointer, accent while
+/// pressed. The thickness never changes (유저 지시: 어떤 레일이든 눌렀다고
+/// 크기가 바뀌지 않는다), so a press cannot nudge the layout of whatever sits
+/// beside the lane. Parents supply the lane ([AppScrollbarLane]), and the
+/// thumb fills it across — F-409: 「조작 가능한 만큼 위젯의 모양새가
+/// 위치하도록」. ↩️It was 4px wherever the lane was, so most of what took the
+/// pointer was air.
 ///
 /// The pressed colour lights on pointer-DOWN and is deliberately
 /// independent of whether there is anything to scroll: a full-lane thumb
@@ -131,7 +144,6 @@ class AppScrollbar extends StatefulWidget {
     this.onChangeEnd,
     this.lanePress = AppScrollbarLanePress.jumpToPointer,
     this.minThumbExtent = AppScrollbarThumb.minimum,
-    this.thumbSeat = AppScrollbarThumbSeat.centered,
     this.thumbKey,
     this.laneKey,
     this.enabled = true,
@@ -146,11 +158,6 @@ class AppScrollbar extends StatefulWidget {
   final AppScrollbarLanePress lanePress;
   final double minThumbExtent;
 
-  /// See [AppScrollbarThumbSeat]. Centred by default — that is what every
-  /// reserved lane wants, and it is what all of them got before ㉔ named
-  /// the overlay case.
-  final AppScrollbarThumbSeat thumbSeat;
-
   final Key? thumbKey;
   final Key? laneKey;
 
@@ -163,8 +170,6 @@ class AppScrollbar extends StatefulWidget {
 }
 
 class _AppScrollbarState extends State<AppScrollbar> {
-  /// One thickness for every state — see the class doc.
-  static const double _thickness = 4;
   static const Duration _stateAnimation = Duration(milliseconds: 100);
 
   bool _hovered = false;
@@ -188,18 +193,12 @@ class _AppScrollbarState extends State<AppScrollbar> {
 
   @override
   Widget build(BuildContext context) {
-    final horizontal = widget.axis == Axis.horizontal;
-    final thumb = sizeAlong(
-      widget.axis,
-      along: double.infinity,
-      across: _thickness,
-    );
     return LayoutBuilder(
       builder: (context, constraints) {
         final trackExtent = extentAlong(widget.axis, constraints.biggest);
         final geometry = _geometry(trackExtent);
         // Colour is the whole state machine (see the class doc). White
-        // rather than a palette grey because a 4px thumb has to win
+        // rather than a palette grey because a thumb has to win
         // against the lane behind it to read as "the pointer is here".
         final color = !widget.enabled
             ? AppColors.hairlineStrong
@@ -236,25 +235,14 @@ class _AppScrollbarState extends State<AppScrollbar> {
                   widget.axis,
                   along: geometry.thumbStart,
                   alongExtent: geometry.thumbExtent,
-                  child: Align(
-                    // The lane's thickness is reach; where in it the
-                    // thumb sits is the seat (㉔).
-                    alignment: switch ((widget.thumbSeat, horizontal)) {
-                      (AppScrollbarThumbSeat.centered, _) => Alignment.center,
-                      (AppScrollbarThumbSeat.endEdge, true) =>
-                        Alignment.bottomCenter,
-                      (AppScrollbarThumbSeat.endEdge, false) =>
-                        Alignment.centerRight,
-                    },
-                    child: AnimatedContainer(
-                      key: widget.thumbKey,
-                      duration: _stateAnimation,
-                      curve: Curves.easeOut,
-                      width: thumb.width,
-                      height: thumb.height,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(_thickness / 2),
+                  child: AnimatedContainer(
+                    key: widget.thumbKey,
+                    duration: _stateAnimation,
+                    curve: Curves.easeOut,
+                    decoration: ShapeDecoration(
+                      color: color,
+                      shape: AppShapes.control(
+                        extentAcross(widget.axis, constraints.biggest),
                       ),
                     ),
                   ),
@@ -363,7 +351,6 @@ class AppControllerScrollbar extends StatefulWidget {
     required this.axis,
     this.lanePress = AppScrollbarLanePress.jumpToPointer,
     this.minThumbExtent = AppScrollbarThumb.minimum,
-    this.thumbSeat = AppScrollbarThumbSeat.centered,
     this.fallbackViewportExtent,
     this.fallbackContentExtent,
     this.thumbKey,
@@ -374,9 +361,6 @@ class AppControllerScrollbar extends StatefulWidget {
   final Axis axis;
   final AppScrollbarLanePress lanePress;
   final double minThumbExtent;
-
-  /// See [AppScrollbarThumbSeat].
-  final AppScrollbarThumbSeat thumbSeat;
 
   final double? fallbackViewportExtent;
   final double? fallbackContentExtent;
@@ -502,7 +486,6 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
         contentExtent: contentExtent,
         lanePress: widget.lanePress,
         minThumbExtent: widget.minThumbExtent,
-        thumbSeat: widget.thumbSeat,
         thumbKey: widget.thumbKey,
         laneKey: widget.laneKey,
         onOffsetChanged: _jumpTo,

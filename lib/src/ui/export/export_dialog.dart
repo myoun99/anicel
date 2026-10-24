@@ -3954,7 +3954,7 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// 「원화 작감 ▾」 — the timeline's own label flyout behind a button that
+  /// 「원화 작감」 — the timeline's own label flyout behind a button that
   /// wears the picked label's colour (유저: 「그냥 원화작감이라고 심플하게
   /// 텍스트 두고, 버튼 색만 색라벨 색 그대로」).
   ///
@@ -3963,108 +3963,51 @@ class ExportDialogState extends State<ExportDialog> {
   /// included, puts the rows back on that label's rule ([_applyCelFilter]).
   /// 🗣️F-298 (유저 2026-10-05): 「색 라벨 선택하면 사실상 초기화나
   /// 마찬가지인데 커스텀 설정한게 안풀림」.
+  ///
+  /// ↩️It and [_celTakePicker] were the app's list button drawn by hand, a
+  /// ▼ and all; they are that button now, so the ▼ went with everyone
+  /// else's (law-패널, 유저 2026-10-18) and they shut while the export runs
+  /// as the cut picker over the list does.
   Widget _celLabelPicker(CelsExportSpec spec) {
-    final theme = Theme.of(context);
     // 「커스텀」 is a state of the delta, not a label of its own: the rows
     // of the cut the list shows have left the rule.
     final custom =
         _overrides.deltaFor(_celsList().cut.id)?.hasRowExceptions ??
         false;
     final fill = custom ? null : layerMarkColor(spec.label);
-    final ink = fill == null
-        ? theme.colorScheme.onSurface
-        : timelineTextOnColor(fill);
-    return AbsorbPointer(
-      absorbing: _isExporting,
-      child: PanelFlyoutTrigger(
-        key: const ValueKey<String>('export-cels-label-picker'),
-        tooltip: AppText.strings.tlLayerMark,
-        padding: EdgeInsets.zero,
-        entriesBuilder: () => layerMarkFlyoutEntries(
-          onSelected: (mark) => _applyCelFilter(
-            spec.copyWith(label: mark.withTake(LayerMark.firstTake)),
-          ),
-        ),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
-          decoration: ShapeDecoration(
-            color: fill,
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: fill == null
-                  ? BorderSide(color: theme.dividerColor)
-                  : BorderSide.none,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  custom
-                      ? AppText.strings.exSelCustom
-                      : exportCelLabelText(spec.label),
-                  key: const ValueKey<String>('export-cels-label-text'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall?.copyWith(color: ink),
-                ),
-              ),
-              Icon(Icons.arrow_drop_down, size: 14, color: ink),
-            ],
-          ),
+    return PanelFlyoutButton(
+      key: const ValueKey<String>('export-cels-label-picker'),
+      label: custom
+          ? AppText.strings.exSelCustom
+          : exportCelLabelText(spec.label),
+      tooltip: AppText.strings.tlLayerMark,
+      fill: fill,
+      labelColor: fill == null ? null : timelineTextOnColor(fill),
+      enabled: !_isExporting,
+      entriesBuilder: () => layerMarkFlyoutEntries(
+        onSelected: (mark) => _applyCelFilter(
+          spec.copyWith(label: mark.withTake(LayerMark.firstTake)),
         ),
       ),
     );
   }
 
-  /// 「테이크 최신 ▾」 — the timeline's take flyout plus the export's one
+  /// 「테이크 최신」 — the timeline's take flyout plus the export's one
   /// added row, 「최신」.
   Widget _celTakePicker(CelsExportSpec spec) {
-    final theme = Theme.of(context);
     final take = spec.take;
-    return AbsorbPointer(
-      absorbing: _isExporting,
-      child: PanelFlyoutTrigger(
-        key: const ValueKey<String>('export-cels-take-picker'),
-        tooltip: AppText.strings.tlLayerTake,
-        padding: EdgeInsets.zero,
-        entriesBuilder: () => layerTakeFlyoutEntries(
-          selectedTake: take,
-          offerLatest: true,
-          // The take is the label's other half: a pick is a rule again.
-          onSelected: (next) => _applyCelFilter(spec.copyWith(take: next)),
-        ),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
-          decoration: ShapeDecoration(
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(color: theme.dividerColor),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Flexible(
-                child: Text(
-                  take == null
-                      ? AppText.strings.exTakeLatest
-                      : AppText.strings.tlLayerTakeNumber(take),
-                  key: const ValueKey<String>('export-cels-take-text'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall,
-                ),
-              ),
-              Icon(
-                Icons.arrow_drop_down,
-                size: 14,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
+    return PanelFlyoutButton(
+      key: const ValueKey<String>('export-cels-take-picker'),
+      label: take == null
+          ? AppText.strings.exTakeLatest
+          : AppText.strings.tlLayerTakeNumber(take),
+      tooltip: AppText.strings.tlLayerTake,
+      enabled: !_isExporting,
+      entriesBuilder: () => layerTakeFlyoutEntries(
+        selectedTake: take,
+        offerLatest: true,
+        // The take is the label's other half: a pick is a rule again.
+        onSelected: (next) => _applyCelFilter(spec.copyWith(take: next)),
       ),
     );
   }

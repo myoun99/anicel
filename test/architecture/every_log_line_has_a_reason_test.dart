@@ -19,6 +19,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// Files allowed to log, how many calls each, and why.
 const _ledger = <String, ({int calls, String why})>{
@@ -40,13 +41,6 @@ const _ledger = <String, ({int calls, String why})>{
         'Same BRUSH_LAB_PROFILE probe, for the warm-up path (the site says '
         'so with its own ignore comment).',
   ),
-  'lib/src/ui/playback/audioplayers_clip_player.dart': (
-    calls: 3,
-    why:
-        'Audio failure logs (load / start / volume). The audio lane owns '
-        'this file; routing those failures to a user-visible surface is that '
-        'lane\'s call, not the audit\'s (2026-09-03).',
-  ),
 };
 
 /// A `print(` or `debugPrint(` call at the start of a statement or after an
@@ -65,31 +59,15 @@ void main() {
       }
     }
 
-    final unledgered = <String>[
-      for (final entry in counts.entries)
-        if (_ledger[entry.key]?.calls != entry.value)
-          '${entry.key}: ${entry.value} call(s), ledger says '
-              '${_ledger[entry.key]?.calls ?? 0}',
-    ];
-    expect(
-      unledgered,
-      isEmpty,
-      reason:
+    expectCountsMatchLedger(
+      counts,
+      {for (final entry in _ledger.entries) entry.key: entry.value.calls},
+      grew:
           'Log calls the ledger does not account for. Remove the call, or '
-          'add the file to `_ledger` with the reason it must log:\n  '
-          '${unledgered.join('\n  ')}',
-    );
-
-    final paidOff = <String>[
-      for (final path in _ledger.keys)
-        if (!counts.containsKey(path)) path,
-    ];
-    expect(
-      paidOff,
-      isEmpty,
-      reason:
-          'Ledger entries whose file no longer logs (or is gone). Delete '
-          'them:\n  ${paidOff.join('\n  ')}',
+          'add the file to `_ledger` with the reason it must log:',
+      paidOff:
+          'Ledger entries whose file logs less than they say, or no longer '
+          'logs (or is gone). Lower or delete them:',
     );
   });
 }

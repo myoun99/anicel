@@ -104,6 +104,7 @@ void main() {
           EditorActionIds.fileExport,
         ],
       );
+      // ↩️31 with the bake switch, gone 2026-10-23 (F-448).
       expect(menuActions, hasLength(30));
       expect(
         editorActionDefinitions.last.shelf,
@@ -298,8 +299,8 @@ void main() {
   });
 
   group('the shortcut window', () {
-    testWidgets('lists the panels under ONE heading: the three of the '
-        'registry, then the workspace\'s', (tester) async {
+    testWidgets('lists the panels under ONE heading: the registry\'s, then '
+        'the workspace\'s', (tester) async {
       final bindings = EditorShortcutBindings()
         ..setPanelActions(
           panelActionsOf(const [
@@ -323,6 +324,7 @@ void main() {
       for (final id in [
         EditorActionIds.toolRailOnRight,
         EditorActionIds.regionOnTop,
+        EditorActionIds.brushValuesOnStrip,
         EditorActionIds.resetLayout,
         'panel-timesheet',
       ]) {
@@ -449,7 +451,7 @@ void main() {
       await tester.pumpAndSettle();
       final row = find.byKey(const ValueKey<String>('menu-edit-preferences'));
       expect(
-        find.descendant(of: row, matching: find.text('Preferences…')),
+        find.descendant(of: row, matching: find.text('Preferences')),
         findsOneWidget,
       );
       expect(
@@ -486,7 +488,7 @@ void main() {
       }
       expect(
         editorActionLabel(EditorActionIds.projectFrameRate),
-        'Project frame rate…',
+        'Project frame rate',
       );
     });
 

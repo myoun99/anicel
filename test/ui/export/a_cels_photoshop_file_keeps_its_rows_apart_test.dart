@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
@@ -36,6 +37,10 @@ import '../../helpers/no_guides_laid.dart';
 /// it by — over the ground the picture stands on, where it has one.
 void main() {
   const size = CanvasSize(width: 8, height: 8);
+
+  // A row in multiply is composed over its backdrop in the shader.
+  setUpAll(LayerBlendShader.load);
+
   const cutId = CutId('cut');
   final a1 = Frame(id: const FrameId('a1'), duration: 1, strokes: const []);
   final shade1 = Frame(

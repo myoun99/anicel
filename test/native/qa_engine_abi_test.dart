@@ -186,7 +186,7 @@ void main() {
     test('the gate does not stand the real device down', () {
       // The point of the change: QaAudioDevice went from ungated to gated.
       // A gate that is subtly wrong looks exactly like "no binary" —
-      // playback quietly drops to the platform player and nothing fails.
+      // playback quietly plays without sound and nothing fails.
       QaAudioDevice.debugResetForTests();
       debugQaEngineLibraryPathOverride = libraryPath;
       expect(QaAudioDevice.instance, isNotNull);

@@ -18,6 +18,7 @@ import '../paste_linked_asking_first.dart';
 import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../session/frame_clipboard.dart' show ClipboardPlace;
+import '../session/storyboard_cursor.dart' show CommaTarget;
 import '../session/what_a_copy_brings.dart' show BringsMedia;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
@@ -101,6 +102,10 @@ abstract class ToolbarPanelContext {
   /// PANEL the comma off the V row wherever the cut carried a storyboard
   /// layer; the panel takes it on the conte row now, and the V row's block
   /// is its cut again (I-73).
+  ///
+  /// What the press re-times — the ladder its gate, its dispatch and its
+  /// window (I-24-open-entry) read alike ([StoryboardCursor]).
+  CommaTarget? get commaTarget;
   bool get canSetComma;
   void setComma(int comma);
 
@@ -144,6 +149,11 @@ abstract class ToolbarPanelContext {
   bool get canUnlink;
   void unlink();
 
+  /// 🗣️F-455 — 복제: whether this panel's press would duplicate anything,
+  /// and the press. One answer for both (T25's law).
+  bool get canDuplicate;
+  void duplicate();
+
   /// 🗣️I-18 — 자동 이름 지정: what this panel's press numbers, or null when
   /// there is nothing to number (the button dims). ONE answer for the gate,
   /// for the window's Apply — asked again when the number is given — and
@@ -173,6 +183,8 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       canPasteLinkedFrame ? pasteLinkedFrame : null;
 
   void Function()? get unlinkPress => canUnlink ? unlink : null;
+
+  void Function()? get duplicatePress => canDuplicate ? duplicate : null;
 
   /// Whether 자동 이름 지정 has anything to number here — the button's gate
   /// and the key's, read off the one resolver ([autoNameTargets]).
@@ -244,11 +256,20 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.clipboard.canCopyAt(clipboardPlace),
   );
 
+  /// 🗣️I-101 (유저 2026-10-15): 「텍스트를 선택한 상태(변형박스로 변한
+  /// 상태)에서 복사 가능」. A text held by its box is the THING IN HAND, and
+  /// is copied ahead of every rung of the ladder — Delete's order (R9-rest:
+  /// 「the thing in hand first」), which the pill's copy and its key share.
   @override
-  bool get canCopyFrame => _copySubject != PillSubject.nothing;
+  bool get canCopyFrame =>
+      session.textClipboard.canCopy || _copySubject != PillSubject.nothing;
 
   @override
   void copyFrame() {
+    if (session.textClipboard.canCopy) {
+      session.textClipboard.copy();
+      return;
+    }
     switch (_copySubject) {
       case PillSubject.layers:
         session.layerClipboard.copySelectedRows();
@@ -273,11 +294,24 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// the lanes the press stands on, the frame paste's way.
   bool get _pastesKeys => session.keyClipboard.holdsKeys;
 
+  /// Whether a paste here puts down a TEXT: the hand holds one (I-101) — on
+  /// the cels a held picture lands on, the pixel paste's way.
+  ///
+  /// ⚠️A TEXT IN HAND LIGHTS NO LINK: a text is one cel's (유저 2026-10-06:
+  /// 「주인은 셀임」), so a link has nothing of it to keep — and with none,
+  /// the independent paste alone is lit (F-115). 유저 2026-10-15 guessed the
+  /// same: 「텍스트는 링크붙여넣기를 사용못할듯? 그래서 독립만?」 (I-101-Q2).
+  /// It needs no rung of its own: the link falls to the frame board, which
+  /// the text let go of when it was taken (one copy in hand).
+  bool get _pastesText => session.textClipboard.holdsText;
+
   @override
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
       : _pastesKeys
       ? session.keyClipboard.canPasteIndependent
+      : _pastesText
+      ? session.textClipboard.canPasteIndependent
       : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
   /// The board an independent paste here puts down — the one whose media a
@@ -289,6 +323,10 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   void pasteIndependentFrame() {
     if (_pastesKeys) {
       session.keyClipboard.pasteIndependent();
+      return;
+    }
+    if (_pastesText) {
+      session.textClipboard.pasteIndependent();
       return;
     }
     final board = independentPasteBoard;
@@ -421,7 +459,11 @@ class TimelineToolbarPanelContext
   void markEvery(int every) => session.layerMarks.markEvery(every);
 
   @override
-  bool get canSetComma => session.storyboardCursor.canSetCommaForTimelineCursor;
+  CommaTarget? get commaTarget =>
+      session.storyboardCursor.timelineCommaTarget();
+
+  @override
+  bool get canSetComma => commaTarget != null;
 
   @override
   void setComma(int comma) => session.edgeDrag.setCommaForTimelineCursor(comma);
@@ -455,6 +497,18 @@ class TimelineToolbarPanelContext
 
   @override
   void unlink() => session.unlinkSelectionSubject();
+
+  /// 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
+  /// 컷버튼의 레이어복제/컷복제 삭제. 그리고 복제버튼, 물론 각 규칙
+  /// 따르고」 — the layer pill's 레이어 복제 came here with its rule: the
+  /// selected rows, else the row you stand on (유저 확정 2026-08-13:
+  /// 「복제는 현재 액티브인 대상」). R5q1: cuts are the storyboard's noun, so
+  /// this panel's press does not reach for them — as its delete does not.
+  @override
+  bool get canDuplicate => session.layerVerbs.canDuplicateActiveLayer;
+
+  @override
+  void duplicate() => session.layerVerbs.duplicateActiveLayer();
 
   @override
   AutoNameTargets? get autoNameTargets => session.blockNaming.timelineTargets;
@@ -731,7 +785,11 @@ class StoryboardToolbarPanelContext
   void markEvery(int every) => _timelinesCells?.markEvery(every);
 
   @override
-  bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
+  CommaTarget? get commaTarget =>
+      session.storyboardCursor.storyboardCommaTarget();
+
+  @override
+  bool get canSetComma => commaTarget != null;
 
   @override
   void setComma(int comma) => session.edgeDrag.setCommaForStoryboardCursor(comma);
@@ -1036,6 +1094,16 @@ class StoryboardToolbarPanelContext
     }
     _timelinesCells?.unlink();
   }
+
+  /// 🗣️F-455 — the cut pill's 컷 복제 came here, cuts being this panel's
+  /// noun (R5q1): the selected cuts, else the cut you stand on (유저 확정
+  /// 2026-08-13: 「복제는 현재 액티브인 대상」), as one block after them
+  /// (F-455-Q1: 「선택한 컷 전부」 — `CutVerbs.duplicateActiveCut`).
+  @override
+  bool get canDuplicate => session.activeCutOrNull != null;
+
+  @override
+  void duplicate() => session.cutVerbs.duplicateActiveCut();
 
   /// 자동 이름 지정 on this panel (I-18: 「대상은 선택된 블록들(컷이나
   /// 프레임)이 있으면 선택한 대상만」). The selected cuts first; a CELL band —

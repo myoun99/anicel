@@ -42,6 +42,7 @@ class ProjectResume {
     this.storyboardZoom,
     this.frameAxisOffsets = const {},
     this.layerAxisOffsets = const {},
+    this.showSeconds = false,
     this.laneGraphs = LaneGraphsView.none,
     this.mediaFileViews = const {},
   });
@@ -83,11 +84,18 @@ class ProjectResume {
   /// pixels (F-267); a rail left at its start is not here.
   final Map<String, double> layerAxisOffsets;
 
+  /// Whether the frame panels write a frame as seconds+frames (초+코마 표시,
+  /// F-354 — `PanelViewMemory.showSeconds`): a view setting kept here as the
+  /// zooms are. Turning it is no edit, and the file still keeps it; a file
+  /// that says nothing writes frames.
+  final bool showSeconds;
+
   /// The header graphs standing open — how tall, plotting what, enlarged or
-  /// not — and the lanes pinned to them (I-89 ③): a view setting kept here
-  /// as the zooms are (유저 답 F-360-Q1 「보기 설정처럼 — 저장은 되고 언두는
-  /// 안 됨」). Turning one is no edit, so no undo step takes it back and
-  /// nothing marks the film unsaved, and the file still keeps it.
+  /// not, their pen up or not — and the lanes pinned to them (I-89 ③): a
+  /// view setting kept here as the zooms are (유저 답 F-360-Q1 「보기 설정처럼
+  /// — 저장은 되고 언두는 안 됨」). Turning one is no edit, so no undo step
+  /// takes it back and nothing marks the film unsaved, and the file still
+  /// keeps it.
   final LaneGraphsView laneGraphs;
 
   /// The page and the framing each file was left at in the viewers, by the
@@ -109,6 +117,7 @@ class ProjectResume {
     if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
     if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
+    if (showSeconds) 'showSeconds': true,
     if (laneGraphs.open.isNotEmpty)
       'laneGraphs': {
         for (final MapEntry(:key, value: graph) in laneGraphs.open.entries)
@@ -116,6 +125,8 @@ class ProjectResume {
             if (graph.extent != null) 'extent': graph.extent,
             if (graph.mode != LaneGraphMode.value) 'mode': graph.mode.name,
             if (graph.enlarged) 'enlarged': true,
+            if (graph.pen) 'pen': true,
+            if (!graph.transformBox) 'transformBox': false,
           },
       },
     if (laneGraphs.pinned.isNotEmpty) 'pinnedLanes': [...laneGraphs.pinned],
@@ -150,6 +161,7 @@ class ProjectResume {
       storyboardZoom: _positive(json['storyboardZoom']),
       frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
       layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
+      showSeconds: json['showSeconds'] == true,
       laneGraphs: LaneGraphsView(
         open: {
           for (final MapEntry(:key, :value)
@@ -174,7 +186,8 @@ class ProjectResume {
   }
 
   /// The header graph [json] holds — a part it does not hold readably
-  /// stands as on a graph nobody has sized, plotted or enlarged.
+  /// stands as on a graph nobody has sized, plotted, enlarged, taken the
+  /// pen up in or hidden the transform box of.
   static LaneGraph _laneGraph(Map<String, Object?> json) => LaneGraph(
     extent: _positive(json['extent']),
     mode:
@@ -183,6 +196,8 @@ class ProjectResume {
             .firstOrNull ??
         LaneGraphMode.value,
     enlarged: json['enlarged'] == true,
+    pen: json['pen'] == true,
+    transformBox: json['transformBox'] != false,
   );
 
   /// [value] as a zoom or an offset can be read back: a finite number above

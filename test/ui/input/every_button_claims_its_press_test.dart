@@ -115,6 +115,10 @@ void main() {
     // any more, and a plain tap there lost its tap whenever the hand moved.
     // Both are claimed presses now.
     '-lane-stand-cell-': 'the lane grid surface, like the frame cell',
+    // And a header graph's GROUND, under its picture (I-3 ⑤): a drag there
+    // draws the box that picks keys — the graph's own band — and a finger
+    // scrolls where the band's devices do not, as on the lane grid.
+    'lane-graph-ground': 'the graph\'s ground: its drag draws a box',
   };
 
   /// The four names the scan read first. A bare one of these fails outright.
@@ -170,7 +174,9 @@ void main() {
     // — import window 2 → gone.
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,
-    'lib/src/ui/workspace/workspace_brush_presets.dart': 1,
+    // ↓2026-10-23, brush-tip-delete-question-speaks-english: the tip's
+    // delete question became the app's own confirm, as the preset's —
+    // brush presets 1 → gone.
   };
 
   /// The control's OWN arguments — each whole, its comments out — of the
@@ -548,7 +554,7 @@ void main() {
         'storyboard-lane-toggle-${seRow.id}',
       ])
         (name, find.named(name)),
-      for (final key in const ['legend-lanes-toggle', 'legend-mute'])
+      for (final key in const ['legend-lanes-toggle'])
         (key, find.byKey(ValueKey<String>(key))),
     ]) {
       expect(finder, findsOneWidget, reason: '$id is not on the storyboard');

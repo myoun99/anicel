@@ -24,11 +24,7 @@ class _CanvasPanelToolCursor {
   /// Centre-anchored, matching where a click actually drops it —
   /// [buildCutPasteDab] centres on `origin + size / 2` and the commit
   /// rounds from there.
-  CutStampPreview _stampPreviewAt(
-    Offset position,
-    CutPiece piece,
-    ui.Image? image,
-  ) {
+  CutStampPreview _stampPreviewAt(Offset position, CutPiece piece) {
     final centre = _state._viewportState._viewport.viewportOffsetToCanvas(
       position,
     );
@@ -36,7 +32,6 @@ class _CanvasPanelToolCursor {
     final height = piece.stampHeight.toDouble();
     return CutStampPreview(
       piece: piece,
-      image: image,
       canvasRect: Rect.fromLTWH(
         centre.x - width / 2,
         centre.y - height / 2,
@@ -67,6 +62,107 @@ class _CanvasPanelToolCursor {
       _state.widget.sampleColorAt != null &&
       _state._brush.tool == CanvasTool.eyedropper &&
       _state.widget.onEyedropperPick != null;
+
+  /// Whether a cursor the APP draws rides the aim of a pointer of [kind] —
+  /// what makes its move cost a frame. ⛔Not the drawing tools by
+  /// themselves: a cursor the system wears (I-54) moves without one.
+  bool drawsAtTheAim(PointerDeviceKind kind) =>
+      fillCursorActive && appDrawsLook(fillCursorLook(), kind) ||
+      brushCursorActive &&
+          appDrawsDrawingCursor(AppInput.settings.value.drawingCursor, kind);
+
+  /// The aim where the app draws each cursor: nowhere while the pointer
+  /// aiming is shown the system's own ([appDrawsLook]) — so a pen hovering
+  /// an Android tablet is drawn the cursor its mouse is shown by the system.
+  /// The swatch, the tip's outline and the stamp are the app's for every
+  /// pointer.
+  late final ValueListenable<Offset?> _aimed = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (_) => true,
+  );
+  late final ValueListenable<Offset?> _eyedropperAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsLook(eyedropperCursorLook(), kind),
+  );
+  late final ValueListenable<Offset?> _fillAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsLook(fillCursorLook(), kind),
+  );
+  late final ValueListenable<Offset?> _penAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsDrawingCursor(DrawingCursor.pen, kind),
+  );
+  late final ValueListenable<Offset?> _crosshairAim = _AimTheAppDraws(
+    _state._toolCursorHover,
+    (kind) => appDrawsDrawingCursor(DrawingCursor.crosshair, kind),
+  );
+
+  /// The ONE region the canvas says its system cursor in, around the tool's
+  /// layers at the tool's entrance ([_PanelBuild._toolEntrance]): the tool's
+  /// while the tool has one, and whatever lies deeper everywhere else (the
+  /// text tool's beam).
+  ///
+  /// ↩️It was three regions — the brush's, the fill's and the eyedropper's —
+  /// siblings of the tools inside the deck, one algorithm under three keys.
+  ///
+  /// 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  /// 도구가 연관이 없는 곳에선 기본커서. 트랜스폼fx든 뭐 그런거 전부」. A control
+  /// over the tools — the standing row's box, what is adjusted on the canvas
+  /// — takes the pointer before the tool's entrance can, so this region is
+  /// not hit there and nothing of the tool's shows: the system's default.
+  /// ↩️10-04 it read 「도구커서랑 추가로 os커서도 보임. 다른 레이어랑 법 통일해서
+  /// 도구커서만 보이게」: the app's outline, drawn at an aim the census still
+  /// wrote over the box, beside the system's arrow. I-54 first made this
+  /// region an ANCESTOR of the whole deck so the box wore the tool's cursor;
+  /// the user's answer was the default instead, and the census stopped
+  /// writing over a control with it.
+  ///
+  /// ⛔It says nothing about the pointer LEAVING. The three said that as
+  /// well, unconditionally, and so overruled the census's own law — a
+  /// departing device releases its own hold only — whenever a tool cursor
+  /// was up. The census says it alone now.
+  Widget region(Widget deck) =>
+      SlicedValueListenableBuilder<AppInputSettings, DrawingCursor>(
+        valueListenable: AppInput.settings,
+        slice: (settings) => settings.drawingCursor,
+        builder: (context, settings) => MouseRegion(
+          key: const ValueKey<String>('canvas-tool-cursor-region'),
+          cursor: _systemCursor(
+            settings.drawingCursor,
+            devicePixelRatio: View.of(context).devicePixelRatio,
+          ),
+          opaque: false,
+          hitTestBehavior: HitTestBehavior.translucent,
+          child: deck,
+        ),
+      );
+
+  /// The system cursor over the canvas for the tool in hand.
+  MouseCursor _systemCursor(
+    DrawingCursor drawing, {
+    required double devicePixelRatio,
+  }) {
+    // R26 #22 · #23: the eyedropper and the fill wear their OWN icons, not
+    // a crosshair — as the system's cursor where the system takes a picture
+    // (F-441), riding the aim as the app's for a pointer the system shows
+    // none (유저, F-130: 「앱 커서만 최대한 가볍게」).
+    if (eyedropperCursorActive) {
+      return lookSystemCursor(
+        eyedropperCursorLook(),
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (fillCursorActive) {
+      return lookSystemCursor(
+        fillCursorLook(),
+        devicePixelRatio: devicePixelRatio,
+      );
+    }
+    if (brushCursorActive) {
+      return drawingSystemCursor(drawing, devicePixelRatio: devicePixelRatio);
+    }
+    return MouseCursor.defer;
+  }
 
   /// R27 #17: the last pointer position seen on the canvas — hovers AND
   /// button-held moves alike.
@@ -108,19 +204,18 @@ class _CanvasPanelToolCursor {
   ///
   /// Costs nothing while the inspector is hidden: [InputInspector.note]
   /// returns on the visibility check before touching anything.
-  void setToolCursorHover(Offset? position, String source) {
-    if (InputInspector.visible.value &&
-        _state._toolCursorHover.value != position) {
-      final where = position == null
+  void setToolCursorHover(_Aim? aim, String source) {
+    if (InputInspector.visible.value && _state._toolCursorHover.value != aim) {
+      final where = aim == null
           ? 'null'
-          : '(${position.dx.round()},${position.dy.round()})';
+          : '(${aim.at.dx.round()},${aim.at.dy.round()})';
       InputInspector.note(
         'aim $source -> $where'
         ' held=${_state._tap.aimIsHeld} touch=${CanvasTouchContacts.appWideCount}/${CanvasTouchContacts.count}'
         ' draws=${AppInput.touchDraws}',
       );
     }
-    _state._toolCursorHover.value = position;
+    _state._toolCursorHover.value = aim;
   }
 
   /// 🐛유저, R3 #8: 선택툴 누르고 필이나 지우개나 다른툴누르면 커서가 사라짐.
@@ -179,14 +274,14 @@ class _CanvasPanelToolCursor {
   // 지우개나 다른툴누르면 커서가 사라짐」 — stays fixed, by construction
   // rather than by a build-time copy.
 
-  /// The brush cursor's look for the tool state and the viewport as they
-  /// are now: the outline of the tip, in a box that certainly holds it.
-  ToolCursorLook _brushLook() => brushCursorLook(
+  /// The brush cursor's look for [tip] and the viewport as it is now: the
+  /// outline of the tip, in a box that certainly holds it.
+  ToolCursorLook _brushLook(PoisedTip tip) => brushCursorLook(
     brushCursorShape(
       viewport: _state._viewportState._viewport,
-      size: _state._brush.size,
-      roundness: _state._brush.roundness,
-      angleDegrees: _state._brush.angleDegrees,
+      size: tip.size,
+      roundness: tip.roundness,
+      angleDegrees: tip.angleDegrees,
     ),
   );
 
@@ -213,6 +308,10 @@ class _CanvasPanelToolCursor {
   /// Their TRACKERS stay down there on purpose (see the deck's comment):
   /// those are full-bleed `MouseRegion`s that decide hit-testing and which
   /// system cursor wins, and moving them would reorder both for no gain.
+  /// ↩️There are no trackers now: the census tracks and ONE region says the
+  /// system cursor ([region]), both at the tool's entrance — so over a
+  /// control neither hears the pointer, and these draw nothing there
+  /// (F-285).
   ///
   /// ⚠️CONTRACT for every widget returned here: it either paints nothing or
   /// carries its own `RepaintBoundary`. A sprite IS its own boundary, and
@@ -233,7 +332,7 @@ class _CanvasPanelToolCursor {
   /// is not the paint it was taken of ([StillRaster]): the head's lines
   /// came out darker one way and lighter the other.
   List<Widget> toolCursorLayers() {
-    final aim = _state._toolCursorHover;
+    final aim = _aimed;
     Widget tick(Widget cursor) =>
         Positioned.fill(child: TickLayer.heard(child: cursor));
     return [
@@ -249,21 +348,25 @@ class _CanvasPanelToolCursor {
           ),
         ),
         // R26 #22: the eyedropper ICON as the cursor. Its tip is the hot
-        // spot, so the glyph hangs up-left of the point being sampled.
+        // spot, so the glyph hangs up-left of the point being sampled. The
+        // app draws it only for a pointer the system does not show it
+        // (F-441); the swatch is the app's for every pointer — it is the
+        // colour under the aim.
         tick(
           ToolCursorSprite(
             key: const ValueKey<String>('eyedropper-cursor-icon'),
-            position: aim,
+            position: _eyedropperAim,
             look: eyedropperCursorLook(),
           ),
         ),
       ],
-      // R26 #23: the fill tool wears the bucket.
+      // R26 #23: the fill tool wears the bucket — the app's only for a
+      // pointer the system does not show it (F-441).
       if (fillCursorActive)
         tick(
           ToolCursorSprite(
             key: const ValueKey<String>('fill-cursor-icon'),
-            position: aim,
+            position: _fillAim,
             look: fillCursorLook(),
           ),
         ),
@@ -271,15 +374,17 @@ class _CanvasPanelToolCursor {
       // footprint: without it the only way to learn where a stamp lands is
       // to drop it and undo. It matters more here — a stamp puts down a
       // whole drawing, not a dot.
-      // 🚨★★★F-33 (유저): the stamp's ghost now rides the SURFACE PAINTER,
-      // not a widget above the canvas — 「레이어 블렌드모드나 **합성같은게
-      // 다** 반영되는」. This branch publishes it and draws nothing; the
-      // painter's `layerPaint` is what makes the layer's opacity, blend and
-      // group buffer reach it.
+      // 🚨★★★F-33 (유저): the stamp's ghost is not a widget above the canvas
+      // — 「레이어 블렌드모드나 **합성같은게 다** 반영되는」. This branch
+      // publishes the AIM and draws nothing; the panel lays the ghost from
+      // it as the click's own bytes on the stroke overlay, which the layer's
+      // paint reaches (brush-fidelity-Q9).
       //
-      // ⛔It still MOUNTS here, because the decoded image belongs to
-      // [CutPieceImageHost] and the publisher drops the reference in the
-      // same dispose that frees it.
+      // ⛔It still MOUNTS here: unmounted with the tool, the publisher clears
+      // the aim and the ghost goes with it. ↩️It mounted for the decoded
+      // image's sake first — [CutPieceImageHost] owned it, and the reference
+      // went in the dispose that freed it — until brush-fidelity-Q9 (유저
+      // 2026-10-18 「통일하면 좋음」) laid the ghost from the piece's bytes.
       if (canvasToolStamps(_state._brush.tool) &&
           _state.widget.cutPieceSlot != null)
         ListenableBuilder(
@@ -300,46 +405,87 @@ class _CanvasPanelToolCursor {
               listenable: brush == null ? aim : Listenable.merge([aim, brush]),
               builder: (context, _) {
                 final position = aim.value;
-                return CutPieceImageHost(
-                  piece: piece,
-                  builder: (context, image) => CutStampPreviewPublisher(
-                    sink: _state._stampPreview,
-                    preview: position == null
-                        ? null
-                        : _stampPreviewAt(position, piece, image),
-                  ),
+                return CutStampPreviewPublisher(
+                  sink: _state._stampPreview,
+                  preview: position == null
+                      ? null
+                      : _stampPreviewAt(position, piece),
                 );
               },
             );
           },
         ),
-      // The painting tools wear their own footprint: an outline of the tip
-      // that follows the pointer, so a stroke can be aimed before it starts.
-      if (brushCursorActive) tick(_brushCursor(aim)),
+      // The painting tools wear the cursor the user chose (I-54): an outline
+      // of the tip that follows the pointer, so a stroke can be aimed before
+      // it starts — or a pen or a crosshair of one size, which the app draws
+      // only for a pointer the system cannot show it.
+      if (brushCursorActive) tick(_drawingCursor(aim)),
     ];
   }
 
-  /// The brush cursor. The tip's footprint — size, roundness, angle — is
-  /// the one part of the brush it SHOWS, so it hears those three for
-  /// itself: the panel around it no longer rebuilds for the brush
-  /// (H40 ②, see [BrushCanvasPanel.brushToolState]).
+  Widget _drawingCursor(ValueListenable<Offset?> aim) =>
+      SlicedValueListenableBuilder<AppInputSettings, DrawingCursor>(
+        valueListenable: AppInput.settings,
+        slice: (settings) => settings.drawingCursor,
+        builder: (context, settings) => switch (settings.drawingCursor) {
+          DrawingCursor.brush => _brushCursor(aim),
+          DrawingCursor.pen => ToolCursorSprite(
+            key: const ValueKey<String>('pen-cursor-overlay'),
+            position: _penAim,
+            look: penCursorLook(),
+          ),
+          DrawingCursor.crosshair => ToolCursorSprite(
+            key: const ValueKey<String>('crosshair-cursor-overlay'),
+            position: _crosshairAim,
+            look: crosshairCursorLook(),
+          ),
+        },
+      );
+
+  /// The brush cursor. The tip's footprint — size, roundness, angle, as the
+  /// pen at the aim is held ([poisedTip], F-176-Q7) — is the one part of
+  /// the brush it SHOWS, so it hears the brush and the pen's pose for
+  /// itself and rebuilds only when the tip they make changes: the panel
+  /// around it no longer rebuilds for the brush (H40 ②, see
+  /// [BrushCanvasPanel.brushToolState]).
   Widget _brushCursor(ValueListenable<Offset?> aim) {
-    Widget sprite() => ToolCursorSprite(
-      key: const ValueKey<String>('brush-cursor-overlay'),
-      position: aim,
-      look: _brushLook(),
-    );
     final brush = _state.widget.brushToolState;
-    if (brush == null) {
-      return sprite();
-    }
-    return SlicedValueListenableBuilder<
-      BrushToolState,
-      (double, double, double)
-    >(
-      valueListenable: brush,
-      slice: (state) => (state.size, state.roundness, state.angleDegrees),
-      builder: (context, _) => sprite(),
+    final pose = _state._penPose;
+    return SlicedListenableBuilder<PoisedTip>(
+      listenable: brush == null ? pose : Listenable.merge([brush, pose]),
+      slice: () => poisedTip(_state._brush.shape, pose.value),
+      builder: (context, tip) => ToolCursorSprite(
+        key: const ValueKey<String>('brush-cursor-overlay'),
+        position: aim,
+        look: _brushLook(tip),
+      ),
     );
   }
+}
+
+/// The ONE aim the census writes: where the pointer aiming the tool is, and
+/// what kind of pointer it is — which says whether the system shows it a
+/// cursor of its own ([systemShowsCursorFor]). One value, so the kind can
+/// never be another pointer's.
+typedef _Aim = ({Offset at, PointerDeviceKind kind});
+
+/// The aim where the app draws a cursor: nowhere while the pointer aiming is
+/// one the system shows that cursor ([_draws] false for its kind).
+class _AimTheAppDraws implements ValueListenable<Offset?> {
+  _AimTheAppDraws(this._aim, this._draws);
+
+  final ValueListenable<_Aim?> _aim;
+  final bool Function(PointerDeviceKind kind) _draws;
+
+  @override
+  Offset? get value {
+    final aim = _aim.value;
+    return aim == null || !_draws(aim.kind) ? null : aim.at;
+  }
+
+  @override
+  void addListener(VoidCallback listener) => _aim.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) => _aim.removeListener(listener);
 }

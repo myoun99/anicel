@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
+
+import '../../helpers/project_scratch_folder.dart';
 
 /// R11-⑨: multi-finger touch shortcuts — the gesture recognizer, the
 /// per-action bindings (defaults + overrides + persistence payload) and
@@ -132,6 +137,39 @@ void main() {
       expect(
         bindings.actionIdForTouchGesture(TouchGesture.twoFingerTap),
         EditorActionIds.undo,
+      );
+    });
+
+    test('a gesture bound and one unbound come back at the '
+        'next launch', () async {
+      final directory = await Directory.systemTemp.createTemp('touch-test');
+      deleteAfterSessionEnds(directory);
+      final path = '${directory.path}/overrides.json';
+      final bindings = EditorShortcutBindings(
+        store: ShortcutSettingsStore(filePath: path),
+      );
+      addTearDown(bindings.dispose);
+      // No action holds a two-finger hold out of the box.
+      bindings.setTouchGesture(
+        EditorActionIds.onionSkinToggle,
+        TouchGesture.twoFingerLongPress,
+      );
+      // An unbind is an answer too: the default must not be back.
+      bindings.setTouchGesture(EditorActionIds.undo, null);
+      await bindings.pendingPersist;
+
+      final restored = EditorShortcutBindings(
+        store: ShortcutSettingsStore(filePath: path),
+      );
+      addTearDown(restored.dispose);
+      await restored.restore();
+      expect(
+        restored.actionIdForTouchGesture(TouchGesture.twoFingerLongPress),
+        EditorActionIds.onionSkinToggle,
+      );
+      expect(
+        restored.actionIdForTouchGesture(TouchGesture.twoFingerTap),
+        isNull,
       );
     });
   });

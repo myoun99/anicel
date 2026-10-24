@@ -294,7 +294,7 @@ class StoryboardCursor {
     if (block == null || block.entry.ghost) {
       return null;
     }
-    return StoryboardCursorRowBlock(layerId, block.startIndex);
+    return StoryboardCursorRowBlock(layerId, block.startIndex, block.length);
   }
 
   /// D28: the conte PANEL the cut-local cursor stands on in [cut]'s
@@ -328,10 +328,18 @@ class StoryboardCursor {
     );
   }
 
+  /// What the storyboard's comma press (1/2/3/4/N) re-times
+  /// ([_commaTargetOf]).
+  CommaTarget? storyboardCommaTarget() =>
+      _commaTargetOf(storyboardCursorBlockOrNull);
+
+  /// What the TIMELINE's comma press re-times ([timelineCursorBlockOrNull]).
+  CommaTarget? timelineCommaTarget() =>
+      _commaTargetOf(timelineCursorBlockOrNull);
+
   /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live
   /// selection's blocks — either axis — else the block under the cursor.
-  bool get canSetCommaForStoryboardCursor =>
-      _canSetCommaOf(storyboardCursorBlockOrNull);
+  bool get canSetCommaForStoryboardCursor => storyboardCommaTarget() != null;
 
   /// The same gate for the TIMELINE's press ([timelineCursorBlockOrNull]).
   ///
@@ -339,32 +347,92 @@ class StoryboardCursor {
   /// this press has no branch for: an image row's block, which the press
   /// then refused, and a lane's key, where the press re-timed the cel of the
   /// layer the lane belongs to. One resolver for the pair now (T25).
-  bool get canSetCommaForTimelineCursor =>
-      _canSetCommaOf(timelineCursorBlockOrNull);
+  bool get canSetCommaForTimelineCursor => timelineCommaTarget() != null;
 
-  bool _canSetCommaOf(StoryboardCursorBlock? Function() cursorBlock) {
-    if (_rangeSelections.selectionBlockStartsByLayer() != null) {
-      return true;
+  /// THE comma press's ladder, read by its gate, its dispatch
+  /// ([EdgeDragVerbs]) and its window (I-24-open-entry) alike: a live
+  /// selection's blocks, either axis; else nothing where a cell band holds
+  /// none — the band claims the press, and falling through would light the
+  /// buttons off a block the press never reaches; else the block
+  /// [cursorBlock] resolves.
+  ///
+  /// ↩️The gate and the dispatch each wrote this ladder out, and the window
+  /// would have been the third to say what the press acts on.
+  ///
+  /// ⛔An SE block used to answer `activeCutOrNull != null` here, on the
+  /// grounds that "a parked playhead has no cut to lens through" — the lens
+  /// is 0 for a track row and the lookup no longer wants a cut (H11). A
+  /// global row is reachable wherever it is standing.
+  CommaTarget? _commaTargetOf(StoryboardCursorBlock? Function() cursorBlock) {
+    final blocks = _rangeSelections.selectionBlockStartsByLayer();
+    if (blocks != null) {
+      return CommaOnSelection(blocks);
     }
-    // Its own dispatch already stops at a live cell band (the selection's
-    // half of the press claims it — [ExposureVerbs.setCommaForSelection]),
-    // so the gate stops there too — otherwise the band falls through to the
-    // CURSOR rung and lights the buttons off a block the press will never
-    // reach.
     if (_cells.cellSelectionClaimsSubject) {
-      return false;
+      return null;
     }
     return switch (cursorBlock()) {
-      null => false,
-      // ⛔An SE block used to answer `activeCutOrNull != null` here, on the
-      // grounds that "a parked playhead has no cut to lens through" — the
-      // lens is 0 for a track row and the lookup no longer wants a cut
-      // (H11). A global row is reachable wherever it is standing.
-      StoryboardCursorRowBlock() ||
-      StoryboardCursorCutBlock() ||
-      StoryboardCursorTransitionSpan() ||
-      StoryboardCursorStoryboardPanel() => true,
+      null => null,
+      final block => CommaOnBlock(block),
     };
+  }
+
+  /// What [target] re-times as its window names it (I-24-open-entry): the
+  /// kinds it holds, in [CommaTargetKind]'s order, and its length — what
+  /// its blocks AGREE on, none where they disagree, as the key window opens
+  /// on the name its keys agree on ([_agreedLength]).
+  ({List<CommaTargetKind> kinds, int? length}) commaTargetShown(
+    CommaTarget target,
+  ) => switch (target) {
+    CommaOnSelection(:final blocks) => (
+      kinds: [
+        for (final kind in CommaTargetKind.values)
+          if (blocks.keys.any((id) => _commaKindOfRow(id) == kind)) kind,
+      ],
+      length: _agreedLength(blocks),
+    ),
+    CommaOnBlock(:final block) => switch (block) {
+      StoryboardCursorCutBlock(:final cut) => (
+        kinds: const [CommaTargetKind.cut],
+        length: cut.duration,
+      ),
+      StoryboardCursorStoryboardPanel(:final panelLength) => (
+        kinds: const [CommaTargetKind.frame],
+        length: panelLength,
+      ),
+      StoryboardCursorRowBlock(:final layerId, :final blockLength) => (
+        kinds: [_commaKindOfRow(layerId)],
+        length: blockLength,
+      ),
+      StoryboardCursorTransitionSpan(:final spanLength) => (
+        kinds: const [CommaTargetKind.transition],
+        length: spanLength,
+      ),
+    },
+  };
+
+  /// The kind of block row [id] holds, as a comma window names it. A
+  /// transition's span is no row block and no band collects one
+  /// ([RangeSelections.selectionBlockStartsByLayer]) — it is named by its
+  /// own rung.
+  CommaTargetKind _commaKindOfRow(LayerId id) =>
+      _project.trackSeGlobalLayerById(id) != null
+      ? CommaTargetKind.se
+      : CommaTargetKind.frame;
+
+  /// The one length every block of [blocks] has — each read in its row's
+  /// commit keys ([_rowBlockUnderCursor]'s rows) — or null where they
+  /// differ.
+  int? _agreedLength(Map<LayerId, List<int>> blocks) {
+    final lengths = {
+      for (final MapEntry(key: id, value: starts) in blocks.entries)
+        for (final start in starts)
+          (_project.trackSeGlobalLayerById(id) ??
+                  _rangeSelections.cutRowWithTimingOfItsOwn(id))
+              ?.timeline[start]
+              ?.length,
+    };
+    return lengths.length == 1 ? lengths.single : null;
   }
 
   /// Whether the storyboard's delete has a block under the cursor (its
@@ -527,13 +595,18 @@ class StoryboardCursorCutBlock extends StoryboardCursorBlock {
 /// only one resolved to a kind, and the S rows the only layer rows it
 /// stands on. A cel row's block takes the same verbs.
 class StoryboardCursorRowBlock extends StoryboardCursorBlock {
-  const StoryboardCursorRowBlock(this.layerId, this.blockStartIndex);
+  const StoryboardCursorRowBlock(
+    this.layerId,
+    this.blockStartIndex,
+    this.blockLength,
+  );
 
   final LayerId layerId;
 
   /// In the row's COMMIT keys — GLOBAL for an S row, whose timeline lives
   /// on the track's axis; cut-local for a cut's own row.
   final int blockStartIndex;
+  final int blockLength;
 }
 
 class StoryboardCursorTransitionSpan extends StoryboardCursorBlock {
@@ -565,3 +638,27 @@ class StoryboardCursorStoryboardPanel extends StoryboardCursorBlock {
   final int panelStartIndex;
   final int panelLength;
 }
+
+/// What a comma press re-times ([StoryboardCursor._commaTargetOf]): a
+/// live selection's blocks, or the block under a cursor.
+sealed class CommaTarget {
+  const CommaTarget();
+}
+
+/// The selection's blocks — their starts per row, in each row's commit keys
+/// ([RangeSelections.selectionBlockStartsByLayer]).
+class CommaOnSelection extends CommaTarget {
+  const CommaOnSelection(this.blocks);
+
+  final Map<LayerId, List<int>> blocks;
+}
+
+class CommaOnBlock extends CommaTarget {
+  const CommaOnBlock(this.block);
+
+  final StoryboardCursorBlock block;
+}
+
+/// The kinds of block a comma press re-times, as its window names them —
+/// in the order it names several.
+enum CommaTargetKind { cut, frame, se, transition }

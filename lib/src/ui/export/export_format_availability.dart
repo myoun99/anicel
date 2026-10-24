@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../services/flutter_test_run.dart';
 import '../../models/export_format_selection.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../native/qa_video_encoder.dart';
@@ -25,7 +26,7 @@ class ExportFormatAvailability extends ChangeNotifier {
   }) : _jpgSupported = jpgSupported ?? (QaImageEncoder.instance != null) {
     final resolve =
         encoderResolver ??
-        () => Platform.environment['FLUTTER_TEST'] == 'true'
+        () => underFlutterTest
             ? null
             : QaVideoEncoder.instance;
     final encoder = resolve();

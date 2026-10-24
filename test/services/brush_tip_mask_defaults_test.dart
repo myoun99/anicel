@@ -24,14 +24,28 @@ void main() {
     paperGrainTextureMask,
     canvasWeaveTextureMask,
     coldPressTextureMask,
+    pencilSideBrushTipMask,
+    graphiteToothTextureMask,
+    colorClumpBrushTipMask,
+    ...pencilLeadBrushTipMasks,
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
-      'cold-press paper, whose tooth needs 256', () {
+      'twenty-two that need 256', () {
     // Board F-218: a 64-texel tile scaled up to read as paper repeats every
-    // couple of centimetres of a stroke (see `coldPressTextureMask`).
+    // couple of centimetres of a stroke (see `coldPressTextureMask`). F-433:
+    // the lead's side is a hard edge at any dab size, the graphite tooth a
+    // speck of a pixel or two, and the flecks a few texels long. F-451 and
+    // F-456: the lead's faces, whose edge is where a line breaks.
+    final wide = {
+      'builtin-cold-press',
+      'builtin-pencil-side',
+      'builtin-graphite-tooth',
+      'builtin-color-clumps',
+      for (final lead in pencilLeadBrushTipMasks) lead.id,
+    };
     for (final mask in masks) {
-      final side = mask.id == 'builtin-cold-press' ? 256 : 64;
+      final side = wide.contains(mask.id) ? 256 : 64;
       expect(mask.size, side, reason: mask.id);
       expect(mask.alpha.length, side * side, reason: mask.id);
     }
@@ -68,6 +82,30 @@ void main() {
       'builtin-canvas-weave': 692736,
       // Measured 2026-10-01 as it first shipped (board F-218).
       'builtin-cold-press': 12500549,
+      // Measured 2026-10-21 as they first shipped (F-433).
+      'builtin-pencil-side': 14553373,
+      'builtin-graphite-tooth': 9601082,
+      // Measured 2026-10-23 as it first shipped (F-449).
+      'builtin-color-clumps': 807546,
+      // Measured 2026-10-23 as they first shipped (F-456-Q4).
+      'builtin-pencil-face-0-0': 10835814,
+      'builtin-pencil-face-0-1': 9796625,
+      'builtin-pencil-face-0-2': 10745281,
+      'builtin-pencil-face-1-0': 11771210,
+      'builtin-pencil-face-1-1': 11138062,
+      'builtin-pencil-face-1-2': 10986858,
+      'builtin-pencil-face-2-0': 12854163,
+      'builtin-pencil-face-2-1': 12785370,
+      'builtin-pencil-face-2-2': 12709616,
+      'builtin-pencil-face-3-0': 14480840,
+      'builtin-pencil-face-3-1': 14378912,
+      'builtin-pencil-face-3-2': 14290519,
+      'builtin-pencil-face-4-0': 14767135,
+      'builtin-pencil-face-4-1': 14746240,
+      'builtin-pencil-face-4-2': 14745586,
+      'builtin-pencil-face-5-0': 14873228,
+      'builtin-pencil-face-5-1': 14743196,
+      'builtin-pencil-face-5-2': 14982888,
     };
 
     expect(

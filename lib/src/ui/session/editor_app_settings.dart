@@ -9,6 +9,7 @@ import '../../services/persistence/app_camera_path_settings_store.dart';
 import '../../services/persistence/app_frame_count_settings_store.dart';
 import '../../services/persistence/app_frame_grid_settings_store.dart';
 import '../../services/persistence/app_onion_skin_settings_store.dart';
+import '../../services/persistence/app_pixel_verb_settings_store.dart';
 import '../../services/persistence/app_input_settings_store.dart';
 import '../../services/persistence/app_language_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart';
@@ -26,6 +27,7 @@ import '../../models/camera_path_settings.dart';
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/onion_skin_settings.dart';
+import '../../models/pixel_verb_settings.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../../models/app_workspace_colors.dart';
 import '../ui_scale.dart';
@@ -66,6 +68,7 @@ class EditorAppSettings {
     AppFrameGridSettingsStore? frameGridSettingsStore,
     AppFrameCountSettingsStore? frameCountSettingsStore,
     AppCameraPathSettingsStore? cameraPathSettingsStore,
+    AppPixelVerbSettingsStore? pixelVerbSettingsStore,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -79,7 +82,8 @@ class EditorAppSettings {
        _onionSkinSettingsStore = onionSkinSettingsStore,
        _frameGridSettingsStore = frameGridSettingsStore,
        _frameCountSettingsStore = frameCountSettingsStore,
-       _cameraPathSettingsStore = cameraPathSettingsStore;
+       _cameraPathSettingsStore = cameraPathSettingsStore,
+       _pixelVerbSettingsStore = pixelVerbSettingsStore;
 
   /// Starts every restore, in the order the session started them in.
   ///
@@ -98,6 +102,7 @@ class EditorAppSettings {
     unawaited(_restoreFrameGridSettings());
     unawaited(_restoreFrameCountSettings());
     unawaited(_restoreCameraPathSettings());
+    unawaited(_restorePixelVerbSettings());
   }
 
   // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
@@ -160,6 +165,25 @@ class EditorAppSettings {
     _cameraPathSettingsStore?.save,
   );
 
+  // --- Pixel verbs (I-13) ---------------------------------------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppPixelVerbSettingsStore? _pixelVerbSettingsStore;
+
+  /// The LIVE value lives app-wide on [PixelVerbSettings.settings] — a verb
+  /// reads it at its press; the session only restores/persists.
+  Future<void> _restorePixelVerbSettings() async {
+    _restored(
+      PixelVerbSettings.settings,
+      await _pixelVerbSettingsStore?.load(),
+    );
+  }
+
+  void setPixelVerbSettings(PixelVerbSettings settings) => _publish(
+    PixelVerbSettings.settings,
+    settings,
+    _pixelVerbSettingsStore?.save,
+  );
 
   // --- Onion skin (F-150) ---------------------------------------------------
 
@@ -181,18 +205,6 @@ class EditorAppSettings {
   /// The layer set it ghosts is the project's and stayed there.
   final ValueNotifier<OnionSkinSettings> onionSkinSettings =
       ValueNotifier<OnionSkinSettings>(const OnionSkinSettings());
-
-  /// The frames↔seconds DISPLAY toggle (초 표시): how a frame's place and a
-  /// length are written — the rulers, the block words, and every list that
-  /// names a frame (`ProjectAccess.framePlaceLabel`). View state: not
-  /// restored, not persisted.
-  ///
-  /// ↩️It stood on the workspace's state until F-284 (유저 2026-10-04:
-  /// 「이런 표기는 초+코마 표기로 바꾼거에 대응하도록 법 통일」). The lists
-  /// that name a frame are written by the session's verbs, which could not
-  /// read it there. Its reach is what it was — one for the window, shared by
-  /// every open project — which is this object's.
-  final ValueNotifier<bool> showSecondsDisplay = ValueNotifier<bool>(false);
 
   Future<void> _restoreOnionSkinSettings() async {
     _restored(onionSkinSettings, await _onionSkinSettingsStore?.load());
@@ -434,6 +446,5 @@ class EditorAppSettings {
   void dispose() {
     audioSyncSettings.dispose();
     onionSkinSettings.dispose();
-    showSecondsDisplay.dispose();
   }
 }

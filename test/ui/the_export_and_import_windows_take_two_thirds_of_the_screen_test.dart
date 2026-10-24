@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
 
 /// F-337 (유저 2026-10-10): 「익스포트/임포트 창이 너무 큼. 앱 화면의
@@ -147,8 +148,9 @@ void main() {
       final size = windowSize(tester, 'export-dialog');
       expect(
         size.width,
-        // ↩️1018 while the cel list stood 184 wide (F-395 widened it).
-        1018 - 184 + ExportCelsBoard.stackWidth,
+        // ↩️1018 while the cel list stood 184 wide (F-395 widened it), and
+        // while its lane stood 16 (F-440 halved the thin one).
+        1018 - 184 + ExportCelsBoard.stackWidth - 16 + AppScrollbarLane.thin,
         reason: 'two thirds of 1200 by area is 980 wide; the columns with '
             'both drawers folded lay out wider',
       );

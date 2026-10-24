@@ -13,6 +13,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/block_move_commands.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/lane_range_move_drag.dart';
@@ -49,7 +50,7 @@ void main() {
           controllers: s.activeCutControllers,
           retime: s,
           dragPreview: s.dragPreview,
-          blockMove: s.drawingBlockMove,
+          blockMove: blockMoveCommandsOf(s),
           camera: s.camera,
           transitions: s.transitions,
           trackSe: s.trackSe,
@@ -695,6 +696,7 @@ void main() {
     final (s, a, _) = fixture();
     s.layerStack.addLayerOfKind(LayerKind.storyboard);
     final storyboard = s.activeLayer!;
+    final panel = storyboard.timeline[0]!.frameId;
     s.selectLayer(a.id);
 
     s.updateFrameRangeSelectionDrag(
@@ -713,8 +715,10 @@ void main() {
       reason: 'the block landed on the storyboard-kind row',
     );
     expect(
-      s.layers.firstWhere((l) => l.id == a.id).timeline.containsKey(0),
-      isFalse,
+      s.layers.firstWhere((l) => l.id == a.id).timeline[0]?.frameId,
+      panel,
+      reason: 'the panel it landed on went back to the row it left — the '
+          'two rows trade places (F-384)',
     );
   });
 
@@ -804,8 +808,8 @@ void main() {
   });
 
   test('P3b-4 (#2): instruction→instruction row moves carry the events; '
-      'an overlapping landing pushes; cross-kind hovers clear the preview',
-      () {
+      'an overlapping landing sends what it lands on back; cross-kind '
+      'hovers clear the preview', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final first = s.layers.firstWhere((l) => l.kind == LayerKind.instruction);
@@ -834,10 +838,11 @@ void main() {
     expect(row(first.id).instructions.containsKey(1), isTrue);
     expect(row(second.id).instructions, isEmpty);
 
-    // ↩️An overlapping landing used to VOID the drop — the span law, which
-    // refused rather than moved anything. A direction row's spans are its
-    // blocks now (R27), so the drop is the drawing rows' own: it pushes the
-    // block it lands among out of the way (R12-②), and nothing is lost.
+    // A direction row's spans are its blocks (R27), so the drop is the
+    // drawing rows' own move: the span it lands on goes back to the row it
+    // left, on its own frames (🗣️F-384-Q1 「덮인 블록이 떠난 자리로 — 자리
+    // 바꾸기」), and nothing is lost. ↩️An overlapping landing VOIDED the
+    // drop (the span law), then pushed the span along (R12-②).
     _laySpans(s, second, const {
       2: InstructionEvent(instructionId: 'zoom', length: 2),
     });
@@ -850,15 +855,12 @@ void main() {
     rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 2, targetLayerId: second.id);
     expect(s.dragPreview.value, isNotNull, reason: '[3,5) meets [2,4)');
     rangeMove(s).endFrameRangeMoveDrag();
-    expect(row(first.id).instructions, isEmpty);
-    expect(
-      {
-        for (final span in row(second.id).instructions.values)
-          span.instructionId: span.length,
-      },
-      {'pan': 2, 'zoom': 2},
-      reason: 'both spans kept, whole',
-    );
+    Map<int, String> spans(LayerId id) => {
+      for (final MapEntry(:key, :value) in row(id).instructions.entries)
+        key: '${value.instructionId}×${value.length}',
+    };
+    expect(spans(first.id), {2: 'zoom×2'});
+    expect(spans(second.id), {3: 'pan×2'});
     s.undo();
 
     // A cross-kind hover (instruction → drawing row) clears the preview.
@@ -1206,6 +1208,151 @@ void main() {
     expect(layer(aId).timeline[0]!.frameId, aFrameId);
     expect(seLayer(0).timeline.containsKey(0), isTrue);
     expect(seLayer(1).timeline, isEmpty);
+  });
+
+  // 🗣️F-384-Q1 (유저 2026-10-21): 「여러 행을 함께 옮기면 덮인 블록이 그
+  // 묶음을 건너 반대편 행으로 갑니다」. ↩️A landing on a block that stayed
+  // voided the whole move: the drag held where it was.
+  test('🚨a multi-row move onto a row\'s block sends that block across the '
+      'moved rows, to the row they left — one undo puts every row back', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectLayer(bId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on B
+    s.layerStack.addLayer();
+    final cId = s.activeLayer!.id;
+    s.selectLayer(cId);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on C, where B's lands
+
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final aCel = layer(aId).frames.single.id;
+    final bCel = layer(bId).frames.single.id;
+    final cCel = layer(cId).frames.single.id;
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: bId,
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    expect(s.dragPreview.value, isNotNull, reason: 'it lands');
+    rangeMove(s).endFrameRangeMoveDrag();
+
+    expect(layer(aId).timeline[0]!.frameId, cCel);
+    expect(layer(bId).timeline[0]!.frameId, aCel);
+    expect(layer(cId).timeline[0]!.frameId, bCel);
+    expect(layer(aId).frames.map((f) => f.id), [cCel]);
+
+    s.undo();
+    expect(layer(aId).timeline[0]!.frameId, aCel);
+    expect(layer(bId).timeline[0]!.frameId, bCel);
+    expect(layer(cId).timeline[0]!.frameId, cCel);
+  });
+
+  test('🚨an SE passenger trades places the same way: the sound it lands '
+      'on goes back to its row, with its take', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame(); // block on A at frame 0
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+
+    final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+    Layer saying(Layer row, String cel, String file) => row.copyWith(
+      frames: [Frame(id: FrameId(cel), duration: 1, strokes: const [])],
+      timeline: {0: TimelineExposure.drawing(FrameId(cel), length: 1)},
+      audioClips: [AudioClip(filePath: file, frameId: FrameId(cel))],
+    );
+    final [first, second, ...] = s.activeTrack.seLayers;
+    s.repository.replaceLayer(layer: saying(first, 'se-1', 'one.wav'));
+    s.repository.replaceLayer(layer: saying(second, 'se-2', 'two.wav'));
+    Layer seLayer(int index) =>
+        s.activeTrack.seLayers.firstWhere((l) => l.id == seIds[index]);
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: seIds[0],
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    rangeMove(s).endFrameRangeMoveDrag();
+
+    expect(seLayer(0).timeline[0]!.frameId, const FrameId('se-2'));
+    expect(seLayer(0).audioClips.map((clip) => clip.filePath), ['two.wav']);
+    expect(seLayer(1).timeline[0]!.frameId, const FrameId('se-1'));
+    expect(seLayer(1).audioClips.map((clip) => clip.filePath), ['one.wav']);
+
+    s.undo();
+    expect(seLayer(0).audioClips.map((clip) => clip.filePath), ['one.wav']);
+    expect(seLayer(1).audioClips.map((clip) => clip.filePath), ['two.wav']);
+  });
+
+  test('…and in a later cut, where an SE passenger reads the selection on '
+      'the track\'s frames', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.cutVerbs.createCut();
+    s.layerStack.addLayerOfKind(LayerKind.animation);
+    s.selectFrameIndex(0);
+    s.createDrawingAtCurrentFrame(); // block on A at cut frame 0
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    final start = s.activeCutGlobalStartFrame;
+    expect(start, greaterThan(0), reason: 'LIVENESS — a cut after the first');
+
+    final seIds = [for (final l in s.activeTrack.seLayers) l.id];
+    Layer saying(Layer row, Map<int, String> cels) => row.copyWith(
+      frames: [
+        for (final cel in cels.values)
+          Frame(id: FrameId(cel), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        for (final MapEntry(key: at, value: cel) in cels.entries)
+          at: TimelineExposure.drawing(FrameId(cel), length: 1),
+      },
+    );
+    final [first, second, ...] = s.activeTrack.seLayers;
+    // The first row holds a sound in the FIRST cut too, at the frame the
+    // selection would name on the track were it read as the cut's.
+    s.repository.replaceLayer(
+      layer: saying(first, {0: 'first-cut', start: 'se-1'}),
+    );
+    s.repository.replaceLayer(layer: saying(second, {start: 'se-2'}));
+    Map<int, String> seRow(int index) => {
+      for (final MapEntry(:key, :value) in s.activeTrack.seLayers
+          .firstWhere((l) => l.id == seIds[index])
+          .timeline
+          .entries)
+        key: value.frameId!.value,
+    };
+
+    s.selectLayer(aId);
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+      headLayerId: seIds[0],
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bId);
+    rangeMove(s).endFrameRangeMoveDrag();
+
+    expect(seRow(0), {0: 'first-cut', start: 'se-2'});
+    expect(seRow(1), {start: 'se-1'});
   });
 
   test('a multi-row shift that would push a row off the lattice HOLDS the '
@@ -1787,6 +1934,63 @@ void main() {
     rangeMove(s).endFrameRangeMoveDrag();
     expect(s.layers.firstWhere((l) => l.id == aId).timeline[0], isNotNull);
   });
+  // 🗣️F-384-Q1 (유저 2026-10-21): 「덮인 블록이 떠난 자리로 — 자리 바꾸기」.
+  // ↩️The block in the way was pushed along behind the landing (R12-②). And
+  // ↩️this pin drove the whole-block drag until that drag went (2026-10-24):
+  // the range move is the door a block moves by.
+  test('🚨a block moved onto an occupied landing sends the block in the way '
+      'back to the row the move left, on its own frame — its cel re-keyed '
+      'with it', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    final aId = s.activeLayer!.id;
+    s.layerStack.addLayer();
+    final bId = s.activeLayer!.id;
+    s.selectFrameIndex(6);
+    s.createDrawingAtCurrentFrame();
+    s.selectLayer(aId);
+    s.selectFrameIndex(0);
+    Layer layer(LayerId id) => s.layers.firstWhere((l) => l.id == id);
+    final aCel = layer(aId).timeline[0]!.frameId!;
+    final bCel = layer(bId).timeline[6]!.frameId!;
+    final cut = s.requireActiveCut;
+    final bCelOnB = s.brushFrameKeyForCut(cut, bId, bCel);
+    final bCelOnA = s.brushFrameKeyForCut(cut, aId, bCel);
+    s.renderCaches.brushFrameStore.getOrCreateFrame(bCelOnB);
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: aId,
+      anchorIndex: 0,
+      headIndex: 0,
+    );
+    expect(rangeMove(s).beginFrameRangeMoveDrag(), isTrue);
+    // Layer B's block sits at frame 6 — the landing is on it.
+    rangeMove(s).updateFrameRangeMoveDrag(frameDelta: 6, targetLayerId: bId);
+    final preview = s.dragPreview.value! as BlockMoveDragPreview;
+    Map<int, FrameId?> cels(LayerId row) => {
+      for (final MapEntry(:key, :value)
+          in preview.previewLayers[row]!.timeline.entries)
+        key: value.frameId,
+    };
+    expect(cels(bId), {6: aCel}, reason: 'the moved block alone on B');
+    expect(cels(aId), {6: bCel});
+
+    rangeMove(s).endFrameRangeMoveDrag();
+    expect(layer(bId).timeline.keys, [6]);
+    expect(layer(bId).timeline[6]!.frameId, aCel);
+    expect(layer(aId).timeline.keys, [6]);
+    expect(layer(aId).timeline[6]!.frameId, bCel);
+    expect(layer(aId).frames.map((f) => f.id), [bCel]);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnB), isNull);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnA), isNotNull);
+
+    // ONE undo puts both rows back, and the cel's brush frame with them.
+    s.undo();
+    expect(layer(aId).timeline.keys, [0]);
+    expect(layer(bId).timeline[6]!.frameId, bCel);
+    expect(s.renderCaches.brushFrameStore.frameOrNull(bCelOnB), isNotNull);
+  });
 }
 
 /// [spans] laid on the direction row [row] of [s]'s active cut — each span a
@@ -1806,3 +2010,12 @@ void _laySpans(
     instructions: spans,
   ),
 );
+
+/// What a block move lands by, under its OWN name.
+///
+/// 🚨`tool/mutation_run.dart` picks the tests that will witness a mutation by
+/// asking which tests IMPORT the file: a collaborator that holds a law gets
+/// a test that names it. ↩️The whole-block drag's test named this one until
+/// that drag went (2026-10-24); the range move is what lands by it now.
+BlockMoveCommands blockMoveCommandsOf(EditorSessionManager session) =>
+    session.blockMoveCommands;

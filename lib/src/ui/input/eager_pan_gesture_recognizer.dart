@@ -74,10 +74,7 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   ) =>
       (firstStepAt?.call(_down, _now) ?? false) ||
       globalDistanceMoved.abs() >
-          computeHitSlop(
-            PenSidecars.kindOf(pointerDeviceKind),
-            gestureSettings,
-          );
+          PenSidecars.hitSlopOf(pointerDeviceKind, gestureSettings);
 
   /// T11: a press that landed on a VALUE CONTROL is that control's, and no
   /// eager pan starts from it.
@@ -140,12 +137,9 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   // recognizer even reached its threshold — the on-device measurement
   // the desktop tests can't take.
   String _probeSuffix(PointerDeviceKind tracked) {
-    // The threshold in play — asked of the pen law's kind, as
-    // [hasSufficientGlobalDistanceToAccept] asks it.
-    final threshold = computeHitSlop(
-      PenSidecars.kindOf(tracked),
-      gestureSettings,
-    );
+    // The threshold in play, as [hasSufficientGlobalDistanceToAccept] asks
+    // it.
+    final threshold = PenSidecars.hitSlopOf(tracked, gestureSettings);
     return 'd=${globalDistanceMoved.abs().toStringAsFixed(1)}'
         ' thr=${threshold.toStringAsFixed(1)}'
         ' kind=${PenSidecars.kindOf(tracked).name}'

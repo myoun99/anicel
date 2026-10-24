@@ -619,6 +619,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // growing envelope (REC1-C), everything else to the conform
             // store's peaks.
             audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
+            soundCannotPlay: _session.playbackRig.soundCannotPlay,
             // The tooltip string doubles as the marker switch (REC1-D):
             // null while the clipping notice is off.
             seClipMarkerTooltip: _session.appSettings.audioSyncSettings.value.clippingNotice
@@ -788,11 +789,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // that turned out to be a tap takes its anchor span back
               // instead of leaving a one-cell band behind.
               onTapClear: _session.clearLaneRangeSelection,
+              onCreateKeys: _session.cellInstances.createInstancesForSelection,
               onMoveBegin: _session.laneMove.beginLaneRangeMoveDrag,
-              onMoveUpdate: (frameDelta, {values}) => _session.laneMove
-                  .updateLaneRangeMoveDrag(
+              onMoveUpdate: (frameDelta, {stretch, values, landings}) =>
+                  _session.laneMove.updateLaneRangeMoveDrag(
                     frameDelta: frameDelta,
+                    stretch: stretch,
                     values: values,
+                    landings: landings,
                   ),
               onMoveEnd: _session.laneMove.endLaneRangeMoveDrag,
               onMoveCancel: _session.laneMove.cancelLaneRangeMoveDrag,
@@ -902,10 +906,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               _session,
               rowFilter: widget.rowFilter,
               onSetRowFilter: widget.onSetRowFilter,
-              onToggleOnionSkinForDisplayed:
-                  _session.onionSkin.toggleOnionSkinForDisplayedLayers,
               onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
-              onSetBlendModeForDisplayed: _session.layerSwitches.setBlendModeForLayers,
             ),
             lanesForLayer: _lanesForLayer,
             unionLaneForLayer: _cameraUnionLane,
@@ -1101,7 +1102,20 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   /// the widget that consumes each so a future button's owner is obvious.
   ///
   /// Flyout entries are deliberately absent (they rebuild lazily on open).
-  Object _deriveActionsToken() {
+  Object _deriveActionsToken() => (
+    _frameAxisGates(),
+    _promotedGates(),
+    // ⛔The two project-axis values LEFT this token with the dropdowns
+    // that printed them: they are entries of the settings pill on the
+    // 문턱 now, and a flyout's entries are built at open time.
+    //
+    // Button tooltips and menu labels print in the program language.
+    widget.session.languageSettings.value,
+  );
+
+  /// [_deriveActionsToken]'s frame group, comma buttons and shared pill —
+  /// the gates the playhead moves.
+  Object _frameAxisGates() {
     final session = widget.session;
     return (
       // Frame-group icons + comma buttons (playhead-sensitive enablement).
@@ -1124,6 +1138,14 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.exposureVerbs.canDecreaseSelectedExposure,
       session.exposureVerbs.canIncreaseSelectedExposure,
       session.storyboardCursor.canSetCommaForTimelineCursor,
+    );
+  }
+
+  /// [_deriveActionsToken]'s heads and promoted verbs — each pill's own,
+  /// each read where it comes from.
+  Object _promotedGates() {
+    final session = widget.session;
+    return (
       // 🚨F-75 (유저 2026-09-11): 「프레임 1을 색변환의 색삭제 누르고
       // 프레임2로 이동하면 색변환버튼이 비활성화 된 상태임. 다른 인덱스
       // 이동했다가 돌아오면 해결되있음」. The 색 편집 head asks whether the
@@ -1151,12 +1173,17 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.laneVerbs.canNameLaneKeys,
       // The layer pill's promoted verb.
       session.layerVerbs.canDeleteActiveLayer,
-      // ⛔The two project-axis values LEFT this token with the dropdowns
-      // that printed them: they are entries of the settings pill on the
-      // 문턱 now, and a flyout's entries are built at open time.
-      //
-      // Button tooltips and menu labels print in the program language.
-      session.languageSettings.value,
+      // F-455: the shared pill's 복제, read off this panel's context.
+      _pill.canDuplicate,
+      // …and the cut pill's ＋ ([CutPlacement.canCreateCut]): a band over a
+      // cut leaves it nowhere to make one, and a band is no notify.
+      // ↩️Its band's 새 컷 row read this at open time and hid that the ＋
+      // itself stayed lit; F-455 took the row away.
+      // ⛔MUTANT SURVIVES (F-455, 2026-10-23): dropping this reddens
+      // nothing — every band over a cut also moves a shared-pill gate
+      // ([_frameAxisGates]), so the bar is rebuilt anyway. It stays so the
+      // ＋ does not hang on that coincidence.
+      session.cutPlacement.canCreateCut,
     );
   }
 

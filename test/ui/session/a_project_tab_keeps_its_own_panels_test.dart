@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_window.dart'
+    show TimelineSecondsToggleCorner;
 
 import '../../helpers/scrollable_of.dart';
 
@@ -105,6 +107,37 @@ void main() {
     projects.activate(first);
     await tester.pumpAndSettle();
     expect(conteZoom(), 4, reason: 'and A comes back at its own');
+  });
+
+  testWidgets('🚨a project tab writes its frames as IT was left — the '
+      'seconds display is the project\'s, not the window\'s (F-354)', (
+    tester,
+  ) async {
+    final projects = await openWindow(tester, createDefaultProject());
+    final toggle = find.byKey(
+      const ValueKey<String>('timeline-time-display-toggle-button'),
+    );
+    bool showsSeconds() =>
+        tester.widget<TimelineSecondsToggleCorner>(toggle).showSeconds;
+
+    final first = projects.active;
+    await tester.tap(toggle);
+    await tester.pumpAndSettle();
+    expect(showsSeconds(), isTrue, reason: 'premise: the press turned it');
+    expect(first.panelViews.showSeconds.value, isTrue);
+
+    final second = projects.open(createDefaultProject());
+    await tester.pumpAndSettle();
+    expect(projects.active, same(second), reason: 'premise: B is in front');
+    expect(
+      showsSeconds(),
+      isFalse,
+      reason: 'B was never turned — it writes frames',
+    );
+
+    projects.activate(first);
+    await tester.pumpAndSettle();
+    expect(showsSeconds(), isTrue, reason: 'and A comes back as it was left');
   });
 
   for (final (sheet, viewportKey, rail, project, button) in [

@@ -19,7 +19,7 @@ void main() {
             onPressed: () async {
               popped = await showDialog<int>(
                 context: context,
-                builder: (_) => const StartNumberWindow(),
+                builder: (_) => const StartNumberWindow(target: 'Frame'),
               );
             },
             child: const Text('open'),

@@ -113,57 +113,94 @@ class _PanelBuild {
         _state.widget.canvasSize.height.toDouble() +
         _CanvasViewportBottomBar.heightIn(context),
     child: SizedBox.expand(
-      child: _CanvasEditorPanelShell(
-        rightStripBar: _state._shellBars.memoizedRightStripBar(),
-        horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
-        bottomBar: _state._shellBars.memoizedBottomBar(),
-        transport: _state.widget.transport,
-        documentName: _state.widget.documentName,
-        documentAbsent: _state.widget.documentAbsent,
-        // The capsules float INSIDE what the panels left over.
-        cover: _state.widget.floorCover,
-        onFloor: _state._onFloor,
-        rightRailBand: _state.widget.floorRightRailBand,
-        bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
-        child: LayoutBuilder(builder: _viewport),
+      // Every bar in the panel — its panbars, and any it holds — stands in
+      // the panel's lane ([_BrushCanvasPanelState._lane], F-440).
+      child: AppScrollbarLaneScope(
+        lane: _state._lane,
+        child: _CanvasEditorPanelShell(
+          rightStripBar: _state._shellBars.memoizedRightStripBar(),
+          horizontalStripBar: _state._shellBars.memoizedHorizontalStripBar(),
+          bottomBar: _state._shellBars.memoizedBottomBar(),
+          transport: _state.widget.transport,
+          leftPill: _state.widget.leftPill,
+          onLeftPillLaidOut: _state._rememberLeftPillBeside,
+          documentName: _state.widget.documentName,
+          documentAbsent: _state.widget.documentAbsent,
+          // The capsules float INSIDE what the panels left over.
+          cover: _state.widget.floorCover,
+          onFloor: _state._onFloor,
+          lane: _state._lane,
+          leftRailBand: _state.widget.floorLeftRailBand,
+          rightRailBand: _state.widget.floorRightRailBand,
+          bottomOverlaySpan: _state.widget.floorBottomOverlaySpan,
+          child: LayoutBuilder(builder: _viewport),
+        ),
       ),
     ),
   );
 
-  /// What sits on the artwork inside the pointer census — [_toolDeck],
-  /// behind the view hold's gate (I-15 · I-88): while the 「이동」 or the
+  /// What sits on the artwork — [_toolDeck], behind the view hold's gate
+  /// (I-15 · I-88): while the 「이동」 or the
   /// 「회전」 key is held the deck takes no pointer at all, so every tool
   /// stands down for the view at once, and the hand says what a press will
   /// do.
   ///
   /// The mapped buttons are read INSIDE the gate, with the tools: what one
-  /// holds is a tool, and it stands down for the view with the rest.
-  /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
-  /// layer took it — and after every control floating on the canvas has
-  /// claimed its own (pointer-down is dispatched deepest-first).
+  /// holds is a tool, and it stands down for the view with the rest
+  /// ([_toolsHeard]).
+  Widget _cursorDeck(BuildContext context) =>
+      ViewHoldGate(child: _toolDeck(context));
+
+  /// What the line from the last stroke stands down while it is in force
+  /// (I-119) — the drawing view would draw: the tools and what the
+  /// buttons are mapped to under the census, and the controls over them.
+  /// The census hears its press ([_CanvasPanelLine]).
   ///
-  /// The line from the last stroke stands the deck down the same way while
-  /// it is in force (I-119) — the drawing view would draw — and the census
-  /// hears its press ([_CanvasPanelLine]).
-  Widget _cursorDeck(BuildContext context) => ViewHoldGate(
-    child: ValueListenableBuilder<bool>(
-      valueListenable: _state._line.inForce,
-      builder: (context, inForce, deck) =>
-          IgnorePointer(ignoring: inForce, child: deck),
-      child: Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerHover: _state._mappedButtons.hover,
-        onPointerDown: _state._mappedButtons.down,
-        onPointerMove: _state._mappedButtons.move,
-        onPointerUp: _state._mappedButtons.up,
-        onPointerCancel: _state._mappedButtons.up,
-        child: _toolDeck(context),
-      ),
-    ),
+  /// ↩️It stood the whole deck down, the census with it once the census
+  /// went into the tool's entrance (F-377): the line no longer heard the
+  /// hand it runs to, nor the click that lands it.
+  Widget _standsDownForTheLine(Widget child) => ValueListenableBuilder<bool>(
+    valueListenable: _state._line.inForce,
+    builder: (context, inForce, child) =>
+        IgnorePointer(ignoring: inForce, child: child),
+    child: child,
   );
 
-  /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
-  /// the selection layer and the idle ants.
+  /// The tool's layers, heard by the mapped buttons — so they hear a press
+  /// whichever tool's layer took it. ↩️They were an ancestor of the whole
+  /// deck, and heard a control's press after it had claimed its own
+  /// (pointer-down is dispatched deepest-first); under the tool's entrance
+  /// a control's press never reaches them (F-377).
+  Widget _toolsHeard(BuildContext context) => Listener(
+    behavior: HitTestBehavior.translucent,
+    onPointerHover: _state._mappedButtons.hover,
+    onPointerDown: _state._mappedButtons.down,
+    onPointerMove: _state._mappedButtons.move,
+    onPointerUp: _state._mappedButtons.up,
+    onPointerCancel: _state._mappedButtons.up,
+    child: _toolLayers(context),
+  );
+
+  /// The deck: two ENTRANCES, one over the other — the CONTROLS on top
+  /// ([BrushCanvasPanel.viewportControlsBuilder]: the standing row's box,
+  /// what is adjusted on the canvas, a run's layer) and the TOOL's under
+  /// them ([_toolEntrance]).
+  ///
+  /// 🗣️F-377 (유저 2026-10-17): 「그런 누름 관련, 입구 확실하게 나눠서
+  /// 근본/구조적으로 해결해줬으면」. A Stack hands a pointer to the first child
+  /// that takes it, so a press or a hover a control takes never reaches the
+  /// tool's entrance and nothing of the tool's answers it: not its aim, not
+  /// its cursor (F-285, 유저 10-17: 「도구가 연관이 없는 곳에선 기본커서.
+  /// 트랜스폼fx든 뭐 그런거 전부」), not the notice a press with no cel under
+  /// it earns. And from a control's press to its lift the tool's entrance
+  /// takes no pointer at all ([_ControlHolds]): a drag that outruns its
+  /// handle meets no tool on the way.
+  ///
+  /// ↩️Those three were ANCESTORS of the whole deck — the census and the
+  /// cursor's region here, the notice around the panel on
+  /// `MainCanvasBrushHost` — and so heard every press the camera's box took:
+  /// 「카메라 옮길때도 브러시 커서 뜬다거나 드로잉 허용안된 레이어라고 뜨는데 …
+  /// 카메라 사이즈를 프로젝트 설정에서 캔버스에서 조정버튼통해 바꿀때도 뜸」.
   ///
   /// ⛔Always a deck. The bare canvas stood alone while no cursor visual was
   /// armed, and that switch cost twice: a predicate missing from its list
@@ -172,8 +209,119 @@ class _PanelBuild {
   /// the whole content — a sheet's every stratum re-recorded when its brush
   /// switch was touched.
   Widget _toolDeck(BuildContext context) {
-    final overlayBuilder = _overlayBuilder;
     final controlsBuilder = _controlsBuilder;
+    return Stack(
+      children: [
+        Positioned.fill(
+          // Closed while a control holds a pointer: a gesture that began on
+          // one is that control's to its lift ([_ControlHolds]). ⚠️Asked AT
+          // THE HIT TEST, not through a rebuild as the view hold's gate is
+          // (`ViewHoldGate`): a press that follows a lift must find the
+          // tools open, and a rebuild comes a frame later. A key opens that
+          // gate; a lift opens this one.
+          child: HitGate(
+            admits: (_) => !_state._controlHolds.held,
+            child: _toolEntrance(_standsDownForTheLine(_toolsHeard(context))),
+          ),
+        ),
+        // F-222: the standing row's box sits over every tool, and claims the
+        // presses that are its own. ↩️It was keyed while it stood among the
+        // tool layers, which come and go with the tool — a grab in flight
+        // must not lose its State when one does. Here it is the second of
+        // two children, and its place never moves.
+        if (controlsBuilder != null)
+          Positioned.fill(
+            // Hit only where a control is, so what it records are the
+            // presses the controls took.
+            child: _standsDownForTheLine(
+              Listener(
+                behavior: HitTestBehavior.deferToChild,
+                onPointerDown: _state._controlHolds.hold,
+                child: controlsBuilder(
+                  context,
+                  _state._viewportState._viewport,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The TOOL's entrance ([_toolDeck]) — what hears a pointer only where no
+  /// control over the tools took it:
+  ///
+  ///  * the census of where the pointer is (R27 #17), the aim every tool
+  ///    cursor reads ([_BrushCanvasPanelState._noteCanvasPointer]);
+  ///  * the system cursor the tool asks for ([_CanvasPanelToolCursor.region]);
+  ///  * the line from the last stroke's press and lift (I-119);
+  ///  * a press no tool layer hears, asking for its cel once
+  ///    ([_CanvasPanelTap.pressNoLayerHears]), and a press's end settling a
+  ///    block no stroke claimed ([BrushCanvasPanel.onAutoFrameSettled]).
+  Widget _toolEntrance(Widget tools) => MouseRegion(
+    // The census's other half: WHEN THE POINTER LEAVES — the canvas, or for a
+    // control over it. Everything below only ever learns where the pointer
+    // is; without an exit the last position stayed authoritative for ever,
+    // and a tool cursor armed afterwards would draw itself where the hand
+    // used to be.
+    opaque: false,
+    hitTestBehavior: HitTestBehavior.translucent,
+    // Entering is being there. A pointer can arrive WITHOUT moving — a
+    // control's lift or a view hold's opens this entrance under a resting
+    // hand — and its aim must not wait for the next move, or the outline's
+    // hidden system cursor shows nothing until then.
+    onEnter: (event) {
+      _state._hoverDevicesInside.add(event.device);
+      _state._noteCanvasPointer(event);
+    },
+    onExit: (event) {
+      // A departing device releases its OWN hold only. It may not decide
+      // the aim is nobody's while a second hoverer or a pressed pointer
+      // still has it.
+      if (!_state._hoverDevicesInside.remove(event.device)) {
+        return;
+      }
+      if (_state._tap.aimIsHeld) {
+        return;
+      }
+      _state._forgetCanvasPointer();
+    },
+    // R27 #17: a passive census of where the pointer is — button-held moves
+    // included — so a cursor that arms mid-gesture knows where to appear.
+    // Translucent and handler-only: it consumes nothing.
+    child: Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerHover: _state._noteCanvasPointer,
+      onPointerDown: (event) {
+        _state._tap.beginCanvasPointer(event);
+        _state._noteCanvasPointer(event);
+        _state._line.press(event);
+        _state._tap.pressNoLayerHears(event);
+      },
+      onPointerMove: _state._noteCanvasPointer,
+      // …and the exit above is the whole story ONLY for pointers Flutter
+      // reports an exit for. A finger, a pen TAIL or an `unknown` device
+      // writes through this same census and then leaves without a word, so
+      // the ring stayed where the hand had been — for ever. For those, the
+      // contact ending IS the exit.
+      onPointerUp: _endToolPress,
+      onPointerCancel: _endToolPress,
+      child: _state._toolCursor.region(tools),
+    ),
+  );
+
+  // The line from the last stroke lands where its press lets go (I-119),
+  // before the aim is let go.
+  void _endToolPress(PointerEvent event) {
+    _state._line.letGo(event);
+    _state._tap.endCanvasPointer(event);
+    _state.widget.onAutoFrameSettled?.call();
+  }
+
+  /// The tool's layers — underlay, canvas, overlay, the tap layer, the
+  /// selection and text layers and the idle ants.
+  Widget _toolLayers(BuildContext context) {
+    final overlayBuilder = _overlayBuilder;
     final underlayBuilder = _underlayBuilder;
     final idleSelection = _idleSelection;
     return Stack(
@@ -212,22 +360,6 @@ class _PanelBuild {
         // absorbs the pointer so no stroke starts.
         if (_state._tap.toolTapHandler() != null)
           _state._tap.toolTapLayer(),
-        // Eyedropper cursor (R11-②): crosshair +
-        // a hover swatch of the color under the
-        // pointer — for the tool AND the Alt-held
-        // temporary pick. Translucent: picks fall
-        // through to the tap layer / canvas below.
-        if (_state._toolCursor.eyedropperCursorActive)
-          ..._state._eyedropperCursorLayers(),
-        // R26 #23: the fill tool wears the bucket.
-        if (_state._toolCursor.fillCursorActive)
-          ..._state._fillCursorLayers(),
-        // The painting tools wear their own
-        // footprint: an outline of the tip that
-        // follows the pointer, so a stroke can be
-        // aimed before it starts.
-        if (_state._toolCursor.brushCursorActive)
-          ..._state._brushCursorLayers(),
         // The P9 selection tools own the pointer
         // while active (marquee/lasso/move) —
         // strokes cannot start below the layer.
@@ -252,15 +384,6 @@ class _PanelBuild {
           key: const ValueKey<String>('line-from-the-last-stroke-ants'),
           child: _state._line.ants(),
         ),
-        // F-222: the standing row's box sits over every tool, and claims the
-        // presses that are its own ([BrushCanvasPanel.viewportControlsBuilder]).
-        // Keyed: the tool layers above come and go with the tool, and a grab
-        // in flight must not lose its State when one does.
-        if (controlsBuilder != null)
-          Positioned.fill(
-            key: const ValueKey<String>('viewport-controls'),
-            child: controlsBuilder(context, _state._viewportState._viewport),
-          ),
       ],
     );
   }
@@ -418,9 +541,9 @@ class _PanelBuild {
                 // where the pasteboard actually is, RGBA and
                 // project data (R28 #9 reversed) — thinning it
                 // reveals the floor, on screen exactly as in an
-                // export. The alpha-preview toggle swaps BOTH for
-                // the checkerboard: an alpha export excludes them,
-                // so the preview must too.
+                // export. An ABSENT plane is the checkerboard where
+                // it would be (F-114). ↩️An alpha-preview toggle
+                // swapped both for it, and went (F-146).
                 child: _StagePlanes(
                   backdropArgb: _state._stageBackdropArgb,
                   pasteboardArgb: _state._stagePasteboardArgb,
@@ -433,75 +556,7 @@ class _PanelBuild {
                   paperNone: _state.widget.paperNone,
                   canvasSize: _state.widget.canvasSize,
                   viewport: _state._viewportState._viewport,
-                  // R27 #17: a passive census of where the pointer
-                  // is — button-held moves included — so a cursor
-                  // that arms mid-gesture knows where to appear.
-                  // Translucent and handler-only: it consumes
-                  // nothing.
-                  child: MouseRegion(
-                    // The census's other half: WHEN THE POINTER
-                    // LEAVES. Everything below only ever learns
-                    // where the pointer is; without an exit the
-                    // last position stayed authoritative for ever,
-                    // and a tool cursor armed afterwards would draw
-                    // itself where the hand used to be.
-                    opaque: false,
-                    hitTestBehavior: HitTestBehavior.translucent,
-                    onEnter: (event) =>
-                        _state._hoverDevicesInside.add(event.device),
-                    onExit: (event) {
-                      // A departing device releases its OWN
-                      // hold only. It may not decide the aim
-                      // is nobody's while a second hoverer
-                      // or a pressed pointer still has it.
-                      if (!_state._hoverDevicesInside.remove(event.device)) {
-                        return;
-                      }
-                      if (_state._tap.aimIsHeld) {
-                        return;
-                      }
-                      _state._forgetCanvasPointer();
-                    },
-                    child: Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerHover: (event) => _state._noteCanvasPointer(
-                        event.localPosition,
-                        kind: event.kind,
-                      ),
-                      onPointerDown: (event) {
-                        _state._tap.beginCanvasPointer(event);
-                        _state._noteCanvasPointer(
-                          event.localPosition,
-                          kind: event.kind,
-                        );
-                        _state._line.press(event);
-                      },
-                      onPointerMove: (event) => _state._noteCanvasPointer(
-                        event.localPosition,
-                        kind: event.kind,
-                      ),
-                      // …and the exit above is the whole
-                      // story ONLY for pointers Flutter
-                      // reports an exit for. A finger, a
-                      // pen TAIL or an `unknown` device
-                      // writes through this same census
-                      // and then leaves without a word, so
-                      // the ring stayed where the hand had
-                      // been — for ever. For those, the
-                      // contact ending IS the exit.
-                      // The line from the last stroke lands where its
-                      // press lets go (I-119), before the aim is let go.
-                      onPointerUp: (event) {
-                        _state._line.letGo(event);
-                        _state._tap.endCanvasPointer(event);
-                      },
-                      onPointerCancel: (event) {
-                        _state._line.letGo(event);
-                        _state._tap.endCanvasPointer(event);
-                      },
-                      child: _cursorDeck(context),
-                    ),
-                  ),
+                  child: _cursorDeck(context),
                 ),
               ),
               ..._state._toolCursor.toolCursorLayers(),

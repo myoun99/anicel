@@ -46,4 +46,26 @@ void main() {
     expect(_dab(opacity: 1), equals(_dab(opacity: 1)));
     expect(_dab(opacity: 1), isNot(equals(_dab(opacity: 0.5))));
   });
+
+  test('a twist goes into the JSON and back, is part of the dab\'s '
+      'identity, and is absent where the device reported none '
+      '(F-176-Q9)', () {
+    final turned = _dab().copyWith(twistDegrees: 135);
+    expect(BrushDab.fromJson(turned.toJson()).twistDegrees, 135);
+    expect(_dab().toJson().containsKey('twistDegrees'), isFalse);
+    expect(BrushDab.fromJson(_dab().toJson()).twistDegrees, isNull);
+    expect(turned, isNot(equals(_dab())));
+    expect(turned, isNot(equals(_dab().copyWith(twistDegrees: 0))));
+    expect(turned.hashCode, _dab().copyWith(twistDegrees: 135).hashCode);
+  });
+
+  test('a twist off the circle is refused', () {
+    for (final twist in [-1.0, 360.0, double.nan]) {
+      expect(
+        () => _dab().copyWith(twistDegrees: twist),
+        throwsArgumentError,
+        reason: '$twist',
+      );
+    }
+  });
 }

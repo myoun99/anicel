@@ -318,7 +318,19 @@ void main() {
   /// four languages by id (`shortcutAction.frame-mark-every`). The round's
   /// renamed verbs (New …, Clear, In-between Mark) are rows that stood and
   /// add none. The ceiling stood at the count (136) when it came.
-  const untranslatedElsewhere = 137;
+  ///
+  /// 138 (I-13, 2치화, 2026-10-22): the English row of one new registry
+  /// action, 「Binarize」 — the colour edit list's row under 픽셀 비우기,
+  /// answered in the other four languages by id
+  /// (`shortcutAction.edit-binarize`). The ceiling stood at the count (137)
+  /// when it came.
+  ///
+  /// 139 (I-34, the brush's values on the canvas, 2026-10-18): the English
+  /// row of one new registry action, 「Brush values on the top strip」 —
+  /// answered in the other four languages by id
+  /// (`shortcutAction.window-brush-values-on-strip`). The ceiling stood at
+  /// the count (138) when it came.
+  const untranslatedElsewhere = 139;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

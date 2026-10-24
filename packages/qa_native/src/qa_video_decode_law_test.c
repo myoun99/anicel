@@ -81,6 +81,22 @@ int main(void) {
   expect_int("a sliver shorter than a frame is still one frame",
              qa_frame_count_for(1000, 1000000, 24, 1), 1);
   expect_int("no rate is still one frame", qa_frame_count_for(5000000, 1000000, 0, 0), 1);
+  // 🚨A TICK SHORT OF WHOLE FRAMES IS WHOLE FRAMES — every backend, through
+  // this one law. The Apple-built engine reads the fixture's video track
+  // (11999/24000) as 499958µs and counted it eleven on the Mac CI build of
+  // 2026-10-24; Media Foundation hands the same end over as 4999999.
+  expect_int("the track a tick short of twelve frames is twelve",
+             qa_frame_count_for(11999, 24000, 24, 1), 12);
+  expect_int("AVFoundation's microseconds for that track are twelve",
+             qa_frame_count_for(499958, 1000000, 24, 1), 12);
+  expect_int("Media Foundation's rounded end of twelve is twelve",
+             qa_frame_count_for(4999999, 10000000, 24, 1), 12);
+  // To the nearest, not up: what runs less than half a frame past the
+  // last whole one is no frame of its own.
+  expect_int("12.4 frames' worth is twelve",
+             qa_frame_count_for(516667, 1000000, 24, 1), 12);
+  expect_int("12.6 frames' worth is thirteen",
+             qa_frame_count_for(525000, 1000000, 24, 1), 13);
 
   // Half a frame of slack, in whatever ticks the backend counts. Exact
   // equality misses on every source whose rate is not an integer, which is

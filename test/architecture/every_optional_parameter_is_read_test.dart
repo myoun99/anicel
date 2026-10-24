@@ -31,6 +31,7 @@ import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// Unread today, each with why it is still here. An entry that no longer
 /// matches FAILS: a ledger that keeps paid debts on it stops being read.
@@ -50,18 +51,15 @@ void main() {
       for (final file in dartFilesUnder('lib'))
         ...unreadParameters(file.path, file.readAsStringSync()),
     };
-    expect(
-      found.difference(_unread.keys.toSet()),
-      isEmpty,
-      reason: 'These declare an optional parameter their body never reads: '
+    expectSetMatchesLedger(
+      found,
+      _unread.keys,
+      unledgered:
+          'These declare an optional parameter their body never reads: '
           'a caller that passes one has it dropped without a word — '
           'BrushToolState.copyWith dressed every brush in the texture of '
           'the one before that way. Read it, or remove it.',
-    );
-    expect(
-      _unread.keys.toSet().difference(found),
-      isEmpty,
-      reason: 'Paid: take these off the ledger.',
+      paidOff: 'Paid: take these off the ledger.',
     );
   });
 

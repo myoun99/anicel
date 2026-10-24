@@ -6,6 +6,7 @@
 #   bash tool/lane.sh gate  <name>     run the land's gates on a lane as it stands, and stamp it
 #   bash tool/lane.sh native <name>    build the lane's C, run its tests and parity
 #   bash tool/lane.sh engine [<name>]  this checkout's engine (or a lane's) built from its own C
+#   bash tool/lane.sh furnish <dir>    a worktree that is not a lane, made ready to run as `open` makes one
 #   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
 #   bash tool/lane.sh list             what is open right now
 #   bash tool/lane.sh drop  <name>     throw a lane away (its commits go with it)
@@ -737,6 +738,20 @@ cmd_engine() {
   echo "lane: the engine in $c is built from its C"
 }
 
+# What `open` and `receive` do to a lane's worktree, for one that is not a
+# lane: the release round cuts its builds in `rel-<n>`, and runs the guide's
+# screenshots there. Their sound scene reads its peaks through the engine,
+# and a worktree that only ever built release bundles has none — the
+# import answered false, the pool stayed empty and every language's media
+# pool shot failed (2026-10-22). The same function, so the engine copy, its
+# cache and its provenance stay one answer for every checkout.
+cmd_furnish() {
+  local p="${1:-}"
+  [ -n "$p" ] || die "furnish needs a directory"
+  require_worktree "$p"
+  furnish "$p"
+}
+
 # Refusal 5, runnable on its own. The header says why each step is there.
 cmd_native() {
   local name="${1:-}"; [ -n "$name" ] || die "native needs a name"
@@ -1039,6 +1054,7 @@ cmd_land() {
   land) shift; cmd_land "$@" ;;
   native) shift; cmd_native "$@" ;;
   engine) shift; cmd_engine "$@" ;;
+  furnish) shift; cmd_furnish "$@" ;;
   backup) shift; cmd_backup "$@" ;;
   list) shift; cmd_list "$@" ;;
   drop) shift; cmd_drop "$@" ;;
@@ -1049,5 +1065,5 @@ cmd_land() {
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
   gate) shift; cmd_gate "$@" ;;
-  *) sed -n '2,18p' "$0"; exit 2 ;;
+  *) sed -n '2,19p' "$0"; exit 2 ;;
 esac; exit; }

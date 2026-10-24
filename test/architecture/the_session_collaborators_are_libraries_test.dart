@@ -31,6 +31,8 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/source_ledger.dart';
+
 const _host = 'lib/src/ui/editor_session_manager.dart';
 const _sessionDir = 'lib/src/ui/session';
 const _rolesFile = 'lib/src/ui/session/session_roles.dart';
@@ -83,7 +85,7 @@ const _mayNameTheSession = <String, String>{
 /// `OpacityVerbs`, whose only reads of the role were these, no longer takes
 /// it at all. 43 → 39 (2026-09-25, the fourth and fifth families): the
 /// block drag in flight moved into `DrawingBlockMoveDragVerbs`, which starts
-/// and closes it; the selection-interaction flag became what it always stood
+/// and closes it (↩️that drag went whole, 2026-10-24); the selection-interaction flag became what it always stood
 /// for — `RangeSelections`' own count of holds, which nothing had listened
 /// to; and the SE solo set moved into `VisibilitySolo`, whose toggle is its
 /// one writer — `VisibilitySolo`, whose only read of the role this was, no
@@ -216,12 +218,13 @@ void main() {
         partOf.add(name);
       }
     }
-    expect(
-      partOf.toSet(),
-      _stillParts.keys.toSet(),
-      reason:
+    expectSetMatchesLedger(
+      partOf,
+      _stillParts.keys,
+      unledgered:
           'a file under $_sessionDir is `part of` the session and is not on '
-          'the ledger (or a ledger entry is paid and should be deleted).',
+          'the ledger.',
+      paidOff: 'a ledger entry is paid and should be deleted.',
     );
   });
 

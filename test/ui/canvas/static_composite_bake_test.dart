@@ -28,7 +28,7 @@ void main() {
       bake.draw(canvas, slot, (into) {
         recordings += 1;
         into.drawRect(const Rect.fromLTWH(0, 0, 4, 4), Paint());
-      });
+      }, within: Rect.largest);
     }
   }
 

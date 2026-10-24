@@ -8,6 +8,9 @@ import 'tool_cursor_look.dart';
 
 /// The brush/eraser cursor: an outline of the tip footprint following the
 /// pointer, Clip-Studio style — size, roundness and angle, and nothing else.
+/// They are the tip the pen at the pointer lays down as it is held
+/// (`poisedTip`, F-176-Q7 「펜을 따라 바뀐다」): a tilted pencil's outline
+/// turns and flattens with the pen.
 ///
 /// Deliberately NOT Photoshop's exact-alpha silhouette. Our sampled tips
 /// (Splatter, Sponge, anything imported) would trace as a heap of contours
@@ -79,6 +82,11 @@ class BrushCursorPainter extends CustomPainter with RepaintOnProps {
 
 /// Room around the outline for the halo stroke and the crosshair arms.
 const double _brushCursorPad = 6;
+
+/// I-54: the crosshair the drawing tools wear where the system cannot show
+/// one (iPadOS) — the crosshair the outline already stands in with below a
+/// readable tip, at the one size it always has.
+ToolCursorLook crosshairCursorLook() => brushCursorLook(null);
 
 /// The brush cursor's look for [shape]: the outline painter in a box that
 /// certainly holds it, the pointer at the box's centre.

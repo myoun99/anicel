@@ -26,7 +26,15 @@ enum BrushPressureTarget {
   flow,
   hardness,
   roundness,
-  spacing;
+  spacing,
+
+  /// テクスチャ濃度 — Clip Studio gives it the same 影響元 as size. Under a
+  /// multiplied paper it is how much of the paper shows, so a row that
+  /// falls with pressure leaves a light touch grained and fills the valleys
+  /// as the press grows — a pencil's grain filling as it darkens (F-456).
+  /// Under the paper's height (`BrushTextureMode.height`) it is how deep the
+  /// dab reaches into the paper instead.
+  textureDensity;
 
   /// Whether a curve on this setting may go PAST its base — 傾き's 最大値.
   /// Clip Studio offers it where the base is not already the most there is
@@ -53,13 +61,22 @@ class BrushCurvePoint {
   String toString() => 'BrushCurvePoint($x, $y)';
 }
 
-/// An editable input→multiplier response: a shape through control points,
+/// An editable input→multiplier response: a shape drawn by control points,
 /// laid between [minimum] and [maximum].
 ///
-/// Interpolation is monotone cubic Hermite (Fritsch–Carlson): smooth like
-/// the CSP editor's spline, but it never overshoots the control points'
-/// range — the shape stays inside [0, 1] by construction — and a
-/// two-point curve evaluates as the EXACT straight line.
+/// 🚨**THE POINTS PULL THE SHAPE; THEY DO NOT LIE ON IT** — Clip Studio's
+/// graph (유저 F-456, 2026-10-23: 「클튜는 s자만드려면 두 포인트 찍어야하는
+/// 방식」). The shape is the clamped quadratic B-spline over [points]: it
+/// starts at the first and ends at the last, and between them it runs
+/// through the middle of every inner edge of the line joining them, bent
+/// towards each point it passes. One point bends it one way; an S takes
+/// two. It stays in its points' hull, so in the unit square, and rises
+/// wherever they rise; two points are the straight line between them.
+///
+/// ↩️It was a monotone cubic Hermite (Fritsch–Carlson) THROUGH the points,
+/// which bent one point into an S. 📏Against Clip Studio's own drawing of
+/// four of the user's graphs this is 0.010–0.017 off on average, 1–2 px of
+/// its graph; the Hermite was 0.045–0.10.
 class BrushPressureCurve {
   BrushPressureCurve(
     List<BrushCurvePoint> points, {
@@ -116,7 +133,6 @@ class BrushPressureCurve {
         );
       }
     }
-    _tangents = _monotoneTangents(this.points);
   }
 
   /// The straight 1:1 response — what the old boolean toggle meant.
@@ -163,35 +179,44 @@ class BrushPressureCurve {
   /// clamped.
   final double maximum;
 
-  late final List<double> _tangents;
-
   /// The multiplier for [input] (clamped to [0, 1]): the shape laid between
   /// [minimum] and [maximum].
   double evaluate(double input) {
     final x = input.isFinite ? input.clamp(0.0, 1.0).toDouble() : 1.0;
-    var i = points.length - 2;
-    for (var k = 0; k < points.length - 1; k += 1) {
-      if (x <= points[k + 1].x) {
-        i = k;
-        break;
-      }
-    }
-    final p0 = points[i];
-    final p1 = points[i + 1];
-    final h = p1.x - p0.x;
-    final t = (x - p0.x) / h;
-    final t2 = t * t;
-    final t3 = t2 * t;
-    final value =
-        (2 * t3 - 3 * t2 + 1) * p0.y +
-        (t3 - 2 * t2 + t) * h * _tangents[i] +
-        (-2 * t3 + 3 * t2) * p1.y +
-        (t3 - t2) * h * _tangents[i + 1];
-    final shape = value.clamp(0.0, 1.0).toDouble();
+    final shape = _shapeAt(x).clamp(0.0, 1.0).toDouble();
     if (minimum == 0.0) {
       return shape * maximum;
     }
     return minimum + (maximum - minimum) * shape;
+  }
+
+  /// The shape's height over [x], off the span that holds it: span `j` is
+  /// the quadratic Bezier from the middle of edge `j - 1` (the first point,
+  /// for the first) over point `j` to the middle of edge `j` (the last
+  /// point, for the last).
+  double _shapeAt(double x) {
+    final last = points.length - 1;
+    if (last == 1) {
+      final from = points[0];
+      final to = points[1];
+      return from.y + (to.y - from.y) * (x - from.x) / (to.x - from.x);
+    }
+    var start = points[0];
+    for (var j = 1; ; j += 1) {
+      final pull = points[j];
+      final next = points[j + 1];
+      if (j + 1 == last) {
+        return x >= next.x ? next.y : _bezierYAt(x, start, pull, next);
+      }
+      final end = BrushCurvePoint(
+        (pull.x + next.x) / 2,
+        (pull.y + next.y) / 2,
+      );
+      if (x <= end.x) {
+        return _bezierYAt(x, start, pull, end);
+      }
+      start = end;
+    }
   }
 
   /// Whether this is the plain 1:1 line (the migrated "toggle ON" shape).
@@ -294,38 +319,21 @@ class BrushPressureCurve {
       '${maximum == 1.0 ? '' : ', max: $maximum'})';
 }
 
-/// Fritsch–Carlson monotone tangents: interior slopes average the
-/// neighboring secants (zero across a sign change), then the (α, β)
-/// circle limiter caps them so no segment overshoots its endpoints.
-List<double> _monotoneTangents(List<BrushCurvePoint> points) {
-  final n = points.length;
-  final deltas = List<double>.generate(
-    n - 1,
-    (i) => (points[i + 1].y - points[i].y) / (points[i + 1].x - points[i].x),
-  );
-  final tangents = List<double>.filled(n, 0.0);
-  tangents[0] = deltas[0];
-  tangents[n - 1] = deltas[n - 2];
-  for (var i = 1; i < n - 1; i += 1) {
-    final previous = deltas[i - 1];
-    final next = deltas[i];
-    tangents[i] = previous * next <= 0.0 ? 0.0 : (previous + next) / 2.0;
-  }
-  for (var i = 0; i < n - 1; i += 1) {
-    final delta = deltas[i];
-    if (delta == 0.0) {
-      tangents[i] = 0.0;
-      tangents[i + 1] = 0.0;
-      continue;
-    }
-    final alpha = tangents[i] / delta;
-    final beta = tangents[i + 1] / delta;
-    final magnitude = alpha * alpha + beta * beta;
-    if (magnitude > 9.0) {
-      final tau = 3.0 / math.sqrt(magnitude);
-      tangents[i] = tau * alpha * delta;
-      tangents[i + 1] = tau * beta * delta;
-    }
-  }
-  return tangents;
+/// The height of the quadratic Bezier from [start] over [pull] to [end]
+/// where it stands over [x]. Its x rises with its parameter t — the three
+/// x's do — so one t answers: the root of `a t² + b t = x - start.x`, in
+/// the form that stays exact where `a` vanishes.
+double _bezierYAt(
+  double x,
+  BrushCurvePoint start,
+  BrushCurvePoint pull,
+  BrushCurvePoint end,
+) {
+  final a = start.x - 2 * pull.x + end.x;
+  final b = 2 * (pull.x - start.x);
+  final d = x - start.x;
+  final root = math.sqrt(math.max(0.0, b * b + 4 * a * d));
+  final t = (2 * d / (b + root)).clamp(0.0, 1.0);
+  final u = 1 - t;
+  return u * u * start.y + 2 * u * t * pull.y + t * t * end.y;
 }

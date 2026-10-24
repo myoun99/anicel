@@ -370,9 +370,13 @@ BrushPreset? _presetFromBrushDescriptor(
     final angleControl = _controlOf(angleVariance);
     // Photoshop's control list runs Off · Fade · Pen Pressure · Pen Tilt ·
     // Stylus Wheel · Rotation · Initial Direction · Direction, so 3 is the
-    // pen's lean — Clip Studio's ペンの方向 (F-176-Q1).
+    // pen's lean — Clip Studio's ペンの方向 (F-176-Q1) — and 5 its turn
+    // about the barrel, ペン軸の回転 (F-176-Q9).
     if (angleControl == 3) {
       rotationMode = BrushTipRotationMode.penTilt;
+    }
+    if (angleControl == 5) {
+      rotationMode = BrushTipRotationMode.penTwist;
     }
     if (angleControl == 6 || angleControl == 7) {
       rotationMode = BrushTipRotationMode.direction;
@@ -408,6 +412,12 @@ BrushPreset? _presetFromBrushDescriptor(
   // actual use (Mltp·Drkn·Ovrl·CBrn·CDdg and more), all of which the table
   // below already reads for the main brush. Until the engine had a field
   // for it every one of them arrived as a plain multiply.
+  //
+  // ↩️Not all of them: 🔬counted again 2026-10-17 over the user's nine packs
+  // (brush-fidelity) — Mltp 52 · Ovrl 50 · CBrn 46 · linearHeight 37 · Drkn
+  // 12 · linearBurn 11 · hardMix 10 · CDdg 2. linearBurn and hardMix read
+  // since the brush learned them; linearHeight, a mode Photoshop offers a
+  // dual tip and a texture and nothing else, still arrives as multiply.
   BrushTipMask? dualMask;
   var dualMaskScale = 1.0;
   var dualCompositeMode = SeparableBlendMode.multiply;
@@ -567,10 +577,17 @@ BrushPreset? _presetFromBrushDescriptor(
 
 /// The blend a Photoshop brush composites with.
 ///
-/// Photoshop names its blends with the PSD format's four-character keys.
-/// An unrecognised key falls back to [BrushBlendMode.color] — which is why
-/// Photoshop's "Clear" is deliberately absent: guessing its key wrong would
-/// turn a paint brush into an eraser.
+/// Photoshop names its blends with the PSD format's four-character keys,
+/// and the modes newer than the format's first with string ids
+/// (`linearBurn`, `blendSubtraction` …) — the `BlnM` enumeration's own
+/// terms. An unrecognised key falls back to [BrushBlendMode.color] — which
+/// is why Photoshop's "Clear" is deliberately absent: guessing its key
+/// wrong would turn a paint brush into an eraser.
+///
+/// ⚠️Only `Nrml` and `Mltp` occur as a MAIN blend in the user's nine packs
+/// (🔬2026-10-17); `linearBurn` and `hardMix` are measured there as DUAL
+/// blends, read through this same table. The rest are the enumeration's
+/// documented terms, unmeasured.
 ///
 /// ⛔This used to answer "does this brush PIN a blend?" and returned null for
 /// 'Nrml'. It does not any more (유저 2026-09-08) — see the Clip Studio
@@ -584,6 +601,8 @@ BrushBlendMode _blendModeOf(Object? value) {
     'Mltp' => BrushBlendMode.multiply,
     'Drkn' => BrushBlendMode.darken,
     'CBrn' => BrushBlendMode.colorBurn,
+    'linearBurn' => BrushBlendMode.linearBurn,
+    'blendSubtraction' => BrushBlendMode.subtract,
     'Lghn' => BrushBlendMode.lighten,
     'Scrn' => BrushBlendMode.screen,
     'CDdg' => BrushBlendMode.colorDodge,
@@ -592,7 +611,18 @@ BrushBlendMode _blendModeOf(Object? value) {
     'SftL' => BrushBlendMode.softLight,
     'HrdL' => BrushBlendMode.hardLight,
     'Dfrn' => BrushBlendMode.difference,
+    'vividLight' => BrushBlendMode.vividLight,
+    'linearLight' => BrushBlendMode.linearLight,
+    'pinLight' => BrushBlendMode.pinLight,
+    'hardMix' => BrushBlendMode.hardMix,
     'Xclu' => BrushBlendMode.exclusion,
+    'darkerColor' => BrushBlendMode.darkerColor,
+    'lighterColor' => BrushBlendMode.lighterColor,
+    'blendDivide' => BrushBlendMode.divide,
+    'H   ' => BrushBlendMode.hue,
+    'Strt' => BrushBlendMode.saturation,
+    'Clr ' => BrushBlendMode.chroma,
+    'Lmns' => BrushBlendMode.luminosity,
     'Bhnd' => BrushBlendMode.behind,
     _ => BrushBlendMode.color,
   };

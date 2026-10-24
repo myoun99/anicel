@@ -8,6 +8,27 @@ import 'app_confirm_dialog.dart';
 /// The seam tests drive instead of a native dialog.
 typedef LooseFilePicker = Future<List<String>> Function();
 
+/// Tells the user which files were turned away, and why.
+///
+/// ⛔ONE NOTICE, TWO PICKERS. The folder-grant flow and the open flow each
+/// refused the same way and each had to name the same window key; only one
+/// of them said why the paths go in the disclosure rather than the
+/// sentence.
+///
+/// ⚠️The paths go in [NoticeDetails], not the message: one refusal reads
+/// the same as forty, and forty do not push the buttons off screen.
+Future<void> noticeUnsupportedFiles(
+  BuildContext context,
+  List<String> refused,
+  List<String> supportedExtensions,
+) => showAppNotice(
+  context,
+  title: AppText.strings.unsupportedFileTitle,
+  message: AppText.strings.unsupportedFileMessage(supportedExtensions),
+  details: [NoticeDetails(refused)],
+  windowKey: const ValueKey<String>('unsupported-file-notice'),
+);
+
 /// 🚨★★★**EVERY PICKER SHOWS EVERY FILE, AND THE REFUSAL COMES AFTER.**
 ///
 /// 유저 2026-08-29: 「임포트든 열기든 뭐든 픽커는 pdf만 표시한다던가. 특히
@@ -33,31 +54,6 @@ typedef LooseFilePicker = Future<List<String>> Function();
 ///
 /// ⚠️[supportedExtensions] is lower-case and without dots. An empty list
 /// accepts anything, for a caller that judges the CONTENT rather than the
-
-/// Tells the user which files were turned away, and why.
-///
-/// ⛔ONE NOTICE, TWO PICKERS. The folder-grant flow and the open flow each
-/// refused the same way and each had to name the same window key; only one
-/// of them said why the paths go in the disclosure rather than the
-/// sentence.
-///
-/// ⚠️The paths go in [AppNoticeDetails], not the message: one refusal
-/// reads the same as forty, and forty do not push the buttons off screen.
-Future<void> noticeUnsupportedFiles(
-  BuildContext context,
-  List<String> refused,
-  List<String> supportedExtensions,
-) => showAppNotice(
-  context,
-  title: AppText.strings.unsupportedFileTitle,
-  message: AppText.strings.unsupportedFileMessageTemplate.replaceAll(
-    '{kinds}',
-    supportedExtensions.map((extension) => '.$extension').join(', '),
-  ),
-  details: [NoticeDetails(refused)],
-  windowKey: const ValueKey<String>('unsupported-file-notice'),
-);
-
 /// name.
 Future<List<String>> openSupportedFiles(
   BuildContext context, {

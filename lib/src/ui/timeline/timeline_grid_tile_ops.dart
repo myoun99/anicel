@@ -308,6 +308,9 @@ class TimelineGridTileOpWriter {
       ..add(rgba);
   }
 
+  /// The ops another writer built, written on after these.
+  void append(Int32List ops) => _words.addAll(ops);
+
   Int32List build() => Int32List.fromList(_words);
 }
 

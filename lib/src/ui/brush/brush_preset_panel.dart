@@ -14,6 +14,7 @@ import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../../models/brush_library_tabs.dart';
 import '../../models/reorder_target.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
@@ -24,6 +25,7 @@ import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningMultiDragGestureRecognizer;
 import '../widgets/content_scrollbar.dart';
+import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
@@ -39,6 +41,7 @@ import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../sliced_value_listenable_builder.dart';
+import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 
 /// Which row elements the brush list shows (every combination except
 /// all-hidden is allowed — the options menu disables the last visible one),
@@ -231,10 +234,8 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 
   List<BrushPreset>? _visibleKept;
   Object? _visibleKeptFor;
-  Widget? _listKept;
-  Object? _listKeptFor;
-  Widget? _railKept;
-  Object? _railKeptFor;
+  /// The list and the rail as built, and what from ([keptWhileSame]).
+  final Map<Symbol, Kept<Object?>> _kept = {};
 
   // View options are UI state, never project data. They were also kept out
   // of every file — "local to the panel" — and that half F-73 ① reversed
@@ -349,11 +350,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   BrushGroupId? _ownerGroupId(BrushPreset preset) =>
       preset.groupShownAmong(widget.groups);
 
-  /// Whether the root section gets a tab: only when something is actually
-  /// in it. A library whose brushes are all filed shows no leftovers tab.
-  bool get _hasRootTab =>
-      widget.presets.any((preset) => _ownerGroupId(preset) == null);
-
   /// The group the rail is standing in, or null for the ROOT section.
   ///
   /// The panel's group verbs act on this — the tab you are looking at is the
@@ -366,15 +362,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         : widget.groups.where((group) => group.id == id).firstOrNull;
   }
 
-  /// The rail's tabs, in order: the groups as the library lists them, then
-  /// the root section last — folders first, loose items after, the way a
-  /// file tree reads.
-  ///
-  /// A library with no groups shows NO rail: a lone "Default" tab would be a
-  /// control with nothing to choose between, taking width from the brushes.
-  List<BrushGroup?> get _tabs => widget.groups.isEmpty
-      ? const <BrushGroup?>[]
-      : [...widget.groups, if (_hasRootTab) null];
+  /// The rail's tabs ([brushLibraryTabs]) — none, and so no rail, for a
+  /// library with no groups.
+  List<BrushGroup?> get _tabs =>
+      brushLibraryTabs(widget.presets, widget.groups);
 
   /// The tab the held brush shows in — a record, since the root section's
   /// is a null group — or null while the hand holds no brush the library
@@ -570,10 +561,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           keys: keys,
           title: AppText.strings.brDeleteGroup,
           titleIcon: Icons.delete_outline,
-          message: memberCount == 0
-              ? 'Delete the empty group "${group.name}"?'
-              : 'Delete "${group.name}" and the $memberCount '
-                    '${memberCount == 1 ? 'brush' : 'brushes'} inside it?',
+          message: AppText.strings.brDeleteGroupBody(group.name, memberCount),
         ),
         accept: ConfirmChoice(AppText.strings.commonDelete),
       ),
@@ -928,8 +916,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// panel's proportions the rail is also what scales.
   /// The rail, kept as built while nothing it is built from changes — a
   /// pick inside the open group changes none of it (see [_selection]).
-  Widget _buildRail() {
-    final key = (
+  Widget _buildRail() => keptWhileSame(
+    _kept,
+    #rail,
+    (
       widget.groups,
       widget.presets,
       _openGroupId,
@@ -939,14 +929,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       _railShowName,
       _railDragging,
       widget.tool,
-    );
-    final kept = _railKept;
-    if (kept != null && _railKeptFor == key) {
-      return kept;
-    }
-    _railKeptFor = key;
-    return _railKept = _buildRailFresh();
-  }
+    ),
+    _buildRailFresh,
+  );
 
   Widget _buildRailFresh() {
     final tabs = _tabs;
@@ -962,7 +947,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       // was no bar at all.
       width:
           (_railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent) +
-          AppScrollbarLane.wide,
+          AppScrollbarLane.thin,
       child: ContentScrollbar(
         controller: _railController,
         builder: (context, controller) => ReorderableListView.builder(
@@ -1059,23 +1044,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// The brush grid, kept as built while nothing it is built from changes.
   /// A pick changes none of it: the rows read the selection for themselves
   /// ([_selection]).
-  Widget _buildList(List<BrushPreset> visible, bool reorderable) {
-    final key = (
-      visible,
-      reorderable,
-      _showTipIcon,
-      _showStrokePreview,
-      _showName,
-      widget.onPresetApplied,
-      widget.tool,
-    );
-    final kept = _listKept;
-    if (kept != null && _listKeptFor == key) {
-      return kept;
-    }
-    _listKeptFor = key;
-    return _listKept = _buildListFresh(visible, reorderable);
-  }
+  Widget _buildList(List<BrushPreset> visible, bool reorderable) =>
+      keptWhileSame(
+        _kept,
+        #list,
+        (
+          visible,
+          reorderable,
+          _showTipIcon,
+          _showStrokePreview,
+          _showName,
+          widget.onPresetApplied,
+          widget.tool,
+        ),
+        () => _buildListFresh(visible, reorderable),
+      );
 
   Widget _buildListFresh(List<BrushPreset> visible, bool reorderable) {
     // 🚨H37 (유저 2026-09-11): 「이름이나 스트로크 프리뷰 없애고 팁 이미지?
@@ -1182,7 +1165,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   ) {
     return EditorPanelFrame(
       title: AppText.strings.brBrushesTitle,
-      bodyPadding: const EdgeInsets.all(5),
+      // 5 off each edge of the panel — and where a splitter lies along one,
+      // the room the tab group already leaves it is that 5 (F-452: this
+      // library was the one whose bar already cleared the band, so it
+      // looks as it did). The header stands between the body and the top.
+      bodyPadding: _offTheEdges(DockSplitterEdges.of(context)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1779,3 +1766,15 @@ class _BrushPresetRow extends StatelessWidget {
     );
   }
 }
+
+/// How far the library's body stands off the panel's edges.
+const double _libraryMargin = 5;
+
+/// The body's padding: [_libraryMargin] from the panel's sides and bottom,
+/// less what [spared] already keeps clear there.
+EdgeInsets _offTheEdges(EdgeInsets spared) => EdgeInsets.fromLTRB(
+  (_libraryMargin - spared.left).clamp(0, _libraryMargin),
+  _libraryMargin,
+  (_libraryMargin - spared.right).clamp(0, _libraryMargin),
+  (_libraryMargin - spared.bottom).clamp(0, _libraryMargin),
+);

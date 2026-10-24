@@ -3,6 +3,7 @@ import 'frame_clipboard.dart' show FrameBoard;
 import 'key_clipboard.dart' show KeyBoard;
 import 'layer_clipboard.dart' show LayerBoard;
 import 'pixel_board.dart';
+import 'text_clipboard.dart' show TextBoard;
 
 /// THE APP'S CLIPBOARD — what the last copy of each kind put in hand, ONE
 /// for every open project (I-7).
@@ -38,9 +39,12 @@ import 'pixel_board.dart';
 /// 통일하고」 — the KEY board is the pill's third, and the hand holds one of
 /// the three. ↩️The two let each other go by name, a pair; a third made the
 /// rule a list.
+///
+/// 🗣️I-101 (유저 2026-10-15): 「텍스트를 선택한 상태(변형박스로 변한
+/// 상태)에서 복사 가능」 — the TEXT board is the pill's fourth, on the list.
 class AppClipboard {
   AppClipboard() {
-    final letGoes = [frames.letGo, layers.letGo, keys.letGo];
+    final letGoes = [frames.letGo, layers.letGo, keys.letGo, texts.letGo];
     void Function() lettingGoAllBut(void Function() own) => () {
       for (final letGo in letGoes) {
         if (letGo != own) {
@@ -51,6 +55,7 @@ class AppClipboard {
     frames.onTake = lettingGoAllBut(frames.letGo);
     layers.onTake = lettingGoAllBut(layers.letGo);
     keys.onTake = lettingGoAllBut(keys.letGo);
+    texts.onTake = lettingGoAllBut(texts.letGo);
   }
 
   final FrameBoard frames = FrameBoard();
@@ -58,6 +63,9 @@ class AppClipboard {
 
   /// The keys a copy on a lane row took ([KeyBoard], F-388).
   final KeyBoard keys = KeyBoard();
+
+  /// The text a copy of one held by its box took ([TextBoard], I-101).
+  final TextBoard texts = TextBoard();
 
   /// 픽셀 복사's board (I-55) — a third payload with a third set of verbs,
   /// which the frame copy neither reads nor overwrites (유저 2026-10-01:

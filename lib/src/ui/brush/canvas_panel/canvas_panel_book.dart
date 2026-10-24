@@ -83,11 +83,19 @@ class _CanvasPanelBook {
 
   /// After the view moved: the reader's page as [pageReadAt] answers for
   /// the span of the book the window shows. A view nobody has framed says
-  /// nothing — the host's page is the one it is fitted to.
+  /// nothing — the host's page is the one it is fitted to — and nor does
+  /// one a framing is on its way to replace ([BrushCanvasPanel.autoFrame]):
+  /// it is the last document's.
+  ///
+  /// 🚨F-382, reopened by the 10-23 hands-on (「줌은 그대로인데 쪽은 1 /
+  /// 120」): the next document's paper held the last one's view the frame
+  /// it arrived, and the page read off it was written over the page the
+  /// file was left at — which the framing then turned back to.
   void followView() {
     final book = _state.widget.book;
     final viewport = _state._viewportState;
     if (_turning ||
+        _state._pendingAutoFrame != null ||
         book == null ||
         book.pages.length == 0 ||
         viewport.viewportNotifier.value == null) {

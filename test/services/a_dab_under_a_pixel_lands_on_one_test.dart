@@ -92,6 +92,63 @@ void main() {
       expect(lifted.opacity, 0.8);
     });
 
+    // a-one-pixel-dab-drops-out-by-where-it-lies (2026-10-24): a one-pixel
+    // aliased line along a row's edge vanished whole.
+    test('🚨anti-aliasing off: a round dab too small to be sure of a pixel '
+        'centre stands on the centre of the pixel its own centre is in — '
+        'one that reaches √2/2 stays where it is', () {
+      CanvasPoint landed(
+        double size, {
+        double hardness = 1,
+        double roundness = 1,
+        BrushAntiAlias antiAlias = BrushAntiAlias.none,
+        BrushTipMask? tipMask,
+      }) => liftedToOnePixel(
+        BrushDab(
+          center: CanvasPoint(x: 10.0, y: 7.0),
+          color: 0xFF000000,
+          size: size,
+          opacity: 1,
+          flow: 1,
+          hardness: hardness,
+          pressure: 1,
+          sequence: 0,
+          tipShape: BrushTipShape.round,
+          roundness: roundness,
+          antiAlias: antiAlias,
+          tipMask: tipMask,
+        ),
+      ).center;
+      final corner = CanvasPoint(x: 10.0, y: 7.0);
+      final onItsPixel = CanvasPoint(x: 10.5, y: 7.5);
+
+      expect(landed(1), onItsPixel, reason: 'the one-pixel dab');
+      expect(landed(0.3), onItsPixel, reason: 'lifted to it first');
+      expect(landed(1.41), onItsPixel, reason: 'reaching 0.705');
+      expect(landed(1.42), corner, reason: 'reaching 0.71 — sure of it');
+      expect(landed(2, hardness: 0), onItsPixel, reason: 'soft: reaching 0.5');
+      expect(landed(2, roundness: 0.5), onItsPixel, reason: 'its narrow axis');
+      expect(landed(2), corner);
+      expect(
+        landed(1, antiAlias: BrushAntiAlias.high),
+        corner,
+        reason: 'anti-aliased: board a-one-pixel-dab-drops-out-by-where-it-'
+            'lies-Q1',
+      );
+      expect(
+        landed(
+          1,
+          tipMask: BrushTipMask(
+            id: 'grain',
+            size: 4,
+            alpha: Uint8List(16)..fillRange(0, 16, 255),
+          ),
+        ),
+        corner,
+        reason: '⛔a raster tip\'s centre may be a hole in its grain',
+      );
+    });
+
     test('a pixel or more, no size at all, and a stamp are left as they '
         'are', () {
       for (final size in [1.0, 2.5, 0.0]) {
@@ -142,18 +199,19 @@ void main() {
     });
   });
 
-  /// The alpha a level line lays on a 64 × 64 canvas, pixel by pixel:
-  /// [width] across, through [y], forty pixels on from x [from] — laid by
+  /// The alpha a line lays on a 64 × 64 canvas, pixel by pixel: [width]
+  /// across, from ([from], [y]) forty pixels on and [rise] down — laid by
   /// the interpolator and resolved through the cache, as the canvas lays a
   /// stroke's dabs.
   Uint8List line(
     double width, {
     required double y,
     required double from,
+    double rise = 0,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
   }) {
     BrushDab at(double x, int sequence) => BrushDab(
-      center: CanvasPoint(x: x, y: y),
+      center: CanvasPoint(x: x, y: y + (x - from) / 40 * rise),
       color: 0xFF000000,
       size: width,
       opacity: 1,
@@ -266,6 +324,41 @@ void main() {
         ),
         isNotEmpty,
         reason: 'premise: it draws',
+      );
+    });
+
+    // Measured before ([onItsPixel]): along a row's edge every column was
+    // empty, and at 10° 14 of 37.
+    test('🚨anti-aliasing off: a one-pixel line lays a pixel in every column '
+        'wherever it lies — along a row\'s edge one row of them — '
+        '${route.name}', () {
+      useRoute();
+      const none = BrushAntiAlias.none;
+      // Level on a row's edge, then 5°, 10° and 30° down from a corner.
+      for (final rise in [0.0, 3.5, 7.05, 23.1]) {
+        final alpha = line(1, y: 16, from: 10, rise: rise, antiAlias: none);
+        final empty = [
+          for (var x = 12; x < 49; x += 1)
+            if (![
+              for (var row = 0; row < 64; row += 1) alpha[row * 64 + x],
+            ].any((each) => each > 0))
+              x,
+        ];
+        expect(empty, isEmpty, reason: 'empty columns, falling $rise');
+        expect(
+          alpha.where((each) => each > 0 && each < 255),
+          isEmpty,
+          reason: 'whole pixels only (H39), falling $rise',
+        );
+      }
+      final level = line(1, y: 16, from: 10, antiAlias: none);
+      expect(
+        {
+          for (var i = 0; i < level.length; i += 1)
+            if (level[i] > 0) i ~/ 64,
+        },
+        hasLength(1),
+        reason: 'one pixel wide',
       );
     });
   }

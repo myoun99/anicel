@@ -5,9 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import 'helpers/home_page_probes.dart';
 import 'helpers/app_icon_button_probe.dart';
+
+/// The cut note window's title, which finds it open — 「메모 편집 (컷)」
+/// since a timeline window names what it does to what (I-24-open-entry).
+String get _noteTitle => AppText.strings.windowTitleOn(
+  AppText.strings.editNoteAction,
+  AppText.strings.tlCut,
+);
 
 void main() {
   testWidgets('long multi-line cut note remains editable and savable', (
@@ -119,7 +127,7 @@ Line 8''';
     await saveCutNote(tester, 'Old note');
     await openCutNoteDialog(tester);
 
-    expect(find.text('Edit cut note'), findsOneWidget);
+    expect(find.text(_noteTitle), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('cut-note-text-field')),
       findsOneWidget,
@@ -149,7 +157,7 @@ Line 8''';
 
       await saveCutNote(tester, 'New note');
 
-      expect(find.text('Edit cut note'), findsNothing);
+      expect(find.text(_noteTitle), findsNothing);
       expect(await currentCutNoteFromDialog(tester), 'New note');
       await expectActiveCutName(tester, '1');
       expect(await activeCutIdOf(tester), const CutId('default-cut-1'));
@@ -180,7 +188,7 @@ Line 8''';
       );
       await tapCutNoteCancelButton(tester);
 
-      expect(find.text('Edit cut note'), findsNothing);
+      expect(find.text(_noteTitle), findsNothing);
       expect(await currentCutNoteFromDialog(tester), '');
       await expectActiveCutName(tester, '1');
       expect(
@@ -202,7 +210,7 @@ Line 8''';
     expect(cutNoteFieldText(tester), '');
     await tapCutNoteSaveButton(tester);
 
-    expect(find.text('Edit cut note'), findsNothing);
+    expect(find.text(_noteTitle), findsNothing);
     expect(await currentCutNoteFromDialog(tester), '');
     expect(
       await isActionButtonEnabled(
@@ -219,10 +227,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    await tapCutCommandButton(
-      tester,
-      const ValueKey<String>('rename-cut-button'),
-    );
+    await openRenameCutDialog(tester);
 
     expect(
       find.byKey(const ValueKey<String>('rename-cut-dialog')),

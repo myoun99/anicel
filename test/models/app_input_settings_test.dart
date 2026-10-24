@@ -38,6 +38,32 @@ void main() {
     expect(AppInput.timelineEditPanDevices, contains(PointerDeviceKind.stylus));
   });
 
+  // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」 — and a file written
+  // before the choice was there, or naming one this build has not got, reads
+  // the crosshair too.
+  test('the drawing tools wear the crosshair until the user picks another', () {
+    expect(const AppInputSettings().drawingCursor, DrawingCursor.crosshair);
+    final before = const AppInputSettings(
+      drawingCursor: DrawingCursor.pen,
+    ).toJson()..remove('drawingCursor');
+    expect(
+      AppInputSettings.fromJson(before).drawingCursor,
+      DrawingCursor.crosshair,
+    );
+    expect(
+      AppInputSettings.fromJson({
+        ...before,
+        'drawingCursor': 'laser',
+      }).drawingCursor,
+      DrawingCursor.crosshair,
+    );
+    // The corpus was written while the outline was the only cursor.
+    expect(
+      AppInputSettings.testCorpusBaseline.drawingCursor,
+      DrawingCursor.brush,
+    );
+  });
+
   // 🗣️I-61-Q3 (유저 2026-10-14): 「기본값은 off」 — and a file written before
   // the switch was there reads it off too.
   test('a finger resting is no stroke\'s Shift until the switch says so', () {
@@ -45,6 +71,15 @@ void main() {
     final before = const AppInputSettings().toJson()
       ..remove('strokeFingerModifier');
     expect(AppInputSettings.fromJson(before).strokeFingerModifier, isFalse);
+  });
+
+  // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」 — an option, so
+  // the fingers work until the user says otherwise, and a file written
+  // before the switch was there reads them working too.
+  test('the fingers are heard until the switch says otherwise', () {
+    expect(const AppInputSettings().touchIgnored, isFalse);
+    final before = const AppInputSettings().toJson()..remove('touchIgnored');
+    expect(AppInputSettings.fromJson(before).touchIgnored, isFalse);
   });
 
   test('json + store round-trips', () async {
@@ -114,32 +149,65 @@ void main() {
       'current default; customized lists persist', () {
     final legacy = AppInputSettings.fromJson(const {
       'zoomSnapPercents': [50, 75, 100, 125, 150, 200, 300, 400],
-      'brushSizeSnaps': [2, 4, 8, 16, 32, 64],
     });
     expect(
       legacy.zoomSnapPercents,
       AppInputSettings.defaultZoomSnapPercents,
       reason: 'the expanded default (10/25 added) reaches old files',
     );
+    final lastDefault = AppInputSettings.fromJson(const {
+      'zoomSnapPercents': [10, 25, 50, 75, 100, 125, 150, 200, 300, 400],
+    });
     expect(
-      legacy.brushSizeSnaps,
-      AppInputSettings.defaultBrushSizeSnaps,
-      reason: 'the extended ladder (128/256/512) reaches old files',
+      lastDefault.zoomSnapPercents,
+      AppInputSettings.defaultZoomSnapPercents,
+      reason: 'F-391: 800 · 1600 reach a file that kept the default',
     );
 
     final custom = AppInputSettings.fromJson(const {
       'zoomSnapPercents': [33, 66, 99],
-      'brushSizeSnaps': [5, 10, 20],
     });
     expect(custom.zoomSnapPercents, [33, 66, 99]);
-    expect(custom.brushSizeSnaps, [5, 10, 20]);
   });
 
-  test('PEN-15: the default zoom list reaches below 50% (the "snaps to 50" '
-      'report) and the brush ladder past 64', () {
+  test('PEN-15 · F-391: the default zoom list reaches below 50% (the "snaps '
+      'to 50" report) and up to the view\'s own end', () {
     expect(AppInputSettings.defaultZoomSnapPercents, contains(10));
     expect(AppInputSettings.defaultZoomSnapPercents, contains(25));
-    expect(AppInputSettings.defaultBrushSizeSnaps, containsAll([128, 256]));
+    // 🗣️F-391 (유저 2026-10-17): 「줌 스냅 저번 기본 캔버스 줌 되도록 800
+    // 1600% 이런거 추가해주고」 — 1600% is where a view stops.
+    expect(AppInputSettings.defaultZoomSnapPercents, containsAll([800, 1600]));
+    expect(AppInputSettings.defaultZoomSnapPercents.last, 1600);
+  });
+
+  group('🗣️F-391: a rotation step lands on the snap\'s grid 「회전 스냅은 '
+      '하나만」', () {
+    double step(double value, {required bool up}) =>
+        AppInput.stepOnTheGrid(value, 15, up: up);
+
+    test('from a line it moves to the NEXT one, either way', () {
+      expect(step(15, up: true), 30);
+      expect(step(15, up: false), 0);
+      expect(step(0, up: false), -15);
+    });
+
+    test('between lines it moves to the nearest one that way', () {
+      expect(step(7, up: true), 15);
+      expect(step(7, up: false), 0);
+      expect(step(-7, up: true), 0);
+      expect(step(-7, up: false), -15);
+    });
+
+    test('an angle that came back through the readout\'s grid is still ON '
+        'its line', () {
+      expect(step(14.9999999, up: true), 30);
+      expect(step(15.0000001, up: false), 0);
+    });
+
+    test('the grid is the step it is given', () {
+      expect(AppInput.stepOnTheGrid(10, 45, up: true), 45);
+      expect(AppInput.stepOnTheGrid(90, 90, up: true), 180);
+    });
   });
 
   group('🗣️I-19: the zoom step walks the snap list 「설정에 줌 스냅 설정한대로」',
@@ -167,9 +235,9 @@ void main() {
     });
 
     test('past either end there is no step', () {
-      expect(step(400, up: true), isNull);
+      expect(step(1600, up: true), isNull);
       expect(step(10, up: false), isNull);
-      expect(step(1600, up: false), 400);
+      expect(step(2000, up: false), 1600);
       expect(AppInput.stepThroughList(100, const [], up: true), isNull);
     });
 
@@ -260,11 +328,16 @@ void main() {
         navigationModifierRotationLock: !base.navigationModifierRotationLock,
       ),
       'zoomCeilingOn': base.copyWith(zoomCeilingOn: !base.zoomCeilingOn),
+      'touchIgnored': base.copyWith(touchIgnored: !base.touchIgnored),
       // Not a bool, and held to the same rule: a lock whose NUMBER was not
       // in `==` could be typed and never stored.
       'zoomCeilingPercent': base.copyWith(
         zoomCeilingPercent: base.zoomCeilingPercent + 50,
       ),
+      // I-54: every choice, each one a field value of its own.
+      for (final cursor in DrawingCursor.values)
+        if (cursor != base.drawingCursor)
+          'drawingCursor:${cursor.name}': base.copyWith(drawingCursor: cursor),
     };
     flipped.forEach((field, other) {
       expect(

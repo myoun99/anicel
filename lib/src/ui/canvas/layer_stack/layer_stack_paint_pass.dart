@@ -103,12 +103,14 @@ class _SurfaceSlot {
 
 /// Who paints a node's children under a walk — the plain walk, or the split
 /// walk that descends the chain enclosing the active layer and replays a
-/// recording for the rest.
+/// recording for the rest — [within] the node's own buffer, which is what
+/// reads them ([_LayerStackPaintPass._bufferBoundsFor]).
 typedef _ChildPainter =
     void Function(
       Canvas canvas,
       List<CompositeNode<_PaintRow>> children,
       double rasterScale,
+      Rect within,
     );
 
 /// ONE PAINT OF THE LAYER STACK — the walk that draws the composite tree
@@ -381,8 +383,8 @@ class _LayerStackPaintPass {
         // that works. See [DisplayBufferCache.derivedDepth] and
         // [DisplayBufferCache.promotedCount]. `drawn` — how many of the
         // patches rastered no head ([DisplayBufferCache.drawnCount]) — for
-        // the same reason again, and `apart` — how many recomposes went
-        // apart ([DisplayBufferCache.composedApartCount]) — too.
+        // the same reason again. ↩️And `apart`, how many recomposes went
+        // apart, while a blend could (F-287).
         final cadence =
             'full~${cache.fullCount ~/ 8}'
             ' patched~${cache.patchedCount ~/ 32}'
@@ -393,7 +395,6 @@ class _LayerStackPaintPass {
             'buf full=${cache.fullCount}'
             ' patched=${cache.patchedCount}'
             ' drawn=${cache.drawnCount}'
-            ' apart=${cache.composedApartCount}'
             ' carried=${cache.scrolledCount}'
             ' chain=${cache.derivedDepth}'
             ' real=${cache.promotedCount}',
@@ -522,22 +523,33 @@ class _LayerStackPaintPass {
   }
 
   void _blitBuffer(Canvas canvas, _BufferImage buffer) {
+    final source = Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight);
     try {
-      canvas.drawImageRect(
-        buffer.image,
-        Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight),
-        buffer.rect,
-        Paint()
-          // The residual, not the device scale: below 100% the buffer is
-          // a level, and this blit reduces it by (0.5, 1] — `none` where
-          // the level lands 1:1 (안 1, 2026-09-16).
-          ..filterQuality = _bufferQuality
-          // The buffer's edge IS the canvas's edge on screen, cut by the
-          // same law as the paper's (F-67-paper-edge): under nearest on
-          // an axis-aligned view it is one more texel boundary, decided
-          // by pixel centres, not a blended line.
-          ..isAntiAlias = _bufferEdgeAntiAliased,
-      );
+      // The buffer's edge IS the canvas's edge on screen, cut by the same
+      // law as the paper's (F-67-paper-edge): under nearest on an
+      // axis-aligned view it is one more texel boundary, decided by pixel
+      // centres, not a blended line.
+      if (_bufferEdgeAntiAliased) {
+        canvas.drawImageRect(
+          buffer.image,
+          source,
+          buffer.rect,
+          Paint()
+            // The residual, not the device scale: below 100% the buffer is
+            // a level, and this blit reduces it by (0.5, 1] — `none` where
+            // the level lands 1:1 (안 1, 2026-09-16).
+            ..filterQuality = _bufferQuality,
+        );
+      } else {
+        drawImageRectOnThePixelGrid(
+          canvas,
+          buffer.image,
+          source,
+          buffer.rect,
+          filterQuality: _bufferQuality,
+          pixelRatio: _painter.devicePixelRatio,
+        );
+      }
     } finally {
       // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
       // this frame's display list, and the engine holds its own reference
@@ -615,8 +627,10 @@ class _LayerStackPaintPass {
   /// nodes. The slot's own route runs INSIDE the pose wrap, so the view is
   /// brought into the slot instead ([_SurfaceSlot.canvasToSlot]). Read as
   /// slot coordinates, a posed row's canvas rect rastered the wrong part of
-  /// the slot and cut its drawing away (found in F-243's review: every posed
-  /// row in an advanced blend takes this route since).
+  /// the slot and cut its drawing away (found in F-243's review, when every
+  /// posed row in an advanced blend took this route — ↩️until such a row
+  /// painted normal over its backdrop; a colour key below a painted effect
+  /// and add's `plus` on a buffered row still take it).
   Rect _slotBufferBounds(_SurfaceSlot slot, _SurfaceRowPaint paint) {
     final intoSlot = slot.canvasToSlot;
     final view = intoSlot == null
@@ -626,7 +640,6 @@ class _LayerStackPaintPass {
     final covered =
         inkCropDrawsTheSame(
           placement: paint.placement,
-          blendMode: paint.blendMode,
           effects: paint.effects,
         )
         ? drawn
@@ -644,6 +657,7 @@ class _LayerStackPaintPass {
         CompositeLeaf() => null,
         CompositeGroup(:final children) => _activeRowIn(children),
         CompositeAdjustment(:final children) => _activeRowIn(children),
+        CompositeBackdropBlend(:final children) => _activeRowIn(children),
       };
       if (found != null) {
         return found;
@@ -677,7 +691,11 @@ class _LayerStackPaintPass {
     // buffer below the page, and the paper went with it.
     var extent = _canvasRect;
     for (final node in _painter.nodes) {
-      final rect = _bufferBoundsFor(node, activeSurfaceExtent);
+      final rect = _bufferBoundsFor(
+        node,
+        activeSurfaceExtent,
+        _visibleCanvasRect,
+      );
       if (rect.isEmpty) {
         continue;
       }
@@ -702,9 +720,10 @@ class _LayerStackPaintPass {
         : extent.intersect(_visibleCanvasRect);
   }
 
-  /// The CANVAS-SPACE rect a buffer for [node] covers — what of it is on
-  /// screen ([subtreeBufferBounds], the one law the camera's walk keeps
-  /// too).
+  /// The CANVAS-SPACE rect a buffer for [node] covers — what of it lies
+  /// [within] what reads it: the view at the top, and under a folder that
+  /// folder's buffer, which a blur on it reads past the view
+  /// ([subtreeBufferBounds], the one law the camera's walk keeps too).
   ///
   /// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
   ///
@@ -734,22 +753,24 @@ class _LayerStackPaintPass {
   Rect _bufferBoundsFor(
     CompositeNode<_PaintRow> node,
     Rect Function() activeSurfaceExtent,
+    Rect within,
   ) => subtreeBufferBounds(
     node,
-    // ⚠️The view at every depth, where the law asks for the buffer of the
-    // folder that holds [node]: a blurred folder holding a buffered one
-    // misses the inner folder's ink past the screen's edge, so the blur
-    // there changes as the view moves (card
+    // ↩️The view at every depth until 2026-10-23: a blurred folder holding a
+    // buffered one missed the inner folder's ink past the screen's edge, so
+    // the blur there changed as the view moved (card
     // nested-folder-buffers-read-past-the-view).
-    within: _visibleCanvasRect,
+    within: within,
     extentOf: (row) => switch (row) {
       _PaintImage(:final extent) => extent,
       _PaintActiveSurface() => activeSurfaceExtent(),
       final _PaintLiftedSurface lifted => _liftedExtent(lifted),
+      _PaintPaper() => _canvasRect,
     },
     placementOf: (row) => switch (row) {
       _PaintImage(:final placement) => placement,
       final _SurfaceRow surface => surface.placement,
+      _PaintPaper() => null,
     },
   );
 
@@ -759,6 +780,8 @@ class _LayerStackPaintPass {
     // The scale the CTM this walk draws under is at. A group that
     // rasterises ITSELF needs it, and a `Canvas` will not tell anyone.
     double rasterScale,
+    // What reads these nodes ([_bufferBoundsFor]).
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     for (final node in list) {
@@ -770,7 +793,10 @@ class _LayerStackPaintPass {
           placement,
         CompositeLeaf(payload: _PaintLiftedSurface(:final placement)) =>
           placement,
-        CompositeGroup() || CompositeAdjustment() => null,
+        CompositeLeaf(payload: _PaintPaper()) ||
+        CompositeGroup() ||
+        CompositeAdjustment() ||
+        CompositeBackdropBlend() => null,
       };
       // The wrap straddles the live-surface node too, which HAS a placement
       // and no image — that is why the wrap and the draw are separate
@@ -781,14 +807,31 @@ class _LayerStackPaintPass {
         body: () {
           switch (node) {
             case final CompositeGroup<_PaintRow> group:
-              _paintGroupNode(canvas, group, rasterScale, paintChildren);
+              _paintGroupNode(
+                canvas,
+                group,
+                rasterScale,
+                within,
+                paintChildren,
+              );
             case final CompositeAdjustment<_PaintRow> adjustment:
               _paintAdjustmentNode(
                 canvas,
                 adjustment,
                 rasterScale,
+                within,
                 paintChildren,
               );
+            case final CompositeBackdropBlend<_PaintRow> blend:
+              _paintBackdropBlendNode(
+                canvas,
+                blend,
+                rasterScale,
+                within,
+                paintChildren,
+              );
+            case CompositeLeaf(payload: _PaintPaper()):
+              _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
             case CompositeLeaf(payload: final _PaintActiveSurface active):
               _paintSurfaceRow(canvas, _activeSlot!, active.paint, rasterScale);
             case CompositeLeaf(payload: final _PaintLiftedSurface lifted):
@@ -812,6 +855,7 @@ class _LayerStackPaintPass {
     Canvas canvas,
     CompositeGroup<_PaintRow> node,
     double rasterScale,
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     final CompositeGroup<_PaintRow>(:children, :opacity, :blendMode, :effects) =
@@ -836,16 +880,19 @@ class _LayerStackPaintPass {
     // ⚠️It is the CONTENT that must sit inside, before the effect
     // grows it. The spread the size hint adds below is deliberate
     // — artwork just outside the view has to reach the blur at the
-    // view's edge — so there the buffer lies past the composite by
+    // view's edge — so there the buffer lies past what reads it by
     // exactly that spread, off screen. ↩️This asserted the grown
     // rect, and a blurred folder whose ink crossed the view's edge
     // stopped every debug build at any zoom (board
-    // `a-blurred-folder-outgrows-the-composite`).
-    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent);
+    // `a-blurred-folder-outgrows-the-composite`). ↩️And it asserted
+    // the display buffer, which a folder inside a blurred one lies
+    // past by the outer one's spread (card
+    // nested-folder-buffers-read-past-the-view).
+    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent, within);
     assert(
-      _contentExtent.expandToInclude(contentRect) == _contentExtent,
-      'a group buffer must sit inside the composite it is part '
-      'of: $contentRect is not within $_contentExtent',
+      within.expandToInclude(contentRect) == within,
+      'a group buffer must sit inside the buffer that reads it: '
+      '$contentRect is not within $within',
     );
     final groupRect = effectBufferBounds(
       contentRect,
@@ -859,10 +906,13 @@ class _LayerStackPaintPass {
       canvas: canvas,
       // The size hint grows by the blur's spread, so artwork just
       // OUTSIDE the visible rect still bleeds in — without this the
-      // blur at the screen edge would change as you scroll.
+      // blur at the screen edge would change as you scroll. It is
+      // what reads the children, so a folder among them holds its
+      // artwork out there too.
       bounds: groupRect,
       rasterScale: rasterScale,
-      paintSubtree: (into, scale) => paintChildren(into, children, scale),
+      paintSubtree: (into, scale) =>
+          paintChildren(into, children, scale, groupRect),
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
     );
@@ -873,6 +923,7 @@ class _LayerStackPaintPass {
     Canvas canvas,
     CompositeAdjustment<_PaintRow> node,
     double rasterScale,
+    Rect within,
     _ChildPainter paintChildren,
   ) {
     final CompositeAdjustment<_PaintRow>(:children, :effects, :mix) = node;
@@ -880,7 +931,7 @@ class _LayerStackPaintPass {
     // which is what lets a stroke drawn UNDER an adjustment read
     // through the grade while you draw it.
     final pass = resolveAdjustmentScopePass(
-      bounds: _bufferBoundsFor(node, _activeSurfaceExtent),
+      bounds: _bufferBoundsFor(node, _activeSurfaceExtent, within),
       effects: effects,
       mix: mix,
     );
@@ -894,11 +945,61 @@ class _LayerStackPaintPass {
       canvas: canvas,
       bounds: pass.bufferBounds,
       rasterScale: rasterScale,
-      paintSubtree: (into, scale) => paintChildren(into, children, scale),
+      paintSubtree: (into, scale) =>
+          paintChildren(into, children, scale, pass.bufferBounds),
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
     );
   }
+
+  /// A row in an advanced blend, composed over a picture of what lies
+  /// below it in its scope ([drawBlendOverBackdrop], brush-fidelity-Q4) —
+  /// the camera's walk calls the same function.
+  void _paintBackdropBlendNode(
+    Canvas canvas,
+    CompositeBackdropBlend<_PaintRow> node,
+    double rasterScale,
+    Rect within,
+    _ChildPainter paintChildren,
+  ) {
+    final CompositeBackdropBlend<_PaintRow>(:backdrop, :source, :blendMode) =
+        node;
+    final bounds = _bufferBoundsFor(node, _activeSurfaceExtent, within);
+    drawBlendOverBackdrop(
+      canvas: canvas,
+      bounds: bounds,
+      rasterScale: rasterScale,
+      paintBackdrop: (into, scale) =>
+          paintChildren(into, backdrop, scale, bounds),
+      paintSource: (into, scale) =>
+          paintChildren(into, [source], scale, bounds),
+      sourceAsIs: _rowAsItIs(source),
+      blendMode: blendMode,
+      shownWithin: _shownWithin,
+    );
+  }
+
+  /// The row a blend composes as the row's own image, where it is one
+  /// ([drawBlendOverBackdrop]'s `sourceAsIs`): a cel or a cached image in
+  /// one piece, painting normal at full strength with nothing on it — and
+  /// only while the display buffer is composed, where its draw would lay it
+  /// texel for texel too ([_paintImageNode]'s `texelScale`). The walk on the
+  /// screen samples it as the zoom says, which a texel is not.
+  ImagePiece? _rowAsItIs(CompositeNode<_PaintRow> source) => switch (source) {
+    CompositeLeaf(
+      payload: _PaintImage(
+        pieces: [final piece],
+        placement: null,
+        opacity: 1.0,
+        blendMode: LayerBlendMode.normal,
+        tint: null,
+        effects: [],
+      ),
+    )
+        when _composingTheBuffer =>
+      piece,
+    _ => null,
+  };
 
   /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
   /// F-329): drawn straight onto the canvas when its paint can ride the
@@ -950,8 +1051,8 @@ class _LayerStackPaintPass {
     // the law the overlay's own blend already rides one level
     // down ("tiles never overlap, so per-tile draws blend each
     // pixel exactly once") — and the blend acts where it is
-    // drawn, which F-243 (the last clause below) showed an
-    // advanced blend does not.
+    // drawn: a row's is `srcOver` or `plus`, an advanced blend
+    // being composed over its backdrop, the row painting normal.
     //
     // What is left for a buffer is what a per-draw paint cannot
     // do: a filter that SPREADS has to see across the tile
@@ -971,14 +1072,16 @@ class _LayerStackPaintPass {
         // BELOW a painted effect keys what that effect made, so
         // the layer has to be assembled into an image first —
         // the one thing a buffer cannot hand it.
-        activePlan.preSteps.isNotEmpty ||
-        // 🚨★★★F-243: AN ADVANCED BLEND NEVER RIDES THE TILES. Per
-        // draw it is not per pixel — each tile blended the whole
-        // screen by its edge colour on the Windows app ([blendsInPlace]
-        // has the measurement). Buffered, the blend takes the image
-        // route below: the layer assembled into one image and blended
-        // once, which is what every other row in that blend already is.
-        !blendsInPlace(activePaint.blendMode);
+        //
+        // ↩️🚨★★★F-243 (유저 2026-09-30): an advanced blend never rode
+        // the tiles — per draw it was not per pixel, each tile blending
+        // the whole screen by its edge colour on the Windows app
+        // (`blendsInPlace` has the measurement) — so it was buffered and
+        // blended once as one image, until every advanced blend went
+        // over its backdrop in the shader
+        // (a-blurred-folder-cut-by-the-view-moves-on-vulkan, 「골은 b」):
+        // such a row paints normal now, the source of its blend.
+        activePlan.preSteps.isNotEmpty;
     // Null when the buffer carries it, so nothing applies twice.
     final ridingPaint = needsBuffer ? null : activePaint;
     assert(() {
@@ -1048,12 +1151,15 @@ class _LayerStackPaintPass {
     // not the opacity riding with it. Blending an IMAGE with the same
     // paint, which every other row and every group already does, did
     // not. The price is this route's, paid only while a buffered row
-    // wears a blend that is not srcOver (a stamp ghost, a lifted float):
-    // a brush or eraser stroke on the same row showed nothing either way
-    // and its frame cost did not move (median UI 1.6 vs 1.4 ms).
-    // ⚠️Since F-243 an advanced blend on the row itself is buffered too
-    // (see `needsBuffer`), so a multiply or screen row pays it on every
-    // paint — the price of being the one image every other such row is.
+    // wears a blend that is not srcOver (a lifted float, the text in hand;
+    // ↩️a stamp ghost too, until brush-fidelity-Q9 made it the overlay's
+    // tiles): a brush or eraser stroke on the same row showed nothing
+    // either way and its frame cost did not move (median UI 1.6 vs 1.4 ms).
+    // ↩️Since F-243 an advanced blend on the row itself was buffered too,
+    // so a multiply or screen row paid it on every paint — until such a
+    // row painted normal over its backdrop
+    // (a-blurred-folder-cut-by-the-view-moves-on-vulkan). The one blend
+    // a buffered row still wears here is add's `plus`.
     final blendsAsImage =
         needsBuffer && activePaint.blendMode != BlendMode.srcOver;
     if (activePlan.preSteps.isNotEmpty || blendsAsImage) {
@@ -1150,25 +1256,54 @@ class _LayerStackPaintPass {
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
     double rasterScale,
-  ) => _paintNodesWith(canvas, list, rasterScale, _paintNodes);
+    Rect within,
+  ) => _paintNodesWith(canvas, list, rasterScale, within, _paintNodes);
+
+  /// [_paintNodes] into a recording the bake keeps — replayed by later
+  /// paints under whatever clip each of them has, so no blend in it is read
+  /// in the frame ([_shownWithin]).
+  void _paintBaked(
+    Canvas canvas,
+    List<CompositeNode<_PaintRow>> list,
+    double rasterScale,
+    Rect within,
+  ) {
+    final shown = _shownWithin;
+    _shownWithin = null;
+    try {
+      _paintNodes(canvas, list, rasterScale, within);
+    } finally {
+      _shownWithin = shown;
+    }
+  }
 
   void _paintSplit(
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
     int depth,
     double rasterScale,
+    Rect within,
   ) {
     final at = list.indexWhere(_LayerStackPainter._enclosesActiveSurface);
     // Inside the buffer a slot's texel copies are copies at [rasterScale]
     // only — and a sub-tree raster's scale is its own (a capped one is
     // smaller) — so the scale is part of what the slot IS. The walk copies
     // nothing, and names its slots as it always did.
+    //
+    // ⚠️What reads a slot's rows ([within]) bounds its recording but is not
+    // part of what it is, though a live draw past the ink grows it: a row in
+    // a slot lies inside every folder of the chain above it, and a folder's
+    // buffer cut to a row inside it is what reads the folder, grown by its
+    // spread, cut to the row — the folder's own extent, the one a live draw
+    // moves, drops out. So a slot holds while the bake's extent does (card
+    // nested-folder-buffers-read-past-the-view).
     final slot = _composingTheBuffer ? 'd$depth@$rasterScale' : 'd$depth';
     if (at < 0) {
       _painter.bake!.draw(
         canvas,
         '$slot:all',
-        (into) => _paintNodes(into, list, rasterScale),
+        (into) => _paintBaked(into, list, rasterScale, within),
+        within: within,
       );
       return;
     }
@@ -1176,17 +1311,24 @@ class _LayerStackPaintPass {
       _painter.bake!.draw(
         canvas,
         '$slot:before',
-        (into) => _paintNodes(into, list.sublist(0, at), rasterScale),
+        (into) => _paintBaked(into, list.sublist(0, at), rasterScale, within),
+        within: within,
       );
     }
-    _paintNodesWith(canvas, [list[at]], rasterScale, (into, children, scale) {
-      _paintSplit(into, children, depth + 1, scale);
+    _paintNodesWith(canvas, [list[at]], rasterScale, within, (
+      into,
+      children,
+      scale,
+      reader,
+    ) {
+      _paintSplit(into, children, depth + 1, scale, reader);
     });
     if (at < list.length - 1) {
       _painter.bake!.draw(
         canvas,
         '$slot:after',
-        (into) => _paintNodes(into, list.sublist(at + 1), rasterScale),
+        (into) => _paintBaked(into, list.sublist(at + 1), rasterScale, within),
+        within: within,
       );
     }
   }
@@ -1210,9 +1352,11 @@ class _LayerStackPaintPass {
       rect,
       _painter.paperBackground,
       // The display law's edge (F-67-paper-edge): inside the buffer, cut
-      // by the residual the buffer is blitted with; on screen — the walk —
-      // by the device scale.
+      // by the residual the buffer is blitted with, on the buffer's own
+      // pixels; on screen — the walk — by the device scale, on the
+      // screen's.
       antiAlias: intoTheBuffer ? _bufferEdgeAntiAliased : _displayEdgeAntiAliased,
+      pixelRatio: intoTheBuffer ? 1 : _painter.devicePixelRatio,
     );
   }
 
@@ -1220,13 +1364,12 @@ class _LayerStackPaintPass {
   /// whether the backdrop below it pays for a raster, and the rect that
   /// raster is made over.
   ({int at, bool rasterPays, Rect rasterRect}) _backdropPlan() {
-    final at = _painter.nodes.indexWhere(
+    final at = _rootNodes.indexWhere(
       _LayerStackPainter._enclosesActiveSurface,
     );
-    final below = at < 0 ? _painter.nodes : _painter.nodes.sublist(0, at);
+    final below = at < 0 ? _rootNodes : _rootNodes.sublist(0, at);
     final rasterPays =
-        (_painter.paintPaper ? 1 : 0) + _replayOpsOf(below) >=
-        _LayerStackPainter._backdropRasterMinReplayOps;
+        _replayOpsOf(below) >= _LayerStackPainter._backdropRasterMinReplayOps;
     // 🚨THE BAKE'S RECT, NOT THE BUFFER'S (review 2026-09-15). `drawRaster`
     // keeps one image per slot and does not key it by the rect, which is why
     // the extent it is declared under has to move whenever that rect does.
@@ -1245,6 +1388,7 @@ class _LayerStackPaintPass {
   void _paintBackdropSplit(Canvas into, double rasterScale) {
     final plan = _backdropPlan();
     final at = plan.at;
+    final view = _visibleCanvasRect;
     // One body, two mechanisms: the record closure is identical either
     // way, so the fallback cannot drift from the raster — `drawRaster`
     // records the same ops shifted into the rect and blits them back to
@@ -1263,41 +1407,64 @@ class _LayerStackPaintPass {
           rasterScale: rasterScale,
         );
       } else {
-        _painter.bake!.draw(into, id, record);
+        _painter.bake!.draw(into, id, record, within: view);
       }
     }
 
     if (at < 0) {
-      drawBackdrop('d0:backdrop-all', (c) {
-        _paintPaperInto(c, intoTheBuffer: true);
-        _paintNodes(c, _painter.nodes, rasterScale);
-      });
+      drawBackdrop(
+        'd0:backdrop-all',
+        (c) => _paintBaked(c, _rootNodes, rasterScale, view),
+      );
       return;
     }
-    drawBackdrop('d0:backdrop', (c) {
-      _paintPaperInto(c, intoTheBuffer: true);
-      _paintNodes(c, _painter.nodes.sublist(0, at), rasterScale);
-    });
-    _paintNodesWith(into, [_painter.nodes[at]], rasterScale, (
+    drawBackdrop(
+      'd0:backdrop',
+      (c) => _paintBaked(c, _rootNodes.sublist(0, at), rasterScale, view),
+    );
+    _paintNodesWith(into, [_rootNodes[at]], rasterScale, view, (
       c,
       children,
       scale,
+      reader,
     ) {
-      _paintSplit(c, children, 1, scale);
+      _paintSplit(c, children, 1, scale, reader);
     });
-    if (at < _painter.nodes.length - 1) {
+    if (at < _rootNodes.length - 1) {
       _painter.bake!.draw(
         into,
         'd0:after',
-        (c) => _paintNodes(c, _painter.nodes.sublist(at + 1), rasterScale),
+        (c) => _paintBaked(c, _rootNodes.sublist(at + 1), rasterScale, view),
+        within: view,
       );
     }
   }
+
+  /// What the root target holds, bottom → top: the paper, as the bottom row
+  /// of the root scope ([onUnderlay]) — inside the backdrop of a blend that
+  /// composes over what lies below it, which reads the paper there as a GPU
+  /// blend reads it off the target — and the rows over it.
+  ///
+  /// ↩️Each walk laid the paper itself and the rows after it, until
+  /// brush-fidelity-Q4 gave the stack rows that read their backdrop.
+  late final List<CompositeNode<_PaintRow>> _rootNodes = _painter.paintPaper
+      ? onUnderlay(_painter.nodes, const _PaintPaper())
+      : _painter.nodes;
 
   /// Whether the content being painted is the display buffer's — a raster
   /// aligned to canvas space, where a level image lands texel for texel —
   /// rather than the walk's screen ([_paintImageNode]).
   bool _composingTheBuffer = false;
+
+  /// Where the recording being made is shown — whole, once, cut by nothing
+  /// else: the display buffer's rect on the visible canvas, while a miss
+  /// composes it; null otherwise. A blend is read in the frame only inside
+  /// it ([drawBlendOverBackdrop]): the engine cuts the layer a blend reads
+  /// to the clip it is DRAWN under, and the source would then be sampled
+  /// off the backdrop — under Impeller (`--enable-impeller`), a recording
+  /// the bake replayed into a stroke's patch laid a multiply row's ink over
+  /// paper it does not cover, 261 pixels a step.
+  Rect? _shownWithin;
 
   void _paintContent(
     Canvas into, {
@@ -1318,16 +1485,14 @@ class _LayerStackPaintPass {
     if (_painter.bake == null ||
         _painter.activeSurfacePainter == null ||
         _painter.liftedRows.isNotEmpty) {
-      _paintPaperInto(into, intoTheBuffer: intoTheBuffer);
-      _paintNodes(into, _painter.nodes, rasterScale);
+      _paintNodes(into, _rootNodes, rasterScale, _visibleCanvasRect);
       return;
     }
     if (intoTheBuffer) {
       _paintBackdropSplit(into, rasterScale);
       return;
     }
-    _paintPaperInto(into, intoTheBuffer: false);
-    _paintSplit(into, _painter.nodes, 0, rasterScale);
+    _paintSplit(into, _rootNodes, 0, rasterScale, _visibleCanvasRect);
   }
 
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
@@ -1462,6 +1627,7 @@ class _LayerStackPaintPass {
     final dirty = miss.dirty;
     final scroll = miss.scroll;
     final canScroll = miss.canScroll;
+    _shownWithin = rect.intersect(_visibleCanvasRect);
     final recorder = ui.PictureRecorder();
     final into = _bufferCanvas(recorder, rect);
     // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw a base
@@ -1491,6 +1657,7 @@ class _LayerStackPaintPass {
       );
       derived = false;
     }
+    _shownWithin = null;
     return _keepMiss(
       recorder,
       rect,
@@ -1524,8 +1691,9 @@ class _LayerStackPaintPass {
   ///   the screen clears the pasteboard under it too, and only an opaque
   ///   draw over it puts back exactly what the head was blitted over;
   /// · every draw the recompose makes is a texel copy blended pixel by
-  ///   pixel ([_drawsTexelForTexel]), and no stamp ghost is drawn — it
-  ///   lands where the pointer is, not on the texel grid;
+  ///   pixel ([_drawsTexelForTexel]). ↩️A stamp ghost was the exception —
+  ///   drawn where the pointer was, off the texel grid — until
+  ///   brush-fidelity-Q9 made it the overlay's tiles, on the grid;
   /// · the screen is 8-bit. iOS draws to a wide-gamut surface by default,
   ///   where blending rounds differently from the 8-bit head.
   bool _pictureDrawsTheSame(Rect dirty) {
@@ -1544,9 +1712,7 @@ class _LayerStackPaintPass {
         region.top >= _canvasRect.top &&
         region.right <= _canvasRect.right &&
         region.bottom <= _canvasRect.bottom;
-    return onPaper &&
-        _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
-        _drawsTexelForTexel(_painter.nodes);
+    return onPaper && _drawsTexelForTexel(_painter.nodes);
   }
 
   /// Whether every draw [nodes] make is a texel copy blended pixel by pixel
@@ -1557,13 +1723,21 @@ class _LayerStackPaintPass {
   /// has the measurements — an advanced blend rounds by the area drawn), a
   /// layer image that is not a texel copy, and an adjustment scope — its
   /// crossfade goes through `saveLayer`s nobody has measured this way yet.
+  /// The paper is a fill on whole canvas pixels, and qualifies.
+  ///
+  /// A row blended over its backdrop qualifies when what it composes does:
+  /// its shader runs over two rasters made as the picture is recorded, and
+  /// what the picture draws is the result's blit — 1:1, as a group's is.
+  /// ↩️It never did ("nobody has measured"), and a blend row anywhere in the
+  /// tree, baked or not, cost every stroke step a head: 🔬on the Windows app
+  /// (10-22, r10 · r11) a stroke over a multiply row went from 19.2ms input
+  /// to screen to 14.0, the 14.4 of a normal one.
   bool _drawsTexelForTexel(List<CompositeNode<_PaintRow>> nodes) {
     for (final node in nodes) {
       final inPlace = switch (node) {
         CompositeLeaf(payload: final _PaintImage row) =>
           inkCropDrawsTheSame(
                 placement: row.placement,
-                blendMode: row.blendMode,
                 effects: row.effects,
               ) &&
               row.pieces.every(
@@ -1571,16 +1745,23 @@ class _LayerStackPaintPass {
               ),
         CompositeLeaf(payload: final _SurfaceRow row) => inkCropDrawsTheSame(
           placement: row.placement,
-          blendMode: row.blendMode,
           effects: row.effects,
         ),
-        CompositeGroup(:final blendMode, :final effects, :final children) =>
+        CompositeLeaf(payload: _PaintPaper()) => true,
+        CompositeGroup(:final effects, :final children) =>
           inkCropDrawsTheSame(
                 placement: null,
-                blendMode: blendMode,
                 effects: effects,
               ) &&
               _drawsTexelForTexel(children),
+        // Not on a flipped view: read in the frame, a blend reads its
+        // backdrop in the space it is drawn in — the screen's, which a flip
+        // runs the other way from the picture's ([drawBlendOverBackdrop]).
+        CompositeBackdropBlend(:final backdrop, :final source) =>
+          !_painter.viewport.flipHorizontal &&
+              !_painter.viewport.flipVertical &&
+              _drawsTexelForTexel(backdrop) &&
+              _drawsTexelForTexel([source]),
         CompositeAdjustment() => false,
       };
       if (!inPlace) {
@@ -1757,7 +1938,7 @@ class _LayerStackPaintPass {
   /// ⛔NO ANTIALIAS on the clip: a soft edge would blend the region into the
   /// carried pixels and leave a seam of its own.
   ///
-  /// 🚨★★★F-287 — THE CLIP DOES NOT HOLD A BLEND THAT IS NOT IN PLACE (유저
+  /// 🚨★★★F-287 — THE CLIP DID NOT HOLD A BLEND THAT WAS NOT IN PLACE (유저
   /// 2026-10-04 · 10-05 · 10-12, 실기: 「곱하기레이어가 두개이상있을때, 세번째
   /// 일반 레이어에서 그리면 선을 긋거나 캔버스 줌인 줌아웃할때마다 그림
   /// 이상한곳이 진해짐. 현재 레이어 바꾸거나 하면 초기화됨 … 이 문제는 고쳐도
@@ -1771,29 +1952,26 @@ class _LayerStackPaintPass {
   /// over them, on every patch and every carry until a full composite —
   /// switching the row — draws it once again.
   /// 🔬Again on the same app (2026-10-19), on dark paper so that any mode
-  /// could show it, each stroke's dabs counted: a stroke on a NORMAL row
-  /// above both blends or between them — the user's case — laid B in three
-  /// times more, as one on B did, while one on A, or over a single blend,
-  /// did nothing. A notch of the wheel OUT within a level laid it in once
-  /// more, at levels 2, 1 and 0 alike (multiply and screen; the notch back
-  /// in, and a notch out of the fitted view with the whole page in sight,
-  /// changed nothing). Every mode that shows being laid twice did it —
-  /// multiply, color burn, screen, color dodge, overlay, soft and hard
-  /// light, difference, exclusion; darken and lighten laid twice are what
-  /// they are laid once. Composed apart, not one of them moved a pixel. The
-  /// same draws on the engine alone (200+ stacks, the clip and all) never
-  /// escaped, so WHERE the app lets them out is still not known — and
-  /// composing apart does not need to know it.
-  /// ⇒ When anything in the stack does not blend in place, the region is
-  /// composed APART ([_drawComposedApart]): on nothing, in an image of its
-  /// own, and laid onto the carried pixels by a draw that does — what a lost
-  /// clip lets through lands on that image's margin, which is not copied.
-  /// ⛔ONLY THEN. The image is a render pass a step (a snapshot costs the
-  /// same 1.6–2.0 ms whatever its size, measured 2026-09-25), which a stack
-  /// of in-place draws does not need and still draws as a picture
-  /// ([_pictureDrawsTheSame]). The question is [blendsInPlace]'s, the one
-  /// every other site asks of a blend ([_everyDrawBlendsInPlace]) — a mode
-  /// left out costs time, never a pixel.
+  /// could show it: a stroke on a NORMAL row above both blends or between
+  /// them laid B in three times more, and so did a notch of the wheel OUT
+  /// within a level, at levels 2, 1 and 0 alike. Every mode that shows
+  /// being laid twice did it — multiply, color burn, screen, color dodge,
+  /// overlay, soft and hard light, difference, exclusion — and never a
+  /// normal row. The same draws on the engine alone never escaped.
+  /// ↩️So while anything in the stack did not blend in place the region was
+  /// composed APART — on nothing, in an image of its own (a render pass a
+  /// step), laid onto the carried pixels by a draw that does — until every
+  /// advanced blend went over its backdrop in the shader
+  /// (a-blurred-folder-cut-by-the-view-moves-on-vulkan, 「골은 b」). Every
+  /// draw the stack makes is `srcOver` or `plus` now: a row in an advanced
+  /// blend paints normal, and its blend's node lays the composite `srcOver`
+  /// (`drawBlendOverBackdrop`).
+  /// 🔬Measured with it gone, on the same app (10-22, r13): two rows in
+  /// multiply, screen or color burn, a normal row drawn on above both or
+  /// between them, with the bottom row's fill and without it — three
+  /// strokes, two notches of the wheel out, a stroke there, two notches
+  /// back in — and after every one the canvas was the cold composite's,
+  /// pixel for pixel, in all thirty.
   void _recomposeOverCarried(Canvas into, List<Rect> region) {
     // ⛔NO REGION, NO RECOMPOSE: a carry into a rect inside the one it had
     // — a zoom in on the same level — with nothing live changed has no
@@ -1806,76 +1984,12 @@ class _LayerStackPaintPass {
     for (final part in region) {
       clip.addRect(part);
     }
-    into.save();
-    into.clipPath(clip, doAntiAlias: false);
-    if (!debugRecomposeApart || _everyDrawBlendsInPlace()) {
-      into.drawPaint(Paint()..blendMode = BlendMode.clear);
-      _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
-    } else {
-      _drawComposedApart(into, region, clip);
-    }
+    into
+      ..save()
+      ..clipPath(clip, doAntiAlias: false)
+      ..drawPaint(Paint()..blendMode = BlendMode.clear);
+    _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
     into.restore();
-  }
-
-  /// [region] composed apart — in an image of its own over the parts'
-  /// bounds, on nothing — and laid onto [into], already held to [clip],
-  /// `src`: where the composite draws nothing the carried pixels go too
-  /// (F-104), with no clear before it.
-  void _drawComposedApart(Canvas into, List<Rect> region, Path clip) {
-    final bounds = region.reduce((a, b) => a.expandToInclude(b));
-    final recorder = ui.PictureRecorder();
-    final apart = Canvas(recorder)
-      ..scale(1 / _levelStep)
-      ..translate(-bounds.left, -bounds.top)
-      // Only to spare the margin's pixels: whatever gets past it lands on
-      // the margin, and the blit leaves the margin behind.
-      ..clipPath(clip, doAntiAlias: false);
-    _paintContent(apart, intoTheBuffer: true, rasterScale: 1 / _levelStep);
-    final picture = recorder.endRecording();
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(
-        (bounds.width / _levelStep).round(),
-        (bounds.height / _levelStep).round(),
-      );
-    } finally {
-      picture.dispose();
-    }
-    _layLevelPixels(into, image, bounds, blendMode: BlendMode.src);
-    // The recording holds its own reference to what it draws.
-    image.dispose();
-    _painter.bufferCache?.composedApartCount += 1;
-  }
-
-  /// Whether every draw the stack makes blends in place ([blendsInPlace]) —
-  /// what a recompose over carried pixels may stand its clip on. A folder's
-  /// children count although the folder composes them in an image of its
-  /// own, and a stamp ghost counts whatever its blend: a mode left out costs
-  /// time, never a pixel.
-  bool _everyDrawBlendsInPlace() =>
-      _painter.activeSurfacePainter?.stampPreview?.value?.image == null &&
-      _nodesBlendInPlace(_painter.nodes);
-
-  bool _nodesBlendInPlace(List<CompositeNode<_PaintRow>> nodes) {
-    for (final node in nodes) {
-      final inPlace = switch (node) {
-        CompositeLeaf(payload: final _PaintImage row) => blendsInPlace(
-          row.blendMode.paintBlendMode,
-        ),
-        CompositeLeaf(payload: final _SurfaceRow row) => blendsInPlace(
-          row.blendMode.paintBlendMode,
-        ),
-        CompositeGroup(:final blendMode, :final children) =>
-          blendsInPlace(blendMode.paintBlendMode) &&
-              _nodesBlendInPlace(children),
-        // Its own passes are `srcOver` and `plus`.
-        CompositeAdjustment(:final children) => _nodesBlendInPlace(children),
-      };
-      if (!inPlace) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /// Recomposes only [dirty] over the carried [base]: the old pixels are
@@ -1891,10 +2005,11 @@ class _LayerStackPaintPass {
   /// ⛔HELD TO [rect], as the carry's bands are: the dirty rect is the live
   /// tiles a step changed, and those reach past the view — by up to a tile
   /// for a dab at its edge, by the whole canvas for a fill or an undo made
-  /// zoomed in. A region composed apart (F-287) is an image of what it is
-  /// given, every pixel of which outside [rect] would be thrown away — and
-  /// on a large canvas one past the side the buffer itself is capped at
-  /// ([_LayerStackPainter._maxBufferSide]).
+  /// zoomed in. What lies past [rect] is no pixel of this buffer's, so a
+  /// step whose change lies wholly there recomposes nothing. (↩️And a
+  /// region composed apart, F-287, was an image of what it was given —
+  /// on a large canvas one past the side the buffer itself is capped at,
+  /// [_LayerStackPainter._maxBufferSide].)
   void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
     _layLevelPixels(into, base, rect);
     final part = wholeLevelPixelsOutward(dirty, _level).intersect(rect);
@@ -1902,17 +2017,16 @@ class _LayerStackPaintPass {
   }
 
   /// Lays [image] — pixels made at this buffer's level, the whole of it or
-  /// its [source] — onto [target] one texel to a pixel: the patch's base,
-  /// the scroll carry's overlap and a region composed apart (F-287) are
-  /// all laid so. A COPY, so `none` — a filter would resample what is
-  /// already aligned — and no antialias at edges that lie on the level's
-  /// grid. `src` lays it in place of what is there.
+  /// its [source] — onto [target] one texel to a pixel: the patch's base
+  /// and the scroll carry's overlap are laid so (↩️and a region composed
+  /// apart, `src`, while a blend could be — F-287). A COPY, so `none` — a
+  /// filter would resample what is already aligned — and no antialias at
+  /// edges that lie on the level's grid.
   void _layLevelPixels(
     Canvas into,
     ui.Image image,
     Rect target, {
     Rect? source,
-    BlendMode blendMode = BlendMode.srcOver,
   }) {
     into.drawImageRect(
       image,
@@ -1920,7 +2034,6 @@ class _LayerStackPaintPass {
           Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
       target,
       Paint()
-        ..blendMode = blendMode
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );

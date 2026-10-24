@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
 
@@ -408,7 +409,12 @@ void main() {
     expect(
       find.descendant(
         of: window,
-        matching: find.text('Auto-add In-between Marks'),
+        matching: find.text(
+          AppText.strings.windowTitleOn(
+            'Auto-add In-between Marks',
+            AppText.strings.tlFrame,
+          ),
+        ),
       ),
       findsOneWidget,
       reason: 'the window is called what its button is',

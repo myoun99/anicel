@@ -28,8 +28,12 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+
+import '../../helpers/make_the_rows_first.dart';
+import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// 🚨★★★ (v) 2단계의 계약 — **한 장으로 합치고 한 번만 리샘플한다.**
 ///
@@ -50,6 +54,11 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// must now be the display's decision.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
+
+  // The stacks are handed over as the plan hands them: a folder in
+  // multiply is the source of a blend over its backdrop.
+  setUpAll(LayerBlendShader.load);
+
   const projectId = ProjectId('p');
   const cutId = CutId('c');
   const trackId = TrackId('t');
@@ -127,6 +136,22 @@ void main() {
     required bool disableBuffer,
     required CanvasViewport viewport,
   }) async {
+    final view = CanvasLayerStackView(
+      nodes: stackAsThePlanHandsIt(nodes),
+      imageCache: cache,
+      canvasSize: canvasSize,
+      viewport: viewport,
+      activeSurfacePainter: surfacePainter,
+      paintPaper: true,
+      paperBackground: const ProjectBackground.color(0xFF00FF00),
+      debugDisableSingleBuffer: disableBuffer,
+    );
+    // 🚨WARM FIRST, THEN LOOK — a cold cache resolves some rows on a later
+    // pass, so the first pump and the second draw different numbers of rows.
+    // Stage 1 measured this failing with the feature OFF on both sides.
+    // ↩️A settle alone waited on the pumped clock, which finishes no decode:
+    // a busy machine still rastered a side with a row missing.
+    await makeTheRowsFirst(tester, view);
     await tester.pumpWidget(
       MaterialApp(
         // A distinct key per render, so the second pump builds a FRESH state
@@ -134,27 +159,11 @@ void main() {
         key: ValueKey<String>('$disableBuffer/${viewport.zoom}'),
         home: Scaffold(
           body: Center(
-            child: SizedBox(
-              width: 4,
-              height: 4,
-              child: CanvasLayerStackView(
-                nodes: nodes,
-                imageCache: cache,
-                canvasSize: canvasSize,
-                viewport: viewport,
-                activeSurfacePainter: surfacePainter,
-                paintPaper: true,
-                paperBackground: const ProjectBackground.color(0xFF00FF00),
-                debugDisableSingleBuffer: disableBuffer,
-              ),
-            ),
+            child: SizedBox(width: 4, height: 4, child: view),
           ),
         ),
       ),
     );
-    // 🚨WARM FIRST, THEN LOOK — a cold cache resolves some rows on a later
-    // pass, so the first pump and the second draw different numbers of rows.
-    // Stage 1 measured this failing with the feature OFF on both sides.
     await tester.pumpAndSettle();
     final painted = tester
         .widgetList<CustomPaint>(

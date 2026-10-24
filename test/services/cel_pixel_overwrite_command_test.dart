@@ -11,6 +11,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -20,6 +21,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show CanvasSelectionShape;
 import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import 'package:anicel/src/services/commands/cel_pixel_overwrite_command.dart';
 
 void main() {
@@ -249,5 +251,114 @@ void main() {
     // undo would have stopped there.
     expect(pixelAt(target, cel, 1, 1), [0, 0, 0, 255]);
     expect(command.estimatedRetainedBytes(undone: false), 3);
+  });
+
+  /// 🗣️I-13 — what the colour edit list's knobs hold reaches the step
+  /// through [CelPixelOverwriteCommand.forVerb], the one place a verb
+  /// becomes what the pass runs with.
+  group('the knobs the list turns (I-13)', () {
+    CelPixelOverwriteCommand ran(
+      BrushFrameEditingCoordinator target,
+      List<BrushFrameKey> cels,
+      CelPixelVerb verb,
+      PixelVerbSettings settings,
+    ) => CelPixelOverwriteCommand.forVerb(
+      coordinator: target,
+      targets: [for (final cel in cels) CelPixelTarget(key: cel)],
+      verb: verb,
+      argb: 0xFF000000,
+      settings: settings,
+    )..execute();
+
+    test('2치화 cuts at its knob: at or over it opaque, under it empty, the '
+        'colour kept — and one undo brings the soft edges back', () {
+      final target = coordinator();
+      final under = key('frame-a');
+      final over = key('frame-b');
+      seed(target, under, [10, 20, 30, 127]);
+      seed(target, over, [10, 20, 30, 128]);
+
+      final command = ran(
+        target,
+        [under, over],
+        CelPixelVerb.binarize,
+        const PixelVerbSettings(binarizeThreshold: 128),
+      );
+      expect(pixelAt(target, under, 1, 1), [10, 20, 30, 0]);
+      expect(pixelAt(target, over, 1, 1), [10, 20, 30, 255]);
+
+      command.undo();
+      expect(pixelAt(target, under, 1, 1), [10, 20, 30, 127]);
+      expect(pixelAt(target, over, 1, 1), [10, 20, 30, 128]);
+    });
+
+    test('the cut is the knob\'s, to the byte: at 127 the alpha one under '
+        'half goes the other way', () {
+      final target = coordinator();
+      final cel = key('frame-a');
+      seed(target, cel, [10, 20, 30, 127]);
+
+      ran(
+        target,
+        [cel],
+        CelPixelVerb.binarize,
+        const PixelVerbSettings(binarizeThreshold: 127),
+      );
+      expect(pixelAt(target, cel, 1, 1), [10, 20, 30, 255]);
+    });
+
+    test('색 삭제 reaches as far as ITS knob, to the byte, and 색 유지 by its '
+        'own', () {
+      final target = coordinator();
+      final cel = key('frame-a');
+      // Two off black in every channel.
+      seed(target, cel, [2, 2, 2, 255]);
+
+      ran(target, [cel], CelPixelVerb.deleteColour, const PixelVerbSettings());
+      expect(
+        pixelAt(target, cel, 1, 1)[3],
+        255,
+        reason: 'at 0 — the row before it had a knob — two off is not the '
+            'colour',
+      );
+      ran(
+        target,
+        [cel],
+        CelPixelVerb.deleteColour,
+        const PixelVerbSettings(deleteColourTolerance: 1),
+      );
+      expect(pixelAt(target, cel, 1, 1)[3], 255, reason: 'nor at 1');
+
+      final reached = ran(
+        target,
+        [cel],
+        CelPixelVerb.deleteColour,
+        const PixelVerbSettings(deleteColourTolerance: 2),
+      );
+      expect(pixelAt(target, cel, 1, 1)[3], 0, reason: 'at 2 it is');
+      reached.undo();
+
+      final keptByTheOther = ran(
+        target,
+        [cel],
+        CelPixelVerb.keepColour,
+        const PixelVerbSettings(deleteColourTolerance: 2),
+      );
+      expect(
+        pixelAt(target, cel, 1, 1)[3],
+        0,
+        reason: '⛔색 삭제\'s reach is not 색 유지\'s: at its own 0 the pixel '
+            'is not the colour, so it is not kept',
+      );
+      keptByTheOther.undo();
+
+      ran(
+        target,
+        [cel],
+        CelPixelVerb.keepColour,
+        const PixelVerbSettings(keepColourTolerance: 2),
+      );
+      expect(pixelAt(target, cel, 1, 1)[3], 255);
+    });
   });
 }

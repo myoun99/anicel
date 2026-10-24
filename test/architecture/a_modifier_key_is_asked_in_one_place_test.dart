@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨WHETHER A MODIFIER KEY IS HELD IS ASKED OF `ModifierKeys`
 /// (`lib/src/services/input/modifier_keys.dart`).
@@ -18,39 +19,28 @@ import '../helpers/dart_sources.dart';
 ///
 /// What may still name the record: a key handler joining or leaving it, and
 /// the lines in [_mirrors], which say what Flutter's own shortcut managers
-/// do — those read the record, so the mirror must.
+/// and scroll views do — those read the record, so the mirror must.
 void main() {
-  test('nothing in lib reads the keyboard\'s record but ModifierKeys', () {
-    final hits = [
-      for (final file in dartFilesUnder('lib'))
-        if (libPath(file) != _theOnePlace)
-          for (final read in _recordReads(file.readAsStringSync()))
-            if (!_mirrors.containsKey((libPath(file), read)))
-              '${libPath(file)}: $read',
-    ];
-    expect(
-      hits,
-      isEmpty,
-      reason:
+  test('nothing in lib reads the keyboard\'s record but ModifierKeys — and '
+      'every mirror still reads it', () {
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (libPath(file) != _theOnePlace)
+            for (final read in _recordReads(file.readAsStringSync()))
+              (libPath(file), read),
+      ],
+      _mirrors.keys,
+      unledgered:
           'ask `ModifierKeys` — on Windows the record lets go of Shift and '
           'Ctrl under a pen or a finger. A line that must say what '
           'Flutter\'s own managers do goes in the ledger, with why',
+      paidOff: 'these no longer read the record — take them off the ledger',
     );
   });
 
-  test('every mirror still reads the record, and says why', () {
-    final sources = {
-      for (final file in dartFilesUnder('lib'))
-        libPath(file): file.readAsStringSync(),
-    };
-    for (final MapEntry(key: (path, read), value: why) in _mirrors.entries) {
-      expect(why.length, greaterThan(20), reason: '$path needs a reason');
-      expect(
-        _recordReads(sources[path] ?? ''),
-        contains(read),
-        reason: '$path no longer reads `$read` — take it off the ledger',
-      );
-    }
+  test('every mirror says why', () {
+    expectEveryEntrySaysWhy(_mirrors);
   });
 
   test('the scan sees a planted read, and not a handler or a comment', () {
@@ -100,8 +90,9 @@ final _record = RegExp(
   r'(?:is\w+Pressed|logicalKeysPressed|physicalKeysPressed)\b',
 );
 
-/// The lines that say what Flutter's own shortcut managers do — they read
-/// the record, so these must — keyed by file and line, with why.
+/// The lines that say what Flutter's own shortcut managers and scroll views
+/// do — they read the record, so these must — keyed by file and line, with
+/// why.
 const _mirrors = <(String, String), String>{
   (
     'lib/src/ui/shortcuts/editor_shortcut_bindings.dart',
@@ -113,4 +104,11 @@ const _mirrors = <(String, String), String>{
     'final keyboard = HardwareKeyboard.instance;',
   ): 'whether a focused field\'s own shortcut table takes the key — a '
       'table run by a manager that reads the record',
+  (
+    'lib/src/ui/input/wheel_law.dart',
+    'HardwareKeyboard.instance.logicalKeysPressed.any(flipKeys.contains);',
+  ): 'whether Shift turns a mouse notch the other way — the sheet\'s own '
+      'scroll views beside the slide ask the record (`Scrollable.'
+      '_pointerSignalEventDelta`), and a slide that read it more loosely '
+      'would take a notch they leave the frames (F-447)',
 };

@@ -1207,9 +1207,19 @@ void main() {
       // The ruler edge-drag is THE way past the wall — each move pans the
       // axis (overshooting the built extent) and growth materializes the
       // frames the view needs. The pointer sits inside the 24px edge zone
-      // of the 1400px surface's ruler viewport.
+      // of the ruler's viewport, the frame column's — ↩️at the surface's
+      // own edge until the vertical bar stood right of it (F-409).
       final rulerTop = tester.getTopLeft(ruler).dy;
-      final gesture = await tester.startGesture(Offset(1390, rulerTop + 12));
+      final viewEnd = tester
+          .getTopRight(
+            find.byKey(
+              const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
+            ),
+          )
+          .dx;
+      final gesture = await tester.startGesture(
+        Offset(viewEnd - 10, rulerTop + 12),
+      );
       for (var i = 0; i < 12; i += 1) {
         await gesture.moveBy(const Offset(30, 0));
         await tester.pump();
@@ -1565,7 +1575,7 @@ void main() {
           onTapAt: (_, _, _) {},
           onTapClear: () {},
           onMoveBegin: () => false,
-          onMoveUpdate: (_, {values}) {},
+          onMoveUpdate: (_, {stretch, values, landings}) {},
           onMoveEnd: () {},
           onMoveCancel: () {},
         ),
@@ -1998,7 +2008,7 @@ void main() {
           onTapAt: (_, _, _) {},
           onTapClear: () {},
           onMoveBegin: () => false,
-          onMoveUpdate: (_, {values}) {},
+          onMoveUpdate: (_, {stretch, values, landings}) {},
           onMoveEnd: () {},
           onMoveCancel: () {},
         ),

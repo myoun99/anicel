@@ -261,6 +261,20 @@ static void qa_rate_to_fraction(double rate, int32_t* num, int32_t* den) {
 /// 73프레임째의 빈 화면」, only in the other direction. Media Foundation's
 /// path had always done this in integers; passing through seconds would
 /// have been a REGRESSION dressed as unification.
+///
+/// 🚨★★★**TO THE NEAREST FRAME, FOR EVERY BACKEND.** A length a tick short
+/// of whole frames is still whole frames: Media Foundation hands its times
+/// over rounded to 100ns, so twelve frames at 24 end at 4999999, and a
+/// container may write a track's length one tick short of its samples —
+/// the repo's own `tone_with_video.mp4` holds twelve pictures (stts
+/// 12 × 1000) in a track it says is 11999/24000 long. Truncated, both are
+/// eleven. The half frame of slack is the one a stamp is given
+/// ([qa_sample_reaches]).
+/// ↩️It was Windows' alone first (검증 2026-10-23,
+/// windows-counts-a-movie-by-its-longest-track), added inside that backend
+/// — and the Apple-built engine, counting the same fixture through this
+/// law, came back eleven on the Mac and TestFlight builds the next day. A
+/// rule one backend keeps for itself is the difference between them.
 static int64_t qa_frame_count_for(int64_t duration_ticks,
                                   int64_t ticks_per_second,
                                   int32_t fps_num,
@@ -269,8 +283,9 @@ static int64_t qa_frame_count_for(int64_t duration_ticks,
       fps_num <= 0) {
     return 1;
   }
-  const int64_t count = (duration_ticks * (int64_t)fps_num) /
-                        (ticks_per_second * (int64_t)fps_den);
+  const int64_t per_frame = ticks_per_second * (int64_t)fps_den;
+  const int64_t count =
+      (duration_ticks * (int64_t)fps_num + per_frame / 2) / per_frame;
   return count < 1 ? 1 : count;
 }
 
@@ -404,12 +419,121 @@ static int32_t qa_backend_supported(void) { return 1; }
 
 static int32_t qa_backend_reads_framed(void) { return 1; }
 
+/// How far before the presentation's end the video's last samples are
+/// looked for, and how many are read at most before giving up on them.
+#define QA_WIN_TAIL_100NS 20000000LL
+#define QA_WIN_TAIL_READS 100000
+
+/// The presentation's length in Media Foundation's 100ns ticks — as long as
+/// its LONGEST track, which is seldom the video. 0 when it does not say.
+static int64_t qa_win_presentation_100ns(void) {
+  PROPVARIANT duration;
+  PropVariantInit(&duration);
+  int64_t ticks = 0;
+  if (SUCCEEDED(IMFSourceReader_GetPresentationAttribute(
+          g_dec.reader, (DWORD)MF_SOURCE_READER_MEDIASOURCE, &MF_PD_DURATION,
+          &duration)) &&
+      duration.vt == VT_UI8) {
+    ticks = (int64_t)duration.uhVal.QuadPart;
+  }
+  PropVariantClear(&duration);
+  return ticks;
+}
+
+/// Where the VIDEO ends, in 100ns ticks: the end of its last sample as the
+/// file stores it, read from a little before [presentation]'s end — a seek
+/// and a few seconds of samples, none of them decoded while the reader has
+/// no output type. 0 when the samples do not say.
+///
+/// 🚨★★★**MEDIA FOUNDATION DOES NOT ANSWER 「HOW LONG IS THE VIDEO」.** The
+/// 08-31 fix below asked the video stream for `MF_PD_DURATION`, and no
+/// source has ever answered it (검증 2026-10-23,
+/// windows-counts-a-movie-by-its-longest-track: refused,
+/// `MF_E_ATTRIBUTENOTFOUND`, for a `.mov` and an `.mp4` alike) — so the
+/// presentation was counted all along, and a 72-frame `.mov` whose sound
+/// runs 69ms longer was still 73 frames, the last of them empty: F-54's own
+/// symptom. The samples are what says where the pictures stop.
+static int64_t qa_win_video_end_100ns(int64_t presentation) {
+  PROPVARIANT position;
+  PropVariantInit(&position);
+  position.vt = VT_I8;
+  position.hVal.QuadPart = presentation > QA_WIN_TAIL_100NS
+                               ? presentation - QA_WIN_TAIL_100NS
+                               : 0;
+  const HRESULT sought =
+      IMFSourceReader_SetCurrentPosition(g_dec.reader, &GUID_NULL, &position);
+  PropVariantClear(&position);
+  if (FAILED(sought)) {
+    return 0;
+  }
+  int64_t end = 0;
+  for (int read = 0; read < QA_WIN_TAIL_READS; read += 1) {
+    DWORD flags = 0;
+    LONGLONG stamp = 0;
+    IMFSample* sample = NULL;
+    if (FAILED(IMFSourceReader_ReadSample(
+            g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, NULL,
+            &flags, &stamp, &sample))) {
+      return 0;
+    }
+    if (sample != NULL) {
+      LONGLONG length = 0;
+      IMFSample_GetSampleDuration(sample, &length);
+      IMFSample_Release(sample);
+      if ((int64_t)(stamp + length) > end) {
+        end = (int64_t)(stamp + length);
+      }
+    }
+    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+      return end;
+    }
+  }
+  // ⛔Out of reads before the end: what was read is not where it ends.
+  return 0;
+}
+
 static void qa_backend_close(void) {
   if (g_dec.reader != NULL) {
     IMFSourceReader_Release(g_dec.reader);
     g_dec.reader = NULL;
   }
   memset(&g_dec, 0, sizeof(g_dec));
+}
+
+/// Asks the reader's conversion for its pictures at the rate the FILE
+/// stores — the native type's — and leaves the choice to it where the file
+/// names none.
+///
+/// 🚨★★★**LEFT TO CHOOSE, THE CONVERSION TAKES THE DECODER'S RATE, AND A
+/// DECODER MAY WORK ITS OWN OUT.** Media Foundation's MPEG-4 Part 2 decoder
+/// describes a stream stored at 23.976 as 10000000/417188 — 23.97 — while it
+/// hands the pictures over on the file's own times; the conversion then
+/// stamps every picture on the decoder's clock, and this backend reads its
+/// rate off the conversion. 검증 2026-10-23
+/// (movie-23976-mpeg4-part2-asks-no-speed): such a movie asked a 24 project
+/// nothing on import — 23.97 is no pulldown partner — and the same clock
+/// counted a 12-frame movie 11 and put a jump two thousand frames in on the
+/// picture after the one asked for.
+///
+/// ⚠️A rate of 0/0 names none: asked for, it comes back 0/0 from the
+/// conversion as well (measured 2026-10-23), and the open would then guess
+/// 24 for a movie the decoder could have timed. No file the MPEG-4 source
+/// reads says 0/0 — a clock of zero-length samples comes back 12 fps — so
+/// nothing here can make one.
+static void qa_win_ask_for_the_stored_rate(IMFMediaType* wanted) {
+  IMFMediaType* stored = NULL;
+  if (FAILED(IMFSourceReader_GetNativeMediaType(
+          g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
+          &stored))) {
+    return;
+  }
+  UINT64 packed_rate = 0;
+  if (SUCCEEDED(IMFMediaType_GetUINT64(stored, &MF_MT_FRAME_RATE,
+                                       &packed_rate)) &&
+      (packed_rate >> 32) != 0 && (packed_rate & 0xFFFFFFFFULL) != 0) {
+    IMFMediaType_SetUINT64(wanted, &MF_MT_FRAME_RATE, packed_rate);
+  }
+  IMFMediaType_Release(stored);
 }
 
 static int32_t qa_backend_open(const char* path,
@@ -473,6 +597,10 @@ static int32_t qa_backend_open(const char* path,
       g_dec.reader, (DWORD)MF_SOURCE_READER_ALL_STREAMS, FALSE);
   IMFSourceReader_SetStreamSelection(
       g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+  // Measured while the reader has no output type: a sample read now is the
+  // stored bytes, and decodes nothing.
+  const int64_t presentation_100ns = qa_win_presentation_100ns();
+  const int64_t video_end_100ns = qa_win_video_end_100ns(presentation_100ns);
 
   IMFMediaType* wanted = NULL;
   if (FAILED(MFCreateMediaType(&wanted))) {
@@ -482,6 +610,7 @@ static int32_t qa_backend_open(const char* path,
   }
   IMFMediaType_SetGUID(wanted, &MF_MT_MAJOR_TYPE, &MFMediaType_Video);
   IMFMediaType_SetGUID(wanted, &MF_MT_SUBTYPE, &MFVideoFormat_RGB32);
+  qa_win_ask_for_the_stored_rate(wanted);
   hr = IMFSourceReader_SetCurrentMediaType(
       g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, NULL, wanted);
   IMFMediaType_Release(wanted);
@@ -539,8 +668,7 @@ static int32_t qa_backend_open(const char* path,
   g_dec.bottom_up = stride < 0 ? 1 : 0;
   g_dec.stride = stride < 0 ? -stride : stride;
 
-  // The VIDEO STREAM's duration, and the presentation's only as a
-  // fallback.
+  // The VIDEO's length, and the presentation's only as a fallback.
   //
   // 🚨★★★**THE PRESENTATION IS AS LONG AS ITS LONGEST TRACK, AND THAT IS
   // ALMOST NEVER THE VIDEO.** AAC frames are 1024 samples, so an MP4's
@@ -554,35 +682,22 @@ static int32_t qa_backend_open(const char* path,
   // failure modes: Media Foundation has no sample past the video's end and
   // hands back nothing (white), while AVFoundation's image generator
   // clamps and hands back the last picture again. Asking the video track
-  // is what makes the two agree, so it is done on both sides.
-  PROPVARIANT duration;
-  PropVariantInit(&duration);
-  int64_t duration_100ns = 0;
-  if (SUCCEEDED(IMFSourceReader_GetPresentationAttribute(
-          g_dec.reader, (DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-          &MF_PD_DURATION, &duration)) &&
-      duration.vt == VT_UI8 && (int64_t)duration.uhVal.QuadPart > 0) {
-    duration_100ns = (int64_t)duration.uhVal.QuadPart;
-  }
-  PropVariantClear(&duration);
-  if (duration_100ns <= 0) {
-    // ⛔Not every source answers per stream. Falling back to the
-    // presentation keeps the old behaviour for those rather than counting
-    // zero frames, which would be a worse bug than the one above.
-    PropVariantInit(&duration);
-    if (SUCCEEDED(IMFSourceReader_GetPresentationAttribute(
-            g_dec.reader, (DWORD)MF_SOURCE_READER_MEDIASOURCE, &MF_PD_DURATION,
-            &duration))) {
-      if (duration.vt == VT_UI8) {
-        duration_100ns = (int64_t)duration.uhVal.QuadPart;
-      }
-    }
-    PropVariantClear(&duration);
-  }
+  // is what makes the two agree, so it is done on both sides — here of its
+  // samples ([qa_win_video_end_100ns]), the one place Media Foundation
+  // says it.
+  //
+  // ⚠️Media Foundation hands every time over rounded to its 100ns tick, so
+  // twelve frames at 24 end at 4999999 — a tick short of twelve.
+  // [qa_frame_count_for] counts to the nearest frame for every backend.
+  // ⛔Where the samples do not say, the presentation keeps the old count
+  // rather than none, which would be a worse bug than the one above.
+  const int64_t duration_100ns =
+      video_end_100ns > 0 ? video_end_100ns : presentation_100ns;
 
   // 10,000,000 hundred-nanosecond ticks in a second. ⛔The 「at least one
-  // frame」 clamp is NOT repeated here — [qa_frame_count_for] carries it for
-  // every backend, which is the only way three of them can agree.
+  // frame」 clamp and the rounding are NOT repeated here —
+  // [qa_frame_count_for] carries them for every backend, which is the only
+  // way three of them can agree.
   g_doc.frame_count = qa_frame_count_for(duration_100ns, 10000000LL,
                                          g_doc.fps_num, g_doc.fps_den);
   return 1;

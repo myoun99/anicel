@@ -3,15 +3,19 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../core/path_names.dart' show fileNameOfPath;
 import '../../models/app_language.dart' show AppLanguage;
 import '../../services/persistence/app_documents.dart' show AppStorage;
+import '../audio/sound_cannot_play.dart' show PlaysWithout, SoundCannotPlay;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../text/text_measure.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_icon_button.dart';
+import '../widgets/app_tooltip.dart';
 import '../widgets/tick_layer.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
@@ -112,10 +116,17 @@ class PlaybackTransportControls extends StatelessWidget {
     this.onToggleVoiceRecording,
     this.voiceRecordClipLit,
     this.resolveStrings,
+    this.playsWithout,
   });
 
   final CanvasPlaybackController controller;
   final PlaybackScope scope;
+
+  /// What the device transport's run plays without
+  /// ([AudioDeviceTransport.playsWithout]) — the front slot counts the
+  /// sounds while this scope plays, and the meter's seat goes red when the
+  /// output would not open (playback-says-the-sound-it-cannot-play).
+  final ValueListenable<PlaysWithout>? playsWithout;
 
   /// The device transport's pre-clip bus peaks (AUDIO-PRO R2); non-null
   /// mounts the level meter at the row's end.
@@ -147,7 +158,7 @@ class PlaybackTransportControls extends StatelessWidget {
   final VoidCallback? onSkipToStart;
 
   /// What the row shows of the playback: the buttons' states. The drop count
-  /// is its slot's own read ([_droppedFramesSlot]).
+  /// is its slot's own read ([_frontSlot]).
   static _TransportShows _rowShows(CanvasPlaybackController controller) => (
     active: controller.isActive,
     scope: controller.scope,
@@ -182,7 +193,7 @@ class PlaybackTransportControls extends StatelessWidget {
             // is a fixed width with the text right-aligned INSIDE it, so
             // the count grows leftward into its own space and no button
             // ever moves. That is what keeping 「오른쪽정렬」 buys.
-            _droppedFramesSlot(),
+            _frontSlot(),
             _skipToStartButton(),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
@@ -227,13 +238,36 @@ class PlaybackTransportControls extends StatelessWidget {
   }
 
   Padding _meter(bool metering) {
+    final meter = AudioLevelMeter(
+      controller: controller,
+      resolvePeaks: resolveMeterPeaks!,
+      metering: metering,
+    );
+    final without = playsWithout;
     return Padding(
       padding: const EdgeInsets.only(left: 6),
-      child: AudioLevelMeter(
-        controller: controller,
-        resolvePeaks: resolveMeterPeaks!,
-        metering: metering,
-      ),
+      child: without == null
+          ? meter
+          : ValueListenableBuilder<PlaysWithout>(
+              valueListenable: without,
+              child: meter,
+              // 유저 2026-10-17 (playback-waits-for-its-sound-Q1): an output
+              // that will not open is said on the meter's own seat — red,
+              // the reason on hover. The seat is the one F-111 reserved, so
+              // nothing beside it moves.
+              builder: (context, plays, meter) => plays.output
+                  ? AppTooltip(
+                      message: AppText.strings.playbackOutputRefused,
+                      child: ColoredBox(
+                        key: const ValueKey<String>(
+                          'playback-output-refused',
+                        ),
+                        color: AppColors.danger,
+                        child: meter,
+                      ),
+                    )
+                  : meter!,
+            ),
     );
   }
 
@@ -356,9 +390,9 @@ class PlaybackTransportControls extends StatelessWidget {
     );
   }
 
-  /// The drop count's slot, on a read of its own (I-22 ③): a drop is counted
-  /// on every frame the device misses — exactly when there is no time to
-  /// spare — and while the count was part of what the ROW showed, every drop
+  /// The front slot, on a read of its own (I-22 ③): a drop is counted on
+  /// every frame the device misses — exactly when there is no time to spare
+  /// — and while the count was part of what the ROW showed, every drop
   /// rebuilt every button beside it. It rebuilds this slot alone now.
   ///
   /// 🚨AND IS LAID OUT, PAINTED AND DESCRIBED ALONE ([TickLayer], 10-12): the
@@ -368,7 +402,12 @@ class PlaybackTransportControls extends StatelessWidget {
   /// dropped (the real app, debug, cut 302). Its height is stated too now —
   /// the row's buttons', or one line of its words where the OS text size
   /// makes that taller — so the count changes nothing outside it.
-  Widget _droppedFramesSlot() => Builder(
+  ///
+  /// It says the sounds the run plays without as well (유저 2026-10-17,
+  /// playback-waits-for-its-sound-Q1: 「재생 중 재생 버튼 줄 맨 앞에 빨간 경고
+  /// 문구」) — the drops above them when both are there. ⛔The slot does not
+  /// grow for the second line: the words shrink into it, so no button moves.
+  Widget _frontSlot() => Builder(
     builder: (context) {
       final style = Theme.of(context).textTheme.labelSmall?.copyWith(
         color: Theme.of(context).colorScheme.error,
@@ -380,29 +419,20 @@ class PlaybackTransportControls extends StatelessWidget {
           TextMeasure(context, style).size(TextMeasure.everyScript).height,
         ),
         child: TickLayer(
-          child: _OnWhatItShows<int>(
+          child: _OnWhatItShows<_FrontShows>(
             controller: controller,
-            read: _droppedHere,
+            read: _frontHere,
             builder: (context) {
-              final dropped = _droppedHere(controller);
-              return dropped > 0
-                  ? Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: Text(
-                          AppText.strings.playbackDroppedCount(dropped),
-                          key: const ValueKey<String>(
-                            'playback-dropped-indicator',
-                          ),
-                          textAlign: TextAlign.right,
-                          maxLines: 1,
-                          overflow: TextOverflow.clip,
-                          style: style,
-                        ),
-                      ),
-                    )
-                  : const SizedBox.shrink();
+              final shows = _frontHere(controller);
+              final without = playsWithout;
+              if (without == null || !shows.here) {
+                return _frontWords(shows.dropped, const {}, style);
+              }
+              return ValueListenableBuilder<PlaysWithout>(
+                valueListenable: without,
+                builder: (context, plays, _) =>
+                    _frontWords(shows.dropped, plays.sounds, style),
+              );
             },
           ),
         ),
@@ -410,13 +440,65 @@ class PlaybackTransportControls extends StatelessWidget {
     },
   );
 
-  /// The drops this row shows: its own scope's playback's, and none while
-  /// another scope plays.
-  int _droppedHere(CanvasPlaybackController controller) =>
-      controller.isActive && controller.scope == scope
-      ? controller.droppedFrames
-      : 0;
+  Widget _frontWords(
+    int dropped,
+    Map<String, SoundCannotPlay> silent,
+    TextStyle? style,
+  ) {
+    Text line(String words, String key) => Text(
+      words,
+      key: ValueKey<String>(key),
+      textAlign: TextAlign.right,
+      maxLines: 1,
+      style: style,
+    );
+    final lines = [
+      if (dropped > 0)
+        line(
+          AppText.strings.playbackDroppedCount(dropped),
+          'playback-dropped-indicator',
+        ),
+      if (silent.isNotEmpty)
+        AppTooltip(
+          message: [
+            for (final MapEntry(key: path, value: why) in silent.entries)
+              '${fileNameOfPath(path)} — '
+                  '${AppText.strings.soundCannotPlay(why)}',
+          ].join('\n'),
+          child: line(
+            AppText.strings.playbackSilentCount(silent.length),
+            'playback-silent-indicator',
+          ),
+        ),
+    ];
+    if (lines.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerRight,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: lines,
+        ),
+      ),
+    );
+  }
+
+  /// What the front slot shows of the playback: whether its own scope's run
+  /// is the one going, and that run's drops — none while another scope
+  /// plays.
+  _FrontShows _frontHere(CanvasPlaybackController controller) {
+    final here = controller.isActive && controller.scope == scope;
+    return (here: here, dropped: here ? controller.droppedFrames : 0);
+  }
 }
+
+/// What the front slot shows of the playback ([PlaybackTransportControls]).
+typedef _FrontShows = ({bool here, int dropped});
 
 /// What the transport row shows of the playback — the buttons' states, and
 /// nothing else it reads.

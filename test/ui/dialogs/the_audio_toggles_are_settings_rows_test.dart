@@ -32,9 +32,10 @@ import 'package:anicel/src/ui/widgets/settings_rows.dart';
 ///    at — read off a reference [SettingsSwitchRow] mounted in the same
 ///    tree, so the number comes from the app's own theme and not from a
 ///    literal this test invented.
-/// ② **The whole row is the control.** A press on the LABEL turns that
-///    toggle, and only that one. A label beside a bare `Switch` never did
-///    anything at all, which is what 「한 모양」 costs and buys.
+/// ② **One control.** A press on the row's ring turns that toggle, and only
+///    that one. ↩️The whole row pressed until 유저 2026-10-23 (F-439-Q1):
+///    「링만 컨트롤, 라벨은 글자」 — the label is words again, as it was
+///    beside a bare `Switch`, and it scrolls the window.
 void main() {
   EditorSessionManager session() => EditorSessionManager(
     initialProject: createDefaultProject(),
@@ -126,8 +127,8 @@ void main() {
   );
 
   testWidgets(
-    'a press on the LABEL turns that row and no other — the whole row is '
-    'the control',
+    'a press on a row\'s ring turns that row and no other, and a press on '
+    'its label turns none',
     (tester) async {
       final manager = await pumpAudioSection(tester);
       final live = manager.appSettings.audioSyncSettings;
@@ -142,11 +143,15 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(label);
         await tester.pumpAndSettle();
+        expect(reading(), before, reason: '「${row.label}」 is words');
+
+        await tester.pressRingIn(find.byKey(ValueKey<String>(row.key)));
+        await tester.pumpAndSettle();
         final after = reading();
         expect(
           after[row.key],
           !before[row.key]!,
-          reason: 'a press on 「${row.label}」 turns its own toggle',
+          reason: 'a press on 「${row.label}」\'s ring turns its own toggle',
         );
         for (final other in rows) {
           if (other.key == row.key) {

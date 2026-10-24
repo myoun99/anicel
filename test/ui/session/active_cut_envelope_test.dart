@@ -19,8 +19,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// Written before the eleven hand-copied envelopes became one call
 /// (`ActiveCutEdits`) so the merge has something to answer to: the gap
 /// stand-down and the trailing notification are the two halves a
-/// hand-written copy drops (`CutVerbs._moveActiveCut`'s ⛔ comment records
-/// losing exactly the second one in one direction only).
+/// hand-written copy drops (the cut left/right verbs' ⛔ comment — gone with
+/// them since F-455 — recorded losing exactly the second one in one
+/// direction only).
 void main() {
   /// The verbs of [verbsOn] that name a ROW and are written in the cut that
   /// holds it, whichever cut — or none — is active.

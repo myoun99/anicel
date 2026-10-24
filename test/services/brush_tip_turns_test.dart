@@ -2,8 +2,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_tip_turns.dart';
 
 /// F-176-Q3 (「클튜 여섯 전부 + 끌어서 순서」): which tip each dab of one
@@ -15,6 +18,19 @@ void main() {
 
   final abc = [tip('a'), tip('b'), tip('c')];
 
+  /// A dab held as no pen reports — only [BrushTipOrder.lean] reads it.
+  final upright = BrushDab(
+    center: CanvasPoint(x: 0, y: 0),
+    color: 0xFF000000,
+    size: 10,
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.round,
+    pressure: 1,
+    sequence: 0,
+  );
+
   /// The tips [count] dabs take, one letter each — `-` for a dab that is
   /// not drawn.
   String taken(
@@ -25,7 +41,7 @@ void main() {
   }) {
     final turns = BrushTipTurns.of(tips, order, random: math.Random(seed))!;
     return [
-      for (var dab = 0; dab < count; dab += 1) turns.next()?.id ?? '-',
+      for (var dab = 0; dab < count; dab += 1) turns.next(upright)?.id ?? '-',
     ].join();
   }
 
@@ -82,6 +98,76 @@ void main() {
     expect(taken([tip('a')], BrushTipOrder.shuffledLap, 3), 'a--');
   });
 
+  group('turns of more than one tip — one thrown per dab (F-456-Q4: 「기울기가 '
+      '단계를 고르고, 그 단계 안에서 여러 장 중 무작위」)', () {
+    final abcdef = [for (final id in 'abcdef'.split('')) tip(id)];
+
+    String thrown(
+      List<BrushTipMask> tips,
+      BrushTipOrder order,
+      int count, {
+      required int tipsPerTurn,
+      BrushDab? dab,
+      int seed = 7,
+    }) {
+      final turns = BrushTipTurns.of(
+        tips,
+        order,
+        tipsPerTurn: tipsPerTurn,
+        random: math.Random(seed),
+      )!;
+      return [
+        for (var i = 0; i < count; i += 1) turns.next(dab ?? upright)!.id,
+      ].join();
+    }
+
+    test('the order picks the turn, the dice the tip within it', () {
+      final laid = thrown(abcdef, BrushTipOrder.repeat, 200, tipsPerTurn: 3);
+      for (var i = 0; i < laid.length; i += 1) {
+        expect(
+          (i.isEven ? 'abc' : 'def').contains(laid[i]),
+          isTrue,
+          reason: 'dab $i took ${laid[i]}',
+        );
+      }
+      expect(laid.split('').toSet(), {'a', 'b', 'c', 'd', 'e', 'f'});
+    });
+
+    test('the pen\'s lean picks the turn: upright the first, flat the last',
+        () {
+      final flat = upright.copyWith(tiltAltitude: 0.0);
+      final standing = thrown(abcdef, BrushTipOrder.lean, 60, tipsPerTurn: 3);
+      final lying = thrown(
+        abcdef,
+        BrushTipOrder.lean,
+        60,
+        tipsPerTurn: 3,
+        dab: flat,
+      );
+      expect(standing.split('').toSet(), {'a', 'b', 'c'});
+      expect(lying.split('').toSet(), {'d', 'e', 'f'});
+    });
+
+    test('the last turn may hold fewer', () {
+      final five = abcdef.take(5).toList();
+      final laid = thrown(five, BrushTipOrder.repeat, 200, tipsPerTurn: 3);
+      final second = {
+        for (var i = 1; i < laid.length; i += 2) laid[i],
+      };
+      expect(second, {'d', 'e'});
+    });
+
+    test('one tip a turn throws nothing more — a brush draws its dice as it '
+        'did before turns held more', () {
+      final dice = math.Random(7);
+      expect(
+        thrown(abc, BrushTipOrder.random, 50, tipsPerTurn: 1),
+        [for (var i = 0; i < 50; i += 1) 'abc'[dice.nextInt(3)]].join(),
+      );
+      expect(thrown(abc, BrushTipOrder.repeat, 6, tipsPerTurn: 1), 'abcabc');
+    });
+  });
+
   test('no turns where every dab would take the first tip anyway', () {
     final random = math.Random(1);
     expect(
@@ -93,6 +179,7 @@ void main() {
       BrushTipOrder.pingPong,
       BrushTipOrder.holdLast,
       BrushTipOrder.random,
+      BrushTipOrder.lean,
     ]) {
       expect(
         BrushTipTurns.of([tip('a')], order, random: random),

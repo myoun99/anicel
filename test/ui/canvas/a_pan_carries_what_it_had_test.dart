@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
@@ -53,6 +54,8 @@ import '../../helpers/placement_reading.dart';
 /// 유저 2026-08-28: 「화면에서 보이는건 바뀌면안되고」. So the test that
 /// matters is bytes: a carried buffer must draw what a cold composite draws.
 void main() {
+  setUpAll(LayerBlendShader.load);
+
   const canvasSize = CanvasSize(width: 32, height: 32);
   const projectId = ProjectId('p');
   const cutId = CutId('c');
@@ -423,35 +426,34 @@ void main() {
     );
   });
 
-  // 🚨★★★F-287: a carry over a stack holding a blend that is not in place
-  // is composed APART — the 「캔버스 줌인 줌아웃할때마다」 half of the card,
-  // whose stroke half is `a_stroke_step_draws_its_picture_test`. On the
-  // Windows app the clip a carry stood on did not hold such a blend (the
-  // paint pass's `_recomposeOverCarried` has the measurement); this
-  // engine's clip holds, so what is pinned here is the route, and that the
-  // bands composed apart lay the bytes the clip did.
-  //
-  // ⛔HELD AGAINST THE CLIP, NOT A COLD COMPOSITE. Measured 10-18 on this
-  // runner: with the live row in screen, a carry into a smaller view came
-  // out 1/255 off a cold composite in a few pixels with nothing recomposed
-  // at all — the carry's own, from before this route. (Such a row is
-  // rastered over the page as far as the view sees it, `_slotBufferBounds`,
-  // and an advanced blend rounds by the area it blends through,
-  // `inkCropDrawsTheSame`.) The first test here holds the carry to a cold
-  // composite for a stack that blends in place.
-  group('F-287 — a carry through a blend that is not in place is composed '
-      'apart, and lays the bytes the clip did', () {
+  // 🚨★★★F-287: a carry over a stack holding a blend laid that blend over
+  // the carried pixels once more — the 「캔버스 줌인 줌아웃할때마다」 half of
+  // the card, whose stroke half is `a_stroke_step_draws_its_picture_test`.
+  // On the Windows app the clip a carry stood on did not hold the GPU's
+  // blend (the paint pass's `_recomposeOverCarried` has the measurement).
+  // ↩️Such a carry was composed APART, and these pinned that route and held
+  // it to the clip — a cold composite was 1/255 off in a few pixels with a
+  // GPU screen row, a blend that rounded by the area it blended through —
+  // until every advanced blend went over its backdrop in the shader
+  // (a-blurred-folder-cut-by-the-view-moves-on-vulkan). The user's stacks,
+  // as the plan hands them over, are held to a cold composite now, as the
+  // first test here holds a stack of normal rows.
+  group('F-287 — a carry through a blend draws what a cold composite draws',
+      () {
     const ids = ['under', 'over'];
     const multiplied = LayerBlendMode.multiply;
-    CompositeNode<CanvasStackRow> row(
-      String id, {
-      LayerBlendMode blendMode = LayerBlendMode.normal,
-    }) => CompositeLeaf<CanvasStackRow>(
-      CanvasLayerImageRequest(
-        frameKey: keyFor(id),
-        opacity: 1,
-        blendMode: blendMode,
-      ),
+    CompositeNode<CanvasStackRow> row(String id) =>
+        CompositeLeaf<CanvasStackRow>(
+          CanvasLayerImageRequest(frameKey: keyFor(id), opacity: 1),
+        );
+    CompositeNode<CanvasStackRow> blended(
+      CompositeNode<CanvasStackRow> source,
+      LayerBlendMode blendMode, {
+      List<CompositeNode<CanvasStackRow>> over = const [],
+    }) => CompositeBackdropBlend<CanvasStackRow>(
+      backdrop: over,
+      source: source,
+      blendMode: blendMode,
     );
     const drawnOn = CompositeLeaf<CanvasStackRow>(
       CanvasActiveLayerRow(opacity: 1),
@@ -459,28 +461,36 @@ void main() {
     final stacks = <String, List<CompositeNode<CanvasStackRow>>>{
       // The user's: two rows in multiply, a normal row drawn on above.
       'two rows in multiply under the live row': [
-        row('under', blendMode: multiplied),
-        row('over', blendMode: multiplied),
+        blended(
+          row('over'),
+          multiplied,
+          over: [blended(row('under'), multiplied)],
+        ),
         drawnOn,
       ],
       'the live row itself in screen': [
-        row('under'),
-        row('over'),
-        const CompositeLeaf<CanvasStackRow>(
-          CanvasActiveLayerRow(opacity: 1, blendMode: LayerBlendMode.screen),
+        blended(
+          drawnOn,
+          LayerBlendMode.screen,
+          over: [row('under'), row('over')],
         ),
       ],
       'a folder in overlay': [
-        CompositeGroup<CanvasStackRow>(
-          children: [row('under'), row('over')],
-          opacity: 1,
-          blendMode: LayerBlendMode.overlay,
+        blended(
+          CompositeGroup<CanvasStackRow>(
+            children: [row('under'), row('over')],
+            opacity: 1,
+            blendMode: LayerBlendMode.normal,
+          ),
+          LayerBlendMode.overlay,
         ),
         drawnOn,
       ],
       'a row in multiply inside a normal folder': [
         CompositeGroup<CanvasStackRow>(
-          children: [row('under'), row('over', blendMode: multiplied)],
+          children: [
+            blended(row('over'), multiplied, over: [row('under')]),
+          ],
           opacity: 1,
           blendMode: LayerBlendMode.normal,
         ),
@@ -488,7 +498,9 @@ void main() {
       ],
       'a row in multiply under an adjustment': [
         CompositeAdjustment<CanvasStackRow>(
-          children: [row('under'), row('over', blendMode: multiplied)],
+          children: [
+            blended(row('over'), multiplied, over: [row('under')]),
+          ],
           effects: [
             ResolvedLayerEffect(
               kind: EffectKind.brightnessContrast,
@@ -529,7 +541,7 @@ void main() {
         banded: true,
       ),
       // ⛔The new rect lies inside the old one: no band, and nothing to
-      // compose — apart or on a clip.
+      // compose.
       (
         name: 'a zoom in on its level',
         from: CanvasViewport(zoom: 2),
@@ -539,7 +551,7 @@ void main() {
         banded: false,
       ),
       // Below 100% the buffer is a level image: the bands lie on its grid,
-      // two level pixels wide, composed apart at its scale.
+      // two level pixels wide, composed at its scale.
       (
         name: 'a pan below 100%',
         from: CanvasViewport(zoom: 0.5),
@@ -561,87 +573,54 @@ void main() {
             ids: ids,
             quality: PlaybackQuality.forLevel(level),
           );
-          /// The move made over a cache of its own: the screen after it, and
-          /// the cache that carried it.
-          Future<(Uint8List, DisplayBufferCache)> move() async {
-            final buffers = DisplayBufferCache();
-            addTearDown(buffers.dispose);
-            Future<Uint8List> screen(CanvasViewport viewport) => screenAt(
-              tester,
-              viewport,
-              cache,
-              buffers,
-              rows: rows,
-              surface: crossed,
-              side: at.side,
-            );
-            await screen(at.from);
-            return (await screen(at.to), buffers);
-          }
+          Future<Uint8List> screen(
+            CanvasViewport viewport,
+            DisplayBufferCache buffers,
+          ) => screenAt(
+            tester,
+            viewport,
+            cache,
+            buffers,
+            rows: rows,
+            surface: crossed,
+            side: at.side,
+          );
 
-          final (apart, carried) = await move();
+          final carried = DisplayBufferCache();
+          addTearDown(carried.dispose);
+          await screen(at.from, carried);
+          final moved = await screen(at.to, carried);
           expect(carried.lastBufferLevel, level, reason: 'fixture: the level');
           expect(
             carried.scrolledCount,
             1,
             reason: 'fixture: the move was not carried',
           );
-          if (at.banded) {
-            expect(carried.lastComposedArea, greaterThan(0));
-            expect(
-              carried.composedApartCount,
-              1,
-              reason: 'a band stood on its clip',
-            );
-          } else {
-            expect(carried.lastComposedArea, 0);
-            expect(carried.composedApartCount, 0);
-          }
+          expect(
+            carried.lastComposedArea,
+            at.banded ? greaterThan(0) : 0,
+            reason: 'fixture: the bands',
+          );
 
-          debugRecomposeApart = false;
-          try {
-            final (clipped, reference) = await move();
-            expect(
-              reference.composedApartCount,
-              0,
-              reason: 'the reference went apart',
-            );
-            expect(
-              apart,
-              clipped,
-              reason: 'the bands composed apart and the rest carried — byte '
-                  'for byte the screen the clip made',
-            );
-          } finally {
-            debugRecomposeApart = true;
-          }
+          final cold = DisplayBufferCache();
+          addTearDown(cold.dispose);
+          final fresh = await screen(at.to, cold);
+          expect(
+            cold.fullCount,
+            1,
+            reason: 'the reference was not a cold composite of its own',
+          );
+          expect(
+            moved,
+            fresh,
+            reason: 'the bands composed and the rest carried — byte for byte '
+                'the screen a cold composite makes',
+          );
         });
       }
     }
 
-    testWidgets('…and a stack that blends in place carries on its clip', (
-      tester,
-    ) async {
-      final cache = await warmCache(tester, ids: ids);
-      final buffers = DisplayBufferCache();
-      addTearDown(buffers.dispose);
-      final rows = [row('under'), row('over'), drawnOn];
-      for (final viewport in [
-        CanvasViewport(zoom: 2),
-        CanvasViewport(zoom: 2, panX: -6, panY: -4),
-      ]) {
-        await screenAt(
-          tester,
-          viewport,
-          cache,
-          buffers,
-          rows: rows,
-          surface: crossed,
-        );
-      }
-      expect(buffers.scrolledCount, 1, reason: 'fixture: a carry');
-      expect(buffers.lastComposedArea, greaterThan(0), reason: 'fixture');
-      expect(buffers.composedApartCount, 0);
-    });
+    // ↩️'…and a stack that blends in place carries on its clip' was pinned
+    // here, the route's own other half.
   });
 }

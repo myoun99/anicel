@@ -4,6 +4,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show editorActionLabel;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/home_page_probes.dart';
 
@@ -41,6 +46,15 @@ void main() {
         s.frameVerbs.frameNameForLayer(layer, index),
     ];
   }
+
+  /// The window's title naming [target] — 🗣️I-24-open-entry (유저
+  /// 2026-10-01): 「이 규칙은 다른 타임라인 버튼도 동일하게」.
+  Finder titledFor(String target) => find.text(
+    AppText.strings.windowTitleOn(
+      editorActionLabel(EditorActionIds.editAutoName),
+      target,
+    ),
+  );
 
   /// Types [start] into the open window, from its pencil, and applies it.
   Future<void> numberFrom(WidgetTester tester, int start) async {
@@ -85,6 +99,7 @@ void main() {
       findsOneWidget,
       reason: '「기본값은 1인상태」',
     );
+    expect(titledFor(AppText.strings.tlFrame), findsOneWidget);
     await numberFrom(tester, 5);
 
     expect(reads(s, row, 3), ['5', '6', '7']);
@@ -138,6 +153,7 @@ void main() {
     expect(await isActionButtonEnabled(tester, button), isTrue);
 
     await tapToolbarButton(tester, button);
+    expect(titledFor(AppText.strings.tlCut), findsOneWidget);
     await numberFrom(tester, 5);
 
     final cuts = s.repository.requireProject().tracks.first.cuts;

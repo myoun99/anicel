@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_correction.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
@@ -15,8 +17,11 @@ import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/panels/editor_panel_dock.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/tip_direction_popup.dart';
+
+import '../helpers/boolean_dot_probe.dart';
 
 void main() {
   testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (
@@ -181,6 +186,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Future<void> press(String key) async {
+      final row = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(row);
+      await tester.pressRingIn(row);
+      await tester.pumpAndSettle();
+    }
+
     final read = await _pumpPanel(
       tester,
       initial: BrushToolState.defaults.copyWith(
@@ -188,7 +200,7 @@ void main() {
       ),
     );
     const off = BrushCorrection(steadies: false, stabilization: 40);
-    await tap('brush-tool-stabilizer-on');
+    await press('brush-tool-stabilizer-on');
     expect(read().correction, off);
 
     final slider = find.byKey(
@@ -200,7 +212,7 @@ void main() {
     await tap('brush-tool-steadying-by-speed-slow');
     expect(read().correction, off, reason: 'dim: neither moves');
 
-    await tap('brush-tool-stabilizer-on');
+    await press('brush-tool-stabilizer-on');
     expect(read().correction, const BrushCorrection(stabilization: 40));
   });
 
@@ -508,6 +520,97 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('the tips a turn holds are set by their row and reach the '
+        'shape — and the row is DEAD below two tips (F-456-Q4)', (
+      tester,
+    ) async {
+      // 「없다가 생기는 UI 금지」: one tip has nothing to throw between, so
+      // the row is here and dead, not absent.
+      final row = find.byKey(
+        const ValueKey<String>('brush-tool-tips-per-turn-slider'),
+      );
+      final bare = await _pumpPanel(tester);
+      expect(bare().tips, isEmpty, reason: 'fixture premise');
+      expect(row, findsOneWidget, reason: 'the row must keep its place');
+      expect(tester.widget<FieldSlider>(row).onChanged, isNull);
+
+      BrushTipMask tip(String id) => BrushTipMask(
+        id: id,
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(
+          tips: [tip('a'), tip('b'), tip('c'), tip('d')],
+        ),
+      );
+      expect(read().tipsPerTurn, 1);
+      tester.widget<FieldSlider>(row).onChanged!(2.0);
+      await tester.pumpAndSettle();
+      expect(read().tipsPerTurn, 2);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the paper\'s 高さ is picked by its row and reaches the '
+        'canvas — and the row is DEAD with no paper (F-451)', (tester) async {
+      final height = find.byKey(
+        const ValueKey<String>('brush-tool-texture-mode-height'),
+      );
+
+      final bare = await _pumpPanel(tester);
+      expect(bare().textureMask, isNull, reason: 'fixture premise');
+      expect(height, findsOneWidget, reason: 'the row must keep its place');
+      await tester.ensureVisible(height);
+      await tester.tap(height);
+      await tester.pumpAndSettle();
+      expect(
+        bare().textureMode,
+        BrushTextureMode.multiply,
+        reason: 'no paper, nothing to cut',
+      );
+
+      final paper = BrushTipMask(
+        id: 'paper-row-test',
+        size: 2,
+        alpha: Uint8List.fromList([0, 128, 200, 255]),
+      );
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.withMask(BrushMaskSlot.texture, paper),
+      );
+      expect(read().textureMode, BrushTextureMode.multiply);
+      await tester.ensureVisible(height);
+      await tester.tap(height);
+      await tester.pumpAndSettle();
+
+      expect(read().toInputSettings().textureMode, BrushTextureMode.height);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the paper\'s density takes a pen curve of its own — the '
+        'lead\'s reach into the tooth (F-451)', (tester) async {
+      final read = await _pumpPanel(tester);
+      final curveButton = find.byKey(
+        const ValueKey<String>('brush-tool-pressure-textureDensity'),
+      );
+      await tester.ensureVisible(curveButton);
+      await tester.tap(curveButton);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('curve-source-pressure')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        read().toInputSettings().shape.curveFor(
+          BrushPressureTarget.textureDensity,
+          BrushInputSource.pressure,
+        ),
+        BrushPressureCurve.identity(),
+      );
+    });
+
     testWidgets('the angle\'s random turn reaches the engine — from the '
         'window behind the button beside the angle (F-176-Q6)', (
       tester,
@@ -580,7 +683,7 @@ void main() {
         const ValueKey<String>('brush-tool-mixing-toggle'),
       );
       await tester.ensureVisible(toggle);
-      await tester.tap(toggle);
+      await tester.pressRingIn(toggle);
       await tester.pumpAndSettle();
 
       expect(read().mixesGroundColor, isTrue);
@@ -621,7 +724,7 @@ void main() {
         const ValueKey<String>('brush-tool-scatter-both-axes-toggle'),
       );
       await tester.ensureVisible(axes);
-      await tester.tap(axes);
+      await tester.pressRingIn(axes);
       await tester.pumpAndSettle();
 
       expect(read().scatterRadiusRatio, greaterThan(0));
@@ -686,6 +789,13 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    Future<void> press(String key) async {
+      final row = find.byKey(ValueKey<String>(key));
+      await tester.ensureVisible(row);
+      await tester.pressRingIn(row);
+      await tester.pumpAndSettle();
+    }
+
     const toggles = [
       'brush-tool-post-by-speed-toggle',
       'brush-tool-post-by-view-scale-toggle',
@@ -700,7 +810,7 @@ void main() {
     );
     await tap('brush-tool-steadying-by-speed-slow');
     for (final key in toggles) {
-      await tap(key);
+      await press(key);
     }
     expect(
       read().correction,
@@ -709,12 +819,12 @@ void main() {
     );
     // 角をとがらせる sits under no switch in Clip Studio's group: it is
     // never dim (F-418-Q11).
-    await tap('brush-tool-sharpen-corners');
+    await press('brush-tool-sharpen-corners');
     expect(
       read().correction,
       BrushCorrection.none.copyWith(sharpenCorners: true),
     );
-    await tap('brush-tool-sharpen-corners');
+    await press('brush-tool-sharpen-corners');
     expect(read().correction, BrushCorrection.none, reason: 'and off again');
 
     read = await _pumpPanel(
@@ -723,10 +833,10 @@ void main() {
         correction: const BrushCorrection(postStrength: 20),
       ),
     );
-    await tap('brush-tool-sharpen-corners');
+    await press('brush-tool-sharpen-corners');
     await tap('brush-tool-steadying-by-speed-fast');
     for (final key in toggles) {
-      await tap(key);
+      await press(key);
     }
     expect(
       read().correction,

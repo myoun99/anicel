@@ -35,6 +35,7 @@ import '../../helpers/temp_dir.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/three_frame_gif.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// I-47 (유저 2026-09-25): 「이미지 레이어의 프레임영역에 떨구면 참조변경 …
 /// 기존의 트랜스폼값같은거 안건들이고 진짜 참조대상만 변경하는느낌」 — and
@@ -112,11 +113,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
-        ),
-      ),
+      railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 3)),
     );
     await tester.pumpAndSettle();
     final session = tester

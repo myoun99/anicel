@@ -28,8 +28,11 @@ import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+
+import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// One row's composite paint, written once for both of its shapes.
 typedef _RowPaint = ({
@@ -49,9 +52,15 @@ typedef _RowPaint = ({
 /// ([LiftedCel]). Here the same surface and the same float are drawn
 /// once as the live row and once as a lifted row, and the bytes must agree
 /// through every route the body has: riding the draws, a plain buffer, an
-/// advanced blend's image, a pose, a spreading effect, inside a folder.
+/// advanced blend over its backdrop, a pose, a spreading effect, inside a
+/// folder. ↩️The advanced blend drew from its own image, until every one
+/// went over its backdrop in the shader (a-blurred-folder-cut-by-the-view-
+/// moves-on-vulkan); the stacks are handed over as the plan hands them
+/// ([stackAsThePlanHandsIt]).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
+
+  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey keyOf(String layer) => BrushFrameKey(
     projectId: const ProjectId('p'),
@@ -154,7 +163,7 @@ void main() {
               width: 8,
               height: 8,
               child: CanvasLayerStackView(
-                nodes: nodes,
+                nodes: stackAsThePlanHandsIt(nodes),
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(),
@@ -202,8 +211,10 @@ void main() {
       placement: null,
       effects: const [],
     ),
-    // An advanced blend never rides a buffer: the slot is drawn as an
-    // image, sized by the slot's own bounds.
+    // ↩️An advanced blend drew its slot as an image, sized by the slot's
+    // own bounds, until every one went over its backdrop in the shader
+    // (a-blurred-folder-cut-by-the-view-moves-on-vulkan): the row is the
+    // source of a blend now, painted normal, and the shader lays it.
     'a multiply row': (
       opacity: 0.7,
       blendMode: LayerBlendMode.multiply,

@@ -8,6 +8,8 @@ import '../../models/layer_id.dart';
 import '../../models/range_snap.dart';
 import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_repeat.dart'
+    show gluedRunAt, gluedRunsByBlockStart;
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
 import '../../models/track_projection_row.dart'
@@ -280,6 +282,76 @@ class RangeSelections {
           !entry.value.ghost)
         entry.key,
   ];
+
+  /// The RUNS a press on a run edge of [layerId]'s run at [blockStartIndex]
+  /// acts on, by row, each named by its first block's start: every run the
+  /// live band holds a block of, on every row whose runs take the press,
+  /// when the pressed run is one of them — the pressed run alone when it is
+  /// not, and none on a row that takes no run-edge press.
+  ///
+  /// 🗣️F-410 (유저 2026-10-19): 「여러 프레임 블록(여러 행이든 뭐든)
+  /// 선택됬을때, 여러 레이어 선택하고 버튼 동작하는 규칙 그대로, 선택된 여러
+  /// 프레임에 성질 바꾸는거 적용되도록. 프레임추가도.」 — the rows' rule
+  /// (`RowSelection.rowsActedOnBy`: inside the selection, all of it; outside,
+  /// that one alone), stated in the runs a band names. The run edge's two
+  /// buttons, the N/H/R tag and the ＋, both ask this, so how many rows or
+  /// runs a band holds never picks the code that answers.
+  Map<LayerId, List<int>> runsActedOnBy(LayerId layerId, int blockStartIndex) {
+    final pressed = _project.rangeLayerById(layerId);
+    final run = pressed == null || !_takesRunEdges(pressed)
+        ? null
+        : gluedRunAt(pressed, blockStartIndex);
+    if (run == null) {
+      return const {};
+    }
+    final band = _runsInBand();
+    return band[layerId]?.contains(run.startIndex) ?? false
+        ? band
+        : {
+            layerId: [run.startIndex],
+          };
+  }
+
+  /// The runs the live band holds a block of ([selectionBlockStarts]), by
+  /// row, in frame order; a row whose runs take no run-edge press is passed
+  /// by.
+  Map<LayerId, List<int>> _runsInBand() {
+    final band = _selection.frameRangeSelection.value;
+    if (band == null) {
+      return const {};
+    }
+    final byRow = <LayerId, List<int>>{};
+    for (final id in band.spanLayerIds) {
+      final layer = _project.rangeLayerById(id);
+      if (layer == null || !_takesRunEdges(layer)) {
+        continue;
+      }
+      final runs = gluedRunsByBlockStart(layer);
+      final starts = {
+        for (final start in selectionBlockStarts(
+          layer,
+          band.startIndex,
+          band.endIndexExclusive,
+        ))
+          ?runs[start]?.startIndex,
+      };
+      if (starts.isNotEmpty) {
+        byRow[id] = [...starts]..sort();
+      }
+    }
+    return byRow;
+  }
+
+  /// Whether [layer]'s runs take a run-edge press: its blocks move
+  /// ([RetimeLaw.blockMoveEligible]) and it may hold a hold or a repeat
+  /// ([LayerKind.acceptsRepeatRegions]) — what each of the two buttons
+  /// asked of its own row before a band could reach others.
+  ///
+  /// Design E: the storyboard row refuses repeat/hold regions outright — a
+  /// derived instance would look exactly like a panel while owning no memo
+  /// of its own. Copy the frames instead.
+  bool _takesRunEdges(Layer layer) =>
+      _retime.blockMoveEligible(layer.id) && layer.kind.acceptsRepeatRegions;
 
   /// Which rows of a live span a retime may touch, in BOTH the forms a
   /// retime needs — the display form it reads timing off and the COMMIT
@@ -670,11 +742,7 @@ class RangeSelections {
     // block is cut. A lane's keys are points — raw cells, the lane domain's
     // own rule — so a span of lanes alone IS the raw span.
     final span = snapSpanToRowsBlocks(
-      rows: [
-        for (final id in blockIds)
-          if (_project.rangeLayerById(id) case final spanned?)
-            (layer: spanned, runs: _rowSpans.aggregateRunsForRow(spanned)),
-      ],
+      rows: _blockRowsOf(blockIds),
       anchorIndex: anchorIndex,
       headIndex: headIndex,
     );
@@ -949,6 +1017,71 @@ class RangeSelections {
         ? null
         : onTrack.endingAt(end);
   }
+
+  /// THE band a shove left standing, grown over the blocks it holds now —
+  /// on the rows it swept, whichever axis it is in: a cut's cells, an S
+  /// row's sounds, the cut row's cuts. The shared snap ([snapSpanToBlocks])
+  /// is asked, and only its END is taken: the start is the shove's anchor
+  /// and stays where it stands.
+  ///
+  /// 🗣️F-264 (유저 2026-10-08): 「선택범위는 당기고 갱신됨 … 자기 위치에
+  /// 갱신된다해야하나? 왜냐면 블록이 범위안에 들어오면 선택범위가
+  /// 커져야하니까」. A block pulled back past the start still reaches into
+  /// the band, and the snap grows the start over it; taken, the anchor would
+  /// go after the block and the pull would never run out.
+  void growOverTheBlocksItHolds() {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      final end = _endPast(
+        snapSpanToRowsBlocks(
+          rows: _blockRowsOf(inCut.spanLayerIds),
+          anchorIndex: inCut.startIndex,
+          headIndex: inCut.endIndexExclusive - 1,
+        ),
+        inCut.endIndexExclusive,
+      );
+      if (end != null) {
+        _selection.frameRangeSelection.value = inCut.endingAt(end);
+      }
+      return;
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack == null) {
+      return;
+    }
+    final axis = _projectSettings.axisForTrack(onTrack.trackId);
+    final end = _endPast(
+      snapSpanToBlocks(
+        lanes: [
+          for (final row in onTrack.spanRows)
+            ?_rowSpans.trackRowSnapLane(row, axis),
+        ],
+        anchorIndex: onTrack.startFrame,
+        headIndex: onTrack.endFrameExclusive - 1,
+      ),
+      onTrack.endFrameExclusive,
+    );
+    if (end != null) {
+      _selection.trackFrameRangeSelection.value = onTrack.endingAt(end);
+    }
+  }
+
+  /// Where [snapped] ends, when that is past [endExclusive]; null when it
+  /// ends there.
+  static int? _endPast(RangeSpan? snapped, int endExclusive) =>
+      switch (snapped?.endIndexExclusive) {
+        final end? when end > endExclusive => end,
+        _ => null,
+      };
+
+  /// The rows of [ids] a band snaps over — each with the runs its members
+  /// make, the folder case ([snapSpanToRowsBlocks]).
+  List<({Layer layer, List<({int start, int endExclusive})> runs})>
+  _blockRowsOf(Iterable<LayerId> ids) => [
+    for (final id in ids)
+      if (_project.rangeLayerById(id) case final layer?)
+        (layer: layer, runs: _rowSpans.aggregateRunsForRow(layer)),
+  ];
 
   /// Where the last retimed block of [startsByLayer] ends now (max across
   /// rows), each row's commit keys brought [behind] frames back onto the

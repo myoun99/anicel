@@ -14,6 +14,7 @@ import 'property_lane_model.dart';
 import 'rail_column_swipe.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_lane_rows.dart' show laneMemberPinInset;
+import 'timeline_layer_controls_row.dart' show timelineRowFolds;
 
 /// The toggle columns a rail's bulk-drag can sweep, for BOTH grids.
 ///
@@ -53,7 +54,10 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   columns: columns,
   optionalColumns: hooks.optionalColumns,
   graph: switch (_graph(hooks)) {
-    final toggle? => (toggle: toggle, after: _pastTheGraph),
+    final toggle? => (
+      toggle: toggle,
+      after: (row) => _pastTheGraph(row, hooks),
+    ),
     null => null,
   },
   visibility: _visibility(hooks),
@@ -101,6 +105,9 @@ typedef RailSwipeHooks = ({
   LaneGraphVerbs? laneGraphVerbs,
   LaneGraphsView Function() laneGraphsNow,
   RailRowHands hands,
+  // Whether a row folds rows of its own, as its label is told — its twirl
+  // ends its name, past the graph's button (F-454).
+  bool Function(TimelineDisplayRow row) folds,
 });
 
 /// Which of a rail's verbs a ROW is handed, as its label is — what the row
@@ -162,6 +169,7 @@ RailSwipeHooks timelineRailSwipeHooks(
   laneGraphVerbs: hooks.laneGraphVerbs,
   laneGraphsNow: () => hooks.laneGraphsNow?.call() ?? hooks.laneGraphs,
   hands: handsEveryRow,
+  folds: (row) => timelineRowFolds(row, layers),
 );
 
 /// I-89 ③: a header graph's button, on each row that heads one — a
@@ -184,10 +192,11 @@ RailToggle<TimelineDisplayRow>? _graph(RailSwipeHooks hooks) {
 }
 
 /// What a row lays past its graph button at the end of its name (I-89 Q1):
-/// a layer row its fold slot, which always ends its name (F-29); a header
-/// nothing.
-double _pastTheGraph(TimelineDisplayRow row) =>
-    row.isLane ? 0 : layerLaneToggleSlotWidth;
+/// a layer row that folds its twirl, the last of its own buttons (F-454);
+/// any other row nothing. ↩️A layer row laid its fold slot there whether
+/// it folded or not (F-29).
+double _pastTheGraph(TimelineDisplayRow row, RailSwipeHooks hooks) =>
+    !row.isLane && hooks.folds(row) ? layerLaneToggleSlotWidth : 0;
 
 /// I-89 ③: a member lane's pin, on each lane that wears one ([lanePinOf]),
 /// swept as it is pressed and read live, as the graph's button is.

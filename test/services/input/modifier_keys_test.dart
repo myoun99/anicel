@@ -24,6 +24,28 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlRight);
   });
 
+  testWidgets('a Ctrl+click asks for Ctrl or ⌘ — Ctrl on a Mac or an iPad '
+      'is ⌘ — and for nothing else', (tester) async {
+    expect(ModifierKeys.isControlOrCommandPressed, isFalse);
+    for (final key in [
+      LogicalKeyboardKey.controlLeft,
+      LogicalKeyboardKey.metaRight,
+    ]) {
+      await tester.sendKeyDownEvent(key);
+      expect(ModifierKeys.isControlOrCommandPressed, isTrue, reason: '$key');
+      await tester.sendKeyUpEvent(key);
+      expect(ModifierKeys.isControlOrCommandPressed, isFalse);
+    }
+    for (final key in [
+      LogicalKeyboardKey.shiftLeft,
+      LogicalKeyboardKey.altLeft,
+    ]) {
+      await tester.sendKeyDownEvent(key);
+      expect(ModifierKeys.isControlOrCommandPressed, isFalse, reason: '$key');
+      await tester.sendKeyUpEvent(key);
+    }
+  });
+
   testWidgets('🚨what Windows says is held is held though the record let go '
       'of it — each modifier by its own key', (tester) async {
     final heldBy = <bool Function(), List<int>>{

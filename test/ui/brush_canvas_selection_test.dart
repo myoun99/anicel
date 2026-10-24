@@ -355,6 +355,8 @@ void main() {
   /// pre-lift picture at the PRE-lift place; on a move whose landing
   /// overlaps its origin those wrong pixels are ink too, so a count reads
   /// them as "covered" and removing the lie reads as a regression.
+  /// ↩️That fallback is gone since 2026-09-17 (a tile with no picture is
+  /// pictured inside the paint); where, not how much, is still the question.
   Future<List<bool>> screenInkMask(WidgetTester tester) async {
     final boundary = tester.renderObject<RenderRepaintBoundary>(
       find.byKey(const ValueKey<String>('panel-capture')),
@@ -403,6 +405,9 @@ void main() {
   /// and the cache is a shared singleton that earlier tests in this file
   /// warm. Measured on the same code: 4020 with the file, 0 with
   /// `--plain-name`. A ghost assertion run in isolation is vacuous.
+  /// ↩️The stale fallback is gone since 2026-09-17 — a tile with no picture
+  /// is pictured inside the paint — so that premise no longer stands; not
+  /// measured again since.
   ({int ghost, int hole}) inkDelta(List<bool> frame, List<bool> settled) {
     var ghost = 0;
     var hole = 0;
@@ -5810,7 +5815,9 @@ void main() {
       // objects with no decoded image, so the base painter's stale
       // fallback answered for them with the tiles the LIFT ERASED —
       // emptiness — and the float that had been covering them was already
-      // gone. Measured, the selection vanished for two frames.
+      // gone. Measured, the selection vanished for two frames. ↩️That
+      // fallback is gone since 2026-09-17: a new tile is pictured inside the
+      // paint.
       //
       // The float is what should cover that, because it is not a stand-in:
       // by P3a's preview/commit byte-identity contract it holds exactly
@@ -5831,6 +5838,9 @@ void main() {
       // painter's per-pixel fallback covers four tiles a frame — so a
       // mutant that pinned an EMPTY surface, which is the user's symptom
       // verbatim, passed all 29 tests in this file. It asks the raster now.
+      // ↩️The per-pixel fallback is gone since 2026-09-17 (a tile with no
+      // picture is pictured inside the paint); the raster is still the
+      // question to ask.
       //
       // ⚠️ EVERY surface painter, the committed one included. This used to
       // exclude it and ask a separate question of the cache — "has every
@@ -6016,7 +6026,9 @@ void main() {
       // frame, so a landing that fits inside them is painted whatever
       // else is broken. Written first with the file's 30..60 fixture,
       // this test passed without the fix — that is the whole reason the
-      // user sees this on big transforms and not on small ones.
+      // user sees this on big transforms and not on small ones. ↩️That was
+      // the per-pixel fallback's budget, gone since 2026-09-17; the picture
+      // stays this big so the test asks what it was written to ask.
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
@@ -6066,7 +6078,8 @@ void main() {
       );
       // And it must not be shown in the WRONG place: the base's stale
       // fallback paints the pre-lift picture at the pre-lift position, and
-      // those pixels are ink too.
+      // those pixels are ink too. ↩️(That fallback is gone since
+      // 2026-09-17; a displaced copy is what this still catches.)
       expect(
         delta.ghost,
         lessThan((settledInk * 0.1).round()),
@@ -8657,7 +8670,9 @@ void main() {
     //
     // ⛔The base must have been ON SCREEN first: the stale fallback only
     // answers with pictures that decoded, and a cold cache would let the
-    // first test below pass on the bug.
+    // first test below pass on the bug. ↩️Since 2026-09-17 there is no
+    // stale fallback to answer — a tile with no picture is pictured inside
+    // the paint; the base is still put on screen first, as written.
     const from = Offset(150, 110);
     const to = Offset(390, 330);
 

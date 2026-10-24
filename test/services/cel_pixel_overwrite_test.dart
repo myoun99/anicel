@@ -6,6 +6,7 @@ import 'package:anicel/src/models/placed_tile.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 
@@ -384,6 +385,117 @@ void main() {
       expect(pixelAt(undone.surface, origin, 0, 0)[3], 255);
       expect(pixelAt(undone.surface, origin, 1, 0)[3], 0);
       expect(pixelAt(undone.surface, origin, 2, 0)[3], 255);
+    });
+  });
+
+  /// 🗣️I-13 — 2치화 (유저 2026-09-11: 「50% 밑은 색을 없앤다는거맞지?」): the
+  /// alpha channel with a cut, opaque at or over it and empty under it.
+  group('the cut (2치화)', () {
+    final opaque = Uint8List.fromList([255]);
+
+    test('at or over the cut goes opaque, under it empty — and the colour '
+        'is left as it was', () {
+      final before = surfaceOf([
+        tileWith(origin, {
+          (0, 0): [10, 20, 30, 127],
+          (1, 0): [10, 20, 30, 128],
+          (2, 0): [40, 50, 60, 200],
+          (3, 0): [70, 80, 90, 1],
+          (4, 0): [5, 5, 5, 255],
+        }),
+      ]);
+
+      final after = overwriteCelPixels(
+        surface: before,
+        channel: CelPixelChannel.alpha,
+        walk: walk([(origin, null)]),
+        value: opaque,
+        threshold: 128,
+      ).surface;
+
+      expect(pixelAt(after, origin, 0, 0), [10, 20, 30, 0]);
+      expect(pixelAt(after, origin, 1, 0), [10, 20, 30, 255]);
+      expect(pixelAt(after, origin, 2, 0), [40, 50, 60, 255]);
+      expect(pixelAt(after, origin, 3, 0), [70, 80, 90, 0]);
+      expect(pixelAt(after, origin, 4, 0), [5, 5, 5, 255]);
+    });
+
+    test('⛔an empty pixel stays empty at the lowest cut — the paper never '
+        'turns into drawing', () {
+      final before = surfaceOf([
+        tileWith(origin, {
+          (1, 0): [0, 0, 0, 1],
+        }),
+      ]);
+
+      final after = overwriteCelPixels(
+        surface: before,
+        channel: CelPixelChannel.alpha,
+        walk: walk([(origin, null)]),
+        value: opaque,
+        threshold: PixelVerbSettings.lowestBinarizeThreshold,
+      ).surface;
+
+      expect(pixelAt(after, origin, 0, 0)[3], 0, reason: 'never drawn on');
+      expect(pixelAt(after, origin, 1, 0)[3], 255);
+    });
+
+    test('undo puts every alpha back — the cut decided what each pixel '
+        'became, never which pixels took part', () {
+      final before = surfaceOf([
+        tileWith(origin, {
+          (0, 0): [10, 20, 30, 127],
+          (1, 0): [10, 20, 30, 128],
+          (3, 0): [70, 80, 90, 1],
+        }),
+      ]);
+      final steps = walk([(origin, null)]);
+
+      final forward = overwriteCelPixels(
+        surface: before,
+        channel: CelPixelChannel.alpha,
+        walk: steps,
+        value: opaque,
+        threshold: 128,
+      );
+      final undone = overwriteCelPixels(
+        surface: forward.surface,
+        channel: CelPixelChannel.alpha,
+        walk: steps,
+        restore: forward.restore,
+      ).surface;
+
+      for (final (x, y) in [(0, 0), (1, 0), (2, 0), (3, 0)]) {
+        expect(
+          pixelAt(undone, origin, x, y),
+          pixelAt(before, origin, x, y),
+          reason: '($x, $y)',
+        );
+      }
+    });
+
+    test('under a soft mask a pixel goes PART of the way to its side', () {
+      final before = surfaceOf([
+        tileWith(origin, {
+          (0, 0): [10, 20, 30, 200],
+          (1, 0): [10, 20, 30, 100],
+        }),
+      ]);
+
+      final after = overwriteCelPixels(
+        surface: before,
+        channel: CelPixelChannel.alpha,
+        walk: walk([
+          (origin, maskOver({(0, 0): 128, (1, 0): 128})),
+        ]),
+        value: opaque,
+        threshold: 128,
+      ).surface;
+
+      // Half of the way to 255 and to 0 — the mul-div-255 blend every
+      // feathered edge of the pass takes.
+      expect(pixelAt(after, origin, 0, 0), [10, 20, 30, 228]);
+      expect(pixelAt(after, origin, 1, 0), [10, 20, 30, 50]);
     });
   });
 

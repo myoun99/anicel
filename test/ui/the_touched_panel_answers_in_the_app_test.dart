@@ -31,6 +31,7 @@ import '../helpers/app_shortcuts.dart';
 import '../helpers/conte_track_fixture.dart';
 import '../helpers/home_page_probes.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/rail_group_button.dart';
 
 /// 🗣️유저 2026-09-24 — THE PANEL LAST TOUCHED ANSWERS, through the app:
 ///
@@ -63,11 +64,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder rightRailButton(int slot) => find.byKey(
-    ValueKey<String>(
-      'rail-group-${EditorWorkspace.railGroupId(right: true, slot: slot)}',
-    ),
-  );
+  Finder rightRailButton(int slot) =>
+      railGroupButton(EditorWorkspace.railGroupId(right: true, slot: slot));
 
   /// Lifts [tabId]'s tab by its grip and lets go on [target] — found only
   /// once the tab is in the air, since the free rail slot is offered only

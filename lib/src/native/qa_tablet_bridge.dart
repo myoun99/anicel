@@ -10,6 +10,7 @@ class QaTabletPacket {
   const QaTabletPacket({
     required this.pressure,
     this.orientation,
+    this.twistDegrees,
     required this.timeMs,
     required this.buttons,
   });
@@ -30,6 +31,11 @@ class QaTabletPacket {
   /// Wintab's zero is the top of the tablet. `PenLean` converts it.
   final ({double bearing, double altitude})? orientation;
 
+  /// How far the pen is turned about its own barrel, in degrees 0..360
+  /// clockwise (Wintab's `orTwist`) — null when the device declares no
+  /// twist axis (F-176-Q9).
+  final double? twistDegrees;
+
   /// Driver timestamp in milliseconds (driver clock).
   final double timeMs;
 
@@ -46,6 +52,7 @@ class QaPenRawState {
     required this.flags,
     required this.sequence,
     this.tilt,
+    this.twistDegrees,
   });
 
   final int flags;
@@ -59,6 +66,11 @@ class QaPenRawState {
   /// toward the user — or null when the report carries no tilt: a pen
   /// without the sensor, or a DLL from before desktop-pen-tilt.
   final ({double x, double y})? tilt;
+
+  /// HID Twist (0x41): how far the pen is turned about its own barrel, in
+  /// degrees 0..360 clockwise — or null when the report carries none: a
+  /// device that declares no twist, or a DLL from before F-176-Q9.
+  final double? twistDegrees;
 
   /// HID Tip Switch (0x42): the writing end is touching.
   bool get tip => flags & 0x01 != 0;
@@ -91,18 +103,20 @@ class QaTabletBridge {
     this._rawStart,
     this._rawStop,
     this._rawPoll,
-    this._rawTilts,
+    this._rawFloats,
   );
 
-  static const int abiVersion = 1;
+  /// v2 (F-176-Q9): a packet's record carries the twist.
+  static const int abiVersion = 2;
 
   /// The Raw Input observer's own ABI — looked up separately and allowed
   /// to be absent, so an older qa_tablet.dll still gives us Wintab.
   ///
-  /// v2 (desktop-pen-tilt) hands over the report's tilt as well. A v1
-  /// observer is still taken — for the buttons, which is everything it
-  /// was — rather than lost along with the tilt it never had.
-  static const int rawAbiVersion = 2;
+  /// v2 (desktop-pen-tilt) hands over the report's tilt as well, v3
+  /// (F-176-Q9) its twist. An older observer is still taken — for what it
+  /// does write, the buttons at the least — rather than lost along with
+  /// what it never had.
+  static const int rawAbiVersion = 3;
 
   /// Test hook: an explicit DLL path (bypasses the platform gate).
   static String? debugLibraryPathOverride;
@@ -134,17 +148,27 @@ class QaTabletBridge {
   final void Function()? _rawStop;
   final int Function(Pointer<Float>, int)? _rawPoll;
 
-  /// Whether the observer is v2 — the one that writes a tilt.
-  final bool _rawTilts;
+  /// How many floats this observer's ABI writes a report as — the report
+  /// says no more than that.
+  final int _rawFloats;
 
   static const int _pollCapacity = 64;
-  static const int _recordFloats = 6;
+  static const int _recordFloats = 8;
   final Pointer<Float> _pollBuffer = malloc<Float>(
     _pollCapacity * _recordFloats,
   );
 
-  static const int _rawFloats = 5;
-  final Pointer<Float> _rawBuffer = malloc<Float>(_rawFloats);
+  /// A report's floats at each raw ABI: flags and counter (v1), then the
+  /// tilt (v2), then the twist (v3).
+  @visibleForTesting
+  static int rawFloatsAt(int rawAbi) => switch (rawAbi) {
+    1 => 2,
+    2 => 5,
+    _ => 7,
+  };
+  final Pointer<Float> _rawBuffer = malloc<Float>(
+    rawFloatsAt(rawAbiVersion),
+  );
 
   /// Whether wintab32 loads AND an installed driver answers.
   bool get available => _available() != 0;
@@ -180,7 +204,8 @@ class QaTabletBridge {
   }
 
   /// The packet `qat_poll` wrote at [base] of [floats]: pressure, bearing,
-  /// altitude, time, buttons, and whether the device is oriented at all.
+  /// altitude, time, buttons, whether the device is oriented at all, and
+  /// its twist and whether it declares one.
   @visibleForTesting
   static QaTabletPacket packetFrom(Float32List floats, int base) =>
       QaTabletPacket(
@@ -188,6 +213,7 @@ class QaTabletBridge {
         orientation: floats[base + 5] != 0
             ? (bearing: floats[base + 1], altitude: floats[base + 2])
             : null,
+        twistDegrees: floats[base + 7] != 0 ? floats[base + 6] : null,
         timeMs: floats[base + 3],
         buttons: floats[base + 4].toInt(),
       );
@@ -206,22 +232,23 @@ class QaTabletBridge {
   /// The newest decoded HID report; null when the observer is not live.
   QaPenRawState? pollRawInput() {
     final poll = _rawPoll;
-    if (poll == null || poll(_rawBuffer, _rawTilts ? _rawFloats : 2) == 0) {
+    if (poll == null || poll(_rawBuffer, _rawFloats) == 0) {
       return null;
     }
-    return rawStateFrom(_rawBuffer.asTypedList(_rawFloats), tilts: _rawTilts);
+    return rawStateFrom(_rawBuffer.asTypedList(_rawFloats));
   }
 
-  /// The report `qpr_poll` wrote into [floats]: flags, counter and — from a
-  /// v2 observer, when the report carried one — its tilt.
+  /// The report `qpr_poll` wrote as [floats] — as many as its ABI writes:
+  /// flags, counter and, where the observer is new enough to write them
+  /// and the report carried them, its tilt (v2) and its twist (v3).
   @visibleForTesting
-  static QaPenRawState rawStateFrom(
-    Float32List floats, {
-    required bool tilts,
-  }) => QaPenRawState(
+  static QaPenRawState rawStateFrom(Float32List floats) => QaPenRawState(
     flags: floats[0].toInt(),
     sequence: floats[1].toInt(),
-    tilt: tilts && floats[4] != 0 ? (x: floats[2], y: floats[3]) : null,
+    tilt: floats.length >= 5 && floats[4] != 0
+        ? (x: floats[2], y: floats[3])
+        : null,
+    twistDegrees: floats.length >= 7 && floats[6] != 0 ? floats[5] : null,
   );
 
   static QaTabletBridge? _tryCreate() {
@@ -258,13 +285,13 @@ class QaTabletBridge {
       int Function()? rawStart;
       void Function()? rawStop;
       int Function(Pointer<Float>, int)? rawPoll;
-      var rawTilts = false;
+      var rawFloats = rawFloatsAt(1);
       try {
         final rawAbi = lib.lookupFunction<Int32 Function(), int Function()>(
           'qpr_abi_version',
         )();
         if (rawAbi >= 1 && rawAbi <= rawAbiVersion) {
-          rawTilts = rawAbi >= 2;
+          rawFloats = rawFloatsAt(rawAbi);
           rawStart = lib.lookupFunction<Int32 Function(), int Function()>(
             'qpr_start',
           );
@@ -281,7 +308,7 @@ class QaTabletBridge {
         rawStart = null;
         rawStop = null;
         rawPoll = null;
-        rawTilts = false;
+        rawFloats = rawFloatsAt(1);
       }
       return QaTabletBridge._(
         lib.lookupFunction<Int32 Function(), int Function()>('qat_available'),
@@ -298,7 +325,7 @@ class QaTabletBridge {
         rawStart,
         rawStop,
         rawPoll,
-        rawTilts,
+        rawFloats,
       );
     } on Object {
       return null;

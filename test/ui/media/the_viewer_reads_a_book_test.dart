@@ -9,6 +9,7 @@
 // the view to a page and the page read is the slot's position; a cut is of
 // the page it lies on. A document that turns its own pages — a movie — shows
 // the page it is on alone.
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -149,8 +150,8 @@ void main() {
     final window = Rect.fromLTRB(
       0,
       pillBandOf(tester),
-      box.width - AppScrollbarLane.wide,
-      box.height - AppScrollbarLane.wide - bandCoverOf(tester),
+      box.width - AppScrollbarLane.thin,
+      box.height - AppScrollbarLane.thin - bandCoverOf(tester),
     );
     final top = page.top * view.zoom + view.panY;
     final height = page.height * view.zoom;
@@ -442,19 +443,30 @@ void main() {
     );
     late MediaFileViews views;
 
-    /// The viewer keeping what it shows in [views], with the two-page
-    /// [layout] in — so the five-page [book] comes in over another
+    /// While this stands, a file opening waits for it — as one the engine
+    /// reads off a disk arrives frames after it was asked for.
+    Completer<void>? reading;
+
+    /// The viewer keeping what it shows in [views], with [layout] in — of
+    /// [layoutPages] pages — so the five-page [book] comes in over another
     /// document, as a file opened again does.
-    Future<void> showTheLayout(WidgetTester tester) async {
+    Future<void> showTheLayout(
+      WidgetTester tester, {
+      int layoutPages = 2,
+    }) async {
       views = MediaFileViews();
       slot.keepIn(views, viewer: 'media-viewer');
-      PdfRenderService.debugOpenerOverride = (source) async => FakePdfDocument(
-        pageSizes: List<ui.Size>.filled(switch (source) {
-          MediaFileBytes(path: final file) when file.endsWith('layout.pdf') =>
-            2,
-          _ => 5,
-        }, pageSize),
-      );
+      reading = null;
+      PdfRenderService.debugOpenerOverride = (source) async {
+        await reading?.future;
+        return FakePdfDocument(
+          pageSizes: List<ui.Size>.filled(switch (source) {
+            MediaFileBytes(path: final file) when file.endsWith('layout.pdf') =>
+              layoutPages,
+            _ => 5,
+          }, pageSize),
+        );
+      };
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -510,6 +522,54 @@ void main() {
         closeTo(pillBandOf(tester) + 16 * view.zoom, 1e-6),
         reason: 'turned to: its top half a gap under the window\'s',
       );
+    });
+
+    // 🚨Reopened by the 10-23 hands-on: 「줌(125%)은 그대로인데 쪽은 1 /
+    // 120」 — turned by hand, left for a ONE-page file, each read off a
+    // disk. The pins above write the page into the memory themselves.
+    testWidgets('🎯turned with ▶ and zoomed by the pill, a file left for a '
+        'one-page one comes back at that page, framed as it was left — and '
+        'still remembers it', (tester) async {
+      await showTheLayout(tester, layoutPages: 1);
+      await openIt(tester, book);
+      final next = find.byKey(
+        const ValueKey<String>('media-viewer-next-page-button'),
+      );
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+        '125',
+      );
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(readout(tester), '3 / 5', reason: '⛔fixture');
+      final kept = renderOf(tester, slot.viewport.value!);
+
+      for (final file in [layout, book]) {
+        reading = Completer<void>();
+        slot.open(file);
+        await tester.pump();
+        await tester.pump();
+        reading!.complete();
+        await tester.pumpAndSettle();
+      }
+
+      expect(slot.position.value, 2);
+      expect(readout(tester), '3 / 5');
+      final view = renderOf(tester, slot.viewport.value!);
+      expect(
+        (view.zoom, view.panX, view.panY),
+        (kept.zoom, kept.panX, kept.panY),
+        reason: 'the view it was left at, not turned back to the first page',
+      );
+      expect(views.pageOf(path), 2, reason: 'nor is it forgotten');
     });
 
     testWidgets('a file this viewer never framed is fitted — at the page it '

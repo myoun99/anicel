@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★★THE APP HAS ONE BOOLEAN — the ring, dotted when on
 /// (`lib/src/ui/widgets/boolean_dot.dart`).
@@ -36,70 +37,62 @@ void main() {
   });
 
   test('the ring is drawn in one file', () {
-    final drawers = {
-      for (final file in dartFilesUnder('lib'))
-        if (_hits(libPath(file), file.readAsStringSync(), _ringGlyph)
-            .isNotEmpty)
-          libPath(file),
-    };
-    expect(
-      drawers,
-      {'lib/src/ui/widgets/boolean_dot.dart'},
-      reason:
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (_hits(libPath(file), file.readAsStringSync(), _ringGlyph)
+              .isNotEmpty)
+            libPath(file),
+      ],
+      const ['lib/src/ui/widgets/boolean_dot.dart'],
+      unledgered:
           'a file that draws the ring itself is a second boolean — the '
           'guide row had one, and its colours had already drifted from the '
           'rule 유저 gave',
+      paidOff:
+          'the one boolean no longer draws the ring here — name the file it '
+          'moved to',
     );
   });
 
   test('a check mark is a verb, never a state', () {
-    final wearers = {
-      for (final file in dartFilesUnder('lib'))
-        if (_hits(libPath(file), file.readAsStringSync(), _checkGlyph)
-            .isNotEmpty)
-          libPath(file),
-    };
-    expect(
-      wearers,
-      _checkMarkVerbs.keys.toSet(),
-      reason:
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (_hits(libPath(file), file.readAsStringSync(), _checkGlyph)
+              .isNotEmpty)
+            libPath(file),
+      ],
+      _checkMarkVerbs.keys,
+      unledgered:
           'a check that says 「on」 is the mark 「선택 표시는 색상만」 names — '
           'use the ring. A button whose job is to APPLY may wear one; add a '
           'line to _checkMarkVerbs saying which',
+      paidOff: 'these no longer wear a check — take them off _checkMarkVerbs',
     );
-    for (final entry in _checkMarkVerbs.entries) {
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-    }
+    expectEveryEntrySaysWhy(_checkMarkVerbs);
   });
 
   test('a ring beside a label is the settings row', () {
-    final builders = {
-      for (final file in dartFilesUnder('lib'))
-        if (libPath(file) != 'lib/src/ui/widgets/boolean_dot.dart' &&
-            _hits(libPath(file), file.readAsStringSync(), _ringButton)
-                .isNotEmpty)
-          libPath(file),
-    };
-    expect(
-      builders,
-      _ringsOfTheirOwn.keys.toSet(),
-      reason:
-          'a labelled boolean is ONE row — the whole row presses and the '
-          'ring sits on the right: `SettingsSwitchRow`. A ring is a button '
+    expectSetMatchesLedger(
+      [
+        for (final file in dartFilesUnder('lib'))
+          if (!_ringsMade.contains(libPath(file)) &&
+              _hits(libPath(file), file.readAsStringSync(), _ringButton)
+                  .isNotEmpty)
+            libPath(file),
+      ],
+      _ringsOfTheirOwn.keys,
+      unledgered:
+          'a labelled boolean is ONE row — the ring on the right presses '
+          'and the label is words: `SettingsSwitchRow`. A ring is a button '
           'of its own only where the row around it already means something '
           'else; add a line to _ringsOfTheirOwn saying what',
+      paidOff:
+          'these no longer build a ring button of their own — take them off '
+          '_ringsOfTheirOwn',
     );
-    for (final entry in _ringsOfTheirOwn.entries) {
-      expect(
-        entry.value.length,
-        greaterThan(20),
-        reason: '${entry.key} needs a reason, not a slot',
-      );
-    }
+    expectEveryEntrySaysWhy(_ringsOfTheirOwn);
   });
 
   test('the scan sees a planted control, and not the app\'s own names or a '
@@ -147,6 +140,14 @@ final _materialBoolean = RegExp(
 /// over several things wears (`BooleanMixDotButton`, F-289-Q13).
 final _ringButton = RegExp(r'\bBoolean(Mix)?DotButton\(');
 
+/// Where the ring is made a button: its own file, and the settings row —
+/// whose ring is the row's one control, its label words (유저 2026-10-23,
+/// board `F-439-Q1`: 「링만 컨트롤, 라벨은 글자」).
+const _ringsMade = {
+  'lib/src/ui/widgets/boolean_dot.dart',
+  'lib/src/ui/widgets/settings_rows.dart',
+};
+
 /// 🚨THE RINGS THAT ARE BUTTONS OF THEIR OWN, and why the row around each
 /// cannot be the control.
 ///
@@ -155,7 +156,9 @@ final _ringButton = RegExp(r'\bBoolean(Mix)?DotButton\(');
 /// switches were a ring beside a label that pressed only at the ring, and
 /// they became the settings row: the whole row presses, the ring on the
 /// right, 「라벨을 눌러도 켜지고 꺼진다」. Measured that day: one file keeps
-/// a ring of its own.
+/// a ring of its own. ↩️10-23 (F-439-Q1): the settings row presses at its
+/// ring alone and its label is words — what sets these rows apart is a row
+/// that MEANS something when pressed.
 const _ringsOfTheirOwn = <String, String>{
   'lib/src/ui/brush/guide_panels.dart':
       'a guide row: a press on the row SELECTS that guide, so the ring '
@@ -185,10 +188,5 @@ const _checkMarkVerbs = <String, String>{
 /// replaced.
 List<String> _hits(String path, String source, RegExp pattern) => [
   for (final (index, line) in source.split('\n').indexed)
-    if (pattern.hasMatch(_code(line))) '$path:${index + 1}  ${line.trim()}',
+    if (pattern.hasMatch(codeOf(line))) '$path:${index + 1}  ${line.trim()}',
 ];
-
-String _code(String line) {
-  final comment = line.indexOf('//');
-  return comment < 0 ? line : line.substring(0, comment);
-}

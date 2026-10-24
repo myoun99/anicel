@@ -33,6 +33,14 @@ import '../theme/app_theme.dart';
 /// — the screenshot on the card has forty values, and 유저 2026-08-29:
 /// 「작업할때는 **무조건 스샷 참고**」.
 ///
+/// ↩️**THE SNAP READS THE RACK NOW — THE USER'S AGAIN** (F-391, 유저
+/// 2026-10-17: 「브러시 크기 스냅은 해당 쓰던 로직있으면 툴 사이즈 패널을
+/// 바탕으로 사용하도록 변경하고, 설정의 브러시크기스냅은 필요없어지니 잔재
+/// 삭제」). The canvas's size drag catches on [presets], as the size bar's
+/// ± step through them (F-325), and the settings' list of its own is gone —
+/// so 「a snap has to be sparse to be usable」 above was this note's guess,
+/// not a rule.
+///
 /// ⚠️Setting a size here writes it straight onto the tool, so a preset that
 /// is not a snap still lands exactly — the caller does not re-snap.
 class ToolSizePresetPanel extends StatelessWidget {

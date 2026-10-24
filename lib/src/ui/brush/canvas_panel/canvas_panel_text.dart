@@ -315,6 +315,7 @@ class _CanvasPanelText implements CelTextToolHost {
       onPressNeedsCel: _state._markDoorOverTheView,
       markMakesItsOwnCel: _state.widget.markMakesItsOwnCel,
       onDragActive: (active) => _state._textDragActive = active,
+      wearsItsCursor: _state.widget.toolCursorsEnabled,
       oneFingerAction: _state.widget.oneFingerAction,
     ),
   );

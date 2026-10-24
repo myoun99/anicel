@@ -175,4 +175,44 @@ void main() {
     expect(rec.updates.last, 3);
     expect(rec.ends, hasLength(1));
   });
+
+  // Both end lines are dragged by [EndLineGrip] (F-445): what a drag reports
+  // is counted from where THAT drag went down.
+  testWidgets('a second drag of the grip counts from its own start', (
+    tester,
+  ) async {
+    final updates = <int>[];
+    await tester.pumpWidget(
+      Center(
+        child: SizedBox(
+          width: 12,
+          height: 40,
+          child: EndLineGrip(
+            axis: Axis.horizontal,
+            cellExtent: 24,
+            onBegin: () => true,
+            onUpdate: updates.add,
+            onEnd: () {},
+            onCancel: () {},
+          ),
+        ),
+      ),
+    );
+    final grip = find.byType(EndLineGrip);
+
+    Future<void> drag(double dx) async {
+      final gesture = await tester.startGesture(tester.getCenter(grip));
+      await tester.pump();
+      await gesture.moveBy(Offset(dx, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+    }
+
+    await drag(48);
+    expect(updates.last, 2, reason: '⛔premise: 48px of 24 is two frames');
+    updates.clear();
+    await drag(24);
+    expect(updates.last, 1, reason: 'not the first drag\'s two and one more');
+  });
 }

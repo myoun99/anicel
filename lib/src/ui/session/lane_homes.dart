@@ -5,7 +5,7 @@ import '../../models/timeline_frame_range.dart';
 import '../../models/transform_track.dart';
 import '../timeline/effect_lane_editing.dart' show effectLaneLens;
 import '../timeline/effect_lane_policy.dart' show parseEffectLaneId;
-import '../timeline/lane_span_keys_shift.dart' show laneSpanKeysShifted;
+import '../timeline/lane_span_keys_shift.dart' show laneSpanKeysMoved;
 import '../timeline/property_lane_lens.dart';
 import '../timeline/reference_lane_policy.dart' show transformLanesByHome;
 import '../timeline/se_name_tag_lane_policy.dart'
@@ -41,9 +41,18 @@ class LaneHome<T> {
   final LaneLens<T>? Function(String laneId) lensOf;
 
   /// Whether a lane here holds a key at a frame [covers] takes.
-  bool keyedWhere(bool Function(int frame) covers) => laneIds.any(
-    (laneId) => lensOf(laneId)?.keyFrames(keys).any(covers) ?? false,
-  );
+  bool keyedWhere(bool Function(int frame) covers) =>
+      keyedOnWhere((_, frame) => covers(frame));
+
+  /// Whether a lane here holds a key at a frame [covers] takes on it.
+  bool keyedOnWhere(bool Function(String laneId, int frame) covers) =>
+      laneIds.any(
+        (laneId) =>
+            lensOf(laneId)?.keyFrames(keys).any(
+              (frame) => covers(laneId, frame),
+            ) ??
+            false,
+      );
 
   /// The keys every lane here holds at a frame [covers] takes, lane by lane
   /// — a lane with none there as an empty map.
@@ -58,6 +67,32 @@ class LaneHome<T> {
         },
       );
     }
+  }
+
+  /// [keys] of a lane whose numbers show by [shown], as lane [laneId] here
+  /// takes them: each number held as this lane holds a number given it
+  /// ([LaneLens.numberHeld]) — a key of no number, or where either lane is
+  /// of none, as it came.
+  Map<int, PropertyKey<Object?>> numbersTaken(
+    String laneId,
+    Map<int, PropertyKey<Object?>> keys,
+    double? Function(double held) shown,
+  ) {
+    PropertyKey<Object?> taken(PropertyKey<Object?> key) {
+      if (key is! PropertyKey<double>) {
+        return key;
+      }
+      final number = shown(key.value);
+      final held = number == null
+          ? null
+          : lensOf(laneId)?.numberHeld(this.keys, number);
+      return held == null ? key : key.copyWith(value: held);
+    }
+
+    return {
+      for (final MapEntry(key: frame, value: key) in keys.entries)
+        frame: taken(key),
+    };
   }
 
   /// [edit] on every lane here, in turn — null where none changed.
@@ -96,17 +131,22 @@ class LaneHome<T> {
     return made.isEmpty ? null : lens.update(value, _keysPut(made));
   });
 
-  /// The keys of every lane here that [span] covers, shifted by
-  /// [frameDelta] — ONE rigid group ([laneSpanKeysShifted]): null when a
-  /// landing is blocked, and when no key here moves.
-  T? shifted(TimelineLaneSelection span, int frameDelta) =>
-      laneSpanKeysShifted(
+  /// The keys of every lane here that [span] covers, each moved to the
+  /// frame [to] gives it on its lane — ONE rigid group ([laneSpanKeysMoved]):
+  /// null when a landing is blocked, and when no key here moves.
+  T? moved(
+    TimelineLaneSelection span,
+    int Function(String laneId, int frame) to,
+  ) =>
+      laneSpanKeysMoved(
         keys,
         laneIds: laneIds,
         lensOf: lensOf,
-        rangeStartIndex: span.startIndex,
-        rangeEndIndexExclusive: span.endIndexExclusive,
-        frameDelta: frameDelta,
+        moveOn: (laneId) => (
+          rangeStartIndex: span.startIndex,
+          rangeEndIndexExclusive: span.endIndexExclusive,
+          to: (frame) => to(laneId, frame),
+        ),
       );
 }
 
@@ -166,6 +206,17 @@ bool rowLaneHomesKeyedWhere(
     homes.effects.keyedWhere(covers) ||
     homes.nameTag.keyedWhere(covers);
 
+/// The number [held] on lane [laneId] shows as ([LaneLens.numberShown]) —
+/// asked of the home whose table names the lane: every row's homes read
+/// the same tables, and their lane ids never meet ([rowLaneHomes]). Null
+/// for a lane of no numbers.
+double? rowLaneNumberShown(RowLaneHomes homes, String laneId, double held) =>
+    [homes.own, homes.reference, homes.effects, homes.nameTag]
+        .map((home) => home.lensOf(laneId))
+        .nonNulls
+        .firstOrNull
+        ?.numberShown(held);
+
 /// What [verb] leaves [subject]'s row at, home by home — each home it
 /// answers null for left alone.
 LaneEdit rowLaneHomesEdited(
@@ -194,6 +245,11 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
             );
     };
 
+/// Where a paste puts its run in ([laneKeysSpliced]): the frame it goes
+/// in at, how many frames from there it lifts, how many it puts in, and
+/// the last a key may be left on — none but a camera's.
+typedef KeysSplice = ({int start, int liftCount, int length, int? last});
+
 /// [keys], by their frame from the paste's first, put in at [start] as a
 /// frame paste puts its run in: the [liftCount] frames from [start] taken
 /// out with their keys, and every key after them moved by what the
@@ -208,33 +264,37 @@ PropertyLaneEdit laneKeysRemovedWhere(bool Function(int frame) covers) =>
 /// the copy's length; a selection is replaced, and what follows it moves by
 /// the difference. AE leaves the keys after alone — the board weighed that
 /// and was answered.
+///
+/// With [last] — a camera's, its cut's last drawn frame (`cameraKeyFits`)
+/// — no key goes past it: the key on [last] the run pushes out stays on
+/// it, holding it against whatever lands there, and every other key past
+/// it goes, a pasted one too. 🗣️F-388-Q3 (유저 2026-10-22): 「끝 키는 끝에
+/// 남고, 밖으로 밀린 나머지는 버린다」 — the end key keeps to the cut's end
+/// as it does when the cut is drawn longer (I-73-camera-row-Q4).
 PropertyLaneEdit laneKeysSpliced({
-  required int start,
-  required int liftCount,
-  required int length,
+  required KeysSplice splice,
   required Map<int, PropertyKey<Object?>> keys,
 }) => <U>(PropertyTrack<U> lane) {
   if (!keys.values.every((key) => key is PropertyKey<U>)) {
     return null;
   }
+  final (:start, :liftCount, :length, :last) = splice;
   final end = start + liftCount;
-  final moved = lane.keys.keys.any(
-    (frame) => frame >= start && (frame < end || length != liftCount),
-  );
-  if (keys.isEmpty && !moved) {
-    return null;
-  }
-  return PropertyTrack<U>(
+  final shift = length - liftCount;
+  bool fits(int frame) => last == null || frame <= last;
+  final next = PropertyTrack<U>(
     keys: {
       for (final MapEntry(key: frame, value: key) in lane.keys.entries)
         if (frame < start)
           frame: key
-        else if (frame >= end)
-          frame + length - liftCount: key,
+        else if (frame >= end && fits(frame + shift))
+          frame + shift: key,
       for (final MapEntry(key: offset, value: key) in keys.entries)
-        start + offset: key as PropertyKey<U>,
+        if (fits(start + offset)) start + offset: key as PropertyKey<U>,
+      if (last != null && last >= end && shift > 0) last: ?lane.keys[last],
     },
   );
+  return next == lane ? null : next;
 };
 
 /// [made] put on the lane as they are — each a key of this very lane, made

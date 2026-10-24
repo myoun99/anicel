@@ -8,6 +8,7 @@ import 'brush_settings_group.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
+import 'brush_texture_mode.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushSettings {
@@ -31,6 +32,7 @@ class BrushSettings {
     double angleDegrees = 0.0,
     List<BrushTipMask> tips = const [],
     BrushTipOrder tipOrder = BrushTipOrder.repeat,
+    int tipsPerTurn = 1,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -46,6 +48,7 @@ class BrushSettings {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    BrushTextureMode textureMode = BrushTextureMode.multiply,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
     bool mixesGroundColor = false,
@@ -74,6 +77,7 @@ class BrushSettings {
          angleDegrees: angleDegrees,
          tips: tips,
          tipOrder: tipOrder,
+         tipsPerTurn: tipsPerTurn,
          rotationMode: rotationMode,
          angleJitter: angleJitter,
          scatterRadiusRatio: scatterRadiusRatio,
@@ -89,6 +93,7 @@ class BrushSettings {
          textureContrast: textureContrast,
          textureScale: textureScale,
          textureDensity: textureDensity,
+         textureMode: textureMode,
          blendMode: blendMode,
          antiAlias: antiAlias,
          mixesGroundColor: mixesGroundColor,
@@ -139,6 +144,7 @@ class BrushSettings {
   /// See [BrushShape.tips] — and [tipMask], the first of them.
   List<BrushTipMask> get tips => shape.tips;
   BrushTipOrder get tipOrder => shape.tipOrder;
+  int get tipsPerTurn => shape.tipsPerTurn;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
   double get angleJitter => shape.angleJitter;
@@ -162,6 +168,7 @@ class BrushSettings {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+  BrushTextureMode get textureMode => shape.textureMode;
 
 
   /// How this brush composites — see [BrushShape.blendMode].
@@ -170,11 +177,24 @@ class BrushSettings {
   /// How hard this brush's edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
 
-  /// The curves the four legacy JSON keys cannot express.
-  Map<BrushDynamicsKey, BrushPressureCurve> get _nonPressureCurves => {
-    for (final entry in shape.curves.entries)
-      if (entry.key.$2 != BrushInputSource.pressure) entry.key: entry.value,
-  };
+  /// The curves the four legacy JSON keys cannot express — read off the map
+  /// those four keys are written from ([brushPressureCurves]).
+  ///
+  /// ↩️It kept every source but pressure, so pressure on any other target —
+  /// roundness, spacing, the texture's density (F-451, the pencil pressing
+  /// into the tooth) — was written nowhere and lost on the next save.
+  Map<BrushDynamicsKey, BrushPressureCurve> get _curvesNoLegacyKeyHolds {
+    final legacy = brushPressureCurves(
+      size: sizePressureCurve,
+      opacity: opacityPressureCurve,
+      flow: flowPressureCurve,
+      hardness: hardnessPressureCurve,
+    );
+    return {
+      for (final entry in shape.curves.entries)
+        if (!legacy.containsKey(entry.key)) entry.key: entry.value,
+    };
+  }
 
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
@@ -204,6 +224,7 @@ class BrushSettings {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -219,6 +240,7 @@ class BrushSettings {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
     bool? mixesGroundColor,
@@ -254,6 +276,7 @@ class BrushSettings {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tips: tips ?? this.tips,
       tipOrder: tipOrder ?? this.tipOrder,
+      tipsPerTurn: tipsPerTurn ?? this.tipsPerTurn,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
@@ -269,6 +292,7 @@ class BrushSettings {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      textureMode: textureMode ?? this.textureMode,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
@@ -300,7 +324,7 @@ class BrushSettings {
     if (hardnessPressureCurve != null)
       'hardnessPressureCurve': hardnessPressureCurve!.toJson(),
     // Every OTHER source — see [_curvesToJson].
-    ..._curvesToJson(_nonPressureCurves),
+    ..._curvesToJson(_curvesNoLegacyKeyHolds),
     'roundness': roundness,
     'angleDegrees': angleDegrees,
     if (withMasks && tips.isNotEmpty) 'tipMask': tips.first.toJson(),
@@ -311,9 +335,10 @@ class BrushSettings {
     // would eat the library of their own brushes.
     if (withMasks && tips.length > 1)
       'moreTipMasks': [for (final tip in tips.skip(1)) tip.toJson()],
-    // 繰り返し is the default, so it writes nothing — presets saved before
-    // the setting existed round-trip byte-identically.
+    // 繰り返し and one tip a turn are the defaults, so they write nothing —
+    // presets saved before the settings existed round-trip byte-identically.
     if (tipOrder != BrushTipOrder.repeat) 'tipOrder': tipOrder.name,
+    if (tipsPerTurn != 1) 'tipsPerTurn': tipsPerTurn,
     'rotationMode': rotationMode.toJson(),
     'angleJitter': angleJitter,
     // 通常 is the default, so it writes nothing — presets saved before every
@@ -335,6 +360,8 @@ class BrushSettings {
     if (textureContrast != 0.0) 'textureContrast': textureContrast,
     'textureScale': textureScale,
     'textureDensity': textureDensity,
+    if (textureMode != BrushTextureMode.multiply)
+      'textureMode': textureMode.name,
     // Ground-colour mixing writes only when ON, so presets saved before it
     // existed round-trip byte-identically.
     if (mixesGroundColor) ...{
@@ -395,6 +422,7 @@ class BrushSettings {
       tipOrder:
           BrushTipOrder.values.asNameMap()[json['tipOrder']] ??
           BrushTipOrder.repeat,
+      tipsPerTurn: json['tipsPerTurn'] as int? ?? 1,
       rotationMode: BrushTipRotationMode.fromJson(json['rotationMode']),
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       // The legacy `lockedBlendMode` key reads straight in: a preset that
@@ -425,6 +453,7 @@ class BrushSettings {
       textureContrast: (json['textureContrast'] as num?)?.toDouble() ?? 0.0,
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
+      textureMode: BrushTextureMode.fromName(json['textureMode']),
       mixesGroundColor: json['mixesGroundColor'] as bool? ?? false,
       paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
       paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
@@ -503,6 +532,13 @@ void _validateShape(BrushShape shape) {
       'BrushSettings.scatterCount must be at least 1.',
     );
   }
+  if (shape.tipsPerTurn < 1) {
+    throw ArgumentError.value(
+      shape.tipsPerTurn,
+      'tipsPerTurn',
+      'BrushSettings.tipsPerTurn must be at least 1.',
+    );
+  }
 }
 
 void _validatePositive(double value, String fieldName) {
@@ -577,7 +613,8 @@ void _validateNonNegativeFinite(double value, String fieldName) {
 /// the exact defect that round set out to end. Found by adversarial review
 /// 2026-09-09, after the round had already claimed to have fixed it.
 ///
-/// ⚠️Pressure entries stay in the four legacy keys and are NOT repeated here.
+/// ⚠️The four legacy pressure entries stay in their keys and are NOT repeated
+/// here; pressure on any other target has no key of its own and is.
 ///
 /// Paired with [_curvesFromJson] on purpose: one place spells the
 /// `"<target>.<source>"` key, one place reads it, and they sit together.

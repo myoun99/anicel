@@ -1,0 +1,505 @@
+// A PREVIEW THAT MOVES PATCHES THE BUFFER — THE OLD RECT AND THE NEW —
+// INSTEAD OF COMPOSITING THE WHOLE CANVAS AGAIN.
+//
+// 🚨★★★F-130 measured it on the stamp's ghost (2026-09-15,
+// `cursor_at_os_speed_benchmark_test`, the stamp arm): 25 moves of the held
+// piece, 25 FULL composes of the display buffer, 0 patches — 23ms a frame
+// on the debug bar where the brush's own hover cost 8. The ghost was in the
+// buffer's KEY (F-33: it rode the surface painter, so the buffer held it)
+// but not in its TOKENS, so a hover was a miss that could not say where it
+// changed and fell through to the full raster. The tokens carry the
+// painter's preview, and a move is the union of where it was and where it
+// is. The pixels are pinned equal to a cold composite, including when the
+// preview crosses the edge of the active extent (F-85 sizes the buffer by
+// what the slot draws, so that move changes the buffer's RECT and the carry
+// has to repaint the preview's two places as well as the exposed bands —
+// adversarial review, 2026-09-15).
+//
+// ↩️The ghost was the preview these tests moved — F-33 untouched on
+// purpose: it rode the surface painter and composited as the layer — until
+// brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) made it the overlay's
+// tiles, the click's own bytes. What the text tool floats over its hole
+// (F-344) is the painter's preview now.
+//
+// 🪦The two routes that once replaced the walk — the flat projection below
+// the knee, and the first-activation stand-in — never drew the ghost at
+// all (the walk's `_paintStampPreview` was its only draw), and for a week
+// each drew it over its own image. Both routes are gone (the projection
+// with the render round, the stand-in on 2026-09-17): the tiles are the
+// one draw the active slot has, so the last test pins the frame the
+// stand-in existed for — activation (↩️with the ghost over the tiles, until
+// brush-fidelity-Q9).
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/canvas/landing_preview.dart';
+import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
+
+void main() {
+  const side = 32;
+  const canvasSize = CanvasSize(width: side, height: side);
+  const size = Size(side * 1.0, side * 1.0);
+
+  Future<ui.Image> decodedSquare() {
+    final completer = Completer<ui.Image>();
+    final rgba = Uint8List(4 * 4 * 4);
+    for (var i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 0xFF;
+      rgba[i + 3] = 0xFF;
+    }
+    ui.decodeImageFromPixels(rgba, 4, 4, ui.PixelFormat.rgba8888, completer.complete);
+    return completer.future;
+  }
+
+  SelectionFloatPaint floatAt(Rect rect, ui.Image image) =>
+      SelectionFloatPaint(
+        image: image,
+        imageLeft: rect.left,
+        imageTop: rect.top,
+      );
+
+  Future<void> pumpView(
+    WidgetTester tester,
+    BitmapSurfacePainter painter,
+    DisplayBufferCache cache, {
+    double zoom = 1,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: size.width,
+              height: size.height,
+              child: CanvasLayerStackView(
+                nodes: const [
+                  CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+                ],
+                imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
+                canvasSize: canvasSize,
+                viewport: CanvasViewport(zoom: zoom, panX: 0, panY: 0),
+                activeSurfacePainter: painter,
+                paintPaper: false,
+                paperBackground: const ProjectBackground.color(0xFF00FF00),
+                debugBufferCache: cache,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  /// The composite as the view paints it now, RGBA over a [side]² canvas.
+  Future<Uint8List> bytesNow(WidgetTester tester) async {
+    final found = tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(CanvasLayerStackView),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .where((paint) => paint.painter != null)
+        .first
+        .painter!;
+    final recorder = ui.PictureRecorder();
+    found.paint(Canvas(recorder, Offset.zero & size), size);
+    final picture = recorder.endRecording();
+    final ui.Image image;
+    try {
+      image = picture.toImageSync(side, side);
+    } finally {
+      picture.dispose();
+    }
+    try {
+      final bytes = await tester.runAsync(
+        () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
+      );
+      return bytes!.buffer.asUint8List();
+    } finally {
+      image.dispose();
+    }
+  }
+
+  int alphaAt(Uint8List rgba, int x, int y) => rgba[(y * side + x) * 4 + 3];
+
+  /// Paints, with real time between paints, until nothing is stored any
+  /// more and no snapshot is still landing: the tile's decode has arrived
+  /// and the real base describes the picture on screen. A move measured
+  /// before that would see the decode's own dirty tile in its rect.
+  Future<void> settle(WidgetTester tester, DisplayBufferCache cache) async {
+    // Two rounds running in which nothing was stored or promoted.
+    var quiet = 0;
+    int? stores;
+    int? promoted;
+    final settled = await settleAsync(tester, () async {
+      await bytesNow(tester);
+      final storesNow = cache.fullCount + cache.patchedCount;
+      final promotedNow = cache.promotedCount;
+      quiet = storesNow == stores && promotedNow == promoted ? quiet + 1 : 0;
+      stores = storesNow;
+      promoted = promotedNow;
+      return quiet >= 2;
+    });
+    expect(settled, isTrue, reason: 'fixture: the buffer never settled');
+  }
+
+  /// The cold composite of [painter] as it stands: a fresh view, a fresh
+  /// cache, nothing carried.
+  Future<Uint8List> coldBytes(
+    WidgetTester tester,
+    BitmapSurfacePainter painter,
+  ) async {
+    final cold = DisplayBufferCache();
+    addTearDown(cold.dispose);
+    await pumpView(tester, painter, cold);
+    return bytesNow(tester);
+  }
+
+  BitmapSurfacePainter tiledPainter(ValueNotifier<LandingPreview?> preview) =>
+      BitmapSurfacePainter(
+        surface: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 16,
+          tiles: {TileCoord(x: 0, y: 0): BitmapTile.blank(size: 16)},
+        ),
+        showTransparentBackground: false,
+        landingPreview: preview,
+      );
+
+  // ↩️'a move inside the active extent patches the buffer …' moved the
+  // stamp's ghost, until brush-fidelity-Q9 made it the overlay's tiles. The
+  // F-344 test below pins the same patch — where it was and where it is,
+  // the cold composite's pixels — on the landing preview.
+
+  testWidgets('🚨F-344: a LANDING PREVIEW that moves patches the buffer the '
+      'same way — where it was and where it is — and is drawn past the '
+      'active extent, the cold composite\'s pixels', (tester) async {
+    // What the text tool floats over a text's hole, as it carries the text:
+    // a 4×4 square of ink at the far corner of a tile of its own, moved by
+    // whole pixels (`CelTextFloat` — a lifted selection's pure move).
+    final ink = Uint8List(16 * 16 * 4);
+    for (var y = 12; y < 16; y += 1) {
+      for (var x = 12; x < 16; x += 1) {
+        ink[(y * 16 + x) * 4] = 0xFF;
+        ink[(y * 16 + x) * 4 + 3] = 0xFF;
+      }
+    }
+    final carried = BitmapSurfacePainter(
+      surface: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 16,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile(size: 16, pixels: ink)},
+      ),
+      showTransparentBackground: false,
+      lineage: 'f344-float-under-test',
+    );
+    SelectionFloatPaint at(double x, double y) => SelectionFloatPaint(
+      surface: carried,
+      surfaceOffset: CanvasPoint(x: x, y: y),
+    );
+    final cache = DisplayBufferCache();
+    addTearDown(cache.dispose);
+    final preview = ValueNotifier<LandingPreview?>(at(2, 2));
+    addTearDown(preview.dispose);
+    final painter = BitmapSurfacePainter(
+      surface: BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: 16,
+        tiles: {TileCoord(x: 0, y: 0): BitmapTile.blank(size: 16)},
+      ),
+      showTransparentBackground: false,
+      landingPreview: preview,
+    );
+    await pumpView(tester, painter, cache);
+    await settle(tester, cache);
+    final before = await bytesNow(tester);
+    expect(alphaAt(before, 15, 15), 0xFF, reason: 'fixture: drawn where it is');
+    final was = preview.value!.drawnWorldRect;
+    final fullBefore = cache.fullCount;
+    final patchedBefore = cache.patchedCount;
+
+    // THE CARRY: the float moves, nothing else does — out past the active
+    // extent's one tile.
+    preview.value = at(10, 8);
+    await tester.pump();
+
+    expect(cache.fullCount, fullBefore, reason: 'no whole recomposite');
+    expect(cache.patchedCount, patchedBefore + 1, reason: 'it is a patch');
+    expect(
+      cache.lastDirtyRect,
+      was.expandToInclude(preview.value!.drawnWorldRect).inflate(1),
+      reason: 'where it was and where it is, one pixel of hairline',
+    );
+    final patched = await bytesNow(tester);
+    expect(alphaAt(patched, 15, 15), 0, reason: 'the old place is cleared');
+    expect(
+      alphaAt(patched, 23, 21),
+      0xFF,
+      reason: 'the new place is inked, past the active tile (F-85)',
+    );
+    expect(patched, await coldBytes(tester, painter));
+  });
+
+  testWidgets('a landing preview that crosses the edge of the active extent '
+      'and comes back leaves no stale pixels — the buffer rect moves with it '
+      'and the carry repaints both places', (tester) async {
+    // ↩️The stamp's ghost crossed here until brush-fidelity-Q9 made it the
+    // overlay's tiles; the landing preview rides the same tokens and the
+    // same carry.
+    final cache = DisplayBufferCache();
+    addTearDown(cache.dispose);
+    final image = (await tester.runAsync(decodedSquare))!;
+    addTearDown(image.dispose);
+    // The tile covers (0,0)-(16,16); the float leaves it and returns.
+    const inside = Rect.fromLTWH(2, 2, 4, 4);
+    const outside = Rect.fromLTWH(22, 20, 4, 4);
+    final preview = ValueNotifier<LandingPreview?>(floatAt(inside, image));
+    addTearDown(preview.dispose);
+    final painter = tiledPainter(preview);
+    await pumpView(tester, painter, cache);
+    await settle(tester, cache);
+
+    for (final (step, rect, gone) in <(String, Rect, Rect)>[
+      ('out', outside, inside),
+      ('back', inside, outside),
+      ('out again', outside, inside),
+    ]) {
+      preview.value = floatAt(rect, image);
+      await tester.pump();
+      final shown = await bytesNow(tester);
+      expect(
+        alphaAt(shown, gone.left.toInt() + 1, gone.top.toInt() + 1),
+        0,
+        reason: '$step: the place the float left must read clear',
+      );
+      expect(
+        alphaAt(shown, rect.left.toInt() + 1, rect.top.toInt() + 1),
+        0xFF,
+        reason: '$step: the place the float is must read inked',
+      );
+      expect(
+        shown,
+        await coldBytes(tester, painter),
+        reason: '$step: byte for byte the cold composite',
+      );
+      // The next step must find the carried buffer, not a fresh view.
+      await pumpView(tester, painter, cache);
+      await settle(tester, cache);
+    }
+  });
+
+  testWidgets('an EMPTY cel: the second step of a stroke patches — an empty '
+      'snapshot is a base, not 「nothing kept」', (tester) async {
+    // The stamp's usual target is an empty cel, and so is every drawing's
+    // first stroke. The snapshot of an empty surface has no tiles; reading
+    // that as a cold start (the old `kept.tiles.isEmpty`) refused the patch
+    // on every step until the first commit put tiles there.
+    final cache = DisplayBufferCache();
+    addTearDown(cache.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: 16);
+    addTearDown(overlay.dispose);
+    final rasterizer = BrushLiveStrokeRasterizer(
+      pasteboard: canvasSize.pasteboardAt(PasteboardReach.whole),
+    );
+    final painter = BitmapSurfacePainter(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: 16, tiles: const {}),
+      overlayModel: overlay,
+      showTransparentBackground: false,
+    );
+    BrushDab dabAt(double x, {int sequence = 0}) => BrushDab(
+      center: CanvasPoint(x: x, y: 6),
+      color: 0xFF000000,
+      size: 3,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.round,
+      pressure: 1,
+      sequence: sequence,
+    );
+    await pumpView(tester, painter, cache);
+    await tester.runAsync(() async {
+      rasterizer.blendFrom([dabAt(4)], from: 0);
+      overlay.updateRegion(
+        source: rasterizer,
+        region: DirtyRegion.fromXYWH(x: 2, y: 4, width: 5, height: 5),
+      );
+    });
+    await settle(tester, cache);
+    final fullBefore = cache.fullCount;
+    final patchedBefore = cache.patchedCount;
+    await tester.runAsync(() async {
+      rasterizer.blendFrom([dabAt(4), dabAt(8, sequence: 1)], from: 1);
+      overlay.updateRegion(
+        source: rasterizer,
+        region: DirtyRegion.fromXYWH(x: 6, y: 4, width: 5, height: 5),
+      );
+    });
+    await tester.pump();
+    expect(cache.fullCount, fullBefore, reason: 'the second step must not raster the whole buffer');
+    expect(cache.patchedCount, patchedBefore + 1, reason: 'it patches');
+  });
+  testWidgets('on the activation frame the tiles draw themselves', (
+    tester,
+  ) async {
+    // A file-backed cel shown as a cached image, then promoted with a tile
+    // cache that knows none of its fresh tile objects — the frame the
+    // first-activation stand-in used to exist for; every tile pictures
+    // itself inside this paint now (2026-09-17).
+    const tileSize = 16;
+    const tileCount = 4;
+    const key = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('l'),
+      frameId: FrameId('f'),
+    );
+    const celSize = CanvasSize(width: tileCount * tileSize, height: tileSize);
+    final celBox = Size(celSize.width.toDouble(), celSize.height.toDouble());
+    final tiles = <TileCoord, BitmapTile>{};
+    for (var x = 0; x < tileCount; x += 1) {
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var i = 0; i < pixels.length; i += 4) {
+        pixels[i + 2] = 0xFF;
+        pixels[i + 3] = 0xFF;
+      }
+      tiles[TileCoord(x: x, y: 0)] = BitmapTile(size: tileSize, pixels: pixels);
+    }
+    final store = BrushFrameStore();
+    keepInAFile(store, {
+      key: BitmapSurface(canvasSize: celSize, tileSize: tileSize, tiles: tiles),
+    });
+    final imageCache = LayerFrameImageCache(frameStore: store);
+    final prepared = await tester.runAsync(
+      () => imageCache.prepare(
+        key: key,
+        canvasSize: celSize,
+        quality: PlaybackQuality.full,
+        sourceEffects: const [],
+      ),
+    );
+    expect(prepared, isNotNull, reason: 'fixture: the inactive route has an image');
+
+    Future<void> pumpStack({
+      required List<CompositeNode<CanvasStackRow>> nodes,
+      BitmapSurfacePainter? activeSurfacePainter,
+    }) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: celBox.width,
+              height: celBox.height,
+              child: CanvasLayerStackView(
+                nodes: nodes,
+                imageCache: imageCache,
+                canvasSize: celSize,
+                viewport: CanvasViewport(),
+                activeSurfacePainter: activeSurfacePainter,
+                debugDisableBake: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    Future<Uint8List> paintStack() async {
+      final painter = tester
+          .widgetList<CustomPaint>(
+            find.descendant(
+              of: find.byType(CanvasLayerStackView),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .where((paint) => paint.painter != null)
+          .first
+          .painter!;
+      final recorder = ui.PictureRecorder();
+      painter.paint(Canvas(recorder, Offset.zero & celBox), celBox);
+      final picture = recorder.endRecording();
+      try {
+        return (await tester.runAsync(() async {
+          final image = await picture.toImage(celSize.width, celSize.height);
+          try {
+            final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+            return data!.buffer.asUint8List();
+          } finally {
+            image.dispose();
+          }
+        }))!;
+      } finally {
+        picture.dispose();
+      }
+    }
+
+    List<int> rgbaAt(Uint8List px, int x, int y) {
+      final o = (y * celSize.width + x) * 4;
+      return [px[o], px[o + 1], px[o + 2], px[o + 3]];
+    }
+
+    await pumpStack(
+      nodes: const [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasLayerImageRequest(frameKey: key, opacity: 1),
+        ),
+      ],
+    );
+    await paintStack();
+
+    // ACTIVATION. ↩️It was made with a ghost already in hand — the stamp
+    // tool picked before the layer — and pinned the ghost drawn over the
+    // tiles, until brush-fidelity-Q9 made the ghost the overlay's tiles
+    // rather than this painter's draw.
+    final painter = BitmapSurfacePainter(
+      surface: store.bakedSurfaceOrNull(key)!,
+      showTransparentBackground: false,
+      lineage: 'ghost-stand-in-under-test',
+      tileImageCache: BitmapTileImageCache(),
+    );
+    await pumpStack(
+      nodes: const [
+        CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
+      ],
+      activeSurfacePainter: painter,
+    );
+    final swapFrame = await paintStack();
+    expect(rgbaAt(swapFrame, 8, 8), [0, 0, 255, 255], reason: 'the tiles draw the artwork on the activation frame');
+  });
+}

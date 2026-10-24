@@ -81,6 +81,36 @@ void main() {
     );
   });
 
+  // What a screen reader is told is what the paint prints — the window's,
+  // as the cells' sentence and the cut blocks' nodes are (I-57-Q3). They
+  // said every block of the row, and a storyboard row is the whole film.
+  test('the labels say to a screen reader the labels their window prints, '
+      'not every block of the row', () {
+    final painter = TimelineRowRunLabelsPainter(
+      layer: longLayer(300),
+      geometry: testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: 1200,
+      ),
+      crossAxisExtent: 52,
+      showSeconds: false,
+      countingBase: 24,
+      baseTextStyle: const TextStyle(fontSize: 11),
+      windowBucket: ValueNotifier<int>(0),
+      viewportMainExtent: 480,
+    );
+    final said = painter.semanticsBuilder(const Size(1200 * 24, 52));
+
+    expect(painter.runLabels(), hasLength(300), reason: 'premise: every block');
+    expect(said, isNotEmpty, reason: 'premise: the window has labels');
+    final printed = painter.runLabelsInWindow();
+    expect(printed.length, lessThan(20), reason: 'premise: a window of them');
+    expect(
+      [for (final node in said) node.rect.left],
+      [for (final label in printed) label.startIndex * 24.0],
+    );
+  });
+
   testWidgets('a timeline row hands its labels the window its cells take', (
     tester,
   ) async {

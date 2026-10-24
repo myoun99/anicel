@@ -57,40 +57,17 @@ class _CanvasPanelShellBars {
   /// of a window resize rebuilt the pill — thirteen icon buttons with their
   /// tooltips, overlay portals and gesture detectors — for a number it
   /// ignores.
-  ({
-    CanvasViewport viewport,
-    Size viewportSize,
-    CanvasSize canvasSize,
-    bool view,
-    ({Rect rect, Rect window})? limit,
-  })?
-  _panbarsToken;
+  ///
+  /// Kept by THE keep ([keptWhileSame]), which compares the language too:
+  /// ↩️these tokens were compared here by hand and carried none, so a
+  /// sheet's bar went on in the language it was built in.
+  final Map<Symbol, Kept<Object?>> _kept = {};
 
-  ({
-    double zoom,
-    CanvasSize canvasSize,
-    bool rotation,
-    bool view,
-    bool floor,
-    bool oneToOne,
-    bool viewKeys,
-    int paper,
-    int pasteboard,
-    int backdrop,
-    bool paperNone,
-    bool pasteboardNone,
-    PasteboardSize pasteboardSize,
-    bool pasteboardInUse,
-    bool backdropNone,
-    Object? host,
-  })?
-  _pillToken;
-
-  Widget? _memoRightStripBar;
+  late Widget _memoRightStripBar;
 
   late Widget _memoHorizontalStripBar;
 
-  Widget? _memoBottomBar;
+  late Widget _memoBottomBar;
 
   void _ensureShellBars() {
     final viewportSize = _state._viewportState._resolvedEditorViewportSize();
@@ -197,9 +174,11 @@ class _CanvasPanelShellBars {
         (_state.widget.bottomBarLeading.isEmpty &&
             _state.widget.bottomBarSettings.isEmpty) ||
         _state.widget.bottomBarHostToken != null;
-    if (panbarsToken != _panbarsToken || _memoRightStripBar == null) {
-      _panbarsToken = panbarsToken;
-      _memoRightStripBar = CanvasViewportVerticalScrollbar(
+    _memoRightStripBar = keptWhileSame(
+      _kept,
+      #rightStrip,
+      panbarsToken,
+      () => CanvasViewportVerticalScrollbar(
         viewport: _state._viewportState._viewport,
         editorViewportSize: viewportSize,
         canvasSize: _state.widget.canvasSize,
@@ -207,8 +186,13 @@ class _CanvasPanelShellBars {
         onViewportChanged: _setViewportDuringPanbarDrag,
         onViewportChangeEnd: _state._viewportState._syncViewportParent,
         enabled: _state.widget.hasContentToView,
-      );
-      _memoHorizontalStripBar = CanvasViewportHorizontalScrollbar(
+      ),
+    );
+    _memoHorizontalStripBar = keptWhileSame(
+      _kept,
+      #bottomStrip,
+      panbarsToken,
+      () => CanvasViewportHorizontalScrollbar(
         viewport: _state._viewportState._viewport,
         editorViewportSize: viewportSize,
         canvasSize: _state.widget.canvasSize,
@@ -216,68 +200,72 @@ class _CanvasPanelShellBars {
         onViewportChanged: _setViewportDuringPanbarDrag,
         onViewportChangeEnd: _state._viewportState._syncViewportParent,
         enabled: _state.widget.hasContentToView,
-      );
-    }
-    if (memoizable && pillToken == _pillToken && _memoBottomBar != null) {
-      return;
-    }
-    _pillToken = pillToken;
-    _memoBottomBar = _CanvasViewportBottomBar(
-      onFloor: _state._onFloor,
-      oneToOneOnPill: _state.widget.oneToOneOnPill,
-      drivenByViewKeys: _state.widget.viewCommands != null,
-      leading: _state.widget.bottomBarLeading,
-      hostSettings: _state.widget.bottomBarSettings,
-      viewport: _state._viewportState._viewport,
-      liveViewport: _state._viewportState.viewportNotifier,
-      canvasSize: _state.widget.canvasSize,
-      paperColor: _state.widget.paperColor,
-      paperNone: _state.widget.paperNone,
-      onPaperColorChanged: _state.widget.onPaperColorChanged,
-      onPaperNone: _state.widget.onPaperNone,
-      pasteboardColor: _state._stagePasteboardArgb,
-      pasteboardNone: _state._stagePasteboardNone,
-      pasteboardSize: _state._stagePasteboardSize,
-      pasteboardInUse: _state._stagePasteboardInUse,
-      onPasteboardColorChanged: _state.widget.onPasteboardColorChanged,
-      onPasteboardNone: _state.widget.onPasteboardNone,
-      onPasteboardSizeChanged: _state.widget.onPasteboardSizeChanged,
-      onPasteboardInUseChanged: _state.widget.onPasteboardInUseChanged,
-      backdropColor: _state._stageBackdropArgb,
-      backdropNone: _state._stageBackdropNone,
-      onBackdropColorChanged: _state.widget.onBackdropColorChanged,
-      onBackdropNone: _state.widget.onBackdropNone,
-      // Read when a picker opens, so the memoized bar does not have to be
-      // rebuilt every time the brush colour moves.
-      currentColorOf: () => _state._brush.color,
-      onViewportChanged: _setViewportDuringPanbarDrag,
-      onViewportChangeEnd: _state._viewportState._syncViewportParent,
-      onZoomSet: _setZoomFromLabel,
-      onZoomIn: _zoomInFromBar,
-      onZoomOut: _zoomOutFromBar,
-      onFit: _state._viewportState._fitToView,
-      onReset: _state._viewportState._resetView,
-      viewEnabled: _state.widget.hasContentToView,
-      onRotateCcw: _state.widget.allowViewRotation ? _rotateCcwFromBar : null,
-      onRotateCw: _state.widget.allowViewRotation ? _rotateCwFromBar : null,
-      onRotateReset: _state.widget.allowViewRotation
-          ? _state._viewportState._resetRotation
-          : null,
-      onRotateByDrag: _state.widget.allowViewRotation
-          ? _state._viewportState._rotateByDrag
-          : null,
-      onFlipHorizontal: _state.widget.allowViewRotation
-          ? _state._viewportState._toggleFlipHorizontal
-          : null,
-      onFlipVertical: _state.widget.allowViewRotation
-          ? _state._viewportState._toggleFlipVertical
-          : null,
+      ),
+    );
+    // A fresh object is a fact no two builds share: never kept.
+    _memoBottomBar = keptWhileSame(
+      _kept,
+      #bottomBar,
+      memoizable ? pillToken : Object(),
+      _bottomBar,
     );
   }
 
+  Widget _bottomBar() => _CanvasViewportBottomBar(
+    onFloor: _state._onFloor,
+    oneToOneOnPill: _state.widget.oneToOneOnPill,
+    drivenByViewKeys: _state.widget.viewCommands != null,
+    leading: _state.widget.bottomBarLeading,
+    hostSettings: _state.widget.bottomBarSettings,
+    viewport: _state._viewportState._viewport,
+    liveViewport: _state._viewportState.viewportNotifier,
+    canvasSize: _state.widget.canvasSize,
+    paperColor: _state.widget.paperColor,
+    paperNone: _state.widget.paperNone,
+    onPaperColorChanged: _state.widget.onPaperColorChanged,
+    onPaperNone: _state.widget.onPaperNone,
+    pasteboardColor: _state._stagePasteboardArgb,
+    pasteboardNone: _state._stagePasteboardNone,
+    pasteboardSize: _state._stagePasteboardSize,
+    pasteboardInUse: _state._stagePasteboardInUse,
+    onPasteboardColorChanged: _state.widget.onPasteboardColorChanged,
+    onPasteboardNone: _state.widget.onPasteboardNone,
+    onPasteboardSizeChanged: _state.widget.onPasteboardSizeChanged,
+    onPasteboardInUseChanged: _state.widget.onPasteboardInUseChanged,
+    backdropColor: _state._stageBackdropArgb,
+    backdropNone: _state._stageBackdropNone,
+    onBackdropColorChanged: _state.widget.onBackdropColorChanged,
+    onBackdropNone: _state.widget.onBackdropNone,
+    // Read when a picker opens, so the memoized bar does not have to be
+    // rebuilt every time the brush colour moves.
+    currentColorOf: () => _state._brush.color,
+    onViewportChanged: _setViewportDuringPanbarDrag,
+    onViewportChangeEnd: _state._viewportState._syncViewportParent,
+    onZoomSet: _setZoomFromLabel,
+    onZoomIn: _zoomInFromBar,
+    onZoomOut: _zoomOutFromBar,
+    onFit: _state._viewportState._fitToView,
+    onReset: _state._viewportState._resetView,
+    viewEnabled: _state.widget.hasContentToView,
+    onRotateCcw: _state.widget.allowViewRotation ? _rotateCcwFromBar : null,
+    onRotateCw: _state.widget.allowViewRotation ? _rotateCwFromBar : null,
+    onRotateReset: _state.widget.allowViewRotation
+        ? _state._viewportState._resetRotation
+        : null,
+    onRotateByDrag: _state.widget.allowViewRotation
+        ? _state._viewportState._rotateByDrag
+        : null,
+    onFlipHorizontal: _state.widget.allowViewRotation
+        ? _state._viewportState._toggleFlipHorizontal
+        : null,
+    onFlipVertical: _state.widget.allowViewRotation
+        ? _state._viewportState._toggleFlipVertical
+        : null,
+  );
+
   Widget memoizedRightStripBar() {
     _ensureShellBars();
-    return _memoRightStripBar!;
+    return _memoRightStripBar;
   }
 
   Widget memoizedHorizontalStripBar() {
@@ -287,12 +275,13 @@ class _CanvasPanelShellBars {
 
   Widget memoizedBottomBar() {
     _ensureShellBars();
-    return _memoBottomBar!;
+    return _memoBottomBar;
   }
 
-  void _rotateCcwFromBar() => _state._viewportState._rotateAroundCenter(-15);
+  void _rotateCcwFromBar() =>
+      _state._viewportState._rotateStep(clockwise: false);
 
-  void _rotateCwFromBar() => _state._viewportState._rotateAroundCenter(15);
+  void _rotateCwFromBar() => _state._viewportState._rotateStep(clockwise: true);
 
   void _setViewportDuringPanbarDrag(CanvasViewport viewport) {
     _state._rebuild(() => _state._viewportState._viewport = viewport.clamped());

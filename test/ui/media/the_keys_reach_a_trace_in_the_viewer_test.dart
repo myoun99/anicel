@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/key_chords.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// 🗣️F-380 (유저 2026-10-17): 「뷰어패널에서 잘라내기쓸때 개미행렬 라이브가
 /// 안보임. 법 통일해서 보이도록」.
@@ -49,11 +50,7 @@ void main() {
 
   Future<void> openRail(WidgetTester tester, int slot) async {
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: slot)}',
-        ),
-      ),
+      railGroupButton(EditorWorkspace.railGroupId(right: true, slot: slot)),
     );
     await tester.pumpAndSettle();
   }
@@ -149,7 +146,7 @@ void main() {
   testWidgets("…and so does the tool settings' 닫기", (tester) async {
     final trace = await tapOutATrace(tester);
     // The tool settings ship closed, under the library's sub-strip button.
-    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-L2')));
+    await pressToolSettingsButton(tester);
     await pumpFrames(tester, 40);
     final tab = find.byKey(const ValueKey<String>('panel-tab-brush-settings'));
     await tester.ensureVisible(tab);

@@ -89,7 +89,7 @@ void main() {
                         onTapAt: (_, _, _) {},
                         onTapClear: () {},
                         onMoveBegin: () => false,
-                        onMoveUpdate: (_, {values}) {},
+                        onMoveUpdate: (_, {stretch, values, landings}) {},
                         onMoveEnd: () {},
                         onMoveCancel: () {},
                         onActivateAt: (_, _, frame) => activations.add(frame),

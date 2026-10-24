@@ -2,8 +2,8 @@
 ///
 /// A setting (size, opacity, flow, hardness) can answer to more than one of
 /// these at once, each through its own response curve. Clip Studio files them
-/// exactly that way: one curve block per enabled source inside the effector
-/// blob, plus a minimum per source.
+/// that way inside the effector blob: a tick and a minimum per source, and a
+/// graph for 筆圧 and for 傾き.
 ///
 /// ## How several enabled sources combine: THEY MULTIPLY
 ///
@@ -90,24 +90,30 @@ enum BrushInputSource {
 
   /// The bit this source sets in an effector's input-flag word (int[2]).
   ///
-  /// ⚠️0x40 is 傾き, NOT stroke direction. That was guessed wrong once, on the
-  /// evidence that it only appeared on the rotation effector, and `물붓.sut`
-  /// settled it (2026-09-08): all four inputs ticked, size effector reads
-  /// 0xF0. Stroke direction stays unmapped.
+  /// 🚨0x20 IS 傾き AND 0x40 IS 速度 (📏F-456, 2026-10-23). ↩️They stood the
+  /// other way round from 2026-09-08, read off `물붓.sut` — which ticks all
+  /// four (0xF0) and so could not tell those two apart (and 0x40 had been
+  /// guessed as stroke direction before that). What does: Clip
+  /// Studio's own 影響元設定 window (the user's screenshot) draws exactly two
+  /// graphs, 筆圧設定 and 傾き設定, and the effector carries two graph
+  /// blocks; the user's five pencils tick 筆圧 + 0x20 and shape the SECOND
+  /// block, beside a tilt 最小値 and 最大値 of their own. Read as 速度, four
+  /// of them laid nothing at any speed.
+  /// ⚠️Stroke direction stays unmapped.
   int get effectorFlagBit => switch (this) {
     pressure => 0x10,
-    speed => 0x20,
-    tilt => 0x40,
+    tilt => 0x20,
+    speed => 0x40,
     random => 0x80,
   };
 
-  /// Where this source's 최소치 sits in the effector blob: `int[3 + index]`.
+  /// Where this source's 최소치 sits in the effector blob: `int[3 + index]`,
+  /// in panel order — 筆圧 · 傾き · 速度 · ランダム.
   ///
-  /// 🚨**PANEL ORDER, WHICH IS NOT FLAG-BIT ORDER.** The four minimum slots
-  /// run 筆圧 · 傾き · 速度 · ランダム the way the panel lists them, while the
-  /// CURVE blocks in the tail run in ascending flag-bit order (筆圧 0x10,
-  /// 速度 0x20, 傾き 0x40, ランダム 0x80). Reading one order for the other is
-  /// the mistake this field exists to stop.
+  /// ↩️This warned that panel order was NOT flag-bit order, which held only
+  /// while 0x20 was read as 速度; with the bits read right (F-456) the two
+  /// agree. The GRAPH blocks follow neither — two of them, in fixed places
+  /// (`_graphBlockOf` in the .sut decoder).
   ///
   /// 🔬Measured 2026-09-08 against two real brushes and their panel
   /// screenshots. ⚠️That is two files, not a spec — a brush that disagrees

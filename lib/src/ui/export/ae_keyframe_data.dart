@@ -3,6 +3,12 @@ import '../../models/canvas_size.dart';
 import '../../models/cut_camera.dart';
 import '../../services/camera_pose_resolver.dart';
 
+// ⚠️NO DOOR CALLS THIS NOW, ON PURPOSE. 🗣️F-455 (유저 2026-10-23) took the
+// cut menu's 「카메라 AE 키프레임 복사」 away for 「다른 카드에서 선택한 행
+// ae복사(애니메이션행의 경우 트랜스폼이나 노출같은거 다 포함해서)로 폭넓게
+// 구현할것임」 — the writer and the camera's bake below are what that copy
+// starts from. ⛔Not dead code to sweep: the copy of a row is coming.
+
 /// One baked transform sample for After Effects keyframe-data text.
 ///
 /// The mapping mirrors the app's camera render transform

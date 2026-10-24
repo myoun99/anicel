@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/ime_draft.dart';
 
 /// SAVE-1: the unified Preferences dialog — sections switch in place and
@@ -27,9 +32,11 @@ void main() {
   Future<void> pumpPreferences(
     WidgetTester tester, {
     PreferencesSection initialSection = PreferencesSection.input,
+    ScrollBehavior? scrollBehavior,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        scrollBehavior: scrollBehavior,
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
@@ -112,6 +119,83 @@ void main() {
     );
   });
 
+  // 🗣️F-440 (user, 2026-10-23): 「환경설정창의 스크롤바, 스크롤바랑
+  // 내용물이랑 위젯 겹치는데 공간 제대로 나누도록. 그러고 스크롤바 없는
+  // 환경설정창도 항상 존재하도록 법 통일」 — and the thin bar, as every bar
+  // but the floor's. ↩️F-409 made every bar here the thick one.
+  testWidgets('every section has its own thin lane beside the content — '
+      'overflowing or not, on a desktop as on a tablet', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // The app root's behaviour, as in the app: it lays its own bar over a
+    // scrollable on a desktop, and that one must not come back here.
+    await pumpPreferences(tester, scrollBehavior: const AppScrollBehavior());
+    final window = find.byKey(const ValueKey<String>('preferences-dialog'));
+    var overflowed = 0;
+    var fitted = 0;
+    for (final section in PreferencesSection.values) {
+      final tab = find.byKey(
+        ValueKey<String>('preferences-section-${section.name}'),
+      );
+      await tester.ensureVisible(tab);
+      await tester.pumpAndSettle();
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+
+      final content = find.descendant(
+        of: window,
+        matching: find.byType(ContentScrollbar),
+      );
+      expect(content, findsOneWidget, reason: '${section.name}: its lane');
+      final lane = tester.getRect(
+        find.descendant(
+          of: content,
+          matching: find.byType(AppControllerScrollbar),
+        ).first,
+      );
+      final scroller = find
+          .descendant(of: content, matching: find.byType(Scrollable))
+          .first;
+      expect(lane.width, AppScrollbarLane.thin, reason: section.name);
+      expect(
+        tester.getRect(scroller).right,
+        lane.left,
+        reason: '${section.name}: beside the content, not laid over it',
+      );
+      expect(
+        find.descendant(of: window, matching: find.byType(PanelScrollbar)),
+        findsNothing,
+        reason: '${section.name}: no second bar over the content',
+      );
+      final position = tester
+          .state<ScrollableState>(scroller)
+          .position;
+      if (position.maxScrollExtent > 0) {
+        overflowed += 1;
+      } else {
+        fitted += 1;
+      }
+    }
+    expect(overflowed, greaterThan(0), reason: '⛔전제: one overflows');
+    expect(fitted, greaterThan(0), reason: '⛔전제: one fits');
+  }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
+
+  testWidgets('a tablet, whose root lays no bar of its own, has the lane '
+      'too', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpPreferences(tester, scrollBehavior: const AppScrollBehavior());
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('preferences-dialog')),
+        matching: find.byType(ContentScrollbar),
+      ),
+      findsOneWidget,
+    );
+  }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+
   testWidgets('🚨F-1: the Autosave section is ONE switch and ONE slider', (
     tester,
   ) async {
@@ -159,7 +243,7 @@ void main() {
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();
@@ -182,7 +266,7 @@ void main() {
     );
 
     // Off again, and the number goes with it.
-    await tester.tap(
+    await tester.pressRingIn(
       find.byKey(const ValueKey<String>('settings-autosave-enabled')),
     );
     await tester.pumpAndSettle();

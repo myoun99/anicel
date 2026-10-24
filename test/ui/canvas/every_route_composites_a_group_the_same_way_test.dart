@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import '../../helpers/library_source.dart';
@@ -164,41 +165,56 @@ void main() {
     }
   });
 
-  testWidgets('the camera rasterises a folder at its projection scale', (
-    tester,
-  ) async {
-    await tester.runAsync(() async {
-      // 🚨THE WIRE, READ AT THE ROUTE. The camera's CTM is
-      // `previewScale * zoom`, and a `Canvas` will not say so — the walk
-      // carries the number. Cut that wire and the folder still draws, at a
-      // resolution nobody chose, next to siblings drawn at the right one.
-      debugLastSubtreeRaster = null;
-      const service = CameraFrameRenderService();
-      final image = await service.renderThroughCamera(
-        nodes: [
-          CompositeGroup<CutFrameCompositeLayer>(
-            children: [
-              CompositeLeaf<CutFrameCompositeLayer>(
-                CutFrameCompositeLayer(surface: inkedSurface(), opacity: 1),
-              ),
-            ],
-            opacity: 1,
-            // A folder only becomes a group node when it NEEDS the buffer.
-            blendMode: LayerBlendMode.multiply,
+  // 🚨THE WIRE, READ AT THE ROUTE. The camera's CTM is `previewScale *
+  // zoom`, and a `Canvas` will not say so — the walk carries the number.
+  // Cut that wire and the folder still draws, at a resolution nobody
+  // chose, next to siblings drawn at the right one.
+  CompositeNode<CutFrameCompositeLayer> folder(LayerBlendMode blendMode) =>
+      CompositeGroup<CutFrameCompositeLayer>(
+        children: [
+          CompositeLeaf<CutFrameCompositeLayer>(
+            CutFrameCompositeLayer(surface: inkedSurface(), opacity: 1),
           ),
         ],
-        pose: CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 2),
-        cameraFrameSize: canvasSize,
-        // 32 / 8 = a preview scale of 4, times a camera zoom of 2.
-        outputSize: const CanvasSize(width: 32, height: 32),
+        opacity: 1,
+        blendMode: blendMode,
       );
-      expect(
-        debugLastSubtreeRaster,
-        isNotNull,
-        reason: 'the folder never rasterised at all',
-      );
-      expect(debugLastSubtreeRaster!.scale, 8);
-      image.dispose();
+  final folders = <String, CompositeNode<CutFrameCompositeLayer>>{
+    // A folder only becomes a group node when it NEEDS the buffer.
+    // ↩️It was a multiply one, until an advanced blend went over its
+    // backdrop (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
+    'a folder in add': folder(LayerBlendMode.add),
+    // …and that blend rasterises its backdrop and the folder, as the plan
+    // hands it over.
+    'a folder composed over its backdrop': CompositeBackdropBlend(
+      backdrop: const [],
+      source: folder(LayerBlendMode.normal),
+      blendMode: LayerBlendMode.multiply,
+    ),
+  };
+  for (final MapEntry(key: name, value: node) in folders.entries) {
+    testWidgets('the camera rasterises $name at its projection scale', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        await LayerBlendShader.load();
+        debugLastSubtreeRaster = null;
+        const service = CameraFrameRenderService();
+        final image = await service.renderThroughCamera(
+          nodes: [node],
+          pose: CameraPose(center: CanvasPoint(x: 4, y: 4), zoom: 2),
+          cameraFrameSize: canvasSize,
+          // 32 / 8 = a preview scale of 4, times a camera zoom of 2.
+          outputSize: const CanvasSize(width: 32, height: 32),
+        );
+        expect(
+          debugLastSubtreeRaster,
+          isNotNull,
+          reason: 'the folder never rasterised at all',
+        );
+        expect(debugLastSubtreeRaster!.scale, 8);
+        image.dispose();
+      });
     });
-  });
+  }
 }

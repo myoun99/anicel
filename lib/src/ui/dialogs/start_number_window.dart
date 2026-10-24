@@ -16,7 +16,11 @@ import '../widgets/drag_value_label.dart';
 ///
 /// Pops the number on Apply, nothing on Cancel.
 class StartNumberWindow extends StatefulWidget {
-  const StartNumberWindow({super.key});
+  const StartNumberWindow({super.key, required this.target});
+
+  /// What the numbers go to — the title's brackets (I-24-open-entry: the
+  /// timeline buttons' windows name what they act on).
+  final String target;
 
   @override
   State<StartNumberWindow> createState() => _StartNumberWindowState();
@@ -41,7 +45,10 @@ class _StartNumberWindowState extends State<StartNumberWindow> {
     final strings = AppText.strings;
     return AppWindow(
       windowKey: const ValueKey<String>('auto-name-dialog'),
-      title: editorActionLabel(EditorActionIds.editAutoName),
+      title: strings.windowTitleOn(
+        editorActionLabel(EditorActionIds.editAutoName),
+        widget.target,
+      ),
       titleIcon: Icons.format_list_numbered,
       onClose: () => Navigator.of(context).pop(),
       width: 300,

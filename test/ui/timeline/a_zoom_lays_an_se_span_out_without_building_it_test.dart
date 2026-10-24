@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,6 +16,11 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 void main() {
   const dialogue = 'せりふのテキスト';
   const row = 28.0;
+
+  /// The dark ground the spans lie on, as the rows' does, and the boundary
+  /// a test reads its pixels through.
+  const rowGround = Color(0xFF202124);
+  final shot = GlobalKey();
 
   /// An SE span in a box [width] long, [left] in from the screen's edge
   /// with [framesFreeBefore] free before it, the width moved by [resize] —
@@ -38,15 +45,19 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Align(
-            alignment: Alignment.topLeft,
-            child: Padding(
-              padding: EdgeInsets.only(left: left),
-              child: StatefulBuilder(
-                builder: (context, set) {
-                  setState = set;
-                  return SizedBox(width: shown, height: row, child: span);
-                },
+          backgroundColor: rowGround,
+          body: RepaintBoundary(
+            key: shot,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: EdgeInsets.only(left: left),
+                child: StatefulBuilder(
+                  builder: (context, set) {
+                    setState = set;
+                    return SizedBox(width: shown, height: row, child: span);
+                  },
+                ),
               ),
             ),
           ),
@@ -54,6 +65,42 @@ void main() {
       ),
     );
     return (next) => setState(() => shown = next);
+  }
+
+  /// The pixels painted over [rect], at one pixel a logical pixel.
+  Future<List<Color>> pixelsOver(WidgetTester tester, Rect rect) async {
+    final colors = <Color>[];
+    await tester.runAsync(() async {
+      final boundary =
+          shot.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final image = await boundary.toImage();
+      final bytes = (await image.toByteData())!;
+      for (var y = rect.top.ceil(); y < rect.bottom.floor(); y++) {
+        for (var x = rect.left.ceil(); x < rect.right.floor(); x++) {
+          final at = (y * image.width + x) * 4;
+          colors.add(
+            Color.fromARGB(
+              255,
+              bytes.getUint8(at),
+              bytes.getUint8(at + 1),
+              bytes.getUint8(at + 2),
+            ),
+          );
+        }
+      }
+      image.dispose();
+    });
+    return colors;
+  }
+
+  bool white(Color color) =>
+      [color.r, color.g, color.b].every((channel) => channel > 0.94);
+
+  /// A pixel with a hue of its own — the accent's tint, not the grey of the
+  /// ground, the ink or what lies between them.
+  bool tinted(Color color) {
+    final channels = [color.r, color.g, color.b];
+    return channels.reduce(math.max) - channels.reduce(math.min) > 0.06;
   }
 
   testWidgets('🚨a new length builds nothing of the span again', (
@@ -154,6 +201,124 @@ void main() {
     expect(tester.getRect(chip).left, closeTo(40, 1e-6), reason: 'in');
     expect(tester.getRect(words).left, closeTo(40, 1e-6));
     expect(rebuilt.where((type) => '$type' == '_SeNameBox'), isEmpty);
+  });
+
+  // 🗣️F-444 (유저 2026-10-23): 「배경 바탕색 삭제하고, 심플하게 하얀색 텍스트
+  // 고정으로 텍스트만 두도록 … 만약 공간 부족해서 이름이 블록안으로 들어가는
+  // 상황에선 지금이랑 변함없이」.
+  testWidgets('🚨just before its block the name is white on the row, with no '
+      'ground; a zoom that lays it in writes it on the tint again — and out '
+      'again — building nothing', (tester) async {
+    final resize = await mount(
+      tester,
+      width: 100,
+      frames: 10,
+      words: 'あい',
+      framesFreeBefore: 2,
+      left: 40,
+    );
+    final chip = find.bySemanticsLabel('SE name ドア');
+    final rebuilt = <Type>[];
+    debugOnRebuildDirtyWidget = (element, builtOnce) =>
+        rebuilt.add(element.widget.runtimeType);
+    addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+    Future<void> expectOut() async {
+      final out = tester.getRect(chip);
+      expect(out.right, closeTo(40, 1e-6), reason: '⛔전제');
+      final pixels = await pixelsOver(tester, out);
+      expect(pixels.where(white), isNotEmpty, reason: 'its name, in white');
+      expect(pixels.where(tinted), isEmpty, reason: 'on no ground');
+      final head = await pixelsOver(tester, out.shift(Offset(out.width, 0)));
+      expect(head.where(tinted), isEmpty, reason: 'nor a tint left behind');
+    }
+
+    await expectOut();
+
+    resize(70);
+    await tester.pump();
+    expect(tester.getRect(chip).left, closeTo(40, 1e-6), reason: '⛔전제: in');
+    final on = await pixelsOver(tester, tester.getRect(chip));
+    expect(on.where(tinted), isNotEmpty, reason: 'the tint, as it was');
+    expect(on.where(white), isEmpty, reason: 'and the block\'s ink on it');
+
+    resize(100);
+    await tester.pump();
+    await expectOut();
+    expect(rebuilt.where((type) => '$type' == '_SeNameBox'), isEmpty);
+  });
+
+  testWidgets('a span built again with what it had, and not laid again, '
+      'still writes its name white before its block', (tester) async {
+    Widget at(String dialogue) => MaterialApp(
+      home: Scaffold(
+        backgroundColor: rowGround,
+        body: RepaintBoundary(
+          key: shot,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 40),
+              child: SizedBox(
+                width: 100,
+                height: row,
+                child: SeSpanVisual(
+                  axis: Axis.horizontal,
+                  frames: 10,
+                  dialogue: dialogue,
+                  seName: 'ドア',
+                  framesFreeBefore: 2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpWidget(at('あい'));
+    // An equal dialogue, another instance of the span: built, not laid.
+    await tester.pumpWidget(at('あい'));
+    final chip = tester.getRect(find.bySemanticsLabel('SE name ドア'));
+    expect(chip.right, closeTo(40, 1e-6), reason: '⛔전제: out');
+    final pixels = await pixelsOver(tester, chip);
+    expect(pixels.where(white), isNotEmpty);
+    expect(pixels.where(tinted), isEmpty);
+  });
+
+  testWidgets('on the X-sheet\'s column too: white just above its block, on '
+      'no ground', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          backgroundColor: rowGround,
+          body: RepaintBoundary(
+            key: shot,
+            child: const Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: EdgeInsets.only(top: 40),
+                child: SizedBox(
+                  width: row,
+                  height: 100,
+                  child: SeSpanVisual(
+                    axis: Axis.vertical,
+                    frames: 10,
+                    dialogue: 'あい',
+                    seName: 'ドア',
+                    framesFreeBefore: 2,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    final chip = tester.getRect(find.bySemanticsLabel('SE name ドア'));
+    expect(chip.bottom, closeTo(40, 1e-6), reason: '⛔전제: out');
+    final pixels = await pixelsOver(tester, chip);
+    expect(pixels.where(white), isNotEmpty, reason: 'its name, in white');
+    expect(pixels.where(tinted), isEmpty, reason: 'on no ground');
   });
 
   testWidgets('the block before it moved away: the room is asked again, and '

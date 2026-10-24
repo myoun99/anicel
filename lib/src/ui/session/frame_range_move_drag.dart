@@ -4,6 +4,7 @@ import '../timeline/timeline_drag_preview.dart'
 import 'dart:collection';
 
 import '../../models/frame_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
@@ -11,7 +12,7 @@ import '../../models/timeline_repeat.dart';
 import 'active_cut_controllers.dart';
 import 'camera.dart';
 import 'drags/frame_range_move_drag.dart';
-import 'drawing_block_move_drag.dart';
+import 'block_move_commands.dart';
 import 'folders_and_attachments.dart';
 import 'independent_clip_mint.dart' show celsHeldUnderTheirNames;
 import 'range_selections.dart';
@@ -43,7 +44,7 @@ class FrameRangeMoveDragVerbs {
     required RetimeLaw retime,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required RowSpans rowSpans,
-    required DrawingBlockMoveDragVerbs blockMove,
+    required BlockMoveCommands blockMove,
     required Camera camera,
     required FoldersAndAttachments folders,
     required RangeSelections rangeSelections,
@@ -65,7 +66,6 @@ class FrameRangeMoveDragVerbs {
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _retime = retime,
        _rowSpans = rowSpans,
        _folders = folders,
        _rangeSelections = rangeSelections;
@@ -87,7 +87,6 @@ class FrameRangeMoveDragVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final RetimeLaw _retime;
 
   /// The frame-range move in flight, or null. ⛔The only thing this class
   /// keeps about one: the drag-start capture, the last valid plans and the
@@ -200,15 +199,17 @@ class FrameRangeMoveDragVerbs {
     drag?.cancel();
   }
 
-  /// Sets or clears the [side] edge property of the glued run containing
-  /// [blockStartIndex] (UI-R9 #10): `mode` null = None. With
-  /// [scopeToSelection] (the flyout's explicit "Repeat selection" entry,
-  /// UI-R19 #2), Repeat captures the current frame-range selection as its
-  /// pattern when the selection covers the run's edge block (end side:
-  /// selection start → run end; start side: run start → selection end);
-  /// otherwise — and always when [scopeToSelection] is false — the whole
-  /// run cycles. Ghosts always fill to the cut boundary. One undo step,
-  /// committed immediately.
+  /// Sets or clears the [side] edge property of the glued runs a press on
+  /// the run containing [blockStartIndex] acts on (UI-R9 #10): `mode` null
+  /// = None. The runs are [RangeSelections.runsActedOnBy]'s — every run the
+  /// live band holds when the pressed one is among them, that one alone
+  /// when it is not (F-410). With [scopeToSelection] (the flyout's explicit
+  /// "Repeat selection" entry, UI-R19 #2), Repeat captures the current
+  /// frame-range selection as each run's pattern when the selection covers
+  /// the run's edge block (end side: selection start → run end; start side:
+  /// run start → selection end); otherwise — and always when
+  /// [scopeToSelection] is false — the whole run cycles. Ghosts always fill
+  /// to the cut boundary. One undo step, committed immediately.
   void setRunEdgeBehavior({
     required LayerId layerId,
     required int blockStartIndex,
@@ -216,39 +217,59 @@ class FrameRangeMoveDragVerbs {
     TimelineRunEdgeMode? mode,
     bool scopeToSelection = true,
   }) {
-    if (!_retime.blockMoveEligible(layerId)) {
+    final edits = <({Layer before, Layer after})>[];
+    for (final MapEntry(key: id, value: runStarts) in _rangeSelections
+        .runsActedOnBy(layerId, blockStartIndex)
+        .entries) {
+      final before = _project.layerById(id);
+      if (before == null) {
+        continue;
+      }
+      final timeline = SplayTreeMap<int, TimelineExposure>.of(before.timeline);
+      for (final start in runStarts) {
+        if (gluedRunAt(before, start) case final run?) {
+          // Only a Repeat the flyout asked to scope ("Repeat selection",
+          // UI-R19 #2) takes its pattern from the selection.
+          final bound = mode == TimelineRunEdgeMode.repeat && scopeToSelection
+              ? _selectionPatternBound(id, side, run)
+              : null;
+          _markRunEdge(timeline, run, (side: side, mode: mode), bound: bound);
+        }
+      }
+      final after = rederiveRunBehaviors(
+        before.copyWith(timeline: timeline),
+        drawnFrameCount: _project.activeCutDrawnFrameCount,
+      );
+      if (after != before) {
+        edits.add((before: before, after: after));
+      }
+    }
+    if (edits.isEmpty) {
       return;
     }
-    final before = _project.layerById(layerId);
-    if (before == null) {
-      return;
-    }
-    // Design E: the storyboard row refuses repeat/hold regions outright —
-    // a derived instance would look exactly like a panel while owning no
-    // memo of its own. Copy the frames instead.
-    if (!before.kind.acceptsRepeatRegions) {
-      return;
-    }
-    final run = gluedRunAt(before, blockStartIndex);
-    if (run == null) {
-      return;
-    }
+    _controllers.timelineController.commitLayerTimelineDrags(edits);
+    _changes.warmActiveCut();
+    _changes.notifyChanged();
+  }
 
-    // Only a Repeat the flyout asked to scope ("Repeat selection", UI-R19
-    // #2) takes its pattern from the selection.
-    final bound = mode == TimelineRunEdgeMode.repeat && scopeToSelection
-        ? _selectionPatternBound(layerId, side, run)
-        : null;
-
-    // The property sits on its EDGE block (UI-R10 #4): the end side on the
-    // run's LAST block, the start side on the FIRST — splitting the run
-    // keeps the property with the fragment that owns that edge. Every other
-    // block of the run gives this side's mark up, so the setting replaces
-    // whatever carried it before (F-134, see [TimelineRunEdgeMark]).
+  /// Writes [edge]'s mode on its side of [run] into [timeline], [bound]
+  /// bounding a Repeat's pattern.
+  ///
+  /// The property sits on its EDGE block (UI-R10 #4): the end side on the
+  /// run's LAST block, the start side on the FIRST — splitting the run
+  /// keeps the property with the fragment that owns that edge. Every other
+  /// block of the run gives this side's mark up, so the setting replaces
+  /// whatever carried it before (F-134, see [TimelineRunEdgeMark]).
+  static void _markRunEdge(
+    SplayTreeMap<int, TimelineExposure> timeline,
+    TimelineGluedRun run,
+    ({TimelineRunEdgeSide side, TimelineRunEdgeMode? mode}) edge, {
+    required int? bound,
+  }) {
+    final (:side, :mode) = edge;
     final edgeBlock = side == TimelineRunEdgeSide.end
         ? run.blockStarts.last
         : run.blockStarts.first;
-    final timeline = SplayTreeMap<int, TimelineExposure>.of(before.timeline);
     for (final start in run.blockStarts) {
       timeline[start] = timeline[start]!.withEdgeMark(
         side,
@@ -258,32 +279,24 @@ class FrameRangeMoveDragVerbs {
         ),
       );
     }
-    final after = rederiveRunBehaviors(
-      before.copyWith(timeline: timeline),
-      drawnFrameCount: _project.activeCutDrawnFrameCount,
-    );
-    if (after == before) {
-      return;
-    }
-    _controllers.timelineController.commitLayerTimelineDrag(
-      before: before,
-      after: after,
-    );
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
   }
 
   /// The block a Repeat edge's pattern takes from the frame-range selection
   /// as its bound (UI-R19 #2, "Repeat selection"): null unless the selection
-  /// sits on this row and covers the run's edge block. Whether the mode is a
+  /// spans this row and covers the run's edge block. Whether the mode is a
   /// Repeat the flyout asked to scope is the caller's question.
+  ///
+  /// ↩️F-410: it asked whether the band's ANCHOR row was this one, so a
+  /// band over two rows scoped the pattern on the row it was started from
+  /// and cycled the other's whole run — the one rule read two ways by
+  /// which row a drag began on (CLAUDE.md 절대명령 2).
   int? _selectionPatternBound(
     LayerId layerId,
     TimelineRunEdgeSide side,
     TimelineGluedRun run,
   ) {
     final selection = _selection.frameRangeSelection.value;
-    if (selection == null || selection.layerId != layerId) {
+    if (selection == null || !selection.coversLayer(layerId)) {
       return null;
     }
     return switch (side) {

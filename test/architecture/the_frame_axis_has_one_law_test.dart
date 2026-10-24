@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨THE FRAME AXIS HAS ONE frame→pixel LAW (F-220).
 ///
@@ -110,23 +111,24 @@ void main() {
       reason: 'the scan found no product at all — the law itself is one, so '
           'it is reading the wrong tree',
     );
-    final offending = <String>[
-      for (final MapEntry(key: path, value: hits) in found.entries)
-        if (hits.length != (ledger[path]?.$1 ?? 0))
-          '$path — ${hits.length} (ledger ${ledger[path]?.$1 ?? 0}):\n'
-              '    ${hits.join('\n    ')}',
-      for (final path in ledger.keys)
-        if (!found.containsKey(path)) '$path — 0, but the ledger says it has',
-    ];
-    expect(
-      offending,
-      isEmpty,
-      reason:
+    expectCountsMatchLedger(
+      {
+        for (final MapEntry(key: path, value: hits) in found.entries)
+          path: hits.length,
+      },
+      {
+        for (final MapEntry(key: path, value: (count, _)) in ledger.entries)
+          path: count,
+      },
+      grew:
           'a boundary is `timelineFrameEdge` (or a geometry\'s `edgeAt`, a '
           'scale\'s `leftForFrame`) and a width is the distance between two '
           'of them — ⛔never a frame count times the cell\'s extent. If this '
-          'one is not a boundary, write it into the ledger with the reason.\n'
-          '${offending.join('\n')}',
+          'one is not a boundary, write it into the ledger with the reason.',
+      paidOff:
+          'the ledger says these have more products than they do — lower '
+          'the count, or take the line out',
+      hits: found,
     );
   });
 }

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/on_a_worker.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/native/qa_cel_compressor.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
@@ -95,7 +96,11 @@ void main() {
       QaCelCompressor.debugInstanceOverride = null;
     }
 
-    final laid = await layCelInWorker(blob, BitmapTile.blocks);
+    final laid = await layCelInWorker(
+      blob,
+      BitmapTile.blocks,
+      reach: PasteboardReach.whole,
+    );
     final address = laid.tiles.single.pixels;
     engine!.tileFree(Pointer<Uint8>.fromAddress(address));
     final again = engine.tileAlloc(length);

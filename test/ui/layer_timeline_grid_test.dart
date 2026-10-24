@@ -322,11 +322,13 @@ void main() {
       greaterThan(tester.getTopLeft(frameGridArea).dy),
     );
 
-    // The rail-window arrangement, left to right:
-    //   [16 layer-axis bar][rail window][5 splitter][frame cells]
-    // — with the bar on the grid's EDGE, where it stopped occupying the
-    // one gap a splitter could live in.
-    final gridLeft = tester.getRect(scrollbarArea).left;
+    // The frame, left to right:
+    //   [rail window][5 splitter][layer-axis bar][frame cells]
+    // — F-459 (user, 2026-10-23): 「세로 스크롤바, 예전처럼 역시
+    // 레이어영역이랑 프레임 사이에 … 초+코마버튼도 동일. 위치는 현재
+    // 레이어영역 스플리터의 오른쪽」. ↩️F-409 had it at the far right.
+    final grid = tester.getRect(scrollbarArea);
+    final gridLeft = grid.left;
     final railRect = tester.getRect(rail);
     final frameGridAreaRect = tester.getRect(frameGridArea);
     final railScrollbarRect = tester.getRect(railScrollbar);
@@ -337,18 +339,40 @@ void main() {
     final verticalBottomSpacerRect = tester.getRect(
       verticalScrollbarBottomSpacer,
     );
+    final corner = tester.getRect(
+      find.byKey(
+        const ValueKey<String>('timeline-time-display-toggle-button'),
+      ),
+    );
+    final bar = _testMetrics.verticalScrollbarWidth;
 
-    expect(verticalScrollbarRect.left, moreOrLessEquals(gridLeft));
-    expect(verticalScrollbarRect.width, moreOrLessEquals(16));
-    expect(verticalBottomSpacerRect.left, moreOrLessEquals(gridLeft));
-    expect(verticalBottomSpacerRect.width, moreOrLessEquals(16));
     // Untouched, the rail window is the rail's NATURAL width — nothing is
     // cut until the user drags the splitter.
-    expect(railRect.left, moreOrLessEquals(gridLeft + 16));
+    expect(railRect.left, moreOrLessEquals(gridLeft));
     expect(railRect.width, moreOrLessEquals(classicRailWidth));
     expect(splitterRect.left, moreOrLessEquals(railRect.right));
     expect(splitterRect.width, moreOrLessEquals(5));
-    expect(frameGridAreaRect.left, moreOrLessEquals(splitterRect.right));
+    expect(verticalScrollbarRect.left, moreOrLessEquals(splitterRect.right));
+    expect(verticalScrollbarRect.width, moreOrLessEquals(bar));
+    expect(
+      frameGridAreaRect.left,
+      moreOrLessEquals(verticalScrollbarRect.right),
+    );
+    expect(frameGridAreaRect.right, moreOrLessEquals(grid.right));
+    expect(
+      [corner.left, corner.right, corner.bottom],
+      [
+        moreOrLessEquals(verticalScrollbarRect.left),
+        moreOrLessEquals(verticalScrollbarRect.right),
+        moreOrLessEquals(verticalScrollbarRect.top),
+      ],
+      reason: 'the corner over the bar',
+    );
+    expect(
+      verticalBottomSpacerRect.left,
+      moreOrLessEquals(verticalScrollbarRect.left),
+    );
+    expect(verticalBottomSpacerRect.width, moreOrLessEquals(bar));
     // The rail's own bar sits under the rail and stops at the splitter.
     expect(railScrollbarRect.left, moreOrLessEquals(railRect.left));
     expect(railScrollbarRect.width, moreOrLessEquals(railRect.width));
@@ -363,6 +387,12 @@ void main() {
       horizontalScrollbarRect.width,
       moreOrLessEquals(bottomRailRect.width),
     );
+    expect(
+      horizontalScrollbarRect.left,
+      moreOrLessEquals(verticalBottomSpacerRect.right),
+      reason: 'the room under the bar stands before the frame bar',
+    );
+    expect(horizontalScrollbarRect.right, moreOrLessEquals(grid.right));
     expect(
       tester.getRect(horizontalScrollbarTrack).width,
       moreOrLessEquals(bottomRailRect.width),
@@ -404,9 +434,10 @@ void main() {
     rail.resizeBy(-243, naturalExtent: classicRailWidth);
     await tester.pump();
 
-    // The window is 200 wide; the rail INSIDE it never moved or shrank.
+    // The window is 200 wide; the rail INSIDE it never moved or shrank. It
+    // opens the grid: the layer axis's bar stands at the far right (F-409).
     expect(tester.getSize(railBody).width, moreOrLessEquals(classicRailWidth));
-    final windowRight = gridLeft + 16 + 200;
+    final windowRight = gridLeft + 200;
     expect(
       tester.getRect(find.byType(LayerRailWindow).first).right,
       moreOrLessEquals(windowRight),

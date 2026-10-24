@@ -116,10 +116,9 @@ void main() {
 
   test('the fade-out ramps into the clip end with the equal-power curve, '
       'and the mixer volume is NOT clamped', () {
-    // The same shape the playback sync applies in frames
-    // (audio_playback_sync_test) — one fold since the round-8 audit
-    // (2026-09-06); the sync clamps at ITS call site, the bus keeps its
-    // headroom.
+    // The bus keeps its headroom. ↩️The platform players' sync applied the
+    // same shape in frames and clamped at ITS call site; it went with them
+    // (2026-10-23).
     const clip = AudioMixClip(
       sourceIndex: 0,
       startSample: 0,

@@ -56,6 +56,7 @@ import 'canvas/flip_hud_rows.dart';
 import 'canvas/view_hand.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import '../services/audio/audio_peaks_extractor.dart';
+import 'audio/sound_cannot_play.dart' show SoundCannotPlay, soundCannotPlayIn;
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_layer_policy.dart';
@@ -64,12 +65,13 @@ import 'theme/app_theme.dart';
 import 'timeline/timeline_frame_axis_follower.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/timeline_cut_end_handle.dart'
-    show timelineCutEndPreviewFrameCount;
+    show EndLineGrip, timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
 import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
+import 'timeline/timeline_grid_frame.dart';
 import 'timeline/lane_graph.dart'
     show LaneGraphVerbs, LaneGraphsView, TimelineGraphSeat;
 import 'timeline/lane_graph_seats.dart'
@@ -98,6 +100,7 @@ import 'timeline/timeline_row_edges.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
+        laneBoxLanesOf,
         laneSpanOverDrawnRows,
         resolveBlockMoveTargetLayer,
         resolveInGroupHeadLane,
@@ -138,6 +141,7 @@ import 'input/control_press_claim.dart' show PressFire, PressFireScope;
 import 'input/hit_gate.dart';
 import 'input/panel_pan.dart';
 import 'input/two_axis_drag.dart';
+import 'panels/panel_collapsed_scope.dart';
 import 'timeline/transform_lane_policy.dart'
     show
         cameraPropertyLanes,
@@ -173,7 +177,8 @@ import 'timeline/timeline_cell_style.dart'
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineSelectedFrameBorderColor,
-        timelineStandingWashDecorationAt;
+        timelineStandingWashDecorationAt,
+        timelineUnreadableCelPaperColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -242,10 +247,10 @@ import 'timeline/timeline_section_policy.dart'
 import 'timeline/timeline_se_row_visual.dart'
     show
         SePaperSpan,
-        SeSpanVisual,
-        seFramesFreeBefore,
-        seRowAudioStrips,
-        timelineRowClipMarkerOverlays;
+        seNameBoxExtent,
+        timelineRowAudioOverlays,
+        timelineRowSeLabelOverlays,
+        timelineRowSoundWarningOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
@@ -630,6 +635,7 @@ class StoryboardPanel extends StatefulWidget {
     this.readyRunsIn,
     this.thumbnails,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.seLanePreview,
     this.trackLaneEditFor,
@@ -651,6 +657,8 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
     this.layerOnTimesheetOf,
+    this.onToggleLayerOnionSkin,
+    this.layerOnionSkinEnabledOf,
     this.layerEyeOnOf,
     this.layerLanesOpenOf,
     this.layerFxStateOf,
@@ -698,6 +706,7 @@ class StoryboardPanel extends StatefulWidget {
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.legendOpacityValue = 1.0,
+    this.legendOnionSkinOn = false,
   });
 
   /// Blocks are strictly frame-linear (Premiere-style): a large minimum
@@ -739,9 +748,10 @@ class StoryboardPanel extends StatefulWidget {
   //
   // ⛔ NOT `timelineLayerControlsWidth`, deliberately. The user asked for
   // the same NUMBER and explicitly NOT for one source: "다만 코드상 독립.
-  // 하나 바꾼다고 다른게 바뀌지않도록." The two rails carry different
-  // columns — this one had no blend cell, and has no onion — so the day
-  // either needs a new one, the other must be free to stay put. The
+  // 하나 바꾼다고 다른게 바뀌지않도록." The two rails carried different
+  // columns — this one had no blend cell and no onion, both of which came
+  // later (I-73, I-89-Q22) — so the day either needs a new one, the other
+  // must be free to stay put. The
   // repetition is the point; do not "clean it up" into a shared constant.
   //
   // 434 → 443 (text-scale-rail-opac, 유저 2026-09-25): the opacity column
@@ -761,14 +771,24 @@ class StoryboardPanel extends StatefulWidget {
   // boxes took their ± and pencil, and the timeline's rail pays the 76
   // (「레일도 그만큼 넓어집니다」 — 「문제없는데」). This rail's camera and
   // conte rows twirl down the same lanes, so the same number.
-  static const double _trackLabelWidth = 519;
+  //
+  // 519 → 461 (F-409, 유저 2026-10-19): the timeline's names went to two
+  // thirds, and 「이런 개선들은 말 안해도 콘티패널이랑 법 통일」 — the same
+  // number again.
+  //
+  // 2026-10-20 (I-89-Q22): the day came for the ONION cell — 「어니언도
+  // 콘티행 기본적으로 버튼 글로벌이니까 넣음」. The number stays again, and
+  // the room comes out of the name, which is now the timeline's to the
+  // pixel: the two rails carry the same columns.
+  static const double _trackLabelWidth = 461;
 
   /// Which optional columns this rail's rows keep — the host's answer every
-  /// row and the legend above them read ([layerRailTrailingCells]): a BLEND
-  /// slot after the opacity's, which a row with no blend to show reserves,
-  /// empty, as it does every column it has nothing in; and no onion.
+  /// row and the legend above them read ([layerRailTrailingCells]): an
+  /// ONION slot (I-89-Q22 — a conte row's, one for the track's cuts) and a
+  /// BLEND slot after the opacity's, which a row with nothing to show in
+  /// them reserves, empty, as it does every column it has nothing in.
   static const LayerRailOptionalColumns optionalRailColumns = (
-    onion: false,
+    onion: true,
     blend: true,
   );
 
@@ -1114,6 +1134,10 @@ class StoryboardPanel extends StatefulWidget {
   /// the thumbnail strip.
   final StoryboardThumbnails? thumbnails;
 
+  /// Why an SE row's sound cannot be played — its block red, with a
+  /// warning line saying why (`PlaybackRig.soundCannotPlay`).
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
+
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
@@ -1251,6 +1275,15 @@ class StoryboardPanel extends StatefulWidget {
   /// press just set.
   final bool Function(LayerId layerId)? layerOnTimesheetOf;
 
+  /// The timeline rows' onion on this rail's rows — the SAME session verb
+  /// the timeline wires. Only a conte row's kind ghosts, and its onion is
+  /// its head's, one for the track's cuts (🗣️I-89-Q22, 유저 2026-10-16:
+  /// 「어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」).
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
+
+  /// A LIVE read of a row's onion — see [layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? layerOnionSkinEnabledOf;
+
   /// A LIVE read of a layer’s own eye — see [layerOnTimesheetOf].
   final bool Function(LayerId layerId)? layerEyeOnOf;
 
@@ -1348,6 +1381,10 @@ class StoryboardPanel extends StatefulWidget {
   /// The legend master bar's RESTING value: the last value committed
   /// through the bar (UI-R6 #2) — not an average of the rows.
   final double legendOpacityValue;
+
+  /// Whether every row the legend's onion sweep acts on ghosts — its icon
+  /// in the accent, as the timeline's legend reads it (F-443).
+  final bool legendOnionSkinOn;
 
   /// R9 #21: the V row's TRACK column — the fx master over the track's fx
   /// work. Null keeps the column reserved and empty. (↩️The row's eye and
@@ -1524,20 +1561,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// frames are the storyboard: one sheet, dragged both ways at once
   /// (F-351).
   late final TwoAxisScrollController _verticalController =
-      TwoAxisScrollController(initialScrollOffset: _keptLayerAxis?.value ?? 0);
+      TwoAxisScrollController(bornAt: _keptLayerAxis);
 
   /// Lets go of [_keptLayerAxis] ([followKeptAxis]).
   late final VoidCallback _letGoOfKeptRows;
 
-  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounted
-  /// this panel until 09-28, and a newborn 0 was read back after layout and
-  /// recorded as a scroll over the position the host had kept. A panel
-  /// built afresh is still born there. The timeline grids' controllers are
-  /// born the same way.
+  /// Born where the axis stands ([TwoAxisScrollController.bornAt]), as the
+  /// timeline grids' controllers are.
   late final TwoAxisScrollController _horizontalController =
-      TwoAxisScrollController(
-        initialScrollOffset: _horizontalScrollOffset.value,
-      );
+      TwoAxisScrollController(bornAt: _horizontalScrollOffset);
 
   /// The fallback rail extent for hosts that keep none of their own.
   LayerRailExtent? _ownedRailExtent;
@@ -1849,20 +1881,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       if (layer.mark != LayerMark.none) layer.mark,
   };
 
-  bool _legendAllSeMuted() {
-    var sawSe = false;
-    for (final layer in _legendLayers()) {
-      if (layer.kind != LayerKind.se) {
-        continue;
-      }
-      sawSe = true;
-      if (!layer.muted) {
-        return false;
-      }
-    }
-    return sawSe;
-  }
-
   Set<LayerId> _legendDisplayedLayerIds() => {
     for (final layer in _legendLayers())
       if (layer.kind.hasPictureOpacity) layer.id,
@@ -1880,6 +1898,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   Widget build(BuildContext context) {
+    // ★FOLDED, NO BODY (유저 2026-10-14: 「열려있을때만 지어지는게
+    // 맞는구조」 · 「이건 모든 패널 공통적인 사항이야」). The State stays for
+    // the rows it hands the folded row and the walk ([_bindSheet]), read off
+    // the project as it stands. Opened, the body is built where the kept
+    // axes stand ([TwoAxisScrollController.bornAt]).
+    if (PanelCollapsedScope.of(context)) {
+      return const SizedBox.shrink();
+    }
     // The splitter's value is read at the TOP here and nowhere deeper:
     // the strip viewport's width is the first thing this build derives
     // from it, and the rail rows keep stating their natural width.
@@ -2050,10 +2076,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // The panel-private frame (border + all-6 padding) is GONE (UI-R10
     // #15): the timeline hosts its grid edge-to-edge under the command
     // bar, and that inset was exactly the odd top-left padding that made
-    // the two rails read differently. The body is the timeline's 3-ROW
-    // structure (UI-R10 #21): [legend | lane | ruler] on top,
-    // [labels | scrollbar | strips] in the middle,
-    // [blank | blank | horizontal scrollbar] pinned on the bottom.
+    // the two rails read differently. The body is the timeline's THREE ROWS
+    // (UI-R10 #21), laid by the same widgets (`timeline_grid_frame.dart`,
+    // F-459): legend, corner and ruler on top; the rail, the layer-axis
+    // bar and the strips in the middle; the two horizontal bars pinned
+    // on the bottom.
     final availableRailWidth = _availableRailWidth;
     final railWindowExtent = _railRows._railExtent.windowExtent(
       _naturalRailWidth,
@@ -2086,10 +2113,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               // horizontal scroll by translation.
               _pinnedRulerRow(frame),
               _scrollArea(frame),
-              // BOTTOM row of the 3-row structure (UI-R10 #21): blank
-              // corners under the rail and the scrollbar lane, then the
-              // PINNED horizontal scrollbar (it used to live inside the
-              // vertical scroll content and scrolled away with it).
+              // BOTTOM row (UI-R10 #21): the rail's bar and the PINNED
+              // horizontal scrollbar (it used to live inside the vertical
+              // scroll content and scrolled away with it).
               _bottomScrollbarRow(frame),
             ],
           ),
@@ -2101,64 +2127,44 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
   }
 
-  Positioned _railGrip(_StoryboardBodyFrame frame) {
-    return Positioned(
-      left: StoryboardPanel._scrollbarLaneWidth + frame.railWindowExtent,
-      top: 0,
-      bottom: 0,
-      width: LayerRailSplitter.thickness,
-      child: LayerRailSplitter(
-        key: const ValueKey<String>('storyboard-rail-splitter'),
+  Positioned _railGrip(_StoryboardBodyFrame frame) => timelineGridGrip(
+    railWindowExtent: frame.railWindowExtent,
+    splitter: LayerRailSplitter(
+      key: const ValueKey<String>('storyboard-rail-splitter'),
+      axis: Axis.horizontal,
+      extent: _railRows._railExtent,
+      naturalExtent: _naturalRailWidth,
+      availableExtent: frame.availableRailWidth,
+    ),
+  );
+
+  Widget _bottomScrollbarRow(_StoryboardBodyFrame frame) {
+    return TimelineGridBottomRow(
+      keyPrefix: 'storyboard',
+      barWidth: StoryboardPanel._scrollbarLaneWidth,
+      height: StoryboardPanel._bottomScrollbarRailHeight,
+      // The rail's own bar — the panel's second of three.
+      railBar: LayerRailScrollbar(
         axis: Axis.horizontal,
-        extent: _railRows._railExtent,
+        rail: _railRows._railExtent,
         naturalExtent: _naturalRailWidth,
         availableExtent: frame.availableRailWidth,
+        laneExtent: StoryboardPanel._bottomScrollbarRailHeight,
+        keyPrefix: 'storyboard',
       ),
-    );
-  }
-
-  Row _bottomScrollbarRow(_StoryboardBodyFrame frame) {
-    return Row(
-      children: [
-        const SizedBox(
-          key: ValueKey<String>(
-            'storyboard-bottom-scrollbar-left-spacer',
-          ),
-          width: StoryboardPanel._scrollbarLaneWidth,
-          height: StoryboardPanel._bottomScrollbarRailHeight,
-        ),
-        // The rail's own bar — the panel's second of three.
-        LayerRailScrollbar(
-          axis: Axis.horizontal,
-          rail: _railRows._railExtent,
-          naturalExtent: _naturalRailWidth,
-          availableExtent: frame.availableRailWidth,
-          laneExtent: StoryboardPanel._bottomScrollbarRailHeight,
-          keyPrefix: 'storyboard',
-        ),
-        const SizedBox(
-          width: LayerRailSplitter.thickness,
-          height: StoryboardPanel._bottomScrollbarRailHeight,
-        ),
-        Expanded(
-          // Laid out alone: every notify runs it again (I-57).
-          child: SizedBox(
+      // Laid out alone: every notify runs it again (I-57).
+      frameBar: SizedBox(
+        height: StoryboardPanel._bottomScrollbarRailHeight,
+        child: LaidOutAlone(
+          builder: (context, constraints) => TimelineHorizontalScrollbarRail(
+            key: const ValueKey<String>('storyboard-horizontal-scrollbar'),
+            controller: _horizontalController,
+            viewportWidth: constraints.maxWidth,
+            contentWidth: frame.contentWidth,
             height: StoryboardPanel._bottomScrollbarRailHeight,
-            child: LaidOutAlone(
-              builder: (context, constraints) =>
-                  TimelineHorizontalScrollbarRail(
-                    key: const ValueKey<String>(
-                      'storyboard-horizontal-scrollbar',
-                    ),
-                    controller: _horizontalController,
-                    viewportWidth: constraints.maxWidth,
-                    contentWidth: frame.contentWidth,
-                    height: StoryboardPanel._bottomScrollbarRailHeight,
-                  ),
-            ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -2195,484 +2201,451 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               middleConstraints.hasBoundedHeight
               ? middleConstraints.maxHeight
               : 0.0;
-          return Stack(
-            children: [
-              ScrollConfiguration(
-                // The pinned rail IS this area's scrollbar — the desktop
-                // auto-overlay would double it (UI-R10 #22 unification).
-                behavior: ScrollConfiguration.of(
-                  context,
-                ).copyWith(scrollbars: false),
-                child: TwoAxisDrag(
-                  axes: [_verticalController, _horizontalController],
-                  child: SingleChildScrollView(
-                    key: const ValueKey<String>(
-                      'storyboard-vertical-viewport',
-                    ),
+          return TimelineGridBodyRow(
+            barWidth: StoryboardPanel._scrollbarLaneWidth,
+            railWindowExtent: frame.railWindowExtent,
+            bar: TimelineVerticalScrollbarRail(
+              key: const ValueKey<String>('storyboard-vertical-scrollbar'),
+              controller: _verticalController,
+              viewportHeight: middleViewportHeight,
+              contentHeight: middleViewportHeight,
+            ),
+            body: ScrollConfiguration(
+              // The pinned rail IS this area's scrollbar — the desktop
+              // auto-overlay would double it (UI-R10 #22 unification).
+              behavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false),
+              child: TwoAxisDrag(
+                axes: [_verticalController, _horizontalController],
+                child: SingleChildScrollView(
+                  key: const ValueKey<String>(
+                    'storyboard-vertical-viewport',
+                  ),
+                  controller: _verticalController,
+                  child: DeviceGridScrollBody(
                     controller: _verticalController,
-                    child: DeviceGridScrollBody(
-                      controller: _verticalController,
-                      axisDirection: AxisDirection.down,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Reserves the left EDGE column the layer-axis
-                          // scrollbar floats over.
-                          const SizedBox(
-                            width: StoryboardPanel._scrollbarLaneWidth,
+                    axisDirection: AxisDirection.down,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Sections live INSIDE the rows now (UI-R5): the
+                        // first S row and the V row carry inline tags — no
+                        // bracket gutter beside the rail.
+                        LayerRailWindow(
+                          axis: Axis.horizontal,
+                          rail: _railRows._railExtent,
+                          naturalExtent: _naturalRailWidth,
+                          availableExtent: frame.availableRailWidth,
+                          child: SizedBox(
+                            key: const ValueKey<String>(
+                              'storyboard-track-label-rail',
+                            ),
+                            width: _naturalRailWidth,
+                            // 🚨The rail's Krita-style column
+                            // swipe, the SAME one the timeline
+                            // rail wears (유저 2026-08-29: 「타임
+                            // 라인이랑 왜 통일안한거지?」). It was
+                            // the timeline's private state until
+                            // the reason for that was measured and
+                            // found invented — see
+                            // [RailSwipeColumnPointer].
+                            child: Stack(
+                              children: [
+                                RailColumnSwipe<TimelineDisplayRow>(
+                                  axis: Axis.vertical,
+                                  columns: _sweep.columns(),
+                                  rowsIn: _sweep.rowsIn,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    // One pass of the rail's keep: a row it
+                                    // stops drawing is let go of.
+                                    children: _rows.railPass(
+                                      () => [
+                                        // Track groups in TIMELINE order (R6
+                                        // B3): the S rows sit ABOVE their V
+                                        // track, slots bottom-up like the
+                                        // timeline (top-down S2, S1, V —
+                                        // R7-④).
+                                        for (
+                                          var index = 0;
+                                          index < frame.project.tracks.length;
+                                          index++
+                                        )
+                                          ..._railRows.railRowsForTrack(
+                                            frame.project.tracks[index],
+                                            index,
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                // The row selection, over the LAYER area
+                                // as the timeline's rail lays it (A2) —
+                                // its own listener, since a span grows
+                                // per pointer move inside a gesture.
+                                if (widget.rowSelection case final selection?)
+                                  Positioned(
+                                    left: layerSectionLabelSlotWidth,
+                                    top: 0,
+                                    right: 0,
+                                    bottom: 0,
+                                    child:
+                                        ValueListenableBuilder<
+                                          List<TimelineRowAddress>
+                                        >(
+                                          valueListenable: selection,
+                                          builder: (context, selected, _) =>
+                                              _railRows.rowSelectionBands(
+                                                selected,
+                                              ),
+                                        ),
+                                  ),
+                                // A pool file let go on the rail: the layer
+                                // area's law — a sound by the SE rows' rule, a
+                                // picture nowhere (no row of the cut's stack is
+                                // on this rail). Last, a permanent slot that
+                                // takes no pointer until a drag is in flight.
+                                if (widget.onDropMediaAssetOnRail
+                                    case final onDrop?)
+                                  Positioned.fill(
+                                    child: MediaAssetDropTarget(
+                                      key: const ValueKey<String>(
+                                        'storyboard-rail-placement-entrance',
+                                      ),
+                                      accepts: (data, _) =>
+                                          widget.acceptsMediaAssetOnRail?.call(
+                                            data.path,
+                                          ) ??
+                                          true,
+                                      onDrop: (data, _) => onDrop(data.path),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                          // Sections live INSIDE the rows now (UI-R5): the
-                          // first S row and the V row carry inline tags — no
-                          // bracket gutter beside the rail.
-                          LayerRailWindow(
-                            axis: Axis.horizontal,
-                            rail: _railRows._railExtent,
-                            naturalExtent: _naturalRailWidth,
-                            availableExtent: frame.availableRailWidth,
-                            child: SizedBox(
+                        ),
+                        const TimelineGridRailGap(
+                          barWidth: StoryboardPanel._scrollbarLaneWidth,
+                        ),
+                        Expanded(
+                          child: ScrollConfiguration(
+                            behavior: ScrollConfiguration.of(
+                              context,
+                            ).copyWith(scrollbars: false),
+                            child: SingleChildScrollView(
                               key: const ValueKey<String>(
-                                'storyboard-track-label-rail',
+                                'storyboard-timeline-horizontal-viewport',
                               ),
-                              width: _naturalRailWidth,
-                              // 🚨The rail's Krita-style column
-                              // swipe, the SAME one the timeline
-                              // rail wears (유저 2026-08-29: 「타임
-                              // 라인이랑 왜 통일안한거지?」). It was
-                              // the timeline's private state until
-                              // the reason for that was measured and
-                              // found invented — see
-                              // [RailSwipeColumnPointer].
-                              child: Stack(
-                                children: [
-                                  RailColumnSwipe<TimelineDisplayRow>(
-                                    axis: Axis.vertical,
-                                    columns: _sweep.columns(),
-                                    rowsIn: _sweep.rowsIn,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      // One pass of the rail's keep: a row it
-                                      // stops drawing is let go of.
-                                      children: _rows.railPass(
-                                        () => [
+                              controller: _horizontalController,
+                              scrollDirection: Axis.horizontal,
+                              child: DeviceGridScrollBody(
+                                controller: _horizontalController,
+                                axisDirection: AxisDirection.right,
+                                child: Stack(
+                                  children: [
+                                    // THE grid sheet under the rows (D8/D38
+                                    // — the storyboard's own copy of the
+                                    // lines had drifted: pre-split beat
+                                    // color, base+beat double ink at 6f, a
+                                    // line at x=0, no snap; deleted, never
+                                    // reconciled). I-44: the lanes' ground
+                                    // and every row seam are the sheet's
+                                    // too, off the rail's own row table.
+                                    // 🚨F-446 (10-24): on a tick layer — a
+                                    // cut move's step moves the dashes of
+                                    // the cuts' starts, and rebuilt in the
+                                    // scroll area's layout scope it laid
+                                    // the area out and repainted it whole.
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: TickLayer(
+                                          child: Builder(
+                                            builder: (context) =>
+                                                _gridSheet(context, frame),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // RepaintBoundary (R12-⑥): the playhead
+                                    // overlay above moves every playback tick;
+                                    // without the boundary each move re-
+                                    // rasterizes every strip, thumbnail and
+                                    // waveform in this column.
+                                    RepaintBoundary(
+                                      child: Column(
+                                        key: const ValueKey<String>(
+                                          'storyboard-timeline-scroll-content',
+                                        ),
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Width driver: the scroll content spans
+                                          // the full frame runway even when every
+                                          // row is narrower (the pinned ruler used
+                                          // to do this from inside the content).
+                                          SizedBox(
+                                            width: frame.contentWidth,
+                                          ),
                                           // Track groups in TIMELINE order (R6
-                                          // B3): the S rows sit ABOVE their V
-                                          // track, slots bottom-up like the
-                                          // timeline (top-down S2, S1, V —
-                                          // R7-④).
+                                          // B3), mirroring the rail exactly —
+                                          // row for row, height for height.
                                           for (
                                             var index = 0;
-                                            index < frame.project.tracks.length;
+                                            index <
+                                                frame.project.tracks.length;
                                             index++
                                           )
-                                            ..._railRows.railRowsForTrack(
+                                            _railRows.trackGroupSection(
                                               frame.project.tracks[index],
                                               index,
+                                              frame.layoutEntries
+                                                  .where(
+                                                    (entry) =>
+                                                        entry
+                                                            .trackIndex ==
+                                                        index,
+                                                  )
+                                                  .toList(
+                                                    growable: false,
+                                                  ),
+                                              frame.contentWidth,
+                                              frame.scale,
+                                              index <
+                                                      frame.trackGlobalStripRowsByTrack
+                                                          .length
+                                                  ? frame.trackGlobalStripRowsByTrack[index]
+                                                  : const [],
                                             ),
                                         ],
                                       ),
                                     ),
-                                  ),
-                                  // The row selection, over the LAYER area
-                                  // as the timeline's rail lays it (A2) —
-                                  // its own listener, since a span grows
-                                  // per pointer move inside a gesture.
-                                  if (widget.rowSelection case final selection?)
-                                    Positioned(
-                                      left: layerSectionLabelSlotWidth,
-                                      top: 0,
-                                      right: 0,
-                                      bottom: 0,
-                                      child:
-                                          ValueListenableBuilder<
-                                            List<TimelineRowAddress>
-                                          >(
-                                            valueListenable: selection,
-                                            builder: (context, selected, _) =>
-                                                _railRows.rowSelectionBands(
-                                                  selected,
-                                                ),
-                                          ),
-                                    ),
-                                  // A pool file let go on the rail: the layer
-                                  // area's law — a sound by the SE rows' rule, a
-                                  // picture nowhere (no row of the cut's stack is
-                                  // on this rail). Last, a permanent slot that
-                                  // takes no pointer until a drag is in flight.
-                                  if (widget.onDropMediaAssetOnRail
-                                      case final onDrop?)
-                                    Positioned.fill(
-                                      child: MediaAssetDropTarget(
-                                        key: const ValueKey<String>(
-                                          'storyboard-rail-placement-entrance',
-                                        ),
-                                        accepts: (data, _) =>
-                                            widget.acceptsMediaAssetOnRail?.call(
-                                              data.path,
-                                            ) ??
-                                            true,
-                                        onDrop: (data, _) => onDrop(data.path),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Reserves the gap the rail splitter floats over.
-                          const SizedBox(
-                            width: LayerRailSplitter.thickness,
-                          ),
-                          Expanded(
-                            child: ScrollConfiguration(
-                              behavior: ScrollConfiguration.of(
-                                context,
-                              ).copyWith(scrollbars: false),
-                              child: SingleChildScrollView(
-                                key: const ValueKey<String>(
-                                  'storyboard-timeline-horizontal-viewport',
-                                ),
-                                controller: _horizontalController,
-                                scrollDirection: Axis.horizontal,
-                                child: DeviceGridScrollBody(
-                                  controller: _horizontalController,
-                                  axisDirection: AxisDirection.right,
-                                  child: Stack(
-                                    children: [
-                                      // THE grid sheet under the rows (D8/D38
-                                      // — the storyboard's own copy of the
-                                      // lines had drifted: pre-split beat
-                                      // color, base+beat double ink at 6f, a
-                                      // line at x=0, no snap; deleted, never
-                                      // reconciled). I-44: the lanes' ground
-                                      // and every row seam are the sheet's
-                                      // too, off the rail's own row table.
+                                    if (playheadListenable != null)
                                       Positioned.fill(
-                                        child: IgnorePointer(
-                                          child: RepaintBoundary(
-                                            child: Builder(
-                                              builder: (context) =>
-                                                  _gridSheet(context, frame),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      // RepaintBoundary (R12-⑥): the playhead
-                                      // overlay above moves every playback tick;
-                                      // without the boundary each move re-
-                                      // rasterizes every strip, thumbnail and
-                                      // waveform in this column.
-                                      RepaintBoundary(
-                                        child: Column(
-                                          key: const ValueKey<String>(
-                                            'storyboard-timeline-scroll-content',
-                                          ),
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // Width driver: the scroll content spans
-                                            // the full frame runway even when every
-                                            // row is narrower (the pinned ruler used
-                                            // to do this from inside the content).
-                                            SizedBox(
-                                              width: frame.contentWidth,
-                                            ),
-                                            // Track groups in TIMELINE order (R6
-                                            // B3), mirroring the rail exactly —
-                                            // row for row, height for height.
-                                            for (
-                                              var index = 0;
-                                              index <
-                                                  frame.project.tracks.length;
-                                              index++
-                                            )
-                                              _railRows.trackGroupSection(
-                                                frame.project.tracks[index],
-                                                index,
-                                                frame.layoutEntries
-                                                    .where(
-                                                      (entry) =>
-                                                          entry
-                                                              .trackIndex ==
-                                                          index,
-                                                    )
-                                                    .toList(
-                                                      growable: false,
-                                                    ),
-                                                frame.contentWidth,
-                                                frame.scale,
-                                                index <
-                                                        frame.trackGlobalStripRowsByTrack
-                                                            .length
-                                                    ? frame.trackGlobalStripRowsByTrack[index]
-                                                    : const [],
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                      if (playheadListenable != null)
-                                        Positioned.fill(
-                                          child: StoryboardPlayheadTint(
-                                            playhead: playheadListenable,
-                                            pixelsPerFrame:
-                                                frame.scale.pixelsPerFrame,
-                                          ),
-                                        ),
-                                      // The MOVIE-END line through the
-                                      // STRIPS (UI-R20 #3): the ruler's
-                                      // red line extended vertically, and
-                                      // draggable — it edits the movie's
-                                      // FINAL LENGTH (the project's
-                                      // trailing gap), never the cuts;
-                                      // the panel's internal preview
-                                      // substitution makes it follow
-                                      // live.
-                                      // 🚨F-18: the line and its grip
-                                      // follow the DRAG, not the
-                                      // committed project. The body
-                                      // around them still builds
-                                      // committed-once on purpose —
-                                      // only these two read the
-                                      // preview, so nothing else
-                                      // rebuilds per step.
-                                      if (frame.totalFrames > 0)
-                                        ValueListenableBuilder<
-                                          TimelineDragPreview?
-                                        >(
-                                          valueListenable:
-                                              widget.dragPreview ??
-                                              _noDragPreview,
-                                          builder: (context, preview, _) {
-                                            final live =
-                                                timelineCutEndPreviewFrameCount(
-                                                  preview: preview,
-                                                  cutId: null,
-                                                  playbackFrameCount:
-                                                      frame.totalFrames,
-                                                  movieEndUnder: _movieEndUnder,
-                                                );
-                                            return Positioned(
-                                              key: const ValueKey<String>(
-                                                'storyboard-cut-end-line',
-                                              ),
-                                              left: frame.scale.leftForFrame(
-                                                live,
-                                              ),
-                                              top: 0,
-                                              bottom: 0,
-                                              width: 2,
-                                              child:
-                                                  const IgnorePointer(
-                                                    child: ColoredBox(
-                                                      color: AppColors
-                                                          .danger,
-                                                    ),
-                                                  ),
-                                            );
-                                          },
-                                        ),
-                                      if (frame.totalFrames > 0 &&
-                                          widget.movieEnd != null)
-                                        _StoryboardEndLineHandle(
-                                          dragPreview:
-                                              widget.dragPreview,
-                                          committedTotalFrames:
-                                              frame.totalFrames,
-                                          movieEndUnder: _movieEndUnder,
-                                          scale: frame.scale,
-                                          // Grabbed from the EMPTY side of
-                                          // the line, never straddling it:
-                                          // everything left of the movie's
-                                          // end belongs to the content, and
-                                          // the last cut's trailing edge
-                                          // grip is right there. Centring
-                                          // the handle put a full-height
-                                          // opaque box over that grip and
-                                          // made it unreachable.
+                                        child: StoryboardPlayheadTint(
+                                          playhead: playheadListenable,
                                           pixelsPerFrame:
                                               frame.scale.pixelsPerFrame,
-                                          movieEnd: widget.movieEnd!,
                                         ),
-                                    ],
-                                  ),
+                                      ),
+                                    // The MOVIE-END line through the
+                                    // STRIPS (UI-R20 #3): the ruler's
+                                    // red line extended vertically, and
+                                    // draggable — it edits the movie's
+                                    // FINAL LENGTH (the project's
+                                    // trailing gap), never the cuts;
+                                    // the panel's internal preview
+                                    // substitution makes it follow
+                                    // live.
+                                    // 🚨F-18: the line and its grip
+                                    // follow the DRAG, not the
+                                    // committed project. The body
+                                    // around them still builds
+                                    // committed-once on purpose —
+                                    // only these two read the
+                                    // preview, so nothing else
+                                    // rebuilds per step.
+                                    if (frame.totalFrames > 0)
+                                      _movieEndMarks(frame),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
               ),
-              // The layer-axis bar moved off the rail's right edge
-              // and onto the panel's left one — the gap it used to
-              // fill is the splitter's now.
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: StoryboardPanel._scrollbarLaneWidth,
-                child: TimelineVerticalScrollbarRail(
-                  key: const ValueKey<String>(
-                    'storyboard-vertical-scrollbar',
-                  ),
-                  controller: _verticalController,
-                  viewportHeight: middleViewportHeight,
-                  contentHeight: middleViewportHeight,
-                  width: StoryboardPanel._scrollbarLaneWidth,
-                ),
-              ),
-            ],
+            ),
           );
         },
       ),
     );
   }
 
-  Row _pinnedRulerRow(_StoryboardBodyFrame frame) {
-    final bandHeight = StoryboardPanel._rulerHeightIn(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // The corner above the layer-axis scrollbar: the seconds
-        // toggle, moved off the command bar (rail-window round).
-        TimelineSecondsToggleCorner(
-          key: const ValueKey<String>(
-            'storyboard-time-display-toggle-button',
-          ),
-          width: StoryboardPanel._scrollbarLaneWidth,
-          height: bandHeight,
-          showSeconds: widget.showSeconds,
-          onChanged: widget.onShowSecondsChanged,
-        ),
-        // The timeline's legend header over the rail (UI-R5
-        // storyboard unification): same slots, same flyouts —
-        // and now inside the rail's own window, so the legend is
-        // cut exactly where the rows below it are.
-        LayerRailWindow(
-          axis: Axis.horizontal,
-          rail: _railRows._railExtent,
-          naturalExtent: _naturalRailWidth,
-          availableExtent: frame.availableRailWidth,
-          child: SizedBox(
-            width: _naturalRailWidth,
-            child: _publishedLegend(TimelineLayerControlsHeader(
-              // The storyboard rail states its OWN width, which
-              // today is the same number as the timeline's and is
-              // deliberately not the same constant (see
-              // [StoryboardPanel.railWidthIn]). Widening it
-              // adds no column here — `optionalRailColumns` is a host
-              // answer, not something derived from the width — so
-              // the extra width lands in the NAME, which is where
-              // a track wants it.
-              //
-              // And the host's answer is said here outright, not left to
-              // whether a legend was handed in: the rows below keep the
-              // blend slot either way ([StoryboardPanel.optionalRailColumns]),
-              // and a heading that came and went with the legend would stand
-              // a column off them.
-              //
-              // The legend's columns are this rail's rows' columns, and
-              // its extent the rail's, as the rows lay them out
-              // (text-scale-rail-columns). Its row is the band's — the
-              // band grew with its words and the legend inside it must
-              // too, or its OPAC is cut at the foot
-              // (text-scale-storyboard-rows).
-              metrics: TimelineGridMetrics.defaults.copyWith(
-                layerControlsWidth: _naturalRailWidth,
-                layerRowHeight: StoryboardPanel._headerBandHeightIn(context),
-                railColumns: layerRailColumnWidthsIn(context),
-              ),
-              legend: widget.legend,
-              optionalColumns: StoryboardPanel.optionalRailColumns,
-              rowFilter: widget.rowFilter,
-              hiddenSections: widget.hiddenSections,
-              onToggleSection: widget.onToggleSection,
-              marksInUse: _legendMarksInUse,
-              kinds: StoryboardPanel.railKinds,
-              visibilitySoloEnabled: widget.visibilitySoloEnabled,
-              allSeMuted: _legendAllSeMuted(),
-              displayedLayerIds: widget.legend == null
-                  ? null
-                  : _legendDisplayedLayerIds,
-              displayedOpacity: widget.legendOpacityValue,
-              // ㉒: the lane column's header verb, same as the
-              // timeline's.
-              anyLanesExpanded: _railRows._anyLanesExpanded,
-              onExpandAllLanes: _railRows.hasLaneTwirls
-                  ? _railRows.expandAllLanes
-                  : null,
-              onCollapseAllLanes: _railRows.hasLaneTwirls
-                  ? _railRows.collapseAllLanes
-                  : null,
-            )),
-          ),
-        ),
-        const SizedBox(width: LayerRailSplitter.thickness),
-        Expanded(
-          // Laid out alone: every notify runs it again (I-57).
-          child: SizedBox(
-            height: bandHeight,
-            child: LaidOutAlone(
-              builder: (context, constraints) {
-                final viewportWidth = constraints.maxWidth;
-                _frameAxis.rereadAfterLayout();
-                return ClipRect(
-                  child: OverflowBox(
-                    alignment: Alignment.topLeft,
-                    minWidth: frame.contentWidth,
-                    maxWidth: frame.contentWidth,
-                    minHeight: bandHeight,
-                    maxHeight: bandHeight,
-                    // UI-R15: scroll moves ONLY this translate — the
-                    // ruler strip itself builds once (full bounds)
-                    // and its painters window off the live offset.
-                    //
-                    // 🚨★★★F-32, the THIRD grid with this exact
-                    // shape: the cells below sit inside
-                    // `DeviceGridScrollBody` (which cancels the
-                    // scroll offset's sub-device-pixel fraction)
-                    // and this ruler translated raw, so it kept
-                    // the fraction they had cancelled.
-                    //
-                    // 🧪Measured at ratio 1.5, offset 1.5: ruler
-                    // 453.5 vs cells 453.667 — the same numbers
-                    // the horizontal timeline gave.
-                    //
-                    // ↩️F-95: the translate read a NOTIFIER that a
-                    // resize past the end never reached; the
-                    // follower reads the position when it paints.
-                    child: ScrollFollower(
-                      controller: _horizontalController,
-                      axisDirection: AxisDirection.right,
-                      child: _StoryboardRuler(
-                        width: frame.contentWidth,
-                        renderedFrames: frame.renderedFrames,
-                        contentFrames: frame.totalFrames,
-                        movieEndUnder: _movieEndUnder,
-                        dragPreview: widget.dragPreview,
-                        playhead: frame.playheadListenable,
-                        frameReadySignal: widget.frameReadySignal,
-                        viewportOffset: _horizontalScrollOffset,
-                        windowBucket: _horizontalWindowBucket,
-                        viewportWidth: viewportWidth,
-                        timelineScale: frame.scale,
-                        onSeekGlobalFrame: widget.onSeekGlobalFrame,
-                        onScrubGlobalFrame: widget.onScrubGlobalFrame,
-                        onScrubEnd: widget.onScrubEnd,
-                        readyRunsIn: widget.readyRunsIn,
-                        onEdgeAutoPan: _scroll.autoPanRulerEdge,
-                        framesPerSecond: _countingFps,
-                        showSeconds: widget.showSeconds,
-                      ),
-                    ),
-                  ),
-                );
-              },
+  /// The movie-end line through the strips and its grip, following the
+  /// drag (F-18) — on a tick layer filling the strips ([TickOverlay]), as
+  /// the timeline's cut end rides its grid, ruler and sheet (F-244).
+  /// 🚨F-446 (10-24): bare in the strips' stack, each step's line moved
+  /// that stack's child and laid the scroll content and both viewports out
+  /// again, repainting the storyboard's body around them.
+  Widget _movieEndMarks(_StoryboardBodyFrame frame) => TickOverlay(
+    children: [
+      ValueListenableBuilder<TimelineDragPreview?>(
+        valueListenable: widget.dragPreview ?? _noDragPreview,
+        builder: (context, preview, _) {
+          final live = timelineCutEndPreviewFrameCount(
+            preview: preview,
+            cutId: null,
+            playbackFrameCount: frame.totalFrames,
+            movieEndUnder: _movieEndUnder,
+          );
+          return Positioned(
+            key: const ValueKey<String>('storyboard-cut-end-line'),
+            left: frame.scale.leftForFrame(live),
+            top: 0,
+            bottom: 0,
+            width: 2,
+            child: const IgnorePointer(
+              child: ColoredBox(color: AppColors.danger),
             ),
-          ),
+          );
+        },
+      ),
+      if (widget.movieEnd != null)
+        _StoryboardEndLineHandle(
+          dragPreview: widget.dragPreview,
+          committedTotalFrames: frame.totalFrames,
+          movieEndUnder: _movieEndUnder,
+          scale: frame.scale,
+          // Grabbed from the EMPTY side of the line, never straddling it:
+          // everything left of the movie's end belongs to the content, and
+          // the last cut's trailing edge grip is right there. Centring the
+          // handle put a full-height opaque box over that grip and made it
+          // unreachable.
+          pixelsPerFrame: frame.scale.pixelsPerFrame,
+          movieEnd: widget.movieEnd!,
         ),
-      ],
+    ],
+  );
+
+  Widget _pinnedRulerRow(_StoryboardBodyFrame frame) {
+    final bandHeight = StoryboardPanel._rulerHeightIn(context);
+    return TimelineGridHeaderRow(
+      cornerKey: const ValueKey<String>(
+        'storyboard-time-display-toggle-button',
+      ),
+      barWidth: StoryboardPanel._scrollbarLaneWidth,
+      height: bandHeight,
+      showSeconds: widget.showSeconds,
+      onShowSecondsChanged: widget.onShowSecondsChanged,
+      // The timeline's legend header over the rail (UI-R5
+      // storyboard unification): same slots, same flyouts —
+      // and now inside the rail's own window, so the legend is
+      // cut exactly where the rows below it are.
+      legend: LayerRailWindow(
+        axis: Axis.horizontal,
+        rail: _railRows._railExtent,
+        naturalExtent: _naturalRailWidth,
+        availableExtent: frame.availableRailWidth,
+        child: SizedBox(
+          width: _naturalRailWidth,
+          child: _publishedLegend(TimelineLayerControlsHeader(
+            // The storyboard rail states its OWN width, which
+            // today is the same number as the timeline's and is
+            // deliberately not the same constant (see
+            // [StoryboardPanel.railWidthIn]). Widening it
+            // adds no column here — `optionalRailColumns` is a host
+            // answer, not something derived from the width — so
+            // the extra width lands in the NAME, which is where
+            // a track wants it.
+            //
+            // And the host's answer is said here outright, not left to
+            // whether a legend was handed in: the rows below keep the
+            // blend slot either way ([StoryboardPanel.optionalRailColumns]),
+            // and a heading that came and went with the legend would stand
+            // a column off them.
+            //
+            // The legend's columns are this rail's rows' columns, and
+            // its extent the rail's, as the rows lay them out
+            // (text-scale-rail-columns). Its row is the band's — the
+            // band grew with its words and the legend inside it must
+            // too, or its OPAC is cut at the foot
+            // (text-scale-storyboard-rows).
+            metrics: TimelineGridMetrics.defaults.copyWith(
+              layerControlsWidth: _naturalRailWidth,
+              layerRowHeight: StoryboardPanel._headerBandHeightIn(context),
+              railColumns: layerRailColumnWidthsIn(context),
+            ),
+            legend: widget.legend,
+            optionalColumns: StoryboardPanel.optionalRailColumns,
+            rowFilter: widget.rowFilter,
+            hiddenSections: widget.hiddenSections,
+            onToggleSection: widget.onToggleSection,
+            marksInUse: _legendMarksInUse,
+            kinds: StoryboardPanel.railKinds,
+            visibilitySoloEnabled: widget.visibilitySoloEnabled,
+            displayedLayerIds: widget.legend == null
+                ? null
+                : _legendDisplayedLayerIds,
+            displayedOpacity: widget.legendOpacityValue,
+            displayedOnionSkinOn: widget.legendOnionSkinOn,
+            // ㉒: the lane column's header verb, same as the
+            // timeline's.
+            anyLanesExpanded: _railRows._anyLanesExpanded,
+            onExpandAllLanes: _railRows.hasLaneTwirls
+                ? _railRows.expandAllLanes
+                : null,
+            onCollapseAllLanes: _railRows.hasLaneTwirls
+                ? _railRows.collapseAllLanes
+                : null,
+          )),
+        ),
+      ),
+      // Laid out alone: every notify runs it again (I-57).
+      ruler: SizedBox(
+        height: bandHeight,
+        child: LaidOutAlone(
+          builder: (context, constraints) {
+            final viewportWidth = constraints.maxWidth;
+            _frameAxis.rereadAfterLayout();
+            return ClipRect(
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: frame.contentWidth,
+                maxWidth: frame.contentWidth,
+                minHeight: bandHeight,
+                maxHeight: bandHeight,
+                // UI-R15: scroll moves ONLY this translate — the
+                // ruler strip itself builds once (full bounds)
+                // and its painters window off the live offset.
+                //
+                // 🚨★★★F-32, the THIRD grid with this exact
+                // shape: the cells below sit inside
+                // `DeviceGridScrollBody` (which cancels the
+                // scroll offset's sub-device-pixel fraction)
+                // and this ruler translated raw, so it kept
+                // the fraction they had cancelled.
+                //
+                // 🧪Measured at ratio 1.5, offset 1.5: ruler
+                // 453.5 vs cells 453.667 — the same numbers
+                // the horizontal timeline gave.
+                //
+                // ↩️F-95: the translate read a NOTIFIER that a
+                // resize past the end never reached; the
+                // follower reads the position when it paints.
+                child: ScrollFollower(
+                  controller: _horizontalController,
+                  axisDirection: AxisDirection.right,
+                  child: _StoryboardRuler(
+                    width: frame.contentWidth,
+                    renderedFrames: frame.renderedFrames,
+                    contentFrames: frame.totalFrames,
+                    movieEndUnder: _movieEndUnder,
+                    dragPreview: widget.dragPreview,
+                    playhead: frame.playheadListenable,
+                    frameReadySignal: widget.frameReadySignal,
+                    viewportOffset: _horizontalScrollOffset,
+                    windowBucket: _horizontalWindowBucket,
+                    viewportWidth: viewportWidth,
+                    timelineScale: frame.scale,
+                    onSeekGlobalFrame: widget.onSeekGlobalFrame,
+                    onScrubGlobalFrame: widget.onScrubGlobalFrame,
+                    onScrubEnd: widget.onScrubEnd,
+                    readyRunsIn: widget.readyRunsIn,
+                    onEdgeAutoPan: _scroll.autoPanRulerEdge,
+                    framesPerSecond: _countingFps,
+                    showSeconds: widget.showSeconds,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -3069,7 +3042,7 @@ class _StoryboardLabelShell extends StatelessWidget {
         key: rowKey,
         width: StoryboardPanel.railWidthIn(context),
         height: height,
-        padding: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.only(right: layerRailEndPadding),
         decoration: chromeless
             ? null
             : BoxDecoration(
@@ -3315,6 +3288,8 @@ class _StoryboardRailHead extends KeptPiece {
     this.onLayerOpacityChanged,
     this.onLayerMarkSelected,
     this.onToggleLayerTimesheet,
+    this.onToggleLayerOnionSkin,
+    this.onionSkinEnabled = false,
     this.onOpenLayerMixer,
     this.soloed = false,
     this.onLayerBlendModeSelected,
@@ -3370,10 +3345,20 @@ class _StoryboardRailHead extends KeptPiece {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final void Function(LayerId layerId, LayerMarkEdit edit)? onLayerMarkSelected;
 
-  /// The sheet toggle — the track's own rows' so far: a head is one row for
-  /// every cut while the flag is each cut's own, and which of the two a
-  /// head's toggle writes is the user's to say (I-89-Q22).
+  /// The sheet toggle, where the row is handed one
+  /// ([_StoryboardRailSweep.handsSheetToggle]): a conte row's writes its
+  /// head's flag, one for every cut ([ConteHead.onTimesheet]).
+  /// ↩️The track's own rows' alone until I-89-Q22 made the flag the
+  /// head's.
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
+
+  /// The onion toggle and whether the row ghosts — a conte row's for every
+  /// cut, as its onion is one (`OnionSkin.isLayerOnionSkinEnabled`, I-89-Q22).
+  /// Its column stands on every row of this rail
+  /// ([StoryboardPanel.optionalRailColumns]); a row whose kind cannot ghost
+  /// keeps its slot empty.
+  final ValueChanged<LayerId>? onToggleLayerOnionSkin;
+  final bool onionSkinEnabled;
 
   /// An S row's speaker, opening its mixer under itself, and whether the
   /// row is soloed (the speaker's accent).
@@ -3422,6 +3407,8 @@ class _StoryboardRailHead extends KeptPiece {
     onLayerOpacityChangeEnd != null,
     onLayerMarkSelected != null,
     onToggleLayerTimesheet != null,
+    onToggleLayerOnionSkin != null,
+    onionSkinEnabled,
     onOpenLayerMixer != null,
     soloed,
     onLayerBlendModeSelected != null,
@@ -3471,6 +3458,10 @@ class _StoryboardRailHead extends KeptPiece {
       onToggleLayerTimesheet: toggleSheet == null
           ? null
           : (_) => toggleSheet(rowId),
+      // Handed whatever the host wired: the column is this rail's, so a
+      // head stands it as every other row does.
+      onToggleLayerOnionSkin: (_) => onToggleLayerOnionSkin?.call(rowId),
+      onionSkinEnabled: onionSkinEnabled,
       onOpenLayerMixer: openMixer == null
           ? null
           : (anchorContext, _) => openMixer(anchorContext, rowId),
@@ -3990,6 +3981,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     required this.viewportWidth,
     required this.showSeconds,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.onRowFramePress,
     this.onDropMediaAsset,
@@ -4028,6 +4020,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   @override
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Why a sound of the row cannot be played
+  /// ([StoryboardPanel.soundCannotPlay]).
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
 
   /// The recorded-take clipping warning (REC1-D): non-null mounts the red
   /// block-corner marker on clipped spans, where the timeline's SE row
@@ -4099,6 +4095,12 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         for (final span in seAudioSpans(layer))
           audioPeaksFor?.call(span.clip.filePath),
     ]),
+    // And why each cannot be played: its block's paper and warning line.
+    ByList([
+      if (layer case final layer?)
+        for (final span in seAudioSpans(layer))
+          soundCannotPlay?.call(span.clip.filePath),
+    ]),
     seClipMarkerTooltip,
     onRowFramePress != null,
     onDropMediaAsset != null,
@@ -4110,49 +4112,75 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     ByList([for (final row in seRowsInDisplayOrder) row.layer.id]),
   );
 
+  /// 🚨THE BLOCKS' PIECES ARE BUILT FOR THE PANEL'S WINDOW
+  /// (frame-panels-build-in-one-frame, 2026-10-24): the row spans the whole
+  /// film, and it built a paper, a waveform, the words, two grips and the
+  /// drop places of EVERY sound of the track — 🔬on the AMMI OP the S rows
+  /// were a fifth of reopening the storyboard. Its pieces are now the
+  /// window's, re-made when the window crosses a bucket — as the projection
+  /// keys' are, and as the painters beside them draw.
   @override
   Widget buildKept(BuildContext context) {
-    final spans = <Widget>[];
     final layer = this.layer;
-    if (layer != null) {
-      final blocks = drawingBlocks(layer.timeline);
-      spans.addAll(_contentSpans(context, layer, blocks));
-      spans.addAll(_interactionLayers(context, layer, blocks));
-      final clipTooltip = seClipMarkerTooltip;
-      if (clipTooltip != null) {
-        spans.add(_clipMarkerLayer(context, layer, clipTooltip));
-      }
-    }
-
     return SizedBox(
       key: ValueKey<String>('storyboard-se-row-$trackIndex-${slot + 1}'),
       width: width,
       height: height,
-      child: Stack(children: spans),
+      child: layer == null
+          ? const Stack()
+          : _windowed(layer, drawingBlocks(layer.timeline)),
     );
   }
 
-  /// Clipped takes' red corners (REC1-D) on the ROW, where the timeline's SE
-  /// row mounts them. ↩️They rode the twirled-down Audio lane here, so a
-  /// clipped take showed only while its row was open (F-101).
-  Positioned _clipMarkerLayer(
+  Widget _windowed(Layer layer, List<TimelineDrawingBlock> blocks) =>
+      ValueListenableBuilder<int>(
+        valueListenable: windowBucket,
+        builder: (context, _, _) {
+          final window = _window();
+          return Stack(
+            children: [
+              ..._contentSpans(context, layer, blocks, window),
+              ..._interactionLayers(context, layer, blocks, window),
+              _warningLayer(context, layer, window),
+            ],
+          );
+        },
+      );
+
+  /// The frames the panel's window can reach while its offset stays in the
+  /// bucket ([visibleFrameWindowFor]).
+  ({int startIndex, int endIndexExclusive}) _window() => visibleFrameWindowFor(
+    bucket: windowBucket,
+    viewportMainExtent: viewportWidth,
+    cellExtent: timelineScale.pixelsPerFrame,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: _rowFrames.frameEndIndexExclusive,
+  );
+
+  /// The blocks' warning lines — a take that clipped (REC1-D), a sound that
+  /// cannot be played — on the ROW, where the timeline's SE row mounts
+  /// them. ↩️The clipped takes rode the twirled-down Audio lane here, so
+  /// one showed only while its row was open (F-101).
+  Positioned _warningLayer(
     BuildContext context,
     Layer layer,
-    String tooltip,
+    ({int startIndex, int endIndexExclusive}) window,
   ) {
-    final frames = _rowFrames;
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
-        geometry: frames,
+        geometry: _rowFrames,
         crossAxisExtent: height,
         axis: Axis.horizontal,
-        children: timelineRowClipMarkerOverlays(
+        children: timelineRowSoundWarningOverlays(
           layer: layer,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          frameStartIndex: window.startIndex,
+          frameEndIndexExclusive: window.endIndexExclusive,
           crossAxisExtent: height,
           axis: Axis.horizontal,
-          tooltip: tooltip,
+          warnings: (
+            clipped: seClipMarkerTooltip,
+            cannotPlay: soundCannotPlay,
+          ),
           color: Theme.of(context).colorScheme.error,
           keyPrefix: 'storyboard-${layer.id}',
         ),
@@ -4162,70 +4190,101 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
 
   /// What the row shows: each block's paper, the waveform where a clip's
   /// peaks are known, each block's length, and the dialogue / SE name over
-  /// each block.
+  /// each block — those of [window].
+  ///
+  /// The waveforms and the writing are the timeline SE row's own overlays
+  /// ([timelineRowAudioOverlays], [timelineRowSeLabelOverlays]) on the span
+  /// layer the row's grips and warnings ride. ↩️The row placed them itself
+  /// (one `Positioned` a span off the scale) and wrote its words with a
+  /// loop of its own beside the timeline's.
   List<Widget> _contentSpans(
     BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
+    ({int startIndex, int endIndexExclusive}) window,
   ) {
-    final spans = <Widget>[];
-    // Paper blocks first — the storyboard SE row has no cells
-    // underneath, so each block paints its own paper span (SePaperSpan)
-    // at its TRUE global extent; waveforms go above the paper, the
-    // writing on top.
-    for (final block in blocks) {
-      spans.add(
-        _paperSpan(block, layer),
-      );
-    }
-    // Waveforms above the paper (painted UNDER the SE writing): the
-    // timeline SE row's own strips — each carrying block windows its
-    // sound, clamped to the block and the file length, its gain and fades
-    // drawn on it — at their true global extent (cut ends no longer clip:
-    // the block may cross them).
+    final sounds = seAudioSpans(layer);
     final audioPeaksFor = this.audioPeaksFor;
-    if (audioPeaksFor != null) {
-      for (final strip in seRowAudioStrips(
-        layer,
-        ink: (
-          axis: Axis.horizontal,
-          frameRate: projectFrameRate,
-          audioPeaksFor: audioPeaksFor,
-          // Ink on the paper spans, like the timeline SE rows.
-          color: timelineDrawingInkColor.withValues(alpha: 0.22),
-        ),
-      )) {
-        spans.add(
-          _frameSpan(
-            startFrame: strip.startFrame,
-            endExclusive: strip.endFrameExclusive,
-            key: ValueKey<String>('storyboard-audio-clip-${strip.keyName}'),
-            child: strip.strip,
+    return [
+      // Paper blocks first — the storyboard SE row has no cells
+      // underneath, so each block paints its own paper span (SePaperSpan)
+      // at its TRUE global extent; waveforms go above the paper (cut ends
+      // no longer clip: the block may cross them), the writing on top.
+      _contentLayer([
+        for (final block in blocks)
+          if (_inWindow(block, window)) _paperSpan(block, layer, sounds),
+        if (audioPeaksFor != null)
+          ...timelineRowAudioOverlays(
+            layer: layer,
+            frameStartIndex: window.startIndex,
+            frameEndIndexExclusive: window.endIndexExclusive,
+            axis: Axis.horizontal,
+            frameRate: projectFrameRate,
+            audioPeaksFor: audioPeaksFor,
+            // Ink on the paper spans, like the timeline SE rows.
+            color: timelineDrawingInkColor.withValues(alpha: 0.22),
+            keyPrefix: 'storyboard',
           ),
-        );
-      }
-    }
-    spans.add(_runLabels(context, layer));
-    // The sheet's writing on the paper blocks — each name standing in the
-    // frames free before its block ([seFramesFreeBefore]).
-    for (final (index, block) in blocks.indexed) {
-      spans.add(
-        _dialogueSpan(
-          block,
-          layer,
-          framesFreeBefore: seFramesFreeBefore(blocks, index),
+      ]),
+      _runLabels(context, layer),
+      // The sheet's writing on the paper blocks — each name standing in the
+      // frames free before its block ([seFramesFreeBefore]), so the window
+      // reaches a chip's length further: a block just past it can stand
+      // its name inside.
+      _contentLayer(
+        timelineRowSeLabelOverlays(
+          layer: layer,
+          frameStartIndex: window.startIndex,
+          frameEndIndexExclusive:
+              window.endIndexExclusive + _framesUnder(seNameBoxExtent),
+          axis: Axis.horizontal,
+          keyPrefix: 'storyboard',
         ),
-      );
-    }
-    return spans;
+      ),
+    ];
   }
 
+  /// A layer of what the row shows, which no pointer lands on.
+  ///
+  /// ⛔THREE SPANS ON THIS ROW placed themselves: the dialogue, the paper
+  /// and the waveform. Each worked the left edge and the width out of the
+  /// same scale, and each wrapped its child in the same ignored pointer —
+  /// three chances for one of them to place a strip a frame off the others
+  /// on the row it shares. ↩️A helper of the row's then placed all three;
+  /// now the span layer does, the one its grips and warnings land by.
+  Positioned _contentLayer(List<Widget> spans) => Positioned.fill(
+    child: IgnorePointer(
+      child: TimelineFixedFrameSpanLayer(
+        geometry: _rowFrames,
+        crossAxisExtent: height,
+        axis: Axis.horizontal,
+        children: spans,
+      ),
+    ),
+  );
+
+  /// How many of the row's frames [extent] pixels run over, whole.
+  int _framesUnder(double extent) => timelineScale.pixelsPerFrame <= 0
+      ? 0
+      : (extent / timelineScale.pixelsPerFrame).ceil();
+
+  static bool _inWindow(
+    TimelineDrawingBlock block,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) => frameRangesOverlap(
+    block.startIndex,
+    block.endIndexExclusive,
+    window.startIndex,
+    window.endIndexExclusive,
+  );
+
   /// What the row answers to: the selection wash, the press layer, the
-  /// range gesture, and the comma grips on each block's edges.
+  /// range gesture, and the comma grips on the edges of [window]'s blocks.
   List<Widget> _interactionLayers(
     BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
+    ({int startIndex, int endIndexExclusive}) window,
   ) {
     final spans = <Widget>[];
     // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
@@ -4275,10 +4334,12 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       // One handle for the row's grips: the round end of each mark reads
       // the cell off it ([BlockEdgeGrip.geometry]).
       final gripGeometry = TimelineFrameGeometryHandle(_rowFrames);
-      var ordinal = 0;
-      for (final block in blocks) {
-        final blockOrdinal = ordinal;
-        ordinal += 1;
+      // Each grip names its block by its place on the WHOLE row, as the
+      // session counts it.
+      for (final (blockOrdinal, block) in blocks.indexed) {
+        if (!_inWindow(block, window)) {
+          continue;
+        }
         for (final edge in TimelineBlockEdge.values) {
           grips.add(
             _edgeGrip(
@@ -4302,7 +4363,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     // like every drop place — it takes no pointer until a drag is in flight.
     final drop = onDropMediaAsset;
     if (drop != null) {
-      final cells = _cellDropLayer(context, layer, blocks, drop);
+      final cells = _cellDropLayer(context, layer, blocks, window, drop);
       if (cells != null) {
         spans.add(cells);
       }
@@ -4337,11 +4398,12 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
   /// (「SE 행의 빈 칸 → 새 블록」) on the track axis this row draws. Over the
   /// gaps only, as the timeline's are, so a block is never the place to
   /// start another; the gaps are [emptyGapsBetween]'s, the one free-span
-  /// answer.
+  /// answer. Those of [window], as the row's other pieces.
   Positioned? _cellDropLayer(
     BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
+    ({int startIndex, int endIndexExclusive}) window,
     StoryboardMediaDrop drop,
   ) {
     final frames = _rowFrames;
@@ -4354,8 +4416,17 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
         ? 0
         : math.min(blocks.last.endIndexExclusive, end);
     final gaps = [
-      ...emptyGapsBetween(layer, 0, walked),
-      if (walked < end) (startIndex: walked, length: end - walked),
+      for (final gap in [
+        ...emptyGapsBetween(layer, 0, walked),
+        if (walked < end) (startIndex: walked, length: end - walked),
+      ])
+        if (frameRangesOverlap(
+          gap.startIndex,
+          gap.startIndex + gap.length,
+          window.startIndex,
+          window.endIndexExclusive,
+        ))
+          gap,
     ];
     if (gaps.isEmpty) {
       return null;
@@ -4487,65 +4558,38 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
     );
   }
 
-  /// A full-height strip over the frames `[startFrame, endExclusive)`.
-  ///
-  /// ⛔THREE SPANS ON THIS ROW placed themselves: the dialogue, the paper
-  /// and the waveform. Each worked the left edge and the width out of the
-  /// same scale, and each wrapped its child in the same ignored pointer —
-  /// three chances for one of them to place a strip a frame off the others
-  /// on the row it shares.
-  Positioned _frameSpan({
-    required int startFrame,
-    required int endExclusive,
-    required Key key,
-    required Widget child,
-  }) => Positioned(
-    left: timelineScale.leftForFrame(startFrame),
-    top: 0,
-    bottom: 0,
-    width: timelineScale.spanWidth(startFrame, endExclusive),
-    child: IgnorePointer(key: key, child: child),
-  );
-
-  /// The words of [block]'s panel and its SE name, over the block.
-  Positioned _dialogueSpan(
+  /// [block]'s paper: its layer's colour label (⑲) — red where a sound it
+  /// carries cannot be played, as the timeline's block is
+  /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read.
+  TimelineFrameSpan _paperSpan(
     TimelineDrawingBlock block,
-    Layer layer, {
-    required int framesFreeBefore,
-  }) {
-    final frame = layer.frameById(block.frameId);
-    return _frameSpan(
-      startFrame: block.startIndex,
-      endExclusive: block.endIndexExclusive,
-      key: ValueKey<String>(
-        'storyboard-se-span-${layer.id}-${block.startIndex}',
+    Layer layer,
+    List<SeAudioSpan> sounds,
+  ) {
+    final cannotPlay = soundCannotPlay;
+    final silent =
+        cannotPlay != null &&
+        soundCannotPlayIn(sounds, block.startIndex, cannotPlay) != null;
+    return TimelineFrameSpan(
+      placement: TimelineFrameSpanPlacement(
+        startIndex: block.startIndex,
+        endIndexExclusive: block.endIndexExclusive,
       ),
-      child: SeSpanVisual(
-        axis: Axis.horizontal,
-        frames: block.length,
-        dialogue: frame?.name ?? '',
-        seName: frame?.seName,
-        framesFreeBefore: framesFreeBefore,
-        // ⑲: the paper [_paperSpan] lays.
-        paper: layerMarkColor(layer.mark),
+      child: KeyedSubtree(
+        key: ValueKey<String>(
+          'storyboard-se-paper-${layer.id}-${block.startIndex}',
+        ),
+        child: SePaperSpan(
+          axis: Axis.horizontal,
+          frameCellExtent: timelineScale.pixelsPerFrame,
+          startFrame: block.startIndex,
+          paper: silent
+              ? timelineUnreadableCelPaperColor
+              : layerMarkColor(layer.mark),
+        ),
       ),
     );
   }
-
-  Positioned _paperSpan(TimelineDrawingBlock block, Layer layer) => _frameSpan(
-    startFrame: block.startIndex,
-    endExclusive: block.endIndexExclusive,
-    key: ValueKey<String>(
-      'storyboard-se-paper-${layer.id}-${block.startIndex}',
-    ),
-    child: SePaperSpan(
-      axis: Axis.horizontal,
-      frameCellExtent: timelineScale.pixelsPerFrame,
-      startFrame: block.startIndex,
-      // ⑲: the block is its layer's colour label.
-      paper: layerMarkColor(layer.mark),
-    ),
-  );
 }
 
 /// One lane's frame band on the shared substrate — the timeline grid's own
@@ -4895,7 +4939,7 @@ class StoryboardTrackLabelRow extends KeptPiece {
 /// the strips' movie-end line; dragging it edits the movie's FINAL
 /// LENGTH (the project's trailing gap) through the session channel —
 /// live preview, ONE undo on release. It never touches the cuts.
-class _StoryboardEndLineHandle extends StatefulWidget {
+class _StoryboardEndLineHandle extends StatelessWidget {
   const _StoryboardEndLineHandle({
     required this.dragPreview,
     required this.committedTotalFrames,
@@ -4916,58 +4960,17 @@ class _StoryboardEndLineHandle extends StatefulWidget {
   final StoryboardMovieEndCallbacks movieEnd;
 
   @override
-  State<_StoryboardEndLineHandle> createState() =>
-      _StoryboardEndLineHandleState();
-}
-
-class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
-  double _dx = 0;
-  bool _dragging = false;
-
-  void _start() {
-    if (!widget.movieEnd.onBegin()) {
-      return;
-    }
-    _dragging = true;
-    _dx = 0;
-  }
-
-  void _update(double delta) {
-    if (!_dragging) {
-      return;
-    }
-    _dx += delta;
-    widget.movieEnd.onUpdate((_dx / widget.pixelsPerFrame).round());
-  }
-
-  void _end() {
-    if (!_dragging) {
-      return;
-    }
-    _dragging = false;
-    widget.movieEnd.onEnd();
-  }
-
-  void _cancel() {
-    if (!_dragging) {
-      return;
-    }
-    _dragging = false;
-    widget.movieEnd.onCancel();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<TimelineDragPreview?>(
-      valueListenable: widget.dragPreview ?? _noDragPreview,
+      valueListenable: dragPreview ?? _noDragPreview,
       builder: (context, preview, child) => Positioned(
         key: const ValueKey<String>('storyboard-cut-end-handle'),
-        left: widget.scale.leftForFrame(
+        left: scale.leftForFrame(
           timelineCutEndPreviewFrameCount(
             preview: preview,
             cutId: null,
-            playbackFrameCount: widget.committedTotalFrames,
-            movieEndUnder: widget.movieEndUnder,
+            playbackFrameCount: committedTotalFrames,
+            movieEndUnder: movieEndUnder,
           ),
         ),
         top: 0,
@@ -4975,16 +4978,14 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
         width: 12,
         child: child!,
       ),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          dragStartBehavior: DragStartBehavior.down,
-          onHorizontalDragStart: (_) => _start(),
-          onHorizontalDragUpdate: (details) => _update(details.delta.dx),
-          onHorizontalDragEnd: (_) => _end(),
-          onHorizontalDragCancel: _cancel,
-        ),
+      // F-445: the timeline's end line's grip ([EndLineGrip]).
+      child: EndLineGrip(
+        axis: Axis.horizontal,
+        cellExtent: pixelsPerFrame,
+        onBegin: movieEnd.onBegin,
+        onUpdate: movieEnd.onUpdate,
+        onEnd: movieEnd.onEnd,
+        onCancel: movieEnd.onCancel,
       ),
     );
   }

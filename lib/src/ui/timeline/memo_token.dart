@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../models/app_language.dart';
 import '../collection_equality.dart';
+import '../text/app_strings.dart';
 
 /// A memo-token field that compares by IDENTITY.
 ///
@@ -73,9 +75,9 @@ final class ByMap<K, V> {
   int get hashCode => mapHash(value);
 }
 
-/// What a memo holds for one key: the widget as built, and the facts it was
-/// built from.
-typedef Kept<F> = ({F facts, Widget built});
+/// What a memo holds for one key: the widget as built, the facts it was
+/// built from, and the words it was built in.
+typedef Kept<F> = ({F facts, AppLanguageSettings language, Widget built});
 
 /// THE keep (F-244): the widget [held] holds for [key] while [facts] are what
 /// it was built from — else [build]'s, kept. Flutter skips a subtree handed
@@ -86,18 +88,24 @@ typedef Kept<F> = ({F facts, Widget built});
 /// the x-sheet's headers, the grids' cells rows, the view cluster: each says
 /// only what its facts are (a record of them, each field comparing as the
 /// piece needs — [ByIdentity] and kin above).
+///
+/// 🚨★THE LANGUAGE IS EVERY KEEP'S FACT, kept here and not in each record
+/// (2026-10-24): a kept piece holds its words as built. ↩️Each record said
+/// it or did not — the legend did, the timeline's view cluster did not, and
+/// its 「Show X-sheet」 stayed in the language it was built in.
 Widget keptWhileSame<K, F>(
   Map<K, Kept<F>> held,
   K key,
   F facts,
   Widget Function() build,
 ) {
+  final language = AppText.settings.value;
   final kept = held[key];
-  if (kept != null && kept.facts == facts) {
+  if (kept != null && kept.facts == facts && kept.language == language) {
     return kept.built;
   }
   final built = build();
-  held[key] = (facts: facts, built: built);
+  held[key] = (facts: facts, language: language, built: built);
   return built;
 }
 
@@ -121,9 +129,10 @@ Widget keptWhileSame<K, F>(
 /// screen reader, which is what it is — the dock regions' law
 /// (2026-09-26).
 ///
-/// What else the piece reads — the theme, the words — rebuilds it where it
-/// reads them: [buildKept] runs in a `Builder` of its own, never through
-/// this.
+/// What else the piece reads — the theme — rebuilds it where it reads it:
+/// [buildKept] runs in a `Builder` of its own, never through this. The
+/// words are every keep's fact ([keptWhileSame]). ↩️They were said to ride
+/// the theme, which a switch between two languages of one face never moves.
 abstract class KeptPiece extends StatefulWidget {
   const KeptPiece({super.key});
 
@@ -141,25 +150,21 @@ abstract class KeptPiece extends StatefulWidget {
 }
 
 class _KeptPieceState extends State<KeptPiece> {
-  Object? _facts;
-
-  /// What was built from [_facts]. ⛔A hot reload drops nothing here: it
-  /// builds every element again, the `Builder` [KeptPiece.buildKept] runs
-  /// in among them (mutation, I-57 10-14).
-  Widget? _built;
+  /// What was built, and from what ([keptWhileSame]). ⛔A hot reload drops
+  /// nothing here: it builds every element again, the `Builder`
+  /// [KeptPiece.buildKept] runs in among them (mutation, I-57 10-14).
+  final Map<Type, Kept<Object?>> _held = {};
 
   @override
-  Widget build(BuildContext context) {
-    final facts = widget.facts;
-    if (_built == null || facts != _facts) {
-      _facts = facts;
-      _built = RepaintBoundary(
-        child: Semantics(
-          container: true,
-          child: Builder(builder: widget.buildKept),
-        ),
-      );
-    }
-    return _built!;
-  }
+  Widget build(BuildContext context) => keptWhileSame(
+    _held,
+    KeptPiece,
+    widget.facts,
+    () => RepaintBoundary(
+      child: Semantics(
+        container: true,
+        child: Builder(builder: widget.buildKept),
+      ),
+    ),
+  );
 }

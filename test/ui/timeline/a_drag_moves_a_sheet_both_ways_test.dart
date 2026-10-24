@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -524,6 +525,157 @@ void main() {
           everyElement(0),
           reason: 'F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 '
               '안새게」',
+        );
+      });
+
+      // 🗣️F-447-Q1 (유저 2026-10-23): 「그 영역 자신을 — 팬(F-351)과 같은
+      // 법」 — a wheel moves the layer area it turns over as a pull there
+      // does: its window along the window, its layers the other way.
+      // ↩️F-159 (09-18) took every notch over the x-sheet's headers for its
+      // layers, the timeline's way; F-447 asked again (「x시트의 레이어영역의
+      // 휠조작이 작동안함 … 프레임 영역이랑 법 통일」).
+
+      /// One notch of a mouse wheel at [at], turned with Shift held where
+      /// [shift] says — which turns it to the other axis, as a scroll view
+      /// reads it.
+      Future<void> wheel(
+        WidgetTester tester,
+        Offset at, {
+        required bool shift,
+      }) async {
+        if (shift) {
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        }
+        final pointer = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(pointer.hover(at));
+        await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+        await tester.pumpAndSettle();
+        if (shift) {
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        }
+      }
+
+      /// Whether a notch along the layer area's window is turned with Shift:
+      /// the wheel's own notch goes down.
+      bool shiftAlongTheWindow(WidgetTester tester) =>
+          tester.widget<LayerRailWindow>(layerAreaWindow()).axis ==
+          Axis.horizontal;
+
+      testWidgets('🚨a wheel over the layer area, along its window, pushes '
+          'the window — and moves neither its layers nor the frames', (
+        tester,
+      ) async {
+        final rail = await pumpNarrowed(tester);
+
+        await wheel(
+          tester,
+          tester.getCenter(sheet.aLayerName),
+          shift: shiftAlongTheWindow(tester),
+        );
+
+        expect(rail.offset.value, greaterThan(0), reason: '「그 영역 자신을」');
+        expect(standing(tester), Offset.zero);
+        expect(
+          [for (final position in theFloor(tester)) position.pixels],
+          everyElement(0),
+        );
+      });
+
+      testWidgets('…and across its window the wheel is its layers\' — the '
+          'notch that moves them over the cells', (tester) async {
+        final rail = await pumpNarrowed(tester);
+
+        await wheel(
+          tester,
+          tester.getCenter(sheet.aLayerName),
+          shift: !shiftAlongTheWindow(tester),
+        );
+
+        expect(rail.offset.value, 0);
+        expect(positionOf(tester, sheet.outer).pixels, greaterThan(0));
+        expect(positionOf(tester, sheet.inner).pixels, 0);
+      });
+
+      testWidgets('⛔Shift turns a mouse\'s wheel alone — a trackpad\'s '
+          'notch goes the way it goes, as the scroll views read it', (
+        tester,
+      ) async {
+        final rail = await pumpNarrowed(tester);
+        final windowGoesDown = !shiftAlongTheWindow(tester);
+
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        final pad = TestPointer(1, PointerDeviceKind.trackpad);
+        await tester.sendEventToBinding(
+          pad.hover(tester.getCenter(sheet.aLayerName)),
+        );
+        await tester.sendEventToBinding(pad.scroll(const Offset(0, 120)));
+        await tester.pumpAndSettle();
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+        expect(
+          [rail.offset.value > 0, positionOf(tester, sheet.outer).pixels > 0],
+          [windowGoesDown, !windowGoesDown],
+          reason: 'a notch down: the window where it slides down, else the '
+              'layers',
+        );
+      });
+
+      // ↩️F-159's listener took every notch over the x-sheet's headers and
+      // moved the layers by its downward part — a sideways one moved them
+      // by nothing, and nothing else had it.
+      testWidgets('⛔a notch that comes sideways — a tilting wheel\'s — goes '
+          'the way it comes, no Shift held', (tester) async {
+        final rail = await pumpNarrowed(tester);
+        final windowGoesAcross = shiftAlongTheWindow(tester);
+
+        final pointer = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(
+          pointer.hover(tester.getCenter(sheet.aLayerName)),
+        );
+        await tester.sendEventToBinding(pointer.scroll(const Offset(120, 0)));
+        await tester.pumpAndSettle();
+
+        expect(
+          [rail.offset.value > 0, positionOf(tester, sheet.outer).pixels > 0],
+          [windowGoesAcross, !windowGoesAcross],
+          reason: 'a notch across: the window where it slides across, else '
+              'the layers',
+        );
+      });
+
+      testWidgets('⛔where its window has nowhere to go, a notch along it '
+          'moves nothing — not out to the scroller around the sheet', (
+        tester,
+      ) async {
+        await pumpSheet(tester);
+
+        await wheel(
+          tester,
+          tester.getCenter(sheet.aLayerName),
+          shift: shiftAlongTheWindow(tester),
+        );
+
+        expect(standing(tester), Offset.zero);
+        expect(
+          [for (final position in theFloor(tester)) position.pixels],
+          everyElement(0),
+          reason: 'F-202 — as a pull there',
+        );
+      });
+
+      testWidgets('⛔a wheel over the cells leaves the layer area\'s window '
+          'where it stands, either way it is turned', (tester) async {
+        final rail = await pumpNarrowed(tester);
+
+        for (final shift in [false, true]) {
+          await wheel(tester, onTheCells(tester), shift: shift);
+        }
+
+        expect(rail.offset.value, 0);
+        expect(
+          [standing(tester).dx, standing(tester).dy],
+          everyElement(greaterThan(0)),
+          reason: '⛔전제: the cells took both notches',
         );
       });
     });

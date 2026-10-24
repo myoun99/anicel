@@ -175,6 +175,11 @@ class RawPenInputService {
   ({double x, double y})? freshTilt({DateTime? now}) =>
       _freshState(now)?.tilt;
 
+  /// How far the pen is turned about its barrel as the newest fresh report
+  /// declares it, in degrees clockwise — null when no report is fresh or
+  /// the report carries none (F-176-Q9).
+  double? freshTwist({DateTime? now}) => _freshState(now)?.twistDegrees;
+
   /// Whether the pen is turned TAIL-DOWN right now; null = no fresh
   /// report.
   ///

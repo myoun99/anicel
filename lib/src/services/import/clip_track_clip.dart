@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../core/cubic_curve.dart';
+import '../../core/neighbour_pairs.dart';
 import 'clip_cmt.dart';
 
 /// Where a track shows its layer, in the timeline's frames: from [start]
@@ -128,9 +129,9 @@ final class ClipCurve {
     if (keys.isEmpty) {
       return null;
     }
-    for (var i = 0; i < ways.length; i += 1) {
-      final (frame: start, value: from) = keys[i];
-      final (frame: end, value: to) = keys[i + 1];
+    for (final (i, (first, second)) in neighbourPairs(keys).indexed) {
+      final (frame: start, value: from) = first;
+      final (frame: end, value: to) = second;
       if (frame >= end) {
         continue;
       }
@@ -504,8 +505,8 @@ ClipCurve _curveOf(
       },
   ];
   final ways = <ClipWay?>[
-    for (var i = 0; i + 1 < keys.length; i += 1)
-      switch ((kindOf(i), slopes[i], slopes[i + 1])) {
+    for (final (i, (from, to)) in neighbourPairs(slopes).indexed)
+      switch ((kindOf(i), from, to)) {
         ('Constant', _, _) => ClipWay.held,
         ('Linear', _, _) => ClipWay.straight,
         (_, (leaving: final leaving, arriving: _), (

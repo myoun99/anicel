@@ -317,10 +317,10 @@ void main() {
     /// [turning], placed, with the keys in [[from], [to]) moved by [delta].
     PropertyTrack<CanvasPoint> moved(int from, int to, int delta) {
       final placed = TransformTrack.empty().copyWith(position: turning());
-      final shifted = placed.position.withRangedKeysShifted(
+      final shifted = placed.position.withRangedKeysMoved(
         rangeStartIndex: from,
         rangeEndIndexExclusive: to,
-        frameDelta: delta,
+        to: (frame) => frame + delta,
       );
       expect(shifted, isNotNull, reason: '⛔전제: the move is not refused');
       return placed.copyWith(position: shifted).position;

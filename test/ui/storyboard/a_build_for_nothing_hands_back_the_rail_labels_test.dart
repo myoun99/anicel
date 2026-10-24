@@ -26,7 +26,7 @@ import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show FxToggleButton, LayerMuteToggleButton, LayerVisibilityToggleButton;
+    show FxToggleButton, LayerVisibilityToggleButton;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
@@ -35,9 +35,11 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/rail_label_name.dart';
 
 /// 🚨I-57 (10-14): A STORYBOARD BUILT AGAIN FOR NOTHING — OR ACROSS A CUT —
 /// HANDS BACK EVERY ROW OF ITS RAIL AS IT WAS, its label and the drag
@@ -398,10 +400,7 @@ void main() {
     await tester.pump();
 
     expectRowsAsThey(tester, before, builtAgain: {'se', 'se wrapper'});
-    expect(
-      find.descendant(of: seLabel, matching: find.text('Rain')),
-      findsOneWidget,
-    );
+    expect(railLabelName(seLabel, 'Rain'), findsOneWidget);
   });
 
   testWidgets('🚨an S row added over S1 builds S1\'s wrapper again, its caret '
@@ -515,14 +514,14 @@ void main() {
   testWidgets('🚨a solo the session answers is what the S row\'s speaker '
       'shows — no part of its layer', (tester) async {
     final session = await pumpPanel(tester, film());
-    bool soloed() => tester
-        .widget<LayerMuteToggleButton>(
-          find.descendant(
-            of: seLabel,
-            matching: find.byType(LayerMuteToggleButton),
-          ),
-        )
-        .soloed;
+    final speaker = find.ancestor(
+      of: find.named('storyboard-layer-mute-t1-s1'),
+      matching: find.byType(RailGlyphButton),
+    );
+    bool soloed() =>
+        (tester.widget<RailGlyphButton>(speaker).glyph as RailIconGlyph)
+            .color ==
+        Theme.of(tester.element(speaker)).colorScheme.primary;
     expect(soloed(), isFalse, reason: 'premise');
 
     session.visibilitySolo.toggleLayerSolo(const LayerId('t1-s1'));
@@ -744,26 +743,45 @@ void main() {
     expect(wrapper(tester, s2).drawsTheGapAfter, isTrue);
   });
 
+  /// Turns cut a's conte rows [off] the sheet and the others on, as their
+  /// head's switch does: a conte row's flag is its head's, one for every cut
+  /// (I-89-Q22), so it is written through the session's verb, which lays it
+  /// on the cut b rows of the same seats too.
+  Future<void> resheetConte(
+    WidgetTester tester,
+    EditorSessionManager session,
+    Set<String> off,
+  ) async {
+    for (final id in const ['a-conte', 'a-conte+1', 'a-conte+2']) {
+      final row = LayerId(id);
+      if (session.layerSwitches.isLayerOnTimesheet(row) == off.contains(id)) {
+        session.layerSwitches.toggleLayerTimesheet(row);
+      }
+    }
+    await tester.pump();
+  }
+
   testWidgets('🚨a conte row the filter shows somewhere else builds its '
       'wrapper again — its caret at the seat it shows at, last or not as it '
       'is', (tester) async {
     final session = await pumpPanel(
       tester,
-      sheetedOff(film(attachRows: 2), {'a-conte'}),
+      film(attachRows: 2),
       rowFilter: onTheSheet,
     );
+    await resheetConte(tester, session, {'a-conte'});
     final seat1 = key('storyboard-conte+1-label-t1');
     // +2 over +1: +1 the lower of the two shown.
     expect(wrapper(tester, seat1).slotBefore, 1, reason: 'premise');
     expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue, reason: 'premise');
 
     // +1 over the conte: the upper of two.
-    await resheet(tester, session, {'a-conte+2'});
+    await resheetConte(tester, session, {'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
     expect(wrapper(tester, seat1).drawsTheGapAfter, isFalse);
 
     // +1 alone: the upper, and the last.
-    await resheet(tester, session, {'a-conte', 'a-conte+2'});
+    await resheetConte(tester, session, {'a-conte', 'a-conte+2'});
     expect(wrapper(tester, seat1).slotBefore, 0);
     expect(wrapper(tester, seat1).drawsTheGapAfter, isTrue);
   });

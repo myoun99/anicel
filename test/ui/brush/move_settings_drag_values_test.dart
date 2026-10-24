@@ -594,7 +594,7 @@ void main() {
       reason: 'Blend is the default, so AA starts ON',
     );
 
-    await tester.tap(switchKey);
+    await tester.pressRingIn(switchKey);
     await tester.pump();
     expect(chosen, <ResampleMode>[ResampleMode.pick]);
 
@@ -615,7 +615,7 @@ void main() {
       onResampleModeChanged: chosen.add,
     );
     expect(tester.booleanDotIn(switchKey).value, isFalse);
-    await tester.tap(switchKey);
+    await tester.pressRingIn(switchKey);
     await tester.pump();
     expect(chosen.last, ResampleMode.blend);
   });

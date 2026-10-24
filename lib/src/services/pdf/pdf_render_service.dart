@@ -1,9 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:pdfrx/pdfrx.dart' as pdfrx;
 
+import '../flutter_test_run.dart';
 import '../media/media_byte_source.dart';
 import '../media/viewer_document.dart';
 
@@ -76,7 +76,7 @@ abstract final class PdfRenderService {
   }
 
   static Future<bool> _probeAvailability() async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (underFlutterTest) {
       // flutter_tester has no bundled native asset and must never try —
       // the same gate the audio device and video encoder use.
       return _availability = false;

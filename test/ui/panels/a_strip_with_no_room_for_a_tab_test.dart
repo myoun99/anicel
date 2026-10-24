@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/frame_panel_sill_controls.dart';
 
+import '../../helpers/rail_group_button.dart';
+
 /// A tab strip whose sill leaves it no room for even one tab — the
 /// storyboard docked on its own in a rail, the rail narrowed until the
 /// sill's transport takes nearly all of it; a 340px window — keeps its
@@ -104,7 +106,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final railId = EditorWorkspace.railGroupId(right: true, slot: 6);
-    final freeSlot = find.byKey(ValueKey<String>('rail-group-$railId'));
+    final freeSlot = railGroupButton(railId);
     final gesture = await tester.startGesture(
       tester.getCenter(
         find.byKey(const ValueKey<String>('panel-grip-storyboard')),

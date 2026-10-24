@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME}
   "launch_splash.cc"
   "my_application.cc"
   "pen_sidecar.cc"
+  "picture_cursors.cc"
   "window_full_screen.cc"
   "window_place.cc"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"

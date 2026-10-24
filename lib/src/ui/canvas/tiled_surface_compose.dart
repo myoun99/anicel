@@ -295,11 +295,12 @@ Future<void> _giveWay() {
 /// says how), and disposed right after the compose — cold frames pay one
 /// upload a block without pinning GPU copies of every frame's artwork.
 ///
-/// Byte-parity with the CPU assembly path ([bitmapSurfaceToImage]): tile
-/// bytes premultiply through the SAME mul-div-255 rounding
+/// Byte-parity with the tiles' own bytes where they stand: tile bytes
+/// premultiply through the app's one mul-div-255 rounding
 /// ([SurfaceRegionBytes]) and are drawn 1:1 at integer offsets with
 /// [ui.FilterQuality.none] over a transparent base, so srcOver passes the
-/// premultiplied bytes through unchanged.
+/// premultiplied bytes through unchanged. ↩️Pinned against the CPU
+/// assembly until it left the app (card `cpu-assembly-has-no-caller`).
 ///
 /// The caller owns (and must dispose) the returned image.
 ///

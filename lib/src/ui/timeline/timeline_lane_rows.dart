@@ -39,6 +39,7 @@ import 'layer_rail_columns.dart'
     show
         LayerFoldTwirl,
         LayerRailOptionalColumns,
+        layerRailEndPadding,
         layerRailTrailingCells,
         noOptionalRailColumns;
 import 'key_mark_glyph.dart' show keyMarkIsHollow, paintKeyMark;
@@ -746,7 +747,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   EdgeInsets get _headerPadding => widget.axis == Axis.horizontal
-      ? const EdgeInsets.only(right: 8)
+      ? const EdgeInsets.only(right: layerRailEndPadding)
       : const EdgeInsets.symmetric(horizontal: 2, vertical: 4);
 
   /// The TWIRL is the chevron's, not the whole header's (R10 #19's rail
@@ -911,7 +912,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final content = widget.axis == Axis.horizontal
         ? _memberRow(colorScheme, label, valueLabel, drawn)
         : _memberColumn(colorScheme, label, valueLabel, drawn);
-    final lead = _sectionLead(24);
+    // Right after the section band, not an indent past it (F-409, 유저
+    // 2026-10-19: 「fx(변형이든 카메라든 뭐든)의 멤버, < 마름모 > 이름 이거,
+    // 이거 다 왼쪽정렬로 왼쪽에 붙어있도록. 공간만들고싶은거임」). ↩️It stood
+    // 24 in — one indent right of its group's header.
+    final lead = _sectionLead(0);
     return _cellBox(
       plate: plate,
       colorScheme: colorScheme,
@@ -942,9 +947,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (widget.axis != Axis.horizontal) {
       return const EdgeInsets.symmetric(vertical: _laneColumnEndPadding);
     }
-    return widget.leadingInset > 0
-        ? const EdgeInsets.only(right: _laneMemberEndPadding)
-        : const EdgeInsets.only(left: 24, right: _laneMemberEndPadding);
+    return const EdgeInsets.only(right: _laneMemberEndPadding);
   }
 
   /// Along the rail: navigator, name, value. The NAME takes the leftover and

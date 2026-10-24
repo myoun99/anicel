@@ -23,7 +23,18 @@ enum BrushTipOrder {
   oneLap,
 
   /// ランダムに一巡 — every tip once, in a shuffled order, then nothing.
-  shuffledLap;
+  shuffledLap,
+
+  /// ペンの傾き — the pen's lean picks the turn: held upright the first,
+  /// laid flat the last, the turns cut evenly between. A pen that reports no
+  /// lean is upright.
+  ///
+  /// ⚠️NOT ONE OF CLIP STUDIO'S SIX — its tips only take turns. Choosing an
+  /// image by a pen input is GIMP's and Krita's (an image pipe's 傾き
+  /// selection). 🗣️F-451 (유저 2026-10-23): 「세웠을땐 사각형이 아니라 진짜
+  /// 연필처럼 … 둥글다던가」, while laid flat the lead's side stays square —
+  /// one footprint cannot be both, and squashing one only stretches it.
+  lean;
 
   /// Whether the dabs after one lap are left undrawn.
   bool get endsAfterOneLap => this == oneLap || this == shuffledLap;

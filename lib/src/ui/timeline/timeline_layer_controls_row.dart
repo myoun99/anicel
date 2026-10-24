@@ -276,7 +276,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerLinks;
 
-  /// The camera row's path button ([CameraPathButton], I-89 ④): how the
+  /// The camera row's path button ([_cameraPathButton], I-89 ④): how the
   /// canvas shows the camera's path, opened under the button. Null mounts
   /// none.
   final Future<void> Function(BuildContext anchorContext)? onOpenCameraPath;
@@ -511,11 +511,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
       '-row-${layer.id}';
 
   /// The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
-  /// breathing room moves between the band and the lane chevron. No padding
-  /// on a column: a 28px column has none to give, and the shared slot
-  /// skeleton already carries the row's gaps.
-  EdgeInsets get _padding =>
-      _horizontal ? const EdgeInsets.only(right: 8) : EdgeInsets.zero;
+  /// breathing room moves between the band and the lane chevron, and the
+  /// row's end keeps the rail's ([layerRailEndPadding]). No padding on a
+  /// column: a 28px column has none to give, and the shared slot skeleton
+  /// already carries the row's gaps.
+  EdgeInsets get _padding => _horizontal
+      ? const EdgeInsets.only(right: layerRailEndPadding)
+      : EdgeInsets.zero;
 
   /// `stretch` down a column: a reserved (childless) slot keeps its extent
   /// either way, but a POPULATED one would take its intrinsic width under
@@ -692,20 +694,24 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// — a different x on every row, and a moving x on a rename. The NAME
   /// takes the space now and the twirl trails it at the region's far edge,
   /// which is the one place it can be that does not depend on what the row
-  /// is called. The SLOT is always there: a row that folds nothing reserves
-  /// the extent rather than letting the name run into it, so the icons on
-  /// the rows that do fold all sit on one line (one axis over: a column that
-  /// folds nothing used to drop it, which pulled every cell below up by
-  /// 20px).
+  /// is called.
   ///
   /// I-89 Q1 (유저 2026-10-12): a row's own buttons take their room out of
-  /// the name, right-aligned before the fold slot — 「추가로 공간
-  /// 만드는게아니라 이름공간을 줄여서 오른쪽정렬로」 — the link among them,
-  /// beside the reference when a row has both (「참조/링크가 동시에
-  /// 될수있는거 말되니까 그런식으로 중복되는 상황은 중복되도록」). The order
-  /// was left to me (「버튼별 순서는 알아서 맡김」): the graph last, so it
-  /// ends the name as a header's does. ↩️The link trailed the name's
-  /// letters, wherever a name happened to end.
+  /// the name, right-aligned — 「추가로 공간 만드는게아니라 이름공간을 줄여서
+  /// 오른쪽정렬로」 — the link among them, beside the reference when a row
+  /// has both (「참조/링크가 동시에 될수있는거 말되니까 그런식으로 중복되는
+  /// 상황은 중복되도록」). The order was left to me (「버튼별 순서는 알아서
+  /// 맡김」): the graph last, so it ends the name as a header's does.
+  /// ↩️The link trailed the name's letters, wherever a name happened to end.
+  ///
+  /// 🗣️F-454 (유저 2026-10-23): 「어태치 접기/펼치기버튼도 사실상 있는것만
+  /// 있는 버튼이면서 레전드에도 존재하지않는 버튼이기때문에, 어태치
+  /// 접기/펼치기 버튼도 포함해서 위치정하도록. 즉 어태치있으면 접기버튼이
+  /// 지금처럼 가장 오른쪽에 오고, 참조버튼 그 왼쪽에 오고. 카메라 레이어는
+  /// … 그 자리에 그래프버튼,그왼쪽에 경로버튼」 — the twirl is the last of
+  /// the row's own buttons, there only on a row that folds. ↩️Its slot was
+  /// reserved on every row (F-29), so a row's own buttons stood a twirl
+  /// short of the name's end on the rows that fold nothing.
   Widget _nameArea(BuildContext context, ColorScheme colorScheme) => Expanded(
     child: Named(
       '$keyPrefix-layer-name-${layer.id}',
@@ -722,13 +728,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
           ),
           ?_linkBadge(colorScheme),
           ?_referenceButton(),
+          ?_soundButton(colorScheme),
           ?_cameraPathButton(),
           ?_graphToggle(context),
-          alongBox(
-            axis,
-            layerLaneToggleSlotWidth,
-            child: _foldTwirl(context),
-          ),
+          ?_foldTwirl(context),
         ],
       ),
     ),
@@ -753,58 +756,138 @@ class TimelineLayerControlsRow extends StatelessWidget {
     ),
   );
 
+  /// The box every button at the end of the name stands in — the link
+  /// badge, a reference row's file, an SE row's speaker, the camera's path
+  /// — the header graph's ([LaneGraphToggle]), so the five are one button.
+  ///
+  /// 🚨F-409 (유저 2026-10-19): 「카메라랑 참조레이어의 참조버튼. 얘네만 다른
+  /// 버튼 사용하는거 눈에띄는게 얘네만 누르면 버튼 실루엣이 강조색됨.
+  /// 같은버튼 공용화된거 쓰도록」. ↩️The reference and the path wore the box's
+  /// edge in an 18px box and lit while their window was open (the 09-11
+  /// mockup: beside the name a button had to read as a button, not as a
+  /// badge), and the badge stood in an 18px box of its own.
+  AppIconButtonBox get _nameButtonBox => railSlotBox(
+    axis,
+    slot: layerGraphSlotWidth,
+    across: 26,
+    iconSize: 15,
+  );
+
+  /// One of the buttons at the end of the name, `layer-[slug]` in
+  /// [_nameButtonBox] in its [look] — pressed under its own context, so a
+  /// popover it opens lands on it.
+  Widget _nameButton({
+    required String slug,
+    required String tooltip,
+    required _NameButtonLook look,
+    required void Function(BuildContext context)? onPressed,
+  }) => Builder(
+    builder: (context) => RailGlyphButton(
+      name: '$keyPrefix-layer-$slug-${layer.id}',
+      tooltip: tooltip,
+      size: _nameButtonBox,
+      glyph: look.glyph,
+      danger: look.danger,
+      onPressed: onPressed == null ? null : () => onPressed(context),
+    ),
+  );
+
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시」 — the badge is the entrance to the link window, a rail button
   /// like the reference button beside it.
   Widget? _linkBadge(ColorScheme colorScheme) {
     if (linkPartners.isEmpty) return null;
     final onOpen = onOpenLayerLinks;
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Builder(
-        builder: (context) => RailGlyphButton(
-          name: '$keyPrefix-layer-link-badge-${layer.id}',
-          tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
-          size: const AppIconButtonBox(width: 18, height: 18, iconSize: 14),
-          // The link reads in the accent whatever the button's own rest
-          // colour: it says the row is linked before anything is pressed.
-          glyph: RailIconGlyph(Icons.link, color: colorScheme.primary),
-          onPressed: onOpen == null
-              ? null
-              : () => onOpen(context, layerIdNow(context, layer.id)),
-        ),
+    return _nameButton(
+      slug: 'link-badge',
+      tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
+      // The link reads in the accent whatever the button's own rest
+      // colour: it says the row is linked before anything is pressed.
+      look: _NameButtonLook(
+        RailIconGlyph(Icons.link, color: colorScheme.primary),
       ),
+      onPressed: onOpen == null
+          ? null
+          : (context) => onOpen(context, layerIdNow(context, layer.id)),
     );
   }
 
   /// The reference button (유저 2026-09-11) at the name area's far end,
-  /// right before the fold slot (「레이어 이름 영역의 오른쪽정렬. 최종적으로
-  /// 폴더 접기 펼치기가 오른쪽정렬로 마지막에 있을텐데, 그거 왼쪽」) — so it
-  /// stands at one x on every reference row, whatever the row is called.
+  /// right before the fold where the row folds (「레이어 이름 영역의
+  /// 오른쪽정렬. 최종적으로 폴더 접기 펼치기가 오른쪽정렬로 마지막에 있을텐데,
+  /// 그거 왼쪽」; F-454) — so it stands at one x on every reference row,
+  /// whatever the row is called.
+  ///
+  /// The FILE glyph, icon only (미디어 배치 라운드 3~5 — 「아이콘만(이름은
+  /// 툴팁)」), and the press opens the row's reference popover instead of
+  /// baking at once. Not the chain: the chain already means "linked layer"
+  /// on this same label.
+  ///
+  /// A row that asks its file for more film than the file has wears
+  /// [AppColors.danger] (유저 2026-09-12: 「참조버튼을 빨갛게 만들고, 그걸
+  /// 누르면 팝오버 항목중 하나로 내용 띄우도록 하자」). ⛔The BUTTON says it,
+  /// not a new badge beside it: the slot is already there on every reference
+  /// row, and red on a control the user can press is what makes the popover
+  /// the place the detail lives.
   Widget? _referenceButton() {
     final onOpen = onOpenLayerReference;
     if (layer.mediaReference == null || onOpen == null) {
       return null;
     }
-    return LayerReferenceButton(
-      name: '$keyPrefix-layer-reference-${layer.id}',
-      isSourceShort: isReferenceSourceShort,
-      onOpen: (anchorContext) =>
-          onOpen(anchorContext, layerIdNow(anchorContext, layer.id)),
+    return _nameButton(
+      slug: 'reference',
+      tooltip: AppText.strings.tlLayerReference,
+      look: _NameButtonLook(
+        const RailIconGlyph(Icons.insert_drive_file_outlined),
+        danger: isReferenceSourceShort,
+      ),
+      onPressed: (context) => onOpen(context, layerIdNow(context, layer.id)),
     );
   }
 
-  /// The camera row's path button (I-89 ④), among the name's buttons — the
-  /// camera's row is never a reference row, so the two never stand
-  /// together.
+  /// An SE row's SPEAKER among the name's buttons (F-443, 유저 2026-10-23:
+  /// 「se레이어의 사운드버튼도 se레이어만 쓰는데 자리 고정으로 차지하는거
+  /// 비효율적이니 동일하게 위에서 말한 규칙적용해서 위치옮김」) — the room a
+  /// row's own button takes comes out of its name. ↩️It stood in a column
+  /// of its own after the eye, reserved and empty on every other row.
+  ///
+  /// A DOOR, not a toggle (R10 R3): it opens the SE mixer (mute, solo,
+  /// fader, pan) under itself, and SHOWS mute and solo, because a door has
+  /// to say what is behind it — solo in the accent, as a selection reads.
+  Widget? _soundButton(ColorScheme colorScheme) {
+    final onOpenMixer = onOpenLayerMixer;
+    if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
+    return _nameButton(
+      slug: 'mute',
+      tooltip: AppText.strings.layerAudioTitle,
+      look: _NameButtonLook(
+        RailIconGlyph(
+          layer.muted ? Icons.volume_off : Icons.volume_up,
+          color: isLayerSoloed ? colorScheme.primary : null,
+        ),
+      ),
+      onPressed: (context) =>
+          onOpenMixer(context, layerIdNow(context, layer.id)),
+    );
+  }
+
+  /// The camera row's path button (I-89 ④, 유저 2026-10-12: 「카메라
+  /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
+  /// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
+  /// it opens how the canvas shows the camera's path under itself — one value
+  /// for every open project, as the row's eye and its dim are. Among the
+  /// name's buttons — the camera's row is never a reference row, so the two
+  /// never stand together.
   Widget? _cameraPathButton() {
     final onOpen = onOpenCameraPath;
     if (!layer.kind.carriesCameraPath || onOpen == null) {
       return null;
     }
-    return CameraPathButton(
-      name: '$keyPrefix-layer-camera-path-${layer.id}',
-      onOpen: onOpen,
+    return _nameButton(
+      slug: 'camera-path',
+      tooltip: AppText.strings.cameraPath,
+      look: const _NameButtonLook(RailIconGlyph(Icons.route)),
+      onPressed: onOpen,
     );
   }
 
@@ -861,7 +944,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     fx: _fxSwitch(context),
     onion: _onionToggle(context, colorScheme),
     visibility: _visibilityToggle(),
-    mute: _muteButton(),
     opacity: _opacitySlot(),
     blend: _blendChip(context),
   );
@@ -967,29 +1049,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
     ),
   );
 
-  /// SE rows carry the mute speaker beside the eye (sounds silence,
-  /// waveforms keep displaying) — the mixer's door. Tight box: the M3
-  /// IconButton otherwise inflates its layout box to the 48px minimum tap
-  /// target, overflowing the rail row.
-  Widget? _muteButton() {
-    final onOpenMixer = onOpenLayerMixer;
-    if (layer.kind != LayerKind.se || onOpenMixer == null) return null;
-    final slot = sizeAlong(axis, along: layerMuteSlotWidth, across: 26);
-    return acrossBox(
-      axis,
-      26,
-      child: LayerMuteToggleButton(
-        name: '$keyPrefix-layer-mute-${layer.id}',
-        muted: layer.muted,
-        soloed: isLayerSoloed,
-        width: slot.width,
-        height: slot.height,
-        onOpenMixer: (anchorContext) =>
-            onOpenMixer(anchorContext, layerIdNow(anchorContext, layer.id)),
-      ),
-    );
-  }
-
   /// The camera row's slider drives the camera-view DIM opacity (unified
   /// layer controls); every row shrinks alike so the control columns stay
   /// aligned. Down a column the fader is centred in its slot, because the
@@ -1016,7 +1075,6 @@ class TimelineLayerControlsRow extends StatelessWidget {
       optionKeyPrefix: '$keyPrefix-layer-blend-option-',
       blendMode: layer.blendMode,
       isGroup: isGroup,
-      slotExtent: metrics.railColumns.blend,
       onBlendModeSelected: (mode) =>
           onSelected(layerIdNow(context, layer.id), mode),
     );
@@ -1060,16 +1118,33 @@ TimelineGroupFold timelineGroupFoldFor({
   required ValueChanged<LayerId>? onToggleLayerCollapsed,
   required ValueChanged<LayerId>? onToggleAttachGroup,
 }) {
+  final has = timelineRowFolds(row, layers);
   if (row.isFolder) {
     return (
-      has: true,
+      has: has,
       expanded: !row.layer.collapsed,
       onToggle: onToggleLayerCollapsed,
     );
   }
   return (
-    has: attachedLayersOf(row.layer.id, layers).isNotEmpty,
+    has: has,
     expanded: !collapsedAttachBaseIds.contains(row.layer.id),
     onToggle: onToggleAttachGroup,
   );
+}
+
+/// Whether [row] of [layers] folds rows of its own — a folder its members,
+/// an attach base the attach rows riding it: a twirl ends its name
+/// ([timelineGroupFoldFor]), which a sweep lays past the graph's button.
+bool timelineRowFolds(TimelineDisplayRow row, List<Layer> layers) =>
+    row.isFolder || attachedLayersOf(row.layer.id, layers).isNotEmpty;
+
+/// What a button at the end of a name looks like
+/// ([TimelineLayerControlsRow]): its glyph, and whether it warns — the
+/// reference button, red while its file is short of film.
+final class _NameButtonLook {
+  const _NameButtonLook(this.glyph, {this.danger = false});
+
+  final RailGlyph glyph;
+  final bool danger;
 }

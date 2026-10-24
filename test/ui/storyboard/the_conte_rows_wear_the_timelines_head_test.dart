@@ -221,7 +221,16 @@ void main() {
       expect(headOf(tester, 'conte').layer.id, const LayerId('a-conte'));
       expect(headOf(tester, 'conte').keyPrefix, 'storyboard');
 
-      for (final cell in const ['mark', 'fx', 'visibility', 'opacity']) {
+      // The sheet switch and the onion are the head's, one for every cut
+      // (I-89-Q22, 유저 2026-10-19).
+      for (final cell in const [
+        'mark',
+        'fx',
+        'visibility',
+        'opacity',
+        'timesheet',
+        'onion',
+      ]) {
         expect(
           named('storyboard-layer-$cell-a-conte'),
           findsOneWidget,
@@ -229,12 +238,7 @@ void main() {
         );
       }
       expect(named('storyboard-layer-blend-a-conte'), findsOneWidget);
-      for (final cell in const [
-        'timesheet',
-        'onion',
-        'fill-reference',
-        'link-badge',
-      ]) {
+      for (final cell in const ['fill-reference', 'link-badge']) {
         expect(
           named('storyboard-layer-$cell-a-conte'),
           findsNothing,
@@ -511,8 +515,8 @@ void main() {
     });
 
     testWidgets('🚨a sweep down a column reaches each seat\'s OWN row: the '
-        'eye paints all three, the fx the conte\'s alone, and the sheet '
-        'switch — which no conte row draws — none of them', (tester) async {
+        'eye paints all three, and the fx and the sheet switch the '
+        'conte\'s alone', (tester) async {
       final session = await pumpPanel(tester, film(withRiders: true));
       const se = 't1-s1';
       const group = ['a-over', 'a-conte', 'a-under'];
@@ -554,6 +558,12 @@ void main() {
           .single
           .onTimesheet;
       final seWas = seOnSheet();
+      expect(
+        sheetWas[1],
+        seWas,
+        reason: '⛔전제: the conte stands as the S row does, so a sweep that '
+            'reaches it moves it',
+      );
       await sweepDown('timesheet');
       expect(
         seOnSheet(),
@@ -562,7 +572,9 @@ void main() {
       );
       expect(
         [for (final id in group) row(session, id).onTimesheet],
-        sheetWas,
+        [sheetWas.first, seOnSheet(), sheetWas.last],
+        reason: 'the head\'s switch takes the swept value (I-89-Q22); a row '
+            'that rides wears none',
       );
     });
 

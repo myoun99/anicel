@@ -3,12 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/dialogs/display_settings_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/ui_scale.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
+
+import '../../helpers/boolean_dot_probe.dart';
 
 void main() {
   late EditorSessionManager session;
@@ -127,11 +130,11 @@ void main() {
     testWidgets('a press flips the live setting, and a second one puts it '
         'back', (tester) async {
       await pump(tester);
-      await tester.tap(find.byKey(row));
+      await tester.pressRingIn(find.byKey(row));
       await tester.pump();
       expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
       expect(shown(tester), isTrue);
-      await tester.tap(find.byKey(row));
+      await tester.pressRingIn(find.byKey(row));
       await tester.pump();
       expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
       expect(shown(tester), isFalse);
@@ -144,6 +147,84 @@ void main() {
       );
       await tester.pump();
       expect(shown(tester), isTrue);
+    });
+  });
+
+  // 🗣️I-54 (유저 2026-09-30): 「브러시커서, 펜 커서 …, 십자커서 이렇게 세개」 —
+  // in Preferences › Display, one for every drawing tool (I-54-Q1).
+  group('the drawing tools\' cursor', () {
+    Finder pill(DrawingCursor cursor) =>
+        find.byKey(ValueKey<String>('drawing-cursor-${cursor.name}'));
+    bool lit(WidgetTester tester, DrawingCursor cursor) =>
+        tester.widget<Pill>(pill(cursor)).selected;
+
+    setUp(() => AppInput.settings.value = const AppInputSettings());
+    tearDown(
+      () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
+    );
+
+    testWidgets('is a row of three, in the order the user named them, under '
+        'its own label', (tester) async {
+      await pump(tester);
+      expect(find.text(AppText.strings.drawingCursorLabel), findsOneWidget);
+      final strings = AppText.strings;
+      for (final (cursor, label) in [
+        (DrawingCursor.brush, strings.drawingCursorBrush),
+        (DrawingCursor.pen, strings.drawingCursorPen),
+        (DrawingCursor.crosshair, strings.drawingCursorCrosshair),
+      ]) {
+        expect(
+          find.descendant(of: pill(cursor), matching: find.text(label)),
+          findsOneWidget,
+          reason: cursor.name,
+        );
+      }
+      double left(DrawingCursor cursor) => tester.getTopLeft(pill(cursor)).dx;
+      expect(left(DrawingCursor.brush), lessThan(left(DrawingCursor.pen)));
+      expect(left(DrawingCursor.pen), lessThan(left(DrawingCursor.crosshair)));
+    });
+
+    // 🗣️유저 2026-10-16: 「기본값은 십자가로 하잿나」.
+    testWidgets('the crosshair is lit out of the box', (tester) async {
+      await pump(tester);
+      expect(lit(tester, DrawingCursor.crosshair), isTrue);
+      expect(lit(tester, DrawingCursor.brush), isFalse);
+      expect(lit(tester, DrawingCursor.pen), isFalse);
+    });
+
+    testWidgets('a press sets the live setting and lights that pill alone', (
+      tester,
+    ) async {
+      await pump(tester);
+      await tester.tap(pill(DrawingCursor.pen));
+      await tester.pump();
+      expect(AppInput.settings.value.drawingCursor, DrawingCursor.pen);
+      expect(lit(tester, DrawingCursor.pen), isTrue);
+      expect(lit(tester, DrawingCursor.crosshair), isFalse);
+
+      await tester.tap(pill(DrawingCursor.brush));
+      await tester.pump();
+      expect(AppInput.settings.value.drawingCursor, DrawingCursor.brush);
+      expect(lit(tester, DrawingCursor.brush), isTrue);
+      expect(lit(tester, DrawingCursor.pen), isFalse);
+    });
+
+    testWidgets('it touches nothing else the input settings hold', (
+      tester,
+    ) async {
+      AppInput.settings.value = const AppInputSettings(
+        touchDragOneFinger: CanvasTouchDragAction.flip,
+      );
+      await pump(tester);
+      await tester.tap(pill(DrawingCursor.brush));
+      await tester.pump();
+      expect(
+        AppInput.settings.value,
+        const AppInputSettings(
+          touchDragOneFinger: CanvasTouchDragAction.flip,
+          drawingCursor: DrawingCursor.brush,
+        ),
+      );
     });
   });
 }

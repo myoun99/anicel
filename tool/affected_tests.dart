@@ -52,6 +52,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'bash_executable.dart';
 import 'import_graph.dart';
 import 'master_check.dart';
 import 'native_engine_provenance.dart';
@@ -587,7 +588,10 @@ const kEngineSources = 'packages/';
 /// answer, asked rather than copied (the one answer — its header), or null
 /// when it gives none.
 List<String>? parityTests() {
-  final result = Process.runSync('bash', ['tool/native_parity_tests.sh']);
+  final result = Process.runSync(
+    bashExecutable,
+    ['tool/native_parity_tests.sh'],
+  );
   if (result.exitCode != 0) return null;
   final files = const LineSplitter()
       .convert(result.stdout as String)
@@ -980,7 +984,7 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
   final lines = File('${Directory.systemTemp.path}/affected-flaky-$pid.jsonl')
     ..writeAsStringSync('$line\n');
   try {
-    final said = Process.runSync('bash', [
+    final said = Process.runSync(bashExecutable, [
       'tool/run.sh', 'board_say', board, lines.path, //
     ]);
     if (said.exitCode != 0) {

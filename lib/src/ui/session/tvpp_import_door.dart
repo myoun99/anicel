@@ -31,7 +31,7 @@ import '../../services/import/raster_cel_import.dart';
 import '../../services/import/tvp_import_planner.dart';
 import '../../services/import/tvpp_raster_decoder.dart';
 import '../../services/persistence/folder_grant.dart'
-    show FileArrival, FolderPicker;
+    show FileArrival, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import 'media_pool.dart';
@@ -206,9 +206,14 @@ class TvppImportDoor {
   ///
   /// The result is a NEW UNSAVED project (no [ProjectFile.path]); the first
   /// save asks where the .anicel goes. Answers the accumulated warnings.
+  ///
+  /// A stop [isCancelled] reports is honoured after the cel in hand
+  /// ([MaterializeCancelled]): the session is in no tab yet, so the door
+  /// drops it and the app is where it was.
   Future<List<ImportWarning>> bake(
     TvppProjectRead read, {
     void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     assert(
       _file.path == null && !_project.historyManager.canUndo,
@@ -218,17 +223,26 @@ class TvppImportDoor {
     // The other candidate for last-thing-the-app-ever-did: decoding a
     // whole TVPaint project holds every cel it builds.
     MemoryBlackBox.begin('tvpp-import');
-    final warnings = [...read._warnings];
-    await _bakeEveryCel(read, warnings: warnings, onProgress: onProgress);
-    _registerSounds(read._audioPaths, warnings: warnings);
-    _projectDoor.warmAudioConforms();
-    _mediaPool.refreshMediaExistence();
-    // A conversion is unsaved by definition — nothing on disk holds it.
-    _file.markDirty();
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
-    MemoryBlackBox.end('tvpp-import');
-    return warnings;
+    try {
+      final warnings = [...read._warnings];
+      await _bakeEveryCel(
+        read,
+        warnings: warnings,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      _registerSounds(read._audioPaths, warnings: warnings);
+      _projectDoor.warmAudioConforms();
+      _mediaPool.refreshMediaExistence();
+      // A conversion is unsaved by definition — nothing on disk holds it.
+      _file.markDirty();
+      _changes.warmActiveCut();
+      _changes.notifyChanged();
+      return warnings;
+    } finally {
+      // A stop or a throw is not a kill, and an entry left open says one.
+      MemoryBlackBox.end('tvpp-import');
+    }
   }
 
   /// Every cel [read] planned, decoded out of its file and baked into the
@@ -244,6 +258,7 @@ class TvppImportDoor {
     TvppProjectRead read, {
     required List<ImportWarning> warnings,
     void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final work = _tvppBakeWork(read._plans);
     final pool = workersFor(Platform.numberOfProcessors, ceiling: 8);
@@ -284,6 +299,7 @@ class TvppImportDoor {
             bake: bake,
             warnings: warnings,
           );
+          MaterializeCancelled.throwIf(isCancelled);
         }
       }
     } finally {

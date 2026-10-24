@@ -29,6 +29,7 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
@@ -95,6 +96,8 @@ void main() {
 
   late Map<String, BitmapSurface> surfaces;
 
+  setUpAll(LayerBlendShader.load);
+
   setUpAll(() {
     final store = BrushFrameStore();
     for (final MapEntry(key: id, value: (color, points)) in cels.entries) {
@@ -159,13 +162,22 @@ void main() {
       row('pasteboard'),
       row('sparse', opacity: 0.5),
     ],
-    'ink and whole rows over each other': () => [
-      row('pasteboard'),
-      row('interior', blendMode: LayerBlendMode.multiply),
-      row('leftTop', opacity: 0.8),
-      row('rightBottom', opacity: 0.7, blendMode: LayerBlendMode.screen),
-      row('sparse', opacity: 0.5, blendMode: LayerBlendMode.add),
-    ],
+    // As the plan hands them over: each row in an advanced blend composed
+    // over what lies below it, painting normal. ↩️'ink and whole rows over
+    // each other' — those two rows were drawn whole, until such a row
+    // painted normal over its backdrop
+    // (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
+    'ink rows over each other through blends': () => composeOverTheirBackdrops(
+      [
+        row('pasteboard'),
+        row('interior', blendMode: LayerBlendMode.multiply),
+        row('leftTop', opacity: 0.8),
+        row('rightBottom', opacity: 0.7, blendMode: LayerBlendMode.screen),
+        row('sparse', opacity: 0.5, blendMode: LayerBlendMode.add),
+      ],
+      blendOf: (layer) => layer.blendMode,
+      paintedNormal: (layer) => layer.paintedNormal(),
+    ),
     'posed rows': () => [
       row('interior', pose: TransformPose(center: CanvasPoint(x: 78, y: 48.5))),
       row(
@@ -274,9 +286,38 @@ void main() {
     });
   });
 
-  testWidgets('🎯a row its ink alone would draw otherwise — an advanced '
-      'blend, a pose, a blur — is composed whole, and so is every row '
-      'through a camera that resamples', (tester) async {
+  testWidgets('🎯a row in an advanced blend is composed from its ink — the '
+      'source its blend reads paints normal', (tester) async {
+    await tester.runAsync(() async {
+      final rastered = <int>[];
+      debugOnWaitedSnapshot = (width, height) => rastered.add(width * height);
+      addTearDown(() => debugOnWaitedSnapshot = null);
+
+      await render(
+        scenes['ink rows over each other through blends']!(),
+        cameras['square over the canvas']!,
+      );
+
+      expect(rastered.take(5), [
+        for (final id in [
+          'pasteboard',
+          'interior',
+          'leftTop',
+          'rightBottom',
+          'sparse',
+        ])
+          surfaceInkWorldRect(surfaces[id]!).width *
+              surfaceInkWorldRect(surfaces[id]!).height,
+      ], reason: 'a row under multiply or screen rastered over its content');
+    });
+  });
+
+  // ↩️An advanced blend was the first case here, until such a row painted
+  // normal over its backdrop (a-blurred-folder-cut-by-the-view-moves-on-
+  // vulkan): it is composed from its ink now, the test above.
+  testWidgets('🎯a row its ink alone would draw otherwise — a pose, a blur '
+      '— is composed whole, and so is every row through a camera that '
+      'resamples', (tester) async {
     await tester.runAsync(() async {
       final rastered = <int>[];
       debugOnWaitedSnapshot = (width, height) => rastered.add(width * height);
@@ -287,17 +328,6 @@ void main() {
       const square = 'square over the canvas';
 
       for (final (scene, camera, areas) in [
-        (
-          'ink and whole rows over each other',
-          square,
-          [
-            ink('pasteboard'),
-            whole('interior'),
-            ink('leftTop'),
-            whole('rightBottom'),
-            ink('sparse'),
-          ],
-        ),
         ('posed rows', square, [whole('interior'), whole('rightBottom')]),
         (
           'a blur and a colour effect',

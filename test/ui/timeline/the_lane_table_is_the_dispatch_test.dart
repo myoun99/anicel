@@ -14,7 +14,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 /// The `switch (laneId)` every verb used to carry is a TABLE now: one lens
 /// per lane id, and the verbs dispatch over it. These pin the tables —
 /// every id reaches its own field and no other — and run the one shared
-/// keys-shift verb through all three families.
+/// keys-move verb through all three families.
 void main() {
   /// A lane edit that needs no value of the lane's type: it drops the key
   /// at [frame]. Every field below is keyed on a DIFFERENT frame, so a lens
@@ -174,17 +174,16 @@ void main() {
     });
   });
 
-  group('the one keys-shift verb runs through every table', () {
+  group('the one keys-move verb runs through every table', () {
     test('transform', () {
       final track = TransformTrack.empty().copyWith(
         rotation: PropertyTrack<double>().withKey(2, 30).withKey(9, 60),
       );
-      final shifted = transformLaneLens('rotation')!.keysShifted(
-        track,
+      final shifted = transformLaneLens('rotation')!.keysMoved(track, (
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 5,
-        frameDelta: 4,
-      )!;
+        to: (frame) => frame + 4,
+      ))!;
       expect(shifted.rotation.keys.keys.toSet(), {6, 9});
       expect(shifted.rotation.keyAt(6)!.value, 30);
     });
@@ -193,12 +192,11 @@ void main() {
       final keys = SeNameTagTrack.empty().copyWith(
         bold: PropertyTrack<bool>().withKey(1, true),
       );
-      final shifted = seNameTagLaneLens(seNameTagBoldLaneId)!.keysShifted(
-        keys,
+      final shifted = seNameTagLaneLens(seNameTagBoldLaneId)!.keysMoved(keys, (
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 5,
-        frameDelta: 2,
-      )!;
+        to: (frame) => frame + 2,
+      ))!;
       expect(shifted.bold.keys.keys.toSet(), {3});
     });
 
@@ -211,40 +209,26 @@ void main() {
           parameters: {'blurX': EffectParameter(track: keyed(4.0, at: 2))},
         ),
       ];
-      final shifted = effectLaneLens(x)!.keysShifted(
-        effects,
+      final shifted = effectLaneLens(x)!.keysMoved(effects, (
         rangeStartIndex: 0,
         rangeEndIndexExclusive: 5,
-        frameDelta: 3,
-      )!;
+        to: (frame) => frame + 3,
+      ))!;
       expect(shifted.single.parameterOf('blurX').track.keys.keys, [5]);
     });
 
-    test('a zero delta and an unknown lane are null on every table', () {
-      // Keyed IN the range: a zero delta must answer null rather than the
-      // unchanged track, and only the guard says so once keys are there.
-      final keyedScale = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
-      );
+    test('an unknown lane is null on every table', () {
       for (final call in [
-        () => transformLaneLens('scale')!.keysShifted(
-          keyedScale,
+        () => transformLaneLens('nope')?.keysMoved(TransformTrack.empty(), (
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 5,
-          frameDelta: 0,
-        ),
-        () => transformLaneLens('nope')?.keysShifted(
-          TransformTrack.empty(),
+          to: (frame) => frame + 1,
+        )),
+        () => seNameTagLaneLens('nope')?.keysMoved(SeNameTagTrack.empty(), (
           rangeStartIndex: 0,
           rangeEndIndexExclusive: 5,
-          frameDelta: 1,
-        ),
-        () => seNameTagLaneLens('nope')?.keysShifted(
-          SeNameTagTrack.empty(),
-          rangeStartIndex: 0,
-          rangeEndIndexExclusive: 5,
-          frameDelta: 1,
-        ),
+          to: (frame) => frame + 1,
+        )),
       ]) {
         expect(call(), isNull);
       }

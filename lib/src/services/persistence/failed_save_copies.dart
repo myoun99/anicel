@@ -13,7 +13,7 @@ typedef FailedSaveCopy = ({
   DateTime savedAt,
 });
 
-/// Every failed copy this run holds — what 「실패본 백업…」 offers.
+/// Every failed copy this run holds — what 「실패본 백업」 offers.
 ///
 /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file, after Q2):
 /// 「실패하면 앱컨테이너에 같은파일로 계속 증분저장? 아무튼 쌓이고, 유저가

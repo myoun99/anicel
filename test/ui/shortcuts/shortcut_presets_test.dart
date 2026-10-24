@@ -371,21 +371,21 @@ void main() {
         expect(bindings.conflictedActionIds, isEmpty);
       });
 
-      test('${preset.name} names only actions the registry has', () {
+      test('${preset.name} has rows only for actions the registry has', () {
         final registry = {
           for (final definition in editorActionDefinitions) definition.id,
         };
         expect(
-          presetNamedActionIds(preset).where((id) => !registry.contains(id)),
+          presetRows(preset).keys.where((id) => !registry.contains(id)),
           isEmpty,
         );
       });
     }
 
     test('⛔fixture premise: the program\'s preset does name actions', () {
-      expect(presetNamedActionIds(ShortcutPreset.clipStudio), isNotEmpty);
-      expect(presetNamedActionIds(ShortcutPreset.tvpaint), isNotEmpty);
-      expect(presetNamedActionIds(ShortcutPreset.anicel), isEmpty);
+      expect(presetRows(ShortcutPreset.clipStudio), isNotEmpty);
+      expect(presetRows(ShortcutPreset.tvpaint), isNotEmpty);
+      expect(presetRows(ShortcutPreset.anicel), isEmpty);
     });
 
     test('a settings file\'s word finds its preset, and a word no build '
@@ -898,11 +898,14 @@ void main() {
       // A row with no key under a preset is not written there.
       final english = sectionsOf(shortcutTableMarkdown(AppLanguage.en));
       const screen = 'Blend: Screen';
-      expect(rowOf(english['Anicel']!, screen), contains('<kbd>F8</kbd>'));
+      // I-31: the list's first twelve take F1–F12 in its order — Clip
+      // Studio's since brush-fidelity-Q5, where linear burn and subtract
+      // stand before screen. ↩️It was F8 in the list before them.
+      expect(rowOf(english['Anicel']!, screen), contains('<kbd>F10</kbd>'));
       expect(english['Clip Studio based'], isNot(contains('| $screen |')));
       // A key that is another one on a Mac is written both ways.
       expect(
-        rowOf(clipStudio, '다른 이름으로 저장…'),
+        rowOf(clipStudio, '다른 이름으로 저장'),
         contains('<kbd class="k-mac">⌥⇧S</kbd>'),
       );
     });

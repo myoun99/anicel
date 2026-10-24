@@ -178,17 +178,27 @@ class VisibilitySolo {
     return asSaved;
   }
 
-  /// [layers] with each eye as the USER set it — the solo's flips put back,
-  /// as the file records them ([projectAsSavedWithoutSolo]). Identity with
-  /// no solo up.
+  /// [layers] with each eye as an EDIT sees it: on where the user switched
+  /// it on, and on where the screen shows it. Identity with no solo up.
   ///
   /// 🚨F-399 (유저 2026-10-18): 「활성레이어 솔로 상태라도 여러 행의 블록
   /// 선택하고 변형작동시 가능하게하도록. 지금 현재 서있는 레이어만
   /// 적용되는듯」. A pixel verb acts on the rows that are switched on
-  /// (유저 08-27), and the solo switched none of them for an edit: it is
+  /// (유저 08-27), and the solo switched none of them off for an edit: it is
   /// display (F-125: 「진짜 표시용만 바꿀뿐」), and the file keeps the eyes
-  /// from before it (F-153). So an edit asks the eyes the file does.
-  List<Layer> layersAsSet(List<Layer> layers) {
+  /// from before it (F-153). So a row the solo hides is on where the file
+  /// has it on.
+  ///
+  /// 🚨F-458 (유저 2026-10-23): 「비지블 off인 레이어에서 활성레이어솔로인
+  /// 상태라도 색변환이나 그런 보여야만 할수있는 조작관련 가능하게. 왜냐면
+  /// 보이고있는거니까」. Nor is a row the solo SHOWS off for an edit — the
+  /// one you stand on and the folders above it, whatever the user had left
+  /// their eyes at: the screen shows it, so an edit reaches it.
+  /// ↩️F-399 asked the file's eye there too — 「a row the solo shows only
+  /// because you stand on it is not one an edit reaches」, the session's
+  /// own call (10-21) — so the row you were looking at refused its colour
+  /// edit.
+  List<Layer> layersAsAnEditSees(List<Layer> layers) {
     final snapshot = _visibilitySoloSnapshot;
     if (snapshot == null) {
       return layers;
@@ -196,8 +206,8 @@ class VisibilitySolo {
     return [
       for (final layer in layers)
         switch (snapshot[layer.id]) {
-          null => layer,
-          final wasVisible => _eyeRestoredTo(wasVisible)(layer),
+          true => _eyeRestoredTo(true)(layer),
+          _ => layer,
         },
     ];
   }
@@ -205,7 +215,8 @@ class VisibilitySolo {
   /// What 「put this row's eye back to what the snapshot remembers」 MEANS,
   /// spelled once. [exitVisibilitySolo] writes it into the session,
   /// [projectAsSavedWithoutSolo] into the project being saved and
-  /// [layersAsSet] into the rows an edit asks — three sinks, one law.
+  /// [layersAsAnEditSees] into the rows an edit asks, where it remembers
+  /// them on — three sinks, one law.
   Layer Function(Layer) _eyeRestoredTo(bool visible) => (layer) =>
       layer.isVisible == visible ? layer : layer.copyWith(isVisible: visible);
 

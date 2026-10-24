@@ -88,10 +88,13 @@ class _BrushEditShapeShow implements ShapeShow {
     // The overlay shows one shape: an area asked for puts away a stroke.
     _dropTheStroke();
     _wanted = area;
+    // A shape being laid has its frame asked already, and the same shape
+    // asked again asks for nothing — not a frame: the stamp's ghost is
+    // asked again on every rebuild of its panel.
     if (_laying == null && _shown?.area.shape != area.shape) {
       _laying = _begin(area);
+      _askFrame();
     }
-    _askFrame();
   }
 
   @override
@@ -209,7 +212,6 @@ class _BrushEditShapeShow implements ShapeShow {
   _ShapeLaying _begin(ShapeArea area) => _ShapeLaying(
     area,
     base: _state.widget.celNow(),
-    selection: _state.widget.selectionRegion,
     layerId: _state.widget.layerId,
     frameId: _state.widget.frameId,
   );
@@ -371,7 +373,6 @@ class _ShapeLaying {
   _ShapeLaying(
     this.area, {
     required this.base,
-    required this.selection,
     required this.layerId,
     required this.frameId,
   }) : _pieces = area.pieces().iterator,
@@ -381,7 +382,6 @@ class _ShapeLaying {
 
   /// The cel as the shape found it — what its tiles were made against.
   final BitmapSurface base;
-  final CanvasSelectionRegion? selection;
   final LayerId layerId;
   final FrameId frameId;
   final Iterator<BrushDab> _pieces;
@@ -416,7 +416,8 @@ class _ShapeLaying {
       surface: _laidOn,
       dabs: [dab],
       blendMode: area.blend,
-      selection: selection,
+      // Cut already, by whoever made the pieces ([ShapeArea]).
+      selection: null,
       layerId: layerId,
       frameId: frameId,
     );

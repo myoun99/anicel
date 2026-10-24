@@ -1,4 +1,3 @@
-import 'timeline/layer_name_commands.dart';
 import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
@@ -25,9 +24,9 @@ import 'timeline/layer_label_controls.dart'
 ///
 /// One of the bar's four nouns ([CommandPill]): the name cell writes 「컷」
 /// and opens the full cut command set, and the one verb outside the menu is
-/// `＋`, whose top band offers the other ways of making one (duplicate,
-/// linked). The cut used to be folded into the layer group as "행"; the user
-/// split it back out because 「오히려 나누는 게 알기 쉬울 것 같아서」.
+/// `＋`, which makes a cut. The cut used to be folded into the layer group
+/// as "행"; the user split it back out because 「오히려 나누는 게 알기 쉬울
+/// 것 같아서」.
 ///
 /// ⚠️The pill is mounted on BOTH bars but cut editing is a storyboard job
 /// (유저 2026-08-13: 「컷 편집은 스토리보드패널에서 하는거고」) — this pill
@@ -139,65 +138,37 @@ Future<void> landCanvasAdjust(
   }
 }
 
-/// The band over the cut pill's ＋ — the ways of making a cut.
+/// What the cut pill's ＋ does when pressed — make a cut where it stands —
+/// or null where it has no place to put one ([CutPlacement.canCreateCut],
+/// #18): the button and its key read this one answer.
 ///
-/// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
-/// 버튼같은거나」 — every row here and in [cutMenuEntries] IS an action: it
-/// wears that action's name, names the action for its key, and a key
-/// presses the row itself ([pressFlyoutRow]). ⛔So these two lists are
-/// functions, not methods of the pill's state: the shell builds the same
-/// rows to press one.
-List<PanelFlyoutEntry> cutAddEntries(EditorSessionManager session) {
-  return [
-    PanelFlyoutHeader(AppText.strings.cutAddCut),
-    PanelFlyoutItem(
-      keyValue: 'add-cut-new',
-      label: editorActionLabel(EditorActionIds.cutNew),
-      shortcuts: const [EditorActionIds.cutNew],
-      icon: Icons.add,
-      // The ＋'s own sentence ([CutPlacement.canCreateCut], #18). ↩️The row
-      // was lit wherever the band opened, and where the verb had no place
-      // to put a cut it took the press and did nothing.
-      enabled: session.cutPlacement.canCreateCut,
-      onSelected: session.cutVerbs.createCut,
-    ),
-    // ⛔No duplicate here — 🗣️F-379 (유저 2026-10-17): 「컷 추가
-    // 팝오버버튼의 컷 복제는 컷 버튼에 중복존재하니 삭제」. The cut button's
-    // menu keeps it.
-    // 겸용컷: same pictures, own timing. It only ever lived in the top
-    // menu bar, and it belongs beside the other ways of making a cut.
-    // ↩️It borrowed the menu bar's wording by id; the id is its action's.
-    PanelFlyoutItem(
-      keyValue: 'add-cut-create-linked',
-      label: editorActionLabel(EditorActionIds.cutCreateLinked),
-      shortcuts: const [EditorActionIds.cutCreateLinked],
-      icon: Icons.link,
-      enabled: session.activeCutOrNull != null,
-      onSelected: session.cutVerbs.createLinkedCutFromActiveCut,
-    ),
-  ];
-}
+/// 🗣️F-455 (유저 2026-10-23): 「컷 종류버튼의 새 컷은 +버튼이랑 겹치니
+/// 삭제 … 종류버튼에 들어갈거 없으니 잠정적으로 삭제. 필요해질때 다시 만듬」
+/// — the ＋ wears no band. ↩️Its band offered 새 컷 (the ＋'s own verb a
+/// second time) and 겸용컷 만들기, which went to [cutMenuEntries].
+VoidCallback? newCutPress(EditorSessionManager session) =>
+    session.cutPlacement.canCreateCut ? session.cutVerbs.createCut : null;
 
 /// The cut pill's menu as it opens. [context] is where a row's window opens
 /// from — the pill's, or the shell's when a key presses the row.
+///
+/// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
+/// 버튼같은거나」 — every row here IS an action: it wears that action's
+/// name, names the action for its key, and a key presses the row itself
+/// ([pressFlyoutRow]). ⛔So this list is a function, not a method of the
+/// pill's state: the shell builds the same rows to press one.
+///
+/// ⛔🗣️F-455 (유저 2026-10-23) took five rows out:
+/// - 컷 이름 변경 — 「공용알약꺼 쓰거나 더블클릭으로 되니 삭제」;
+/// - 컷 복제 — 「공용알약에 복제 버튼 만들고 … 컷복제 삭제」;
+/// - 컷 왼쪽/오른쪽으로 — 「필요시 공용알약에서 구현할것임」;
+/// - 카메라 AE 키프레임 복사 — 「다른 카드에서 선택한 행 ae복사(애니메이션
+///   행의 경우 트랜스폼이나 노출같은거 다 포함해서)로 폭넓게 구현할것임」.
 List<PanelFlyoutEntry> cutMenuEntries(
   BuildContext context,
   EditorSessionManager session,
 ) {
   return [
-    PanelFlyoutItem(
-      keyValue: 'rename-cut-button',
-      label: editorActionLabel(EditorActionIds.cutRename),
-      shortcuts: const [EditorActionIds.cutRename],
-      icon: Icons.edit_outlined,
-      // ⛔The free function is the home, and it says why at its own head:
-      // the pill is mounted on BOTH frame panels and a private `State`
-      // method is reachable from exactly one of them. A copy here had
-      // already drifted — it checked `mounted` where the other checks
-      // `context.mounted`.
-      onSelected: () =>
-          unawaited(renameActiveCutWithDialog(context, session)),
-    ),
     PanelFlyoutItem(
       keyValue: 'edit-cut-note-button',
       label: editorActionLabel(EditorActionIds.cutEditNote),
@@ -226,8 +197,8 @@ List<PanelFlyoutEntry> cutMenuEntries(
       icon: Icons.tune,
       onSelected: () => unawaited(_editCutSettings(context, session)),
     ),
-    // ↩️It wore the window's title, 「Canvas size」; the action's name ends
-    // in the 「…」 every row that opens a window ends in.
+    // ↩️It wore the window's title, 「Canvas size」; it wears its action's
+    // name, as every row does.
     PanelFlyoutItem(
       keyValue: 'resize-cut-canvas-button',
       label: editorActionLabel(EditorActionIds.cutCanvasSize),
@@ -237,12 +208,16 @@ List<PanelFlyoutEntry> cutMenuEntries(
           unawaited(_resizeActiveCutCanvas(context, session)),
     ),
     const PanelFlyoutDivider(),
+    // 겸용컷: same pictures, own timing — 🗣️F-455: 「종류버튼의 겸용컷
+    // 만들기는 컷 버튼으로 옮김. 겸용컷 변환 위」. ↩️It stood in the ＋'s
+    // band, beside the other ways of making a cut.
     PanelFlyoutItem(
-      keyValue: 'duplicate-cut-button',
-      label: editorActionLabel(EditorActionIds.cutDuplicate),
-      shortcuts: const [EditorActionIds.cutDuplicate],
-      icon: Icons.content_copy,
-      onSelected: session.cutVerbs.duplicateActiveCut,
+      keyValue: 'add-cut-create-linked',
+      label: editorActionLabel(EditorActionIds.cutCreateLinked),
+      shortcuts: const [EditorActionIds.cutCreateLinked],
+      icon: Icons.link,
+      enabled: session.activeCutOrNull != null,
+      onSelected: session.cutVerbs.createLinkedCutFromActiveCut,
     ),
     PanelFlyoutItem(
       keyValue: 'convert-cut-to-linked-button',
@@ -253,39 +228,12 @@ List<PanelFlyoutEntry> cutMenuEntries(
       onSelected: () =>
           unawaited(showConvertActiveCutToLinked(context, session)),
     ),
-    const PanelFlyoutDivider(),
-    PanelFlyoutItem(
-      keyValue: 'move-cut-left-button',
-      label: editorActionLabel(EditorActionIds.cutMoveLeft),
-      shortcuts: const [EditorActionIds.cutMoveLeft],
-      icon: Icons.chevron_left,
-      enabled: session.cutVerbs.canMoveActiveCutLeft,
-      onSelected: session.cutVerbs.moveActiveCutLeft,
-    ),
-    PanelFlyoutItem(
-      keyValue: 'move-cut-right-button',
-      label: editorActionLabel(EditorActionIds.cutMoveRight),
-      shortcuts: const [EditorActionIds.cutMoveRight],
-      icon: Icons.chevron_right,
-      enabled: session.cutVerbs.canMoveActiveCutRight,
-      onSelected: session.cutVerbs.moveActiveCutRight,
-    ),
     // NO push/pull here any more: it is ONE verb aimed at whatever is
     // selected, so it lives as ONE button pair on the rail's toolbar
     // (TimelineShiftButtons) rather than a cut-flavoured copy in this
     // menu. The cut axis is still what it commits when a cut row is what
     // the selection is on.
-    const PanelFlyoutDivider(),
-    // Relocated from the retired camera panel to the top menu bar
-    // (R11-⑤), and now to the cut it bakes: the active cut's camera work
-    // as AE keyframe data on the clipboard.
-    PanelFlyoutItem(
-      keyValue: 'copy-cut-ae-camera-button',
-      label: editorActionLabel(EditorActionIds.cutCopyAeCamera),
-      shortcuts: const [EditorActionIds.cutCopyAeCamera],
-      icon: Icons.videocam_outlined,
-      onSelected: () => copyCameraAeKeyframes(context, session),
-    ),
+    //
     // ⛔The cut DELETE is in NEITHER place now. It left this menu for the
     // pill (① 유저 2026-08-12), and left the pill for the one shared
     // delete (T24 유저 2026-08-13) — see the build method for why the
@@ -320,21 +268,17 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         // comment is a match of its own.)
         StrapIconButton(
           buttonKey: 'new-cut-button',
-          menuKey: 'new-cut-menu',
           // `add` and not `add_photo_alternate`: which noun it adds is what
           // the pill around it already says, and 「＋가 있는 모든 곳」 wears
           // the same glyph (유저 확정).
           icon: Icons.add,
           accent: true,
-          // 🗣️I-40: this button IS the New cut action's entrance — as its
-          // band's first row is — so it wears that action's name and shows
-          // its key (I-19).
+          // 🗣️I-40: this button IS the New cut action's entrance, so it
+          // wears that action's name and shows its key (I-19). No band
+          // ([newCutPress] has why).
           tooltip: editorActionLabel(EditorActionIds.cutNew),
           shortcuts: const [EditorActionIds.cutNew],
-          onPressed: session.cutPlacement.canCreateCut
-              ? session.cutVerbs.createCut
-              : null,
-          entriesBuilder: () => cutAddEntries(session),
+          onPressed: newCutPress(session),
         ),
         // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
         // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.

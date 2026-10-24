@@ -223,6 +223,8 @@ class SessionRowButtonPresses {
     plot: plotLaneGraph,
     resize: resizeLaneGraph,
     enlarge: enlargeLaneGraph,
+    pen: penLaneGraph,
+    transformBox: transformBoxLaneGraph,
   );
 
   /// A group's HEADER GRAPH on or off, by the group's key — on every use of
@@ -296,6 +298,31 @@ class SessionRowButtonPresses {
   /// no undo.
   void plotLaneGraph(String groupKey, LaneGraphMode mode) =>
       _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(mode: mode));
+
+  /// A group's open graph's PEN taken up or put down (I-3 ④), on every use
+  /// of its row — what the pressed one has, all of them turned to the
+  /// other. View state, no undo.
+  void penLaneGraph(String groupKey) {
+    final pressed = session.railView.laneGraphs.value.open[groupKey];
+    if (pressed == null) {
+      return;
+    }
+    _reshapeLaneGraph(groupKey, (graph) => graph.copyWith(pen: !pressed.pen));
+  }
+
+  /// A group's open graph's TRANSFORM BOX shown or hidden (AE's 「Show
+  /// Transform Box」), on every use of its row — what the pressed one has,
+  /// all of them turned to the other. View state, no undo.
+  void transformBoxLaneGraph(String groupKey) {
+    final pressed = session.railView.laneGraphs.value.open[groupKey];
+    if (pressed == null) {
+      return;
+    }
+    _reshapeLaneGraph(
+      groupKey,
+      (graph) => graph.copyWith(transformBox: !pressed.transformBox),
+    );
+  }
 
   /// How far a group's open graph stands along the rail — its grip's — on
   /// every use of its row. View state, no undo.
@@ -392,7 +419,12 @@ class SessionRowButtonPresses {
       //
       // ↩️F-169: that rule is gone (nothing stands inside a shut group), so
       // this hand-off is what keeps the fold from shutting over you.
-      session.handOffCurrentRowOnAttachFold(baseId);
+      //
+      // Every use the fold shuts hands on, as every use folds (F-302) — the
+      // conte pressed in one cut shuts the group in the cut you stand in.
+      for (final use in session.rowsFoldingWith(baseId)) {
+        session.handOffCurrentRowOnAttachFold(use);
+      }
     }
     // F-302: every use of a linked base folds its group with it.
     session.folders.toggleAttachGroup(baseId);

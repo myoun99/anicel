@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
 /// 🚨A PANEL IS BUILT ONLY WHILE IT SHOWS (유저 2026-10-14: 「한번이라도 열린
 /// 뒤? 열려있을때만 지어지는게 맞는구조 아닌가?」 · 「이건 모든 패널
@@ -12,7 +15,6 @@ void main() {
   Widget group({
     required String activeTabId,
     required ValueChanged<String> onTabSelected,
-    required bool cachesContent,
     List<Widget>? trailing,
     void Function()? onHeavyBuilt,
   }) {
@@ -24,7 +26,6 @@ void main() {
               id: 'heavy',
               label: 'Heavy',
               icon: Icons.timeline,
-              cachesContent: cachesContent,
               builder: (context) {
                 onHeavyBuilt?.call();
                 return const _CounterBox(key: ValueKey('heavy'));
@@ -45,47 +46,43 @@ void main() {
     );
   }
 
-  testWidgets('a tab put behind another is not in the tree, cached or not — '
-      'what it held goes with it', (tester) async {
-    for (final cachesContent in const [false, true]) {
-      var active = 'heavy';
-      await tester.pumpWidget(
-        StatefulBuilder(
-          builder: (context, setState) => group(
-            activeTabId: active,
-            onTabSelected: (id) => setState(() => active = id),
-            cachesContent: cachesContent,
-          ),
+  testWidgets('a tab put behind another is not in the tree — what it held '
+      'goes with it', (tester) async {
+    var active = 'heavy';
+    await tester.pumpWidget(
+      StatefulBuilder(
+        builder: (context, setState) => group(
+          activeTabId: active,
+          onTabSelected: (id) => setState(() => active = id),
         ),
-      );
-      await tester.tap(find.byKey(const ValueKey('heavy')));
-      await tester.pump();
-      expect(find.text('count: 1'), findsOneWidget);
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('heavy')));
+    await tester.pump();
+    expect(find.text('count: 1'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey<String>('panel-tab-light')));
-      await tester.pumpAndSettle();
-      expect(find.text('light-content'), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey('heavy'), skipOffstage: false),
-        findsNothing,
-        reason: 'cachesContent: $cachesContent — not offstage, not built',
-      );
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-light')));
+    await tester.pumpAndSettle();
+    expect(find.text('light-content'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('heavy'), skipOffstage: false),
+      findsNothing,
+      reason: 'not offstage, not built',
+    );
 
-      // What must outlive a switch lives above the group; the panel's own
-      // State is made again.
-      await tester.tap(find.byKey(const ValueKey<String>('panel-tab-heavy')));
-      await tester.pumpAndSettle();
-      expect(find.text('count: 0'), findsOneWidget);
-      expect(
-        find.text('light-content', skipOffstage: false),
-        findsNothing,
-      );
-      await tester.pumpWidget(const SizedBox());
-    }
+    // What must outlive a switch lives above the group; the panel's own
+    // State is made again.
+    await tester.tap(find.byKey(const ValueKey<String>('panel-tab-heavy')));
+    await tester.pumpAndSettle();
+    expect(find.text('count: 0'), findsOneWidget);
+    expect(
+      find.text('light-content', skipOffstage: false),
+      findsNothing,
+    );
   });
 
-  testWidgets('an open cached tab is built once however often its group is '
-      'built again, and once more each time it opens (R12-①)', (tester) async {
+  testWidgets('an open tab is built once however often its group is built '
+      'again, and once more each time it opens (R12-①)', (tester) async {
     var heavyBuilds = 0;
     var active = 'heavy';
     var marks = 0;
@@ -97,7 +94,6 @@ void main() {
           return group(
             activeTabId: active,
             onTabSelected: (id) => setState(() => active = id),
-            cachesContent: true,
             // Something of the group's own that changes, so the group is
             // built again around the open tab.
             trailing: [Text('mark $marks')],
@@ -122,14 +118,94 @@ void main() {
     expect(heavyBuilds, 2, reason: 'opened again, so built again');
   });
 
-  testWidgets('a cached tab is handed back only to itself, and only while it '
+  testWidgets('an open tab is built again in another language, program or '
+      'notation, and keeps its State', (tester) async {
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    var heavyBuilds = 0;
+    await tester.pumpWidget(
+      group(
+        activeTabId: 'heavy',
+        onTabSelected: (_) {},
+        onHeavyBuilt: () => heavyBuilds += 1,
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('heavy')));
+    await tester.pump();
+    expect(heavyBuilds, 1);
+
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ja,
+    );
+    await tester.pump();
+    expect(
+      heavyBuilds,
+      2,
+      reason: '🚨nothing above it is rebuilt here — the group hears it',
+    );
+    expect(find.text('count: 1'), findsOneWidget, reason: 'built, not made');
+
+    AppText.settings.value = AppText.settings.value.copyWith(
+      notationLanguage: AppLanguage.ko,
+    );
+    await tester.pump();
+    expect(heavyBuilds, 3, reason: 'the notation reprints a sheet');
+  });
+
+  testWidgets('an open tab stands on the floor it states now, its content '
+      'handed back as built', (tester) async {
+    var builds = 0;
+    Widget floored(double minWidth) => MaterialApp(
+      home: Scaffold(
+        body: EditorPanelTabs(
+          tabs: [
+            EditorPanelTab(
+              id: 'colour',
+              label: 'Colour',
+              icon: Icons.palette,
+              // Measured in words at the OS's text size, as the colour
+              // panel's is.
+              minContentWidth: minWidth,
+              builder: (context) {
+                builds += 1;
+                return const _CounterBox(key: ValueKey('colour'));
+              },
+            ),
+          ],
+          activeTabId: 'colour',
+          onTabSelected: (_) {},
+        ),
+      ),
+    );
+    double floor() => tester
+        .widget<OverflowScrollers>(find.byType(OverflowScrollers))
+        .minWidth;
+
+    await tester.pumpWidget(floored(300));
+    await tester.tap(find.byKey(const ValueKey('colour')));
+    await tester.pump();
+    expect(floor(), 300);
+
+    await tester.pumpWidget(floored(600));
+    expect(
+      floor(),
+      600,
+      reason: '🚨the floor the tab states now — the kept one overflowed',
+    );
+    expect(builds, 1, reason: 'the content is handed back as built');
+    expect(
+      find.text('count: 1'),
+      findsOneWidget,
+      reason: 'and kept its State',
+    );
+  });
+
+  testWidgets('an open tab is handed back only to itself, and only while it '
       'is built for the same thing (I-7)', (tester) async {
     Widget cachedPair(String activeTabId, Object identity, String said) {
       EditorPanelTab tab(String id) => EditorPanelTab(
         id: id,
         label: id,
         icon: Icons.timeline,
-        cachesContent: true,
         builder: (context) => Text('$id for $said'),
       ).builtFor(identity);
       return MaterialApp(

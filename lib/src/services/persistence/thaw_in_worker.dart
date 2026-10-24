@@ -12,9 +12,10 @@ import '../bitmap_surface_geometry.dart';
 import 'brush_drawing_binary_codec.dart';
 import 'scratch_file.dart';
 
-/// [blob] inflated, parsed and laid into tile blocks on a worker isolate,
-/// from the allocator [blocks] names — the main isolate's
-/// ([BitmapTile.blocks]) — so all that is left there is adopting them
+/// [blob] inflated, parsed, put behind the wall of [reach] ([_behindReach])
+/// and laid into tile blocks on a worker isolate, from the allocator
+/// [blocks] names — the main isolate's ([BitmapTile.blocks]) — so all that
+/// is left there is adopting them standing behind [reach]
 /// ([laidCelSurface]).
 ///
 /// 🔬On the UI thread (card `cel-thaw-holds-the-ui-thread`, a profile build,
@@ -23,13 +24,63 @@ import 'scratch_file.dart';
 ///
 /// The bytes cross as a [TransferableTypedData], the parking path's way
 /// (`compressAnicelPayloadInWorker` says why).
-Future<AnicelLaidCel> layCelInWorker(AnicelCelBlob blob, TileBlocks blocks) {
+Future<AnicelLaidCel> layCelInWorker(
+  AnicelCelBlob blob,
+  TileBlocks blocks, {
+  required PasteboardReach reach,
+}) {
   final sent = TransferableTypedData.fromList([blob.bytes]);
   return onAWorker(
     () => layCelEntry(
-      AnicelCelBlob(sent.materialize().asUint8List()).decode(),
+      _behindReach(
+        AnicelCelBlob(sent.materialize().asUint8List()).decode(),
+        reach,
+      ),
       tileBlocksHere(blocks),
     ),
+  );
+}
+
+/// [entry] behind the wall of [reach] — its tiles and its texts' plates cut
+/// as [surfaceBehindReach] cuts a picture's, a file's picture left whole
+/// ([tileBytesBehindWall]) — made of its bytes before they are laid: a
+/// tile the wall keeps whole is laid as it came, and only one it crosses is
+/// copied. Itself at [PasteboardReach.whole], the wall bytes laid as they
+/// are stand behind ([laidCelSurface]).
+///
+/// 🗣️Card `a-thawed-cel-is-walled-again-on-the-ui-thread`: kept bytes carry
+/// no wall (the file's format), so a kept cel was laid with none and walled
+/// on the main isolate — every tile the wall crosses copied there again, on
+/// every thaw. 🔬S5_BA (2026-10-22, 122 cels, `flutter test`): with the
+/// pasteboard off 61 ms and 1,186 tiles, up to 2 ms a cel — some 26 ms of a
+/// frame whose 13 rows thaw at once.
+///
+/// ⛔Not by way of a surface ([AnicelCelEntry.toSurface], then back): every
+/// tile would be copied twice more on the worker, and the copies were most
+/// of a thaw's time.
+AnicelCelEntry _behindReach(AnicelCelEntry entry, PasteboardReach reach) {
+  if (reach == PasteboardReach.whole) {
+    return entry;
+  }
+  final wall = entry.canvasSize.pasteboardAt(reach).region;
+  List<AnicelTileRecord> behind(List<AnicelTileRecord> tiles) =>
+      tileBytesBehindWall(
+        tiles,
+        wall: wall,
+        laid: entry.laidBounds,
+        tileSize: entry.tileSize,
+      );
+  return AnicelCelEntry(
+    key: entry.key,
+    canvasSize: entry.canvasSize,
+    tileSize: entry.tileSize,
+    tiles: behind(entry.tiles),
+    texts: [
+      for (final text in entry.texts)
+        (id: text.id, content: text.content, plate: behind(text.plate)),
+    ],
+    photos: entry.photos,
+    laidBounds: entry.laidBounds,
   );
 }
 
@@ -50,7 +101,8 @@ final Turns celThawTurns = Turns(
 /// [blob]'s picture behind [reach] — the wall of the store it is kept in —
 /// as it [was] and as [move] leaves it ([translateBitmapSurface]), worked
 /// out on a worker: both laid into the main isolate's tile blocks
-/// ([BitmapTile.blocks]) for it to adopt ([laidCelSurface]). [moved] is null
+/// ([BitmapTile.blocks]) for it to adopt standing behind [reach]
+/// ([laidCelSurface]). [moved] is null
 /// for a move of whole tiles ([movesWholeTiles]): made where it is taken, it
 /// renames the very tiles the picture had — its undo shares them — where
 /// laid here it would copy every one.
@@ -69,8 +121,9 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
   return onAWorker(() {
     final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
     final here = tileBlocksHere(blocks);
+    final was = _behindReach(entry, reach);
     if (movesWholeTiles(dx: move.dx, dy: move.dy, tileSize: entry.tileSize)) {
-      return (was: layCelEntry(entry, here), moved: null);
+      return (was: layCelEntry(was, here), moved: null);
     }
     final laidMoved = layCelEntry(
       AnicelCelEntry.fromSurface(
@@ -80,7 +133,7 @@ Future<({AnicelLaidCel was, AnicelLaidCel? moved})> moveCelInWorker(
       here,
     );
     try {
-      return (was: layCelEntry(entry, here), moved: laidMoved);
+      return (was: layCelEntry(was, here), moved: laidMoved);
     } on Object {
       // Nothing else knows these blocks exist ([layCelEntry]'s own rule).
       freeLaidCel(laidMoved, here);
@@ -170,11 +223,13 @@ Future<BitmapSurface?> _remakeHotCelInWorker(
       : laidCelSurface(made.laid, standsBehind: made.standsBehind);
 }
 
-/// [blob]'s picture behind [reach] ([cutBehindReach]), worked out on a
-/// worker: null when the wall cuts nothing of it, else the cut picture as
-/// [key]'s blob, parked at [parkAt] in the room, and the picture as it
-/// was, laid into the main isolate's tile blocks ([BitmapTile.blocks]) for
-/// it to adopt ([laidCelSurface]) — what the undo keeps.
+/// [blob]'s picture as [wall] moves `from` the wall its store keeps it at
+/// `to` another ([cutBehindReach]), worked out on a worker: null when the
+/// move cuts nothing of it, else the cut picture as [key]'s blob, parked at
+/// [parkAt] in the room, and the picture as it was — behind the wall it
+/// moves from ([_behindReach]) — laid into the main isolate's tile blocks
+/// ([BitmapTile.blocks]) for it to adopt standing there
+/// ([laidCelSurface]): what the undo keeps, and lays back behind that wall.
 ///
 /// ★The decode, the cut, the encode and the park a move of the wall makes
 /// of a kept cel on the main isolate (`BrushFrameStore._rewriteHere`),
@@ -187,14 +242,14 @@ Future<({AnicelCelBlob blob, String path, AnicelLaidCel was})?>
 cutCelInWorker(
   BrushFrameKey key,
   AnicelCelBlob blob,
-  PasteboardReach reach, {
+  ({PasteboardReach from, PasteboardReach to}) wall, {
   required String parkAt,
 }) async {
   final sent = TransferableTypedData.fromList([blob.bytes]);
   final blocks = BitmapTile.blocks;
   final cut = await onAWorker(() {
     final entry = AnicelCelBlob(sent.materialize().asUint8List()).decode();
-    final behind = cutBehindReach(entry.toSurface(), reach);
+    final behind = cutBehindReach(entry.toSurface(), wall.to);
     if (behind == null) {
       return null;
     }
@@ -206,7 +261,10 @@ cutCelInWorker(
     return (
       blob: TransferableTypedData.fromList([kept.bytes]),
       path: path,
-      was: layCelEntry(entry, tileBlocksHere(blocks)),
+      was: layCelEntry(
+        _behindReach(entry, wall.from),
+        tileBlocksHere(blocks),
+      ),
     );
   });
   if (cut == null) {

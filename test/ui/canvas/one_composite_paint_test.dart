@@ -70,12 +70,15 @@ void main() {
     ]);
     expect(chain.isEmpty, isFalse, reason: 'fixture: the chain resolved');
 
+    // ↩️Multiply stood here, until every advanced blend went over its
+    // backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
+    // vulkan) and no paint lays one. Add is a blend a paint still lays.
     final paint = layerCompositePaint(
       opacity: 0.5,
-      blendMode: LayerBlendMode.multiply,
+      blendMode: LayerBlendMode.add,
       effects: chain,
     );
-    expect(paint.blendMode, LayerBlendMode.multiply.paintBlendMode);
+    expect(paint.blendMode, LayerBlendMode.add.paintBlendMode);
     expect(paint.color.a, closeTo(0.5, 1e-9));
     expect(
       paint.colorFilter,

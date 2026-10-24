@@ -601,6 +601,8 @@ Widget _panel(
           plot: (_, _) {},
           resize: (_, _) {},
           enlarge: (_) {},
+          pen: (_) {},
+          transformBox: (_) {},
         ),
         onToggleLayerCollapsed: (id) => hear('fold', id),
         onToggleAttachGroup: (id) => hear('attach', id),

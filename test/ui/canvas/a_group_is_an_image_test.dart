@@ -119,24 +119,36 @@ void main() {
     return bytes!.buffer.asUint8List();
   }
 
-  int differingPixels(Uint8List a, Uint8List b) {
+  /// The pixels of [a] and [b] a channel of which differs by more than [by].
+  int differingPixels(Uint8List a, Uint8List b, {int by = 0}) {
     var count = 0;
     for (var i = 0; i < a.length; i += 4) {
-      if (a[i] != b[i] ||
-          a[i + 1] != b[i + 1] ||
-          a[i + 2] != b[i + 2] ||
-          a[i + 3] != b[i + 3]) {
+      if ((a[i] - b[i]).abs() > by ||
+          (a[i + 1] - b[i + 1]).abs() > by ||
+          (a[i + 2] - b[i + 2]).abs() > by ||
+          (a[i + 3] - b[i + 3]).abs() > by) {
         count += 1;
       }
     }
     return count;
   }
 
+  /// 🔬How far a BLUR's two engine passes round apart: not at all on Skia;
+  /// under Impeller (`--enable-impeller`, Vulkan) a saveLayer's offscreen
+  /// and an image's filter are two passes of the engine's own, measured 1–2
+  /// of 255 apart over the blur's faint tails, leaning to no side — 75
+  /// pixels at sigma 3, 156 at sigma 6 (10-24, card
+  /// `a-group-is-an-image-red-on-impeller-vulkan`). ⛔Not a slack for this
+  /// file's composites, which are exact on both: what the blur tests guard
+  /// against — a blit cut to its bounds — moves tens of levels.
+  final blurRounding = ui.ImageFilter.isShaderFilterSupported ? 2 : 0;
+
   Future<void> expectSamePixels(
     String what, {
     required Paint Function() groupPaint,
     Rect groupRect = const Rect.fromLTWH(6, 4, 46, 42),
     double scale = 1,
+    int by = 0,
   }) async {
     final layered = await render(
       groupPaint: groupPaint(),
@@ -158,12 +170,19 @@ void main() {
       reason: '$what drew nothing at all',
     );
     expect(
-      differingPixels(layered, imaged),
+      differingPixels(layered, imaged, by: by),
       0,
       reason: '$what: the image blit must be the saveLayer, pixel for pixel',
     );
   }
 
+  // ⛔A blend here is one the GPU lays where the blit draws: add — normal is
+  // the plain case. Every other mode is composed over its backdrop by the
+  // app's own shader (`LayerBlendMode.needsItsBackdrop`), never handed to
+  // the engine in a paint. ↩️Multiply and screen stood here, an engine path
+  // the app no longer takes — and under Impeller its multiply is off by up
+  // to 4/255 along a triangle's seam on BOTH routes (10-24, against the
+  // formula worked out by hand: 17,28,57 where the two shapes overlap).
   group('the group image is the saveLayer it replaced', () {
     test('plain — no opacity, no blend, no effect', () async {
       await expectSamePixels(
@@ -181,16 +200,16 @@ void main() {
 
     test('folder blend mode', () async {
       await expectSamePixels(
-        'multiply',
+        'add',
         groupPaint: () => Paint()
           ..color = const Color(0xFF000000)
-          ..blendMode = BlendMode.multiply,
+          ..blendMode = BlendMode.plus,
       );
       await expectSamePixels(
-        'screen at half opacity',
+        'add at half opacity',
         groupPaint: () => Paint()
           ..color = const Color(0x80000000)
-          ..blendMode = BlendMode.screen,
+          ..blendMode = BlendMode.plus,
       );
     });
 
@@ -220,6 +239,7 @@ void main() {
           groupPaint: () => Paint()
             ..color = const Color(0xFF000000)
             ..imageFilter = ui.ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+          by: blurRounding,
         );
       },
     );
@@ -230,7 +250,7 @@ void main() {
         groupRect: const Rect.fromLTWH(6.37, 4.82, 46.4, 42.1),
         groupPaint: () => Paint()
           ..color = const Color(0xC0000000)
-          ..blendMode = BlendMode.multiply,
+          ..blendMode = BlendMode.plus,
       );
     });
 
@@ -240,7 +260,7 @@ void main() {
         scale: 2,
         groupPaint: () => Paint()
           ..color = const Color(0xC0000000)
-          ..blendMode = BlendMode.multiply,
+          ..blendMode = BlendMode.plus,
       );
     });
   });
@@ -452,7 +472,7 @@ void main() {
           'the bounds, or the comparison proves nothing',
     );
     expect(
-      differingPixels(layered, imaged),
+      differingPixels(layered, imaged, by: blurRounding),
       0,
       reason: 'the blit must spread exactly as far as the saveLayer did — '
           'no further, and no less',
@@ -540,10 +560,13 @@ void main() {
                 height: 150,
                 child: CanvasLayerStackView(
                   nodes: [
+                    // ↩️A multiply folder, until an advanced blend went
+                    // over its backdrop (a-blurred-folder-cut-by-the-view-
+                    // moves-on-vulkan); add's still needs the buffer.
                     const CompositeGroup<CanvasStackRow>(
                       children: [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                       opacity: 1,
-                      blendMode: LayerBlendMode.multiply,
+                      blendMode: LayerBlendMode.add,
                     ),
                   ],
                   imageCache: LayerFrameImageCache(
@@ -672,8 +695,11 @@ void main() {
     final layered = await render(asImage: false);
     final imaged = await render(asImage: true);
     expect(layered.any((byte) => byte != 0), isTrue);
+    // ⚠️The 2/255 that first version moved is the blur's own rounding under
+    // Impeller ([blurRounding]): there this says only that no pass is lost
+    // or doubled — the exactness is Skia's to hold, where the suite runs.
     expect(
-      differingPixels(layered, imaged),
+      differingPixels(layered, imaged, by: blurRounding),
       0,
       reason: 'one raster blitted twice must be the two saveLayers, pixel '
           'for pixel',

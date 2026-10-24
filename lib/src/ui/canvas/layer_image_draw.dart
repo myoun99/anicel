@@ -31,7 +31,6 @@ import '../../models/layer_effect.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/import/cel_picture.dart'
     show isPastTheSide, pictureSideLimitIfMeasured;
-import 'blends_in_place.dart';
 import 'display_resample.dart' show rectOutwardOnGrid;
 import 'image_pieces.dart';
 import 'raster_picture.dart';
@@ -164,8 +163,7 @@ void drawPosedLayerImage(
         final laid = _laidDown(
           stored,
           texelScale: copyScale,
-          inkDrawsTheSame:
-              blendsInPlace(blendMode.paintBlendMode) && plan.outsetPixels == 0,
+          inkDrawsTheSame: plan.outsetPixels == 0,
           laidBack: laidBack,
         );
         // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
@@ -207,16 +205,14 @@ void drawPosedLayerImage(
           stepped.height.toDouble(),
         );
         try {
-          // 🚨F-243: in an advanced blend the image is held to where it lands
-          // — a layer whose ink reaches the edge of its image stretched that
-          // edge across the pasteboard ([drawHeldToItsRect]).
+          // ↩️🚨F-243: in an advanced blend the image was held to where it
+          // landed — a layer whose ink reached the edge of its image
+          // stretched that edge across the pasteboard (`drawHeldToItsRect`)
+          // — until such a layer painted normal over its backdrop
+          // (a-blurred-folder-cut-by-the-view-moves-on-vulkan). A row's
+          // blend here is `srcOver` or `plus`, both in place.
           if (drawAtOriginWhen?.call(laid.worldRect, stepped) ?? false) {
-            drawHeldToItsRect(
-              canvas,
-              source,
-              paint,
-              () => canvas.drawImage(stepped, ui.Offset.zero, paint),
-            );
+            canvas.drawImage(stepped, ui.Offset.zero, paint);
             return;
           }
           final destination = ui.Rect.fromLTWH(
@@ -225,12 +221,7 @@ void drawPosedLayerImage(
             laid.worldRect.width * rasterScale,
             laid.worldRect.height * rasterScale,
           );
-          drawHeldToItsRect(
-            canvas,
-            destination,
-            paint,
-            () => canvas.drawImageRect(stepped, source, destination, paint),
-          );
+          canvas.drawImageRect(stepped, source, destination, paint);
         } finally {
           // ⛔The steps made a NEW image, and a whole image laid back for this
           // draw alone is this draw's; the one handed in belongs to the cache
@@ -369,7 +360,7 @@ int debugSeenPartsLaid = 0;
 @visibleForTesting
 int debugPiecesDrawnApart = 0;
 
-/// Whether a layer drawn through [pose], [blendMode] and [effects] puts the
+/// Whether a layer drawn through [placement] and [effects] puts the
 /// same bytes on a raster from its ink alone as from the whole image — so a
 /// route that lays it down texel for texel may have it stored as its ink
 /// (`LayerFrameImageCache.prepare`'s `inkSuffices`). [_laidDown] asks the
@@ -382,32 +373,31 @@ int debugPiecesDrawnApart = 0;
 /// cropped:
 /// · laid down texel for texel through `srcOver` or `plus`, with any opacity
 ///   or colour filter, the two are the same bytes on all three;
-/// · through an advanced blend (multiply, screen, overlay, difference …)
-///   Vulkan differs by up to 29/255: it blends through a snapshot of the
-///   area drawn, and a smaller area rounds differently. Drawing the crop
-///   over the whole area does not close it (a few pixels still differ);
 /// · posed, the sampler's coordinates are normalised by the texture's size,
 ///   so a smaller texture rounds differently on every GPU engine;
 /// · a blur reads the texture's bounds.
 /// Each of those gets the whole image; the whole image laid back from the
 /// crop draws the same bytes as the one the cache used to keep, on all three.
+/// ↩️So did a row in an advanced blend (multiply, screen, overlay,
+/// difference …): Vulkan blended it through a snapshot of the area drawn,
+/// and a smaller area rounded differently, up to 29/255 — drawing the crop
+/// over the whole area did not close it. Such a row paints normal over its
+/// backdrop now (a-blurred-folder-cut-by-the-view-moves-on-vulkan), so a
+/// row's blend is `srcOver` or `plus` and never asks.
 bool inkCropDrawsTheSame({
   required LayerPlacement? placement,
-  required LayerBlendMode blendMode,
   required List<ResolvedLayerEffect> effects,
 }) =>
-    placement == null &&
-    blendsInPlace(blendMode.paintBlendMode) &&
-    resolveCompositeEffectPlan(effects).outsetPixels == 0;
+    placement == null && resolveCompositeEffectPlan(effects).outsetPixels == 0;
 
 /// What a draw lays down: the [stored] image at its world rect where that is
 /// exact, and otherwise the image its extent stands for — laid back byte for
 /// byte, so the draw is the one this route always made.
 ///
 /// A crop is drawn as it is only as a texel copy ([_isTexelCopy]) through a
-/// blend and chain that keep the ink alone exact ([inkDrawsTheSame], the
-/// draw's half of [inkCropDrawsTheSame]); anything else — the walk on the
-/// screen, a pose, an advanced blend, a blur — gets the whole image first:
+/// chain that keeps the ink alone exact ([inkDrawsTheSame], the draw's half
+/// of [inkCropDrawsTheSame]); anything else — the walk on the screen, a
+/// pose, a blur — gets the whole image first:
 /// the one [laidBack] keeps when the holder has one, else one this draw
 /// makes and owns ([drawOwnsIt]).
 ({ui.Image image, ui.Rect worldRect, bool drawOwnsIt}) _laidDown(
@@ -583,19 +573,10 @@ int debugInksCutOut = 0;
 bool drawsAsTexelCopy(ui.Image image, ui.Rect worldRect) =>
     _isTexelCopy(image, worldRect, 1);
 
-/// Whether [image] drawn into [worldRect] lands texel for texel on a canvas
-/// whose pixels are [texelScale] canvas units apart: one texel per target
-/// pixel, starting on a whole pixel.
-bool _isTexelCopy(ui.Image image, ui.Rect worldRect, double? texelScale) {
-  if (texelScale == null) {
-    return false;
-  }
-  bool whole(double value) => value == value.roundToDouble();
-  return image.width == worldRect.width * texelScale &&
-      image.height == worldRect.height * texelScale &&
-      whole(worldRect.left * texelScale) &&
-      whole(worldRect.top * texelScale);
-}
+/// [landsTexelForTexel] on a canvas that is a pixel raster [texelScale]
+/// apart, and never on one that is not (null).
+bool _isTexelCopy(ui.Image image, ui.Rect worldRect, double? texelScale) =>
+    texelScale != null && landsTexelForTexel(image, worldRect, texelScale);
 
 /// How many layer draws were texel copies — so a pin can say WHICH routes
 /// copy: the test runner draws a bilinear 1:1 exactly as it draws a copy, so

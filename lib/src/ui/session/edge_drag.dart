@@ -434,7 +434,7 @@ class EdgeDragVerbs {
   ///   the row's commit keys;
   /// - a TRANSITION span rides its edge-drag verbs (the grips own length).
   void setCommaForStoryboardCursor(int comma) =>
-      _setCommaAt(_storyboardCursor.storyboardCursorBlockOrNull, comma);
+      _setCommaAt(_storyboardCursor.storyboardCommaTarget, comma);
 
   /// The TIMELINE's comma press: the selection's blocks, else THE BLOCK
   /// UNDER ITS CURSOR ([StoryboardCursor.timelineCursorBlockOrNull]) — by
@@ -442,23 +442,32 @@ class EdgeDragVerbs {
   /// whichever panel shows it (F-283, 유저 2026-10-04: 「블록이면 1,2,3,4 등
   /// 코마조절버튼 작동하는게 규칙임」).
   void setCommaForTimelineCursor(int comma) =>
-      _setCommaAt(_storyboardCursor.timelineCursorBlockOrNull, comma);
+      _setCommaAt(_storyboardCursor.timelineCommaTarget, comma);
 
-  /// One press for both panels — THE selection's blocks
-  /// ([ExposureVerbs.setCommaForSelection]: either axis, and a cell band
-  /// that holds none ends the press there), else the block [cursorBlock]
-  /// resolves, each kind through the machinery its own grips commit with.
+  /// One press for both panels — what [target] names (THE ladder,
+  /// [StoryboardCursor._commaTargetOf]): the selection's blocks
+  /// ([ExposureVerbs.setCommaOn]), else the block under the cursor, each
+  /// kind through the machinery its own grips commit with.
   ///
   /// ↩️The panels differed in more than their cursor: the storyboard's
   /// press had the track-axis band's rung and the timeline's had none, and
   /// the timeline's cursor rung was a second resolver of its own (F-283).
-  void _setCommaAt(StoryboardCursorBlock? Function() cursorBlock, int comma) {
-    if (comma < 1 || _exposureVerbs.setCommaForSelection(comma)) {
+  void _setCommaAt(CommaTarget? Function() target, int comma) {
+    if (comma < 1) {
       return;
     }
-    switch (cursorBlock()) {
+    switch (target()) {
       case null:
         return;
+      case CommaOnSelection(:final blocks):
+        _exposureVerbs.setCommaOn(blocks, comma);
+      case CommaOnBlock(:final block):
+        _setCommaOnBlock(block, comma);
+    }
+  }
+
+  void _setCommaOnBlock(StoryboardCursorBlock block, int comma) {
+    switch (block) {
       case StoryboardCursorCutBlock(:final cut):
         if (comma == cut.duration) {
           return; // A no-move drag must not land an undo step.

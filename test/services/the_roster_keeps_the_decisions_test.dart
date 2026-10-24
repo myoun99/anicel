@@ -5,19 +5,27 @@
 // move; what must not move is the SHAPE the user decided (2026-09-09): no
 // eraser group, no pixel group, paint split by medium, and no two brushes
 // that the picker cannot tell apart.
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/brush_dab_coverage.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
+import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
 
 void main() {
   test('⛔no eraser group, and no preset smuggling one in', () {
@@ -44,16 +52,11 @@ void main() {
       defaultBrushGroups.map((group) => group.name.toLowerCase()),
       isNot(contains('pixel')),
     );
-    // ↩️Nor a pixel ROW (board F-218, 유저 2026-09-28: 「이상한것들 쳐내고.
-    // 애니펜 이런거」): Anime Pen was that row, and a pixel line is the 없음
-    // step any brush can take.
-    for (final preset in defaultBrushPresets) {
-      expect(
-        preset.settings.antiAlias,
-        isNot(BrushAntiAlias.none),
-        reason: '${preset.name} would be the pixel pen again',
-      );
-    }
+    // ↩️Nor, for a while, a preset at no anti-alias (board F-218, 유저
+    // 2026-09-28: 「이상한것들 쳐내고. 애니펜 이런거」 — Anime Pen was that
+    // row). Lifted by F-433-Q1 (유저 2026-10-21: 「aa없는 프리셋을 금지한다고
+    // 내가 발언했다면 지금 철회함. 브러시 개성에 맞춰서 없거나 1단계거나
+    // 다르게 하는거 가능. 중요한건 개성」): the sharp ships at none.
   });
 
   // Board F-218 (유저 2026-09-28, answered 2026-10-01 「개편안 승인. 너가
@@ -128,40 +131,135 @@ void main() {
       }
     });
 
-    test('the pencil laid on its side spreads wide, pale and soft', () {
+    test('🚨the pencil laid on its side takes its tone from the pressure '
+        'alone, and cuts as hard lying down as upright (F-433)', () {
       // 「각도에 따라 눕히는 연필 … 아날로그에서. 그런거 그대로 재현한 연필」.
+      // ↩️It paled and softened as it lay down; 유저 F-433: 「불투명도
+      // 제한같은거? 기울기 이런거 걸어놧는데, 없애고 똑같이 불투명도 필압으로」
+      // and 「진짜 연필처럼 딱딱한느낌? 실루엣」.
       final tilted = byId('builtin-shading-pencil').settings;
       final curves = tilted.shape.curves;
-      expect(
-        curves[(BrushPressureTarget.size, BrushInputSource.tilt)],
-        isNotNull,
-      );
+      for (final target in [
+        BrushPressureTarget.opacity,
+        BrushPressureTarget.flow,
+        BrushPressureTarget.hardness,
+      ]) {
+        expect(
+          curves[(target, BrushInputSource.tilt)],
+          isNull,
+          reason: 'no tilt row on its ${target.name}',
+        );
+      }
       final opacity =
-          curves[(BrushPressureTarget.opacity, BrushInputSource.tilt)]!;
-      expect(opacity.evaluate(1.0), lessThan(opacity.evaluate(0.0)));
-      final hardness =
-          curves[(BrushPressureTarget.hardness, BrushInputSource.tilt)]!;
-      expect(hardness.evaluate(1.0), lessThan(hardness.evaluate(0.0)));
+          curves[(BrushPressureTarget.opacity, BrushInputSource.pressure)]!;
+      expect(opacity.evaluate(1.0), greaterThan(opacity.evaluate(0.2)));
+      expect(tilted.hardness, 1.0);
     });
 
-    test('🚨and its mark follows the pen, long as it lies down', () {
+    test('🚨and its mark follows the pen: the point upright, a strip four '
+        'times as long as it is wide lying down', () {
       // F-176-Q4 (유저 2026-10-18): 「세워서그리면 얇은선, 눕혀서 그리면
       // 연필처럼 dab이 길어지는? … 펜 실제 각도에 따라 dab 각도 바뀌는건가
-      // 했는데 그거조차도아님. 가능하도록」.
+      // 했는데 그거조차도아님. 가능하도록」. ↩️F-433 (유저 2026-10-21):
+      // 「최대한 세우면 최대한 dab이 얇은 … 세웠을때 얇은게 안되있음」 — upright
+      // was the brush's whole size.
       final tilted = byId('builtin-shading-pencil').settings;
       expect(tilted.rotationMode, BrushTipRotationMode.penTilt);
       final curves = tilted.shape.curves;
       final size = curves[(BrushPressureTarget.size, BrushInputSource.tilt)]!;
       final roundness =
           curves[(BrushPressureTarget.roundness, BrushInputSource.tilt)]!;
-      // Upright: the plain round lead.
-      expect(size.evaluate(0.0), 1.0);
+      // Upright: the point of the lead, the thinnest it draws.
+      expect(size.evaluate(0.0), lessThan(0.1));
+      for (final lean in [0.2, 0.4, 0.65, 1.0]) {
+        expect(size.evaluate(lean), greaterThan(size.evaluate(0.0)));
+      }
       expect(roundness.evaluate(0.0), closeTo(1.0, 1e-12));
-      // Flat: as long as it is wide, four times over.
-      expect(
-        size.evaluate(1.0) / (size.evaluate(1.0) * roundness.evaluate(1.0)),
-        closeTo(4.0, 1e-9),
-      );
+      // Laid as flat as a Wacom pen reports (lean ⅔): its whole size, as
+      // long as it is wide four times over.
+      expect(size.evaluate(0.65), closeTo(1.0, 1e-12));
+      expect(1.0 / roundness.evaluate(0.65), closeTo(4.0, 1e-9));
+    });
+
+    test('every other graphite pencil leans a little with the pen — at its '
+        'own size upright (F-433)', () {
+      // 유저: 「일반 연필에도 어느정도 기울기로 형태 바뀌는거 넣고」.
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+        'builtin-colored-pencil',
+      ]) {
+        final settings = byId(id).settings;
+        final curves = settings.shape.curves;
+        final size =
+            curves[(BrushPressureTarget.size, BrushInputSource.tilt)]!;
+        final roundness =
+            curves[(BrushPressureTarget.roundness, BrushInputSource.tilt)]!;
+        expect(settings.rotationMode, BrushTipRotationMode.penTilt, reason: id);
+        expect(size.evaluate(0.0), 1.0, reason: '$id upright');
+        expect(size.evaluate(0.65), greaterThan(1.0), reason: '$id leaned');
+        expect(roundness.evaluate(0.65), lessThan(1.0), reason: '$id leaned');
+      }
+    });
+
+    test('🚨every graphite pencil wears the lead upright to flat, three '
+        'faces a step thrown per dab, on a tooth that multiplies — paler the '
+        'lighter it presses (F-451, F-456)', () {
+      // 유저: 「팁 사각형인채로 질감만 얼버무려서 연필느낌내는건 너무
+      // 구현도가 낮음」 (F-451) · 「결여가 너무 일정함(같은부분 다시 그려도
+      // 결여된 픽셀이 안채워짐)」 · Q4 「기울기가 단계를 고르고, 그 단계
+      // 안에서 여러 장 중 무작위」 (F-456).
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+        'builtin-colored-pencil',
+        'builtin-shading-pencil',
+      ]) {
+        final settings = byId(id).settings;
+        expect(settings.tips, pencilLeadBrushTipMasks, reason: id);
+        expect(settings.tipOrder, BrushTipOrder.lean, reason: id);
+        expect(settings.tipsPerTurn, pencilLeadFacesPerStep, reason: id);
+        expect(
+          settings.textureMaskSource?.id,
+          'builtin-graphite-tooth',
+          reason: id,
+        );
+        // ⛔Not the height's cut: it left the same valleys bare however
+        // often a line was laid again.
+        expect(settings.textureMode, BrushTextureMode.multiply, reason: id);
+        final tooth = settings.shape.curves[(
+          BrushPressureTarget.textureDensity,
+          BrushInputSource.pressure,
+        )]!;
+        expect(tooth.evaluate(0.0), 1.0, reason: '$id touched: all paper');
+        expect(tooth.evaluate(1.0), lessThan(0.8), reason: '$id pressed');
+      }
+    });
+
+    test('🚨the sharp is the user\'s own, as they exported it (F-433)', () {
+      // 유저: 「프리셋 기본 샤프 연필, 내가 만든 샤프로 교체」.
+      final sharp = byId('builtin-mechanical-pencil').settings;
+      expect(sharp.size, 1.5);
+      expect(sharp.spacing, 0.0207);
+      expect(sharp.textureMaskSource?.id, 'builtin-canvas-weave');
+      expect(sharp.textureDensity, 1.0);
+      // Its no anti-alias too; its 뒤에 blend was a slip (F-433-Q1: 「뒤에는
+      // 내가 잘못 지정한채로 내보낸거임. 블렌드는 표준. 기본aa는 없음」).
+      expect(sharp.antiAlias, BrushAntiAlias.none);
+      expect(sharp.blendMode, BrushBlendMode.color);
+    });
+
+    test('⛔the colouring pencil ships no other program\'s tip (F-433)', () {
+      // The user's own wore a tip taken from another program's brush; a
+      // third party's brush may not ship (`ip-review-clean`).
+      final coloring = byId('builtin-coloring-pencil').settings;
+      expect(coloring.tipMask?.id, 'builtin-color-clumps');
+      expect(coloring.angleJitter, 1.0);
+      expect(coloring.size, 454);
     });
 
     test('one watercolour carries paper, and it is cold-press', () {
@@ -180,6 +278,23 @@ void main() {
         papered.single.settings.textureMaskSource!.id,
         'builtin-cold-press',
       );
+    });
+
+    test('🚨the gouache is a dry brush: the paper\'s height, reached '
+        'deeper the harder it presses', () {
+      // the-gouache-is-a-round-with-a-weave (유저 2026-10-23: 「뭐가
+      // 과슈인지?」), Q2 answered a (10-24): pressed lightly only the paper's
+      // peaks take paint, pressed hard it covers flat.
+      final gouache = byId('builtin-gouache').settings;
+      expect(gouache.textureMaskSource?.id, 'builtin-paper-grain');
+      expect(gouache.textureMode, BrushTextureMode.height);
+      expect(gouache.hardness, 0.85);
+      final depth = gouache.shape.curves[(
+        BrushPressureTarget.textureDensity,
+        BrushInputSource.pressure,
+      )]!;
+      expect(depth.evaluate(0.0), closeTo(0.2, 1e-12), reason: 'touched');
+      expect(depth.evaluate(1.0), closeTo(1.0, 1e-12), reason: 'pressed');
     });
 
     test('the five that drew another brush\'s row are gone', () {
@@ -322,14 +437,12 @@ void main() {
     const grain = 'its grain is the gap between stamps';
     const ownGap = <String, String>{
       'builtin-chalk-preset': grain,
-      // Board F-218: the graphite grades and the tilted pencil wear the grain
-      // tip now.
-      'builtin-hard-pencil': grain,
-      'builtin-pencil': grain,
-      'builtin-soft-pencil': grain,
-      'builtin-shading-pencil': grain,
-      'builtin-dark-pencil': grain,
-      'builtin-colored-pencil': grain,
+      // ↩️Board F-218 put the graphite grades and the tilted pencil on the
+      // grain tip; F-433 moved their grain to the paper, so they lay at the
+      // finest step again. The two pencils the user made keep theirs.
+      'builtin-mechanical-pencil': 'the user\'s own sharp, at its own step',
+      'builtin-coloring-pencil':
+          'the user\'s own colouring pencil, at its own step',
       'builtin-dry-ink': grain,
       'builtin-pastel': grain,
       'builtin-crayon': grain,
@@ -372,5 +485,36 @@ void main() {
         );
       }
     }
+  });
+
+  test('🚨a grass blade stands up on a sideways sweep — taller than wide', () {
+    // Its own comment's law ("Blades stand UP"). ↩️It landed round dots:
+    // a roundness that squeezed the leaf along its length (10-24).
+    final grass = defaultBrushPresets
+        .firstWhere((preset) => preset.id.value == 'builtin-grass')
+        .settings;
+    // A sideways sweep heads at 0°, so the tip turns by its own angle.
+    final blade = BrushDab(
+      center: CanvasPoint(x: 64, y: 64),
+      color: 0xFF000000,
+      size: grass.size,
+      opacity: 1,
+      flow: 1,
+      hardness: grass.hardness,
+      pressure: 1,
+      sequence: 0,
+      roundness: grass.roundness,
+      angleDegrees: grass.angleDegrees,
+      tipMask: grass.tipMask,
+    );
+    var (left, right, top, bottom) = (1 << 30, -1, 1 << 30, -1);
+    forEachBrushPixelCoverage(blade, (x, y, coverage) {
+      if (coverage > 0.5) {
+        (left, right) = (math.min(left, x), math.max(right, x));
+        (top, bottom) = (math.min(top, y), math.max(bottom, y));
+      }
+    });
+    final (wide, tall) = (right - left + 1, bottom - top + 1);
+    expect(tall, greaterThan(wide * 1.5), reason: '$wide wide, $tall tall');
   });
 }

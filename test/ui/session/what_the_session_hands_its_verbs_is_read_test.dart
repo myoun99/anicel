@@ -99,20 +99,19 @@ void main() {
     final s = EditorSessionManager(initialProject: conteTrackProject());
     addTearDown(s.dispose);
     s.selectCut(const CutId('cut-1'));
-    // A LANE stood on in the storyboard stays the storyboard's — an S row
-    // itself would stand on both panels under one address — and then the
-    // TIMELINE is worked again, on its own row.
+    // The storyboard stood on the CUT keeps the timeline on its row (I-73),
+    // and then the TIMELINE is worked again, on that row. ↩️I-126: a stand
+    // in either panel stands both where both have the row, so a timeline
+    // row stood on after a storyboard lane took the storyboard with it.
+    s.standOnRow(const LayerRowAddress(conte));
     s.standOnRow(
-      const LaneRowAddress(conteSeId, 'position'),
+      const TrackRowAddress(conteTrackId),
       panel: WorkingPanel.storyboard,
     );
-    s.standOnRow(const LayerRowAddress(conte));
+    s.claimTimelineRow();
     expect(
       [s.currentRow, s.storyboardStandingRow],
-      [
-        const LayerRowAddress(conte),
-        const LaneRowAddress(conteSeId, 'position'),
-      ],
+      [const LayerRowAddress(conte), const TrackRowAddress(conteTrackId)],
       reason: '⛔premise: the two panels stand on different rows',
     );
 

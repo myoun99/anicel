@@ -75,10 +75,10 @@ const int _window = 320;
 /// Both entries are the same shape: a plus that is already inside something
 /// that says what it does, where an accent would be shouting a second time.
 const List<String> _allowed = [
-  // A LEADING GLYPH IN A MENU ROW. The row's label is right there — "New
-  // Cut", "Same as selected" — and accenting one row of a flyout picks a
-  // winner among items that are peers.
-  "keyValue: 'add-cut-new'",
+  // A LEADING GLYPH IN A MENU ROW. The row's label is right there — "Same
+  // as selected" — and accenting one row of a flyout picks a winner among
+  // items that are peers. (↩️"New Cut" was the other, until F-455 took the
+  // cut ＋'s band away.)
   "keyValue: 'add-layer-kind-same'",
   // THE EMPTY GROUP'S PLACEHOLDER. Not a button that adds anything: it is
   // what a rail button shows when its group holds no panels yet, standing

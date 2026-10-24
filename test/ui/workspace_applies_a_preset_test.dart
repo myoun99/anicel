@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/neighbour_pairs.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
@@ -25,8 +26,10 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import '../helpers/brush_values_on_strip.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
+import '../helpers/rail_group_button.dart';
 
 /// APPLYING A PRESET FROM THE WORKSPACE — MEASURED.
 ///
@@ -107,6 +110,9 @@ void main() {
           shown.selectedPresetId != null;
     });
     await tester.pumpAndSettle();
+    // The size bar these sequences drag is the strip's (I-34: by default
+    // the canvas's pill holds the bars).
+    await standBrushValuesOnStrip(tester);
   }
 
   BrushPresetPanel panel(WidgetTester tester) =>
@@ -146,8 +152,7 @@ void main() {
 
   /// Opens the brush settings — their own rail slot, which ships closed.
   Future<void> openBrushSettings(WidgetTester tester) async {
-    final group = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$group')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
   }
 
@@ -417,6 +422,121 @@ void main() {
       reason: 'it shows in that tab now — the hand stays on it, though '
           '${y.first} was the last picked there',
     );
+  });
+
+  /// The rail's group tabs, each with its brushes, in rail order.
+  List<({BrushGroupId group, List<BrushPresetId> brushes})> railGroups(
+    WidgetTester tester,
+  ) {
+    final shown = panel(tester);
+    return [
+      for (final group in shown.groups)
+        (
+          group: group.id,
+          brushes: [
+            for (final preset in shown.presets)
+              if (preset.groupShownAmong(shown.groups) == group.id) preset.id,
+          ],
+        ),
+    ];
+  }
+
+  /// The brush-in-hand's group deleted the way the panel's menu commits it.
+  Future<void> deleteGroup(WidgetTester tester, BrushGroupId group) async {
+    panel(tester).onGroupDeleted!(group);
+    await tester.pumpAndSettle();
+  }
+
+  // 🗣️F-426 (유저 2026-10-21): 「선택한 브러시 그룹 삭제시, 다른 그룹
+  // 선택하도록. 왜 저번에 브러시 삭제하면 다른 브러시 선택하게할때
+  // 유동적으로 이부분도 안했는지 의문. 최대한 법 통일」 — the brush's law
+  // just above, a tab over.
+  testWidgets('🚨F-426: deleting the group in hand hands every tool that held '
+      'a brush there the tab beside it — the brush each last held there, '
+      'or its first', (tester) async {
+    await pumpWithPresets(tester);
+    final (doomed, beside) = neighbourPairs(railGroups(tester)).firstWhere(
+      (pair) => pair.$1.brushes.length >= 2 && pair.$2.brushes.length >= 2,
+    );
+    await tapTabOf(tester, beside.brushes.first);
+    await pickInView(tester, beside.brushes[1]);
+    await tapTabOf(tester, doomed.brushes.first);
+    await takeUp(tester, 'eraser');
+    await tapTabOf(tester, doomed.brushes.first);
+    await pickInView(tester, doomed.brushes[1]);
+    await takeUp(tester, 'brush');
+    expect(
+      panel(tester).selectedPresetId,
+      doomed.brushes.first,
+      reason: '⛔premise',
+    );
+
+    await deleteGroup(tester, doomed.group);
+
+    expect(
+      panel(tester).selectedPresetId,
+      beside.brushes[1],
+      reason: '「해당 그룹의 마지막으로 선택했던걸」 (F-250)',
+    );
+    expect(tileOf(beside.brushes[1]), findsOneWidget, reason: 'its tab shown');
+    await takeUp(tester, 'eraser');
+    expect(
+      panel(tester).selectedPresetId,
+      beside.brushes.first,
+      reason: 'the eraser never held one there: the tab\'s first',
+    );
+  });
+
+  testWidgets('F-426: the last group of the rail hands over to the tab before '
+      'it', (tester) async {
+    await pumpWithPresets(tester);
+    final shown = panel(tester);
+    expect(
+      shown.presets.where(
+        (preset) => preset.groupShownAmong(shown.groups) == null,
+      ),
+      isEmpty,
+      reason: '⛔premise: no root section, so the last group is the last tab',
+    );
+    final [..., before, last] = railGroups(tester);
+    await tapTabOf(tester, before.brushes.first);
+    await pickInView(tester, before.brushes.last);
+    await tapTabOf(tester, last.brushes.first);
+
+    await deleteGroup(tester, last.group);
+
+    expect(panel(tester).selectedPresetId, before.brushes.last);
+  });
+
+  testWidgets('F-426: a tab beside with no brush to hand leaves the library\'s '
+      'opening brush in hand, shown — and a look into a deleted group ends '
+      'with it', (tester) async {
+    await pumpWithPresets(tester);
+    final last = railGroups(tester).last;
+    await tapTabOf(tester, last.brushes.first);
+    panel(tester).onGroupCreated!('Nothing yet');
+    await tester.pumpAndSettle();
+    final nothing = railGroups(tester).last;
+    expect(nothing.brushes, isEmpty, reason: '⛔premise: made after it');
+
+    await deleteGroup(tester, last.group);
+
+    final opening = panel(tester).presets.first.id;
+    expect(panel(tester).selectedPresetId, opening);
+    expect(tileOf(opening), findsOneWidget, reason: 'the hand\'s tab shown');
+
+    final tab = find.byKey(
+      ValueKey<String>('brush-preset-tab-${nothing.group.value}'),
+    );
+    await tester.ensureVisible(tab);
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+    expect(onScreen(tester), isEmpty, reason: '⛔premise: looked into');
+
+    await deleteGroup(tester, nothing.group);
+
+    expect(panel(tester).selectedPresetId, opening);
+    expect(tileOf(opening), findsOneWidget, reason: 'not a tab that is gone');
   });
 
   testWidgets('tapping a preset makes it the active one', (tester) async {

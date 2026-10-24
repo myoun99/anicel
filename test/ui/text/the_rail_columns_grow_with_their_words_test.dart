@@ -170,13 +170,13 @@ void main() {
         expect(wordsCutAcross(board), isEmpty);
         expect(
           StoryboardPanel.railWidthIn(tester.element(board)),
-          scale == 1.0 ? 519 : greaterThan(519),
+          scale == 1.0 ? 461 : greaterThan(461),
         );
         // It pays for the columns the timeline's pays for — the same
         // growth, from its own width.
         final columns = layerRailColumnWidthsIn(tester.element(board));
         expect(
-          StoryboardPanel.railWidthIn(tester.element(board)) - 519,
+          StoryboardPanel.railWidthIn(tester.element(board)) - 461,
           closeTo(
             timelineLayerControlsWidthFor(columns) -
                 timelineLayerControlsWidth,

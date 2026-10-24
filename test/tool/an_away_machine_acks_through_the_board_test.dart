@@ -214,6 +214,8 @@ void main() {
         since: old.toIso8601String(),
         linesSince: old.toIso8601String(),
         now: old.add(const Duration(days: 2)),
+        // An ack outlives its card only once the PR is no longer open.
+        openPrs: const {},
       );
       expect(said, contains('하루 넘게 답을 기다리는 질문: A'));
       expect(said, contains('$kAckCommand <id> <이유>'));

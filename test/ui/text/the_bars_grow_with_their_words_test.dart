@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/widgets/color_swatch_button.dart'
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/words_cut_off.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// 🚨text-scale-fixed-height-bars (유저 2026-09-18). Asked what a bar of a
 /// fixed height does when the OS text size goes up, the answer was
@@ -45,7 +46,7 @@ void main() {
   Future<void> openTheApp(WidgetTester tester) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-R1')));
+    await tester.tap(railGroupButton('rail-R1'));
     await tester.pumpAndSettle();
   }
 

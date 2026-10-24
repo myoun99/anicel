@@ -8,8 +8,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/layer_mark.dart';
-import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -17,10 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 
@@ -67,8 +62,8 @@ Frame _frame(String id, String name, int length, {String? seName}) => Frame(
 
 /// TRACK-owned SE row on the global frame axis: an entry inside cut 1, an
 /// entry CROSSING the cut-1→cut-2 boundary (frame 8), and one inside
-/// cut 2 — [named] after their words, the row wearing [mark].
-Project _project({bool named = false, LayerMark mark = LayerMark.none}) {
+/// cut 2 — [named] after their words.
+Project _project({bool named = false}) {
   String? seName(String words) => named ? words.replaceAll('!', '') : null;
   return Project(
     id: const ProjectId('sb-se-project'),
@@ -84,7 +79,6 @@ Project _project({bool named = false, LayerMark mark = LayerMark.none}) {
             id: const LayerId('se-row-1'),
             name: 'S1',
             kind: LayerKind.se,
-            mark: mark,
             frames: [
               _frame('f-one', 'One!', 3, seName: seName('One!')),
               _frame('f-cross', 'Cross!', 4, seName: seName('Cross!')),
@@ -178,13 +172,12 @@ void main() {
   // 🗣️F-358 (유저 2026-10-19): 「타임라인, 콘티패널 동일적용」 — the name
   // just before its block where the room before it holds it whole
   // (F-358-Q2 「이름칸이 통째로 들어가면 밖, 아니면 안(화면 픽셀로)」), and
-  // its ground the colour its tint gives the block's paper.
+  // there on no ground of its own (F-444, 10-23: 「배경 바탕색 삭제하고」).
   testWidgets('🚨a named sound with room before it wears its name just '
       'before it, one without on its head', (tester) async {
-    const mark = LayerMark(process: LayerProcess.layout);
     await tester.pumpWidget(
       MaterialApp(
-        home: HomePage(initialProject: _project(named: true, mark: mark)),
+        home: HomePage(initialProject: _project(named: true)),
       ),
     );
     await tester.pumpAndSettle();
@@ -196,7 +189,7 @@ void main() {
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
         .pixelsPerFrame;
     Finder span(int start) => find.byKey(
-      ValueKey<String>('storyboard-se-span-se-row-1-$start'),
+      ValueKey<String>('storyboard-se-label-se-row-1-$start'),
     );
     Rect chipOf(String name) =>
         tester.getRect(find.bySemanticsLabel('SE name $name'));
@@ -235,12 +228,7 @@ void main() {
         .widget<CustomPaint>(ground)
         .painter!
         .paint(laid, tester.getSize(ground));
-    expect(laid.colors, [
-      Color.alphaBlend(
-        AppColors.accent.withValues(alpha: 0.3),
-        layerMarkColor(mark),
-      ).toARGB32(),
-    ], reason: 'the colour the tint gives the paper of a row of that mark');
+    expect(laid.colors, isEmpty, reason: 'the row shows through it');
   });
 
   testWidgets('the storyboard renders the TRACK SE row on the global axis: '
@@ -267,13 +255,13 @@ void main() {
     expect(rowFinder, findsOneWidget);
 
     final spanOne = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-1'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-1'),
     );
     final spanCross = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-6'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-6'),
     );
     final spanTwo = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-10'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-10'),
     );
     expect(spanOne, findsOneWidget);
     expect(spanCross, findsOneWidget);
@@ -354,7 +342,7 @@ void main() {
     expect(endGrip, findsOneWidget);
 
     final span = find.byKey(
-      const ValueKey<String>('storyboard-se-span-se-row-1-10'),
+      const ValueKey<String>('storyboard-se-label-se-row-1-10'),
     );
     final widthBefore = tester.getSize(span).width;
 

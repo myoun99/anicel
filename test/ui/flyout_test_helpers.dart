@@ -12,7 +12,6 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // ⛔'rename-layer-button' is NOT here any more: ① moved it out of the
   // layer menu and onto the pill, the same way 'delete-cut-button' left the
   // cut menu below.
-  'duplicate-layer-button': 'timeline-layer-menu-button',
   'delete-layer-button': 'timeline-layer-menu-button',
   'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
   'timeline-rasterize-layer-button': 'timeline-layer-menu-button',
@@ -34,15 +33,13 @@ const Map<String, String> flyoutOwnerByItemKey = {
   // ⛔'delete-cell-button' left this map with the item itself (T24): it was
   // the last duplicate of the one shared delete, so there is no menu to open
   // and nothing to find inside it.
-  'add-cut-create-linked': 'new-cut-menu',
-  'rename-cut-button': 'cut-menu-button',
+  // ⛔F-455 took away the cut menu's rename · duplicate · left · right ·
+  // camera AE rows and the layer menu's duplicate, and the ＋'s band with
+  // them: 겸용컷 만들기 is a row of the cut menu now.
+  'add-cut-create-linked': 'cut-menu-button',
   'convert-cut-to-linked-button': 'cut-menu-button',
-  'copy-cut-ae-camera-button': 'cut-menu-button',
   'edit-cut-note-button': 'cut-menu-button',
   'resize-cut-canvas-button': 'cut-menu-button',
-  'duplicate-cut-button': 'cut-menu-button',
-  'move-cut-left-button': 'cut-menu-button',
-  'move-cut-right-button': 'cut-menu-button',
   // ⛔'delete-cut-button' is NOT here any more: ① moved it out of the cut
   // menu and onto the pill, so it is a plain bar button with no owner to
   // open first.

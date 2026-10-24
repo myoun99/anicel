@@ -2,7 +2,7 @@ import 'widgets/app_tooltip.dart';
 import 'widgets/app_icon_button.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File, Platform;
+import 'dart:io' show File;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -10,6 +10,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
+import '../services/flutter_test_run.dart';
 import '../core/set_toggle.dart';
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
@@ -49,6 +50,8 @@ import 'brush/brush_library_look.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
+import 'brush/brush_canvas_panel.dart' show CanvasEdgePill;
+import 'brush/brush_value_group.dart' show BrushValuesPill;
 import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
 import 'theme/app_theme.dart';
@@ -76,8 +79,10 @@ import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'session/session_row_button_presses.dart';
+import 'session/text_clipboard.dart' show TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
+import 'shortcuts/shortcut_file_import.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
 import 'menu/opened_files_door.dart';
@@ -102,10 +107,12 @@ import 'dialogs/app_confirm_dialog.dart'
         ConfirmQuestion,
         NoticeDetails,
         askConfirm,
+        confirmDialogKeys,
         showAppNotice;
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
+import 'panels/open_tab_content.dart';
 import 'panels/panel_flash.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
@@ -185,7 +192,7 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 import 'workspace/workspace_bar_commands.dart';
 import 'workspace/workspace_door_commands.dart';
-import '../services/persistence/folder_grant.dart' show FolderGrant;
+import '../services/persistence/folder_grant.dart' show FolderGrant, handedPath;
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
 import 'text/imported_fonts.dart';
@@ -335,7 +342,7 @@ class EditorWorkspace extends StatefulWidget {
   /// the zooms, the ⇄ and the camera view (I-40).
   final WorkspaceBarCommands? barCommands;
 
-  /// The shell-owned channel the top strip's 「파일 열기…」 and 「폴더
+  /// The shell-owned channel the top strip's 「파일 열기」 and 「폴더
   /// 열기…」 knock on: this state holds what the door hands files to.
   final WorkspaceDoorCommands? doorCommands;
 
@@ -983,9 +990,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       );
 
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation) —
-  /// the app's ([EditorAppSettings.showSecondsDisplay]).
+  /// the PROJECT's, held by the session and saved beside its file
+  /// (`PanelViewMemory.showSeconds`, F-354). ↩️It was the window's, one for
+  /// every tab.
   ValueNotifier<bool> get _showSecondsDisplay =>
-      widget.session.appSettings.showSecondsDisplay;
+      widget.session.panelViews.showSeconds;
 
   /// Each frame panel's layer-rail WINDOW size, set by its splitter.
   ///
@@ -1191,7 +1200,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     unawaited(_brushPresets.libraryLanded);
     _layoutPersistence._layoutStore =
         widget.layoutStore ??
-        (Platform.environment['FLUTTER_TEST'] == 'true'
+        (underFlutterTest
             ? null
             : WorkspaceLayoutStore());
     unawaited(_layoutPersistence.restoreLayout());
@@ -1212,7 +1221,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
-      relay: _layout,
+      // The brush's place too: the strip shows the brush's values or not
+      // by it, where the region's place is read only when its row opens.
+      relay: Listenable.merge([_layout, _brushValuesOnStrip]),
       layoutReset: _layoutPersistence.resetWorkspaceLayout,
       toolRailOnRight: () =>
           _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
@@ -1235,6 +1246,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         setState(() => _regionOnTop = onTop);
         _layoutPersistence.scheduleLayoutSave();
       },
+      brushValuesOnStrip: () => _brushValuesOnStrip.value,
+      brushValuesMover: (onStrip) {
+        if (_brushValuesOnStrip.value == onStrip) {
+          return;
+        }
+        _brushValuesOnStrip.value = onStrip;
+        _layoutPersistence.scheduleLayoutSave();
+      },
       regionFolder: _toggleRegionFolded,
     );
     widget.layerNav?.bind(this, _stepDisplayedLayer);
@@ -1247,7 +1266,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       this,
       openFiles: () => unawaited(_pickAndOpen()),
       openFolder: () => unawaited(_pickFolderAndOpen()),
-      openPaths: (paths) => unawaited(_openHanded(paths)),
+      openHanded: (handed) => unawaited(_door.open(context, handed)),
     );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {
@@ -1300,6 +1319,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
+    // I-101: the text this window's canvas holds — what the pill's copy
+    // takes ahead of anything selected — and the faces a pasted text
+    // brings with it, as a text the hand lands does.
+    session.textClipboard.canvasText = (
+      heldByItsBox: _textHeldByItsBox,
+      landingWith: _landingWithItsFaces,
+    );
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1370,6 +1396,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ));
   }
 
+  /// The text the canvas holds by its box, as it is shown — none while its
+  /// letters are typed into: the keys and their copy are the field's then.
+  TextCopy? _textHeldByItsBox() {
+    final hand = widget.canvasTextCommands;
+    final shown = hand?.shownInHand.value;
+    return hand == null || hand.typing || shown == null
+        ? null
+        : (content: shown.content, plate: shown.plate);
+  }
+
   /// [landing] — a text set on a cel — with the registering of the faces
   /// its letters are written in ([families]), as one step: the files each
   /// family is set with now, handed to the project on screen
@@ -1425,6 +1461,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // this window's to report or to clear.
     session.pixelVerbs.pixelVerbCanvas = null;
     session.pixelVerbs.cutToolHand = null;
+    session.textClipboard.canvasText = null;
     session.memoryPressureTicks.removeListener(
       _storyboardThumbnails.respondToMemoryPressure,
     );
@@ -1751,6 +1788,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.doorCommands?.unbind(this);
     widget.flipHud?.unbind(this);
     widget.panelsMenu?.detach();
+    // After the bridge lets go: its relay listens to it.
+    _brushValuesOnStrip.dispose();
     _layoutPersistence._layoutSaveTimer?.cancel();
     _layout.removeListener(_layoutPersistence.scheduleLayoutSave);
     _layout.extentRevision.removeListener(_layoutPersistence.scheduleLayoutSave);
@@ -2037,6 +2076,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// rest.
   bool _regionOnTop = false;
 
+  /// Whether the brush's values stand in the top strip — false, the
+  /// default, stands them in the canvas's pill
+  /// ([WorkspacePanelsMenuController.brushValuesOnStrip]).
+  ///
+  /// ↩️09-16 had the strip as the default; 유저 2026-10-18 (I-34): 「그리고
+  /// 기본값은 알약으로 두는걸 기본값으로」. A notifier, as the strip above the
+  /// workspace and the canvas inside it both follow it.
+  final ValueNotifier<bool> _brushValuesOnStrip = ValueNotifier<bool>(false);
+
   /// How close to the rail's width counts as "the same", so the edge lands on
   /// the pass-through boundary instead of just beside it.
   ///
@@ -2155,13 +2203,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       place.take(paths);
       return;
     }
-    unawaited(_openHanded(paths));
+    unawaited(
+      _door.open(context, [for (final path in paths) handedPath(path)]),
+    );
   }
-
-  /// Paths handed over with nothing granted for them — a drop on the
-  /// window, the files the OS opened the app with — through the one door.
-  Future<void> _openHanded(List<String> paths) =>
-      _door.open(context, [for (final path in paths) handedPath(path)]);
 
   /// The place a drag from the OS is over now, lit while it is
   /// ([OsFileDropPlace.hover]). A drop is left first: the plugin says the
@@ -2186,8 +2231,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       osFileDropPlaceAt(globalPosition, View.of(context).viewId);
 
   /// THE ONE DOOR, with what this workspace holds for it (F-282): the
-  /// shell's Open door for projects, the import window, the brush library
-  /// and the fonts.
+  /// shell's Open door for projects, the import window, the brush library,
+  /// the fonts and the shortcut presets.
   OpenedFilesDoor get _door => OpenedFilesDoor(
     openProjects: widget.onOpenProjects,
     importWindow: (picked, {required toPool}) =>
@@ -2207,9 +2252,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return _fonts.noticeOf(outcome) ??
           (family == null ? null : AppText.strings.fontBrought(family));
     },
+    bringShortcuts: (files) async => switch (EditorShortcutScope.peek(context)) {
+      final bindings? => importShortcutFiles(bindings, files),
+      null => const [],
+    },
   );
 
-  /// The top strip's 「파일 열기…」 — and the media panel's ＋, which
+  /// The top strip's 「파일 열기」 — and the media panel's ＋, which
   /// [toPool] says: the files it brings register.
   Future<void> _pickAndOpen({bool toPool = false}) async {
     final picked = await pickFilesToOpen(context);
@@ -2219,7 +2268,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     await _door.open(context, picked, toPool: toPool);
   }
 
-  /// The top strip's 「폴더 열기…」: a cut folder, into the import window.
+  /// The top strip's 「폴더 열기」: a cut folder, into the import window.
   Future<void> _pickFolderAndOpen() async {
     // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
     // returns a SAF tree URI on Android — and the window the folder goes to
@@ -2710,7 +2759,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       height: frame.hasBottomDock ? frame.bottomHeight : null,
       child: _docks.buildBottomDock(
         availableExtent: frame.constraints.maxHeight,
-        content: bottomContent,
+        content: bottomContent == null
+            ? null
+            : _bottomDockSplitterEdges(frame.onTop, bottomContent),
         inset: frame.bottomInset > 0,
         onTop: frame.onTop,
         // Every grip the region has, laid on its own
@@ -2719,6 +2770,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ),
     );
   }
+
+  /// [content] told the edges [_bottomDockGrips] lays its grips on
+  /// (F-452): both sides, and the artwork-facing edge while unfolded.
+  Widget _bottomDockSplitterEdges(bool onTop, Widget content) =>
+      DockSplitterEdges(
+        left: true,
+        right: true,
+        top: !_bottomDockCollapsed && !onTop,
+        bottom: !_bottomDockCollapsed && onTop,
+        child: content,
+      );
 
   List<Widget> _bottomDockGrips(_WorkspaceFrame frame) {
     // The widest an inset may be: the region keeps at least
@@ -2860,12 +2922,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             frame.hasBottomDock && _bottomDockCollapsed && !frame.onTop
             ? _collapsedRows.collapsedRowHeight()
             : 0,
-        // WHERE the right column actually is, not just how
+        // WHERE each column actually is, not just how
         // wide it is. A rail panel is as tall as it was
         // left at, so a short one covers a band and not
         // an edge — and the scrollbar that stepped
         // aside for the whole edge read as floating for
-        // no reason (유저, R3 #5).
+        // no reason (유저, R3 #5). The left one is for
+        // the brush pill on that edge (I-34).
+        leftRailBand: _rail.railBand(
+          right: false,
+          stop: frame.leftStop,
+          onTop: frame.onTop,
+          height: frame.constraints.maxHeight,
+          grid: frame.grid,
+        ),
         rightRailBand: _rail.railBand(
           right: true,
           stop: frame.rightStop,

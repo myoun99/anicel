@@ -14,7 +14,21 @@ void main() {
       required double contentHeight,
       Axis axis = Axis.vertical,
       double contentWidth = double.infinity,
+      double? scopeLane,
     }) async {
+      final Widget bar = PanelScrollbar(
+        controller: controller,
+        axis: axis,
+        child: SingleChildScrollView(
+          scrollDirection: axis,
+          controller: controller,
+          child: SizedBox(
+            key: const ValueKey<String>('panel-content'),
+            width: contentWidth,
+            height: contentHeight,
+          ),
+        ),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Align(
@@ -22,19 +36,9 @@ void main() {
             child: SizedBox(
               width: viewportWidth,
               height: viewportHeight,
-              child: PanelScrollbar(
-                controller: controller,
-                axis: axis,
-                child: SingleChildScrollView(
-                  scrollDirection: axis,
-                  controller: controller,
-                  child: SizedBox(
-                    key: const ValueKey<String>('panel-content'),
-                    width: contentWidth,
-                    height: contentHeight,
-                  ),
-                ),
-              ),
+              child: scopeLane == null
+                  ? bar
+                  : AppScrollbarLaneScope(lane: scopeLane, child: bar),
             ),
           ),
         ),
@@ -77,9 +81,7 @@ void main() {
       );
     });
 
-    testWidgets('the lane is the narrow step of the vocabulary', (
-      tester,
-    ) async {
+    testWidgets('the lane is the thin bar', (tester) async {
       final controller = ScrollController();
       addTearDown(controller.dispose);
 
@@ -87,16 +89,36 @@ void main() {
 
       expect(
         tester.getSize(find.byType(AppControllerScrollbar)),
-        const Size(AppScrollbarLane.narrow, viewportHeight),
+        const Size(AppScrollbarLane.thin, viewportHeight),
+      );
+    });
+
+    // F-409 (user): 「환경설정창은 다 두꺼운 스크롤바 사용」 — a window says
+    // which bar its scrollables get.
+    testWidgets('…and the scope\'s bar under a scope', (tester) async {
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+
+      await pumpPanel(
+        tester,
+        controller: controller,
+        contentHeight: 500,
+        scopeLane: AppScrollbarLane.thick,
+      );
+
+      expect(
+        tester.getSize(find.byType(AppControllerScrollbar)),
+        const Size(AppScrollbarLane.thick, viewportHeight),
       );
     });
 
     // ㉔ (user, 2026-08-12): 「넘칠 때 뜨는 스크롤바의 아래 패딩을 없애고
-    // 영역 바닥에 딱 붙인다 (…) 겹치는 건 문제없음」. The lane was already
-    // flush; the THUMB sat centred in it, so a 12px lane left 4px of air on
-    // the outside of a 4px bar.
-    testWidgets('the thumb rides the edge the lane is pinned to, with no '
-        'air outside it', (tester) async {
+    // 영역 바닥에 딱 붙인다 (…) 겹치는 건 문제없음」 — and F-409: the thumb
+    // is as thick as the lane that takes the pointer, so it is flush with
+    // the edge the lane is pinned to.
+    testWidgets('a vertical thumb fills its lane on the RIGHT edge', (
+      tester,
+    ) async {
       final controller = ScrollController();
       addTearDown(controller.dispose);
 
@@ -104,16 +126,11 @@ void main() {
 
       final lane = tester.getRect(find.byType(AppControllerScrollbar));
       final thumb = tester.getRect(find.byType(AnimatedContainer));
-      expect(
-        thumb.right,
-        lane.right,
-        reason: 'a vertical bar sits on the RIGHT edge of its area',
-      );
-      // And it did not become a fat bar to get there.
-      expect(thumb.width, lessThan(lane.width));
+      expect(lane.right, viewportWidth, reason: 'the area\'s own right');
+      expect([thumb.left, thumb.right], [lane.left, lane.right]);
     });
 
-    testWidgets('a horizontal bar sits on the BOTTOM edge', (tester) async {
+    testWidgets('a horizontal one on the BOTTOM edge', (tester) async {
       final controller = ScrollController();
       addTearDown(controller.dispose);
 
@@ -127,9 +144,8 @@ void main() {
 
       final lane = tester.getRect(find.byType(AppControllerScrollbar));
       final thumb = tester.getRect(find.byType(AnimatedContainer));
-      expect(thumb.bottom, lane.bottom);
       expect(lane.bottom, viewportHeight, reason: 'the area\'s own bottom');
-      expect(thumb.height, lessThan(lane.height));
+      expect([thumb.top, thumb.bottom], [lane.top, lane.bottom]);
     });
 
     // 🚨(playback-frame-raster-is-the-whole-window, 10-12) The bar built

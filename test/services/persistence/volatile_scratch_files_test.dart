@@ -19,8 +19,8 @@ void main() {
   Uint8List bytes(int n) => Uint8List.fromList(List<int>.filled(n, 7));
 
   test('an undo payload lands in the VOLATILE room, a cel in the staged '
-      'one — the save deletes one and must not reach the other', () {
-    final undo = VolatileScratchFiles.write(bytes(16));
+      'one — the save deletes one and must not reach the other', () async {
+    final undo = await VolatileScratchFiles.write(bytes(16));
     final cel = ScratchCelFiles.write(
       ScratchCelFiles.newNamespace(),
       'cels/abc.celz',
@@ -38,22 +38,22 @@ void main() {
     );
   });
 
-  test('what was written reads back byte for byte', () {
+  test('what was written reads back byte for byte', () async {
     final payload = Uint8List.fromList([1, 2, 3, 250, 0, 99]);
-    final path = VolatileScratchFiles.write(payload)!;
+    final path = (await VolatileScratchFiles.write(payload))!;
     expect(ScratchFile.read(path), payload);
   });
 
-  test('every payload gets its own file — one run parks many', () {
-    final first = VolatileScratchFiles.write(bytes(4))!;
-    final second = VolatileScratchFiles.write(bytes(4))!;
+  test('every payload gets its own file — one run parks many', () async {
+    final first = (await VolatileScratchFiles.write(bytes(4)))!;
+    final second = (await VolatileScratchFiles.write(bytes(4)))!;
     expect(first, isNot(second));
     expect(File(first).existsSync(), isTrue);
     expect(File(second).existsSync(), isTrue);
   });
 
-  test('a payload that is gone reads as null rather than a blank', () {
-    final path = VolatileScratchFiles.write(bytes(8))!;
+  test('a payload that is gone reads as null rather than a blank', () async {
+    final path = (await VolatileScratchFiles.write(bytes(8)))!;
     ScratchFile.remove(path);
     // 🚨Null is a LOST STEP the caller has to report, not a cache miss it
     // may paper over: whatever was parked here is already dropped.
@@ -84,8 +84,8 @@ void main() {
       expect(ScratchFile.read(SessionScratch.volatileFolder()), isNull);
     });
 
-    test('the write leaves no .part behind on success', () {
-      final path = VolatileScratchFiles.write(bytes(32))!;
+    test('the write leaves no .part behind on success', () async {
+      final path = (await VolatileScratchFiles.write(bytes(32)))!;
       expect(File('$path.part').existsSync(), isFalse);
     });
   });

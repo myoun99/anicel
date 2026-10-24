@@ -18,7 +18,6 @@ import 'package:anicel/src/ui/home_page.dart';
 /// menu opens is already covered elsewhere — it opened from the band too.
 const _addPairs = <({String button, String menu})>[
   (button: 'timeline-toolbar-add-layer-button', menu: 'timeline-toolbar-add-layer-menu'),
-  (button: 'new-cut-button', menu: 'new-cut-menu'),
 ];
 
 Future<void> _pump(WidgetTester tester) async {

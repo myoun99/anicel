@@ -1,5 +1,6 @@
 import 'dart:ui' show SemanticsAction;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
@@ -84,7 +85,22 @@ class TwoAxisDrag extends StatelessWidget {
 /// position whether to build its drag recognisers (`setCanDrag`), and that
 /// is the one question answered differently here.
 class TwoAxisScrollController extends PenFriendlyScrollController {
-  TwoAxisScrollController({super.initialScrollOffset});
+  TwoAxisScrollController({this.bornAt});
+
+  /// The axis the sheet's host keeps, which every position this controller
+  /// makes is born at ([initialScrollOffset]) — read as it is made.
+  ///
+  /// 🚨Not at zero (F-143): a grid is built afresh while the axis it shares
+  /// stands elsewhere — brought forward again, switched in orientation —
+  /// and a newborn 0 was read back after layout and recorded as a scroll.
+  /// And not where it stood when the controller was made: the storyboard
+  /// keeps its State through a fold and builds its body again on the
+  /// controllers it had (유저 2026-10-14: 「열려있을때만 지어지는게
+  /// 맞는구조」), while the folded row turned the axis.
+  final ValueListenable<double>? bornAt;
+
+  @override
+  double get initialScrollOffset => bornAt?.value ?? 0;
 
   @override
   ScrollPosition createScrollPosition(
@@ -229,10 +245,7 @@ class _SheetDrag extends PanGestureRecognizer {
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
   ) {
-    final slop = computeHitSlop(
-      PenSidecars.kindOf(pointerDeviceKind),
-      gestureSettings,
-    );
+    final slop = PenSidecars.hitSlopOf(pointerDeviceKind, gestureSettings);
     // The sheet keeps a pull wherever on it the pull lands while any of it
     // can move — one on the layer area included, when only the frames can
     // (F-202: 「안에서 동작하는 스크롤이나 드래그는 절대 밖으로 안새게」).

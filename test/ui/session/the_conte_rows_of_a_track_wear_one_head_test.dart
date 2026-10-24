@@ -235,6 +235,14 @@ void main() {
       read: (row) => row.transformEnabled,
       written: false,
     ),
+    // 🗣️I-89-Q22 (유저 2026-10-16): 「콘티행은 그런부분 글로벌이니까 아니면
+    // 글로벌시키고 넣고 머리로 하나」. ↩️Each cut's own until then.
+    'the sheet switch': (
+      write: (session, row) =>
+          session.layerSwitches.toggleLayerTimesheet(row),
+      read: (row) => row.onTimesheet,
+      written: false,
+    ),
   };
 
   for (final MapEntry(key: name, value: field) in fields.entries) {
@@ -370,6 +378,7 @@ void main() {
     session.layerVerbs.renameLayer(const LayerId('a-conte'), 'Board');
     session.opacityVerbs.commitLayerOpacity(const LayerId('a-conte'), 0.25);
     session.layerSwitches.toggleLayerVisibility(const LayerId('a-conte'));
+    session.layerSwitches.toggleLayerTimesheet(const LayerId('a-conte'));
     session.layerMarks.setLayerMark(
       const LayerId('a-conte'),
       const LayerMark(process: LayerProcess.layout),
@@ -401,6 +410,7 @@ void main() {
       ('Board', 0.25, false, const LayerMark(process: LayerProcess.layout)),
     );
     expect(born.transformEnabled, headSwitch);
+    expect(born.onTimesheet, isFalse, reason: 'the head\'s sheet switch');
     expect(
       [for (final effect in born.effects) effect.id.value],
       ['fx-1'],
@@ -455,5 +465,93 @@ void main() {
       (born.name, born.opacity, born.isVisible),
       ('Conte', 1.0, true),
     );
+  });
+
+  /// 🗣️I-89-Q22 (유저 2026-10-16): 「어니언도 콘티행 기본적으로 버튼
+  /// 글로벌이니까 넣음」 — the onion is session state, not the head's
+  /// (F-162), and it is ONE for the track's conte rows all the same.
+  group('the onion', () {
+    List<bool> ghosting(EditorSessionManager session) => [
+      for (final id in const ['a-conte', 'b-conte', 'd-conte'])
+        session.onionSkin.isLayerOnionSkinEnabled(LayerId(id)),
+    ];
+
+    for (final under in const ['b', 'c', 'd', 'a gap']) {
+      test('turned on through cut b\'s row standing on $under, every cut\'s '
+          'conte on the track ghosts — and off through cut a\'s, none', () {
+        final session = sessionOf(film());
+        if (under == 'a gap') {
+          session.selectGlobalFrame(25);
+        } else {
+          session.selectCut(CutId(under));
+        }
+
+        session.onionSkin.toggleLayerOnionSkin(const LayerId('b-conte'));
+        expect(
+          ghosting(session),
+          [true, true, false],
+          reason: 'track 2\'s conte is another head',
+        );
+
+        session.onionSkin.toggleLayerOnionSkin(const LayerId('a-conte'));
+        expect(ghosting(session), [false, false, false]);
+      });
+    }
+
+    test('a conte born into a cut afterwards ghosts with the rest', () {
+      final session = sessionOf(film());
+      session.onionSkin.toggleLayerOnionSkin(const LayerId('a-conte'));
+      // Asked once before the birth, as the rail and the canvas ask it of
+      // every row they draw: the answer read then is not the one after.
+      expect(
+        session.onionSkin.isLayerOnionSkinEnabled(const LayerId('b-conte')),
+        isTrue,
+        reason: '⛔전제',
+      );
+
+      session.selectCut(const CutId('c'));
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
+      final born = storyboardLayerForCut(session.requireActiveCut)!;
+
+      expect(session.onionSkin.isLayerOnionSkinEnabled(born.id), isTrue);
+    });
+
+    test('🚨the canvas ghosts the conte of the cut stood in, turned on '
+        'through another cut\'s', () {
+      final session = sessionOf(film());
+      session.selectCut(const CutId('b'));
+      session.selectLayer(const LayerId('b-conte'));
+      session.selectFrameIndex(6);
+      session.createDrawingAtCurrentFrame();
+      expect(
+        session.onionSkin.onionSkinCanvasRequests(),
+        isEmpty,
+        reason: '⛔전제: nothing ghosts yet',
+      );
+
+      session.onionSkin.toggleLayerOnionSkin(const LayerId('a-conte'));
+
+      expect(
+        [
+          for (final request in session.onionSkin.onionSkinCanvasRequests())
+            request.frameKey.layerId,
+        ],
+        [const LayerId('b-conte')],
+        reason: 'b\'s panel before the playhead',
+      );
+    });
+
+    test('⛔a row in no conte group ghosts alone', () {
+      final session = sessionOf(film());
+      session.onionSkin.toggleLayerOnionSkin(const LayerId('a-cel'));
+
+      expect(
+        [
+          for (final id in const ['a-cel', 'b-cel'])
+            session.onionSkin.isLayerOnionSkinEnabled(LayerId(id)),
+        ],
+        [true, false],
+      );
+    });
   });
 }

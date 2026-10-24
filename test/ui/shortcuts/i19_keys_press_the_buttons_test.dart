@@ -316,13 +316,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(readout(), '150.00%', reason: 'the button walks the same list');
 
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 6; i++) {
       await _press(tester, LogicalKeyboardKey.keyE, shift: true);
     }
     expect(
       readout(),
-      '400.00%',
-      reason: '200, 300, 400 — and past the last entry there is no step',
+      '1600.00%',
+      reason: '200, 300, 400, 800, 1600 — and past the last entry there is '
+          'no step',
     );
   });
 }

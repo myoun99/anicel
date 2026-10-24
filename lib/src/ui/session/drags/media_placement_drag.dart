@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../models/block_row_swap.dart';
 import '../../../models/cel_bank_lanes.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/frame.dart';
@@ -38,8 +39,8 @@ import '../../timeline/timeline_drag_preview.dart';
 ///
 /// ⚠️It mints NO ids. The cells a drop would author do not exist, so the
 /// preview carries placeholder [FrameId]s that never reach the repository —
-/// the commit reads its own plan, never this channel ([DrawingBlockMoveDrag]
-/// says the same about its own preview). Minting here would burn an id per
+/// the commit reads its own plan, never this channel (`EditorDragSession`
+/// states that law for every drag). Minting here would burn an id per
 /// pointer step on a drag that may never land.
 class MediaPlacementDrag {
   MediaPlacementDrag({
@@ -114,6 +115,8 @@ class MediaPlacementDrag {
       frameDelta: 0,
       // Built cells are in no bank yet, so no other lane can show them.
       sourceBank: CelBankLanes.unshared,
+      // A medium put on a row is an insertion, not a move (F-384-Q1).
+      landing: const LandingPushesThem(),
       cutFrameCount: _cutFrameCount(),
     )?.targetAfter;
     if (after == null) {

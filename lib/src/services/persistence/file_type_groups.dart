@@ -37,6 +37,7 @@ import '../../models/media_asset.dart'
         pdfFileExtensions,
         videoFileExtensions;
 import '../brush_pack_file.dart';
+import '../shortcuts/program_keymap.dart' show shortcutFileExtensions;
 import 'anicel_project_archive.dart';
 import 'provider_documents.dart';
 
@@ -106,7 +107,7 @@ const List<String> projectOpenExtensions = [
 ];
 
 /// What a file OPENS AS — the one judgement every door a file comes in
-/// through asks: the menu's 「파일 열기…」, a drop on the window, the media
+/// through asks: the menu's 「파일 열기」, a drop on the window, the media
 /// panel's ＋ and the viewer's 「미디어에 등록」 (F-282, 유저 2026-10-09:
 /// 「열기랑 임포트랑 되도록 하나로 합치고싶고, 드래그앤드롭으로 파일
 /// 여는거라던가 풀에 등록할떄? 등 관련 임포트 전부 점검」 · 「최대한
@@ -127,6 +128,12 @@ enum OpenedAs {
 
   /// Goes into this device's fonts ([fontFileExtensions]).
   font,
+
+  /// Makes a program's keys a preset ([shortcutFileExtensions], I-107).
+  /// ⚠️`.txt` · `.ini` · `.cfg` are names other files use too: what is not
+  /// a program's shortcut file is said so when it is read (the cost
+  /// I-107-Q2 named — 유저 2026-10-18: 「다섯 다」).
+  shortcuts,
 }
 
 /// What the file [pathOrUri] names opens as — null for a file nothing in the
@@ -150,10 +157,13 @@ OpenedAs? openedAs(String pathOrUri) {
   if (fontFileExtensions.contains(extension)) {
     return OpenedAs.font;
   }
+  if (shortcutFileExtensions.contains(extension)) {
+    return OpenedAs.shortcuts;
+  }
   return mediaAssetKindForPath(name) == null ? null : OpenedAs.media;
 }
 
-/// Every extension some door takes ([openedAs]) — what 「파일 열기…」
+/// Every extension some door takes ([openedAs]) — what 「파일 열기」
 /// accepts, and what the notice for a file it does not names.
 const List<String> openableExtensions = [
   ...projectOpenExtensions,
@@ -163,6 +173,7 @@ const List<String> openableExtensions = [
   ...pdfFileExtensions,
   ...brushFileExtensions,
   ...fontFileExtensions,
+  ...shortcutFileExtensions,
 ];
 
 /// What each identifier means to Android, which filters by MIME and has

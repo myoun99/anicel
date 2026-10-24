@@ -14,7 +14,6 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
-import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
 import '../../helpers/native_engine_path.dart';
 
@@ -257,14 +256,6 @@ void main() {
   testWidgets('a project tab waiting in the overflow list is picked from it', (
     tester,
   ) async {
-    // The test window's strip holds no two tabs, so they wait in its list —
-    // the row's own rule (see `project_tabs_test`). Wider by the brush
-    // bars' pencils (tool-settings-panel-tidy): at 800 the brush group
-    // folds to its button now, and the room it gives back holds both.
-    await tester.binding.setSurfaceSize(
-      const Size(800 + 2 * ValuePencil.reach, 600),
-    );
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: createDefaultProject())),
     );
@@ -272,11 +263,25 @@ void main() {
     final projects = tester
         .widget<EditorTopStrip>(find.byType(EditorTopStrip))
         .projects;
-    final first = projects.active;
-    await pick(tester, byKey('top-strip-project-button'), 'menu-file-new');
-    expect(identical(projects.active, first), isFalse);
+    // However wide the strip, projects are opened until one waits in its
+    // list — the row's own rule (see `the_top_strip_gives_way_test`). A new
+    // project opens, so the one before it is the first to wait that is not
+    // the open one.
+    int before() => projects.sessions.length - 2;
+    bool oneWaits() =>
+        before() >= 0 && byKey('project-tab-${before()}').evaluate().isEmpty;
+    for (var opened = 0; !oneWaits(); opened += 1) {
+      expect(opened, lessThan(16), reason: '⛔the strip never fills');
+      await pick(tester, byKey('top-strip-project-button'), 'menu-file-new');
+    }
+    final waiting = projects.sessions[before()];
+    expect(identical(projects.active, waiting), isFalse);
 
-    await pick(tester, byKey('project-tab-overflow'), 'project-tab-overflow-0');
-    expect(identical(projects.active, first), isTrue);
+    await pick(
+      tester,
+      byKey('project-tab-overflow'),
+      'project-tab-overflow-${before()}',
+    );
+    expect(identical(projects.active, waiting), isTrue);
   });
 }

@@ -1,8 +1,9 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
+
+import '../../helpers/touch_batches.dart';
 
 /// 🗣️**F-260** (유저 10-02): 「시작되면 그때까지 입력된 이동 값이 한번에
 /// 입력되서 화면이 갑자기 순간적으로 크게이동되는데 … 시작되기로 인식한 순간
@@ -53,39 +54,6 @@ void main() {
       sizeCalls: sizeCalls,
     );
   }
-
-  /// One batch: every event dispatched before any microtask runs.
-  /// `sendEventToBinding` cannot be called twice without an await between,
-  /// which would be a batch of one.
-  Future<void> batch(WidgetTester tester, List<PointerEvent> events) async {
-    for (final event in events) {
-      tester.binding.handlePointerEvent(event);
-    }
-    await tester.idle();
-    await tester.pump();
-  }
-
-  Future<List<TestPointer>> fingersDown(
-    WidgetTester tester,
-    List<Offset> at,
-  ) async {
-    final fingers = [
-      for (var i = 0; i < at.length; i += 1)
-        TestPointer(i + 1, PointerDeviceKind.touch),
-    ];
-    for (var i = 0; i < at.length; i += 1) {
-      await tester.sendEventToBinding(fingers[i].down(at[i]));
-    }
-    await tester.pump();
-    return fingers;
-  }
-
-  List<PointerEvent> moveAll(List<TestPointer> fingers, Offset by) => [
-    for (final finger in fingers) finger.move(finger.location! + by),
-  ];
-
-  Future<void> liftAll(WidgetTester tester, List<TestPointer> fingers) =>
-      batch(tester, [for (final finger in fingers) finger.up()]);
 
   testWidgets('a two-finger pan moves by the travel AFTER it was recognised '
       '— the slop it waited out never lands, gesture after gesture', (

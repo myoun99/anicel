@@ -25,7 +25,7 @@ Set<int> keysStartingIn(
 /// the audit's clone scan, 2026-09-03), entered by a frame range
 /// (`shiftKeysInRange`). A camera's keys are not the entries of one map:
 /// each lane holds its own, and since F-309 they shift by the lanes' law
-/// ([PropertyTrack.withRangedKeysShifted]) — moved as whole poses, they
+/// ([PropertyTrack.withRangedKeysMoved]) — moved as whole poses, they
 /// came back keyed on lanes that had held no key. The range entry went
 /// with its last caller.
 Map<int, T>? shiftKeysAt<T>({
@@ -59,4 +59,17 @@ Map<int, T>? shiftKeysAt<T>({
     shifted[landing] = entry;
   }
   return shifted;
+}
+
+/// A STRETCH of keys' frames (I-3 ⑥, AE's transform box): each as far from
+/// [anchor] as it was, times [factor]. A factor under 0 turns them about the
+/// anchor — AE's 「Scale by negative amounts to reverse the keyframes in
+/// time」.
+typedef FrameStretch = ({double anchor, double factor});
+
+/// [frame] stretched by [stretch], on the nearest whole frame — where every
+/// key stands.
+int frameStretched(FrameStretch stretch, int frame) {
+  final (:anchor, :factor) = stretch;
+  return (anchor + (frame - anchor) * factor).round();
 }

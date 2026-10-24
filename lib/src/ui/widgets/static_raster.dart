@@ -111,6 +111,14 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// Caller kill-switch, for a surface that is known to be alive for a
   /// while (a live drag, a playback session). Usually unnecessary —
   /// [maxConsecutiveCaptures] notices on its own.
+  ///
+  /// The only switch there is. ↩️A global one (`globallyEnabled`, the debug
+  /// menu's 「Bake Static Panels」, 2026-08-09) let a rendering be A/B'd in
+  /// the same build; the user had it taken out, since turning it off is
+  /// only ever a loss (유저 2026-10-23, F-448 「없애고 on인채로 두는게
+  /// 맞지않을까」). The unbaked rendering a test compares against is the
+  /// Impeller path ([debugCapturePaysOverride]), which paints through the
+  /// same way and is what most devices run.
   final bool enabled;
 
   /// After this many captures on consecutive frames, stop trying and
@@ -122,10 +130,6 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// per-caller audit of "but does it animate?" — the ones that animate
   /// opt themselves out, every frame, for free.
   final int maxConsecutiveCaptures;
-
-  /// Global off switch. Painting goes straight through when false, so a
-  /// suspicious rendering can be A/B'd against the same build.
-  static final ValueNotifier<bool> globallyEnabled = ValueNotifier<bool>(true);
 
   /// Whether a capture belongs on the renderer this app runs on. Where it
   /// does not, every surface is a zone and nothing more: its own repaint
@@ -308,7 +312,7 @@ enum StandDownReason {
   /// Zero-size box, mid-layout.
   empty,
 
-  /// Switched off by the caller or by the global A/B switch.
+  /// Switched off by the caller ([StaticRaster.enabled]).
   disabled,
 
   /// A capture on this renderer is not a copy of the paint, and costs a
@@ -347,9 +351,6 @@ class RenderStaticRaster extends RenderProxyBox {
   }) : _enabled = enabled,
        _maxConsecutiveCaptures = maxConsecutiveCaptures,
        _devicePixelRatio = devicePixelRatio;
-
-  /// The gate the paint path reads: our own switch and the global one.
-  bool get _bakingAllowed => _enabled && StaticRaster.globallyEnabled.value;
 
   /// The point of the whole class: our own layer, so Flutter's dirty bit
   /// is the invalidation signal and an ancestor's repaint does not reach
@@ -538,15 +539,13 @@ class RenderStaticRaster extends RenderProxyBox {
     StaticRaster.census.add(this);
     // A re-attached surface has not painted where it now lives.
     _hasEverPainted = false;
-    StaticRaster.globallyEnabled.addListener(_onGloballyEnabledChanged);
-    MeasurementMode.showRepaints.addListener(_onGloballyEnabledChanged);
+    MeasurementMode.showRepaints.addListener(_onShowRepaintsChanged);
   }
 
   @override
   void detach() {
     StaticRaster.census.remove(this);
-    StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
-    MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
+    MeasurementMode.showRepaints.removeListener(_onShowRepaintsChanged);
     _dropRaster();
     super.detach();
   }
@@ -555,13 +554,12 @@ class RenderStaticRaster extends RenderProxyBox {
   void dispose() {
     _clipLayer.layer = null;
     StaticRaster.census.remove(this);
-    StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
-    MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
+    MeasurementMode.showRepaints.removeListener(_onShowRepaintsChanged);
     _dropRaster();
     super.dispose();
   }
 
-  void _onGloballyEnabledChanged() {
+  void _onShowRepaintsChanged() {
     _dropRaster();
     markNeedsPaint();
   }
@@ -611,7 +609,7 @@ class RenderStaticRaster extends RenderProxyBox {
       _paintThrough(context, offset);
       return;
     }
-    if (!_bakingAllowed) {
+    if (!_enabled) {
       _standDown = StandDownReason.disabled;
       _dropRaster();
       _paintThrough(context, offset);

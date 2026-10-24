@@ -32,7 +32,7 @@ class PieceGround {
 
   /// The cels the ladder names: a frame range's whole block, or the cel you
   /// stand on. ⚠️As the ladder spells them — it may name one physical cel
-  /// twice, and the landing is what keys them ([pieceLandings]).
+  /// twice, and the door is what keys them ([pieceDabs]).
   final List<BrushFrameKey> cels;
 
   /// Where a cel's row stands on the canvas — null for an unplaced row.
@@ -76,6 +76,10 @@ class PieceStamp {
 /// selection, if there is one — and the step that lands it.
 typedef PieceLanding = ({BrushDab dab, Command landing});
 
+/// One cel's answer from the door, before anything lands: the key that
+/// answered for the cel, and the dab as it lands there ([pieceDabs]).
+typedef PieceDab = ({BrushFrameKey key, BrushDab dab});
+
 /// 🚨★★★**THE PIECE DOOR** — a held picture, landed on every cel a press
 /// names. 픽셀 위 / 아래 붙여넣기 (I-55), and the cut tool's stamp by all three
 /// of its roads: a press on the canvas, a drag, and 원래 위치에 붙여넣기.
@@ -117,15 +121,57 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
   required PieceStamp stamp,
   CacheInvalidationSink? cacheInvalidationSink,
 }) {
+  final answers = pieceDabs(
+    coordinator: coordinator,
+    ground: ground,
+    stamp: stamp,
+  );
+  return {
+    for (final MapEntry(key: cel, value: answer) in answers.entries)
+      cel: (
+        dab: answer.dab,
+        landing: BrushLiftMoveHistoryCommand(
+          coordinator: coordinator,
+          frameKey: answer.key,
+          preLiftSurface: coordinator.currentSurfaceOf(answer.key),
+          landingDabs: [answer.dab],
+          blendMode: stamp.blend,
+          description: stamp.description,
+          // Without a sink the canvas keeps the old composite until you
+          // leave the frame — the pixels change and every cache serves what
+          // it had.
+          cacheInvalidationSink: cacheInvalidationSink,
+        ),
+      ),
+  };
+}
+
+/// The door's answer, cel by cel, before anything lands — the law above
+/// ([pieceLandings]) and the one loop that keeps it: what a landing lands,
+/// and what the cut tool's stamp shows of the cel on screen before a click
+/// (brush-fidelity-Q9: the ghost is what lands, so it asks here rather
+/// than answering for the cel itself).
+///
+/// [only] asks for the one physical cel it names; the rest of the ladder
+/// is passed over without reading the selection.
+Map<BrushFrameKey, PieceDab> pieceDabs({
+  required BrushFrameEditingCoordinator coordinator,
+  required PieceGround ground,
+  required PieceStamp stamp,
+  BrushFrameKey? only,
+}) {
   final store = coordinator.frameStore;
   final through = _SelectionOnTheRows(
     ground,
     // Every surface the coordinator writes stops at this wall.
     coordinator.sessionStore.pasteboard,
   );
-  final landed = <BrushFrameKey, PieceLanding>{};
+  final answered = <BrushFrameKey, PieceDab>{};
   for (final key in ground.cels) {
     final cel = store.canonicalKeyOf(key);
+    if (only != null && cel != only) {
+      continue;
+    }
     // 🚨ONE LANDING PER PHYSICAL CEL, AND THE MAP IS WHAT SAYS SO — the
     // form a transform's landings keep (`_landingsPerCel`); 유저's word for
     // this door is 「변형도구처럼」.
@@ -135,7 +181,7 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
     // anything). Two mechanisms for one invariant: a mutant deleted the
     // set's skip with every pin green, the map folding the cel anyway
     // (2026-10-06).
-    if (landed.containsKey(cel)) {
+    if (answered.containsKey(cel)) {
       continue;
     }
     final placement = ground.placementOf(key);
@@ -148,23 +194,9 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
     }
     // 🚨ERASE rides a flag on the DAB ([BrushDab.underBlend] says why);
     // every road a piece lands by passes this line.
-    final dab = inside.underBlend(stamp.blend);
-    landed[cel] = (
-      dab: dab,
-      landing: BrushLiftMoveHistoryCommand(
-        coordinator: coordinator,
-        frameKey: key,
-        preLiftSurface: coordinator.currentSurfaceOf(key),
-        landingDabs: [dab],
-        blendMode: stamp.blend,
-        description: stamp.description,
-        // Without a sink the canvas keeps the old composite until you leave
-        // the frame — the pixels change and every cache serves what it had.
-        cacheInvalidationSink: cacheInvalidationSink,
-      ),
-    );
+    answered[cel] = (key: key, dab: inside.underBlend(stamp.blend));
   }
-  return landed;
+  return answered;
 }
 
 /// The selection as each row shows it, read ONCE per distinct outline, and
@@ -173,6 +205,11 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
 /// A range is mostly one row, and rows are mostly unplaced: without the
 /// three memos a feathered marquee over twenty-four cels is rasterized
 /// twenty-four times and the piece copied as often.
+///
+/// ⛔One per asking of the door, dropped with it. ↩️The stamp's ghost kept
+/// one across a hover (brush-fidelity-Q9): it read the marquee at the
+/// softness and the placements of the hover's first asking, and held every
+/// piece it ever cut — a new dab per move.
 class _SelectionOnTheRows {
   _SelectionOnTheRows(this._ground, this._wall);
 

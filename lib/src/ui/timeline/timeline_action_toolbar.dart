@@ -8,6 +8,8 @@ import '../input/control_press_claim.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
+import '../sliced_value_listenable_builder.dart';
+import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
@@ -38,13 +40,25 @@ Future<void> showTimelineCommaCountDialog(
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
+  final target = panel.commaTarget;
+  if (target == null) {
+    return;
+  }
+  // 🗣️I-24-open-entry (유저 2026-10-01): 「노출 길이 설정 (프레임), 노출
+  // 길이 설정 (컷) 이렇게 하자 … 길이 설정도 기존 길이 띄워둔다」 — what the
+  // press will re-time, read off the ladder the press itself takes.
+  final shown = session.storyboardCursor.commaTargetShown(target);
+  final strings = AppText.strings;
   final comma = await _askFrameCount(
     context,
     session,
     keyPrefix: 'set-comma-n',
-    title: AppText.strings.setCommasTitle,
+    title: strings.windowTitleOn(
+      strings.setLengthAction,
+      _commaTargetNoun(shown.kinds),
+    ),
     titleIcon: Icons.timelapse_outlined,
-    field: AppText.strings.setCommasField,
+    initialCount: shown.length,
   );
   if (comma != null && comma >= 1) {
     panel.setComma(comma);
@@ -61,13 +75,19 @@ Future<void> showMarkEveryDialog(
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
+  final strings = AppText.strings;
   final every = await _askFrameCount(
     context,
     session,
     keyPrefix: 'mark-every',
-    title: editorActionLabel(EditorActionIds.frameMarkEvery),
+    // The marks go down frame blocks alone ([LayerMarks.markEvery]).
+    title: strings.windowTitleOn(
+      editorActionLabel(EditorActionIds.frameMarkEvery),
+      strings.tlFrame,
+    ),
     titleIcon: _markEveryIcon,
-    field: AppText.strings.markEveryField,
+    // The interval is the one number the title does not say.
+    field: strings.markEveryField,
   );
   if (every != null && every >= 1) {
     panel.markEvery(every);
@@ -75,6 +95,21 @@ Future<void> showMarkEveryDialog(
 }
 
 const _markEveryIcon = Icons.linear_scale;
+
+/// What a comma window names in its title's brackets: the kinds it
+/// re-times, together where it re-times several.
+String _commaTargetNoun(List<CommaTargetKind> kinds) {
+  final strings = AppText.strings;
+  return [
+    for (final kind in kinds)
+      switch (kind) {
+        CommaTargetKind.cut => strings.tlCut,
+        CommaTargetKind.frame => strings.tlFrame,
+        CommaTargetKind.se => strings.tlKindSe,
+        CommaTargetKind.transition => strings.tlKindTransition,
+      },
+  ].join(' · ');
+}
 
 /// A count of frames, asked in a window and popped as frames — null when
 /// it closes without one. Every window that asks for a count of frames
@@ -85,7 +120,8 @@ Future<int?> _askFrameCount(
   required String keyPrefix,
   required String title,
   required IconData titleIcon,
-  required String field,
+  String? field,
+  int? initialCount,
 }) => showDialog<int>(
   context: context,
   builder: (context) => _FrameCountWindow(
@@ -93,6 +129,7 @@ Future<int?> _askFrameCount(
     title: title,
     titleIcon: titleIcon,
     field: field,
+    initialCount: initialCount,
     framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
     // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」
     // — the entry last switched to, kept as an app setting so a restart
@@ -115,14 +152,16 @@ class _FrameCountWindow extends StatefulWidget {
     required this.framesPerSecond,
     required this.entry,
     required this.onEntryChanged,
+    required this.initialCount,
   });
 
   /// `<keyPrefix>-dialog`, `<keyPrefix>-apply`, and the field's own.
   final String keyPrefix;
   final String title;
   final IconData titleIcon;
-  final String field;
+  final String? field;
   final int framesPerSecond;
+  final int? initialCount;
 
   /// The entry the window opens on.
   final FrameCountEntry entry;
@@ -153,6 +192,7 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
         onChanged: (count) => _count = count,
         onSubmitted: _apply,
         initialEntry: widget.entry,
+        initialCount: widget.initialCount,
         onEntryChanged: widget.onEntryChanged,
       ),
       actions: [
@@ -555,7 +595,15 @@ class TimelineActionToolbar extends StatelessWidget {
   /// not listened to is a button that lights one notify late. (Found first
   /// by the deselect button's test, a live cell band leaving it dark, while
   /// that button was here; it left this pill on 08-26.)
-  Widget _sharedPill() => ListenableBuilder(
+  /// 🚨And it hears them through its KEY — the gates it shows — not bare
+  /// (2026-10-24, card the-whole-block-drag-has-no-door). A block moves as
+  /// the selection it is (UI-R8), so every step of a move, and every pointer
+  /// move of a sweep, moves the band heard here. Built again on each, with
+  /// the same key, the pill still dirtied the panel's layout scope: the
+  /// panel's whole host was laid out and painted again at every step of the
+  /// drag (F-244: a drag step is a tick). Its bar answers seeks the same way
+  /// (R13-2's token).
+  Widget _sharedPill() => SlicedListenableBuilder<Object>(
     listenable: Listenable.merge([
       session.rowSelection,
       session.standing.currentRowListenable,
@@ -592,34 +640,40 @@ class TimelineActionToolbar extends StatelessWidget {
       // above, and the two pastes open behind it.
       session.appClipboard.pixels,
     ]),
-    builder: (context, _) => _sharedPillBody(),
+    slice: _sharedPillKey,
+    builder: (context, key) => _sharedPillBody(key),
   );
 
-  Widget _sharedPillBody() => _StaticCommandGroup(
-    rebuildKey: (
-      panelContext.deleteSubject,
-      AppText.settings.value.programLanguage,
-      // ㉕: the three that joined the delete read their own gates.
-      // T3 made it four — 잘라내기 asks the same question copy does.
-      // B8: every gate is the PANEL's now — the timeline context answers
-      // with the session getters this key used to name, the storyboard's
-      // with its standing row, host answer included (the side channel this
-      // key used to carry as its last entry).
-      panelContext.canCutRun,
-      panelContext.canCopyFrame,
-      panelContext.canPasteLinkedFrame,
-      panelContext.canPasteIndependentFrame,
-      // T25: and the fifth resident reads its own subject, for the same
-      // reason the delete reads `deleteSubject` — the button's enablement
-      // and what the press DOES have to come from one answer.
-      onEditInstance != null && panelContext.canEditInstance,
-      // The 색 편집 head reads the gate its rows open behind.
-      session.pixelVerbs.canOpenColourEdit,
-      // I-45: the link-independent button, from its own one answer.
-      panelContext.canUnlink,
-      // I-18: 자동 이름 지정, likewise.
-      panelContext.canAutoName,
-    ),
+  /// Every gate the shared pill shows — what it is built again for.
+  Object _sharedPillKey() => (
+    panelContext.deleteSubject,
+    AppText.settings.value.programLanguage,
+    // ㉕: the three that joined the delete read their own gates.
+    // T3 made it four — 잘라내기 asks the same question copy does.
+    // B8: every gate is the PANEL's now — the timeline context answers
+    // with the session getters this key used to name, the storyboard's
+    // with its standing row, host answer included (the side channel this
+    // key used to carry as its last entry).
+    panelContext.canCutRun,
+    panelContext.canCopyFrame,
+    panelContext.canPasteLinkedFrame,
+    panelContext.canPasteIndependentFrame,
+    // T25: and the fifth resident reads its own subject, for the same
+    // reason the delete reads `deleteSubject` — the button's enablement
+    // and what the press DOES have to come from one answer.
+    onEditInstance != null && panelContext.canEditInstance,
+    // The 색 편집 head reads the gate its rows open behind.
+    session.pixelVerbs.canOpenColourEdit,
+    // I-45: the link-independent button, from its own one answer.
+    panelContext.canUnlink,
+    // F-455: 복제, likewise.
+    panelContext.canDuplicate,
+    // I-18: 자동 이름 지정, likewise.
+    panelContext.canAutoName,
+  );
+
+  Widget _sharedPillBody(Object key) => _StaticCommandGroup(
+    rebuildKey: key,
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
@@ -733,6 +787,18 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.link_off,
           onPressed: panelContext.unlinkPress,
         ),
+        // 🗣️F-455 (유저 2026-10-23): 「공용알약에 복제 버튼 만들고 레이어랑
+        // 컷버튼의 레이어복제/컷복제 삭제」 — the layer pill's and the cut
+        // pill's duplicates, one button. The panel answers which noun
+        // ([ToolbarPanelContext.canDuplicate]): the rows on the timeline,
+        // the cut on the storyboard.
+        _iconButton(
+          key: const ValueKey<String>('shared-duplicate-button'),
+          tooltip: editorActionLabel(EditorActionIds.editDuplicate),
+          shortcuts: const [EditorActionIds.editDuplicate],
+          icon: Icons.control_point_duplicate,
+          onPressed: panelContext.duplicatePress,
+        ),
         _iconButton(
           key: const ValueKey<String>('shared-delete-button'),
           tooltip: editorActionLabel(EditorActionIds.editDelete),
@@ -764,7 +830,7 @@ class TimelineActionToolbar extends StatelessWidget {
         // 색변환이랑 픽셀삭제 그 버튼 안에 들어가는거 잊지말고」.
         //
         // The head RUNS NOTHING. 색 편집 is a category, not a verb, so a
-        // press that also did one of the four would be one button answering
+        // press that also did one of its verbs would be one button answering
         // two questions. The retired buttons' key strings live on as the
         // menu items', so tests only gain a menu-open tap.
         Builder(
@@ -1063,8 +1129,14 @@ class TimelineActionToolbar extends StatelessWidget {
         // 컷 · 레이어 · 프레임 · FX — the four nouns, in the order the data
         // nests (유저 확정). Keyed on the language for the same reason as
         // the others: every name cell prints a word.
+        // …and on the ＋'s gate: a band over the cut that is there leaves
+        // nowhere to make one, and a bake keyed on the language alone kept
+        // the ＋ lit through it.
         _StaticCommandGroup(
-          rebuildKey: AppText.settings.value.programLanguage,
+          rebuildKey: (
+            AppText.settings.value.programLanguage,
+            session.cutPlacement.canCreateCut,
+          ),
           builder: (context) => CutCommandGroup(session: session),
         ),
         const SizedBox(width: 6),

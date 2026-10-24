@@ -46,17 +46,9 @@ void main() {
       if (node case CompositeLeaf(payload: final CanvasActiveLayerRow row)) {
         return row;
       }
-      if (node is CompositeGroup<CanvasStackRow>) {
-        final found = activeIn(node.children);
-        if (found != null) {
-          return found;
-        }
-      }
-      if (node is CompositeAdjustment<CanvasStackRow>) {
-        final found = activeIn(node.children);
-        if (found != null) {
-          return found;
-        }
+      final found = activeIn(node.children);
+      if (found != null) {
+        return found;
       }
     }
     return null;
@@ -124,7 +116,13 @@ void main() {
     s.selectFrameIndex(40);
 
     final nodes = s.editingCanvas.stack.nodes;
-    final group = nodes.whereType<CompositeGroup<CanvasStackRow>>().single;
+    // ↩️The group stood at the top, until every advanced blend went over
+    // its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-
+    // on-vulkan): a folder in multiply is the source of a blend now.
+    final group = [
+      for (final node in nodes)
+        if (node case CompositeBackdropBlend(:final source)) source else node,
+    ].whereType<CompositeGroup<CanvasStackRow>>().single;
     expect(
       group.opacity,
       closeTo(0.2, 1e-9),
@@ -135,5 +133,43 @@ void main() {
       isNotNull,
       reason: 'and the live row sits inside that group',
     );
+  });
+
+  // 🧪Pinned by a mutant that lived (a-blurred-folder-cut-by-the-view-
+  // moves-on-vulkan, 10-22): the empty row is planned as a live row, not
+  // an entry, and its blend answered nothing any test read — a live row
+  // that forgot it composed normal while the row with a cel did not.
+  test('an EMPTY active row in an advanced blend composes over what lies '
+      'below it, as the row does with a cel', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    s.layerSwitches.setLayerBlendMode(
+      s.activeLayer!.id,
+      LayerBlendMode.multiply,
+    );
+    s.selectFrameIndex(40);
+
+    LayerBlendMode? blendOfTheActiveRow(
+      List<CompositeNode<CanvasStackRow>> nodes,
+    ) {
+      for (final node in nodes) {
+        if (node case CompositeBackdropBlend(
+          source: CompositeLeaf(payload: CanvasActiveLayerRow()),
+          :final blendMode,
+        )) {
+          return blendMode;
+        }
+        final found = blendOfTheActiveRow(node.children);
+        if (found != null) {
+          return found;
+        }
+      }
+      return null;
+    }
+
+    final nodes = s.editingCanvas.stack.nodes;
+    expect(activeIn(nodes), isNotNull, reason: 'the premise: the row stands');
+    expect(blendOfTheActiveRow(nodes), LayerBlendMode.multiply);
   });
 }

@@ -34,29 +34,29 @@ void main() {
   ({
     RunFramesAddDrag? drag,
     ValueNotifier<TimelineDragPreview?> preview,
-    List<({Layer before, Layer after})> commits,
+    List<List<({Layer before, Layer after})>> commits,
   })
   open({
     Layer? layer,
-    bool eligible = true,
+    bool stands = true,
     int blockStartIndex = 0,
+    bool actsOnARun = true,
     bool atEnd = true,
   }) {
     final before = layer ?? row();
     final preview = ValueNotifier<TimelineDragPreview?>(null);
     addTearDown(preview.dispose);
-    final commits = <({Layer before, Layer after})>[];
+    final commits = <List<({Layer before, Layer after})>>[];
     return (
       drag: RunFramesAddDrag.begin(
-        layerId: const LayerId('l'),
-        blockStartIndex: blockStartIndex,
+        runs: {
+          if (actsOnARun) const LayerId('l'): [blockStartIndex],
+        },
         atEnd: atEnd,
-        blockMoveEligible: (_) => eligible,
-        layerById: (_) => before,
+        layerById: (_) => stands ? before : null,
         drawnFrameCount: () => 12,
         preview: preview,
-        commitLayerDrag: ({required before, required after}) =>
-            commits.add((before: before, after: after)),
+        commitLayerDrags: commits.add,
       ),
       preview: preview,
       commits: commits,
@@ -64,14 +64,23 @@ void main() {
   }
 
   Layer previewLayerOf(ValueNotifier<TimelineDragPreview?> preview) =>
-      (preview.value! as ExposureEdgeDragPreview).previewLayer;
+      timelineDragPreviewLayerFor(preview.value, const LayerId('l'))!;
 
-  test('⛔a row that stands down gives no object — no object, no drag', () {
-    expect(open(eligible: false).drag, isNull);
+  test('⛔a press that acts on no run gives no object — no object, no '
+      'drag', () {
+    expect(open(actsOnARun: false).drag, isNull);
   });
 
-  test('⛔no run at that index gives no object', () {
-    expect(open(blockStartIndex: 99).drag, isNull);
+  test('⛔a row no longer there gives no object', () {
+    expect(open(stands: false).drag, isNull);
+  });
+
+  test('a run no longer there takes nothing', () {
+    final session = open(blockStartIndex: 99);
+
+    session.drag!.update(3);
+
+    expect(session.preview.value, isNull);
   });
 
   test('🚨a count of ZERO shows the COMMITTED state — the input is a count, '
@@ -146,8 +155,8 @@ void main() {
     session.drag!.commit();
 
     expect(session.commits, hasLength(1));
-    expect(session.commits.single.before.frames, hasLength(2));
-    expect(session.commits.single.after.frames, hasLength(5));
+    expect(session.commits.single.single.before.frames, hasLength(2));
+    expect(session.commits.single.single.after.frames, hasLength(5));
     expect(session.preview.value, isNull);
   });
 
@@ -170,5 +179,46 @@ void main() {
 
     expect(session.commits, isEmpty);
     expect(session.preview.value, isNull);
+  });
+
+  test('🚨the runs of one row each grow at their own end, the last one '
+      'first: a run that grows pushes the runs after it', () {
+    // Three one-frame runs a frame apart, two frames on each. The first
+    // run's push glues it to the second: a later run asked for by the start
+    // it had would be read as the glued block, and grow at its end.
+    final layer = Layer(
+      id: const LayerId('l'),
+      name: 'A',
+      frames: [frame('frame-1'), frame('frame-2'), frame('frame-3')],
+      timeline: {
+        for (var i = 0; i < 3; i += 1)
+          2 * i: TimelineExposure.drawing(
+            FrameId('frame-${i + 1}'),
+            length: 1,
+          ),
+      },
+      kind: LayerKind.image,
+    );
+    final preview = ValueNotifier<TimelineDragPreview?>(null);
+    addTearDown(preview.dispose);
+    final drag = RunFramesAddDrag.begin(
+      runs: {
+        const LayerId('l'): [0, 2, 4],
+      },
+      atEnd: true,
+      layerById: (_) => layer,
+      drawnFrameCount: () => 12,
+      preview: preview,
+      commitLayerDrags: (_) {},
+    )!;
+
+    drag.update(2);
+
+    final timeline = previewLayerOf(preview).timeline;
+    expect(
+      [for (final at in [0, 3, 6]) timeline[at]?.frameId?.value],
+      ['frame-1', 'frame-2', 'frame-3'],
+      reason: 'each run is its drawing and the two new ones after it',
+    );
   });
 }

@@ -32,7 +32,6 @@ import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
-import 'blends_in_place.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -200,11 +199,10 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 
   /// Whether this row's image may be stored as its ink alone — asked of the
-  /// same placement, blend and chain the draw is handed
+  /// same placement and chain the draw is handed
   /// ([inkCropDrawsTheSame]).
   bool get inkSuffices => inkCropDrawsTheSame(
     placement: placement,
-    blendMode: blendMode,
     effects: paintEffects,
   );
 }
@@ -356,6 +354,7 @@ class CanvasLayerStackView extends StatefulWidget {
         case CompositeLeaf(payload: CanvasActiveLayerRow()):
         case CompositeGroup():
         case CompositeAdjustment():
+        case CompositeBackdropBlend():
           break;
       }
     }
@@ -1550,9 +1549,30 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
       CompositeGroup<_PaintRow>(:final children) => 1 + _replayOpsOf(children),
       CompositeAdjustment<_PaintRow>(:final children) =>
         1 + _replayOpsOf(children),
+      CompositeBackdropBlend<_PaintRow>(:final children) =>
+        1 + _replayOpsOf(children),
     };
   }
   return ops;
+}
+
+/// The PAPER the rows are laid on, as the bottom row of the root scope
+/// ([onUnderlay]): where an advanced blend composes over its backdrop,
+/// the paper is in that backdrop, as a GPU blend reads it off the target
+/// (brush-fidelity-Q4).
+///
+/// The pass paints it ([_LayerStackPaintPass._paintPaperInto]) — it knows
+/// the level and the edge — from the painter's own fields, which the bake's
+/// key and the repaint gate already carry (`paintPaper`, `paperBackground`);
+/// so there is nothing of its own to compare.
+final class _PaintPaper extends _PaintRow {
+  const _PaintPaper();
+
+  @override
+  bool matches(_PaintRow other) => other is _PaintPaper;
+
+  @override
+  int get signature => (_PaintPaper).hashCode;
 }
 
 final class _PaintImage extends _PaintRow {
@@ -1790,6 +1810,15 @@ bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
             mix == b.mix &&
             listEquals(effects, b.effects) &&
             _treesMatch(children, b.children),
+      CompositeBackdropBlend<_PaintRow>(
+        :final backdrop,
+        :final source,
+        :final blendMode,
+      ) =>
+        b is CompositeBackdropBlend<_PaintRow> &&
+            blendMode == b.blendMode &&
+            _nodesMatch(source, b.source) &&
+            _treesMatch(backdrop, b.backdrop),
     };
 
 /// 🚨(v) — [_nodesMatch] as a VALUE, for the bake's key.
@@ -1818,6 +1847,12 @@ int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
     :final mix,
   ) =>
     Object.hash(mix, Object.hashAll(effects), _treeSignature(children)),
+  CompositeBackdropBlend<_PaintRow>(
+    :final backdrop,
+    :final source,
+    :final blendMode,
+  ) =>
+    Object.hash(blendMode, _nodeSignature(source), _treeSignature(backdrop)),
 };
 
 /// Whether the live layer's last paint handed its opacity/blend to the
@@ -2088,11 +2123,10 @@ class _LayerStackPainter extends CustomPainter {
     if (!_liveSurfaceIsSpatiallyStable(nodes)) {
       return null;
     }
-    // F-130: the stamp's ghost is part of what the live surface looks like
-    // (F-33 draws it inside this painter), so it is part of the tokens —
-    // by value, with the rect it covers, so a hover can be patched. F-344:
-    // and so is the text in hand floated over its hole, for a drag.
-    final ghost = surfacePainter.stampPreview?.value;
+    // F-344: the text in hand floated over its hole is part of what the
+    // live surface looks like, so it is part of the tokens — by value, with
+    // the rect it covers, so a drag can be patched. ↩️F-130 put the stamp's
+    // ghost here too; since brush-fidelity-Q9 it is the overlay's tiles.
     final landing = surfacePainter.landingPreview?.value;
     return (
       overlay: <TileCoord, Object>{
@@ -2103,7 +2137,6 @@ class _LayerStackPainter extends CustomPainter {
           entry.key: entry.value,
       },
       previews: [
-        if (ghost != null) (value: ghost, rect: ghost.canvasRect),
         if (landing != null) (value: landing, rect: landing.drawnWorldRect),
       ],
     );
@@ -2157,9 +2190,9 @@ class _LayerStackPainter extends CustomPainter {
       ).followedBy(_movedCoords(kept.tiles, now.tiles)),
       activeSurfacePainter!.surface.tileSize,
     );
-    // F-130: a ghost that moved (or came, or went) dirties where it WAS and
-    // where it IS — the old place has to be repainted without it. So does
-    // any preview the painter draws (F-344).
+    // F-130: a preview that moved (or came, or went) dirties where it WAS
+    // and where it IS — the old place is repainted without it. The stamp's
+    // ghost was the first (now the overlay's tiles); F-344's text in hand.
     final were = kept.previews;
     final are = now.previews;
     if (!listEquals(
@@ -2255,19 +2288,13 @@ class _LayerStackPainter extends CustomPainter {
         live = Object.hash(live, entry.key, identityHashCode(entry.value));
       }
     }
-    // 🚨★★★F-33: the stamp ghost is part of what this buffer would hold, so
-    // it has to be part of the key. Left out, the buffer caches a frame
-    // WITHOUT the ghost and the ghost then stops following the pointer —
-    // the silent failure this whole key exists to prevent.
+    // ↩️F-33: the stamp ghost was part of this key — a buffer cached
+    // without it stopped following the pointer. Since brush-fidelity-Q9 it
+    // is the overlay's tiles, which the key holds already.
     //
-    // Its own `==` is identity on the piece and the image plus value on the
-    // rect and the opacity, which is exactly what a hover changes. F-344:
-    // the text in hand, floated over its hole, for the same reason.
-    live = Object.hash(
-      live,
-      surfacePainter.stampPreview?.value,
-      surfacePainter.landingPreview?.value,
-    );
+    // F-344: the text in hand, floated over its hole, is part of what this
+    // buffer would hold — by its own `==`, which is what a drag changes.
+    live = Object.hash(live, surfacePainter.landingPreview?.value);
     return Object.hash(compositeKey, live);
   }
 
@@ -2297,6 +2324,12 @@ class _LayerStackPainter extends CustomPainter {
         return !resolvedEffectsSpreadPixels(node.effects) &&
             _liveSurfaceIsSpatiallyStable(node.children);
       }
+      // A blend composes pixel by pixel: a dab moves the composite where it
+      // lands and nowhere else, so only what the row passes through decides.
+      if (node is CompositeBackdropBlend<_PaintRow> &&
+          node.children.any(_enclosesActiveSurface)) {
+        return _liveSurfaceIsSpatiallyStable(node.children);
+      }
     }
     return false;
   }
@@ -2309,9 +2342,12 @@ class _LayerStackPainter extends CustomPainter {
           children.any(_enclosesActiveSurface),
         CompositeAdjustment(:final children) =>
           children.any(_enclosesActiveSurface),
+        CompositeBackdropBlend(:final children) =>
+          children.any(_enclosesActiveSurface),
         CompositeLeaf(payload: _PaintImage()) => false,
         // A lifted row only shows; nothing draws into it.
         CompositeLeaf(payload: _PaintLiftedSurface()) => false,
+        CompositeLeaf(payload: _PaintPaper()) => false,
       };
 
   @override
@@ -2367,9 +2403,3 @@ int debugCappedFallbacks = 0;
 /// — the reference a parity test compares the pictures against.
 @visibleForTesting
 bool debugDrawBufferPictures = true;
-
-/// Off, every recompose over carried pixels stands on its clip, as it did
-/// before F-287 — the reference a parity test compares the composite made
-/// apart against, and the engine the device probe measures it beside.
-@visibleForTesting
-bool debugRecomposeApart = true;

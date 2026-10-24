@@ -8,14 +8,19 @@ import '../../services/audio/audio_conform_runner.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../../services/media/media_byte_source.dart';
+import 'sound_cannot_play.dart';
 
 class _ConformFailure {
   const _ConformFailure({
+    required this.outcome,
     required this.reason,
     required this.attempts,
     required this.lastAttemptAt,
   });
 
+  /// Which failure it was — what [AudioConformStore.cannotPlayAt] tells
+  /// the screen.
+  final ConformOutcome outcome;
   final String reason;
   final int attempts;
   final DateTime lastAttemptAt;
@@ -319,6 +324,47 @@ class AudioConformStore extends ChangeNotifier {
       _pending.contains(sourcePath) ||
       _resamplePending.contains(_resampleKey(sourcePath, sampleRate));
 
+  /// Why [sourcePath] cannot be played at [sampleRate] — null while it can,
+  /// and while it is on its way ([isLanding]). Like [resultFor] it kicks
+  /// what it finds missing: the conform, or the conversion to the rate.
+  ///
+  /// 🚨THE ONE PLACE a run (`planWindowedMixUpload`) and the screen (a
+  /// sound's cell, playback-says-the-sound-it-cannot-play) ask, so a cell is
+  /// red for exactly the sounds a run plays without. ↩️The run's two plans
+  /// each decided it in a branch of their own and kept only the path.
+  ///
+  /// A streamed conform is project-rate PCM read in windows, so a device
+  /// off the project's rate cannot play it: resampling windows on the fly
+  /// would buy that rare case with a permanent cost, and an arm opens such
+  /// a device again at the project's rate before it plans
+  /// (`armAudioOutput`).
+  SoundCannotPlay? cannotPlayAt(String sourcePath, int sampleRate) {
+    if (isStreaming(sourcePath)) {
+      if (sampleRate != projectSampleRate) {
+        return SoundCannotPlay.deviceRate;
+      }
+      return streamReaderFor(sourcePath) == null
+          ? SoundCannotPlay.conform
+          : null;
+    }
+    if (samplesAtRate(sourcePath, sampleRate) != null ||
+        isLanding(sourcePath, sampleRate)) {
+      return null;
+    }
+    // Only a usable conform or an undecodable answer is kept as an entry.
+    final entry = _entries[sourcePath];
+    if (entry != null) {
+      return entry.isUsable
+          ? SoundCannotPlay.deviceRate
+          : SoundCannotPlay.format;
+    }
+    return switch (_failures[sourcePath]?.outcome) {
+      ConformOutcome.sourceMissing => SoundCannotPlay.missing,
+      ConformOutcome.sourceUnreadable => SoundCannotPlay.notReadYet,
+      _ => SoundCannotPlay.conform,
+    };
+  }
+
   Future<void> _resampleTo(
     String sourcePath,
     ConformResult entry,
@@ -472,6 +518,7 @@ class AudioConformStore extends ChangeNotifier {
       // `retryDelay`, so "retry forever" costs one attempt per delay
       // rather than one per paint.
       _failures[sourcePath] = _ConformFailure(
+        outcome: result.outcome,
         reason: result.error ?? 'source not readable yet',
         attempts: _failures[sourcePath]?.attempts ?? 0,
         lastAttemptAt: _now(),
@@ -482,6 +529,7 @@ class AudioConformStore extends ChangeNotifier {
     } else {
       final attempts = (_failures[sourcePath]?.attempts ?? 0) + 1;
       _failures[sourcePath] = _ConformFailure(
+        outcome: result.outcome,
         reason: result.error ?? 'unknown failure',
         attempts: attempts,
         lastAttemptAt: _now(),

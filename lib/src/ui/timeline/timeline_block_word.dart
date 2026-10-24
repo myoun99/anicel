@@ -63,6 +63,14 @@ TimelineBlockWordSlot _slotIn(Size size, TimelineBlockWordCells place) {
 TextStyle _resolvedStyle(BuildContext context, TextStyle style) =>
     DefaultTextStyle.of(context).style.merge(style);
 
+/// A built word's ink, asked AT PAINT: for a word whose ground is known only
+/// once it is laid — an SE name just before its block or on its head (F-444).
+/// The style's own colour stays what the word is laid by; the ink joins the
+/// glyph's style the way a painted word's ground does
+/// (`paintTimelineGlyphOnGround`), so it costs what a solid colour costs —
+/// no layer, and nothing built again when the ground changes under a zoom.
+typedef BuiltWordInk = Color Function();
+
 /// A built word WRITTEN IN A LINE — a lane key's name, an instruction's
 /// writing along the timeline, an SE name on the sheet. It is set and laid
 /// by the painted block word's own code ([timelineWordSetOnto],
@@ -80,11 +88,13 @@ class TimelineBlockText extends LeafRenderObjectWidget {
     required this.text,
     required this.style,
     required this.place,
+    this.ink,
   });
 
   final String text;
   final TextStyle style;
   final TimelineBlockWordCells place;
+  final BuiltWordInk? ink;
 
   @override
   RenderTimelineBlockText createRenderObject(BuildContext context) =>
@@ -92,6 +102,7 @@ class TimelineBlockText extends LeafRenderObjectWidget {
         text: text,
         style: _resolvedStyle(context, style),
         place: place,
+        ink: ink,
       );
 
   @override
@@ -102,7 +113,8 @@ class TimelineBlockText extends LeafRenderObjectWidget {
     renderObject
       ..text = text
       ..style = _resolvedStyle(context, style)
-      ..place = place;
+      ..place = place
+      ..ink = ink;
   }
 }
 
@@ -119,6 +131,7 @@ class TimelineBlockColumn extends LeafRenderObjectWidget {
     this.lineHeight = verticalWritingLineHeight,
     required this.latinForm,
     required this.place,
+    this.ink,
   });
 
   final String text;
@@ -128,6 +141,7 @@ class TimelineBlockColumn extends LeafRenderObjectWidget {
   final double lineHeight;
   final VerticalLatinForm latinForm;
   final TimelineBlockWordCells place;
+  final BuiltWordInk? ink;
 
   @override
   RenderTimelineBlockColumn createRenderObject(BuildContext context) =>
@@ -137,6 +151,7 @@ class TimelineBlockColumn extends LeafRenderObjectWidget {
         lineHeight: lineHeight,
         latinForm: latinForm,
         place: place,
+        ink: ink,
       );
 
   @override
@@ -149,7 +164,8 @@ class TimelineBlockColumn extends LeafRenderObjectWidget {
       ..style = _resolvedStyle(context, style)
       ..lineHeight = lineHeight
       ..latinForm = latinForm
-      ..place = place;
+      ..place = place
+      ..ink = ink;
   }
 }
 
@@ -162,9 +178,11 @@ abstract class RenderTimelineBuiltWord extends RenderBox
     required String text,
     required TextStyle style,
     required TimelineBlockWordCells place,
+    BuiltWordInk? ink,
   }) : _text = text,
        _style = style,
-       _place = place;
+       _place = place,
+       _ink = ink;
 
   String _text;
   String get text => _text;
@@ -195,6 +213,25 @@ abstract class RenderTimelineBuiltWord extends RenderBox
     }
     _place = value;
     markNeedsLayout();
+  }
+
+  BuiltWordInk? _ink;
+  BuiltWordInk? get ink => _ink;
+  set ink(BuiltWordInk? value) {
+    if (value == _ink) {
+      return;
+    }
+    _ink = value;
+    markNeedsPaint();
+  }
+
+  /// The style the word is PAINTED in: its own, in the [ink] it is given
+  /// asked now.
+  TextStyle get inkedStyle {
+    final ink = _ink?.call();
+    return ink == null || ink == _style.color
+        ? _style
+        : _style.copyWith(color: ink);
   }
 
   /// The word as it is set, before the law narrows it.
@@ -268,6 +305,7 @@ class RenderTimelineBlockText extends RenderTimelineBuiltWord {
     required super.text,
     required super.style,
     required super.place,
+    super.ink,
   });
 
   TextPainter? _glyph;
@@ -281,7 +319,12 @@ class RenderTimelineBlockText extends RenderTimelineBuiltWord {
 
   @override
   void paintSetWord(Canvas canvas, Offset origin, WordFit fit) {
-    final glyph = _glyph;
+    final style = inkedStyle;
+    // Another ink is another glyph, set the same way in the same room — the
+    // shared cache's, keyed by the colour as a painted word's is.
+    final glyph = identical(style, _style)
+        ? _glyph
+        : timelineWordSetOnto(_text, style, size.width).glyph;
     if (glyph != null) {
       paintFittedText(canvas, glyph, origin, fit);
     }
@@ -296,6 +339,7 @@ class RenderTimelineBlockColumn extends RenderTimelineBuiltWord {
     required double lineHeight,
     required VerticalLatinForm latinForm,
     required super.place,
+    super.ink,
   }) : _lineHeight = lineHeight,
        _latinForm = latinForm;
 
@@ -359,7 +403,7 @@ class RenderTimelineBlockColumn extends RenderTimelineBuiltWord {
     paintVerticalText(
       canvas,
       _text,
-      style: _style,
+      style: inkedStyle,
       centerX: _set.width / 2,
       top: 0,
       mainExtent: _set.height,

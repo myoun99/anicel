@@ -38,7 +38,7 @@ import '../../services/import/media_import_planner.dart' show ImportIdMint;
 import '../../services/import/raster_cel_import.dart'
     show bakeCelSurface, bakeCelTiles, celTilesOf;
 import '../../services/persistence/folder_grant.dart'
-    show FileArrival, FolderPicker;
+    show FileArrival, FolderPicker, MaterializeCancelled;
 import '../../services/persistence/provider_documents.dart'
     show ProviderDocuments;
 import '../../services/persistence/session_scratch.dart';
@@ -318,9 +318,14 @@ final class ClipImportDoor {
   /// (`OpenProjects.prepare(read.project)`) — and answers what the import
   /// could not carry over. The result is a NEW UNSAVED project; the first
   /// save asks where the .anicel goes.
+  ///
+  /// A stop [isCancelled] reports is honoured after the picture in hand
+  /// ([MaterializeCancelled]): the session is in no tab yet, so the door
+  /// drops it and the app is where it was.
   Future<List<ImportWarning>> bake(
     ClipProjectRead read, {
     void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     assert(
       _file.path == null && !_project.historyManager.canUndo,
@@ -328,14 +333,23 @@ final class ClipImportDoor {
       'ClipProjectRead',
     );
     MemoryBlackBox.begin('clip-import');
-    final warnings = [...read._plan.warnings];
-    await _bakeEveryCel(read, warnings: warnings, onProgress: onProgress);
-    await _carrySounds(read._sounds);
-    _file.markDirty();
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
-    MemoryBlackBox.end('clip-import');
-    return warnings;
+    try {
+      final warnings = [...read._plan.warnings];
+      await _bakeEveryCel(
+        read,
+        warnings: warnings,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      await _carrySounds(read._sounds);
+      _file.markDirty();
+      _changes.warmActiveCut();
+      _changes.notifyChanged();
+      return warnings;
+    } finally {
+      // A stop or a throw is not a kill, and an entry left open says one.
+      MemoryBlackBox.end('clip-import');
+    }
   }
 
   /// The sounds taken out of the file become the project's own — CARRIED,
@@ -368,6 +382,7 @@ final class ClipImportDoor {
     ClipProjectRead read, {
     required List<ImportWarning> warnings,
     void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final source = read._source;
     final reader = await File(source.path).open();
@@ -401,6 +416,7 @@ final class ClipImportDoor {
         for (var w = 0; w < wave.length; w += 1) {
           await _bakeDecoded(decoded[w], wave[w], warnings);
           onProgress?.call((at + w + 1) / work.length);
+          MaterializeCancelled.throwIf(isCancelled);
         }
       }
     } finally {

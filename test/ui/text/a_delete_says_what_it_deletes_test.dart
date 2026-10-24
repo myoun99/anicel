@@ -38,4 +38,21 @@ void main() {
       expect(names.toSet(), hasLength(names.length), reason: language.name);
     }
   });
+
+  // 🔎brush-tip-delete-question-speaks-english (10-19): the group's question
+  // was English beside the tables, its plural too.
+  test('a group\'s delete question names the group and counts what goes '
+      'with it — none, one, or many', () {
+    final ko = AppStrings.of(AppLanguage.ko);
+    expect(ko.brDeleteGroupBody('Ink', 0), '「Ink」 빈 그룹을 삭제할까요?');
+    expect(ko.brDeleteGroupBody('Ink', 1), '「Ink」 그룹과 안의 브러시 1개를 삭제할까요?');
+    expect(ko.brDeleteGroupBody('Ink', 3), '「Ink」 그룹과 안의 브러시 3개를 삭제할까요?');
+    final en = AppStrings.of(AppLanguage.en);
+    expect(en.brDeleteGroupBody('Ink', 1), 'Delete "Ink" and the brush inside it?');
+    expect(
+      en.brDeleteGroupBody('Ink', 3),
+      'Delete "Ink" and the 3 brushes inside it?',
+    );
+    expect(ko.brDeleteTipBody('Old'), '「Old」 끝을 라이브러리에서 삭제합니다.');
+  });
 }

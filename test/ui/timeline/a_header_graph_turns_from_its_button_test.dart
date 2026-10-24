@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -89,7 +91,7 @@ void main() {
   });
 
   testWidgets('a header\'s button ends its name, where a layer row\'s name '
-      'ends; the camera row\'s ends its own, a fold slot short, the path '
+      'ends; the camera row\'s ends its own — it folds nothing — the path '
       'button before it — and no legend heads a graph', (tester) async {
     await _pump(tester);
     await _openLanes(tester, _drawId);
@@ -110,14 +112,18 @@ void main() {
       moreOrLessEquals(cameraRow.right - cameraName.right, epsilon: 0.5),
       reason: 'a header\'s ends its name where a layer row\'s name ends',
     );
+    // 🗣️F-454 (유저 2026-10-23): 「카메라 레이어는 현재 어태치레이어
+    // 존재안하니 … 그 자리에 그래프버튼,그왼쪽에 경로버튼」.
     expect(
       camera.right,
-      moreOrLessEquals(
-        cameraName.right - layerLaneToggleSlotWidth,
-        epsilon: 0.5,
-      ),
-      reason: 'a layer row\'s name ends in its fold slot, whatever the row '
-          'folds (F-29)',
+      moreOrLessEquals(cameraName.right, epsilon: 0.5),
+      reason: 'a row that folds nothing ends its name with its own last '
+          'button. ↩️It stood a fold slot short (F-29)',
+    );
+    expect(
+      camera.right,
+      moreOrLessEquals(header.right, epsilon: 0.5),
+      reason: 'so the camera\'s button stands where a header\'s does',
     );
     expect(
       rectNamed('timeline-layer-camera-path-cam').right,
@@ -178,63 +184,59 @@ void main() {
   });
 
   testWidgets('a swipe from the camera row\'s button sweeps the column too — '
-      'from either edge of it, a fold slot further in than a header\'s — '
-      'and from the fold slot past it, nothing', (tester) async {
+      'from either edge of it — and from past it, nothing', (tester) async {
     // No effect: the Transform header is the one header under the camera
     // row, and the window is tall enough to keep it in view while the
     // camera's group opens above it.
     final s = await _pump(tester, blur: false, height: 1600);
     await _openLanes(tester, _drawId);
-    final header = find.named(_headerGraph('timeline', _transform));
-    final rowHeight = tester
-        .getRect(find.named('timeline-layer-row-cam'))
-        .height;
 
-    /// From [across] on the camera row DOWN to the Transform header, a row
-    /// at a time, the header read again at each step: a press opens what
-    /// it opens below its row — the camera's group with its graph (㉙) —
-    /// and every row under it moves.
-    Future<void> sweepFrom(double Function(Rect button) across) async {
-      final button = tester.getRect(
-        find.named('timeline-layer-graph-cam'),
-      );
-      expect(
-        button.center.dy,
-        lessThan(tester.getCenter(header).dy),
-        reason: '⛔전제: the camera row stands above the headers',
-      );
-      var at = Offset(across(button), button.center.dy);
-      final gesture = await tester.startGesture(
-        at,
-        kind: PointerDeviceKind.mouse,
-      );
-      for (var step = 0; step < 40; step += 1) {
-        final gap = tester.getCenter(header).dy - at.dy;
-        if (gap.abs() < rowHeight / 2) {
-          break;
-        }
-        final move = Offset(0, gap.clamp(-rowHeight, rowHeight));
-        await gesture.moveBy(move);
-        at += move;
-        await tester.pump(const Duration(milliseconds: 16));
-      }
-      await gesture.up();
-      await tester.pumpAndSettle();
-    }
-
-    final both = {
-      laneGroupKey(_camId, _transform),
-      laneGroupKey(_drawId, _transform),
-    };
-    await sweepFrom((button) => button.left + 1);
-    expect(_graphs(s).toSet(), both);
-    await sweepFrom((button) => button.right - 1);
+    await _sweepFromTheCamerasGraph(tester, (button) => button.left + 1);
+    expect(_graphs(s).toSet(), _bothTransforms);
+    await _sweepFromTheCamerasGraph(tester, (button) => button.right - 1);
     expect(_graphs(s), isEmpty);
 
-    // ⛔Not from the fold slot, where a header's button stands a row over:
-    // the column is where ITS row lays the button.
-    await sweepFrom((button) => button.right + 2);
+    // ⛔Not from past its far edge: the column is the button's slot.
+    await _sweepFromTheCamerasGraph(tester, (button) => button.right + 2);
     expect(_graphs(s), isEmpty);
+  });
+
+  // 🗣️F-454 (유저 2026-10-23): 「카메라 레이어는 현재 어태치레이어
+  // 존재안하니(나중에 추가될 가능성) 그 자리에 그래프버튼,그왼쪽에 경로버튼」
+  // — and once it has one, the fold takes the far end, as on every row.
+  testWidgets('a camera row that FOLDS ends its name with the twirl, the '
+      'graph and the path before it — and the sweep starts from where its '
+      'graph stands', (tester) async {
+    final s = await _pump(
+      tester,
+      blur: false,
+      height: 1600,
+      cameraFolds: true,
+    );
+    await _openLanes(tester, _drawId);
+    Rect rectNamed(String name) => tester.getRect(find.named(name));
+    final twirl = rectNamed('timeline-attach-twirl-cam');
+    final graph = rectNamed('timeline-layer-graph-cam');
+
+    expect(
+      twirl.right,
+      moreOrLessEquals(
+        rectNamed('timeline-layer-name-cam').right,
+        epsilon: 0.5,
+      ),
+    );
+    expect(graph.right, moreOrLessEquals(twirl.left, epsilon: 0.5));
+    expect(
+      rectNamed('timeline-layer-camera-path-cam').right,
+      moreOrLessEquals(graph.left, epsilon: 0.5),
+    );
+
+    await _sweepFromTheCamerasGraph(tester, (button) => button.left + 1);
+    expect(
+      _graphs(s).toSet(),
+      _bothTransforms,
+      reason: 'the column a twirl further in, where this row lays it',
+    );
   });
 
   test('the button\'s band is its slot to the pixel, each row\'s own way '
@@ -299,7 +301,48 @@ String get _blur => effectGroupLaneId(_blurId);
 String _headerGraph(String grid, String laneId) =>
     '$grid-lane-group-graph-draw-$laneId';
 
-Project _project({bool blur = true}) => Project(
+/// Both Transform graphs, the camera's and the drawing's.
+final _bothTransforms = {
+  laneGroupKey(_camId, _transform),
+  laneGroupKey(_drawId, _transform),
+};
+
+/// From [across] on the camera row's graph button DOWN to the Transform
+/// header, a row at a time, the header read again at each step: a press
+/// opens what it opens below its row — the camera's group with its graph
+/// (㉙) — and every row under it moves.
+Future<void> _sweepFromTheCamerasGraph(
+  WidgetTester tester,
+  double Function(Rect button) across,
+) async {
+  final header = find.named(_headerGraph('timeline', _transform));
+  final rowHeight = tester
+      .getRect(find.named('timeline-layer-row-cam'))
+      .height;
+  final button = tester.getRect(find.named('timeline-layer-graph-cam'));
+  expect(
+    button.center.dy,
+    lessThan(tester.getCenter(header).dy),
+    reason: '⛔전제: the camera row stands above the headers',
+  );
+  var at = Offset(across(button), button.center.dy);
+  final gesture = await tester.startGesture(at, kind: PointerDeviceKind.mouse);
+  for (var step = 0; step < 40; step += 1) {
+    final gap = tester.getCenter(header).dy - at.dy;
+    if (gap.abs() < rowHeight / 2) {
+      break;
+    }
+    final move = Offset(0, gap.clamp(-rowHeight, rowHeight));
+    await gesture.moveBy(move);
+    at += move;
+    await tester.pump(const Duration(milliseconds: 16));
+  }
+  await gesture.up();
+  await tester.pumpAndSettle();
+}
+
+/// [cameraFolds]: a row rides the camera, so the camera row folds it.
+Project _project({bool blur = true, bool cameraFolds = false}) => Project(
   id: const ProjectId('header-graph'),
   name: 'Header Graph',
   createdAt: DateTime.utc(2026, 10, 11),
@@ -323,6 +366,15 @@ Project _project({bool blur = true}) => Project(
                 if (blur) LayerEffect(id: _blurId, kind: EffectKind.blur),
               ],
             ),
+            if (cameraFolds)
+              Layer(
+                id: const LayerId('rider'),
+                name: 'Rider',
+                frames: const [],
+                attachedToLayerId: _camId,
+                attachedPlacement: AttachedPlacement.below,
+                attachedMode: AttachedMode.free,
+              ),
             Layer(
               id: _camId,
               name: 'Camera',
@@ -340,11 +392,16 @@ Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   bool blur = true,
   double height = 1200,
+  bool cameraFolds = false,
 }) async {
   await tester.binding.setSurfaceSize(Size(1400, height));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project(blur: blur))),
+    MaterialApp(
+      home: HomePage(
+        initialProject: _project(blur: blur, cameraFolds: cameraFolds),
+      ),
+    ),
   );
   await tester.pumpAndSettle();
   await tester.drag(

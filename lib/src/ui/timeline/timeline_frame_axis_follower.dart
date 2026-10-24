@@ -38,11 +38,21 @@ class TimelineFrameAxisFollower {
     required this.isMounted,
   }) {
     frameAxisOffset.addListener(_followTheAxis);
-    // 🚨Born where the axis stands (F-143), its windows cut there too: a
-    // panel is built only while it shows (유저 2026-10-14), and a tab put
-    // back in front at a kept offset otherwise cut its rows and its ruler
-    // for the first page until a scroll crossed a span. 🧪Bucket 0 under a
-    // grid standing in bucket 58.
+    _standUnread();
+  }
+
+  /// 🚨Born where the axis stands (F-143), its windows cut there too: a
+  /// panel is built only while it shows (유저 2026-10-14), and a tab put
+  /// back in front at a kept offset otherwise cut its rows and its ruler
+  /// for the first page until a scroll crossed a span. 🧪Bucket 0 under a
+  /// grid standing in bucket 58.
+  ///
+  /// And so again whenever the axis moves with no scrollable under it — a
+  /// panel that keeps its State through a fold and builds no body there
+  /// (the storyboard): the one built when it opens is built as a newborn,
+  /// reaching where the folded row turned the axis.
+  void _standUnread() {
+    _read = false;
     frameWindowBucket.value = timelineFrameWindowBucketOf(
       offset: frameAxisOffset.value,
       cellExtent: cellExtent(),
@@ -228,18 +238,20 @@ class TimelineFrameAxisFollower {
 
   /// 🚨THE SCROLLABLE STANDS WHERE THE AXIS STANDS, whoever turned it
   /// (유저 2026-09-27: 「접힌 오버레이도 … 스크롤이동이나 다 구조적으로
-  /// 동기화」). A folded panel keeps its whole subtree now, and the folded
-  /// row turns the axis this scrollable shares ([pageKeptAxis]) while it is
-  /// hidden. Caught up only by the open layout's own pull
+  /// 동기화」). ↩️From 09-28 a folded panel kept its whole subtree while the
+  /// folded row turned the axis this scrollable shares ([pageKeptAxis]);
+  /// caught up only by the open layout's own pull
   /// ([TimelineScrollOffsetSync]), the first frame open painted the page it
   /// was folded on and jumped after it — and the storyboard, which has no
-  /// such pull, stayed there for good.
+  /// such pull, stayed there for good. A fold builds no body since 10-23:
+  /// with no scrollable, the windows follow by value ([_standUnread]).
   ///
   /// ⚠️Written from the middle of a build (the folded row anchoring a
   /// zoom), the move waits for the frame's end: moving a position there
   /// dirties the widgets that follow it while another subtree is building.
   void _followTheAxis() {
     if (!controller.hasClients) {
+      _standUnread();
       return;
     }
     final position = controller.position;

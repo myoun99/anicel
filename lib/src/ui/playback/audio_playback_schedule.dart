@@ -22,6 +22,7 @@ import '../../services/audio/audio_mixer_reference.dart';
 import '../../services/audio/conform_pcm_stream.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../audio/audio_conform_store.dart';
+import '../audio/sound_cannot_play.dart';
 
 /// A clip laid out on a run's frame axis, end clamped at the run's end.
 class ScheduledAudioClip {
@@ -357,9 +358,11 @@ AudioMixSchedule audioMixScheduleFrom({
 typedef _StreamWindow = ({int centerSample, int backSamples, int aheadSamples});
 
 /// The sources that are already conformed and resident, in upload order,
-/// with the mix's source index mapped onto that order — and the paths
-/// nothing is making ready ([AudioConformStore.isLanding]), which the
-/// upload leaves out ([WindowedUploadPlan.cannotPlay]).
+/// with the mix's source index mapped onto that order — and every source,
+/// resident or streamed, that cannot be played and why, which the upload
+/// leaves out ([WindowedUploadPlan.cannotPlay]). ⛔Asked here once per
+/// source: the clip loop that windows the streams reads this answer, it
+/// does not ask again.
 ///
 /// Null when one of them is still landing — the caller uploads nothing
 /// and any old schedule keeps playing. ⛔Every lookup runs even after a
@@ -368,7 +371,7 @@ typedef _StreamWindow = ({int centerSample, int backSamples, int aheadSamples});
 ({
   List<AudioMixSource> sources,
   Map<int, int> byMixIndex,
-  Set<String> cannotPlay,
+  Map<String, SoundCannotPlay> cannotPlay,
 })?
 _residentSources({
   required AudioMixSchedule mix,
@@ -377,10 +380,15 @@ _residentSources({
 }) {
   final sources = <AudioMixSource>[];
   final byMixIndex = <int, int>{};
-  final cannotPlay = <String>{};
+  final cannotPlay = <String, SoundCannotPlay>{};
   var landing = false;
   for (var index = 0; index < mix.sourcePaths.length; index += 1) {
     final path = mix.sourcePaths[index];
+    final why = conformStore.cannotPlayAt(path, deviceRate);
+    if (why != null) {
+      cannotPlay[path] = why;
+      continue;
+    }
     if (conformStore.isStreaming(path)) {
       continue; // windowed per clip by the caller
     }
@@ -389,10 +397,8 @@ _residentSources({
     if (samples != null && entry != null && entry.isUsable) {
       byMixIndex[index] = sources.length;
       sources.add(AudioMixSource(samples: samples, channels: entry.channels));
-    } else if (conformStore.isLanding(path, deviceRate)) {
-      landing = true;
     } else {
-      cannotPlay.add(path);
+      landing = true;
     }
   }
   // ⛔Do NOT delete this as redundant because the caller refuses again on
@@ -478,15 +484,15 @@ final class WindowedUploadPlan {
   final List<AudioMixSource> resident;
   final List<StreamWindowRead> reads;
 
-  /// The mix's sources whose clips this upload leaves out: nothing is making
-  /// them ready to play — undecodable, failed, not readable yet, a stream
-  /// that will not open — so the rest plays without them.
+  /// The mix's sources whose clips this upload leaves out, and why
+  /// ([AudioConformStore.cannotPlayAt]): nothing is making them ready to
+  /// play, so the rest plays without them.
   ///
   /// 🗣️유저 2026-10-16 (se-fallback-opens-the-original-path-Q2): 「대체
   /// 재생을 안 쓰고」 · 「재생못하거나 하는 상황에선 제대로 메시지라던가 뭔가
   /// 표시」 (playback-waits-for-its-sound ③). ↩️One such source held the
   /// whole upload back, and the platform players carried the run.
-  final Set<String> cannotPlay;
+  final Map<String, SoundCannotPlay> cannotPlay;
 
   bool get hasStreaming => reads.isNotEmpty;
 
@@ -523,12 +529,10 @@ final class WindowedUploadPlan {
 ///
 /// Null — so the caller uploads NOTHING and any old schedule keeps
 /// playing — while a resident source is landing (each lookup kicks its
-/// conform or rate conversion). A source nothing will make ready is left
-/// out instead ([WindowedUploadPlan.cannotPlay]) — and so is a stream on a
-/// device off the project rate: the conform on disk IS project-rate PCM,
-/// resampling windows on the fly would buy that rare case with a permanent
-/// cost, and an arm opens such a device again at the project's rate before
-/// it plans (`armAudioOutput`).
+/// conform or rate conversion). A source that cannot be played is left out
+/// instead ([WindowedUploadPlan.cannotPlay]), by the one answer the screen
+/// reads too ([AudioConformStore.cannotPlayAt]) — a stream on a device off
+/// the project rate among them.
 WindowedUploadPlan? planWindowedMixUpload({
   required AudioMixSchedule mix,
   required AudioConformStore conformStore,
@@ -548,7 +552,7 @@ WindowedUploadPlan? planWindowedMixUpload({
     return null;
   }
 
-  final cannotPlay = {...resident.cannotPlay};
+  final cannotPlay = resident.cannotPlay;
   final clips = <AudioMixClip>[];
   final reads = <StreamWindowRead>[];
   final at = (
@@ -556,7 +560,6 @@ WindowedUploadPlan? planWindowedMixUpload({
     backSamples: backSeconds * deviceRate,
     aheadSamples: aheadSeconds * deviceRate,
   );
-  final streams = deviceRate == conformStore.projectSampleRate;
   for (final clip in mix.clips) {
     final path = mix.sourcePaths[clip.sourceIndex];
     if (!conformStore.isStreaming(path)) {
@@ -566,11 +569,10 @@ WindowedUploadPlan? planWindowedMixUpload({
       }
       continue;
     }
-    final reader = streams ? conformStore.streamReaderFor(path) : null;
-    if (reader == null) {
-      cannotPlay.add(path);
+    if (cannotPlay.containsKey(path)) {
       continue;
     }
+    final reader = conformStore.streamReaderFor(path)!;
     clips.add(clip.pointedAt(resident.sources.length + reads.length));
     reads.add(_streamWindowRead(clip, reader: reader, at: at));
   }

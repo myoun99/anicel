@@ -7,6 +7,8 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
+import '../helpers/rail_label_name.dart';
+
 /// Selecting a rail row LANDS the editing focus on it (user 2026-07-29,
 /// superseding #741's "row picks never move the focus"): the label lands
 /// where the playhead already stands — the same landing its own cell press
@@ -56,6 +58,28 @@ void main() {
     return total + 2;
   }
 
+  /// Presses S1's label on its NAME ([railLabelName]).
+  Future<void> tapS1Label(
+    WidgetTester tester,
+    EditorSessionManager manager,
+  ) async {
+    final trackId = manager.selectedTrackId;
+    final seId = seLayerIdForTrack(trackId, 1);
+    final se = manager.repository
+        .requireProject()
+        .tracks
+        .singleWhere((track) => track.id == trackId)
+        .seLayers
+        .singleWhere((layer) => layer.id == seId);
+    await tester.tap(
+      railLabelName(
+        find.byKey(ValueKey<String>('storyboard-se-label-${trackId.value}-1')),
+        se.name,
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('tapping an S row\'s LABEL selects the row and KEEPS the cut '
       'the index names — the row moved, the cut did not', (tester) async {
     final manager = await pumpHost(tester);
@@ -66,10 +90,7 @@ void main() {
     final cutBefore = manager.activeCutId;
     expect(cutBefore, isNotNull);
 
-    await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-se-label-${trackId.value}-1')),
-    );
-    await tester.pumpAndSettle();
+    await tapS1Label(tester, manager);
 
     expect(manager.selectedRow, LayerRowAddress(seId));
     expect(
@@ -90,10 +111,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(manager.activeCutId, isNull);
 
-    await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-se-label-${trackId.value}-1')),
-    );
-    await tester.pumpAndSettle();
+    await tapS1Label(tester, manager);
 
     expect(manager.selectedRow, LayerRowAddress(seLayerIdForTrack(trackId, 1)));
     expect(manager.activeCutId, isNull, reason: 'the gap has no cut to take');

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../widgets/app_window.dart';
+import '../widgets/content_scrollbar.dart';
 import 'accent_settings_dialog.dart' show AccentSettingsSection;
 import 'audio_settings_section.dart';
 import 'autosave_settings_section.dart';
@@ -123,7 +124,24 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
           ),
       ],
       selectedTab: sections.indexOf(_section),
-      body: _bodyOf(_section),
+      // 🗣️F-440 (유저 2026-10-23): 「환경설정창의 스크롤바, 스크롤바랑
+      // 내용물이랑 위젯 겹치는데 공간 제대로 나누도록. 그러고 스크롤바 없는
+      // 환경설정창도 항상 존재하도록 법 통일」 — the content's own lane, H35's
+      // law ([ContentScrollbar]): reserved beside the content and there
+      // whether the section overflows or not. ↩️The window scrolled its body
+      // under the app root's bar, laid OVER the content and only while it
+      // overflowed — and that bar was the thick one from F-409 (10-20) to
+      // F-440, which now gives every bar but the floor's the thin one.
+      scrollBody: false,
+      bodyPadding: EdgeInsets.zero,
+      body: ContentScrollbar(
+        builder: (context, controller) => SingleChildScrollView(
+          controller: controller,
+          primary: false,
+          padding: AppWindow.defaultBodyPadding,
+          child: _bodyOf(_section),
+        ),
+      ),
       actions: [
         AppWindowAction(
           label: AppText.strings.commonClose,

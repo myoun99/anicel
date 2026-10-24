@@ -11,7 +11,13 @@ import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 /// that asked 「is it on」 read a `SwitchListTile` — this is that read, for
 /// the control that replaced it (guide-sym ⑥⑧).
 extension BooleanDotProbe on WidgetTester {
-  BooleanDot booleanDotIn(Finder scope) => widget<BooleanDot>(
-    find.descendant(of: scope, matching: find.byType(BooleanDot)),
-  );
+  BooleanDot booleanDotIn(Finder scope) => widget<BooleanDot>(_ringIn(scope));
+
+  /// Presses the ring inside [scope] — a settings row by its tile key. The
+  /// row's label is words, and only its ring presses (유저 2026-10-23,
+  /// F-439-Q1: 「링만 컨트롤, 라벨은 글자」).
+  Future<void> pressRingIn(Finder scope) => tap(_ringIn(scope));
+
+  Finder _ringIn(Finder scope) =>
+      find.descendant(of: scope, matching: find.byType(BooleanDot));
 }

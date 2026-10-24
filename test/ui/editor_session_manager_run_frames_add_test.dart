@@ -43,11 +43,13 @@ void main() {
     );
     drag.updateRunFramesAddDrag(3);
 
-    // The in-flight form rides the channel; the repository stays put.
-    final preview = s.dragPreview.value;
-    expect(preview, isA<ExposureEdgeDragPreview>());
-    final previewLayer = (preview! as ExposureEdgeDragPreview).previewLayer;
-    expect(previewLayer.timeline[3], isNotNull);
+    // The in-flight form rides the channel — the rows' form, one for every
+    // row the press adds to (F-410) — and the repository stays put.
+    final previewLayer = timelineDragPreviewLayerFor(
+      s.dragPreview.value,
+      layer.id,
+    );
+    expect(previewLayer?.timeline[3], isNotNull);
     expect(s.layers.firstWhere((l) => l.id == layer.id).timeline[3], isNull);
     expect(notifies, 0);
 

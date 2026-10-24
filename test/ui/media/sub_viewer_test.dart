@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/session/media_file_views.dart';
 
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// The SECOND viewer (유저 확정 2026-08-12): the same panel docked like
 /// any other, so a reference can sit beside the drawing while the floor's
@@ -73,11 +74,7 @@ Future<void> _pumpEditor(WidgetTester tester) async {
 
 Future<void> _openRail(WidgetTester tester, int slot) async {
   await tester.tap(
-    find.byKey(
-      ValueKey<String>(
-        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: slot)}',
-      ),
-    ),
+    railGroupButton(EditorWorkspace.railGroupId(right: true, slot: slot)),
   );
   await tester.pumpAndSettle();
 }

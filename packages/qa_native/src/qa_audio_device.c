@@ -114,6 +114,22 @@ static void qa_transport_store_32(volatile ma_uint32* field, int32_t value) {
   ma_atomic_store_32(field, (ma_uint32)value);
 }
 
+// 🚨THE CALLBACK MOVES THE POSITION ONLY FROM WHAT ITS BLOCK READ
+// (a-seek-lost-to-the-block-in-flight, 2026-10-23). The position has two
+// writers: the callback, which advances it by what it hands, and the
+// control thread, which moves it (play, seek). A callback that stored its
+// advance outright wrote over a seek that landed while its block mixed — the
+// sound went on from the place left behind, and the picture, tied to the
+// sound, stood until it got there (a test read 960 where the seek put
+// 33600). So the callback compares and swaps, and loses: what the control
+// thread wrote stands.
+static int qa_transport_claim_64(volatile ma_uint64* field,
+                                 int64_t read,
+                                 int64_t to) {
+  return ma_atomic_compare_and_swap_64(field, (ma_uint64)read, (ma_uint64)to) ==
+         (ma_uint64)read;
+}
+
 #if !defined(_WIN32)
 #include <time.h>
 #endif
@@ -267,7 +283,13 @@ typedef struct {
 typedef struct {
   ma_device device;
   int32_t device_open;
+  // The run the transport plays — play() numbers each one ([runs]) — or 0
+  // for none. Ending a run that ran out is the one write the callback makes
+  // here, and it compares and swaps from the number it read: a run ended
+  // outright could be the one play() armed while the callback's block was
+  // in flight (2026-10-23, the same race as the position's).
   volatile ma_uint32 playing;
+  ma_uint32 runs;  // the control thread's alone
 
   // The transport. `position` counts samples HANDED TO THE DEVICE, which
   // is what makes it the clock: it advances only when audio actually
@@ -358,8 +380,9 @@ static void qa_audio_stamp_clock(ma_uint32 serial,
 }
 
 // A new arm: the points written under the old one are no longer the
-// transport's. Called by the control thread alone, with the callback
-// silenced (play) or about to read a moved position (seek).
+// transport's. Called by the control thread alone, AFTER the position it
+// arms is written (play, seek): a callback that reads this arm reads that
+// position or a later one, so the point it stamps is the arm's.
 static void qa_audio_begin_arm(void) {
   ma_atomic_store_32(&g_audio.arm_serial,
                      ma_atomic_load_32(&g_audio.arm_serial) + 1);
@@ -528,13 +551,15 @@ static void qa_audio_data_callback(ma_device* device,
   // serial, and the reader drops it.
   const ma_uint32 arm = ma_atomic_load_32(&g_audio.arm_serial);
   const int64_t asked_at_us = qa_clock_now_us();
-  if (!qa_transport_load_32(&g_audio.playing) || g_audio.scratch == NULL) {
+  const ma_uint32 run = (ma_uint32)qa_transport_load_32(&g_audio.playing);
+  if (run == 0 || g_audio.scratch == NULL) {
     return;
   }
   // Everything below reads schedule arrays: bracketed by in_flight so the
   // control thread can wait out a block instead of freeing under it.
   qa_transport_store_32(&g_audio.callback_in_flight, 1);
 
+  int64_t handed = qa_transport_load_64(&g_audio.position);
   ma_uint32 done = 0;
   while (done < frame_count) {
     ma_uint32 block = frame_count - done;
@@ -542,15 +567,20 @@ static void qa_audio_data_callback(ma_device* device,
       block = QA_DEVICE_MAX_BLOCK;
     }
 
+    // The position FIRST: play() and seek() write it after the fields that
+    // go with it, so the fields read below are its own or newer.
+    int64_t position = qa_transport_load_64(&g_audio.position);
     const int64_t start_position = qa_transport_load_64(&g_audio.start_position);
     const int64_t stop_position = qa_transport_load_64(&g_audio.stop_position);
-    int64_t position = qa_transport_load_64(&g_audio.position);
     if (stop_position > start_position && position >= stop_position) {
       if (qa_transport_load_32(&g_audio.looping)) {
+        if (!qa_transport_claim_64(&g_audio.position, position,
+                                   start_position)) {
+          break;
+        }
         position = start_position;
-        qa_transport_store_64(&g_audio.position, position);
       } else {
-        qa_transport_store_32(&g_audio.playing, 0);
+        ma_atomic_compare_and_swap_32(&g_audio.playing, run, 0);
         qa_transport_store_32(&g_audio.callback_in_flight, 0);
         return;
       }
@@ -583,9 +613,12 @@ static void qa_audio_data_callback(ma_device* device,
       if ((int64_t)block > silent) {
         block = (ma_uint32)silent;
       }
+      handed = position + (int64_t)block;
+      if (!qa_transport_claim_64(&g_audio.position, position, handed)) {
+        break;
+      }
       qa_transport_store_32(&g_audio.peak_left_bits, 0);
       qa_transport_store_32(&g_audio.peak_right_bits, 0);
-      qa_transport_store_64(&g_audio.position, position + (int64_t)block);
       done += block;
       continue;
     }
@@ -622,6 +655,10 @@ static void qa_audio_data_callback(ma_device* device,
       }
       target[index] = (float)value;
     }
+    handed = position + (int64_t)block;
+    if (!qa_transport_claim_64(&g_audio.position, position, handed)) {
+      break;
+    }
     {
       const float left = (float)peak_left;
       const float right = (float)(channels == 1 ? peak_left : peak_right);
@@ -632,12 +669,18 @@ static void qa_audio_data_callback(ma_device* device,
       qa_transport_store_32(&g_audio.peak_left_bits, (int32_t)left_bits);
       qa_transport_store_32(&g_audio.peak_right_bits, (int32_t)right_bits);
     }
-
-    qa_transport_store_64(&g_audio.position, position + (int64_t)block);
     done += block;
   }
-  qa_audio_stamp_clock(arm, qa_transport_load_64(&g_audio.position),
-                       asked_at_us);
+  if (done < frame_count) {
+    // A play or a seek moved the transport while this callback mixed. What
+    // it mixed from the place left behind is not handed, and its point is
+    // not the clock's: the next callback starts where the move put it.
+    memset(out + (size_t)done * (size_t)channels, 0,
+           (size_t)(frame_count - done) * (size_t)channels * sizeof(float));
+    qa_transport_store_32(&g_audio.callback_in_flight, 0);
+    return;
+  }
+  qa_audio_stamp_clock(arm, handed, asked_at_us);
   qa_transport_store_32(&g_audio.callback_in_flight, 0);
 }
 
@@ -899,6 +942,8 @@ QA_EXPORT int32_t qa_audio_device_set_schedule(
 // or below the start for "no end". A loop wraps to [start_sample]: the
 // lead is the run's first lap's alone. ⛔No floor here: a lead is never
 // below none by `HeardOnTheDevice.leadFor`, the one place that says so.
+// Returns the RUN it starts - a number no run before it on this device had,
+// never 0 - or 0 when the device is not open ([qa_audio_device_stop_run]).
 QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
                                        int64_t stop_sample,
                                        int32_t looping,
@@ -907,17 +952,20 @@ QA_EXPORT int32_t qa_audio_device_play(int64_t start_sample,
     return 0;
   }
   // A restart while audible: silence the callback FIRST so it never mixes
-  // with a half-updated transport, then publish the fields, then arm. The
-  // seq-cst stores double as the release fence playing needs on ARM.
+  // with a half-updated transport, then publish the fields — the position
+  // last, which a callback reads first ([qa_transport_claim_64]) — then
+  // arm. The seq-cst stores double as the release fence playing needs on
+  // ARM.
   qa_transport_store_32(&g_audio.playing, 0);
-  qa_audio_begin_arm();
-  qa_transport_store_64(&g_audio.position, start_sample - lead_samples);
   qa_transport_store_64(&g_audio.audible_from, start_sample);
   qa_transport_store_64(&g_audio.start_position, start_sample);
   qa_transport_store_64(&g_audio.stop_position, stop_sample);
   qa_transport_store_32(&g_audio.looping, looping ? 1 : 0);
-  qa_transport_store_32(&g_audio.playing, 1);
-  return 1;
+  qa_transport_store_64(&g_audio.position, start_sample - lead_samples);
+  qa_audio_begin_arm();
+  g_audio.runs = g_audio.runs == UINT32_MAX ? 1 : g_audio.runs + 1;
+  qa_transport_store_32(&g_audio.playing, (int32_t)g_audio.runs);
+  return (int32_t)g_audio.runs;
 }
 
 // The last mixed block's PRE-CLIP bus peak for [channel] (0 = left,
@@ -944,8 +992,25 @@ QA_EXPORT void qa_audio_device_stop(void) {
   qa_transport_store_32(&g_audio.peak_right_bits, 0);
 }
 
+// A player's own end: [qa_audio_device_stop], unless ANOTHER run than [run]
+// (what the player's [qa_audio_device_play] returned) holds the device - a
+// sound that player did not start plays on. A device playing nothing is
+// stopped as before: its points and its meter are the ending run's.
+// ↩️Each player stopped the device whatever played, and a cue's end
+// silenced a viewer's sound pressed during it (board
+// a-cue-ending-silences-a-viewer-sound-it-did-not-make). Played and
+// stopped on the control thread alone, so nothing starts between the read
+// and the stop; a run running out meanwhile ends itself either way.
+QA_EXPORT void qa_audio_device_stop_run(int32_t run) {
+  const int32_t playing = qa_transport_load_32(&g_audio.playing);
+  if (playing != 0 && playing != run) {
+    return;
+  }
+  qa_audio_device_stop();
+}
+
 QA_EXPORT int32_t qa_audio_device_is_playing(void) {
-  return qa_transport_load_32(&g_audio.playing);
+  return qa_transport_load_32(&g_audio.playing) != 0;
 }
 
 // Samples handed to the device so far — THE clock. The picture reads this
@@ -957,15 +1022,25 @@ QA_EXPORT int64_t qa_audio_device_position(void) {
 
 // Moves the transport without restarting anything: because the mixer
 // builds a mix rather than starting clips, seeking is just changing where
-// the next block is read from. A seek racing an in-flight callback block
-// can lose to that block's own position advance — a bounded, few-ms
-// staleness the next seek or block absorbs; the atomic store only rules
-// out torn values.
+// the next block is read from. A block in flight loses to it
+// ([qa_transport_claim_64]). ↩️It was taken for「a bounded, few-ms
+// staleness the next seek or block absorbs」, but a block that stored its
+// advance over the seek put the sound back where it had been, for good
+// (2026-10-23).
+//
+// The position before the arm: a callback that reads the new arm reads
+// the new position with it.
+//
+// 🧪MUTATION: the arm ahead of the position here, or play()'s position
+// ahead of its fields, passes qa_audio_transport_test. Both orders matter
+// only between two loads at a callback's entry, where that test's mixer —
+// the one place it can make a move — cannot stand. This order and this
+// comment are what hold them.
 QA_EXPORT void qa_audio_device_seek(int64_t sample) {
-  qa_audio_begin_arm();
   // A seek starts no run: where it lands is heard, and so is all after it.
   qa_transport_store_64(&g_audio.audible_from, INT64_MIN);
   qa_transport_store_64(&g_audio.position, sample);
+  qa_audio_begin_arm();
 }
 
 // The latest point of the clock's line, for the arm the transport is in:

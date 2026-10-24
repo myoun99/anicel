@@ -117,7 +117,7 @@ void main() {
     await tapKey(tester, 'timeline-mode-storyboard-button');
     final track = spanOf(
       tester,
-      find.byKey(const ValueKey<String>('storyboard-se-span-se-row-1-4')),
+      find.byKey(const ValueKey<String>('storyboard-se-label-se-row-1-4')),
     );
     expect(
       [track.frames, track.dialogue, track.seName, track.shownFrom],

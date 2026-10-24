@@ -260,8 +260,8 @@ void main() {
     expect(on.opacity, closeTo(0.4, 1e-9));
   });
 
-  test('🎯its blend and its effect chain are the row\'s, each effect by '
-      'its own switch (F-387)', () {
+  test('🎯its effect chain is the row\'s, each effect by its own switch '
+      '(F-387) — its blend is not (F-387-Q5)', () {
     final dressed = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
       blendMode: LayerBlendMode.multiply,
       effects: [
@@ -281,19 +281,20 @@ void main() {
     final tag = resolve([dressed]).single;
     final plain = resolve([seRow(id: 's1', name: 'S1', seName: 'タモツ')]);
 
-    expect(tag.blendMode, LayerBlendMode.multiply);
     expect(tag.effects, hasLength(1), reason: 'the switched-off one drops');
     expect(tag.effects.single.parameter('blurX'), 4);
-    // What is drawn changed either way, so the repaint has to know.
-    for (final one in [
-      dressed.copyWith(blendMode: LayerBlendMode.normal),
-      dressed.copyWith(effects: const []),
-    ]) {
-      expect(
-        seNameTagSignature(resolve([one])),
-        isNot(seNameTagSignature(plain)),
-      );
-    }
+    // The effects change what is drawn, so the repaint has to know …
+    expect(
+      seNameTagSignature(
+        resolve([dressed.copyWith(blendMode: LayerBlendMode.normal)]),
+      ),
+      isNot(seNameTagSignature(plain)),
+    );
+    // … the blend does not: the tag is laid normal whatever the row's is.
+    expect(
+      seNameTagSignature(resolve([dressed.copyWith(effects: const [])])),
+      seNameTagSignature(plain),
+    );
   });
 
   test('a style-only tag round-trips and never places', () {

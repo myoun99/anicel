@@ -227,6 +227,9 @@ bool _sourceMoved() {
 Never _relaunch() {
   final up = File('$_gitRoot/tool/session_hooks/board_up.sh');
   if (up.existsSync()) {
+    // ⚠️A bare `bash`, not [bashExecutable]: through the shell, cmd walks
+    // PATH itself, and it cuts a quoted path with a space at the space —
+    // `C:\Program Files\…` would start nothing (measured 2026-10-24).
     unawaited(Process.start(
       'bash',
       [up.path, File(_recordsPath).parent.path],
@@ -1143,18 +1146,32 @@ String? recordsAsked(BoardRecords records, {String? id, String? since}) {
 /// stamp stops being in the future).
 ({Object key, String text})? _gate;
 
+/// The gate's judgement of the records beside this server.
+///
+/// ⚠️The open PRs are the last `gh` answer, not a fresh one: this is asked at
+/// the end of every turn and must not wait on the network. Before the first
+/// answer, or after a failed one, it is null — and [boardCheckComplaints]
+/// then calls no ack dead (see `_deadAcks` there).
 String _checked() {
   final records = File(_recordsPath);
   final acks = gateAckFile(records).statSync();
+  final gh = _ghStale.last;
+  final open = gh == null || !gh.ok
+      ? null
+      : {
+          for (final pr in gh.prs)
+            if (pr.state == 'OPEN') pr.number,
+        };
   final key = (
     BoardRecords.of(records).stamp,
     acks.size,
     acks.modified,
     DateTime.now().millisecondsSinceEpoch ~/ 60000,
+    open == null ? '?' : (open.toList()..sort()).join(' '),
   );
   final held = _gate;
   if (held != null && held.key == key) return held.text;
-  final text = boardCheckComplaints(records);
+  final text = boardCheckComplaints(records, openPrs: open);
   _gate = (key: key, text: text);
   return text;
 }
@@ -1353,6 +1370,10 @@ class _Stale<T> {
   Future<T>? _first;
   DateTime _at = DateTime.fromMillisecondsSinceEpoch(0);
   bool _busy = false;
+
+  /// What the last fetch brought, without asking for another — null before
+  /// the first one lands. For a caller that must not wait at all.
+  T? get last => _value;
 
   /// Only the FIRST callers of all ever wait — on one fetch, which [main]
   /// starts before the first request comes, and out of the line

@@ -1,5 +1,6 @@
 package com.myoun.anicel
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Intent
 import android.content.IntentFilter
@@ -49,6 +50,72 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         preferTheFastestDisplayMode()
+        // The file that started the app (hand) - on a FRESH start only: an
+        // activity brought back, restored or reopened from Recents, is handed
+        // the intent it first started with again, and those files were
+        // opened then.
+        val broughtBack = savedInstanceState != null ||
+            (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (!broughtBack) {
+            hand(intent)
+        }
+    }
+
+    // A file handed while Anicel runs: launchMode singleTask brings this
+    // activity forward rather than standing up another
+    // (AndroidManifest.xml says why).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        hand(intent)
+    }
+
+    // open-door-android-share (F-282-Q5, 유저 2026-10-09: 「추천대로. 최대한
+    // 통일하고싶음」): what another app opens Anicel with (VIEW) or shares
+    // with it (SEND, SEND_MULTIPLE) goes through the one door a drop goes
+    // through. Each file is said to Dart as a pick says it (pickedItem), on
+    // the channel the Windows runner says a second Anicel's files on
+    // (lib/src/native/handed_files.dart) - held until the first frame: before
+    // it nothing in Dart hears the channel, as on Windows.
+    // test/architecture/a_file_another_app_hands_goes_through_the_door_test.dart
+    // reads these.
+    private val handedFilesChannel = "anicel/handed_files"
+    private val openHanded = "open"
+    private var handedFiles: MethodChannel? = null
+    private var heldForTheFirstFrame: MutableList<Map<String, Any?>>? =
+        mutableListOf()
+
+    private fun hand(intent: Intent) {
+        if (!handsFiles(intent)) {
+            return
+        }
+        val items = documentUris(intent).mapNotNull {
+            pickedItem(it, isFolder = false)
+        }
+        if (items.isEmpty()) {
+            return
+        }
+        val held = heldForTheFirstFrame
+        if (held != null) {
+            held.addAll(items)
+        } else {
+            handedFiles?.invokeMethod(openHanded, items)
+        }
+    }
+
+    // The three intents that hand files - every other one, the launcher's
+    // own first, hands none.
+    private fun handsFiles(intent: Intent): Boolean = when (intent.action) {
+        Intent.ACTION_VIEW, Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE -> true
+        else -> false
+    }
+
+    override fun onFlutterUiDisplayed() {
+        super.onFlutterUiDisplayed()
+        val held = heldForTheFirstFrame ?: return
+        heldForTheFirstFrame = null
+        if (held.isNotEmpty()) {
+            handedFiles?.invokeMethod(openHanded, held)
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -107,6 +174,10 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        handedFiles = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            handedFilesChannel,
+        )
         // I-103-Q1: the battery the top strip shows - the one question
         // DeviceBattery asks every platform.
         MethodChannel(
@@ -118,6 +189,7 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        wearPictureCursors(flutterEngine)
     }
 
     // The battery as DeviceBattery.readingOf reads it - "percent", and
@@ -623,7 +695,7 @@ class MainActivity : FlutterActivity() {
             return
         }
         val uris = if (resultCode == RESULT_OK && data != null) {
-            if (isFolder) listOfNotNull(data.data) else pickedDocumentUris(data)
+            if (isFolder) listOfNotNull(data.data) else documentUris(data)
         } else {
             emptyList()
         }
@@ -631,21 +703,7 @@ class MainActivity : FlutterActivity() {
             waiting.success(mapOf("status" to "cancelled"))
             return
         }
-        val items = mutableListOf<Map<String, Any?>>()
-        for (uri in uris) {
-            takePersistable(uri, writable = true)
-            // No bookmark: an Android path is durable on its own, which is
-            // exactly what the Apple runners have to mint a token for.
-            val path = realPathFor(uri, isFolder)
-            if (path != null) {
-                items.add(mapOf("path" to path, "bookmark" to null))
-            } else if (!isFolder) {
-                // PICK-7: a FILE with no path behind it is still a file the
-                // provider reads and writes - handed over as the document.
-                // A folder is not: nothing works through a tree yet.
-                items.add(documentItem(uri))
-            }
-        }
+        val items = uris.mapNotNull { pickedItem(it, isFolder) }
         if (items.isEmpty()) {
             waiting.success(mapOf("status" to "noFilesystemPath"))
         } else {
@@ -653,9 +711,29 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Multi-select answers in getClipData; a single pick answers in getData.
-    // Reading only the latter silently imported one file out of ten.
-    private fun pickedDocumentUris(data: Intent): List<Uri> {
+    // One picked document as Dart takes it (FolderPicker.itemGrant): its
+    // real path where one is behind it, else - PICK-7 - the document. Null
+    // for a folder with no path. What another app hands over is said the
+    // same way (hand).
+    private fun pickedItem(uri: Uri, isFolder: Boolean): Map<String, Any?>? {
+        takePersistable(uri, writable = true)
+        // No bookmark: an Android path is durable on its own, which is
+        // exactly what the Apple runners have to mint a token for.
+        val path = realPathFor(uri, isFolder)
+        if (path != null) {
+            return mapOf("path" to path, "bookmark" to null)
+        }
+        // PICK-7: a FILE with no path behind it is still a file the
+        // provider reads and writes - handed over as the document.
+        // A folder is not: nothing works through a tree yet.
+        return if (isFolder) null else documentItem(uri)
+    }
+
+    // Several documents answer in getClipData - a multi-select pick, and a
+    // share, whose streams Android moves there so its grant reaches them;
+    // one answers in getData - a single pick, a VIEW. Reading only the
+    // latter silently imported one file out of ten.
+    private fun documentUris(data: Intent): List<Uri> {
         val clip = data.clipData ?: return listOfNotNull(data.data)
         return (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri }
     }
@@ -708,6 +786,11 @@ class MainActivity : FlutterActivity() {
     // A Drive or Dropbox provider does not use this authority at all, and
     // that is the case that genuinely has no path.
     private fun realPathFor(uri: Uri, isTree: Boolean): String? {
+        // A file: URI is a path already - what an app old enough to share
+        // one hands over (hand). No picker answers with one.
+        if (uri.scheme == ContentResolver.SCHEME_FILE) {
+            return if (isTree) null else uri.path?.let { existingFile(it) }
+        }
         if (uri.authority != "com.android.externalstorage.documents") {
             return if (isTree) null else sharedStoragePathFor(uri)
         }

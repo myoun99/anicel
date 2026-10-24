@@ -3,6 +3,8 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerBlendSlotWidth, layerLaneValueSlotWidth, layerOpacitySlotWidth;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_second.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart'
+    show AppScrollbarLane;
 
 void main() {
   group('TimelineGridMetrics', () {
@@ -18,13 +20,16 @@ void main() {
       // 519 → 563 (I-89 ③): a lane's chips and pin for the header graph,
       // and a header's graph button out of them.
       // 563 → 519 (I-89 Q1): a row's own buttons come out of its name.
-      expect(metrics.layerControlsWidth, 519);
+      // 519 → 461 (F-409): a layer row's name went to two thirds.
+      expect(metrics.layerControlsWidth, 461);
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);
       // 14 → 16 (rail-window round): the lane stopped being a leftover
       // gap between the rail and the cells and became a real column.
-      expect(metrics.verticalScrollbarWidth, 16);
+      // 16 → the thick bar (F-409, 유저 2026-10-19: 「프레임영역의 세로
+      // 스크롤바. 지금보다 살짝 더 두꺼운 스크롤바 사용」).
+      expect(metrics.verticalScrollbarWidth, AppScrollbarLane.thick);
     });
 
     test('copyWith rescales only the frame cell extent', () {

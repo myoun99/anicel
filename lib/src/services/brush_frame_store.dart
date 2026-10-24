@@ -123,8 +123,26 @@ class BrushFrameStore {
   bool wallShrinksTo(PasteboardReach reach) =>
       reach.quartersPerEdge < _pasteboardReach.quartersPerEdge;
 
-  BitmapSurface _behind(BitmapSurface surface) =>
-      surfaceBehindReach(surface, _pasteboardReach);
+  BitmapSurface _behind(BitmapSurface surface) {
+    if (surface.pasteboardReach != _pasteboardReach) {
+      celsWalledHere += 1;
+    }
+    return surfaceBehindReach(surface, _pasteboardReach);
+  }
+
+  /// How many pictures [_behind] has put behind this store's wall here, on
+  /// this isolate — none that a worker laid behind it already
+  /// ([_adoptedBehind]).
+  @visibleForTesting
+  int celsWalledHere = 0;
+
+  /// [laid] — a kept cel a worker laid behind [standsBehind], the wall it
+  /// was asked for ([layCelInWorker]) — adopted here behind this store's
+  /// wall: as it came, unless the wall moved while it was worked out.
+  BitmapSurface _adoptedBehind(
+    AnicelLaidCel laid,
+    PasteboardReach standsBehind,
+  ) => _behind(laidCelSurface(laid, standsBehind: standsBehind));
 
   /// Moves every picture's wall to [reach] (I-109) — in every tier, hot,
   /// parked and saved, one cel at a time as a resize walks them, so a
@@ -179,7 +197,6 @@ class BrushFrameStore {
         stands: (ref) => _standsBehind[ref] = reach,
       );
       for (final key in kept.keys) {
-        _editTicks[key] = ++_editTick;
         crossed = _recordCelContent(key) || crossed;
       }
       cut.addAll(kept);
@@ -237,10 +254,6 @@ class BrushFrameStore {
           if (!_wallPasses(key, ref, reach)) (key: key, ref: ref, read: read),
     ];
     final hotCels = {..._bakedSurfaces};
-    // ⛔Never the name a cel is parked under: these bytes are not the
-    // cel's until the move takes them, and the round keeps one round's
-    // from another's — a cel the last move cut is parked under the last's.
-    final round = ++_cutAheadRounds;
     var done = 0;
     void counted() {
       done += 1;
@@ -252,7 +265,7 @@ class BrushFrameStore {
         _cutHotAhead(key, surface, ahead).whenComplete(counted),
       for (final job in jobs)
         celThawTurns
-            .run(() => _cutKeptAhead(job, ahead, round))
+            .run(() => _cutKeptAhead(job, ahead))
             .whenComplete(counted),
     ]);
   }
@@ -274,29 +287,33 @@ class BrushFrameStore {
   }
 
   /// A KEPT cel's bytes, read as [job] says, cut behind [ahead]'s wall on a
-  /// worker and parked for [round], held in [ahead] by the ref they were
-  /// read off.
-  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead, int round) async {
+  /// worker and parked under a name of their own, held in [ahead] by the
+  /// ref they were read off.
+  Future<void> _cutKeptAhead(_KeptRead job, _CutAhead ahead) async {
     final (:key, :ref, :read) = job;
     try {
       final blob = read(ref);
       if (blob == null) {
         return;
       }
+      final standsBehind = _pasteboardReach;
       final cut = await cutCelInWorker(
         key,
         blob,
-        ahead.reach,
-        parkAt: ScratchCelFiles.pathFor(
+        (from: standsBehind, to: ahead.reach),
+        // ⛔Never the name the cel is parked under: these bytes are not the
+        // cel's until the move takes them ([ScratchCelFiles.newPath]) — and
+        // the room can tell what was worked out ahead from what was not.
+        parkAt: ScratchCelFiles.newPath(
           _scratchNamespace,
-          '${anicelCelEntryName(key)}-ahead$round',
+          '${anicelCelEntryName(key)}-ahead',
         ),
       );
       ahead.answers[ref] = cut == null
           ? null
           : (
               kept: _parkedRef(cut.path, cut.blob),
-              was: laidCelSurface(cut.was),
+              was: laidCelSurface(cut.was, standsBehind: standsBehind),
             );
       if (!identical(_cutAhead?.answers, ahead.answers)) {
         _dropCutAhead(ahead);
@@ -304,7 +321,7 @@ class BrushFrameStore {
     } on Object {
       // The move reads it again, as it always did. A throw after the park
       // leaves its bytes to the room's own ending, as a removal that fails
-      // does (`ScratchFile.remove`).
+      // does ([ScratchFile.letGo]).
     }
   }
 
@@ -317,14 +334,12 @@ class BrushFrameStore {
   BitmapSurface? cutAheadOf(BrushFrameKey key) =>
       _cutAhead?.hot[_canonicalize(key)]?.made;
 
-  int _cutAheadRounds = 0;
-
   /// Lets go of [ahead] — what was worked out ahead and not taken — and of
   /// the bytes it parked in the room.
   static void _dropCutAhead(_CutAhead? ahead) {
     for (final rewrite in ahead?.answers.values ?? const <Never>[]) {
       if (rewrite != null) {
-        ScratchFile.remove(rewrite.kept.filePath);
+        ScratchFile.letGo(rewrite.kept.filePath);
       }
     }
     ahead?.answers.clear();
@@ -625,25 +640,36 @@ class BrushFrameStore {
   int _hotBytes = 0;
   int _coldBytes = 0;
 
-  /// Cels edited since the last successful save (donations/removals, not
-  /// mere promotions) — exactly the set an incremental save must write.
-  final Set<BrushFrameKey> _dirtySinceSave = {};
-
-  /// Monotonic edit clock + per-key last-edit marks, for the one question
-  /// the dirty SET cannot answer: "was this cel edited AFTER the save
-  /// snapshot was taken?" The set survives the whole save untouched, so at
-  /// adoption time a key that was dirty when the snapshot was captured and
-  /// a key that went dirty DURING the save look identical — and treating
-  /// them the same is how an in-flight stroke used to vanish: adoption
-  /// re-installed the pre-edit file ref, the wholesale clear() wiped the
-  /// mark, and cooling then "free-dropped" the only copy of the new
-  /// pixels. Marks are removed when their edit is adopted into a save, so
-  /// the map holds only unsaved work.
+  /// Cels edited since the last successful save (donations, removals,
+  /// moves and rewrites — not mere promotions) — exactly the set an
+  /// incremental save must write — each with the tick of its last edit.
+  ///
+  /// The tick answers the one question the set cannot: "was this cel
+  /// edited AFTER the save snapshot was taken?" The marks survive the
+  /// whole save, so at adoption time a key that was dirty when the
+  /// snapshot was captured and a key that went dirty DURING the save look
+  /// identical without it — and treating them the same is how an in-flight
+  /// stroke used to vanish: adoption re-installed the pre-edit file ref,
+  /// the wholesale clear() wiped the mark, and cooling then "free-dropped"
+  /// the only copy of the new pixels. Marks are removed when their edit is
+  /// adopted into a save, so the map holds only unsaved work.
+  ///
+  /// 🚨ONE MAP, ONE WAY IN ([_markDirty]). The mark and its tick were two
+  /// fields, and five of the eight places that marked a cel set only the
+  /// mark — a resize, an anchored resize, a kept cel's rewrite, a cel
+  /// moved to another frame, a cel an undo laid back where it had been
+  /// emptied. Each, landing while a save ran, was adopted as the save's
+  /// own: the cel went clean on the bytes from before (card
+  /// a-resize-during-a-save-can-lose-the-resize, 2026-10-21). A mark
+  /// without its tick cannot be written now.
+  final Map<BrushFrameKey, int> _dirtySinceSave = {};
   int _editTick = 0;
-  final Map<BrushFrameKey, int> _editTicks = {};
+
+  /// [key] edited now — dirty, at a tick no earlier edit carries.
+  void _markDirty(BrushFrameKey key) => _dirtySinceSave[key] = ++_editTick;
 
   Set<BrushFrameKey> get dirtyCelKeysSinceSave =>
-      Set.unmodifiable(_dirtySinceSave);
+      Set.unmodifiable(_dirtySinceSave.keys);
 
   /// Hot-tier byte budget. Cels beyond it cool (encode + compress) in LRU
   /// order in a background isolate. Test-settable; the session seeds it
@@ -948,9 +974,15 @@ class BrushFrameStore {
     }
   });
 
-  /// [blob] thawed on a worker as a read here would thaw it.
-  Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async =>
-      _behind(laidCelSurface(await layCelInWorker(blob, BitmapTile.blocks)));
+  /// [blob] thawed on a worker as a read here would thaw it — behind the
+  /// wall there too.
+  Future<BitmapSurface> _layThawed(AnicelCelBlob blob) async {
+    final reach = _pasteboardReach;
+    return _adoptedBehind(
+      await layCelInWorker(blob, BitmapTile.blocks, reach: reach),
+      reach,
+    );
+  }
 
   /// 🚨Through the SESSION'S handle, not a fresh open per cel.
   ///
@@ -995,15 +1027,14 @@ class BrushFrameStore {
     return true;
   }
 
-  /// [ref] — bytes already in the room — made [key]'s cold bytes, and the
-  /// file it was kept in before let go.
+  /// [ref] — bytes already in the room, under a name of their own
+  /// ([ScratchCelFiles.newPath]) — made [key]'s cold bytes, and the file it
+  /// was kept in before let go.
   void _keepCold(BrushFrameKey key, AnicelCelFileRef ref) {
     final previous = _coldCels[key];
     if (previous != null) {
       _coldBytes -= previous.length;
-      if (previous.filePath != ref.filePath) {
-        ScratchFile.remove(previous.filePath);
-      }
+      ScratchFile.letGo(previous.filePath);
     }
     _coldCels[key] = ref;
     _coldBytes += ref.length;
@@ -1027,7 +1058,7 @@ class BrushFrameStore {
       return;
     }
     _coldBytes -= gone.length;
-    ScratchFile.remove(gone.filePath);
+    ScratchFile.letGo(gone.filePath);
   }
 
   /// The blob [ref] names, read back out of the scratch room.
@@ -1068,8 +1099,7 @@ class BrushFrameStore {
     if (estimate != null) {
       _hotBytes -= estimate;
     }
-    _dirtySinceSave.add(key);
-    _editTicks[key] = ++_editTick;
+    _markDirty(key);
     _noteCelContent(key);
   }
 
@@ -1095,8 +1125,7 @@ class BrushFrameStore {
     _dropCold(key);
     _fileCels.remove(key);
     _storeHot(key, surface);
-    _dirtySinceSave.add(key);
-    _editTicks[key] = ++_editTick;
+    _markDirty(key);
     _noteCelContent(key);
     _scheduleCooling();
   }
@@ -1146,7 +1175,7 @@ class BrushFrameStore {
       // The dirty keys WITH their edit marks — what [adoptSavedFile] needs
       // to tell "written by this save" apart from "edited while it ran".
       dirtyTicks: {
-        for (final key in _dirtySinceSave) key: _editTicks[key] ?? 0,
+        ..._dirtySinceSave,
       },
     );
   }
@@ -1185,7 +1214,6 @@ class BrushFrameStore {
     _hotBytes = 0;
     _coldBytes = 0;
     _dirtySinceSave.clear();
-    _editTicks.clear();
     _dropCutAhead(_cutAhead);
     _cutAhead = null;
     _movedAhead = null;
@@ -1262,7 +1290,7 @@ class BrushFrameStore {
     required Map<BrushFrameKey, int> dirtyTicksAtSnapshot,
   }) {
     bool editedSinceSnapshot(BrushFrameKey key) =>
-        (_editTicks[key] ?? 0) > (dirtyTicksAtSnapshot[key] ?? 0);
+        (_dirtySinceSave[key] ?? 0) > (dirtyTicksAtSnapshot[key] ?? 0);
     for (final entry in saved.entries) {
       if (editedSinceSnapshot(entry.key)) {
         continue;
@@ -1282,7 +1310,6 @@ class BrushFrameStore {
     for (final entry in dirtyTicksAtSnapshot.entries) {
       if (!editedSinceSnapshot(entry.key)) {
         _dirtySinceSave.remove(entry.key);
-        _editTicks.remove(entry.key);
       }
     }
   }
@@ -1704,8 +1731,8 @@ class BrushFrameStore {
         // [to] must be rewritten under its own key (the saver re-keys
         // moved blobs/refs — pixels are identical, only the label
         // changes, so reads through a moved ref stay valid meanwhile).
-        _dirtySinceSave.add(from);
-        _dirtySinceSave.add(to);
+        _markDirty(from);
+        _markDirty(to);
       }
       // R27 #13, rekey edition: the move crosses the empty ↔ has-picture
       // line at BOTH ends ([from] always empties; [to] usually gains its
@@ -1749,7 +1776,7 @@ class BrushFrameStore {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       _storeHot(key, _moved(key, bakedSurfaceOrNull(key)!, move));
       _fileCels.remove(key);
-      _dirtySinceSave.add(key);
+      _markDirty(key);
       // Per-cel signature bump WITHOUT the per-cel global notify: the
       // global signal fires as often as the user draws and its
       // listeners are honed for single strokes — N cels × N listener
@@ -1847,15 +1874,16 @@ class BrushFrameStore {
     final from = await _thawOnAWorker(key, () => _kept(key)?.ref, (
       blob,
     ) async {
+      final reach = _pasteboardReach;
       final laid = await moveCelInWorker(
         key,
         blob,
-        reach: _pasteboardReach,
+        reach: reach,
         move: move,
       );
       final laidMoved = laid.moved;
-      moved = laidMoved == null ? null : _behind(laidCelSurface(laidMoved));
-      return _behind(laidCelSurface(laid.was));
+      moved = laidMoved == null ? null : _adoptedBehind(laidMoved, reach);
+      return _adoptedBehind(laid.was, reach);
     });
     final worked = moved;
     if (from != null && worked != null) {
@@ -1985,7 +2013,7 @@ class BrushFrameStore {
       }
       _storeHot(key, resizeBitmapSurfaceCanvas(surface, canvasSize));
       _fileCels.remove(key);
-      _dirtySinceSave.add(key);
+      _markDirty(key);
       // A crop can take every line with it.
       crossed = _recordCelContent(key) || crossed;
     }
@@ -2055,7 +2083,7 @@ class BrushFrameStore {
         }
         _keepCold(key, next.kept);
         stands?.call(next.kept);
-        _dirtySinceSave.add(key);
+        _markDirty(key);
         rewritten[key] = next.was;
       }
     }
@@ -2135,7 +2163,7 @@ class BrushFrameStore {
     for (final entry in snapshot.entries) {
       _storeHot(entry.key, entry.value);
       _fileCels.remove(entry.key);
-      _dirtySinceSave.add(entry.key);
+      _markDirty(entry.key);
       // The display caches follow the restored truth.
       storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
       // The removal above crossed each drawn cel to empty; this crosses it

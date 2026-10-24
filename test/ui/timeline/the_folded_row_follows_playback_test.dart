@@ -250,9 +250,10 @@ void main() {
           'folded row\'s axis',
     );
 
-    // The folded-away grid re-reads its own scroll position into the axis
-    // whenever it lays out again — a window resized while folded is one —
-    // and syncs to the axis first, or it puts a stale one back.
+    // A window resized while folded leaves the row's axis where it is.
+    // ↩️The grid folded away re-read its own scroll position into the axis
+    // whenever it laid out again, and had to sync to the axis first or put
+    // a stale one back; it is not built folded since 10-23.
     final zoomedAt = origin(tester);
     await tester.binding.setSurfaceSize(const Size(1480, 1000));
     await tester.pumpAndSettle();
@@ -280,12 +281,13 @@ void main() {
   });
 
   testWidgets('🚨folded, a zoom anchors on the playhead where the FOLDED row '
-      'shows it, not where the grid folded away would', (tester) async {
-    // ⛔The grid folded away is narrower than the folded row, so a playhead
-    // can stand inside the row's window and past the grid's. Both anchored
-    // a zoom then, with two answers — the playhead for the row, the leading
-    // edge for the grid — and the grid's, written from the middle of a
-    // build, both won and dirtied the folded row as it built.
+      'shows it, not where the grid it folded from would', (tester) async {
+    // ⛔The grid is narrower than the folded row, so a playhead can stand
+    // inside the row's window and past the grid's. ↩️Kept folded away until
+    // 10-23, the grid anchored a zoom too, with another answer — the
+    // leading edge — and its, written from the middle of a build, both won
+    // and dirtied the folded row as it built. It is not built folded now;
+    // the frame still stands where the two answers differed.
     const scrolledCells = 10;
     final frameScroller = find.byKey(
       const ValueKey<String>('timeline-frame-scroll-viewport'),
@@ -302,6 +304,8 @@ void main() {
               .first,
         )
         .position;
+    // The grid's window, as it was open.
+    late final double gridView;
     final session = await pumpFolded(
       tester,
       // Scrolled right before the fold (F-143), so the axis the grid
@@ -313,11 +317,11 @@ void main() {
         final axis = gridAxis();
         axis.jumpTo(scrolledCells * TimelineZoomLimits.defaultPixelsPerFrame);
         await tester.pumpAndSettle();
+        gridView = gridAxis().viewportDimension;
       },
     );
     final cell = cellOf(tester);
     final view = window(tester);
-    final gridView = gridAxis().viewportDimension;
     final start = origin(tester);
     expect(
       start,

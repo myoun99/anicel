@@ -268,22 +268,44 @@ class LayerVerbs {
   );
 
   /// ⑨: every selected row duplicated, in ONE undo — the rename's twin —
-  /// standing on the last copy.
-  void duplicateSelectedLayers() => _eachRowAsOneStep(
-    duplicatableSelectedLayerIds(),
-    'Duplicate rows',
-    _duplicate,
-  );
+  /// as ONE block over the topmost of them, in the order they stand,
+  /// standing on the top copy.
+  ///
+  /// 🗣️F-455 (유저 2026-10-23): 「레이어는 지금 여러개 복제시 각자 선택한
+  /// 레이어의 위에 생기는데, 그게아니라 선택한 레이어들 포함해서 그 위에
+  /// 생기도록. 사이사이에 생기지 않게」 — a paste's block ([seatAboveRow]),
+  /// each copy over the one before it. ↩️Each copy went right above its own
+  /// source, in the order the rows were picked.
+  void duplicateSelectedLayers() {
+    final ids = duplicatableSelectedLayerIds().toSet();
+    final stack = [
+      for (final layer in _project.activeCutOrNull?.layers ?? const <Layer>[])
+        if (ids.contains(layer.id)) layer.id,
+    ];
+    if (stack.isEmpty) {
+      return;
+    }
+    var over = stack.last;
+    _eachRowAsOneStep(
+      stack,
+      'Duplicate rows',
+      (cutId, layerId) => over = _duplicate(cutId, layerId, over: over),
+    );
+  }
 
-  /// Duplicates [layerId] in [cutId] and brings its pictures over: the copy
-  /// mints every cel afresh, and a picture lives under its cel's id (F-62's
-  /// law at the layer's scale). ↩️Nothing did until 2026-09-26 — a
-  /// duplicated row came out with no drawing at all (measured; card
+  /// Duplicates [layerId] in [cutId] — right above it, or over the row
+  /// [over] names — and brings its pictures over: the copy mints every cel
+  /// afresh, and a picture lives under its cel's id (F-62's law at the
+  /// layer's scale). ↩️Nothing did until 2026-09-26 — a duplicated row came
+  /// out with no drawing at all (measured; card
   /// `duplicates-lose-their-pictures`).
-  LayerId _duplicate(CutId cutId, LayerId layerId) {
+  LayerId _duplicate(CutId cutId, LayerId layerId, {LayerId? over}) {
     final copy = _project.cutCommandCoordinator.duplicateLayer(
       cutId: cutId,
       sourceLayerId: layerId,
+      insertionIndex: over == null
+          ? null
+          : seatAboveRow(_project.requireActiveCut.layers, over),
     );
     final cut = _project.requireActiveCut;
     final store = _renderCaches.brushFrameStore;
@@ -308,6 +330,21 @@ class LayerVerbs {
     return copy.layerId;
   }
 
+  /// Whether [duplicateActiveLayer] has a row to copy — its gate, asked the
+  /// way the verb asks: the selected rows, else the row you stand on.
+  bool get canDuplicateActiveLayer =>
+      duplicatableSelectedLayerIds().isNotEmpty ||
+      _activeLayerTakesACopy;
+
+  /// Track-owned SE rows: duplication stands down (same clipboard-shape
+  /// reason as the board's copy); attach rows too (v1 — a duplicate would
+  /// double-link the same base cels); and R9 #7: the copy lands in the
+  /// same cut — always the second one.
+  bool get _activeLayerTakesACopy {
+    final activeLayer = _selection.activeLayer;
+    return activeLayer != null && layerTakesACopyBesideIt(activeLayer);
+  }
+
   /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
   /// falls back to the row you are standing on. Every caller — the pill
   /// button, a shortcut — inherits that without asking twice.
@@ -316,14 +353,10 @@ class LayerVerbs {
       duplicateSelectedLayers();
       return;
     }
-    final activeLayer = _selection.activeLayer;
-    // Track-owned SE rows: duplication stands down (same clipboard-shape
-    // reason as the board's copy); attach rows too (v1 — a duplicate would
-    // double-link the same base cels); and R9 #7: the copy lands in the
-    // same cut — always the second one.
-    if (activeLayer == null || !layerTakesACopyBesideIt(activeLayer)) {
+    if (!_activeLayerTakesACopy) {
       return;
     }
+    final activeLayer = _selection.activeLayer!;
 
     final duplicatedLayerId = _duplicate(
       // A non-null active layer implies an active cut (gap state has no

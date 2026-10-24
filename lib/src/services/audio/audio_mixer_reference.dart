@@ -125,58 +125,38 @@ double audioFadeRamp(double ramp, int curve) {
   return curve == 1 ? math.sqrt(clamped) : clamped;
 }
 
-/// The envelope's value at [position]: linear between keys, held past
-/// either end, 1.0 when there are none.
+/// The envelope's value at [position] (clip-local samples): linear between
+/// points, held past either end, 1.0 when there are none — mirrors the C
+/// `qa_audio_envelope_at` expression for expression.
 ///
-/// ⛔ONE LAW, TWO DOMAINS. The mixer asks in clip-local SAMPLES and the
-/// playback sync asks in FRAMES, so the position comes through [at] rather
-/// than through a point type. The twin in `audio_playback_sync.dart` said
-/// "frame-domain twin of the mixer's envelope" in its own doc and drifted
-/// anyway — one guarded a zero span with `<= 0.0` and the other with
-/// `<= 0`.
-///
-/// ⚠️The arithmetic is UNCHANGED from the C `qa_audio_envelope_at`, which
-/// [audioEnvelopeAt] mirrors expression for expression: the accessors move
-/// where the numbers come from, never the order they are combined in.
-double envelopeGainAt<T>(
-  List<T> keys,
-  int position, {
-  required int Function(T key) at,
-  required double Function(T key) gain,
-}) {
-  if (keys.isEmpty) {
+/// ↩️The platform players' sync asked the same law in FRAMES. Its own twin
+/// drifted (it guarded a zero span with `<= 0`, this with `<= 0.0`), so the
+/// two shared one generic fold until the sync went with the players
+/// (2026-10-23); the mixer is the one asker again.
+double audioEnvelopeAt(List<AudioEnvelopePoint> points, int position) {
+  if (points.isEmpty) {
     return 1.0;
   }
-  if (position <= at(keys.first)) {
-    return gain(keys.first);
+  if (position <= points.first.sample) {
+    return points.first.gain;
   }
-  if (position >= at(keys.last)) {
-    return gain(keys.last);
+  if (position >= points.last.sample) {
+    return points.last.gain;
   }
-  for (var index = 0; index < keys.length - 1; index += 1) {
-    final a = keys[index];
-    final b = keys[index + 1];
-    if (position < at(b)) {
-      final span = (at(b) - at(a)).toDouble();
+  for (var index = 0; index < points.length - 1; index += 1) {
+    final a = points[index];
+    final b = points[index + 1];
+    if (position < b.sample) {
+      final span = (b.sample - a.sample).toDouble();
       if (span <= 0.0) {
-        return gain(b);
+        return b.gain;
       }
-      final t = (position - at(a)) / span;
-      return gain(a) + (gain(b) - gain(a)) * t;
+      final t = (position - a.sample) / span;
+      return a.gain + (b.gain - a.gain) * t;
     }
   }
-  return gain(keys.last);
+  return points.last.gain;
 }
-
-/// The envelope's value at [position] (clip-local samples) — mirrors the C
-/// `qa_audio_envelope_at` expression for expression.
-double audioEnvelopeAt(List<AudioEnvelopePoint> points, int position) =>
-    envelopeGainAt(
-      points,
-      position,
-      at: (point) => point.sample,
-      gain: (point) => point.gain,
-    );
 
 /// A block of decoded samples, interleaved by channel — mirrors the C
 /// `qa_audio_source`.
@@ -200,41 +180,14 @@ class AudioMixSource {
   int get length => channels <= 0 ? 0 : samples.length ~/ channels;
 }
 
-/// The volume shape at one position of a clip: gain × envelope × fade-in
-/// ramp × fade-out ramp, the ramps through [audioFadeRamp] with
-/// [fadeCurve] (0 linear, 1 equal-power).
-///
-/// ⛔ONE LAW, TWO DOMAINS, one level up from [envelopeGainAt]: the mixer
-/// asks in clip-local SAMPLES ([audioClipVolumeAt]) and the playback sync
-/// asks in FRAMES, so [position] (from the clip's start), [remaining] (to
-/// its end) and the two fade lengths arrive as plain numbers — no point
-/// type, no per-sample closure. The sync kept its own fold with its own
-/// ramp until the round-8 audit (2026-09-06).
+/// The clip's volume at one timeline position: gain × envelope × fade-in
+/// ramp × fade-out ramp, the ramps through [audioFadeRamp] with the clip's
+/// fade curve (0 linear, 1 equal-power).
 ///
 /// ⚠️The multiplication order is UNCHANGED from the C `qa_audio_clip_volume`
 /// — gain, envelope, fade-in, fade-out — which is what keeps the native
-/// parity test byte-equal.
-double audioVolumeShapeAt({
-  required double gain,
-  required double envelopeGain,
-  required int position,
-  required int remaining,
-  required int fadeInLength,
-  required int fadeOutLength,
-  required int fadeCurve,
-}) {
-  var volume = gain;
-  volume *= envelopeGain;
-  if (fadeInLength > 0 && position < fadeInLength) {
-    volume *= audioFadeRamp(position / fadeInLength, fadeCurve);
-  }
-  if (fadeOutLength > 0 && remaining < fadeOutLength) {
-    volume *= audioFadeRamp(remaining / fadeOutLength, fadeCurve);
-  }
-  return volume;
-}
-
-/// The clip's volume envelope at one timeline position.
+/// parity test byte-equal. ↩️The fold stood apart for the sync's frames as
+/// well (round-8 audit, 2026-09-06), and came back with it gone.
 ///
 /// Deliberately NOT clamped to [0, 1] — see the note on the C twin: the old
 /// preview path clamped because a platform player's volume tops out at 1.0
@@ -243,15 +196,16 @@ double audioVolumeShapeAt({
 /// the output stage's job.
 double audioClipVolumeAt(AudioMixClip clip, int positionSample) {
   final position = positionSample - clip.startSample;
-  return audioVolumeShapeAt(
-    gain: clip.gain,
-    envelopeGain: audioEnvelopeAt(clip.envelope, position),
-    position: position,
-    remaining: clip.endSample - positionSample,
-    fadeInLength: clip.fadeInSamples,
-    fadeOutLength: clip.fadeOutSamples,
-    fadeCurve: clip.fadeCurve,
-  );
+  final remaining = clip.endSample - positionSample;
+  var volume = clip.gain;
+  volume *= audioEnvelopeAt(clip.envelope, position);
+  if (clip.fadeInSamples > 0 && position < clip.fadeInSamples) {
+    volume *= audioFadeRamp(position / clip.fadeInSamples, clip.fadeCurve);
+  }
+  if (clip.fadeOutSamples > 0 && remaining < clip.fadeOutSamples) {
+    volume *= audioFadeRamp(remaining / clip.fadeOutSamples, clip.fadeCurve);
+  }
+  return volume;
 }
 
 /// Which source channel feeds [outChannel]: a mono source feeds every

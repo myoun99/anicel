@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart' show FieldSlider;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/the_classic_rail.dart';
@@ -236,7 +237,11 @@ void main() {
     await openTransformLanes(tester);
 
     await doubleTapBand(tester, 'position', 8.5);
-    expect(find.text('Rename key'), findsOneWidget, reason: 'a key: its window');
+    expect(
+      find.text(_keyNameWindow),
+      findsOneWidget,
+      reason: 'a key: its window',
+    );
     for (final side in ['in', 'out']) {
       final pill = find.byKey(ValueKey<String>('rename-key-$side-linear'));
       expect(
@@ -251,7 +256,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await doubleTapBand(tester, 'position', 4.5);
-    expect(find.text('Rename key'), findsNothing, reason: 'nothing to open');
+    expect(find.text(_keyNameWindow), findsNothing, reason: 'nothing to open');
     expect(
       positionOf(s).keyAt(4),
       isNotNull,
@@ -267,7 +272,7 @@ void main() {
     await openTransformLanes(tester);
 
     await doubleTapBand(tester, 'transform-group', 8.5);
-    expect(find.text('Rename key'), findsOneWidget);
+    expect(find.text(_keyNameWindow), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-key-out-hold')),
     );
@@ -720,3 +725,9 @@ void main() {
     expect(s.standingInsideSelection(row, 15, true), isFalse);
   });
 }
+
+/// The key name window's title: what it does, to what (I-24-open-entry).
+String get _keyNameWindow => AppText.strings.windowTitleOn(
+  AppText.strings.editNameAction,
+  AppText.strings.tlKey,
+);

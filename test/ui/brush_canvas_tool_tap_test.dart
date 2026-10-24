@@ -765,7 +765,8 @@ void main() {
       'with the pick wired never arms it (I-15: Alt switches the tool)', (
     tester,
   ) async {
-    const trackerKey = ValueKey<String>('eyedropper-hover-tracker');
+    // The icon, mounted with the tool it is the cursor of (F-130).
+    const trackerKey = ValueKey<String>('eyedropper-cursor-icon');
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,

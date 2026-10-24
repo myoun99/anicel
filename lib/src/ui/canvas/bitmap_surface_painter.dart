@@ -4,14 +4,12 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
-import '../../models/brush_blend_mode.dart';
 import '../../models/tile_coord.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
 import '../../services/cel_text_laying.dart';
-import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'blends_in_place.dart';
@@ -53,7 +51,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     required BitmapSurface surface,
     this.viewport,
     this.overlayModel,
-    this.stampPreview,
     this.landingPreview,
     this.showTransparentBackground = true,
     this.lineage,
@@ -66,7 +63,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
        super(
          repaint: Listenable.merge([
            ?overlayModel,
-           ?stampPreview,
            ?landingPreview,
          ]),
        );
@@ -98,24 +94,13 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
 
   /// Live in-progress stroke; drawn above the committed tiles with plain
   /// source-over. Its notifications repaint this painter directly.
+  ///
+  /// ↩️F-33: the stamp's ghost had a listenable of its own beside this,
+  /// drawn INSIDE the layer's paint so it took the layer's opacity, blend
+  /// and group buffer (유저: 「레이어 블렌드모드나 **합성같은게 다**
+  /// 반영되는」). Since brush-fidelity-Q9 (10-18) the ghost rides THIS
+  /// overlay — the click's own bytes — which is drawn there too.
   final ActiveStrokeOverlayModel? overlayModel;
-
-  /// 🚨★★★F-33 — the STAMP's ghost, drawn INSIDE the layer's own paint so
-  /// it inherits the layer's opacity, blend and group buffer.
-  ///
-  /// 유저: 「레이어 블렌드모드나 **합성같은게 다** 반영되는」 프리뷰. The
-  /// cursor overlay it replaces was a `Positioned` widget ON TOP of the
-  /// canvas, so the only thing it could honour was the stamp's own opacity.
-  /// Here [paintContentInto] hands it `layerPaint` like every other draw.
-  ///
-  /// A LISTENABLE, not a value: the pointer moves on every frame of a
-  /// hover, and a new painter per position would break the memo that keeps
-  /// the whole stack from recompositing (`_activeSurfacePainterToken`).
-  /// Subscribed through [repaint], so a move repaints and nothing rebuilds.
-  ///
-  /// ⛔The image inside is BORROWED from the held piece — see
-  /// [CutStampPreview]. Nothing here disposes it.
-  final ValueListenable<CutStampPreview?>? stampPreview;
 
   /// 🚨★★★F-344 — WHAT A PENDING LANDING WILL PUT OVER [surface], in its
   /// own space: the text the text tool holds, floated over the hole its
@@ -128,7 +113,7 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// plate cut again, each tile under it stamped and pictured again, and
   /// the panel built again for the painter that surface then needed.
   ///
-  /// A LISTENABLE, for [stampPreview]'s reason: a new painter per position
+  /// A LISTENABLE: the hand moves every frame, and a new painter per position
   /// would break the memo that keeps the whole stack from recompositing.
   /// Drawn where the selection's float is ([paintContentInto]'s `float`),
   /// so it composites as this layer at every zoom (F-240).
@@ -167,8 +152,8 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   Rect get storableRect => surface.storableRect;
 
   /// 🚨★★★EVERYTHING THIS PAINTER DRAWS, in canvas space — its surface's
-  /// content and whatever it draws over that surface this frame: the stroke
-  /// in flight, the stamp ghost.
+  /// content and whatever it draws over that surface this frame: the
+  /// overlay (a stroke in flight, or the stamp's ghost) and the text in hand.
   ///
   /// F-85 (유저 2026-09-11): 「펜 그리는 도중, 페이스트보드의 일부?까지
   /// 그려지는데 정확히 페이스트보드 끝까지 그림 그려지지않음. 그 상태에서 손
@@ -216,10 +201,6 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
     final overlay = overlayModel;
     if (overlay != null) {
       add(tileCoordsWorldRect(overlay.tileImages.keys, overlay.tileSize));
-    }
-    final ghost = stampPreview?.value;
-    if (ghost != null && ghost.image != null) {
-      add(ghost.canvasRect);
     }
     add(_ownFloat?.preview.drawnWorldRect);
     return drawn ?? Rect.zero;
@@ -287,12 +268,13 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// coordinate.
   bool get _overlayBlendsInLayer {
     final overlay = overlayModel;
+    // ↩️A brush blend drawn on the GPU (BB-1) took this route too; since
+    // brush-fidelity-Q9 nothing draws one, so only a pre-blended result
+    // and an eraser's dstOut compose against the committed pixels here.
     return overlay != null &&
         !_overlayReplacesCoords &&
         overlay.hasStrokeContent &&
-        (overlay.preBlended ||
-            overlay.erase ||
-            overlay.blendMode.previewBlendMode != BlendMode.srcOver);
+        (overlay.preBlended || overlay.erase);
   }
 
   /// 🚨★★★WHETHER EVERY DEVICE PIXEL THIS PAINTER TOUCHES, IT TOUCHES ONCE.
@@ -306,10 +288,13 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// such a blend never rides the draws, whatever this answers (the
   /// stack's `needsBuffer`).
   ///
-  /// ⛔NOT A NEW LAW — the overlay's own blend already rides it one level
-  /// down: *"BB-1: the brush blend previews live (tiles never overlap, so
-  /// per-tile draws blend each pixel exactly once)."* This is that sentence
-  /// asked about the LAYER's paint instead of the stroke's.
+  /// ⛔NOT A NEW LAW — it was born one level down, as the overlay's own:
+  /// *"BB-1: the brush blend previews live (tiles never overlap, so per-tile
+  /// draws blend each pixel exactly once)."* This is that sentence asked
+  /// about the LAYER's paint instead of the stroke's. ↩️That sentence went
+  /// with brush-fidelity-Q9: nothing draws a brush blend on the GPU now —
+  /// strokes pre-blend on the CPU (R27 #4), and so does the stamp ghost,
+  /// the last that did not.
   ///
   /// 🧪Measured on the test VM: with the tile paint this class actually uses
   /// (`isAntiAlias = false`, `FilterQuality.none`) the two routes agree to
@@ -318,26 +303,19 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// the flag belongs to the painter that knows its own paint rather than
   /// to a caller guessing.
   ///
-  /// False for the three ways a pixel gets touched twice: the paper rect
-  /// under every tile, a stamp ghost placed OVER whatever a coordinate
+  /// False for the ways a pixel gets touched twice: the paper rect
+  /// under every tile, a float placed OVER whatever a coordinate
   /// already holds, and an overlay that cannot replace a whole coordinate
   /// (its isolation layer exists precisely because it composes against the
   /// committed pixels).
   bool get drawsDisjointCoverage {
-    // 🚨★★★F-33: a stamp ghost lands OVER whatever the coordinate already
-    // holds — so this must say false.
+    // ↩️F-33: a stamp ghost landed OVER whatever a coordinate held, so it
+    // said false here — and false is what made it obey the layer (the
+    // buffered route puts the layer's opacity and blend on the buffer).
+    // Since brush-fidelity-Q9 the ghost is the overlay's whole-coordinate
+    // tiles, which the overlay's own answer below covers.
     //
-    // ⚠️And saying false is what MAKES the ghost obey the layer, which is
-    // the whole point of moving it here. False means the stack takes the
-    // buffered route, and the buffered route puts the layer's opacity and
-    // blend on the BUFFER — so everything drawn into it, ghost included,
-    // composites as that layer. A ghost that reported disjoint coverage
-    // would ride the per-draw path with no layer paint of its own and be
-    // exactly as wrong as the widget it replaced.
-    if (stampPreview?.value?.image != null) {
-      return false;
-    }
-    // F-344: the text in hand floats OVER the hole it left — the ghost's
+    // F-344: the text in hand floats OVER the hole it left — the old ghost's
     // reason, and the same answer.
     if (_ownFloat != null) {
       return false;

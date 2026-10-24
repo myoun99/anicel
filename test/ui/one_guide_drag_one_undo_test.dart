@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/panel_finders.dart';
+import '../helpers/rail_group_button.dart';
 
 /// 🚨★★★ONE GUIDE DRAG IS ONE UNDO (guide-slider-one-undo).
 ///
@@ -86,8 +87,7 @@ void main() {
     final s = await guideToolApp(tester);
     final verbs = s.cutVerbs;
     // The tool settings group ships closed on the left rail (slot 2).
-    final group = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$group')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
     final slider = find.byKey(const ValueKey<String>('guide-line-count'));
     expect(slider, findsOneWidget, reason: '⛔전제: 그 가이드의 설정이 떴다');

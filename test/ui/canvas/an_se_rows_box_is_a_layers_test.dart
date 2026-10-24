@@ -8,7 +8,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart'
     show
         EffectId,
@@ -294,7 +293,6 @@ void main() {
     ResolvedSeNameTag tag({
       LayerPlacement inShot = const LayerPlacement.identity(),
       double opacity = 1,
-      LayerBlendMode blendMode = LayerBlendMode.normal,
       List<ResolvedLayerEffect> effects = const [],
       String text = 'A',
       TextCelStyle style = SeNameTag.defaultStyle,
@@ -304,7 +302,6 @@ void main() {
       shot: const LayerPlacement.identity(),
       inShot: inShot,
       opacity: opacity,
-      blendMode: blendMode,
       effects: effects,
       content: TextCelContent(
         text: text,
@@ -427,17 +424,20 @@ void main() {
       expect(grey.g, closeTo(grey.b, 0.02));
     });
 
-    test('in the row\'s blend, over what is under it', () async {
+    // F-387-Q5 (유저 2026-10-22): 「이름표는 블렌드 합성 필요없음. 그냥
+    // 일반」 — a tag carries no blend, so whatever its row's is, it covers.
+    test('laid normal over what is under it — drawn straight on and as one '
+        'picture', () async {
       const blue = ui.Color(0xFF0000FF);
-      final over = await colourAt(tag(), inTheBox(), under: blue);
-      expect(over.r, greaterThan(0.7), reason: 'normal: the box covers');
-      final multiplied = await colourAt(
-        tag(blendMode: LayerBlendMode.multiply),
-        inTheBox(),
-        under: blue,
-      );
-      expect(multiplied.r, lessThan(0.05), reason: 'red × no red');
-      expect(multiplied.b, closeTo(0x5C / 255, 0.03), reason: 'its blue');
+      for (final laid in [tag(), tag(opacity: 0.99)]) {
+        final over = await colourAt(laid, inTheBox(), under: blue);
+        expect(over.r, greaterThan(0.7), reason: 'covers, not multiplied');
+        expect(
+          over.b,
+          closeTo(0x5C / 255, 0.03),
+          reason: 'its own blue, not screened',
+        );
+      }
     });
 
     test('through the row\'s colour key — a picture of its own', () async {

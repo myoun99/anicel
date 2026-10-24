@@ -428,13 +428,6 @@ PropertyTrack<CanvasPoint>? transformPathLaneOf(
   TransformPropertyId.opacity => null,
 };
 
-/// [property]'s key at [frameIndex], or null ([transformLaneOf]).
-PropertyKey<Object?>? transformLaneKeyAt(
-  TransformTrack track,
-  TransformPropertyId property,
-  int frameIndex,
-) => transformLaneOf(track, property).keyAt(frameIndex);
-
 /// Whether [property]'s key at [frameIndex] may give its time up (I-89 ④):
 /// a key between the first and the last ([PropertyTrack.keyCanRove]) of a
 /// lane whose keys walk a path ([walksAPath]).

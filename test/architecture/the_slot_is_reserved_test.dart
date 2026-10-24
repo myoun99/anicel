@@ -19,16 +19,15 @@ import '../helpers/dart_sources.dart';
 /// `maintainSize: false` removes the child from layout and lets its
 /// neighbours close up. That is the rule's failure, spelled as a widget.
 ///
-/// ⛔`Offstage` keeps the sites it has and no more. Two are FOLDED BODIES —
-/// the timeline's grid and the storyboard's body, folded away under the
-/// command bar (08-10 「접으면 버튼행만 남는다」): the bar takes the whole
-/// region, so nothing beside the hidden subtree moves. They stay until card
-/// `a-folded-panel-builds-its-body` builds a folded panel's body no more.
-/// ↩️The tab group kept a third, every tab once opened mounted behind the
-/// one in front; a panel is built only while it shows now (유저
-/// 2026-10-14: 「열려있을때만 지어지는게 맞는구조」).
+/// ⛔`Offstage` keeps the site it has and no more. ↩️Two were FOLDED
+/// BODIES — the timeline's grid and the storyboard's body, folded away
+/// under the command bar (08-10 「접으면 버튼행만 남는다」) — and the tab
+/// group kept a third, every tab once opened mounted behind the one in
+/// front. A panel is built only while it shows, and a folded one builds
+/// its command bar and no body (유저 2026-10-14: 「열려있을때만 지어지는게
+/// 맞는구조」 · 「이건 모든 패널 공통적인 사항이야」).
 ///
-/// ➕One of another kind (R9-rest, 2026-10-06): the text tool's
+/// One of another kind stays (R9-rest, 2026-10-06): the text tool's
 /// KEYBOARD FIELD (`cel_text_field.dart`). It is not a widget that
 /// disappears — it is never seen at all. The letters on screen are the
 /// cel's own (the text's plate laid into its picture), and the field is
@@ -71,8 +70,7 @@ void main() {
     );
   });
 
-  test('⛔Offstage stays at the two folded bodies and the keyboard\'s '
-      'field', () {
+  test('⛔Offstage stays at the keyboard\'s field', () {
     final sites = {
       for (final line in sourceLines())
         if (RegExp(r'(?<![A-Za-z_])Offstage\s*\(').hasMatch(line.text) &&
@@ -82,8 +80,6 @@ void main() {
 
     expect(sites, {
       'lib/src/ui/canvas/text/cel_text_field.dart',
-      'lib/src/ui/storyboard_tab_host.dart',
-      'lib/src/ui/timeline/timeline_panel.dart',
     }, reason: 'a new Offstage is a widget disappearing — say why here');
   });
 }

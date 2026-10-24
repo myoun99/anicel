@@ -30,7 +30,7 @@ import '../../helpers/settle_async.dart';
 /// rejected for this surface in the first place.
 ///
 /// ⚠️This file exists because the bench is BLIND to sound. A widget test
-/// never gets an audio device (`audioOutputUnlessTesting`), so every call
+/// never gets an audio device (`audioDeviceUnlessTesting`), so every call
 /// the panel makes into [ViewerSound] is a no-op and deleting any of them
 /// leaves the rest of the suite green. The panel takes an injectable
 /// [ViewerSound] for exactly this — the same seam its file picker has.

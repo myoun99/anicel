@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
+import '../../helpers/boolean_dot_probe.dart';
+
 /// What the guide TOOL's entry in the tool SETTINGS panel decides — the
 /// half of `guide_panels.dart` that edits a guide rather than lists one.
 /// It was unexecuted before this file (the audit's coverage pass,
@@ -156,7 +158,7 @@ void main() {
         (next) => committed = next,
       );
 
-      await tester.tap(
+      await tester.pressRingIn(
         find.byKey(const ValueKey<String>('guide-line-symmetry')),
       );
       await tester.pump();
@@ -280,7 +282,7 @@ void main() {
           const GuideId('p1'),
           (next) => committed = next,
         );
-        await tester.tap(find.byKey(ValueKey<String>(key)));
+        await tester.pressRingIn(find.byKey(ValueKey<String>(key)));
         await tester.pump();
         return perspectiveOf(committed!, 'p1');
       }

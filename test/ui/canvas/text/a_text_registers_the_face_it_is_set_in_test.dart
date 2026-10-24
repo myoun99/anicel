@@ -7,7 +7,6 @@ import 'package:anicel/src/models/project_font_file.dart';
 import 'package:anicel/src/services/commands/update_project_fonts_command.dart';
 import 'package:anicel/src/services/font_file_reader.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +16,7 @@ import '../../../helpers/font_file_fixture.dart';
 import '../../../helpers/font_library_in_memory.dart';
 import '../../../helpers/project_scratch_folder.dart';
 import '../../../helpers/settle_async.dart';
+import '../../../helpers/rail_group_button.dart';
 
 /// 🚨★★★A TEXT REGISTERS THE FACE IT IS SET IN WITH ITS PROJECT (R9-rest) —
 /// the real app: a face picked in the real list, a text typed with a real
@@ -80,8 +80,7 @@ void main() {
       project: project,
     );
     await takeTextTool(tester);
-    final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$settingsGroup')));
+    await pressToolSettingsButton(tester);
     await pumpFrames(tester);
     expect(find.byType(ToolSettingsPanel), findsOneWidget, reason: '⛔fixture');
     return canvasPixelInView(tester);

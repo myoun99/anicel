@@ -125,7 +125,7 @@ class _WorkspaceRail {
           // thing the `O` action toggles, not the legend's bulk sweep.
           onionOn:
               layer != null &&
-              session.onionSkin.layerIds.value.contains(layer.id),
+              session.onionSkin.isLayerOnionSkinEnabled(layer.id),
           canToggleOnion: session.onionSkin.canToggleOnionSkin,
           hasMarquee: selection?.hasRegion ?? false,
           canConfirm: confirm?.canConfirm ?? false,
@@ -486,7 +486,13 @@ class _WorkspaceRail {
                   color: colorScheme.surface,
                   shape: AppShapes.container(AppShapes.floatingPanelRadius),
                 ),
-                child: room.hosts[railId] ?? const SizedBox.shrink(),
+                // The edges the two grips below lie on (F-452).
+                child: DockSplitterEdges(
+                  left: room.right,
+                  right: !room.right,
+                  bottom: true,
+                  child: room.hosts[railId] ?? const SizedBox.shrink(),
+                ),
               ),
             ),
             _widthGrip(railId, room),

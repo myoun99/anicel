@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/dialogs/rename_cut_dialog.dart';
 import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/dialogs/rename_layer_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindowField;
 
 /// 🚨WHAT EACH DIALOG POPS, AND WHICH ONES REFUSE AN EMPTY VALUE.
 ///
@@ -171,24 +172,29 @@ void main() {
       expect(popped, '');
     });
 
-    testWidgets('an SE row reuses the frame dialog with SHEET wording', (
+    testWidgets('a key wears the frame window, named for a key', (
       tester,
     ) async {
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(
-            body: RenameFrameDialog(
-              initialName: 'ドア',
-              title: 'SE name',
-              fieldLabel: 'Dialogue',
-            ),
+            body: RenameFrameDialog(initialName: 'ドア', target: 'Key'),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('SE name'), findsOneWidget);
-      expect(find.text(AppText.strings.renameFrameTitle), findsNothing);
+      final strings = AppText.strings;
+      expect(
+        find.text(strings.windowTitleOn(strings.editNameAction, 'Key')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          strings.windowTitleOn(strings.editNameAction, strings.tlFrame),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('cancel pops NOTHING, whatever was typed', (tester) async {
@@ -436,5 +442,53 @@ void main() {
         'save-cut-note-button',
       ]);
     });
+  });
+
+  // 🗣️I-24-open-entry (유저 2026-10-01): 「이 규칙은 다른 타임라인 버튼도
+  // 동일하게. 이름편집같은거. 이름 편집 (레이어) 이렇게」 · 「텍스트편집위에
+  // 레이어 이름이나 프레임 이름이란 텍스트 필요없음」.
+  group('what each window is called, and no cap says it again', () {
+    final strings = AppText.strings;
+    for (final (window, action, target) in [
+      (
+        const RenameLayerDialog(initialName: 'A'),
+        strings.editNameAction,
+        strings.tlLayer,
+      ),
+      (
+        const RenameCutDialog(initialName: 'C1'),
+        strings.editNameAction,
+        strings.tlCut,
+      ),
+      (
+        const RenameFrameDialog(initialName: '1'),
+        strings.editNameAction,
+        strings.tlFrame,
+      ),
+      (
+        const CutNoteDialog(initialNote: 'note'),
+        strings.editNoteAction,
+        strings.tlCut,
+      ),
+    ]) {
+      final title = strings.windowTitleOn(action, target);
+      testWidgets('${window.runtimeType}: $title', (tester) async {
+        await tester.pumpWidget(MaterialApp(home: Scaffold(body: window)));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(title),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byType(AppWindowField),
+            matching: find.byType(Text),
+          ),
+          findsNothing,
+          reason: 'the field stands alone under the title that names it',
+        );
+      });
+    }
   });
 }

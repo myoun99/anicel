@@ -54,7 +54,6 @@ const ledger = <String, Why>{
           "'\$keyPrefix-layer-timesheet-\$layerId'":
       Why.aRow,
   'timeline/layer_label_controls.dart | name': Why.aRow,
-  'timeline/layer_label_controls.dart | widget.name': Why.aRow,
   // The one twirl (what a row holds under it) and the type cell (the row
   // it stands on) — one line, as both pass their `name`.
   'timeline/layer_rail_columns.dart | name': Why.aRow,
@@ -63,6 +62,16 @@ const ledger = <String, Why>{
   'timeline/timeline_lane_graph.dart | '
           "'\$keyPrefix-lane-graph-enlarge-\$groupKey'":
       Why.aRow,
+  // Its pen (I-3, AE's): it takes up the pen of the graph it stands in,
+  // and Ctrl held (Cmd on a Mac) is that pen from the keyboard.
+  'timeline/timeline_lane_graph.dart | '
+          "'\$keyPrefix-lane-graph-pen-\$groupKey'":
+      Why.aRow,
+  // Its transform box (AE's 「Show Transform Box」): it shows or hides the
+  // box round the keys picked in the graph it stands in.
+  'timeline/timeline_lane_graph.dart | '
+          "'\$keyPrefix-lane-graph-box-\$groupKey'":
+      Why.aRow,
   'timeline/timeline_lane_rows.dart | '
           "'\$_keyPrefix-lane-group-fx-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
@@ -70,10 +79,13 @@ const ledger = <String, Why>{
           "'\$_keyPrefix-lane-group-reset-\${layer.id}-\${lane.laneId}'":
       Why.aRow,
   'timeline/timeline_layer_controls_row.dart | '
-          "'\$keyPrefix-layer-link-badge-\${layer.id}'":
-      Why.aRow,
-  'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-onion-\${layer.id}'":
+      Why.aRow,
+  // The buttons at the end of a name (F-409: one button since): the link
+  // badge, a reference row's file and a camera's path — one line, as the
+  // three pass their slug.
+  'timeline/timeline_layer_controls_row.dart | '
+          "'\$keyPrefix-layer-\$slug-\${layer.id}'":
       Why.aRow,
   'widgets/fill_reference_button.dart | name': Why.aRow,
   // A menu row's own trailing button.

@@ -42,6 +42,7 @@ class CelTextToolLayer extends StatefulWidget {
     required this.onPressNeedsCel,
     this.markMakesItsOwnCel,
     required this.onDragActive,
+    required this.wearsItsCursor,
     this.oneFingerAction,
   });
 
@@ -67,6 +68,12 @@ class CelTextToolLayer extends StatefulWidget {
 
   /// A press began or ended: the panel holds its pans and zooms meanwhile.
   final ValueChanged<bool> onDragActive;
+
+  /// Whether the caret's cursor is worn here — false on a row the marking
+  /// tools have nothing to do with (the panel's `toolCursorsEnabled`), where
+  /// the system's default shows. 🗣️F-285 (유저 2026-10-17): 「도구가 연관이
+  /// 없는 곳에선 기본커서 … 전부」.
+  final bool wearsItsCursor;
 
   final CanvasTouchDragAction? oneFingerAction;
 
@@ -398,7 +405,8 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
           child: MouseRegion(
             // The caret's own cursor where a press would set letters; a
             // text held by its box is moved and sized, as a row's box is.
-            cursor: session == null || letters != null
+            cursor:
+                widget.wearsItsCursor && (session == null || letters != null)
                 ? SystemMouseCursors.text
                 : MouseCursor.defer,
             child: Listener(

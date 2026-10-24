@@ -1,6 +1,7 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'block_row_swap.dart';
 import 'block_run_move.dart';
 import 'cel_bank_lanes.dart';
 import 'cel_rekey.dart';
@@ -29,13 +30,15 @@ int? _axisEndFor(Layer layer, int? cutFrameCount) =>
 /// The resolved result of a whole-block move drag (R10-④b): the affected
 /// layers with the block relocated. Same-layer slides carry only
 /// [sourceAfter]; cross-layer moves also carry the target pair and the
-/// frame ids whose brush drawings must re-key to the target layer.
+/// frame ids whose brush drawings must re-key — to the target layer, and
+/// back from it ([returnedFrameIds]).
 class DrawingBlockMovePlan {
   const DrawingBlockMovePlan({
     required this.sourceAfter,
     this.targetBefore,
     this.targetAfter,
     this.movedFrameIds = const [],
+    this.returnedFrameIds = const [],
     required this.destinationStartIndex,
   }) : assert(
          (targetBefore == null) == (targetAfter == null),
@@ -51,18 +54,26 @@ class DrawingBlockMovePlan {
   /// Frame ids that changed owning layer (empty for same-layer slides).
   final List<FrameId> movedFrameIds;
 
+  /// Frame ids the landing sent back from the target to the source — the
+  /// blocks it landed on ([LandingSwapsThem], F-384); none for a slide or
+  /// a landing that pushes them.
+  final List<FrameId> returnedFrameIds;
+
   final int destinationStartIndex;
 
   bool get isCrossLayer => targetBefore != null;
 
-  /// [movedFrameIds] as the cels the move carries from the source row onto
-  /// the target ([CelRekey]) — none for a slide along one row. The release
-  /// re-keys them; until then the drag shows each in its source row's
-  /// pixels.
+  /// The cels the move carries from one row onto the other ([CelRekey]):
+  /// [movedFrameIds] onto the target and [returnedFrameIds] back — none for
+  /// a slide along one row. The release re-keys them; until then the drag
+  /// shows each in its own row's pixels.
   List<CelRekey> get rekeys => [
-    if (targetAfter case final target?)
+    if (targetAfter case final target?) ...[
       for (final frameId in movedFrameIds)
         (from: sourceAfter.id, to: target.id, frameId: frameId),
+      for (final frameId in returnedFrameIds)
+        (from: target.id, to: sourceAfter.id, frameId: frameId),
+    ],
   ];
 }
 
@@ -82,8 +93,11 @@ class DrawingBlockMovePlan {
 ///   reaching the seat beyond a neighbour reorders, and either way the run
 ///   re-times inside the free space of the rank it ends up holding. It
 ///   never pushes anything;
-/// - a CROSS-LAYER drop pushes the blocks it lands among out of the way
-///   (R12-②), cascading, and clamps at the frame-0 wall on the way left;
+/// - a CROSS-LAYER landing does with the blocks it lands on what [landing]
+///   says: a move sends them back to [source] on their own frames
+///   ([LandingSwapsThem], F-384); an insertion pushes them out of the way
+///   (R12-②, [LandingPushesThem]), cascading, and clamps at the frame-0
+///   wall on the way left;
 /// - cross-layer moves take the moved cels along, so a cel that an entry
 ///   OUTSIDE the moved set still references (linked cels) stays put — the
 ///   move is rejected rather than splitting the link; entries linked WITHIN
@@ -101,6 +115,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   required int rangeEndIndexExclusive,
   required int frameDelta,
   required CelBankLanes sourceBank,
+  required LandingOnBlocks landing,
   int? cutFrameCount,
 }) {
   if (rangeEndIndexExclusive <= rangeStartIndex) {
@@ -112,7 +127,6 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   }
 
   final sourceBase = ghostFreeTimeline(source);
-  final targetBase = sameLayer ? sourceBase : ghostFreeTimeline(target);
 
   final moved = <TimelineDrawingBlock>[];
   for (final block in drawingBlocks(sourceBase)) {
@@ -134,8 +148,6 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   // their sources to the landing.
 
   final groupStart = moved.first.startIndex;
-  final groupEndExclusive = moved.last.endIndexExclusive;
-  final groupSpan = groupEndExclusive - groupStart;
   final movedStarts = {for (final block in moved) block.startIndex};
 
   // A same-layer slide is the shared rank rule over the row's blocks. The
@@ -163,8 +175,6 @@ DrawingBlockMovePlan? planDrawingRangeMove({
 
   // Cross-layer: the cels travel with the group. A cel referenced from
   // outside the moved set stays put (link preserved — move rejected).
-  final movedFrames = <Frame>[];
-  final movedFrameIds = <FrameId>[];
   final frameIds = <FrameId>{for (final block in moved) block.frameId};
   final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase);
   for (final start in movedStarts) {
@@ -181,20 +191,77 @@ DrawingBlockMovePlan? planDrawingRangeMove({
       return null;
     }
   }
-  for (final frameId in frameIds) {
-    Frame? frame;
-    frame = source.frameById(frameId);
-    if (frame == null) {
-      return null;
-    }
-    movedFrames.add(frame);
-    movedFrameIds.add(frameId);
+  final movedFrames = framesNamed(source, frameIds);
+  if (movedFrames == null) {
+    return null;
   }
 
+  final landed = switch (landing) {
+    LandingPushesThem() => _landPushing(
+      target,
+      moved: moved,
+      frameDelta: frameDelta,
+    ),
+    LandingSwapsThem(:final bank) => _landSwapping(
+      target,
+      moved: moved,
+      frameDelta: frameDelta,
+      bank: bank,
+    ),
+  };
+  if (landed == null) {
+    return null;
+  }
+  final (:destStart, :timeline, :returned, :returnedBlocks) = landed;
+
+  final returnedIds = {for (final frame in returned) frame.id};
+  return DrawingBlockMovePlan(
+    sourceAfter: source.copyWith(
+      timeline: timelineTakingBack(sourceTimeline, returnedBlocks),
+      frames: [
+        for (final frame in source.frames)
+          if (!frameIds.contains(frame.id)) frame,
+        ...returned,
+      ],
+    ),
+    targetBefore: target,
+    targetAfter: target.copyWith(
+      timeline: timeline,
+      frames: [
+        for (final frame in target.frames)
+          if (!returnedIds.contains(frame.id)) frame,
+        ...movedFrames,
+      ],
+    ),
+    movedFrameIds: [...frameIds],
+    returnedFrameIds: [for (final frame in returned) frame.id],
+    destinationStartIndex: destStart,
+  );
+}
+
+/// A cross-layer landing: where the group starts, the target's timeline
+/// with it laid in, and the target's blocks it sent back with their cels.
+typedef _Landed = ({
+  int destStart,
+  SplayTreeMap<int, TimelineExposure> timeline,
+  List<TimelineDrawingBlock> returnedBlocks,
+  List<Frame> returned,
+});
+
+/// [moved] laid on [target] [frameDelta] frames on, the blocks there pushed
+/// aside ([_resolvePushedLanding]) — an insertion's landing. Null when
+/// nowhere takes it.
+_Landed? _landPushing(
+  Layer target, {
+  required List<TimelineDrawingBlock> moved,
+  required int frameDelta,
+}) {
+  final targetBase = ghostFreeTimeline(target);
+  final groupStart = moved.first.startIndex;
   final resolved = _resolvePushedLanding(
     others: drawingBlocks(targetBase),
     requestedStart: groupStart + frameDelta,
-    movedLength: groupSpan,
+    movedLength: moved.last.endIndexExclusive - groupStart,
     pushRight: frameDelta >= 0,
     // Leftward drops clamp against the frame-0 wall, and never land RIGHT
     // of where the group came from (a leftward drag must not teleport it
@@ -205,31 +272,59 @@ DrawingBlockMovePlan? planDrawingRangeMove({
     return null;
   }
   final (:destStart, :pushes) = resolved;
-
-  SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
-    final timeline = _timelineWithPushes(targetBase, pushes);
-    for (final block in moved) {
-      timeline[destStart + (block.startIndex - groupStart)] = block.entry;
-    }
-    return timeline;
+  final timeline = _timelineWithPushes(targetBase, pushes);
+  for (final block in moved) {
+    timeline[destStart + (block.startIndex - groupStart)] = block.entry;
   }
+  return (
+    destStart: destStart,
+    timeline: timeline,
+    returnedBlocks: const [],
+    returned: const [],
+  );
+}
 
-  final movedFrameIdSet = {for (final id in movedFrameIds) id};
-  return DrawingBlockMovePlan(
-    sourceAfter: source.copyWith(
-      timeline: sourceTimeline,
-      frames: [
-        for (final frame in source.frames)
-          if (!movedFrameIdSet.contains(frame.id)) frame,
-      ],
-    ),
-    targetBefore: target,
-    targetAfter: target.copyWith(
-      timeline: targetTimelineAfter(),
-      frames: [...target.frames, ...movedFrames],
-    ),
-    movedFrameIds: movedFrameIds,
-    destinationStartIndex: destStart,
+/// [moved] laid on [target] [frameDelta] frames on — never before frame 0
+/// — and every block of [target] they land on sent back ([blocksLandedOn])
+/// — a move's landing (F-384). Null when a cel sent back is one another
+/// lane of [bank] still shows: the move would split the link (F-136).
+_Landed? _landSwapping(
+  Layer target, {
+  required List<TimelineDrawingBlock> moved,
+  required int frameDelta,
+  required CelBankLanes bank,
+}) {
+  final targetBase = ghostFreeTimeline(target);
+  final groupStart = moved.first.startIndex;
+  final destStart = math.max(0, groupStart + frameDelta);
+  final spans = [
+    for (final block in moved)
+      (
+        start: destStart + (block.startIndex - groupStart),
+        length: block.length,
+      ),
+  ];
+  final landedOn = blocksLandedOn(drawingBlocks(targetBase), spans);
+  final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
+  for (final block in landedOn) {
+    timeline.remove(block.startIndex);
+  }
+  final sentBack = {for (final block in landedOn) block.frameId};
+  if (sentBack.any((frameId) => bank.exposes(frameId, lane: timeline))) {
+    return null;
+  }
+  final returned = framesNamed(target, sentBack);
+  if (returned == null) {
+    return null;
+  }
+  for (final (position, block) in moved.indexed) {
+    timeline[spans[position].start] = block.entry;
+  }
+  return (
+    destStart: destStart,
+    timeline: timeline,
+    returnedBlocks: landedOn,
+    returned: returned,
   );
 }
 

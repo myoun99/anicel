@@ -9,17 +9,16 @@ import '../../models/track_projection_row.dart' show projectionRowUnder;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
+import 'range_selections.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
 
-/// What a frame shove acts on: which layer rows shift, from where, which
-/// AXIS that anchor is stated in, and whether a SELECTION aimed it there —
-/// rather than the row and cell stood on.
+/// What a frame shove acts on: which layer rows shift, from where, and
+/// which AXIS that anchor is stated in.
 typedef FrameShiftScope = ({
   List<LayerId> layerIds,
   int anchorIndex,
   bool anchorIsGlobal,
-  bool aimedBySelection,
 });
 
 /// THE SHOVE — push and pull, aimed at whatever is selected.
@@ -50,13 +49,15 @@ class BlockShift {
     required TrackSeDisplay trackSe,
     required ActiveCutControllers controllers,
     required CutShift cutShift,
+    required RangeSelections rangeSelections,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _retime = retime,
        _trackSe = trackSe,
        _controllers = controllers,
-       _cutShift = cutShift;
+       _cutShift = cutShift,
+       _rangeSelections = rangeSelections;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -65,14 +66,13 @@ class BlockShift {
   final TrackSeDisplay _trackSe;
   final ActiveCutControllers _controllers;
   final CutShift _cutShift;
+  final RangeSelections _rangeSelections;
 
   /// The frame-axis scope ([FrameShiftScope]).
   ///
   /// A track-axis selection (the storyboard's S rows) arrives already in
   /// commit keys; a cut-local one has to be translated for those same rows.
-  /// Carrying the axis is what keeps the shove from translating twice — and
-  /// with the aim, says which selection goes along with the blocks
-  /// ([_carryTheSelection]).
+  /// Carrying the axis is what keeps the shove from translating twice.
   FrameShiftScope? frameShiftScope({TimelineRowAddress? currentRow}) {
     final trackSelection = _selection.trackFrameRangeSelection.value;
     if (trackSelection != null) {
@@ -90,7 +90,6 @@ class BlockShift {
           layerIds: rows,
           anchorIndex: trackSelection.startFrame,
           anchorIsGlobal: true,
-          aimedBySelection: true,
         );
       }
     }
@@ -110,7 +109,6 @@ class BlockShift {
               layerIds: rows,
               anchorIndex: selection.startIndex,
               anchorIsGlobal: false,
-              aimedBySelection: true,
             );
     }
     return _standingShiftScope(currentRow);
@@ -127,7 +125,6 @@ class BlockShift {
         layerIds: [currentRow.layerId],
         anchorIndex: _selection.editingGlobalFrame,
         anchorIsGlobal: true,
-        aimedBySelection: false,
       );
     }
     // The storyboard's projection rows shove their own — the conte row its
@@ -156,7 +153,6 @@ class BlockShift {
       layerIds: [layerId],
       anchorIndex: index,
       anchorIsGlobal: false,
-      aimedBySelection: false,
     );
   }
 
@@ -288,9 +284,16 @@ class BlockShift {
       return;
     }
     _controllers.timelineController.commitLayerTimelineDrags(edits);
-    if (scope.aimedBySelection) {
-      _carryTheSelection(delta, onTrack: scope.anchorIsGlobal);
-    }
+    _rangeSelections.growOverTheBlocksItHolds();
+    // The selection that aimed it stays where it is, as the cell stood on
+    // does: it is the shove's anchor, and what lies under it now is what it
+    // holds, grown over a block that came into it whole. 🗣️F-264 (유저
+    // 2026-10-08): 「선택범위는 기준인 선택범위조차 이동해버리니까 계속해서
+    // 당길수있는상황. 그래서 로직 통일해서 선택범위까지만 기준으로서
+    // 당길수있게」 — 「자기 위치에 갱신」. ↩️It was
+    // carried the way its blocks went (10-06), so its anchor left with them
+    // and a pull it aimed never ran out. The storyboard's two — an S row's
+    // sounds and the cut row's cuts — stay alike (`CutShift`).
     // A layer-timeline write, and what one owes — the comma edge's own
     // ending (`ExposureEdgeDrag.commit`). ↩️It ran the CUT commands' tidy-up
     // (`refreshAfterCutCommand`), which drops the frame selection: F-264
@@ -300,18 +303,6 @@ class BlockShift {
     // which does owe that tidy-up, and took its ending along.
     _changes.warmActiveCut();
     _changes.notifyChanged();
-  }
-
-  /// The selection that aimed a shove, carried the way its blocks went:
-  /// the track's for an S row's sounds
-  /// ([carryTrackSelectionWithTheShove], which says why), the cut's own for
-  /// its rows.
-  void _carryTheSelection(int delta, {required bool onTrack}) {
-    if (onTrack) {
-      carryTrackSelectionWithTheShove(_selection, delta);
-    } else if (_selection.frameRangeSelection.value case final inCut?) {
-      _selection.frameRangeSelection.value = inCut.shiftedBy(delta);
-    }
   }
 
   // --- ONE push / pull -----------------------------------------------------

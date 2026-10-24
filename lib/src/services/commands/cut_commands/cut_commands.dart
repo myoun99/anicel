@@ -434,44 +434,13 @@ class _CutCommands {
     );
   }
 
-  /// Moves ONE cut to [newIndex] — the left/right nudge buttons' form of
-  /// the order edit, stated as the resulting order so both forms share a
-  /// command.
-  void reorderCut({
-    required TrackId trackId,
-    required CutId cutId,
-    required int newIndex,
-  }) {
-    final cuts = [
-      for (final cut in _coordinator._tracks._requireTrack(trackId).cuts)
-        cut.id,
-    ];
-    final oldIndex = cuts.indexOf(cutId);
-    if (oldIndex == -1) {
-      throw StateError('Cut not found in track $trackId: $cutId');
-    }
-    cuts.insert(newIndex, cuts.removeAt(oldIndex));
-    setCutOrder(trackId: trackId, order: cuts);
-  }
-
-  /// Resequences a whole track — what a cut drag that reached into a
-  /// neighbour commits (a run may carry several cuts across at once).
-  void setCutOrder({required TrackId trackId, required List<CutId> order}) {
-    _coordinator.historyManager.execute(
-      SetCutOrderCommand(
-        repository: _coordinator.repository,
-        trackId: trackId,
-        order: order,
-      ),
-    );
-  }
-
   /// Commits a move drag's REORDER as one undo step: the track's new
   /// sequence plus the position gaps its cuts took over (the gaps stay
   /// with the position, R5 #13 — each cut carries its own leading gap, so
   /// a bare permutation would let the gaps travel with the cuts). On a
-  /// packed track the gaps map is empty and the step is the order alone,
-  /// as [setCutOrder] writes it.
+  /// packed track the gaps map is empty and the step is the order alone.
+  /// A drag that reached into a neighbour commits here (a run may carry
+  /// several cuts across at once).
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,
@@ -529,10 +498,13 @@ class _CutCommands {
     ]);
   }
 
+  /// Copies [sourceCutId] into [targetTrackId] at [index] — the track's end
+  /// when null.
   DuplicatedCut duplicateCut({
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
+    int? index,
   }) {
     final project = _coordinator.repository.requireProject();
     final sourceCut = _coordinator._requireCut(sourceCutId);
@@ -551,6 +523,7 @@ class _CutCommands {
         newName: newName ?? '${sourceCut.name} Copy',
         layerIdMap: plan.layerIdMap,
         frameIdMap: plan.frameIdMap,
+        index: index,
       ),
     );
     return (

@@ -110,9 +110,29 @@ void main() {
     });
   });
 
+  group('the frames↔seconds display (F-354)', () {
+    test('round-trips through the JSON', () {
+      final back = ProjectResume.fromJson(
+        const ProjectResume(showSeconds: true).toJson(),
+      );
+      expect(back.showSeconds, isTrue);
+    });
+
+    test('🚨a display that cannot be read writes frames', () {
+      for (final unreadable in ['true', 1, null]) {
+        expect(
+          ProjectResume.fromJson({'showSeconds': unreadable}).showSeconds,
+          isFalse,
+          reason: '$unreadable',
+        );
+      }
+    });
+  });
+
   group('the header graphs and the lanes pinned to them (F-360-Q1)', () {
     test('round-trip through the JSON — each graph\'s height, what it '
-        'plots and whether it is enlarged', () {
+        'plots, whether it is enlarged, whether its pen is up and whether '
+        'its transform box is shown', () {
       const graphs = LaneGraphsView(
         open: {
           'a|transform-group': LaneGraph(),
@@ -120,6 +140,8 @@ void main() {
             extent: 240,
             mode: LaneGraphMode.speed,
             enlarged: true,
+            pen: true,
+            transformBox: false,
           ),
         },
         pinned: {'a|x', 'b|fx:1:size'},
@@ -137,7 +159,13 @@ void main() {
         'laneGraphs': {
           'a|t': 'open',
           '': <String, Object?>{},
-          'b|t': {'extent': -5, 'mode': 'sideways', 'enlarged': 'yes'},
+          'b|t': {
+            'extent': -5,
+            'mode': 'sideways',
+            'enlarged': 'yes',
+            'pen': 'yes',
+            'transformBox': 'no',
+          },
           'c|t': {'extent': 120.5},
         },
         'pinnedLanes': ['a|x', 7, '', 'b|y'],

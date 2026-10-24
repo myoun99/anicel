@@ -3,24 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_vertical_scrollbar_rail.dart';
 
 void main() {
-  const slotKey = ValueKey<String>('timeline-vertical-scrollbar-slot');
   const railKey = ValueKey<String>('timeline-vertical-scrollbar');
   const trackKey = ValueKey<String>('timeline-vertical-scrollbar-track');
   const thumbKey = ValueKey<String>('timeline-vertical-scrollbar-thumb');
-
-  Future<void> pumpSlot(
-    WidgetTester tester, {
-    double width = 12,
-    double height = 120,
-  }) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Material(
-          child: TimelineVerticalScrollbarSlot(width: width, height: height),
-        ),
-      ),
-    );
-  }
 
   Future<void> pumpRail(
     WidgetTester tester, {
@@ -52,7 +37,6 @@ void main() {
                     controller: controller,
                     viewportHeight: viewportHeight,
                     contentHeight: contentHeight,
-                    width: 12,
                   ),
                 ],
               ),
@@ -72,20 +56,6 @@ void main() {
       ),
     );
   }
-
-  testWidgets('slot stable key exists exactly once and preserves size', (
-    tester,
-  ) async {
-    await pumpSlot(tester, width: 14, height: 96);
-
-    expect(find.byKey(slotKey), findsOneWidget);
-    final slot = tester.widget<TimelineVerticalScrollbarSlot>(
-      find.byKey(slotKey),
-    );
-
-    expect(slot.width, 14);
-    expect(slot.height, 96);
-  });
 
   testWidgets('rail stable key exists exactly once', (tester) async {
     final controller = ScrollController();

@@ -4,13 +4,14 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../models/project_background.dart';
+import 'display_resample.dart';
 import 'raster_picture.dart';
 
 /// Paints the project PAPER (R10-⑥ / R3b): the paper color, alpha
 /// included — a thinned paper lets the pasteboard and the backdrop behind
 /// it show through, which is the four-plane stage's whole point. The
-/// checkerboard belongs to an ABSENT plane ([paintAlphaCheckerboard]); the
-/// paper itself never checkers.
+/// checkerboard belongs to an ABSENT plane ([paintAbsentPlane]); the paper
+/// itself never checkers.
 ///
 /// A paper that is NONE (F-114, 유저 2026-09-15: 「없음버튼 누르면 없는상태.
 /// 즉 해당 용지부분이 체크무늬되도록」) paints nothing here, on every route
@@ -21,42 +22,37 @@ import 'raster_picture.dart';
 /// edge, and how it is cut is the display law's answer
 /// (`displayEdgeAntiAliased` in `display_resample.dart` — F-67-paper-edge).
 /// A default here would let a new route inherit an edge nobody chose, the
-/// door A4 shut on `filterQuality`.
+/// door A4 shut on `filterQuality`. An edge not anti-aliased is cut on the
+/// grid of [pixelRatio] ([displayEdgeRect]).
 void paintProjectPaper(
   Canvas canvas,
   Rect rect,
   ProjectBackground background, {
   required bool antiAlias,
+  required double pixelRatio,
 }) {
   final color = Color(background.paintedArgb);
   if (color.a <= 0) {
     return;
   }
   canvas.drawRect(
-    rect,
+    displayEdgeRect(
+      canvas,
+      rect,
+      antiAlias: antiAlias,
+      pixelRatio: pixelRatio,
+    ),
     Paint()
       ..color = color
       ..isAntiAlias = antiAlias,
   );
 }
 
-/// The alpha checkerboard as a painter: fills whatever it is given with it.
-class AlphaCheckerboardPainter extends CustomPainter {
-  const AlphaCheckerboardPainter();
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    paintAlphaCheckerboard(canvas, Offset.zero & size);
-  }
-
-  @override
-  bool shouldRepaint(covariant AlphaCheckerboardPainter oldDelegate) => false;
-}
-
 /// The alpha checkerboard — what an ABSENT plane shows (F-114: 「해당 용지
 /// 부분이 체크무늬되도록」), and what the export and import previews draw
 /// where a picture's alpha stays open. Canvas-space cells, so the checker
-/// zooms with the artwork and always reads at drawing resolution.
+/// zooms with the artwork and always reads at drawing resolution — an
+/// absent plane on screen lays it in the screen's ([paintAbsentPlane]).
 ///
 /// 🪦It used to be the rendering of an ALPHA-PREVIEW toggle in the settings
 /// menu (R3b). 유저 2026-09-16: 「설정의 알파 미리보기 필요없어졌으니 잔재 싹
@@ -79,6 +75,54 @@ class AlphaCheckerboardPainter extends CustomPainter {
 /// and washed the grain out.
 void paintAlphaCheckerboard(Canvas canvas, Rect rect) {
   canvas.drawRect(rect, Paint()..shader = _checkerShader);
+}
+
+/// An ABSENT plane on screen (F-114): the checkerboard over [region] — a
+/// rect in whatever space the canvas is in now, its edge cut by
+/// [antiAlias] — in the SCREEN's cells. [screen] is the canvas's transform
+/// where the painter's box is: `canvas.getTransform()` at the top of its
+/// `paint`, before the view or a camera moved it.
+///
+/// 🚨ONE CELL GRID FOR EVERY ABSENT PLANE ON SCREEN
+/// (camera-checkerboard-rides-the-canvas, 2026-10-23). The editing canvas
+/// laid its planes in its box, so its cells sat eight logical pixels from
+/// the box's corner at every zoom; laid under the view and the camera, the
+/// same checker took the canvas's cells — measured four pixels at 50% —
+/// and pressing play with the camera view on changed the pattern. The
+/// playback flag's own law is 「the way the editing canvas shows it」
+/// (`PlaybackFramePainter.checkersAbsentPlanes`, F-114), and 유저 09-17:
+/// 「보이는 중이랑 결과랑 절대로 다르면 안 되」. So every absent plane on
+/// screen — the canvas's stage, the film's floor and apron, a paper seen
+/// through the camera, the fade's wash — lays its cells here, and planes
+/// that meet are one pattern. ↩️Each called [paintAlphaCheckerboard] in
+/// the space it happened to be in.
+void paintAbsentPlane(
+  Canvas canvas,
+  Rect region, {
+  required Float64List screen,
+  required bool antiAlias,
+}) {
+  final onScreen = Matrix4.tryInvert(Matrix4.fromFloat64List(screen));
+  if (onScreen == null) {
+    return;
+  }
+  onScreen.multiply(Matrix4.fromFloat64List(canvas.getTransform()));
+  final back = Matrix4.tryInvert(onScreen);
+  if (back == null) {
+    return;
+  }
+  canvas.save();
+  canvas.clipRect(region, doAntiAlias: antiAlias);
+  canvas.transform(back.storage);
+  // Past the region on every side, so the clip alone cuts its edge: the
+  // checker's own rect is anti-aliased, and laid ON the edge it thinned the
+  // edge's pixels however the clip had cut them (measured 10-23: a row a
+  // quarter pasteboard at 150% under a clip that kept it whole).
+  paintAlphaCheckerboard(
+    canvas,
+    MatrixUtils.transformRect(onScreen, region).inflate(2),
+  );
+  canvas.restore();
 }
 
 /// [_checkerTile] repeated from the origin of whatever space the canvas is

@@ -11,6 +11,10 @@ import 'package:anicel/src/services/cel_pixel_overwrite.dart';
 /// 색 삭제 / 색 남기기 — the button half of I-8. 유저 2026-08-27 (I-8-Q2):
 /// 「허용차 설정 없애고 색이 같을때만 삭제하면 필요없을거같은데」, so these
 /// match EXACTLY and the graded version is the effect.
+///
+/// ↩️I-13-Q4 (유저 2026-10-16) gave each row a reach knob; at its 0 — the
+/// default — the rows match exactly as before, which is what most of these
+/// still pin.
 void main() {
   const canvas = CanvasSize(width: 512, height: 512);
   final origin = TileCoord(x: 0, y: 0);
@@ -51,7 +55,7 @@ void main() {
     channel: verb.channel,
     walk: wholeTile,
     value: Uint8List.fromList([0]),
-    selector: verb.selectorFor(argb),
+    selector: verb.selectorFor(argb, tolerance: 0),
   );
 
   test('색 삭제 empties only the pixels that ARE that colour', () {
@@ -105,7 +109,7 @@ void main() {
       channel: CelPixelVerb.deleteColour.channel,
       walk: wholeTile,
       restore: forward.restore,
-      selector: CelPixelVerb.deleteColour.selectorFor(black),
+      selector: CelPixelVerb.deleteColour.selectorFor(black, tolerance: 0),
     ).surface;
     for (final x in [0, 1, 2, 3]) {
       expect(
@@ -133,14 +137,38 @@ void main() {
     expect(CelPixelVerb.deleteColour.channel, CelPixelVerb.clearPixels.channel);
     expect(CelPixelVerb.deleteColour.selectsByColour, isTrue);
     expect(CelPixelVerb.clearPixels.selectsByColour, isFalse);
-    expect(CelPixelVerb.clearPixels.selectorFor(black), isNull);
+    expect(CelPixelVerb.clearPixels.selectorFor(black, tolerance: 0), isNull);
   });
 
   test('the selector reads the swatch RGB and ignores its alpha', () {
-    final opaque = CelPixelVerb.deleteColour.selectorFor(0xFF102030)!;
-    final ghostly = CelPixelVerb.deleteColour.selectorFor(0x00102030)!;
+    final opaque = CelPixelVerb.deleteColour.selectorFor(
+      0xFF102030,
+      tolerance: 0,
+    )!;
+    final ghostly = CelPixelVerb.deleteColour.selectorFor(
+      0x00102030,
+      tolerance: 0,
+    )!;
     expect(opaque.matches(0x10, 0x20, 0x30), isTrue);
     expect(ghostly.matches(0x10, 0x20, 0x30), isTrue);
-    expect(opaque.tolerance, 0);
+  });
+
+  test('↩️I-13-Q4: the reach the row\'s knob gives is the key\'s — a colour '
+      'one off is the colour at a reach of one', () {
+    final before = surfaceWith({
+      (0, 0): [0, 0, 0, 255],
+      (1, 0): [1, 0, 0, 255], // ONE off
+      (2, 0): [2, 0, 0, 255], // two off
+    });
+    final after = overwriteCelPixels(
+      surface: before,
+      channel: CelPixelVerb.deleteColour.channel,
+      walk: wholeTile,
+      value: Uint8List.fromList([0]),
+      selector: CelPixelVerb.deleteColour.selectorFor(black, tolerance: 1),
+    ).surface;
+    expect(pixelAt(after, 0, 0)[3], 0);
+    expect(pixelAt(after, 1, 0)[3], 0);
+    expect(pixelAt(after, 2, 0)[3], 255);
   });
 }

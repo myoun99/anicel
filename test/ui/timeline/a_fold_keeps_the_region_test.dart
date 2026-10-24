@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -14,17 +15,22 @@ import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
-/// 🚨A FOLD KEEPS THE REGION: folding the bottom region and opening it again
-/// is a flag, not a rebuild of everything in it.
+/// 🚨A FOLD BUILDS THE COMMAND BAR AND NO BODY (유저 2026-10-14: 「열려있을때만
+/// 지어지는게 맞는구조」 · 「이건 모든 패널 공통적인 사항이야」 — card
+/// `a-folded-panel-builds-its-body`), and the body built again when the
+/// region opens stands where the axis was left, or turned by the folded row
+/// meanwhile, from its first frame.
 ///
-/// Measured 09-27: every fold and every unfold made a NEW state for the
-/// timeline's grid and host and for the storyboard kept beside them. The
-/// row the region folds into was laid into the workspace's stack before the
-/// region with no key, so the region's own slot was matched to the row's by
-/// position and everything under it was built afresh — while the panels'
-/// own notes said the grid went offstage precisely to keep its scroll
-/// positions, its caches and its subtree through a fold. F-143 kept the
-/// frame axis above the grid for that reason; this keeps the grid.
+/// What a fold still KEEPS is the host: measured 09-27, every fold and
+/// unfold made a new state for the timeline's host too — the row the region
+/// folds into was laid into the workspace's stack before the region with no
+/// key, so the region's own slot was matched to the row's by position. The
+/// workspace keys the region since (09-28). ↩️From then to 10-23 the bodies
+/// were kept too, OFFSTAGE — laid out, never painted.
+///
+/// ⛔Both frame panels, by one set of questions: the timeline's grid goes
+/// with the fold, while the storyboard's panel stays for the rows it hands
+/// the folded row and the walk, and builds no body.
 void main() {
   Project longCut() {
     final project = createDefaultProject();
@@ -55,175 +61,247 @@ void main() {
 
   final fold = find.byKey(const ValueKey<String>('floating-bottom-collapse'));
 
-  State stateOf(WidgetTester tester, Type type) =>
-      tester.state(find.byType(type, skipOffstage: false));
+  /// The two frame panels: the widget that is the panel, and the key of the
+  /// scroller its frame axis runs in.
+  const panels = [
+    (
+      name: 'timeline',
+      button: 'timeline-mode-timeline-button',
+      panel: LayerTimelineGrid,
+      frames: 'timeline-frame-scroll-viewport',
+    ),
+    (
+      name: 'storyboard',
+      button: 'timeline-mode-storyboard-button',
+      panel: StoryboardPanel,
+      frames: 'storyboard-timeline-horizontal-viewport',
+    ),
+  ];
 
-  testWidgets('🚨fold and unfold keep the grid and its host', (tester) async {
-    await pumpApp(tester);
-    // The storyboard once and back: ↩️it stayed built beside the timeline
-    // (kept alive) and this pinned that a fold kept it too; a panel behind
-    // another is not built now (유저 2026-10-14).
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+  Future<void> bringForward(WidgetTester tester, String button) async {
+    await tester.tap(find.byKey(ValueKey<String>(button)));
+    await tester.pumpAndSettle();
+  }
+
+  /// The panel's frame axis, as its scrollable stands — null where none is
+  /// built, folded away or not.
+  ScrollPosition? framesOf(WidgetTester tester, String key) {
+    final scrollables = find.descendant(
+      of: find.byKey(ValueKey<String>(key), skipOffstage: false),
+      matching: find.byType(Scrollable, skipOffstage: false),
+      skipOffstage: false,
     );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byType(StoryboardPanel, skipOffstage: false),
-      findsNothing,
-      reason: '⛔전제: the storyboard behind the timeline is not built',
-    );
-    final kept = [
-      for (final type in [LayerTimelineGrid, TimelineTabHost])
-        stateOf(tester, type),
-    ];
-
-    await tester.tap(fold);
-    await tester.pumpAndSettle();
-    expect(find.byType(CollapsedRowOverlay), findsOneWidget, reason: '⛔전제');
-    for (final (i, type) in [LayerTimelineGrid, TimelineTabHost].indexed) {
-      expect(
-        identical(stateOf(tester, type), kept[i]),
-        isTrue,
-        reason: '🚨folding built a new $type',
-      );
-    }
-
-    await tester.tap(fold);
-    await tester.pumpAndSettle();
-    for (final (i, type) in [LayerTimelineGrid, TimelineTabHost].indexed) {
-      expect(
-        identical(stateOf(tester, type), kept[i]),
-        isTrue,
-        reason: '🚨unfolding built a new $type',
-      );
-    }
-  });
-
-  /// The grid's frame axis — folded away or not.
-  ScrollPosition gridAxis(WidgetTester tester) => tester
-      .state<ScrollableState>(
-        find
-            .descendant(
-              of: find.byKey(
-                const ValueKey<String>('timeline-frame-scroll-viewport'),
-                skipOffstage: false,
-              ),
-              matching: find.byType(Scrollable, skipOffstage: false),
-              skipOffstage: false,
-            )
-            .first,
-      )
-      .position;
+    return scrollables.evaluate().isEmpty
+        ? null
+        : tester.state<ScrollableState>(scrollables.first).position;
+  }
 
   ValueNotifier<double> foldedAxis(WidgetTester tester) => tester
       .widget<CollapsedRowOverlay>(find.byType(CollapsedRowOverlay))
       .frameAxisOffset!;
 
-  testWidgets('🚨a walk revealed while folded is where the grid stands on the '
-      'FIRST frame it is open again', (tester) async {
-    // ⚠️The grid now stays mounted, folded away, while the folded row turns
-    // the shared axis — so it must follow the axis while hidden. A grid
-    // that caught up only after its first open layout would show the page
-    // it was folded on for one frame (「한 프레임 보이는 건 걸린다」).
-    //
-    // ⛔A WALK, not playback: a press while playing only stops it (the
-    // actuation gate), so nobody opens the region mid-play — and the stop
-    // rebuilds the grid, which pulled it along by the layout's own sync
-    // and hid the case. A walk's reveal lands after its frame, with nothing
-    // left to rebuild the grid before it opens.
+  testWidgets('🚨folded, the timeline builds its command bar and no grid — '
+      'and its host is the one it had, folded and opened', (tester) async {
     await pumpApp(tester);
+    final host = tester.state(find.byType(TimelineTabHost));
+
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+    expect(find.byType(CollapsedRowOverlay), findsOneWidget, reason: '⛔전제');
+    expect(
+      find.byType(LayerTimelineGrid, skipOffstage: false),
+      findsNothing,
+      reason: '🚨the grid was built folded away',
+    );
+    expect(
+      identical(tester.state(find.byType(TimelineTabHost)), host),
+      isTrue,
+      reason: '🚨folding built a new host',
+    );
+
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+    expect(find.byType(LayerTimelineGrid), findsOneWidget);
+    expect(
+      identical(tester.state(find.byType(TimelineTabHost)), host),
+      isTrue,
+      reason: '🚨unfolding built a new host',
+    );
+  });
+
+  testWidgets('🚨folded, the storyboard builds no body — and its panel is the '
+      'one it had, folded and opened', (tester) async {
+    await pumpApp(tester);
+    await bringForward(tester, 'timeline-mode-storyboard-button');
+    final panel = tester.state(find.byType(StoryboardPanel));
+    expect(framesOf(tester, panels.last.frames), isNotNull, reason: '⛔전제');
+
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+    expect(find.byType(CollapsedRowOverlay), findsOneWidget, reason: '⛔전제');
+    expect(
+      find.descendant(
+        of: find.byType(StoryboardPanel, skipOffstage: false),
+        matching: find.byType(Scrollable, skipOffstage: false),
+        skipOffstage: false,
+      ),
+      findsNothing,
+      reason: '🚨the body was built folded away',
+    );
+    expect(
+      identical(
+        tester.state(find.byType(StoryboardPanel, skipOffstage: false)),
+        panel,
+      ),
+      isTrue,
+      reason: '🚨folding built a new panel — the rows the folded row reads '
+          'went with it',
+    );
+
+    await tester.tap(fold);
+    await tester.pumpAndSettle();
+    expect(framesOf(tester, panels.last.frames), isNotNull);
+    expect(
+      identical(tester.state(find.byType(StoryboardPanel)), panel),
+      isTrue,
+      reason: '🚨unfolding built a new panel',
+    );
+  });
+
+  testWidgets('🚨storyboard: folded, the rows it hands the walk are the '
+      'rows as they stand — lanes twirled open folded are walked into', (
+    tester,
+  ) async {
+    // ⛔What the panel stays for while it builds no body: the folded row and
+    // the walk read its rows, and a body that is not laid must not leave
+    // them where the last open layout did.
+    await pumpApp(tester);
+    await bringForward(tester, 'timeline-mode-storyboard-button');
     await tester.tap(fold);
     await tester.pumpAndSettle();
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    final axis = foldedAxis(tester);
-    session.selectFrameIndex(400);
-    session.revealSelection();
+    final channel = tester
+        .widget<StoryboardPanel>(
+          find.byType(StoryboardPanel, skipOffstage: false),
+        )
+        .rowsChannel!;
+    final folded = channel.rows.length;
+    final camera = session.repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .single
+        .layers
+        .singleWhere((layer) => layer.kind == LayerKind.camera);
+
+    session.layerSwitches.toggleLayerLanes(camera.id);
     await tester.pumpAndSettle();
-    expect(axis.value, greaterThan(0), reason: '⛔전제: the walk turned it');
-    final turned = axis.value;
-
-    // ⛔NOT the position after the frame: the layout's own sync pulls the
-    // grid to the axis AFTER the frame is painted, so reading the position
-    // once the pump is over reads the pull, not the picture. What is
-    // measured is whether the grid had to move once the first open frame
-    // was already on screen.
-    final grid = gridAxis(tester);
-    final movedAfterPaint = <double>[];
-    void afterPaint() {
-      if (SchedulerBinding.instance.schedulerPhase ==
-          SchedulerPhase.postFrameCallbacks) {
-        movedAfterPaint.add(grid.pixels);
-      }
-    }
-
-    grid.addListener(afterPaint);
-    await tester.tap(fold);
-    // ONE frame — the first one open.
-    await tester.pump();
-    grid.removeListener(afterPaint);
+    expect(find.byType(CollapsedRowOverlay), findsOneWidget, reason: '⛔전제');
     expect(
-      find.byType(CollapsedRowOverlay),
-      findsNothing,
-      reason: '⛔전제: the region opened',
-    );
-    // And the windows are cut for where it stands: the ruler paints the
-    // slice its bucket names.
-    final ruler = tester.widget<TimelineRulerCursorOverlay>(
-      find.descendant(
-        of: find.byType(LayerTimelineGrid),
-        matching: find.byType(TimelineRulerCursorOverlay),
-      ),
-    );
-    final bucket = ruler.windowBucket.value;
-    final standsIn = timelineFrameWindowBucketOf(
-      offset: grid.pixels,
-      cellExtent: ruler.cellWidth,
-    );
-    expect(
-      movedAfterPaint,
-      isEmpty,
-      reason: '🚨the first frame open showed the page the grid was folded on, '
-          'and the grid jumped to the axis only after it',
-    );
-    expect(grid.pixels, closeTo(turned, 0.5));
-    expect(standsIn, greaterThan(0), reason: '⛔전제: a page past bucket 0');
-    expect(
-      bucket,
-      standsIn,
-      reason: '🚨the grid stood on the page, but its windows were still cut '
-          'for the one it was folded on',
+      channel.rows.length,
+      greaterThan(folded),
+      reason: '🚨the camera\'s lanes, twirled open folded, are not rows',
     );
   });
 
-  testWidgets('🚨folded, the grid follows the axis and never turns it back', (
-    tester,
-  ) async {
-    // ⛔The row on screen owns the axis while the region is folded, and a
-    // kept axis has no end of its own (pageKeptAxis): the row can stand
-    // where the grid's own range does not reach. The grid goes as far as it
-    // can; it does not hand its own end back to the row.
-    await pumpApp(tester);
-    await tester.tap(fold);
-    await tester.pumpAndSettle();
-    final axis = foldedAxis(tester);
-    final grid = gridAxis(tester);
-    // Where the folded row's page law would put it — written as the row
-    // writes it; the pins above turn it by real playback.
-    final past = grid.maxScrollExtent + 500;
-    axis.value = past;
-    await tester.pumpAndSettle();
+  for (final panel in panels) {
+    testWidgets('🚨${panel.name}: a walk revealed while folded is where the '
+        'body stands on the FIRST frame it is open again', (tester) async {
+      // ⛔A WALK, not playback: a press while playing only stops it (the
+      // actuation gate), so nobody opens the region mid-play. A walk's
+      // reveal lands after its frame, turning the folded row's axis.
+      await pumpApp(tester);
+      await bringForward(tester, panel.button);
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      final axis = foldedAxis(tester);
+      session.selectFrameIndex(400);
+      session.revealSelection();
+      await tester.pumpAndSettle();
+      expect(axis.value, greaterThan(0), reason: '⛔전제: the walk turned it');
+      final turned = axis.value;
 
-    expect(grid.pixels, greaterThan(0), reason: 'the grid followed the axis');
-    expect(
-      axis.value,
-      past,
-      reason: '🚨the grid folded away wrote its own end over the row\'s page',
-    );
-  });
+      // ⛔NOT the position after the pump: a body that caught up only after
+      // its first open frame was painted reads right once the pump is over.
+      // Read AS PAINTED — in a callback after that frame's paint, asked
+      // before the frame, so it runs ahead of any the body asks for while
+      // it is built.
+      ({double offset, int bucket, double cell})? painted;
+      await tester.tap(fold);
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        final ruler = tester.widget<TimelineRulerCursorOverlay>(
+          find.descendant(
+            of: find.byType(panel.panel),
+            matching: find.byType(TimelineRulerCursorOverlay),
+          ),
+        );
+        painted = (
+          offset: framesOf(tester, panel.frames)!.pixels,
+          bucket: ruler.windowBucket.value,
+          cell: ruler.cellWidth,
+        );
+      });
+      // ONE frame — the first one open.
+      await tester.pump();
+      expect(
+        find.byType(CollapsedRowOverlay),
+        findsNothing,
+        reason: '⛔전제: the region opened',
+      );
+      final (:offset, :bucket, :cell) = painted!;
+      expect(
+        offset,
+        closeTo(turned, 0.5),
+        reason: '🚨the first frame open showed the page it was folded on',
+      );
+      // And the windows are cut for where it stands: the ruler paints the
+      // slice its bucket names.
+      final standsIn = timelineFrameWindowBucketOf(
+        offset: offset,
+        cellExtent: cell,
+      );
+      expect(standsIn, greaterThan(0), reason: '⛔전제: a page past bucket 0');
+      expect(
+        bucket,
+        standsIn,
+        reason: '🚨the body stood on the page, but its windows were still '
+            'cut for the one it was folded on',
+      );
+    });
+
+    testWidgets('🚨${panel.name}: opened, the body stands where the folded '
+        'row turned the axis — past its own range too — and hands none of '
+        'it back', (tester) async {
+      // ⛔The row on screen owns the axis while the region is folded, and a
+      // kept axis has no end of its own (pageKeptAxis): the row can stand
+      // where the body's own range does not reach. Opened, the body grows
+      // the room under it (F-225, 「펼치면 스크롤 동기화」) rather than
+      // pulling the axis back to its end.
+      await pumpApp(tester);
+      await bringForward(tester, panel.button);
+      final past = framesOf(tester, panel.frames)!.maxScrollExtent + 500;
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+      final axis = foldedAxis(tester);
+      // Where the folded row's page law would put it — written as the row
+      // writes it.
+      axis.value = past;
+      await tester.pumpAndSettle();
+
+      await tester.tap(fold);
+      await tester.pumpAndSettle();
+      expect(framesOf(tester, panel.frames)!.pixels, closeTo(past, 0.5));
+      expect(
+        axis.value,
+        past,
+        reason: '🚨the body opened wrote its own end over the row\'s page',
+      );
+    });
+  }
 }

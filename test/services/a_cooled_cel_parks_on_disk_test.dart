@@ -13,6 +13,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 
 /// 🚨★★★**A COOLED CEL IS UNSAVED WORK, AND IT NOW LIVES ON DISK.**
@@ -77,6 +78,36 @@ void main() {
     );
   });
 
+  // 🗣️Card a-pasteboard-undo-runs-on-the-ui-thread: what a cel lets go is
+  // removed off the UI thread ([ScratchFile.letGo]), whenever the machine
+  // gets to it — so no park may wear a name an earlier one wore, or that
+  // removal could land on the later park's bytes.
+  test('🚨 a cel parked, thawed and parked again wears a new name each '
+      'time, and the second park outlives the first one\'s removal', () async {
+    final store = BrushFrameStore()..hotCelByteBudget = 0;
+    final k1 = key('f1');
+    final k2 = key('f2');
+    final s1 = inked(3);
+    store.storeBakedSurface(k1, s1);
+    store.storeBakedSurface(k2, inked(5));
+    await store.drainCooling();
+    final first = store.bakedSnapshotForSave().cold[k1]!.filePath;
+    // Thawed, which lets the first park go; then the least recent again.
+    store.bakedSurfaceOrNull(k1);
+    store.storeBakedSurface(k2, inked(7));
+    await store.drainCooling();
+    expect(store.isCelCold(k1), isTrue, reason: 'premise: parked again');
+    final second = store.bakedSnapshotForSave().cold[k1]!.filePath;
+
+    expect(second, isNot(first));
+    await ScratchFile.lettingGo;
+    expect(File(first).existsSync(), isFalse, reason: 'the first went');
+    expect(
+      store.bakedSurfaceOrNull(k1)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      s1.tiles[TileCoord(x: 0, y: 0)]!.pixels,
+      reason: 'and the second is still the picture',
+    );
+  });
 
   test('🚨 two stores park the SAME key in two files — one open project\'s '
       'cooling never lands on another\'s parked cel (I-7)', () async {

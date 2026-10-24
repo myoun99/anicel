@@ -19,6 +19,7 @@ import 'package:anicel/src/models/track_camera_row.dart'
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -40,7 +41,12 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show LaneEditPreview, TimelineDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart'
-    show LaneGraphPicture, TimelineLaneGraph, TimelineLaneGraphPainter;
+    show
+        LaneGraphPicture,
+        TimelineLaneGraph,
+        TimelineLaneGraphPainter,
+        laneGraphAcross,
+        laneGraphAlong;
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow, TimelineLaneKeyMarker;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -836,5 +842,80 @@ void main() {
     presses.toggleLaneGraph(key);
     await tester.pumpAndSettle();
     expect(graphOf(key), findsNothing);
+  });
+
+  // I-3 ④: the pen is the graph's, and the conte's graph is the timeline's
+  // — its key comes by the ＋ this panel's lanes take.
+  testWidgets('through the app: a press on the conte\'s graph line with its '
+      'pen up puts a key there, as the timeline\'s does', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: conteTrackProject())),
+    );
+    await tester.pumpAndSettle();
+    await showStoryboardPanel(tester);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final presses = SessionRowButtonPresses(session);
+    final key = laneGroupKey(conteSeId, transform);
+    presses
+      ..toggleLanes(conteSeId)
+      ..toggleLaneGraph(key);
+    // A key on 0 for a line to be drawn through: the ＋ on the lane stood.
+    session.standOnRow(
+      const LaneRowAddress(conteSeId, 'rotation'),
+      panel: WorkingPanel.storyboard,
+      globalFrameIndex: 0,
+    );
+    session.cellInstances.createInstancesForSelection();
+    presses.penLaneGraph(key);
+    await tester.pumpAndSettle();
+    List<int> keyed() => [
+      ...session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .single
+          .transformTrack
+          .rotation
+          .keys
+          .keys,
+    ]..sort();
+    expect(keyed(), [0], reason: '⛔전제');
+
+    final paint = find.descendant(
+      of: find.descendant(
+        of: graphOf(key),
+        matching: find.byType(LaneGraphPicture),
+      ),
+      matching: find.byType(CustomPaint),
+    );
+    await tester.ensureVisible(paint);
+    await tester.pumpAndSettle();
+    final painter =
+        tester.widget<CustomPaint>(paint).painter! as TimelineLaneGraphPainter;
+    final box = tester.renderObject<RenderBox>(paint);
+    final line = painter.own.single;
+    final fit = painter.fits[laneGroupKey(line.layer.id, line.lane.laneId)]!;
+    await tester.tapAt(
+      box.localToGlobal(
+        Offset(
+          laneGraphAlong(5, painter.frameAxis.geometry.value),
+          laneGraphAcross(
+            line.lane.curve!.at(5).single,
+            fit.ranges.single,
+            box.size.height,
+            Axis.horizontal,
+          ),
+        ),
+      ),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+
+    expect(keyed(), [0, 5]);
   });
 }

@@ -15,7 +15,8 @@ import 'package:anicel/src/ui/widgets/static_raster.dart';
 ///
 ///   1. a hovered button inside a [StaticRaster] at a FRACTIONAL device
 ///      pixel ratio — the Windows 125%/150% case the report came from
-///   2. the same tree with [StaticRaster.globallyEnabled] off
+///   2. the same tree painted through ([StaticRaster.capturePays] false —
+///      the Impeller path; ↩️the global A/B switch until 2026-10-23, F-448)
 ///
 /// If the rect moves in (1) and holds in (2), the bake↔pass-through
 /// transition is the cause and the fix belongs in the shared widget. If it
@@ -32,8 +33,8 @@ import 'package:anicel/src/ui/widgets/static_raster.dart';
 ///
 /// ⛔Therefore the shared `static_raster.dart` still MUST NOT be edited on a
 /// guess (R6's instruction stands, and [[canvas-raster-perf-round]] is what
-/// would pay for it). The real A/B belongs on the device: toggle
-/// `StaticRaster.globallyEnabled` from Preferences and hover the same button.
+/// would pay for it). The real A/B belongs on the device: ↩️it was
+/// the global switch in Preferences, taken out 2026-10-23 (F-448).
 /// Keep this file anyway — if someone later "fixes" the raster for this
 /// symptom, a green here says that was not where the pixel went.
 void main() {
@@ -103,8 +104,8 @@ void main() {
 
   testWidgets('…and it does not move with the bake switched off either — '
       'which is what tells the two candidates apart', (tester) async {
-    StaticRaster.globallyEnabled.value = false;
-    addTearDown(() => StaticRaster.globallyEnabled.value = true);
+    StaticRaster.debugCapturePaysOverride = false;
+    addTearDown(() => StaticRaster.debugCapturePaysOverride = null);
 
     final rects = await hoverRects(tester);
     final first = rects.first;

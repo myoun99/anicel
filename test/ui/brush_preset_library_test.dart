@@ -17,6 +17,7 @@ import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
@@ -211,9 +212,17 @@ void main() {
       addTearDown(library.dispose);
 
       final message = await library.importFromFile();
-      expect(message, isNotNull);
+      expect(
+        message,
+        AppText.strings.unsupportedFileMessage(
+          FileTypeGroups.brushes.extensions!,
+        ),
+        reason: 'said as every picker\'s refusal is, with the brush kinds',
+      );
       expect(message, contains('.abr'));
-      expect(message, isNot(contains('{kinds}')));
+      // ↩️This asked after `{kinds}` alone, and the sentence's `{name}`
+      // showed in every refusal (card open-door-windows-open-with).
+      expect(message, isNot(contains('{')), reason: 'no placeholder left');
       expect(library.presets, isEmpty);
     });
   });
@@ -363,6 +372,82 @@ void main() {
 
       library.createGroup('Empty');
       expect(library.presetEntering(library.groups.last.id), isNull);
+    });
+
+    // 🗣️F-426 (유저 2026-10-21): 「선택한 브러시 그룹 삭제시, 다른 그룹
+    // 선택하도록 … 최대한 법 통일」 — the brush's law, a tab over.
+    test('🚨the tab beside a group is the next in the rail, the one before '
+        'for the last — the root section a tab like any other — and none '
+        'for a group alone', () async {
+      const sketch = BrushGroupId('sketch');
+      final library = await seeded(
+        groups: const [
+          BrushGroup(id: _ink, name: 'Ink'),
+          BrushGroup(id: _paint, name: 'Paint'),
+          BrushGroup(id: sketch, name: 'Sketch'),
+        ],
+        presets: [
+          _preset('i1', groupId: _ink),
+          _preset('p1', groupId: _paint),
+          _preset('s1', groupId: sketch),
+          _preset('s2', groupId: sketch),
+        ],
+      );
+      addTearDown(library.dispose);
+
+      expect(library.groupBeside(_ink), (group: _paint));
+      expect(library.groupBeside(_paint), (group: sketch));
+      expect(library.groupBeside(sketch), (group: _paint), reason: 'the last');
+      expect(library.groupBeside(const BrushGroupId('gone')), isNull);
+
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            if (preset.id.value == 's2')
+              preset.copyWith(groupId: null)
+            else
+              preset,
+        ], library.groups),
+      );
+      expect(
+        library.groupBeside(sketch),
+        (group: null),
+        reason: 'the root section is the rail\'s last tab once a brush is '
+            'in it',
+      );
+
+      library.deleteGroup(_ink);
+      library.deleteGroup(_paint);
+      expect(
+        library.groupBeside(sketch),
+        (group: null),
+        reason: 'a group with only the root section beside it',
+      );
+      library.deleteGroup(sketch);
+      expect(library.groups, isEmpty, reason: '⛔premise');
+      library.createGroup('Alone');
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            preset.copyWith(groupId: library.groups.single.id),
+        ], library.groups),
+      );
+      expect(
+        library.groupBeside(library.groups.single.id),
+        isNull,
+        reason: 'no tab beside it',
+      );
+    });
+
+    test('🚨the brush beside a deleted one is the next in its tab, the one '
+        'before for the last, none for a brush alone', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+
+      expect(library.presetBeside(const BrushPresetId('i1'))?.value, 'i2');
+      expect(library.presetBeside(const BrushPresetId('i2'))?.value, 'i1');
+      expect(library.presetBeside(const BrushPresetId('p1')), isNull);
+      expect(library.presetBeside(const BrushPresetId('gone')), isNull);
     });
 
     // F-250: a move is undone by laying the old arrangement back, and the

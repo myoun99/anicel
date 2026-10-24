@@ -74,6 +74,10 @@ class AudioScrubber {
   ProjectFrameRate _rate = ProjectFrameRate.fps24;
   int _deviceRate = 0;
 
+  /// The run the latest slice put on the device — all a release silences
+  /// ([QaAudioDevice.stopRun]).
+  int _run = 0;
+
   /// Streaming state (AUDIO-PRO R6): the gesture's mix is kept so the
   /// window can re-center when a drag leaves it. The same object the
   /// transport owns — one upload, and one law for when a window moves —
@@ -130,7 +134,7 @@ class AudioScrubber {
       conformStore: conformStore,
       deviceRate: _deviceRate,
     );
-    _device!.play(
+    _run = _device!.play(
       startSample: startSample,
       stopSample: _rate.frameToSample(frame + 1, _deviceRate),
     );
@@ -145,7 +149,7 @@ class AudioScrubber {
   /// Silence, and the decision undone.
   void _letGo() {
     if (_armed) {
-      _device?.stop();
+      _device?.stopRun(_run);
     }
     _armed = false;
     _stoodDown = false;

@@ -12,6 +12,7 @@ import '../../models/envelope/cut_envelope_ink_keys.dart'
     show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../models/track_id.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
@@ -21,7 +22,6 @@ import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/persistence/cel_places.dart' show rowOwnerName;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
-import '../../services/commands/cut_reorder_planner.dart';
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import '../text/place_lines.dart' show drawingPlaceLines;
 import 'active_cut_edits.dart';
@@ -31,7 +31,7 @@ import 'render_caches.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
-/// The CUT VERBS — creating, deleting, duplicating, renaming and moving
+/// The CUT VERBS — creating, deleting, duplicating and renaming
 /// the active cut, linking it, resizing its canvas, its note and guides —
 /// as their own object. Each is a command over the repository; the session
 /// stays the facade that names them.
@@ -72,10 +72,6 @@ class CutVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-
-  /// Where a cut may step to and which index that is. Stateless, and asked
-  /// by nobody but these verbs — so it is theirs, not a name on the session.
-  static const _cutReorderPlanner = CutReorderPlanner();
 
   void createCut() {
     final plan = _placement.cutCreationPlan;
@@ -155,16 +151,48 @@ class CutVerbs {
     ),
   );
 
-  /// Duplicates the active cut, pictures and all: the copy mints every row
-  /// and cel afresh, and a picture lives under its cel's key, so each one
-  /// follows its cel over (F-62's law at the cut's scale). ↩️Nothing did
-  /// until 2026-09-26 — a duplicated cut came out with every drawing blank
-  /// (measured; card `duplicates-lose-their-pictures`).
+  /// ⑰'s law, applied to 복제: the selected cuts, else the cut you stand
+  /// on — copied as ONE block right after the last of them, in the order
+  /// they stand, in ONE undo, standing on the last copy.
+  ///
+  /// 🗣️F-455-Q1 (유저 2026-10-23): 「선택한 컷 전부」 — 「레이어랑 똑같이
+  /// 선택한 묶음 뒤에 차례로」. The cut you stand on is a block of one and
+  /// goes the same way (CLAUDE.md 절대명령 2: no law split by how much is
+  /// selected). ↩️It copied the active cut alone, onto the track's end.
   void duplicateActiveCut() => _activeCut.onActiveCut((cutId) {
-    final source = _project.requireActiveCut;
+    // The selection is a band's cuts, in track order.
+    final chosen = _storyboardRows.storyboardSelectedCutIds;
+    final block = chosen.isEmpty ? [cutId] : chosen;
+    final last = cutPositionOf(
+      _project.repository.requireProject(),
+      block.last,
+    );
+    if (last == null) {
+      return;
+    }
+    _project.historyManager.runAsOneStep('Duplicate cuts', () {
+      for (final (offset, source) in block.indexed) {
+        _duplicateCut(
+          source,
+          last.trackId,
+          index: last.cutIndex + 1 + offset,
+        );
+      }
+    });
+  });
+
+  /// Duplicates [cutId] into [trackId] at [index], pictures and all: the
+  /// copy mints every row and cel afresh, and a picture lives under its
+  /// cel's key, so each one follows its cel over (F-62's law at the cut's
+  /// scale). ↩️Nothing did until 2026-09-26 — a duplicated cut came out
+  /// with every drawing blank (measured; card
+  /// `duplicates-lose-their-pictures`).
+  void _duplicateCut(CutId cutId, TrackId trackId, {required int index}) {
+    final source = _project.cutById(cutId)!;
     final copy = _project.cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
-      targetTrackId: _selection.selectedTrackId,
+      targetTrackId: trackId,
+      index: index,
     );
     final into = _project.cutById(copy.cutId)!;
     final store = _renderCaches.brushFrameStore;
@@ -181,7 +209,7 @@ class CutVerbs {
       );
     }
     _carrySheetInk(from: cutId, to: copy.cutId);
-  });
+  }
 
   /// The sheets' handwriting of a duplicated cut, onto its copy: the conte
   /// cells' block by block — each copied block keeps its handwriting id, on
@@ -232,58 +260,6 @@ class CutVerbs {
     _activeCut.onActiveCut(
       (cutId) => _project.cutCommandCoordinator.deleteCut(cutId: cutId),
     );
-  }
-
-  CutPosition? get _activeCutPositionOrNull {
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return null;
-    }
-    return cutPositionOf(_project.repository.requireProject(), cutId);
-  }
-
-  CutPosition get _activeCutPosition {
-    final position = _activeCutPositionOrNull;
-    if (position == null) {
-      throw StateError(
-        'Active Cut not found: ${_timeline.editingSession.activeCutId}',
-      );
-    }
-    return position;
-  }
-
-  bool get canMoveActiveCutLeft => _canMoveActiveCut(CutMoveDirection.left);
-
-  bool get canMoveActiveCutRight => _canMoveActiveCut(CutMoveDirection.right);
-
-  void moveActiveCutLeft() => _moveActiveCut(CutMoveDirection.left);
-
-  void moveActiveCutRight() => _moveActiveCut(CutMoveDirection.right);
-
-  bool _canMoveActiveCut(CutMoveDirection direction) {
-    final position = _activeCutPositionOrNull;
-    return position != null &&
-        _cutReorderPlanner.canMove(position, direction);
-  }
-
-  /// ⛔ONE MOVE, WITH A SIGN. The two verbs used to be written out, guard
-  /// and command and refresh each, so a step that stopped refreshing after
-  /// the reorder would have done it in one direction only.
-  void _moveActiveCut(CutMoveDirection direction) {
-    final position = _activeCutPosition;
-    if (!_cutReorderPlanner.canMove(position, direction)) {
-      return;
-    }
-    _project.cutCommandCoordinator.reorderCut(
-      trackId: position.trackId,
-      cutId: position.cutId,
-      newIndex: _cutReorderPlanner.moveTargetIndex(
-        position,
-        direction,
-      ),
-    );
-    _changes.refreshAfterCutCommand();
-    _changes.notifyChanged();
   }
 
   /// The active cut's memo on page [page] of its timesheet (F-301).

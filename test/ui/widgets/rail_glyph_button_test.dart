@@ -85,7 +85,6 @@ void main() {
       VoidCallback? onPressed,
       bool isSelected = false,
       bool danger = false,
-      bool outlined = false,
       AppIconButtonMetrics size = box,
     }) => pump(
       tester,
@@ -101,7 +100,6 @@ void main() {
               onPressed: onPressed,
               isSelected: isSelected,
               danger: danger,
-              outlined: outlined,
               size: size,
             ),
           ),
@@ -115,7 +113,6 @@ void main() {
               onPressed: onPressed,
               isSelected: isSelected,
               danger: danger,
-              outlined: outlined,
               size: size,
             ),
           ),
@@ -183,14 +180,13 @@ void main() {
       await expectTheSamePixels(tester);
     });
 
-    testWidgets('danger, outlined', (tester) async {
+    testWidgets('danger', (tester) async {
       await pumpPair(
         tester,
         icon: const Icon(Icons.movie),
         glyph: const RailIconGlyph(Icons.movie),
         onPressed: () {},
         danger: true,
-        outlined: true,
       );
       await expectTheSamePixels(tester);
     });

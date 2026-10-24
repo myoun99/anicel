@@ -18,9 +18,8 @@ class RenameCutDialog extends StatelessWidget {
     final strings = AppText.strings;
     return AppPromptDialog(
       windowKey: keys.window,
-      title: strings.renameCutTitle,
+      title: strings.windowTitleOn(strings.editNameAction, strings.tlCut),
       titleIcon: Icons.drive_file_rename_outline,
-      fieldLabel: strings.renameCutField,
       initialValue: initialName,
       confirmLabel: strings.commonRename,
       emptyError: strings.renameCutEmpty,

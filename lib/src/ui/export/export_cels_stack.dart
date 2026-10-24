@@ -80,7 +80,7 @@ class _ExportCelsStackState extends State<ExportCelsStack> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               SizedBox(
-                width: AppScrollbarLane.wide,
+                width: AppScrollbarLane.thin,
                 child: AppControllerScrollbar(
                   controller: _down,
                   axis: Axis.vertical,
@@ -137,9 +137,10 @@ class _ExportCelsStackState extends State<ExportCelsStack> {
     ),
   );
 
-  /// One row of the stack: the app's labelled boolean — the whole line
-  /// presses, the ring on its right (`SettingsSwitchRow`, 유저 2026-09-24:
-  /// 「설정 줄 하나로」) — led as the timeline leads the row: its colour
+  /// One row of the stack: the app's labelled boolean — the ring on its
+  /// right presses, and the line is words (`SettingsSwitchRow`, 유저
+  /// 2026-09-24: 「설정 줄 하나로」, 10-23 F-439-Q1: 「링만 컨트롤, 라벨은
+  /// 글자」) — led as the timeline leads the row: its colour
   /// label, its take and its kind; and before them a slot of its own that
   /// marks the base, the base on the wash of the row stood on.
   ///

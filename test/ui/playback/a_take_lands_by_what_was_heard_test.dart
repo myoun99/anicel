@@ -31,7 +31,7 @@ import '../../helpers/native_engine_path.dart';
 /// roll under it, the clock that hears the anchor, the take placed.
 ///
 /// The bench never hears a run the session plays
-/// (`audioOutputUnlessTesting`), so this hands the rig's transport a device
+/// (`audioDeviceUnlessTesting`), so this hands the rig's transport a device
 /// it opened on miniaudio's null backend (`PlaybackRig.debugTransportOutput`)
 /// — a real callback on a real thread, no speaker. The microphone is made:
 /// it says what it had taken in at any moment, five eighths of a second

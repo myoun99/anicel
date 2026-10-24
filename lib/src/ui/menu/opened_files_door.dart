@@ -8,6 +8,7 @@ import '../../services/persistence/app_documents.dart'
 import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/provider_documents.dart';
+import '../brush/picked_file.dart' show PickedFile;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/open_file_flow.dart' show noticeUnsupportedFiles;
@@ -20,18 +21,21 @@ typedef SortedOpen = ({
   List<FolderGrant> media,
   List<FolderGrant> brushes,
   List<FolderGrant> fonts,
+  List<FolderGrant> shortcuts,
   List<String> refused,
 });
 
 /// [handed] sorted by the one judgement: a project opens in a tab, a
 /// picture · movie · sound · PDF and a FOLDER (a cut folder) come in
-/// through the import window, a brush goes to the brush library and a font
-/// to this device's fonts — and what nothing opens is named.
+/// through the import window, a brush goes to the brush library, a font
+/// to this device's fonts and a program's shortcut files into a preset —
+/// and what nothing opens is named.
 SortedOpen sortOpened(List<FolderGrant> handed) {
   final projects = <ProjectPick>[];
   final media = <FolderGrant>[];
   final brushes = <FolderGrant>[];
   final fonts = <FolderGrant>[];
+  final shortcuts = <FolderGrant>[];
   final refused = <String>[];
   for (final grant in handed) {
     final named = grant.document?.uri ?? grant.path;
@@ -51,6 +55,8 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
         brushes.add(grant);
       case OpenedAs.font:
         fonts.add(grant);
+      case OpenedAs.shortcuts:
+        shortcuts.add(grant);
       case null:
         // Named as every pick's refusal names it: a file by its path, a
         // document by its own name (its URI says nothing).
@@ -62,20 +68,12 @@ SortedOpen sortOpened(List<FolderGrant> handed) {
     media: media,
     brushes: brushes,
     fonts: fonts,
+    shortcuts: shortcuts,
     refused: refused,
   );
 }
 
-/// A path handed over with nothing granted for it — a drop on the window,
-/// the file the viewer is showing: a folder or a file, as the disk says.
-FolderGrant handedPath(String path) => FolderGrant.granted(
-  path: path,
-  kind: FileSystemEntity.isDirectorySync(path)
-      ? GrantKind.folder
-      : GrantKind.file,
-);
-
-/// 「파일 열기…」's pick: every kind some door takes, several at once — a
+/// 「파일 열기」's pick: every kind some door takes, several at once — a
 /// file nothing takes is named by the pick itself, and a document with no
 /// filesystem path is taken as one (PICK-7).
 ///
@@ -101,8 +99,8 @@ Future<List<FolderGrant>> pickFilesToOpen(BuildContext context) =>
 /// THE ONE DOOR. F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로
 /// 합치고싶고, 드래그앤드롭으로 파일 여는거라던가 풀에 등록할떄? 등 관련
 /// 임포트 전부 점검하는게 목표」 · 「최대한 통일하고싶음」. Every way a file
-/// comes in hands what it holds here — the menu's 「파일 열기…」 and
-/// 「폴더 열기…」, a drop on the window, the media panel's ＋, the viewer's
+/// comes in hands what it holds here — the menu's 「파일 열기」 and
+/// 「폴더 열기」, a drop on the window, the media panel's ＋, the viewer's
 /// 「미디어에 등록」 — and one judgement ([sortOpened]) says where each goes.
 ///
 /// ↩️Each door judged on its own until then: the menu's Open took projects
@@ -120,6 +118,7 @@ final class OpenedFilesDoor {
     required this.importWindow,
     required this.bringBrushes,
     required this.bringFont,
+    required this.bringShortcuts,
   });
 
   /// Opens each pick in a tab of its own — the shell's Open door, which
@@ -140,6 +139,11 @@ final class OpenedFilesDoor {
   /// say of it.
   final Future<String?> Function(Uint8List bytes) bringFont;
 
+  /// Makes the shortcut files [files] into presets (I-107) — what to say of
+  /// them. All at once: one program's files that come in together make one
+  /// preset.
+  final Future<List<String>> Function(List<PickedFile> files) bringShortcuts;
+
   /// Takes [handed] in, each where the judgement sends it.
   Future<void> open(
     BuildContext context,
@@ -153,10 +157,20 @@ final class OpenedFilesDoor {
         return;
       }
     }
+    final shortcuts = [
+      for (final grant in sorted.shortcuts) await _read(grant),
+    ];
     final said = [
       for (final grant in sorted.brushes) await _bring(grant, bringBrushes),
       for (final grant in sorted.fonts)
         await _bring(grant, (_, bytes) => bringFont(bytes)),
+      for (final (:name, :bytes) in shortcuts)
+        if (bytes == null) AppText.strings.imUnreadable(name),
+      if (shortcuts.any((file) => file.bytes != null))
+        ...await bringShortcuts([
+          for (final (:name, :bytes) in shortcuts)
+            if (bytes != null) (name: name, bytes: bytes),
+        ]),
     ].nonNulls.toList();
     if (!context.mounted) {
       return;
@@ -189,15 +203,24 @@ final class OpenedFilesDoor {
     FolderGrant grant,
     Future<String?> Function(String name, Uint8List bytes) bring,
   ) async {
+    final (:name, :bytes) = await _read(grant);
+    return bytes == null
+        ? AppText.strings.imUnreadable(name)
+        : bring(name, bytes);
+  }
+
+  /// [grant]'s bytes under the file's own name — none where it could not be
+  /// read.
+  static Future<({String name, Uint8List? bytes})> _read(
+    FolderGrant grant,
+  ) async {
     final named = grant.document?.uri ?? grant.path!;
     final name = ProviderDocuments.nameOf(named);
-    final Uint8List bytes;
     try {
-      bytes = await _bytesOf(grant);
+      return (name: name, bytes: await _bytesOf(grant));
     } on Object {
-      return AppText.strings.imUnreadable(name);
+      return (name: name, bytes: null);
     }
-    return bring(name, bytes);
   }
 
   /// What [grant] holds: the file at its path, or — a document with no

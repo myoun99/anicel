@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/neighbour_pairs.dart';
 import 'storyboard_timeline_layout.dart';
 import 'transition_geometry.dart';
 
@@ -102,12 +103,8 @@ class CameraRowReach {
       to,
     }.toList()..sort();
     return [
-      for (var index = 0; index + 1 < edges.length; index += 1)
-        (
-          from: edges[index],
-          to: edges[index + 1],
-          line: lineAt(edges[index]),
-        ),
+      for (final (from, to) in neighbourPairs(edges))
+        (from: from, to: to, line: lineAt(from)),
     ];
   }
 }

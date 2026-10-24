@@ -310,14 +310,32 @@ void main() {
       final thumb = tester.widget<AnimatedContainer>(
         find.byKey(const ValueKey<String>('app-scrollbar-thumb')),
       );
-      return (thumb.decoration as BoxDecoration?)?.color;
+      return (thumb.decoration as ShapeDecoration?)?.color;
     }
 
-    double thumbThickness(WidgetTester tester, Axis axis) {
-      final thumb = tester.widget<AnimatedContainer>(
-        find.byKey(const ValueKey<String>('app-scrollbar-thumb')),
-      );
-      return extentAcross(axis, thumb.constraints!.biggest);
+    double thumbThickness(WidgetTester tester, Axis axis) => extentAcross(
+      axis,
+      tester.getSize(find.byKey(const ValueKey<String>('app-scrollbar-thumb'))),
+    );
+
+    // F-409 (user, 2026-10-19): 「실제 인식되는 범위보다 스크롤바가 작은데 이런거
+    // 개선. 조작 가능한 만큼 위젯의 모양새가 위치하도록」.
+    for (final axis in Axis.values) {
+      testWidgets('the thumb is as thick as its lane, in the app\'s one '
+          'corner (${axis.name})', (tester) async {
+        await pumpBar(tester, axis: axis);
+        final lane = tester.getRect(
+          find.byKey(const ValueKey<String>('app-scrollbar-lane')),
+        );
+        expect(thumbThickness(tester, axis), extentAcross(axis, lane.size));
+        final thumb = tester.widget<AnimatedContainer>(
+          find.byKey(const ValueKey<String>('app-scrollbar-thumb')),
+        );
+        expect(
+          (thumb.decoration! as ShapeDecoration).shape,
+          AppShapes.control(extentAcross(axis, lane.size)),
+        );
+      });
     }
 
     testWidgets('a press turns the thumb accent and releasing restores it', (
@@ -430,6 +448,20 @@ void main() {
       await tester.pump();
       expect(thumbThickness(tester, Axis.vertical), atRest);
     });
+  });
+
+  test('a scope that changes its lane tells the bars under it; one that '
+      'keeps it does not', () {
+    const thick = AppScrollbarLaneScope(
+      lane: AppScrollbarLane.thick,
+      child: SizedBox(),
+    );
+    const thin = AppScrollbarLaneScope(
+      lane: AppScrollbarLane.thin,
+      child: SizedBox(),
+    );
+    expect(thick.updateShouldNotify(thin), isTrue);
+    expect(thin.updateShouldNotify(thin), isFalse);
   });
 
   group('AppControllerScrollbar', () {

@@ -37,9 +37,10 @@ import 'app_icon_button.dart';
 /// panel with a switch in it could never bake and paid its full raster price
 /// on every frame. Everything here dims by COLOUR.
 ///
-/// This is the LOOK alone: a row whose whole surface is the control
-/// ([SettingsSwitchRow], a menu toggle) draws it and keeps the press for
-/// itself. A control of its own is [BooleanDotButton].
+/// This is the LOOK alone: a row whose whole surface is the control (a menu
+/// toggle) draws it and keeps the press for itself. A control of its own is
+/// [BooleanDotButton] — the settings row's ring is one, since its label is
+/// words (유저 2026-10-23, F-439-Q1).
 class BooleanDot extends StatelessWidget {
   const BooleanDot({
     super.key,
@@ -117,6 +118,7 @@ class BooleanDotButton extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.tooltip,
+    this.mixed = false,
     this.inPickOneGroup = false,
     this.size = AppIconButtonSize.bar,
   });
@@ -128,6 +130,9 @@ class BooleanDotButton extends StatelessWidget {
   final ValueChanged<bool>? onChanged;
 
   final String tooltip;
+
+  /// See [BooleanDot.mixed].
+  final bool mixed;
 
   /// See [BooleanDot.inPickOneGroup].
   final bool inPickOneGroup;
@@ -147,6 +152,7 @@ class BooleanDotButton extends StatelessWidget {
       size: size,
       icon: BooleanDot(
         value: value,
+        mixed: mixed,
         inPickOneGroup: inPickOneGroup,
         enabled: changed != null,
       ),

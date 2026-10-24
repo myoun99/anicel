@@ -93,13 +93,8 @@ class _WorkspaceBrushGroups {
   void openGroup(CanvasTool tool, BrushGroupId? group) {
     final presets = _state._brushPresets;
     final inside = _tabHeldBy(tool) == (group: group);
-    final entering = inside
-        ? null
-        : _state._presetLibrary.presetEntering(
-            group,
-            remembered: _lastInGroup[(tool, group)],
-          );
-    final preset = entering == null ? null : presets._presetNamed(entering);
+    final taking = inside ? null : entering(tool, group);
+    final preset = taking == null ? null : presets._presetNamed(taking);
     if (preset != null) {
       takeUp(tool, preset);
     } else {
@@ -110,6 +105,15 @@ class _WorkspaceBrushGroups {
     }
     look.settle(group, held: _tabHeldBy(tool));
   }
+
+  /// The brush [tool] takes up entering [group]'s tab from outside: the one
+  /// it last held there, or the tab's first
+  /// ([BrushPresetLibrary.presetEntering]) — null for a tab with none.
+  BrushPresetId? entering(CanvasTool tool, BrushGroupId? group) =>
+      _state._presetLibrary.presetEntering(
+        group,
+        remembered: _lastInGroup[(tool, group)],
+      );
 
   /// [tool] comes to hand holding [preset]'s brush — the brush row's press
   /// in that tool's library, and the one road every press of a brush takes:

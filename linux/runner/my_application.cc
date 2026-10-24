@@ -2,6 +2,7 @@
 
 #include "launch_splash.h"
 #include "pen_sidecar.h"
+#include "picture_cursors.h"
 #include "window_full_screen.h"
 #include "window_place.h"
 
@@ -91,6 +92,9 @@ static void my_application_activate(GApplication* application) {
 
   // Where the window stands (I-116), put back from Dart and reported.
   anicel_window_place_register(window, view);
+
+  // I-54 ⓔ · F-441: the cursors of one size, worn as the system's.
+  anicel_picture_cursors_register(view);
 
   // Show the window when Flutter renders.
   // Requires the view to be realized so we can start rendering.

@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../services/flutter_test_run.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_video_encoder.dart';
@@ -57,7 +58,7 @@ Future<Process> _startProcess(String executable, List<String> arguments) =>
 typedef VideoEncoderResolver = QaVideoEncoder? Function();
 
 QaVideoEncoder? _defaultEncoderResolver() =>
-    Platform.environment['FLUTTER_TEST'] == 'true'
+    underFlutterTest
     ? null
     : QaVideoEncoder.instance;
 

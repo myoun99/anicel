@@ -1,8 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect;
 
-import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, PointerDownEvent, computeHitSlop;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, PointerDownEvent;
 import 'package:flutter/services.dart' show TextSelection;
 
 import '../../../models/canvas_point.dart';
@@ -152,8 +151,7 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
 /// ⚠️Its cost was named with the answer: a palm on the glass while the pen
 /// picks letters carries the box instead.
 bool _carriesTheBox(PointerDownEvent event) {
-  return ModifierKeys.isControlPressed ||
-      ModifierKeys.isMetaPressed ||
+  return ModifierKeys.isControlOrCommandPressed ||
       CanvasTouchContacts.aFingerDownBesides(event.pointer);
 }
 
@@ -305,7 +303,7 @@ sealed class CelTextPress {
   /// its driver says it is down. ↩️Asked once at the press, of the
   /// event's own kind — one pixel for that pen, and at the press the
   /// driver's newest word can still be the hover's (H43).
-  double get _slop => computeHitSlop(PenSidecars.kindOf(_kind), null);
+  double get _slop => PenSidecars.hitSlopOf(_kind, null);
 
   /// Whether the press has left where it went down. It does not go back: a
   /// drag that returns is still a drag.

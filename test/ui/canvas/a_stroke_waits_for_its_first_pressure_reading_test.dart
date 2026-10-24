@@ -469,6 +469,68 @@ void main() {
     );
 
     testWidgets(
+      'and with the lean UIKit later measured for it — a wait keeps each '
+      'sample\'s own reading, and the measurement is the measurement',
+      (tester) async {
+        final altitudes = <Duration, PenLedgerReading>{
+          _ms(0): _estimatedReading,
+          _ms(8): _estimatedReading,
+        };
+        QaPenLedger.debugAltitude = (at) => altitudes[at];
+        addTearDown(() => QaPenLedger.debugAltitude = null);
+        final laid = debugStrokeDabsLaid = <BrushDab>[];
+        addTearDown(() => debugStrokeDabsLaid = null);
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = _estimatedReading;
+        for (final (at, x) in const [(0, 4.0), (8, 20.0)]) {
+          (at == 0 ? _down : _move)(
+            tester,
+            Offset(x, 8),
+            time: _ms(at),
+            force: 0.5,
+            tilt: 0.3,
+            pressureMax: _pencilMax,
+          );
+          await tester.pump();
+        }
+        expect(laid, isEmpty, reason: '⛔CONTROL: both wait for a force');
+        // The Bluetooth report lands: UIKit measures the two leans...
+        altitudes[_ms(0)] = measured(1.2);
+        altitudes[_ms(8)] = measured(1.0);
+        ledger[_ms(0)] = measured(1.2);
+        ledger[_ms(8)] = measured(1.0);
+        ledger[_ms(16)] = measured(0.8);
+        _move(
+          tester,
+          const Offset(36, 8),
+          time: _ms(16),
+          force: 0.8,
+          tilt: 0.3,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _up(tester, const Offset(36, 8), time: _ms(20));
+        await tester.pump();
+
+        final dabs = results.single;
+        expect(dabs.first.center.x, 4);
+        expect(dabs.first.tiltAltitude, closeTo(1.2 / (math.pi / 2), 1e-9));
+        expect(
+          dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
+          closeTo(1.0 / (math.pi / 2), 1e-9),
+        );
+        expect(
+          dabs.last.tiltAltitude,
+          closeTo(1 - 0.3 / (math.pi / 2), 1e-9),
+          reason: '⛔CONTROL: a lean nothing measured is the pen\'s own',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
       'a steadied line lifts reading what its last sample was measured '
       'with, not the stand-in the pen still reads — UIKit measured the '
       'short stroke only after its last move (F-418)',
@@ -902,6 +964,79 @@ void main() {
         );
         // The poll timers must die BEFORE the binding's pending-timer
         // invariant check (which runs ahead of tearDown callbacks).
+        hid.debugReset();
+        wintab.debugReset();
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+
+    testWidgets(
+      'on Windows the twist is the driver\'s too — the HID report\'s first, '
+      'Wintab\'s where the report has none, and none where neither does '
+      '(F-176-Q9)',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _tiltBrush, results);
+        final hid = RawPenInputService.instance;
+        final wintab = WintabPenService.instance;
+        RawPenInputService.debugClockOverride = () => DateTime(2024);
+        WintabPenService.debugClockOverride = () => DateTime(2024);
+        double? hidTwist = 90;
+        var sequence = 0;
+        hid.debugPollOverride = () {
+          sequence += 1;
+          return QaPenRawState(
+            flags: 0x01,
+            sequence: sequence,
+            twistDegrees: hidTwist,
+          );
+        };
+        hid.start();
+        wintab.debugPollOverride = () => const [];
+        wintab.start();
+        wintab.debugInjectPacket(
+          const QaTabletPacket(
+            pressure: 0.5,
+            twistDegrees: 180,
+            timeMs: 1,
+            buttons: 1,
+          ),
+        );
+
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(40, 8), 0.5, 8),
+          ]),
+        );
+        hidTwist = null;
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 16), 0.5, 100),
+            _s(const Offset(40, 16), 0.5, 108),
+          ]),
+        );
+        wintab.debugInjectPacket(
+          const QaTabletPacket(pressure: 0.5, timeMs: 2, buttons: 1),
+        );
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 24), 0.5, 200),
+            _s(const Offset(40, 24), 0.5, 208),
+          ]),
+        );
+
+        expect(results, hasLength(3));
+        expect(results[0].map((dab) => dab.twistDegrees), everyElement(90));
+        expect(results[1].map((dab) => dab.twistDegrees), everyElement(180));
+        expect(
+          results[2].map((dab) => dab.twistDegrees),
+          everyElement(isNull),
+          reason: 'a device that declares no twist is not a pen turned to 0°',
+        );
         hid.debugReset();
         wintab.debugReset();
       },

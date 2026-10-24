@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/source_ledger.dart';
+
 /// 🚨★★★**THE FILE NEVER SEES A VIEW STATE** (F-153).
 ///
 /// 🗣️유저 2026-09-18: 「활성레이어 솔로는 **저장시 저장안되도록**. 지금 솔로
@@ -56,14 +58,17 @@ void main() {
       }
     }
 
-    expect(
-      readers.toList()..sort(),
-      allowed.keys.toList()..sort(),
-      reason:
+    expectSetMatchesLedger(
+      readers,
+      allowed.keys,
+      unledgered:
           '🚨유저: 「저장이 솔로 이전의 눈을 기록한다」. A save that reads '
           'the live project reads the SOLO\'s eyes. Take the project from '
           'the _SaveCarry, or add a line to the ledger saying why this '
           'member is not a write.',
+      paidOff:
+          'these members no longer read the live project, or are gone — '
+          'take their lines out of the ledger',
     );
   });
 

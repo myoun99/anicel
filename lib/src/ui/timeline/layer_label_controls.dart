@@ -1,4 +1,3 @@
-import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
@@ -269,26 +268,33 @@ const double layerLaneToggleSlotWidth = 16;
 const double layerFillReferenceSlotWidth = 22;
 const double layerFxSlotWidth = 22;
 const double layerVisibilitySlotWidth = 22;
-const double layerMuteSlotWidth = 18;
+
 // 64 → 42 (UI-R18 #4): the opacity bar reads fine at two-thirds width
 // across all three panels' rails.
 // 42 → 51 (text-scale-rail-opac, 유저 2026-09-25: 「칸을 가장 넓은 글자에
 // 맞게 1배부터 넓힌다」): the legend's resting OPAC wanted 34.8 in the bar's
 // 26 at 1× — short from the start, which growing with the text could never
 // mend. The rails pay the 9.
-const double layerOpacitySlotWidth = 51;
+// 51 → 44 (F-409, 유저 2026-10-19): 「불투명도 바, 너무 김. … 100이라는
+// 숫자가 딱 들어갈 정도면 됨. 레전드도 그로인해 OPAC라는 글자가 OPA나 OP로
+// 되도됨」. The bar is its insets and 「100」 (23.7 at 1×) — 40 — and the
+// slot gives it a chip gap besides (`layerRailTrailingCells`); the legend
+// says OP, which fits.
+const double layerOpacitySlotWidth = 44;
 
 /// R27 #6: the BLEND column — the layer's compositing mode, moved out of
 /// the timeline toolbar and into the label itself (PS/CSP reading: the
 /// mode belongs to the row, not to a far-away command bar). Rightmost
 /// slot, immediately right of the opacity bar, per the user's placement.
-const double layerBlendSlotWidth = 58;
+///
+/// 58 → 62 (F-409): the chip keeps its 58 and the slot pays its
+/// chip gap (`layerRailTrailingCells`).
+const double layerBlendSlotWidth = 62;
 
-/// The rail's columns that hold WORDS — the opacity bar's digits (and the
-/// legend's resting OPAC), the blend chip's mode and a lane's value
-/// boxes ([layerLaneValueSlotWidth]) — as wide as they are where the
-/// rail is shown. Every other column holds an icon, and icons do not
-/// follow the OS text size.
+/// The rail's columns that hold WORDS — the opacity bar's digits, the
+/// blend chip's mode and a lane's value boxes ([layerLaneValueSlotWidth])
+/// — as wide as they are where the rail is shown. Every other column holds
+/// an icon, and icons do not follow the OS text size.
 ///
 /// 🚨text-scale-rail-columns (유저 2026-09-25, 「칸도 글자 따라 넓어진다」):
 /// a column's 1× slot plus as much as its widest word grew — 0 at 1×, so
@@ -327,7 +333,7 @@ LayerRailColumnWidths layerRailColumnWidthsIn(BuildContext context) {
   final columns = (
     opacity:
         layerOpacitySlotWidth +
-        FieldSlider.widthGrowthIn(context, const ['100', 'OPAC']),
+        FieldSlider.widthGrowthIn(context, const ['100']),
     blend: layerBlendSlotWidth + layerBlendColumnGrowthIn(context),
     // Two boxes, each as much wider as its name and its widest number.
     laneValue:
@@ -468,16 +474,11 @@ class LayerBlendModeChip extends StatelessWidget {
     required this.onBlendModeSelected,
     this.isGroup = false,
     this.axis = Axis.horizontal,
-    this.slotExtent = layerBlendSlotWidth,
   });
 
-  /// The blend column's extent where the chip is shown — [layerBlendSlotWidth]
-  /// plus its words' growth ([layerBlendColumnGrowthIn]), asked once by the
-  /// rail that lays the column out rather than by every chip in it.
-  final double slotExtent;
-
   /// The RAIL's direction. Vertical is the x-sheet's stood-up column: the
-  /// slot spends its 58 as HEIGHT and the mode name reads down the button.
+  /// slot spends its extent as HEIGHT and the mode name reads down the
+  /// button.
   /// This was the one control in the shared skeleton that hardcoded its
   /// axis, so on the sheet it drew a 58-wide chip inside a 28px column.
   final Axis axis;
@@ -520,10 +521,12 @@ class LayerBlendModeChip extends StatelessWidget {
       context,
       _blendWordStyle(context),
     ).lineGrowthOf(TextMeasure.everyScript);
-    return sizedAlong(
+    // Along the rail it is as long as its slot lets it be (the column's 1×
+    // extent and its words' growth, [layerBlendColumnGrowthIn], less the
+    // gap the slot keeps) — the rail asks that once, not every chip in it.
+    return acrossBox(
       axis,
-      along: slotExtent,
-      across: 20 + growth,
+      20 + growth,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
@@ -535,7 +538,6 @@ class LayerBlendModeChip extends StatelessWidget {
             tooltip: isGroup
                 ? AppText.strings.railFolderBlendMode
                 : AppText.strings.railLayerBlendMode,
-            showCaret: false,
             expand: true,
             fontSize: _blendFontSize,
             fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
@@ -778,63 +780,6 @@ class LayerVisibilityToggleButton extends StatelessWidget {
         ),
         onPressed: onToggle,
       ),
-    );
-  }
-}
-
-/// The ONE mute speaker (SE rows).
-///
-/// Also written inline three times, also drifted — 14px glyph in the
-/// storyboard, 16px in the two timeline rails, and the storyboard's copy
-/// had silently lost the SOLO accent the other two carry.
-///
-/// R10 R3: the speaker is a DOOR, not a toggle. Pressing it opens the SE
-/// mixer (mute, solo, fader, pan) anchored under the button; the two
-/// timeline rails used to hang a context menu off it for the other three
-/// and the storyboard rail had no way to reach them at all. It still
-/// SHOWS mute and solo, because a door has to say what is behind it.
-class LayerMuteToggleButton extends StatelessWidget {
-  const LayerMuteToggleButton({
-    super.key,
-    required this.name,
-    required this.muted,
-    required this.onOpenMixer,
-    this.soloed = false,
-    this.width = layerMuteSlotWidth,
-    this.height = 26,
-  });
-
-  /// What a finder calls the speaker ('timeline-layer-mute-a') — its
-  /// [RailGlyphButton.name].
-  final String name;
-
-  final bool muted;
-
-  /// Opens the mixer. It takes THIS button's context so the popup anchors
-  /// to the speaker rather than to whatever row mounted it.
-  final ValueChanged<BuildContext> onOpenMixer;
-
-  /// Soloed rows tint accent (selection style: color only, no checkmarks).
-  final bool soloed;
-
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return RailGlyphButton(
-      name: name,
-      // One meaning on all three rails, so the label is the control's, not
-      // the host's. It also carries the button's semantics name — the
-      // hardcoded English 'Mute layer'/'Unmute layer' went out with the
-      // toggle, and a door needs to say where it goes.
-      tooltip: AppText.strings.layerAudioTitle,
-      size: AppIconButtonBox(width: width, height: height, iconSize: 16),
-      glyph: RailIconGlyph(
-        muted ? Icons.volume_off : Icons.volume_up,
-        color: soloed ? Theme.of(context).colorScheme.primary : null,
-      ),
-      onPressed: () => onOpenMixer(context),
     );
   }
 }
@@ -1789,138 +1734,3 @@ String layerReviseAbbrev(LayerRevise revise) =>
 
 /// The unabbreviated reading — tooltips and the flyout.
 String layerMarkLabel(LayerMark mark) => mark.labelFor(AppText.language);
-
-/// A REFERENCE row's button: the file glyph that opens the row's reference
-/// popover (유저 2026-09-11, 미디어 배치 라운드 3~5 — 「아이콘만(이름은
-/// 툴팁)」, and the press opens a popover instead of baking at once).
-///
-/// Lit ACCENT while its popover is open — the button that owns the window
-/// says so, by colour only — and it wears the box's edge, as the approved
-/// mockup draws it: beside the name it has to read as a button, not as a
-/// badge like the linked row's chain. The FILE shape, not the chain: the
-/// chain already means "linked layer" on this same label.
-class LayerReferenceButton extends StatefulWidget {
-  const LayerReferenceButton({
-    super.key,
-    required this.name,
-    required this.onOpen,
-    this.isSourceShort = false,
-  });
-
-  /// What a finder calls the button ('timeline-layer-reference-a') — its
-  /// [RailGlyphButton.name].
-  final String name;
-
-  /// Opens the popover under THIS button's context. The button stays lit
-  /// until the future completes — until the popover has closed.
-  final Future<void> Function(BuildContext anchorContext) onOpen;
-
-  /// The row asks its file for more film than the file has, so the button
-  /// wears [AppColors.danger] (유저 2026-09-12: 「참조버튼을 빨갛게 만들고,
-  /// 그걸 누르면 팝오버 항목중 하나로 내용 띄우도록 하자」).
-  ///
-  /// ⛔The BUTTON says it, not a new badge beside it: the slot is already
-  /// there on every reference row, and red on a control the user can press
-  /// is what makes the popover the place the detail lives.
-  final bool isSourceShort;
-
-  /// The box's side: a notch under the rail row, so the edge reads as the
-  /// button's own and not as the row's.
-  static const double side = 18;
-
-  @override
-  State<LayerReferenceButton> createState() => _LayerReferenceButtonState();
-}
-
-class _LayerReferenceButtonState extends State<LayerReferenceButton> {
-  bool _isOpen = false;
-
-  void _openPopover() {
-    setState(() => _isOpen = true);
-    unawaited(
-      widget.onOpen(context).whenComplete(() {
-        if (mounted) {
-          setState(() => _isOpen = false);
-        }
-      }),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return RailGlyphButton(
-      name: widget.name,
-      tooltip: AppText.strings.tlLayerReference,
-      size: const AppIconButtonBox(
-        width: LayerReferenceButton.side,
-        height: LayerReferenceButton.side,
-        iconSize: 12,
-      ),
-      glyph: const RailIconGlyph(Icons.insert_drive_file_outlined),
-      isSelected: _isOpen,
-      danger: widget.isSourceShort,
-      outlined: true,
-      onPressed: _openPopover,
-    );
-  }
-}
-
-/// THE CAMERA ROW'S PATH BUTTON (I-89 ④, 유저 2026-10-12: 「카메라
-/// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서. 카메라는
-/// 지금 비지블이랑 불투명도가 어차피 글로벌이라서 이 경로도 글로벌 취급」):
-/// it opens how the canvas shows the camera's path under itself — one value
-/// for every open project, as the row's eye and its dim are.
-///
-/// It stands among the name's buttons, as a reference row's does, and
-/// wears that button's dress — outlined, lit while its list is open: the
-/// camera's row is never a reference row. ⚠️Lit-while-open is
-/// [LayerReferenceButton]'s state a second time; a third button that keeps
-/// it folds the three into one.
-class CameraPathButton extends StatefulWidget {
-  const CameraPathButton({
-    super.key,
-    required this.name,
-    required this.onOpen,
-  });
-
-  /// What a finder calls the button ('timeline-layer-camera-path-camera') —
-  /// its [RailGlyphButton.name].
-  final String name;
-
-  /// Opens the list under THIS button's context. The button stays lit until
-  /// the future completes — until the list has closed.
-  final Future<void> Function(BuildContext anchorContext) onOpen;
-
-  @override
-  State<CameraPathButton> createState() => _CameraPathButtonState();
-}
-
-class _CameraPathButtonState extends State<CameraPathButton> {
-  bool _isOpen = false;
-
-  void _openList() {
-    setState(() => _isOpen = true);
-    unawaited(
-      widget.onOpen(context).whenComplete(() {
-        if (mounted) {
-          setState(() => _isOpen = false);
-        }
-      }),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => RailGlyphButton(
-    name: widget.name,
-    tooltip: AppText.strings.cameraPath,
-    size: const AppIconButtonBox(
-      width: LayerReferenceButton.side,
-      height: LayerReferenceButton.side,
-      iconSize: 12,
-    ),
-    glyph: const RailIconGlyph(Icons.route),
-    isSelected: _isOpen,
-    outlined: true,
-    onPressed: _openList,
-  );
-}

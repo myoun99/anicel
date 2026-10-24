@@ -2,7 +2,7 @@ part of '../bitmap_surface_painter.dart';
 
 /// ONE PAINT OF A BITMAP SURFACE'S CONTENT — the paper, the visible
 /// coordinates (each drawn as the one picture it shows, [_CoordinatePicture]),
-/// the stroke overlay, the stamp preview. 🚨Carved out of
+/// the stroke overlay, the floats. 🚨Carved out of
 /// `BitmapSurfacePainter` (the audit's cognitive cut, Round 6, 2026-09-03:
 /// `paintContentInto` was 418 lines scoring 80). Constructed PER PAINT; it
 /// reaches the painter through `_painter`.
@@ -93,9 +93,10 @@ class _SurfacePaintPass {
     // BELOW this picture, which showed live erase strokes as dark
     // panel-background lines until the commit landed (R14-⑤). The layer
     // makes the hole transparent so whatever is underneath shows through.
-    // BB-1: a non-srcOver BRUSH BLEND needs the same isolation — the
-    // mode must blend against the CEL's pixels only, never the paper or
-    // panel chrome below.
+    // ↩️BB-1 put a non-srcOver BRUSH BLEND drawn on the GPU in the same
+    // isolation — to blend against the CEL's pixels only, never the paper
+    // or panel chrome below — until brush-fidelity-Q9 left no brush blend
+    // drawn on the GPU.
     //
     // PROMOTION round: a PRE-BLENDED _overlay on the SAME grid as the
     // surface needs neither a layer nor a clip. A result tile carries
@@ -168,15 +169,13 @@ class _SurfacePaintPass {
     if (landing != null) {
       _paintLandingAtLevel(landing);
     } else {
-      // 🚨★★★F-33: the STAMP's ghost, and it is drawn HERE rather than in a
-      // widget above the _canvas so [_layerPaint] reaches it — the layer's
-      // opacity, its blend and its group buffer, which is the whole of the
-      // user's ask (「레이어 블렌드모드나 **합성같은게 다** 반영되는」).
-      //
-      // ⚠️AFTER the _overlay's restore on purpose. `_overlayBlendsInLayer`
-      // opens an isolation layer for the STROKE's own blend; a ghost that
-      // is not part of that stroke must not be inside it, or the stroke's
-      // brush blend would apply to the preview as well.
+      // ↩️🚨★★★F-33: the STAMP's ghost was drawn here, after the overlay's
+      // restore (outside a stroke's isolation layer), so [_layerPaint]
+      // reached it — the user's 「레이어 블렌드모드나 **합성같은게 다**
+      // 반영되는」. Since brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」)
+      // it is the OVERLAY's tiles — the click's own bytes, pre-blended on
+      // the CPU — which this pass draws in the layer's paint, so F-33 holds
+      // by construction.
       _paintLandingPreviews();
     }
 
@@ -258,8 +257,7 @@ class _SurfacePaintPass {
 
   /// The paint a LIVE PREVIEW OF A BRUSH LANDING draws with: a pre-blended
   /// overlay blits (src where it replaces the committed tiles), an erasing
-  /// one cuts out (dstOut), a blend-mode preview blends, else the tile
-  /// paint.
+  /// one cuts out (dstOut), else the tile paint.
   ///
   /// 🚨★★★ONE FUNCTION FOR EVERY PREVIEW OF A LANDING, not just the stroke
   /// overlay's (유저 2026-09-10, F-69: 「프리뷰 그냥 어차피 브러시랑 똑같은데
@@ -269,12 +267,12 @@ class _SurfacePaintPass {
   /// 합성모드가 반영안되고있음」. It is a `BrushDab` like any other
   /// (`buildCutPasteDab`), so it previews like one.
   ///
-  /// ⚠️THE ARGUMENTS ARE THE FOUR FACTS, not the overlay — the ghost is not
-  /// one and never will be (it borrows an image the cut slot owns, which is
-  /// why it has a slot of its own; see [CutStampPreview]). What it shares is
-  /// the DECISION, and that is what lives here.
+  /// ↩️The ghost shared only the DECISION, with facts of its own for the
+  /// arguments — it borrowed an image the cut slot owned, so it kept a slot
+  /// of its own rather than being an overlay — until brush-fidelity-Q9 (유저
+  /// 2026-10-18 「통일하면 좋음」): it lays the click's own dab through the
+  /// overlay now, and takes the pre-blended road exactly as a stroke does.
   Paint _livePreviewPaint({
-    required BrushBlendMode blendMode,
     required bool erase,
     required bool preBlended,
     required bool replacesCoords,
@@ -291,14 +289,12 @@ class _SurfacePaintPass {
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false
             ..blendMode = BlendMode.dstOut)
-        : blendMode.previewBlendMode != BlendMode.srcOver
-        // BB-1: the brush blend previews live (tiles never overlap,
-        // so per-tile draws blend each pixel exactly once — each held
-        // to its own rect where the blend does not act in place, F-243).
-        ? (Paint()
-            ..filterQuality = FilterQuality.none
-            ..isAntiAlias = false
-            ..blendMode = blendMode.previewBlendMode)
+        // ↩️BB-1 previewed a brush blend live on the GPU here, and the
+        // stamp's ghost was its last rider (brush-fidelity-Q7: a mode the
+        // GPU has no blend for drew as normal). Every stroke pre-blends
+        // (R27 #4) and since brush-fidelity-Q9 so does the ghost, so only
+        // R27 #4's revert switch — a plain stroke's classic overlay — is
+        // left on this road.
         : _tileImagePaint;
   }
 
@@ -309,50 +305,21 @@ class _SurfacePaintPass {
     }
   }
 
-  /// The stamp's ghost and the floats, cut at the pasteboard as what they
-  /// land as is: a landing is a tool's, and only a file's picture reaches
-  /// past the wall (F-374-Q8) — which a surface clipped wider for it
-  /// ([_storableRect]) would otherwise let a preview do as well.
+  /// The floats, cut at the pasteboard as what they land as is: a landing
+  /// is a tool's, and only a file's picture reaches past the wall
+  /// (F-374-Q8) — which a surface clipped wider for it ([_storableRect])
+  /// would otherwise let a preview do as well. ↩️The stamp's ghost was cut
+  /// here too, until brush-fidelity-Q9 made it the overlay's tiles: the
+  /// click's own landing, so cut wherever the landing is.
   void _paintLandingPreviews() {
     final wider = _painter.surface.laidBounds != null;
     if (wider) {
       _canvas.save();
       _canvas.clipRect(_painter.surface.pasteboard.rect);
     }
-    _paintStampPreview();
     _paintFloat();
     if (wider) {
       _canvas.restore();
-    }
-  }
-
-  /// The cut-piece stamp preview, over everything.
-  void _paintStampPreview() {
-    final preview = _painter.stampPreview?.value;
-    if (preview != null) {
-      paintCutPiece(
-        _canvas,
-        preview.canvasRect,
-        preview.piece,
-        preview.image,
-        opacity: preview.opacity,
-        // F-69: the ghost's composite comes out of the SAME function the
-        // stroke overlay's does.
-        //
-        // ⛔`preBlended: false` is not a shortcut. Pre-blending is what buys
-        // a live STROKE its byte-exact preview (R27 #4), and it buys it by
-        // running the commit's CPU kernels over the overlay's tiles against
-        // the cel. A hover ghost has no committed tiles to stand for: it is
-        // redrawn on every pointer move, never committed, and gone the
-        // moment the click lands — at which point the real stroke overlay
-        // takes over and IS pre-blended.
-        blendMode: _livePreviewPaint(
-          blendMode: preview.blendMode,
-          erase: preview.blendMode == BrushBlendMode.erase,
-          preBlended: false,
-          replacesCoords: false,
-        ).blendMode,
-      );
     }
   }
 
@@ -372,15 +339,11 @@ class _SurfacePaintPass {
     }
   }
 
-  /// Where this paint's landing previews — the stamp's ghost, the float —
-  /// draw, in this paint's own space and inside what it shows, grown out to
+  /// Where this paint's landing preview — the float —
+  /// draws, in this paint's own space and inside what it shows, grown out to
   /// whole pixels of [_level]; null when none draws.
   Rect? _landingRegion() {
     Rect? covered;
-    final ghost = _painter.stampPreview?.value;
-    if (ghost != null && ghost.image != null) {
-      covered = ghost.canvasRect;
-    }
     for (final float in _floats) {
       final toRow = float.canvasToRow;
       final drawn = float.preview.drawnWorldRect;
@@ -410,12 +373,12 @@ class _SurfacePaintPass {
   /// and softened the moment it landed.
   ///
   /// So [region], aligned to the level's pixels, is painted by this same
-  /// pass at level 0 — the coordinates, the stroke, the ghost and the float
-  /// exactly as 100% shows them — and halved [_level] times through that
-  /// one halving law, then drawn 1:1. Every level pixel in it is the mean
-  /// the landed cel's level tile will hold there: the same bytes on the
-  /// Windows app and the test runner, the ≤2/255 Vulkan gap of any level
-  /// aside (board `halving-rounds-differently-per-engine`).
+  /// pass at level 0 — the coordinates, the overlay (a stroke or the ghost)
+  /// and the float exactly as 100% shows them — and halved [_level] times
+  /// through that one halving law, then drawn 1:1. Every level pixel in it
+  /// is the mean the landed cel's level tile will hold there: the same bytes
+  /// on the Windows app and the test runner, the ≤2/255 Vulkan gap of any
+  /// level aside (board `halving-rounds-differently-per-engine`).
   void _paintLandingAtLevel(Rect region) {
     var image = _rasterAtLevelZero(region);
     try {

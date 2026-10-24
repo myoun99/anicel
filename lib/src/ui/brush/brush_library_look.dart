@@ -47,4 +47,12 @@ class BrushLibraryLook extends ValueNotifier<({BrushGroupId? group})?> {
 
   /// The hand is another — the library shows what it holds now.
   void end() => value = null;
+
+  /// [group]'s tab is gone: a look into it ends with it, and the library
+  /// shows what the hand holds (F-426) — not a tab the rail no longer has.
+  void tabGone(BrushGroupId group) {
+    if (value == (group: group)) {
+      end();
+    }
+  }
 }

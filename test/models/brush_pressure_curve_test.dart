@@ -23,7 +23,9 @@ void main() {
       }
     });
 
-    test('passes through every control point exactly', () {
+    test('🚨the points PULL the curve — it runs through the ends and the '
+        'middle of every inner edge, not through the points (F-456)', () {
+      // Clip Studio's graph: its points are handles off the curve.
       final curve = BrushPressureCurve(const [
         BrushCurvePoint(0.0, 0.2),
         BrushCurvePoint(0.3, 0.8),
@@ -31,14 +33,51 @@ void main() {
         BrushCurvePoint(1.0, 1.0),
       ]);
       expect(curve.evaluate(0.0), closeTo(0.2, 1e-12));
-      expect(curve.evaluate(0.3), closeTo(0.8, 1e-12));
-      expect(curve.evaluate(0.7), closeTo(0.5, 1e-12));
-      expect(curve.evaluate(1.0), closeTo(1.0, 1e-12));
+      expect(curve.evaluate(0.5), closeTo(0.65, 1e-12));
+      expect(curve.evaluate(1.0), 1.0);
+      expect(
+        curve.evaluate(0.3),
+        lessThan(0.7),
+        reason: 'pulled towards (0.3, 0.8), short of it',
+      );
     });
 
-    test('never overshoots the unit range (monotone Hermite)', () {
-      // A plain Catmull-Rom would overshoot above 1 between the middle
-      // points; the Fritsch-Carlson limiter must not.
+    test('a full press lands ON the last point, not a hair short', () {
+      // Solved for t, this last span arrives at 0.9999999999999989: the
+      // root lands a rounding off 1 for about one curve in six (📏 F-456,
+      // 100,000 random spans).
+      final curve = BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.4, 0.1),
+        BrushCurvePoint(0.9, 0.2),
+        BrushCurvePoint(1.0, 1.0),
+      ]);
+      expect(curve.evaluate(1.0), 1.0);
+    });
+
+    test('🚨one point bends it ONE way — an S takes two (유저 F-456: 「우리는 '
+        '포인트 하나라도 s자로 고정인데, 클튜는 s자만드려면 두 포인트」)', () {
+      // ↩️Through the point, the monotone Hermite bent this one into an S:
+      // up from the point at a slope below its chord's, it had to turn
+      // over to arrive at the chord's.
+      final curve = BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.5, 0.2),
+        BrushCurvePoint(1.0, 1.0),
+      ]);
+      const steps = 200;
+      for (var i = 1; i < steps; i += 1) {
+        final bend =
+            curve.evaluate((i - 1) / steps) -
+            2 * curve.evaluate(i / steps) +
+            curve.evaluate((i + 1) / steps);
+        expect(bend, greaterThanOrEqualTo(-1e-12), reason: 'at ${i / steps}');
+      }
+    });
+
+    test('never leaves the unit range — it stays in its points\' hull', () {
+      // A curve THROUGH these (Catmull-Rom) would overshoot above 1 between
+      // the middle two; one they pull cannot leave the hull they make.
       final curve = BrushPressureCurve(const [
         BrushCurvePoint(0.0, 0.0),
         BrushCurvePoint(0.4, 1.0),

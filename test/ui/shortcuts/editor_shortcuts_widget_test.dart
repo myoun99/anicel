@@ -108,10 +108,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.brush);
 
-    // A focused text field absorbs bare letters (the rename dialog).
-    // Renaming a cut lives in the Cut flyout; the helper opens the owning
-    // menu and brings it into view first.
-    await tapCommandButton(tester, const ValueKey<String>('rename-cut-button'));
+    // A focused text field absorbs bare letters (the cut note dialog).
+    // The note lives in the Cut flyout; the helper opens the owning menu and
+    // brings it into view first. ↩️It was the cut rename, whose row F-455
+    // took away.
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('edit-cut-note-button'),
+    );
     await tester.tap(find.byType(TextField).last);
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.keyE);

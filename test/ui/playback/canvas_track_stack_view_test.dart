@@ -193,13 +193,15 @@ void main() {
 
   /// The stack at [frame] seen through the camera, twenty screen pixels a
   /// canvas pixel — the camera's frame is the screen's top left 80×40 — and
-  /// what it put on screen, as the colour at a pixel.
+  /// what it put on screen, as the colour at a pixel. [cameraViewEnabled]
+  /// false sees it through none.
   Future<int Function(int x, int y)> seenAt(
     WidgetTester tester,
     int frame, {
     required List<StoryboardTimelineLayoutEntry> layout,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     bool backdropNone = false,
+    bool cameraViewEnabled = true,
   }) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -225,7 +227,7 @@ void main() {
                 stackOf: (_, _) => const [],
                 imageCache: images,
                 cameraFrameSize: cameraFrameSize,
-                cameraViewEnabled: true,
+                cameraViewEnabled: cameraViewEnabled,
                 cameraPoseOf: (cut, frameIndex) =>
                     CameraPose(center: CanvasPoint(x: 4, y: 4)),
                 viewport: CanvasViewport(zoom: 20),
@@ -823,31 +825,46 @@ void main() {
     // 체크무늬되도록. 페이스트보드도 백그라운드도 동일하게」 — the law the
     // editing canvas keeps, so a scrub into playback does not trade the
     // checkerboard for a colour.
-    final f = fixture();
-    f.frame.value = 3;
-    Widget floor() => tester.widget(
-      find.byKey(const ValueKey<String>('canvas-track-stack-floor')),
-    );
-
-    await pumpView(
+    // Seen through no camera the floor is the box: a frame no track covers
+    // shows it alone.
+    final layout = buildStoryboardTimelineLayout(project());
+    var at = await seenAt(
       tester,
-      frame: f.frame,
-      layout: f.layout,
+      20,
+      layout: layout,
       cameraViewEnabled: false,
     );
-    expect(floor(), isA<ColoredBox>(), reason: 'control: a backdrop that is there');
+    expect(
+      at(90, 50),
+      backdrop,
+      reason: 'control: a backdrop that is there — past where a camera\'s '
+          'frame would end, the box is the floor',
+    );
 
-    await pumpView(
+    at = await seenAt(
       tester,
-      frame: f.frame,
-      layout: f.layout,
+      20,
+      layout: layout,
       cameraViewEnabled: false,
       backdropNone: true,
     );
-    expect(floor(), isA<CustomPaint>(), reason: 'the checkerboard floor');
+    expect(
+      [at(4, 4), at(12, 4)],
+      everyElement(isNot(backdrop)),
+      reason: 'the checkerboard floor',
+    );
+    expect(
+      (at(4, 4), at(12, 4)),
+      (at(12, 12), at(4, 12)),
+      reason: 'its cells the box\'s, eight pixels from its corner — the '
+          'editing canvas\'s',
+    );
+    expect(at(4, 4), isNot(at(12, 4)), reason: 'two cells, not one colour');
 
-    // Seen through the camera, the floor is its own painter, in the frame
-    // (pinned by pixels in the camera floor group).
+    // Seen through the camera, the floor is in the frame (pinned by pixels
+    // in the camera floor group).
+    final f = fixture();
+    f.frame.value = 3;
     await pumpView(
       tester,
       frame: f.frame,

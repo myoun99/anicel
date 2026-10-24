@@ -3,6 +3,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -91,14 +92,32 @@ void main() {
     );
   });
 
-  test('a host that names no onion or blend verb gets none', () {
+  // F-443: both rails carry the onion and the blend columns, so their
+  // sweeps are the session's; only the onion panel's door is the host's.
+  test('the onion and blend sweeps reach the session, and the panel door is '
+      'the host\'s', () {
+    final s = session();
     final legend = sessionLegendCallbacks(
-      session(),
+      s,
       rowFilter: TimelineRowFilter.none,
       onSetRowFilter: null,
     );
-    expect(legend.onToggleOnionSkinForDisplayed, isNull);
-    expect(legend.onRevealOnionSkinPanel, isNull);
-    expect(legend.onSetBlendModeForDisplayed, isNull);
+    expect(legend.onRevealOnionSkinPanel, isNull, reason: 'none was named');
+
+    legend.onToggleOnionSkinForDisplayed!();
+    expect(s.onionSkin.layerIds.value, {
+      const LayerId('a'),
+      const LayerId('b'),
+    });
+
+    legend.onSetBlendModeForDisplayed!({
+      const LayerId('b'),
+    }, LayerBlendMode.multiply);
+    LayerBlendMode blendOf(String id) =>
+        s.layers.singleWhere((layer) => layer.id == LayerId(id)).blendMode;
+    expect([blendOf('a'), blendOf('b')], [
+      LayerBlendMode.normal,
+      LayerBlendMode.multiply,
+    ]);
   });
 }

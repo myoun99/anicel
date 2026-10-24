@@ -31,7 +31,9 @@ void main() {
       anchorIndex: 0,
       headIndex: 2,
     );
-    commaVerbsOf(s).setCommaForSelection(2);
+    commaVerbsOf(
+      s,
+    ).setCommaOn(s.rangeSelections.selectionBlockStartsByLayer()!, 2);
 
     expect(
       _blocks(s),
@@ -41,7 +43,9 @@ void main() {
 
     // No new sweep: the selection followed the retimed span, so the same
     // three cels answer the next press.
-    commaVerbsOf(s).setCommaForSelection(1);
+    commaVerbsOf(
+      s,
+    ).setCommaOn(s.rangeSelections.selectionBlockStartsByLayer()!, 1);
 
     expect(
       _blocks(s),

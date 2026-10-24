@@ -276,6 +276,45 @@ void main() {
     store.dispose();
   }, skip: skip);
 
+  test('🚨a release leaves another player\'s sound alone — it silences the '
+      'scrub\'s own slice only', () async {
+    final device = openNullDevice();
+    final project = _project();
+    final controller = buildController(project);
+    final store = _residentStore();
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final scrubber = AudioScrubber(
+      controller: controller,
+      resolveFrameRate: () => const ProjectFrameRate.integer(10),
+      resolveProject: () => project,
+      conformStore: store,
+      resolveDevice: () => QaAudioDevice.instance,
+    );
+    scrubber.onScrubFrame(3);
+    expect(scrubber.isArmed, isTrue, reason: 'fixture');
+    scrubber.onScrubEnd();
+    expect(
+      device.isPlaying,
+      isFalse,
+      reason: 'its own slice stops at the release, not when it runs out',
+    );
+
+    scrubber.onScrubFrame(3);
+    expect(device.play(startSample: 0), isNonZero, reason: 'another\'s');
+
+    scrubber.onScrubEnd();
+    expect(
+      device.isPlaying,
+      isTrue,
+      reason: '↩️a release stopped the output whatever played',
+    );
+    device.stop();
+    scrubber.dispose();
+    controller.dispose();
+    store.dispose();
+  }, skip: skip);
+
   test('active playback owns the device: the scrub stays visual', () async {
     openNullDevice();
     final project = _project();

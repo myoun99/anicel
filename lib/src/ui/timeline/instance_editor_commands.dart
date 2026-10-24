@@ -20,7 +20,8 @@ import '../dialogs/rename_frame_dialog.dart';
 import '../dialogs/se_instance_dialog.dart';
 import '../dialogs/start_number_window.dart';
 import '../editor_session_manager.dart';
-import '../session/block_naming.dart' show AutoNamePlan;
+import '../session/block_naming.dart'
+    show AutoNameCuts, AutoNameFrames, AutoNamePlan;
 import '../text/app_strings.dart';
 import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
 import 'key_choice_row.dart' show KeyChoiceRow, KeyPathRow;
@@ -755,8 +756,7 @@ Future<String?> _askName(
   BuildContext context,
   ({
     String initialName,
-    String? title,
-    String? fieldLabel,
+    String? target,
     Widget Function(StateSetter setLocal)? extra,
   })
   prompt,
@@ -765,8 +765,7 @@ Future<String?> _askName(
   (_) => StatefulBuilder(
     builder: (context, setLocal) => RenameFrameDialog(
       initialName: prompt.initialName,
-      title: prompt.title,
-      fieldLabel: prompt.fieldLabel,
+      target: prompt.target,
       extra: prompt.extra?.call(setLocal),
     ),
   ),
@@ -820,8 +819,7 @@ Future<void> _renameLaneKey(
       // What the covered keys already AGREE on; blank when they disagree,
       // the same thing the group header says with its `…`.
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
-      title: strings.renameKeyTitle,
-      fieldLabel: strings.renameKeyField,
+      target: strings.tlKey,
       extra: (setLocal) => Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -913,8 +911,7 @@ Future<void> _renameSelectedFrame(
     context,
     ask: () => _askName(context, (
       initialName: session.selectedFrameName ?? '',
-      title: null,
-      fieldLabel: null,
+      target: null,
       extra: null,
     )),
     name: session.frameVerbs.renameSelectedFrame,
@@ -947,9 +944,21 @@ Future<void> autoNameWithWindow(
   required ToolbarPanelContext panel,
 }) {
   final naming = session.blockNaming;
+  final strings = AppText.strings;
+  final target = switch (panel.autoNameTargets) {
+    null => null,
+    AutoNameCuts() => strings.tlCut,
+    AutoNameFrames() => strings.tlFrame,
+  };
+  if (target == null) {
+    return Future<void>.value();
+  }
   return nameThenOfferLink<int, AutoNamePlan>(
     context,
-    ask: () => showDialogVerb<int>(context, (_) => const StartNumberWindow()),
+    ask: () => showDialogVerb<int>(
+      context,
+      (_) => StartNumberWindow(target: target),
+    ),
     name: (start) {
       final targets = panel.autoNameTargets;
       if (targets == null) {

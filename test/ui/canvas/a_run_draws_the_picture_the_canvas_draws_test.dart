@@ -498,6 +498,7 @@ void main() {
                 paperNone: paperNone,
                 canvasSize: canvasSize,
                 viewport: view,
+                devicePixelRatio: ratio,
               ),
               paper: paper,
               road: (images, view) => film(

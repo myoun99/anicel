@@ -2,10 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/persistence/file_type_groups.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
+import 'package:anicel/src/services/shortcuts/program_keymap.dart'
+    show shortcutFileExtensions;
 
 /// F-282 (유저 2026-10-09): every door a file comes in through asks ONE
 /// judgement what it opens as — a project, media for the import window, a
-/// brush, a font — and a file none of them takes is said by name.
+/// brush, a font, a program's shortcut file (I-107) — and a file none of
+/// them takes is said by name.
 void main() {
   tearDown(ProviderDocuments.debugReset);
 
@@ -19,6 +22,9 @@ void main() {
     for (final extension in fontFileExtensions) {
       expect(openedAs('/work/x.$extension'), OpenedAs.font);
     }
+    for (final extension in shortcutFileExtensions) {
+      expect(openedAs('/work/x.$extension'), OpenedAs.shortcuts);
+    }
     for (final extension in [
       ...imageFileExtensions,
       ...videoFileExtensions,
@@ -30,6 +36,7 @@ void main() {
     expect(openedAs('/work/CUT 12.ANICEL'), OpenedAs.project);
     expect(openedAs('/work/Pack.ABR'), OpenedAs.brush);
     expect(openedAs('/work/Face.OTF'), OpenedAs.font);
+    expect(openedAs('/work/default.KHC'), OpenedAs.shortcuts);
     expect(openedAs('/work/Take3.MOV'), OpenedAs.media);
   });
 
@@ -39,14 +46,14 @@ void main() {
       expect(mediaAssetKindForPath(name), isNotNull, reason: name);
       expect(openedAs(name), OpenedAs.media, reason: name);
     }
-    expect(mediaAssetKindForPath('notes.txt'), isNull);
-    expect(openedAs('notes.txt'), isNull);
+    expect(mediaAssetKindForPath('notes.docx'), isNull);
+    expect(openedAs('notes.docx'), isNull);
   });
 
   test('a file nothing opens has no answer — the last extension decides, '
       'and a name without one is no file kind', () {
-    expect(openedAs('/work/notes.txt'), isNull);
-    expect(openedAs('/work/notes.anicel.txt'), isNull);
+    expect(openedAs('/work/notes.docx'), isNull);
+    expect(openedAs('/work/notes.anicel.docx'), isNull);
     expect(openedAs('/work/anicel'), isNull);
     expect(openedAs('/work.anicel/readme'), isNull);
     expect(openedAs('/work/trailing.'), isNull);
@@ -74,6 +81,7 @@ void main() {
       ...pdfFileExtensions,
       ...brushFileExtensions,
       ...fontFileExtensions,
+      ...shortcutFileExtensions,
     ]) {
       expect(openableExtensions, contains(extension), reason: extension);
     }

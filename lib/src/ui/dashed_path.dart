@@ -21,10 +21,42 @@ class DashPattern {
   /// One dash and the gap after it.
   double get period => on + off;
 
+  /// Where the first dash starts along a contour: [phase] back from its
+  /// start, taken into one [period].
+  double get firstDashStart => -phase % period;
+
+  /// Whether [distance] along a contour is on one of the dashes
+  /// [dashesAlong] draws there, off the same start — what a press on a
+  /// dashed line asks (F-262: 「보이는 만큼 존재하도록」).
+  bool dashesAt(double distance) {
+    final from = distance - firstDashStart;
+    return from >= 0 && from % period <= on;
+  }
+
   /// This pattern, slid [phase] back.
   DashPattern marchedBy(double phase) =>
       DashPattern(on: on, off: off, phase: phase);
 }
+
+/// 🚨★★★THE ANTS ARE BLACK — 유저 (F-65): 「선택툴의 개미행렬 색을 앱
+/// 강조색이아니라 **검정색으로. 그러니 흰색바탕에 검정 개미가 지나가도록.
+/// 앞으로 개미행렬은 이 공통 ui를 사용**」. The selection's march over the
+/// white [paintDashedOutline] lays; a header graph's box (I-3 ⑤) stands
+/// still in them.
+///
+/// ⚠️They read it as the app accent; it was actually
+/// `AppColors.selectionSession`'s green (red while a move session holds
+/// changes). Either way the instruction is the same, and the white
+/// under-stroke this pairs with was already there — 「흰색바탕에 검정
+/// 개미」 is that pair, now spelled the way they asked.
+///
+/// ⛔A constant, not a theme token: it must not follow the accent, and
+/// following a THEME colour would be the same mistake one level up. The
+/// white beneath it is `Colors.white` for the same reason.
+const Color antsColour = Color(0xFF000000);
+
+/// The ants' dashes ([antsColour]): five of line, four of none.
+const DashPattern antsDashes = DashPattern(on: 5, off: 4);
 
 /// THE DASHES OF A LINE: [source] walked contour by contour as [dashes]
 /// says, each dash a path of its own.
@@ -39,7 +71,7 @@ class DashPattern {
 Iterable<Path> dashesAlong(Path source, DashPattern dashes) sync* {
   for (final metric in source.computeMetrics()) {
     for (
-      var start = -dashes.phase % dashes.period;
+      var start = dashes.firstDashStart;
       start < metric.length;
       start += dashes.period
     ) {

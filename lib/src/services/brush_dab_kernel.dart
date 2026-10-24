@@ -7,6 +7,7 @@ import '../core/floor_math.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/separable_blend_mode.dart';
+import '../models/brush_texture_mode.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
@@ -89,23 +90,15 @@ class BrushDabPlan {
     required this.sourceAlphaNorm,
     required this.centerX,
     required this.centerY,
-    required this.radius,
-    required this.hardRadius,
+    required this.tip,
     required this.edgeSpan,
     required this.aaThreshold,
     required this.aaContrast,
-    required this.minorRadius,
     required this.radiusSqSkip,
-    required this.tipCos,
-    required this.tipSin,
-    required this.inverseRoundness,
     required this.dabOpacity,
     required this.dabFlow,
-    required this.isRound,
-    required this.isEllipse,
     required this.unrotatedTip,
     required this.erase,
-    required this.tipMask,
     required this.dualMask,
     required this.textureMask,
     required this.dualDensity,
@@ -113,6 +106,7 @@ class BrushDabPlan {
     required this.dualCompositeMode,
     required this.textureDensity,
     required this.textureOneMinusDensity,
+    required this.textureMode,
     required this.tipULattice,
     required this.tipVLattice,
     required this.dualULattice,
@@ -145,6 +139,10 @@ class BrushDabPlan {
   final double centerX;
   final double centerY;
 
+  /// The tip, as the coverage law reads it ([tipCoverageAt]) — the Dart
+  /// loop hands it over whole, the native spec copies its numbers out.
+  final BrushDabTipGeometry tip;
+
   /// The edge step, hoisted out of the pixel loop ([brushDabEdgeLaw]).
   /// [aaThreshold] is 없음 — a hard cut at half coverage; otherwise
   /// [aaContrast] scales the ramp about 0.5, and 1.0 leaves it alone.
@@ -154,24 +152,16 @@ class BrushDabPlan {
   /// depend on the tip as well as the step.
   final bool aaThreshold;
   final double aaContrast;
-  final double radius;
-  final double hardRadius;
   final double edgeSpan;
-  final double minorRadius;
 
   /// Conservative squared-distance cull for plain round tips: only pixels
   /// PROVABLY outside the radius skip the sqrt; anything within the float
   /// margin still runs the exact scalar test.
   final double radiusSqSkip;
 
-  final double tipCos;
-  final double tipSin;
-  final double inverseRoundness;
   final double dabOpacity;
   final double dabFlow;
 
-  final bool isRound;
-  final bool isEllipse;
   final bool unrotatedTip;
 
   /// Destination-out instead of source-over. The commit passes
@@ -179,7 +169,7 @@ class BrushDabPlan {
   /// the erase flag, because erase strokes composite at display time.
   final bool erase;
 
-  final BrushTipMask? tipMask;
+  BrushTipMask? get tipMask => tip.tipMask;
   final BrushTipMask? dualMask;
   final BrushTipMask? textureMask;
   final double dualDensity;
@@ -189,6 +179,9 @@ class BrushDabPlan {
   final SeparableBlendMode dualCompositeMode;
   final double textureDensity;
   final double textureOneMinusDensity;
+
+  /// How the paper meets the coverage — see [BrushDab.textureMode].
+  final BrushTextureMode textureMode;
 
   final BrushTipMaskAxisLattice? tipULattice;
   final BrushTipMaskAxisLattice? tipVLattice;
@@ -226,17 +219,9 @@ class BrushDabPlan {
       return null;
     }
 
-    final (
-      :radius,
-      :minorRadius,
-      :hardRadius,
-      :isRound,
-      :tipMask,
-      :isEllipse,
-      :tipCos,
-      :tipSin,
-      :inverseRoundness,
-    ) = brushDabTipGeometry(dab);
+    final tip = brushDabTipGeometry(dab);
+    final radius = tip.radius;
+    final tipMask = tip.tipMask;
     final edge = brushDabEdgeLaw(dab);
     final centerX = dab.center.x;
     final centerY = dab.center.y;
@@ -281,23 +266,15 @@ class BrushDabPlan {
       sourceAlphaNorm: sourceA / 255.0,
       centerX: centerX,
       centerY: centerY,
-      radius: radius,
-      hardRadius: hardRadius,
-      edgeSpan: radius - hardRadius,
+      tip: tip,
+      edgeSpan: radius - tip.hardRadius,
       aaThreshold: edge.threshold,
       aaContrast: edge.contrast,
-      minorRadius: minorRadius,
       radiusSqSkip: radius * radius * (1.0 + 1e-12),
-      tipCos: tipCos,
-      tipSin: tipSin,
-      inverseRoundness: inverseRoundness,
       dabOpacity: dab.opacity,
       dabFlow: dab.flow,
-      isRound: isRound,
-      isEllipse: isEllipse,
       unrotatedTip: unrotatedTip,
       erase: erase,
-      tipMask: tipMask,
       dualMask: dualMask,
       textureMask: textureMask,
       dualDensity: dualDensity,
@@ -305,6 +282,7 @@ class BrushDabPlan {
       dualCompositeMode: dab.dualCompositeMode,
       textureDensity: textureDensity,
       textureOneMinusDensity: 1.0 - textureDensity,
+      textureMode: dab.textureMode,
       tipULattice: unrotatedTip
           ? BrushTipMaskAxisLattice.compute(
               mask: tipMask,
@@ -321,7 +299,7 @@ class BrushDabPlan {
               start: top,
               count: rowCount,
               center: centerY,
-              inverseRoundness: inverseRoundness,
+              inverseRoundness: tip.inverseRoundness,
             )
           : null,
       dualULattice: dualMask == null
@@ -517,13 +495,13 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     clipBottomExclusive: plan.bottomExclusive,
     centerX: plan.centerX,
     centerY: plan.centerY,
-    radius: plan.radius,
-    hardRadius: plan.hardRadius,
+    radius: plan.tip.radius,
+    hardRadius: plan.tip.hardRadius,
     edgeSpan: plan.edgeSpan,
-    minorRadius: plan.minorRadius,
-    tipCos: plan.tipCos,
-    tipSin: plan.tipSin,
-    inverseRoundness: plan.inverseRoundness,
+    minorRadius: plan.tip.minorRadius,
+    tipCos: plan.tip.tipCos,
+    tipSin: plan.tip.tipSin,
+    inverseRoundness: plan.tip.inverseRoundness,
     dabOpacity: plan.dabOpacity,
     dabFlow: plan.dabFlow,
     sourceAlphaNorm: plan.sourceAlphaNorm,
@@ -539,10 +517,13 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     sourceB: plan.sourceB,
     flags:
         (plan.erase ? QaNativeEngine.dabFlagErase : 0) |
-        (plan.isRound ? QaNativeEngine.dabFlagRound : 0) |
-        (plan.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
+        (plan.tip.isRound ? QaNativeEngine.dabFlagRound : 0) |
+        (plan.tip.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
         (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
-        (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0),
+        (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0) |
+        (plan.textureMode == BrushTextureMode.height
+            ? QaNativeEngine.dabFlagTextureHeight
+            : 0),
     regionLeft: plan.left,
     regionTop: plan.top,
     tipAlpha: plan.tipMask?.alphaNormalized,
@@ -619,17 +600,9 @@ void blendDabTilesDart(
   final textureVLattice = plan.textureVLattice;
   final centerX = plan.centerX;
   final centerY = plan.centerY;
-  final radius = plan.radius;
-  final hardRadius = plan.hardRadius;
-  final edgeSpan = plan.edgeSpan;
+  final tip = plan.tip;
   final aaThreshold = plan.aaThreshold;
   final aaContrast = plan.aaContrast;
-  final radiusSqSkip = plan.radiusSqSkip;
-  final tipCos = plan.tipCos;
-  final tipSin = plan.tipSin;
-  final inverseRoundness = plan.inverseRoundness;
-  final isRound = plan.isRound;
-  final isEllipse = plan.isEllipse;
   final unrotatedTip = plan.unrotatedTip;
   final dabOpacity = plan.dabOpacity;
   final dabFlow = plan.dabFlow;
@@ -642,6 +615,7 @@ void blendDabTilesDart(
   final dualCompositeMode = plan.dualCompositeMode;
   final textureDensity = plan.textureDensity;
   final textureOneMinusDensity = plan.textureOneMinusDensity;
+  final textureHeight = plan.textureMode == BrushTextureMode.height;
   final left = plan.left;
   final top = plan.top;
   final rightExclusive = plan.rightExclusive;
@@ -657,7 +631,6 @@ void blendDabTilesDart(
 
   for (var y = top; y < bottomExclusive; y += 1) {
     final dy = y + 0.5 - centerY;
-    final dySquared = dy * dy;
     final vIndex = y - top;
     if (tipVLattice != null && tipVLattice.inRange[vIndex] == 0) {
       // Same effect as the scalar |tipV| > radius per-pixel cull.
@@ -674,69 +647,27 @@ void blendDabTilesDart(
       var tileChanged = false;
 
       for (var x = spanLeft; x < spanRightExclusive; x += 1) {
+        // An unrotated raster tip reads its two axis lattices — the one
+        // road of its own; every other tip asks the coverage law, the same
+        // body the coverage list and the stamp cache run ([tipCoverageAt]).
         double coverage;
-        if (tipMask != null) {
-          if (unrotatedTip) {
-            final uIndex = x - left;
-            if (tipULattice!.inRange[uIndex] == 0) {
-              continue;
-            }
-            coverage = sampleBrushTipMaskCoverageLattice(
-              mask: tipMask,
-              uAxis: tipULattice,
-              uIndex: uIndex,
-              vAxis: tipVLattice!,
-              vIndex: vIndex,
-            );
-          } else {
-            final dx = x + 0.5 - centerX;
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-            if (tipU.abs() > radius || tipV.abs() > radius) {
-              continue;
-            }
-            coverage = sampleBrushTipMaskCoverage(
-              mask: tipMask,
-              tipU: tipU,
-              tipV: tipV,
-              radius: radius,
-            );
-          }
-          if (coverage <= 0.0) {
+        if (unrotatedTip) {
+          final uIndex = x - left;
+          if (tipULattice!.inRange[uIndex] == 0) {
             continue;
           }
-        } else if (isRound) {
-          final dx = x + 0.5 - centerX;
-          double distance;
-          if (isEllipse) {
-            final tipU = dx * tipCos - dy * tipSin;
-            final tipV = (dx * tipSin + dy * tipCos) * inverseRoundness;
-            distance = math.sqrt(tipU * tipU + tipV * tipV);
-          } else {
-            final dxSquared = dx * dx;
-            if (dxSquared + dySquared > radiusSqSkip) {
-              continue;
-            }
-            distance = math.sqrt(dxSquared + dySquared);
-          }
-          if (distance > radius) {
-            continue;
-          }
-          if (distance <= hardRadius || edgeSpan <= 0.0) {
-            coverage = 1.0;
-          } else {
-            coverage = (1.0 - ((distance - hardRadius) / edgeSpan)).clamp(
-              0.0,
-              1.0,
-            );
-          }
-          if (coverage <= 0.0) {
-            continue;
-          }
+          coverage = sampleBrushTipMaskCoverageLattice(
+            mask: tipMask!,
+            uAxis: tipULattice,
+            uIndex: uIndex,
+            vAxis: tipVLattice!,
+            vIndex: vIndex,
+          );
         } else {
-          // A square dab is axis-aligned by construction now, so there is no
-          // rotated-rect case left to test for.
-          coverage = 1.0;
+          coverage = tipCoverageAt(tip, x + 0.5 - centerX, dy);
+        }
+        if (coverage <= 0.0) {
+          continue;
         }
 
         // The brush's own EDGE, before anything tiles over it (유저 확정).
@@ -797,7 +728,15 @@ void blendDabTilesDart(
             vAxis: textureVLattice!,
             vIndex: vIndex,
           );
-          coverage *= textureOneMinusDensity + textureDensity * textureSample;
+          if (textureHeight) {
+            coverage = paperHeightCoverage(
+              coverage,
+              textureSample,
+              textureDensity,
+            );
+          } else {
+            coverage *= textureOneMinusDensity + textureDensity * textureSample;
+          }
           if (coverage <= 0.0) {
             continue;
           }

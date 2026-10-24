@@ -7,6 +7,7 @@
 // slip behind a decode.
 
 import '../../models/canvas_size.dart';
+import '../../models/block_row_swap.dart';
 import '../../models/cel_bank_lanes.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -407,6 +408,8 @@ class ImportLanding {
       frameDelta: spot.frameIndex - blocks.first.startIndex,
       // The planned row is this import's own; no lane shows its cels yet.
       sourceBank: CelBankLanes.unshared,
+      // A file put on a row is an insertion, not a move (F-384-Q1).
+      landing: const LandingPushesThem(),
       cutFrameCount: cutFrameCount,
     )?.targetAfter;
     if (landed == null) {

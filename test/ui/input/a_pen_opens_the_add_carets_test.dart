@@ -23,7 +23,6 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 /// pixels failed the same way — it just rarely wobbles.
 const _carets = <({String menu, String entry})>[
   (menu: 'timeline-toolbar-add-layer-menu', entry: 'add-layer-kind-animation'),
-  (menu: 'new-cut-menu', entry: 'add-cut-new'),
 ];
 
 void main() {

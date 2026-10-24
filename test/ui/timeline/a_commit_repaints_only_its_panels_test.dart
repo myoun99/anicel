@@ -150,7 +150,7 @@ void main() {
       // The release's frame, run to its layout and stopped before the
       // paint, so what waits to repaint can be read.
       await tester.pump(null, EnginePhase.layout);
-      final allowed = tickLayersAndCanvas(tester);
+      final allowed = panelsTicksAndCanvas(tester);
       final strays = {
         for (final root in tester.binding.renderViews)
           ...repaintStrays(root, allowed: allowed),

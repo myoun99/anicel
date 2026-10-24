@@ -9,7 +9,7 @@ import 'package:flutter/scheduler.dart';
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
-import '../../services/input/pen_lean.dart';
+import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_readings.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';
@@ -90,6 +90,12 @@ Duration shapeShowFrameShare = const Duration(microseconds: 4000);
 /// stamp pieces made one at a time — every call of [pieces] makes them
 /// afresh — under [blend]. [shape] is what the pieces are OF, compared by
 /// value: the same shape asked for again asks for nothing new.
+///
+/// 🚨The pieces come THROUGH the selection already: the maker cuts, the
+/// view lays what it is handed. ↩️The view cut them itself, at the hard
+/// outline — which a held picture's ghost (brush-fidelity-Q9: the ghost is
+/// what lands) would have had cut twice, the door having cut it once at
+/// the selection's softness.
 typedef ShapeArea = ({
   Object shape,
   Iterable<BrushDab> Function() pieces,
@@ -415,24 +421,29 @@ class _InteractiveBrushEditCanvasViewState
   CanvasPoint? _previousRawCanvasPosition;
   BrushEditCanvasInputSettings? _activeStrokeInputSettings;
 
-  /// Normalized pressure (0..1) of the latest pointer sample. Devices without
-  /// pressure report a zero range and are treated as full pressure, so a
-  /// mouse draws exactly as before.
-  double _currentPressure = 1.0;
-
-  /// How the pen leaned at the latest sample: azimuth in degrees and a 0..1
-  /// altitude, or null when nothing measured one.
-  /// ⚠️ONE FIELD, not two. Azimuth without altitude is a lean in a direction
-  /// nothing reported, and `BrushDab` refuses that pair outright — so the
-  /// reading is present or absent as a whole. Null is what a mouse and a
-  /// finger report, and it is NOT the same as an upright pen (유저 2026-09-09,
-  /// `brush-tilt-no-device-Q1` 답 1).
-  PenLean? _currentTilt;
-
-  /// How fast the pen travelled into the latest sample, 0..1 against the
-  /// user's reference speed. A pen that has just landed — and every stroke's
-  /// first dab — rests at 0.0.
-  double _currentSpeed = 0.0;
+  /// What the pen read at the latest pointer sample — ONE value, so it is
+  /// saved and put back whole ([PenReadingsChange]).
+  ///
+  /// * pressure, 0..1. Devices without pressure report a zero range and are
+  ///   treated as full pressure, so a mouse draws exactly as before.
+  /// * lean: azimuth in degrees and a 0..1 altitude, or null when nothing
+  ///   measured one. ⚠️ONE FIELD, not two. Azimuth without altitude is a
+  ///   lean in a direction nothing reported, and `BrushDab` refuses that
+  ///   pair outright — so the reading is present or absent as a whole. Null
+  ///   is what a mouse and a finger report, and it is NOT the same as an
+  ///   upright pen (유저 2026-09-09, `brush-tilt-no-device-Q1` 답 1).
+  /// * twist: how far the pen was turned about its barrel, in degrees
+  ///   clockwise — null when nothing measured one, which is NOT a pen
+  ///   turned to 0° (F-176-Q9).
+  /// * speed: how fast the pen travelled into the sample, 0..1 against the
+  ///   user's reference speed. A pen that has just landed — and every
+  ///   stroke's first dab — rests at 0.0.
+  PenReadings _readings = (
+    pressure: 1.0,
+    lean: null,
+    twist: null,
+    speed: 0.0,
+  );
 
   // The held button (Round 6): a mapped button the eraser stands in for.
   late final _BrushEditHold _hold = _BrushEditHold(this);
@@ -769,11 +780,12 @@ class _InteractiveBrushEditCanvasViewState
       opacity: 1,
       flow: settings.flow,
       hardness: settings.hardness,
-      pressure: _currentPressure,
+      pressure: _readings.pressure,
       sequence: sequence,
-      tiltAzimuthDegrees: _currentTilt?.azimuthDegrees ?? 0.0,
-      tiltAltitude: _currentTilt?.altitude,
-      speed: _currentSpeed,
+      tiltAzimuthDegrees: _readings.lean?.azimuthDegrees ?? 0.0,
+      tiltAltitude: _readings.lean?.altitude,
+      twistDegrees: _readings.twist,
+      speed: _readings.speed,
       roundness: settings.roundness,
       angleDegrees: settings.angleDegrees,
       tipMask: settings.tipMask,
@@ -786,6 +798,7 @@ class _InteractiveBrushEditCanvasViewState
       textureMask: settings.textureMask,
       textureScale: settings.textureScale,
       textureDensity: settings.textureDensity,
+      textureMode: settings.textureMode,
       // 🚨THE EDGE STEP AND THE DUAL DENSITY WERE NOT HERE, and the panel
       // has been writing both for a while: 아웃 오브 the brush's settings,
       // into the shape, and no further. The only producer that ever carried

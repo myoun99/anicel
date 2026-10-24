@@ -270,6 +270,35 @@ void main() {
       );
     });
 
+    // 🗣️conte-attach-fold-leaves-the-conte-panel-standing-inside (유저
+    // 10-11): 「콘티패널 어태치레이어 접으면 콘티 기준레이어에 안서는 문제」.
+    test('🚨the fold hands the conte panel on to the conte row, and the '
+        'timeline on to the conte of the cut it stands in', () {
+      final session = sessionOf();
+      standAt(session, over, 17);
+      session.selectLayer(const LayerId('b-over'));
+      expect(session.activeCutId, const CutId('b'), reason: '⛔전제');
+
+      SessionRowButtonPresses(session).toggleGroupFold(
+        const LayerId('a-conte'),
+      );
+
+      expect(session.storyboardStandingRow, conteRow);
+      expect(session.activeLayerId, const LayerId('b-conte'));
+    });
+
+    test('a stand outside the group stays where it is', () {
+      final session = sessionOf();
+      standAt(session, over, 17);
+      session.selectLayer(const LayerId('b-cel'));
+
+      SessionRowButtonPresses(session).toggleGroupFold(
+        const LayerId('a-conte'),
+      );
+
+      expect(session.activeLayerId, const LayerId('b-cel'));
+    });
+
     test('🚨a folded conte\'s eye takes the rows folded into it along', () {
       final session = sessionOf();
       session.selectCut(const CutId('b'));

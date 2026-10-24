@@ -39,8 +39,14 @@
 //   - hid.dll is loaded DYNAMICALLY and its absence is a normal silent
 //     state, same contract as wintab32.dll next door.
 //
-// ABI v2: qpr_abi_version / qpr_start / qpr_stop / qpr_poll.
+// And its TWIST (F-176-Q9): Twist 0x41, the turn of the pen about its own
+// barrel — what a Wacom Art Pen reports as it rolls in the fingers — read
+// the same way. A pen that cannot turn reports none, or a constant 0 on a
+// tablet that declares the axis for the pens that can.
+//
+// ABI v3: qpr_abi_version / qpr_start / qpr_stop / qpr_poll.
 //   v2: qpr_poll also hands over the report's tilt (see qpr_poll).
+//   v3: and its twist.
 
 #ifdef _WIN32
 
@@ -116,6 +122,7 @@ typedef QPR_NTSTATUS(WINAPI *HidP_GetUsageValue_t)(
 #define QPR_USAGE_PEN 0x02
 #define QPR_USAGE_X_TILT 0x3D
 #define QPR_USAGE_Y_TILT 0x3E
+#define QPR_USAGE_TWIST 0x41
 #define QPR_USAGE_INVERT 0x3C
 #define QPR_USAGE_TIP_SWITCH 0x42
 #define QPR_USAGE_BARREL_SWITCH 0x44
@@ -145,20 +152,24 @@ static volatile LONG qpr_started = 0;
 static volatile LONG qpr_flags = 0;
 static volatile LONG qpr_seq = 0;
 
-// The latest report's tilt, as ONE word so a reader never pairs one
-// report's X with another's Y: bit 32 set when the report carried both
-// tilts, then X and Y in hundredths of a degree as two signed 16-bit
-// halves (a pen's reach is ±90°, well inside them).
-static volatile LONG64 qpr_tilt = 0;
+// The latest report's pose, as ONE word so a reader never pairs one
+// report's X with another's Y, or its twist with another's lean: bit 32
+// set when the report carried both tilts, then X and Y in hundredths of a
+// degree as two signed 16-bit halves (a pen's reach is ±90°, well inside
+// them); bit 33 set when it carried a twist, and the twist in hundredths
+// of a degree, 0..35999, in the top sixteen bits.
+static volatile LONG64 qpr_pose = 0;
 
 // Preparsed data is per DEVICE and immutable, so one slot covers the
 // normal case (a single pen digitizer) without a lock: a different
-// device simply refreshes it — and with it the tilt axes it declares.
+// device simply refreshes it — and with it the axes it declares.
 static HANDLE qpr_cached_device = NULL;
 static PVOID qpr_cached_preparsed = NULL;
 static qa_hid_axis qpr_tilt_x_axis;
 static qa_hid_axis qpr_tilt_y_axis;
 static int qpr_device_tilts = 0;
+static qa_hid_axis qpr_twist_axis;
+static int qpr_device_twists = 0;
 
 static int qpr_load(void) {
   if (qpr_hid != NULL) {
@@ -250,6 +261,22 @@ static LONG64 qpr_tilt_word(PCHAR report, ULONG length, PVOID preparsed) {
   return ((LONG64)1 << 32) | (qpr_centi(x) << 16) | qpr_centi(y);
 }
 
+// The twist's part of the word for one report — 0 when it carries none.
+static LONG64 qpr_twist_word(PCHAR report, ULONG length, PVOID preparsed) {
+  double twist = 0;
+  if (!qpr_device_twists || qpr_HidP_GetUsageValue == NULL ||
+      !qpr_angle_in(report, length, preparsed, QPR_USAGE_TWIST,
+                    &qpr_twist_axis, &twist)) {
+    return 0;
+  }
+  // Once round, whatever range the axis declares it over.
+  int centi = (int)(twist * 100.0 + (twist < 0 ? -0.5 : 0.5)) % 36000;
+  if (centi < 0) {
+    centi += 36000;
+  }
+  return ((LONG64)1 << 33) | ((LONG64)(uint16_t)centi << 48);
+}
+
 static PVOID qpr_preparsed_for(HANDLE device) {
   if (device == qpr_cached_device && qpr_cached_preparsed != NULL) {
     return qpr_cached_preparsed;
@@ -277,6 +304,7 @@ static PVOID qpr_preparsed_for(HANDLE device) {
   qpr_device_tilts =
       qpr_axis_of(data, QPR_USAGE_X_TILT, &qpr_tilt_x_axis) &&
       qpr_axis_of(data, QPR_USAGE_Y_TILT, &qpr_tilt_y_axis);
+  qpr_device_twists = qpr_axis_of(data, QPR_USAGE_TWIST, &qpr_twist_axis);
   return data;
 }
 
@@ -346,7 +374,9 @@ static void qpr_handle_input(HRAWINPUT handle) {
           break;
       }
     }
-    InterlockedExchange64(&qpr_tilt, qpr_tilt_word(report, stride, preparsed));
+    InterlockedExchange64(&qpr_pose,
+                          qpr_tilt_word(report, stride, preparsed) |
+                              qpr_twist_word(report, stride, preparsed));
     InterlockedExchange(&qpr_flags, flags);
     InterlockedIncrement(&qpr_seq);
   }
@@ -424,7 +454,7 @@ static DWORD WINAPI qpr_thread_main(LPVOID param) {
   return 0;
 }
 
-__declspec(dllexport) int32_t qpr_abi_version(void) { return 2; }
+__declspec(dllexport) int32_t qpr_abi_version(void) { return 3; }
 
 // Starts the observer thread. Returns 1 when raw pen reports will flow.
 // Idempotent; a machine without hid.dll or without a digitizer simply
@@ -467,7 +497,7 @@ __declspec(dllexport) void qpr_stop(void) {
   qpr_thread = NULL;
   qpr_thread_id = 0;
   InterlockedExchange(&qpr_flags, 0);
-  InterlockedExchange64(&qpr_tilt, 0);
+  InterlockedExchange64(&qpr_pose, 0);
   // The observer thread is gone, so nothing else can be reading the
   // cached descriptor.
   if (qpr_cached_preparsed != NULL) {
@@ -475,13 +505,16 @@ __declspec(dllexport) void qpr_stop(void) {
     qpr_cached_preparsed = NULL;
     qpr_cached_device = NULL;
     qpr_device_tilts = 0;
+    qpr_device_twists = 0;
   }
 }
 
 // Snapshots the newest decoded report into [out]:
 //   out[0] = flag word (QPR_FLAG_*), out[1] = monotonic report counter,
 //   and with [cap] of 5 (v2) its lean: out[2] X Tilt and out[3] Y Tilt in
-//   degrees, out[4] 1 when the report carried both, 0 when it carried none.
+//   degrees, out[4] 1 when the report carried both, 0 when it carried none;
+//   with [cap] of 7 (v3) its twist: out[5] in degrees 0..360, clockwise as
+//   HID declares it, out[6] 1 when the report carried one.
 // Returns 1 when the observer is live, 0 otherwise.
 __declspec(dllexport) int32_t qpr_poll(float *out, int32_t cap) {
   if (out == NULL || cap < 2 ||
@@ -494,11 +527,15 @@ __declspec(dllexport) int32_t qpr_poll(float *out, int32_t cap) {
   // stall, which reads as "no new report" — the exact opposite of what it
   // is for. Wrapping is harmless; only CHANGE is ever tested.
   out[1] = (float)(InterlockedCompareExchange(&qpr_seq, 0, 0) & 0xFFFFFF);
+  const LONG64 pose = InterlockedCompareExchange64(&qpr_pose, 0, 0);
   if (cap >= 5) {
-    const LONG64 tilt = InterlockedCompareExchange64(&qpr_tilt, 0, 0);
-    out[2] = (float)(int16_t)(uint16_t)((tilt >> 16) & 0xFFFF) / 100.0f;
-    out[3] = (float)(int16_t)(uint16_t)(tilt & 0xFFFF) / 100.0f;
-    out[4] = (tilt >> 32) & 1 ? 1.0f : 0.0f;
+    out[2] = (float)(int16_t)(uint16_t)((pose >> 16) & 0xFFFF) / 100.0f;
+    out[3] = (float)(int16_t)(uint16_t)(pose & 0xFFFF) / 100.0f;
+    out[4] = (pose >> 32) & 1 ? 1.0f : 0.0f;
+  }
+  if (cap >= 7) {
+    out[5] = (float)(uint16_t)((pose >> 48) & 0xFFFF) / 100.0f;
+    out[6] = (pose >> 33) & 1 ? 1.0f : 0.0f;
   }
   return 1;
 }

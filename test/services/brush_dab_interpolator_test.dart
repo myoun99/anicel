@@ -155,6 +155,38 @@ void main() {
     }
   });
 
+  test('the lean\'s way and the twist ramp the shorter way round — each '
+      'turns a tip (F-176-Q4 · Q9)', () {
+    const interpolator = BrushDabInterpolator();
+    final sampled = interpolator.interpolate(
+      previous: dab(0, 0, tiltAltitude: 0.5)
+          .copyWith(tiltAzimuthDegrees: 350, twistDegrees: 340),
+      nextRaw: dab(8, 0, tiltAltitude: 0.5)
+          .copyWith(tiltAzimuthDegrees: 30, twistDegrees: 20),
+      firstSequence: 1,
+      spacingRatio: 0.25,
+    );
+    // Four dabs: a quarter of the way each, forty degrees forward in all.
+    expect(sampled, hasLength(4));
+    const azimuths = [0, 10, 20, 30];
+    const twists = [350, 0, 10, 20];
+    for (var i = 0; i < 4; i += 1) {
+      expect(sampled[i].tiltAzimuthDegrees, closeTo(azimuths[i], 1e-9));
+      expect(sampled[i].twistDegrees, closeTo(twists[i], 1e-9));
+    }
+  });
+
+  test('a twist only one end reported is the later end\'s', () {
+    const interpolator = BrushDabInterpolator();
+    final sampled = interpolator.interpolate(
+      previous: dab(0, 0),
+      nextRaw: dab(8, 0).copyWith(twistDegrees: 90),
+      firstSequence: 1,
+      spacingRatio: 0.25,
+    );
+    expect(sampled.map((dab) => dab.twistDegrees), everyElement(90));
+  });
+
   test('⛔does NOT interpolate speed — it is the segment\'s, not the point\'s', () {
     // Every dab here was laid during the ONE move being subdivided, so they
     // all travelled at its speed. Unlike pressure and lean, blending toward

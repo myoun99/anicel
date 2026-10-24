@@ -16,29 +16,35 @@ import 'package:anicel/src/services/brush_pack_file.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart'
+    show openableExtensions;
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/settle_async.dart';
 import '../helpers/wait_window.dart';
 
-/// No saved language, said only when the test says so — and the brush
-/// library's read waits for it.
+/// The [saved] language — none unless the test gives one — said only when
+/// the test says so; the brush library's read waits for it.
 class _LateLanguage extends AppLanguageSettingsStore {
-  _LateLanguage() : super(filePath: 'unused');
+  _LateLanguage([this.saved]) : super(filePath: 'unused');
+
+  final AppLanguageSettings? saved;
 
   final gate = Completer<void>();
 
   @override
   Future<AppLanguageSettings?> load() async {
     await gate.future;
-    return null;
+    return saved;
   }
 
   @override
@@ -63,6 +69,17 @@ void main() {
 
   String spelled(String path) => path.replaceAll(r'\', '/');
 
+  // A file NO door takes. This was `notes.txt` until a program's shortcut
+  // files became something the door opens (I-107-Q2, 유저 2026-10-22:
+  // 「다섯 다」 — TVPaint's list is a .txt): from then on it was read as
+  // shortcuts, the notice never came, and the read still held the file when
+  // the folder went. An extension no group names cannot drift that way.
+  String nothingOpens() {
+    final path = '${spelled(folder.path)}/notes.xyz';
+    File(path).writeAsStringSync('not a picture');
+    return path;
+  }
+
   /// The app on [home], its first frame drawn — the frame after which the
   /// launch knocks.
   Future<void> pumpApp(WidgetTester tester, HomePage home) async {
@@ -71,6 +88,35 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: home));
     await tester.pump();
   }
+
+  /// The platform saying [handed] on [HandedFiles.channel]. The reply is
+  /// null only when nothing hears the channel.
+  Future<ByteData?> platformSays(
+    WidgetTester tester,
+    List<Object?> handed, [
+    String method = HandedFiles.openMethod,
+  ]) {
+    final reply = Completer<ByteData?>();
+    unawaited(
+      tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        HandedFiles.channel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall(method, handed),
+        ),
+        reply.complete,
+      ),
+    );
+    return reply.future;
+  }
+
+  final notice = find.byKey(const ValueKey<String>('unsupported-file-notice'));
+
+  /// The files the notice on screen names.
+  List<String> named(WidgetTester tester) => tester
+      .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
+      .details
+      .single
+      .lines;
 
   testWidgets('🎯a project handed at launch opens in a tab of its own', (
     tester,
@@ -105,8 +151,7 @@ void main() {
   testWidgets('a file nothing opens is said, as a drop says it', (
     tester,
   ) async {
-    final path = '${spelled(folder.path)}/notes.txt';
-    File(path).writeAsStringSync('not a picture');
+    final path = nothingOpens();
 
     await pumpApp(
       tester,
@@ -120,11 +165,105 @@ void main() {
     );
   });
 
+  // Card open-door-windows-open-with (서피스 AI 실기 2026-10-23): an app
+  // started cold with a file nothing opens refused it in English — the
+  // language it starts in — under a Japanese list of it. The launch knocks
+  // in the first frame and a notice's words are written as it opens, while
+  // the language the app was left in is read after that frame (F-170).
+  testWidgets('🎯a file handed at launch is said in the language the app '
+      'was left in, which is read after the first frame', (tester) async {
+    AppText.settings.value = const AppLanguageSettings();
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final ja = AppStrings.of(AppLanguage.ja);
+    final language = _LateLanguage(
+      const AppLanguageSettings(programLanguage: AppLanguage.ja),
+    );
+    final path = nothingOpens();
+
+    await pumpApp(
+      tester,
+      HomePage(
+        initialProject: createDefaultProject(),
+        languageSettingsStore: language,
+        handedAtLaunch: [path],
+      ),
+    );
+    // Long enough for a door that did NOT wait to have knocked.
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 50),
+    );
+    expect(
+      AppText.strings.unsupportedFileTitle,
+      isNot(ja.unsupportedFileTitle),
+      reason: 'LIVENESS — the app starts in another language',
+    );
+    language.gate.complete();
+    await tester.pumpAndSettle();
+
+    final said = tester.widget<AppConfirmDialog>(find.byType(AppConfirmDialog));
+    expect(said.title, ja.unsupportedFileTitle);
+    expect(said.message, ja.unsupportedFileMessage(openableExtensions));
+    expect(named(tester), [path]);
+  });
+
+  // The channel's files can come as early: Android says the file that
+  // started the app there once Dart hears it, and a second Anicel may knock
+  // the moment the first is up.
+  testWidgets('what the platform says before the saved language is back is '
+      'said in that language too', (tester) async {
+    AppText.settings.value = const AppLanguageSettings();
+    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+    final ja = AppStrings.of(AppLanguage.ja);
+    final language = _LateLanguage(
+      const AppLanguageSettings(programLanguage: AppLanguage.ja),
+    );
+    final path = nothingOpens();
+
+    await pumpApp(
+      tester,
+      HomePage(
+        initialProject: createDefaultProject(),
+        languageSettingsStore: language,
+      ),
+    );
+    await platformSays(tester, [path]);
+    await lendBothClocks(
+      tester,
+      rounds: 10,
+      beat: const Duration(milliseconds: 50),
+    );
+    language.gate.complete();
+    await tester.pumpAndSettle();
+
+    final said = tester.widget<AppConfirmDialog>(find.byType(AppConfirmDialog));
+    expect(said.title, ja.unsupportedFileTitle);
+    expect(named(tester), [path]);
+  });
+
+  // The same card's 덤: the import window named a file Windows opened the
+  // app with `C:\Users\…`, where 「開く」 named the same file `C:/Users/…`.
+  testWidgets('a file handed in Windows\' spelling is named as a pick names '
+      'it', (tester) async {
+    final path = nothingOpens();
+
+    await pumpApp(
+      tester,
+      HomePage(
+        initialProject: createDefaultProject(),
+        handedAtLaunch: [path.replaceAll('/', r'\')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(named(tester), [path]);
+  });
+
   testWidgets('the app hands its shell what it was opened with', (
     tester,
   ) async {
-    final path = '${spelled(folder.path)}/notes.txt';
-    File(path).writeAsStringSync('not a picture');
+    final path = nothingOpens();
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -142,41 +281,69 @@ void main() {
   // says them on [HandedFiles.channel] — heard while the window is here.
   testWidgets('what a second Anicel hands the running window goes through '
       'the same door, and nothing once the window has gone', (tester) async {
-    final path = '${spelled(folder.path)}/notes.txt';
-    File(path).writeAsStringSync('not a picture');
-    // The reply is null only when nothing hears the channel.
-    Future<ByteData?> runnerSays([String method = HandedFiles.openMethod]) {
-      final reply = Completer<ByteData?>();
-      unawaited(
-        tester.binding.defaultBinaryMessenger.handlePlatformMessage(
-          HandedFiles.channel.name,
-          const StandardMethodCodec().encodeMethodCall(
-            MethodCall(method, [path]),
-          ),
-          reply.complete,
-        ),
-      );
-      return reply.future;
-    }
-
-    final notice = find.byKey(
-      const ValueKey<String>('unsupported-file-notice'),
-    );
+    final path = nothingOpens();
 
     await pumpApp(tester, HomePage(initialProject: createDefaultProject()));
     await tester.pumpAndSettle();
     expect(notice, findsNothing, reason: 'CONTROL: nothing said yet');
-    await runnerSays('somethingElse');
+    await platformSays(tester, [path], 'somethingElse');
     await tester.pumpAndSettle();
     expect(notice, findsNothing, reason: 'only what it says to open opens');
-    expect(await runnerSays(), isNotNull, reason: 'the window hears');
+    expect(
+      await platformSays(tester, [path]),
+      isNotNull,
+      reason: 'the window hears',
+    );
     await tester.pumpAndSettle();
     expect(notice, findsOneWidget);
+    expect(named(tester), [path]);
 
     await tester.pumpWidget(const SizedBox());
-    expect(await runnerSays(), isNull, reason: 'nothing hears once it is gone');
+    expect(
+      await platformSays(tester, [path]),
+      isNull,
+      reason: 'nothing hears once it is gone',
+    );
     await tester.pumpAndSettle();
     expect(notice, findsNothing);
+  });
+
+  // open-door-android-share (F-282-Q5, 유저 2026-10-09: 「최대한
+  // 통일하고싶음」): Android says what another app shares with Anicel or
+  // opens it with on the same channel, each file as its picker says one —
+  // a path, or a document with no path behind it (PICK-7).
+  testWidgets('what another app hands Android goes through the same door — '
+      'a document by the name its provider gives, a path by its path', (
+    tester,
+  ) async {
+    final path = nothingOpens();
+    Future<void> closeTheNotice() async {
+      await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
+      await tester.pumpAndSettle();
+    }
+
+    await pumpApp(tester, HomePage(initialProject: createDefaultProject()));
+    await tester.pumpAndSettle();
+
+    await platformSays(tester, [
+      {'uri': 'content://drive/doc/9', 'name': 'notes.xyz', 'size': 13},
+    ]);
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget);
+    expect(
+      named(tester),
+      ['notes.xyz'],
+      reason: 'judged and named by its own name — its URI says nothing',
+    );
+    await closeTheNotice();
+
+    await platformSays(tester, [
+      {'path': path, 'bookmark': null},
+    ]);
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget, reason: 'a FILE: no folder is handed');
+    expect(named(tester), [path]);
+    await closeTheNotice();
   });
 
   testWidgets('nothing handed, nothing opened and nothing said', (

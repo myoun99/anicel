@@ -16,8 +16,10 @@
 //     header set is not in the Windows SDK; the LOGCONTEXT layout and
 //     PK_* serialization order are stable, documented ABI).
 //
-// ABI v1: qat_abi_version / qat_available / qat_open / qat_poll /
+// ABI v2: qat_abi_version / qat_available / qat_open / qat_poll /
 //         qat_close / qat_device_name.
+//   v2: a packet's record carries the pen's twist (F-176-Q9), so it is
+//       eight floats where it was six.
 
 #ifdef _WIN32
 
@@ -145,6 +147,9 @@ static double qat_pressure_scale = 0.0;
 // packet: lying flat, a lean nobody measured (desktop-pen-tilt).
 static int qat_altitude_max = 0;
 static int qat_azimuth_span = 0;
+// And how many units the twist's full circle counts — ZERO while the device
+// declares no twist axis, which is most pens: an Art Pen's barrel turns.
+static int qat_twist_span = 0;
 static WCHAR qat_name[64];
 
 static int qat_load(void) {
@@ -199,7 +204,7 @@ static HWND qat_app_window(void) {
   return find.found;
 }
 
-__declspec(dllexport) int32_t qat_abi_version(void) { return 1; }
+__declspec(dllexport) int32_t qat_abi_version(void) { return 2; }
 
 // 1 = wintab32 loads AND WTInfo reports an installed driver/device.
 __declspec(dllexport) int32_t qat_available(void) {
@@ -277,22 +282,30 @@ __declspec(dllexport) int32_t qat_open(void) {
   ZeroMemory(orient, sizeof(orient));
   qat_altitude_max = 0;
   qat_azimuth_span = 0;
-  if (qat_WTInfoW(WTI_DEVICES, DVC_ORIENTATION, orient) != 0 &&
-      orient[0].axMax > orient[0].axMin && orient[1].axMax > 0) {
-    qat_azimuth_span = orient[0].axMax - orient[0].axMin + 1;
-    qat_altitude_max = orient[1].axMax;
+  qat_twist_span = 0;
+  if (qat_WTInfoW(WTI_DEVICES, DVC_ORIENTATION, orient) != 0) {
+    if (orient[0].axMax > orient[0].axMin && orient[1].axMax > 0) {
+      qat_azimuth_span = orient[0].axMax - orient[0].axMin + 1;
+      qat_altitude_max = orient[1].axMax;
+    }
+    if (orient[2].axMax > orient[2].axMin) {
+      qat_twist_span = orient[2].axMax - orient[2].axMin + 1;
+    }
   }
   return 1;
 }
 
-// Drains queued packets into [out] as records of 6 floats:
-//   [pressure 0..1, azimuth, altitude, timeMs, buttons, oriented]
+// Drains queued packets into [out] as records of 8 floats:
+//   [pressure 0..1, azimuth, altitude, timeMs, buttons, oriented,
+//    twist, twisted]
 // where the azimuth is the pen top's compass bearing in degrees (0 toward
 // the top of the tablet, clockwise) and the altitude a fraction of a right
 // angle (1 upright; negative with the eraser end down) — both 0 and
 // `oriented` 0 when the device declares no orientation axes. `oriented`
 // was a reserved 0 before desktop-pen-tilt, so an older DLL reads as a
-// device with no lean rather than a wrong one, and the ABI stays v1.
+// device with no lean rather than a wrong one. The twist is the pen's turn
+// about its barrel in degrees 0..360, clockwise as Wintab's orTwist runs —
+// 0 and `twisted` 0 when the device declares no twist axis.
 // Returns the record count (<= cap). 0 = nothing queued (or not open).
 __declspec(dllexport) int32_t qat_poll(float *out, int32_t cap) {
   if (qat_ctx == NULL || out == NULL || cap <= 0) {
@@ -303,8 +316,9 @@ __declspec(dllexport) int32_t qat_poll(float *out, int32_t cap) {
   int want = cap < kMax ? cap : kMax;
   int got = qat_WTPacketsGet(qat_ctx, want, packets);
   const int oriented = qat_altitude_max > 0 && qat_azimuth_span > 0;
+  const int twisted = qat_twist_span > 0;
   for (int i = 0; i < got; i += 1) {
-    float *record = out + (size_t)i * 6;
+    float *record = out + (size_t)i * 8;
     double pressure = (double)packets[i].pkNormalPressure * qat_pressure_scale;
     if (pressure < 0.0) {
       pressure = 0.0;
@@ -322,6 +336,10 @@ __declspec(dllexport) int32_t qat_poll(float *out, int32_t cap) {
     record[3] = (float)packets[i].pkTime;
     record[4] = (float)packets[i].pkButtons;
     record[5] = oriented ? 1.0f : 0.0f;
+    record[6] = twisted ? (float)(packets[i].pkOrientation.orTwist * 360.0 /
+                                  qat_twist_span)
+                        : 0.0f;
+    record[7] = twisted ? 1.0f : 0.0f;
   }
   return got;
 }

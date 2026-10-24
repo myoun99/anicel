@@ -9,6 +9,7 @@
 /// of a transform track is what its header row shows.
 library;
 
+import 'block_row_swap.dart';
 import 'camera_instruction.dart';
 import 'cel_bank_lanes.dart';
 import 'drawing_block_move.dart';
@@ -44,11 +45,12 @@ Map<int, String> transformKeyAgreedNames(TransformTrack track) => {
 };
 
 /// An SE→SE ROW move (P3b-4, 같은 섹션 행이동): the selected sound
-/// blocks land on a SIBLING SE row — cels travel with the blocks (the
+/// blocks land on a SIBLING SE row and the blocks they land on go back
+/// (F-384, [LandingSwapsThem]) — cels travel with the blocks (the
 /// drawing-move planner's cross-layer carry) and the AUDIO CLIPS follow
-/// their cels by [AudioClip.frameId] (a clip anchors to its cel, so its
-/// timing rides the landed block for free). Null on any illegal landing
-/// (overlap on the target, partially covered blocks, negative frames).
+/// their cels by [AudioClip.frameId] ([clipsAnchoredTo] — a clip anchors to
+/// its cel, so its timing rides the landed block for free). Null on any
+/// illegal landing (partially covered blocks, negative frames).
 ({Layer sourceAfter, Layer targetAfter})? planSeRangeRowMove({
   required Layer source,
   required Layer target,
@@ -56,33 +58,37 @@ Map<int, String> transformKeyAgreedNames(TransformTrack track) => {
   required int rangeEndIndexExclusive,
   required int frameDelta,
 }) {
+  // An SE row is TRACK-owned, and a track-owned row is never linked
+  // (`UpdateLayerTimelineCommand`), so no other lane shares its bank.
+  const unshared = CelBankLanes.unshared;
   final plan = planDrawingRangeMove(
     source: source,
     target: target,
     rangeStartIndex: rangeStartIndex,
     rangeEndIndexExclusive: rangeEndIndexExclusive,
     frameDelta: frameDelta,
-    // An SE row is TRACK-owned, and a track-owned row is never linked
-    // (`UpdateLayerTimelineCommand`), so no other lane shares its bank.
-    sourceBank: CelBankLanes.unshared,
+    sourceBank: unshared,
+    landing: const LandingSwapsThem(unshared),
   );
   final targetAfter = plan?.targetAfter;
   if (plan == null || targetAfter == null) {
     return null;
   }
   final movedIds = plan.movedFrameIds.toSet();
+  final returnedIds = plan.returnedFrameIds.toSet();
   return (
     sourceAfter: plan.sourceAfter.copyWith(
       audioClips: [
         for (final clip in source.audioClips)
           if (!movedIds.contains(clip.frameId)) clip,
+        ...clipsAnchoredTo(target.audioClips, returnedIds),
       ],
     ),
     targetAfter: targetAfter.copyWith(
       audioClips: [
-        ...target.audioClips,
-        for (final clip in source.audioClips)
-          if (movedIds.contains(clip.frameId)) clip,
+        for (final clip in target.audioClips)
+          if (!returnedIds.contains(clip.frameId)) clip,
+        ...clipsAnchoredTo(source.audioClips, movedIds),
       ],
     ),
   );

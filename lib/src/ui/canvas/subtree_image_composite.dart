@@ -4,9 +4,11 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
 import '../../models/composite_tree.dart';
-import 'blends_in_place.dart';
+import '../../models/layer_blend_mode.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
+import 'image_pieces.dart';
+import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
@@ -90,6 +92,7 @@ Rect _subtreeExtent<T>(
           : MatrixUtils.transformRect(placementMatrix(placement), extent);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
+    case CompositeBackdropBlend(:final children):
       var union = Rect.zero;
       for (final child in children) {
         final rect = _subtreeExtent(child, extentOf, placementOf);
@@ -136,12 +139,21 @@ class SubtreeRasterPlan {
   /// from a magnification without being told twice.
   final double rasterScale;
 
-  /// Put a recorder's canvas into the sub-tree's own space, so whatever paints
-  /// into it does not know it is being rasterised.
-  void applyTo(Canvas into) {
-    into.scale(scale);
-    into.translate(-destination.left, -destination.top);
-  }
+  /// Whether the cap clamped the scale, so the raster lands larger than its
+  /// pixels — the one placement that is not 1:1, and the one a blit filters.
+  bool get magnifies => scale != rasterScale;
+
+  /// A canvas recording into [recorder] in the sub-tree's own space, so
+  /// whatever paints into it does not know it is being rasterised — and
+  /// bounded by the pixels it rasters, so a draw into it can ask what it
+  /// can land on (`drawPosedLayerImage`, a picture in pieces).
+  Canvas recordInto(ui.PictureRecorder recorder) =>
+      Canvas(
+          recorder,
+          Rect.fromLTWH(0, 0, pixelWidth.toDouble(), pixelHeight.toDouble()),
+        )
+        ..scale(scale)
+        ..translate(-destination.left, -destination.top);
 }
 
 /// What the last blit actually did, so a test can read the GEOMETRY rather
@@ -170,10 +182,16 @@ int debugSubtreeRasterCount = 0;
 /// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
 /// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
 /// that disagreed by a fraction would resample the sub-tree a second time.
+///
+/// [within] cuts the image to the part of [bounds] that can land — what the
+/// canvas still shows — on the same grid: the scale is still the whole
+/// [bounds]' and the grid is counted from the origin, so a part samples
+/// where the whole would.
 SubtreeRasterPlan? _planSubtreeRaster({
   required Rect bounds,
   required double rasterScale,
   int maxPixelSide = maxSubtreeRasterSide,
+  Rect within = Rect.largest,
 }) {
   // 🚨THE SNAP IS PART OF THE CAP. Clamping the scale alone left the cap off
   // by one: `side * scale` landed exactly on the cap and then the OUTWARD
@@ -189,7 +207,7 @@ SubtreeRasterPlan? _planSubtreeRaster({
     bounds: bounds.size,
     maxSide: (maxPixelSide - 2).toDouble(),
   );
-  final destination = rectOutwardOnGrid(bounds, scale);
+  final destination = rectOutwardOnGrid(bounds.intersect(within), scale);
   final width = (destination.width * scale).round();
   final height = (destination.height * scale).round();
   if (width <= 0 || height <= 0) {
@@ -224,10 +242,12 @@ SubtreeRasterPlan? _planSubtreeRaster({
 ///
 /// ↩️🚨F-243: the image bounds unfiltered content only where the blend acts
 /// in place. On the Windows app an image blitted in multiply or screen
-/// stretches its border across everything the pass reaches, so an
-/// UNfiltered blit in such a blend IS held to its destination
-/// ([drawHeldToItsRect]) — it paints nothing there that the clip could cut.
-/// A filtered one keeps the rule above.
+/// stretched its border across everything the pass reached, so an
+/// UNfiltered blit in such a blend was held to its destination
+/// (`drawHeldToItsRect`) — until every advanced blend went over its
+/// backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-vulkan):
+/// a blit's paint is a row's or a folder's, `srcOver` or `plus`, or the
+/// composite's own `srcOver`.
 void _blitSubtreeRaster({
   required Canvas canvas,
   required ui.Image image,
@@ -237,28 +257,23 @@ void _blitSubtreeRaster({
   // `none` because the blit is 1:1 by construction. It stops being 1:1 only
   // when the cap clamped the scale, and that is a magnification — the one
   // case that wants a filter.
-  paint.filterQuality = plan.scale == plan.rasterScale
-      ? FilterQuality.none
-      : FilterQuality.low;
+  paint.filterQuality = plan.magnifies
+      ? FilterQuality.low
+      : FilterQuality.none;
   assert(() {
     debugLastSubtreeRaster = plan;
     return true;
   }());
-  drawHeldToItsRect(
-    canvas,
+  canvas.drawImageRect(
+    image,
+    Rect.fromLTWH(
+      0,
+      0,
+      plan.pixelWidth.toDouble(),
+      plan.pixelHeight.toDouble(),
+    ),
     plan.destination,
     paint,
-    () => canvas.drawImageRect(
-      image,
-      Rect.fromLTWH(
-        0,
-        0,
-        plan.pixelWidth.toDouble(),
-        plan.pixelHeight.toDouble(),
-      ),
-      plan.destination,
-      paint,
-    ),
   );
 }
 
@@ -302,14 +317,7 @@ void drawSubtreeAsImage({
     return;
   }
   final recorder = ui.PictureRecorder();
-  // Bounded by the pixels it rasters, so a draw into it can ask what it can
-  // land on (`drawPosedLayerImage`, a picture in pieces).
-  final into = Canvas(
-    recorder,
-    Rect.fromLTWH(0, 0, plan.pixelWidth.toDouble(), plan.pixelHeight.toDouble()),
-  );
-  plan.applyTo(into);
-  paintSubtree(into, plan.scale);
+  paintSubtree(plan.recordInto(recorder), plan.scale);
   _finishSubtreeRaster(
     canvas: canvas,
     recorder: recorder,
@@ -317,6 +325,363 @@ void drawSubtreeAsImage({
     compose: compose,
     steps: steps,
   );
+}
+
+/// 🚨★★★A ROW IN AN ADVANCED BLEND IS COMPOSED OVER A PICTURE OF ITS
+/// BACKDROP ([CompositeBackdropBlend], brush-fidelity-Q4).
+///
+/// A GPU blend reads what its target holds below it as it draws; for linear
+/// burn, divide, darker colour … there is no GPU blend to do that, and the
+/// GPU's own multiply, screen … each came with a defect of its own
+/// (↩️they kept it until a-blurred-folder-cut-by-the-view-moves-on-vulkan,
+/// [LayerBlendMode.needsItsBackdrop]). So both pictures are rasterised on
+/// ONE grid — [paintBackdrop] (everything below the row in its scope) and
+/// [paintSource] (the row itself, painting normal) — composed by
+/// [LayerBlendShader] drawn on that grid, where a group's raster would be
+/// blitted: it IS the backdrop and the row, composed, so it lands plain.
+///
+/// The arithmetic is [drawSubtreeAsImage]'s — the same plan — so a blend at
+/// any depth sits on the grid a folder's buffer would.
+///
+/// ★Where the engine can, the backdrop is not rasterised at all but read in
+/// the frame ([_composeInTheFrame]) — the same shader over the same two
+/// pictures, the backdrop handed to it by the engine instead of by a raster
+/// ([_readsInTheFrame] says where).
+///
+/// 🚨ONLY WHAT THE CANVAS STILL SHOWS IS RASTERISED: its clip, a stroke's
+/// patch while one is drawn. 🔬Measured on the Windows app (10-22, a 2560
+/// px window): with a shader-blended row over the layer being drawn on,
+/// every step rasterised the row's whole buffer three times over — a frame
+/// shown 49ms after its input against 12ms with the row normal, whatever
+/// the brush's size.
+///
+/// ★[sourceAsIs] is the row's own image where the caller has one that the
+/// row is, painted normal — one piece, at full strength, with nothing on
+/// it. Where it lands texel for texel on the grid the shader draws on, the
+/// shader samples it there and the row is not rasterised at all
+/// ([_laidAsItIs]); anywhere else [paintSource] rasterises it as before.
+void drawBlendOverBackdrop({
+  required Canvas canvas,
+  required Rect bounds,
+  required double rasterScale,
+  int maxPixelSide = maxSubtreeRasterSide,
+  required void Function(Canvas into, double rasterScale) paintBackdrop,
+  required void Function(Canvas into, double rasterScale) paintSource,
+  ImagePiece? sourceAsIs,
+  required LayerBlendMode blendMode,
+  Rect? shownWithin,
+}) {
+  final plan = _planSubtreeRaster(
+    bounds: bounds,
+    rasterScale: rasterScale,
+    maxPixelSide: maxPixelSide,
+    within: canvas.getLocalClipBounds(),
+  );
+  if (plan == null) {
+    return;
+  }
+  ui.Image rasterOf(void Function(Canvas into, double rasterScale) paint) {
+    final recorder = ui.PictureRecorder();
+    paint(plan.recordInto(recorder), plan.scale);
+    assert(() {
+      debugSubtreeRasterCount += 1;
+      return true;
+    }());
+    return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
+  }
+
+  final asItIs = _laidAsItIs(plan, sourceAsIs);
+  _BlendSource source({required bool onTheGrid}) => asItIs != null && onTheGrid
+      ? (image: sourceAsIs!.image, at: asItIs, owned: false)
+      : (
+          image: rasterOf(paintSource),
+          at: LayerBlendShader.wholeDraw,
+          owned: true,
+        );
+
+  if (_readsInTheFrame(canvas, plan, shownWithin)) {
+    _composeInTheFrame(
+      canvas: canvas,
+      plan: plan,
+      rasterScale: rasterScale,
+      paintBackdrop: paintBackdrop,
+      source: source(onTheGrid: _layerIsTheGrid(canvas, plan)),
+      blendMode: blendMode,
+    );
+    return;
+  }
+  _composeInARaster(
+    canvas: canvas,
+    plan: plan,
+    backdrop: rasterOf(paintBackdrop),
+    source: () => source(onTheGrid: true),
+    blendMode: blendMode,
+  );
+}
+
+/// [backdrop], rasterised on [plan]'s grid, and the row [source] makes,
+/// composed by [LayerBlendShader] drawn straight onto [canvas] on that grid
+/// — the route where the frame cannot be read ([_readsInTheFrame]). It
+/// disposes [backdrop].
+///
+/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan-Q6 (유저 2026-10-23
+/// 「이 카드에서 이어서 래스터 경로를 줄인다」): where the frame cannot be
+/// read — Skia, a canvas seen flipped — every step rasterised the composite,
+/// a third raster, only to blit it. ↩️🔬The shader reads `FlutterFragCoord()`
+/// in the LOCAL space it is drawn in, on both renderers (10-23: under a
+/// translate, a scale, a flip, a picture replayed elsewhere and a saveLayer,
+/// Skia and Impeller alike). So drawn under [plan]'s grid — a raster pixel a
+/// local unit — it reads the coordinates it read at the raster's identity,
+/// and with its samplers nearest, as the 1:1 blit was, every device pixel
+/// composes the two texels that blit would have shown it.
+///
+/// ⚠️A plan the cap clamped ([SubtreeRasterPlan.magnifies]) is still composed
+/// in a raster and blitted: that blit filters the composite, and filtering
+/// two pictures before they are composed is not the same bytes as filtering
+/// what they composed.
+void _composeInARaster({
+  required Canvas canvas,
+  required SubtreeRasterPlan plan,
+  required ui.Image backdrop,
+  required _BlendSource Function() source,
+  required LayerBlendMode blendMode,
+}) {
+  _BlendSource? row;
+  ui.FragmentShader? shader;
+  ui.Image? composed;
+  try {
+    row = source();
+    shader = LayerBlendShader.shaderFor(
+      backdrop: backdrop,
+      source: row.image,
+      mode: blendMode,
+      width: plan.pixelWidth.toDouble(),
+      height: plan.pixelHeight.toDouble(),
+      sourceRect: row.at,
+    );
+    if (!plan.magnifies) {
+      assert(() {
+        debugLastSubtreeRaster = plan;
+        return true;
+      }());
+      canvas
+        ..save()
+        ..translate(plan.destination.left, plan.destination.top)
+        ..scale(1 / plan.scale);
+      _shadeTheGrid(canvas, plan, shader);
+      canvas.restore();
+      return;
+    }
+    assert(() {
+      debugBlendsComposedInARaster += 1;
+      return true;
+    }());
+    final recorder = ui.PictureRecorder();
+    _shadeTheGrid(Canvas(recorder), plan, shader);
+    composed = rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
+    _blitSubtreeRaster(
+      canvas: canvas,
+      image: composed,
+      plan: plan,
+      paint: Paint(),
+    );
+  } finally {
+    // ⚠️Safe here, as in [_finishSubtreeRaster]: the draw put the shader and
+    // the images into this frame's display list, which holds its own claim
+    // from then on.
+    composed?.dispose();
+    shader?.dispose();
+    if (row != null && row.owned) {
+      row.image.dispose();
+    }
+    backdrop.dispose();
+  }
+}
+
+/// How many blends were composed in a raster of their own and blitted
+/// ([_composeInARaster]'s magnified plans) since a test zeroed it — the
+/// third raster, invisible in the bytes.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugBlendsComposedInARaster = 0;
+
+/// [shader] over the whole of [plan]'s grid, in [into]'s space taken as that
+/// grid — a raster pixel a unit — where the shader's own coordinates are the
+/// images' ([LayerBlendShader]: `FlutterFragCoord()` over its size).
+void _shadeTheGrid(Canvas into, SubtreeRasterPlan plan, ui.Shader shader) =>
+    into.drawRect(
+      Rect.fromLTWH(
+        0,
+        0,
+        plan.pixelWidth.toDouble(),
+        plan.pixelHeight.toDouble(),
+      ),
+      Paint()..shader = shader,
+    );
+
+/// The row a blend composes, as the shader is handed it: an image, where it
+/// lies on the draw in the draw's own 0..1, and whether the draw made it
+/// (a raster of the row) or only borrows it (the row's own image).
+typedef _BlendSource = ({ui.Image image, Rect at, bool owned});
+
+/// Whether a row's own image is handed to the shader as it is where it can
+/// be ([drawBlendOverBackdrop]'s `sourceAsIs`). Off, every row is
+/// rasterised — the route a test holds the bytes against.
+@visibleForTesting
+bool debugSourceAsIs = true;
+
+/// Where [sourceAsIs] lies on [plan]'s grid in the draw's own 0..1, when it
+/// lands there texel for texel ([landsTexelForTexel]) — a raster of it would
+/// be its texels, copied, with nothing past its edge, so the shader samples
+/// the image instead. Null anywhere else.
+Rect? _laidAsItIs(SubtreeRasterPlan plan, ImagePiece? sourceAsIs) {
+  // A grid the cap shrank is not the one the row's draw would have laid it
+  // on (`texelScale` is the scale the walk asked for), so it is drawn.
+  if (sourceAsIs == null || !debugSourceAsIs || plan.magnifies) {
+    return null;
+  }
+  final (:image, :worldRect) = sourceAsIs;
+  if (!landsTexelForTexel(image, worldRect, plan.scale)) {
+    return null;
+  }
+  final width = plan.pixelWidth.toDouble();
+  final height = plan.pixelHeight.toDouble();
+  return Rect.fromLTWH(
+    ((worldRect.left - plan.destination.left) * plan.scale).roundToDouble() /
+        width,
+    ((worldRect.top - plan.destination.top) * plan.scale).roundToDouble() /
+        height,
+    image.width / width,
+    image.height / height,
+  );
+}
+
+/// Whether the layer read in the frame is [plan]'s own grid — a device
+/// pixel a raster pixel — so a row laid texel for texel on the one is on
+/// the other. Drawn on a screen past the raster's scale, the layer has more
+/// pixels than the raster, and a row is rasterised on the raster's grid as
+/// it was.
+bool _layerIsTheGrid(Canvas canvas, SubtreeRasterPlan plan) {
+  final m = canvas.getTransform();
+  bool same(double v) => (v - plan.scale).abs() < 1e-6;
+  return same(m[0]) && same(m[5]);
+}
+
+/// Whether a blend is read in the frame where it can be
+/// ([_composeInTheFrame]). Off, every blend rasterises its backdrop — the
+/// route a test holds the frame's bytes against.
+@visibleForTesting
+bool debugBlendInTheFrame = true;
+
+/// How many blends were read in the frame since a test zeroed it.
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
+@visibleForTesting
+int debugBlendsReadInTheFrame = 0;
+
+/// Whether [canvas] can read [plan]'s backdrop in the frame: the engine has
+/// a shader filter — Impeller; Skia has none, and throws — and the layer
+/// the backdrop is drawn into lands whole on [plan]'s own grid.
+///
+/// 🚨The filter reads the layer as the engine CUTS it, to the clip it is
+/// drawn under, and in the space it is drawn in. So the layer must lie
+/// inside [shownWithin] — where the caller knows the recording is shown,
+/// once, cut by nothing else (null: it may be replayed under another clip,
+/// as a bake's recording is) — and under the canvas's clip, upright, on
+/// whole device pixels. Anywhere else the source would be sampled off the
+/// backdrop it is composed with.
+bool _readsInTheFrame(
+  Canvas canvas,
+  SubtreeRasterPlan plan,
+  Rect? shownWithin,
+) {
+  if (shownWithin == null ||
+      !debugBlendInTheFrame ||
+      !ui.ImageFilter.isShaderFilterSupported) {
+    return false;
+  }
+  final m = canvas.getTransform();
+  final upright =
+      m[1] == 0 && m[3] == 0 && m[4] == 0 && m[7] == 0 && m[0] > 0 && m[5] > 0;
+  if (!upright) {
+    return false;
+  }
+  bool whole(double v) => (v - v.roundToDouble()).abs() < 1e-3;
+  final d = plan.destination;
+  final clip = canvas.getLocalClipBounds().intersect(shownWithin);
+  return whole(d.left * m[0] + m[12]) &&
+      whole(d.right * m[0] + m[12]) &&
+      whole(d.top * m[5] + m[13]) &&
+      whole(d.bottom * m[5] + m[13]) &&
+      clip.left <= d.left + 1e-3 &&
+      clip.top <= d.top + 1e-3 &&
+      clip.right >= d.right - 1e-3 &&
+      clip.bottom >= d.bottom - 1e-3;
+}
+
+/// [paintBackdrop] drawn into a layer whose filter IS the blend: the engine
+/// hands that layer to [LayerBlendShader] as the backdrop, in the frame, and
+/// [source] — rasterised on [plan]'s grid, which the layer lands on, or the
+/// row's own image laid texel for texel on it — is the other picture. One
+/// raster where the backdrop's route makes three, or none, and none of them
+/// waits on the frame.
+///
+/// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan (유저 2026-10-22
+/// 「골은 b」): the backdrop is read where the frame is drawn, the way the
+/// GPU's own blend reads its target. 🔬On the Windows app (10-22, r12) a
+/// stroke under a multiply row came to the screen 21.3ms after its input,
+/// against 30.0 with the backdrop rasterised and 22.5 with the GPU's own
+/// multiply; the whole canvas composed both ways was the same bytes. An
+/// off-screen raster cost about 6.5ms of the raster thread whatever its
+/// size (r10), which is what the backdrop's route paid three times a step.
+void _composeInTheFrame({
+  required Canvas canvas,
+  required SubtreeRasterPlan plan,
+  required double rasterScale,
+  required void Function(Canvas into, double rasterScale) paintBackdrop,
+  required _BlendSource source,
+  required LayerBlendMode blendMode,
+}) {
+  assert(() {
+    debugBlendsReadInTheFrame += 1;
+    debugLastSubtreeRaster = plan;
+    return true;
+  }());
+  final shader = LayerBlendShader.filterFor(
+    source: source.image,
+    mode: blendMode,
+    sourceRect: source.at,
+  );
+  try {
+    canvas
+      ..saveLayer(
+        plan.destination,
+        Paint()..imageFilter = ui.ImageFilter.shader(shader),
+      )
+      ..clipRect(plan.destination)
+      // 🚨THE LAYER IS AS LARGE AS WHAT IS DRAWN INTO IT, not as the bounds
+      // it is saved with: 🔬on Impeller Vulkan (the test runner, 10-22) a
+      // backdrop with nothing on its paper filled only part of the layer,
+      // the engine handed the shader that part, and the source was read
+      // shifted — a stroke in screen over one row laid a red ghost where
+      // nothing was. Nothing, `src`, over the whole destination first.
+      ..drawRect(
+        plan.destination,
+        Paint()
+          ..blendMode = BlendMode.src
+          ..color = const Color(0x00000000),
+      );
+    paintBackdrop(canvas, rasterScale);
+    canvas.restore();
+  } finally {
+    // ⚠️Safe once the layer is recorded: the display list holds its own
+    // claim on the filter and the image it samples.
+    shader.dispose();
+    if (source.owned) {
+      source.image.dispose();
+    }
+  }
 }
 
 /// Turns a finished recording into the image, hands [compose] a blit for it,

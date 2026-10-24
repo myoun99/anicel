@@ -178,15 +178,12 @@ class _WorkspaceTabs {
       label: label,
       icon: icon,
       locked: locked,
-      cachesContent: true,
       builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
-        // nothing here rebuilds it for them. The brush switch is the slot's.
-        listenable: Listenable.merge([
-          _state.widget.session.languageSettings,
-          slot.brushAllowed,
-        ]),
+        // nothing here rebuilds it for them. The brush switch is the slot's;
+        // the language, every tab's ([OpenTabContent]).
+        listenable: slot.brushAllowed,
         builder: (context, _) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
@@ -281,6 +278,33 @@ class _WorkspaceTabs {
     );
   }
 
+  /// The drawing canvas, [leftPill] on its left edge.
+  Widget _canvasArea({required CanvasEdgePill? leftPill}) => EditorCanvasArea(
+    key: _state._canvasAreaKey,
+    onInvokeAction: _state.widget.onInvokeAction,
+    session: _state.widget.session,
+    brushToolState: _state._brushTool,
+    onBrushToolStateChanged: (state) => _state._brushTool.value = state,
+    canvasViewCommands: _state.widget.canvasViewCommands,
+    navigationRegionKey: _state.widget.canvasNavigationRegionKey,
+    canvasSelectionCommands: _state.widget.canvasSelectionCommands,
+    canvasTextCommands: _state.widget.canvasTextCommands,
+    textToolOptions: _state._views._textToolOptions,
+    cutPieceSlot: _state._cutPieceSlot,
+    lastStroke: _state.widget.lastStroke,
+    toolHold: _state.widget.toolHold,
+    // F-363: the project's camera row's eye and opacity.
+    cameraViewEnabled: _state.widget.session.cameraViewMode.enabled,
+    cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
+    expandedLaneLayerIds: _state.widget.session.railView.expandedLaneLayerIds,
+    fillOptions: _state._views._fillOptions,
+    selectionMaskOptions: _state._views._selectionMaskOptions,
+    transformOptions: _state._transformOptions,
+    eyedropperSource: _state._views._eyedropperSource,
+    flipHud: _state.widget.flipHud,
+    leftPill: leftPill,
+  );
+
   /// [tabId]'s tab, built for the project on screen.
   ///
   /// 🚨★★★EVERY PANEL IS BUILT FOR ONE PROJECT (I-7, a project per tab). A
@@ -349,7 +373,6 @@ class _WorkspaceTabs {
           label: AppText.strings.panelCanvas,
           icon: Icons.image_outlined,
           locked: locked,
-          cachesContent: true,
           // The one panel that opts out of the static bake. It is full
           // of repaint boundaries by design (the artwork, the cursor
           // deck, the ants each own one), and its live-stroke path must
@@ -371,32 +394,20 @@ class _WorkspaceTabs {
               // ([_panelHost]), on a layer of its own. The expanding stack is
               // what makes the layer's constraints tight.
               TickLayer.host(
-                child: EditorCanvasArea(
-                  key: _state._canvasAreaKey,
-                  onInvokeAction: _state.widget.onInvokeAction,
-                  session: _state.widget.session,
-                  brushToolState: _state._brushTool,
-                  onBrushToolStateChanged: (state) =>
-                      _state._brushTool.value = state,
-                  canvasViewCommands: _state.widget.canvasViewCommands,
-                  navigationRegionKey: _state.widget.canvasNavigationRegionKey,
-                  canvasSelectionCommands: _state.widget.canvasSelectionCommands,
-                  canvasTextCommands: _state.widget.canvasTextCommands,
-                  textToolOptions: _state._views._textToolOptions,
-                  cutPieceSlot: _state._cutPieceSlot,
-                  lastStroke: _state.widget.lastStroke,
-                  toolHold: _state.widget.toolHold,
-                  // F-363: the project's camera row's eye and opacity.
-                  cameraViewEnabled:
-                      _state.widget.session.cameraViewMode.enabled,
-                  cameraDimOpacity: _state.widget.session.cameraViewMode.dim,
-                  expandedLaneLayerIds:
-                      _state.widget.session.railView.expandedLaneLayerIds,
-                  fillOptions: _state._views._fillOptions,
-                  selectionMaskOptions: _state._views._selectionMaskOptions,
-                  transformOptions: _state._transformOptions,
-                  eyedropperSource: _state._views._eyedropperSource,
-                  flipHud: _state.widget.flipHud,
+                // I-34: the brush's values stand on the drawing unless the
+                // workspace stands them on the top strip.
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _state._brushValuesOnStrip,
+                  builder: (context, onStrip, _) => _canvasArea(
+                    leftPill: onStrip
+                        ? null
+                        : CanvasEdgePill(
+                            width: BrushValuesPill.widthIn(context),
+                            child: BrushValuesPill(
+                              brushTool: _state._brushTool,
+                            ),
+                          ),
+                  ),
                 ),
               ),
               // A pool row dropped on the STAGE (§7): the cut and the layer
@@ -906,7 +917,8 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
+          // F-452: its bars are thick — the splitter may lie over them.
+          sparesSplitters: false,
           // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
           // ACTIVE tab's sill controls are mounted, so the timeline's
           // active-cut transport and the storyboard's all-cuts one share
@@ -1047,7 +1059,8 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
+          // F-452: as the timeline's.
+          sparesSplitters: false,
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
@@ -1106,6 +1119,9 @@ class _WorkspaceTabs {
               onToggleAttachGroup: SessionRowButtonPresses(
                 _state.widget.session,
               ).toggleGroupFold,
+              // And the legend's onion panel door, as the timeline's (F-443).
+              onRevealOnionSkinPanel: () =>
+                  _state._revealPanel(EditorWorkspace.onionSkinTabId),
               // And the lane twirls (I-73 ④ⓔ) — the camera row's head is the
               // timeline's camera row, and turns its lanes there too.
               expandedLaneLayerIds:
@@ -1162,7 +1178,6 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
           // The sheet reads the project and the SAME picture store the
           // storyboard strip draws from, so a cell and its strip panel are
           // one render rather than two that must be kept in step.
@@ -1176,8 +1191,6 @@ class _WorkspaceTabs {
               // Its pictures' cels, followed through the store: an undo
               // that moves no row still moves their pixels (F-80 ②).
               _state._views._contePictures,
-              // The locale reprints the sheet chrome (labels/tooltips).
-              _state.widget.session.languageSettings,
             ]),
             printed: () => ConteTabHost.printedBy(_state.widget.session),
             host: (context) => ConteTabHost(
@@ -1213,7 +1226,6 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
@@ -1224,7 +1236,6 @@ class _WorkspaceTabs {
               // F-90: the envelope of the cut under the playhead, turning
               // over at a crossing like the sheet beside it.
               _state.widget.session.cutUnderPlayhead.listenable,
-              _state.widget.session.languageSettings,
             ]),
             printed: () => CutEnvelopeTabHost.printedBy(_state.widget.session),
             host: (context) => CutEnvelopeTabHost(
@@ -1266,7 +1277,6 @@ class _WorkspaceTabs {
           // to include the playhead, and would then stand itself down
           // for the whole of playback.
           staticRaster: false,
-          cachesContent: true,
           builder: (context) => _panelHost(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
             // sheet layout never depends on it, and rebuilding the whole
@@ -1281,8 +1291,6 @@ class _WorkspaceTabs {
               // F-90: a crossing, played or dragged over, turns the sheet
               // over to the cut under the playhead.
               _state.widget.session.cutUnderPlayhead.listenable,
-              // The notation language reprints the sheet (UI-R10 #7).
-              _state.widget.session.languageSettings,
             ]),
             host: (context) => TimesheetTabHost(
               session: _state.widget.session,

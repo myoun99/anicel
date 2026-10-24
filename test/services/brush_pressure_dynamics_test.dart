@@ -92,6 +92,7 @@ void main() {
       expect(result.flow, 0.25);
       expect(result.hardness, 0.25);
       expect(result.roundness, 0.25);
+      expect(result.textureDensity, 0.25);
     });
 
     test('full pressure is a no-op on values', () {

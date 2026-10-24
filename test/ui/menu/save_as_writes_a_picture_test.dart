@@ -231,13 +231,13 @@ void main() {
     ];
     expect([...tops]..sort(), tops, reason: 'the project first, as asked');
     for (final label in [
-      'Project (.anicel)…',
-      'PNG…',
-      'JPG…',
-      'BMP…',
-      'TGA…',
-      'TIFF…',
-      'WEBP…',
+      'Project (.anicel)',
+      'PNG',
+      'JPG',
+      'BMP',
+      'TGA',
+      'TIFF',
+      'WEBP',
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);
     }

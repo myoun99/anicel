@@ -469,8 +469,61 @@ import '../../tool/refactor/clone_scan.dart';
 /// 🔬Measured on the lane against its base (`ebefaea8b`, at 88): this one
 /// added, none gone. Measured again on the lane over master (`d13d76aa6`,
 /// at 89): 90, this one added, none gone.
+///
+/// 88 → 87 (2026-10-22, F-433 pencils-draw-like-pencils — the pencils'
+/// three new masks first came with a walk and a draw of their own each, 96;
+/// the mask file now lays every texture and every square tip in ONE walk
+/// (`_textureMask`) and reads the LCG as fractions in ONE place
+/// (`_Draws`)). The pair gone:
+///
+///     43 tokens
+///       lib/src/services/brush_tip_mask_defaults.dart
+///         _generateCanvasWeaveMask
+///       lib/src/ui/session/editor_voice_recording.dart
+///         EditorVoiceRecording._playCountInBeeps
+///
+/// 🔬Measured on the lane over master (`22c980e4b`, at 88): none added,
+/// that one
+/// gone.
+///
+/// 87 → 88 (2026-10-22, I-13 2치화 — the colour edit list's knob rides at
+/// its row's end, the threshold's bar beside the row's command). The new
+/// pair is named:
+///
+///     45 tokens
+///       lib/src/ui/dialogs/app_prompt_dialog.dart
+///         _AppPromptDialogState._besideTrailing
+///       lib/src/ui/widgets/panel_flyout.dart  _knobbed
+///
+/// The reading KEEPS it as a pair and does not merge it, by the rule of
+/// three (CLAUDE.md): both lay a widget with something 8 px to its right,
+/// or the widget alone where there is nothing — the same row. What sits on
+/// the right differs: the prompt's field trailing is as wide as it is,
+/// the knob is a fixed column that holds the press over its row's height
+/// (「컨트롤 위에서 시작한 제스처는 그 컨트롤의 것이다」). A third such row
+/// merges the three.
+/// 🔬Measured on the lane over master (`7fde89b50`, at 87): this one
+/// added, none gone.
+/// 88 → 89 (2026-10-23, graph-box-handles-more ⓔ — AE's 「Show Transform
+/// Box」, a header graph's second switch beside its pen). The new pair is
+/// named:
+///
+///     46 tokens
+///       lib/src/ui/session/session_row_button_presses.dart
+///         SessionRowButtonPresses.penLaneGraph
+///       lib/src/ui/session/session_row_button_presses.dart
+///         SessionRowButtonPresses.transformBoxLaneGraph
+///
+/// They ARE one algorithm — "turn one switch of a group's open graph to
+/// what the pressed one does not have, on every use of its row" — and the
+/// reading KEEPS them a pair, by the rule of three (CLAUDE.md): merged, one
+/// verb would take which switch it turns, a flag answering for two
+/// buttons. The enlarge button is not the third — it lets every other
+/// graph back as well. A third switch merges the three.
+/// 🔬Measured on the lane over master (`05733d19d`, at 88): this one
+/// added, none gone.
 void main() {
-  const ceiling = 88;
+  const ceiling = 89;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

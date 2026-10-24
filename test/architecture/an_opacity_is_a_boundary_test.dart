@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★★**AN `Opacity` IS A REPAINT BOUNDARY, AND A BOUNDARY INSIDE A PANEL
 /// COSTS THAT PANEL ITS BAKE.**
@@ -146,38 +147,20 @@ void main() {
       }
     }
 
-    final unledgered = <String>[];
-    for (final entry in found.entries) {
-      final listed = ledger[entry.key];
-      if (listed == null) {
-        unledgered.add('${entry.key}: ${entry.value} — new, and nothing '
-            'says why');
-      } else if (listed.count != entry.value) {
-        unledgered.add(
-          '${entry.key}: ${entry.value}, ledger says ${listed.count}',
-        );
-      }
-    }
-    expect(
-      unledgered,
-      isEmpty,
-      reason:
+    expectCountsMatchLedger(
+      found,
+      {for (final entry in ledger.entries) entry.key: entry.value.count},
+      grew:
           'a compositing wrapper is a repaint boundary, and a boundary '
-          'inside a panel costs that panel its bake on EVERY frame:\n'
-          '${unledgered.join('\n')}\n'
+          'inside a panel costs that panel its bake on EVERY frame. '
           'Dim the colours instead where the pixels allow it '
           '(`disabled_ink.dart`, and a single run of glyphs is exactly the '
           'case where a layer and an alpha are the same pixels), or add the '
-          'file to the ledger in this test WITH the reason.',
-    );
-
-    final gone = ledger.keys.where((path) => !found.containsKey(path));
-    expect(
-      gone,
-      isEmpty,
-      reason:
-          'these are in the ledger and not in the tree any more — take the '
-          'line out, so the ledger keeps saying something true: $gone',
+          'file to the ledger in this test WITH the reason:',
+      paidOff:
+          'these are in the ledger and not in the tree any more, or not as '
+          'many times — take the line out or lower its count, so the ledger '
+          'keeps saying something true:',
     );
   });
 }

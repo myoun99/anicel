@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import '../../helpers/brush_values_on_strip.dart';
 import '../../helpers/settings_flyout.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
@@ -13,6 +14,8 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
+
+import '../../helpers/rail_group_button.dart';
 
 /// The top strip that replaced the seven-menu bar: a Project button, a
 /// Settings button, and the work's name.
@@ -30,12 +33,14 @@ void main() {
   /// The strip with its brush group standing as bars — the test window
   /// wider by the two bars' pencils (tool-settings-panel-tidy, 2026-10-10):
   /// at 800 the test font's words fold the group into its button since.
+  /// The group is the strip's by the setting (I-34).
   Future<void> pumpHomeWithBars(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(
       const Size(800 + 2 * ValuePencil.reach, 600),
     );
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
+    await standBrushValuesOnStrip(tester);
     expect(
       find.byKey(const ValueKey<String>('top-strip-size-bar')),
       findsOneWidget,
@@ -209,7 +214,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
-    final leftGroup = find.byKey(const ValueKey<String>('rail-group-rail-L1'));
+    final leftGroup = railGroupButton('rail-L1');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
       findsOneWidget,
@@ -328,7 +333,6 @@ void main() {
       'menu-edit-frame-timing-overlay',
       'menu-edit-frame-stats',
       'menu-edit-show-repaints',
-      'menu-edit-bake-panels',
     ]) {
       expect(
         find.byKey(ValueKey<String>(id)),
@@ -343,10 +347,16 @@ void main() {
       'menu-edit-frame-timing-overlay',
       'menu-edit-frame-stats',
       'menu-edit-show-repaints',
-      'menu-edit-bake-panels',
     ]) {
       expect(find.byKey(ValueKey<String>(id)), findsOneWidget, reason: id);
     }
+    expect(
+      find.byKey(const ValueKey<String>('menu-edit-bake-panels')),
+      findsNothing,
+      reason:
+          '↩️the bakes have no off switch — off is only ever a loss '
+          '(유저 2026-10-23, F-448)',
+    );
   });
 
   testWidgets('Settings: Input Inspector toggles the diagnosis overlay', (
@@ -564,7 +574,7 @@ void main() {
       const ValueKey<String>('brush-tool-blend-menu-button'),
     );
     expect(
-      find.descendant(of: button, matching: find.text('Color')),
+      find.descendant(of: button, matching: find.text('Normal')),
       findsOneWidget,
       reason: 'the resting label IS the current mode',
     );
@@ -589,7 +599,7 @@ void main() {
     final widthBefore = tester.getSize(button).width;
     final barLeftBefore = tester.getTopLeft(sizeBar).dx;
 
-    // 'Color' and 'Color Dodge' are nowhere near the same length.
+    // 'Normal' and 'Color Dodge' are nowhere near the same length.
     await openStrip(tester, 'brush-tool-blend-menu-button');
     await tapEntry(tester, 'brush-tool-blend-colorDodge');
 
@@ -635,8 +645,11 @@ void main() {
     );
   });
 
-  testWidgets('the ERASER locks the blend — a lock chip, no flyout, and the '
-      'bars do not move', (tester) async {
+  // 🗣️F-442 (유저 2026-10-23): 「다른 도구랑 법 통일해서 지우기 모드인채로
+  // 비활성화만」 — the law every tool's control keeps for what does not
+  // apply (TP2), where the eraser had a padlock box of its own.
+  testWidgets('the ERASER dims the blend on its one mode — the same button, '
+      'no padlock, and the bars do not move', (tester) async {
     await pumpHomeWithBars(tester);
 
     final sizeBar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
@@ -645,17 +658,17 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
     await tester.pumpAndSettle();
 
+    final button = find.byKey(_blendButton);
     expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-locked')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-menu-button')),
-      findsNothing,
+      tester.widget<PanelFlyoutButton>(button).enabled,
+      isFalse,
       reason: 'the eraser IS the erase blend; there is nothing to choose',
     );
-    // The chip has to occupy exactly what the flyout button did — otherwise
-    // picking up the eraser slides every bar left.
+    expect(
+      find.descendant(of: button, matching: find.text('Erase')),
+      findsOneWidget,
+    );
+    expect(find.byIcon(Icons.lock_outline), findsNothing);
     expect(tester.getTopLeft(sizeBar).dx, barLeftWithBrush);
   });
 

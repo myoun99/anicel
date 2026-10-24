@@ -209,20 +209,26 @@ void main() {
         ),
         findsOneWidget,
       );
-      // MIDDLE: the timeline's pinned rail — on the panel's LEFT EDGE
-      // now, because the gap it used to fill between the labels and the
-      // strips is the rail splitter's.
+      // MIDDLE: the timeline's pinned rail — past the splitter, before
+      // the frames, the corner over it (F-459: 「예전처럼 역시
+      // 레이어영역이랑 프레임 사이에 … 위치는 현재 레이어영역 스플리터의
+      // 오른쪽」 — ↩️F-409 had it at the far right).
       final verticalRail = find.byKey(
         const ValueKey<String>('storyboard-vertical-scrollbar'),
       );
       expect(verticalRail, findsOneWidget);
-      final panelLeft = tester
-          .getTopLeft(find.byKey(const ValueKey<String>('storyboard-panel')))
-          .dx;
+      final panel = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-panel')),
+      );
+      final bar = tester.getRect(verticalRail);
       expect(
-        tester.getTopLeft(verticalRail).dx,
-        panelLeft,
-        reason: 'the layer-axis bar is the grid edge now',
+        tester.getRect(
+          find.byKey(
+            const ValueKey<String>('storyboard-time-display-toggle-button'),
+          ),
+        ),
+        Rect.fromLTRB(bar.left, panel.top, bar.right, bar.top),
+        reason: 'the corner over it',
       );
       final splitter = find.byKey(
         const ValueKey<String>('storyboard-rail-splitter'),
@@ -230,11 +236,28 @@ void main() {
       expect(splitter, findsOneWidget);
       expect(
         tester.getTopLeft(splitter).dx,
-        panelLeft + 16 + 519,
+        panel.left + 461,
         reason:
-            'the splitter follows the 16px lane and the 519px rail — '
-            'the timeline\'s number since 2026-08-04, though still this '
-            'panel\'s own constant',
+            'the splitter follows the 461px rail — the timeline\'s number '
+            'since 2026-08-04, though still this panel\'s own constant',
+      );
+      expect(
+        bar.left,
+        tester.getRect(splitter).right,
+        reason: 'the layer-axis bar stands right past the splitter',
+      );
+      expect(
+        tester
+            .getRect(
+              find.byKey(
+                const ValueKey<String>(
+                  'storyboard-timeline-horizontal-viewport',
+                ),
+              ),
+            )
+            .left,
+        bar.right,
+        reason: 'the strips start past the bar',
       );
       expect(
         find.byKey(const ValueKey<String>('storyboard-rail-scrollbar')),
@@ -255,11 +278,22 @@ void main() {
         ),
         findsNothing,
       );
-      expect(
+      final room = tester.getRect(
         find.byKey(
-          const ValueKey<String>('storyboard-bottom-scrollbar-left-spacer'),
+          const ValueKey<String>(
+            'storyboard-vertical-scrollbar-bottom-spacer',
+          ),
         ),
-        findsOneWidget,
+      );
+      expect(
+        [room.left, room.right],
+        [bar.left, bar.right],
+        reason: 'the room under the bar stands before the frame bar',
+      );
+      expect(
+        tester.getRect(horizontalRail).left,
+        room.right,
+        reason: 'the frame bar starts where the frames do',
       );
     });
   });

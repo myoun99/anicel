@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show actionLabelOf;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// The key contract behind the fallback table.
@@ -35,7 +37,6 @@ void main() {
     'commonClose': (s) => s.commonClose,
     'commonAffectedFiles': (s) => s.commonAffectedFiles,
     'unsupportedFileTitle': (s) => s.unsupportedFileTitle,
-    'unsupportedFileMessageTemplate': (s) => s.unsupportedFileMessageTemplate,
     'commonNotice': (s) => s.commonNotice,
     'tlSharedColourEdit': (s) => s.tlSharedColourEdit,
     'exportNoCuts': (s) => s.exportNoCuts,
@@ -59,6 +60,7 @@ void main() {
     'recordMicPermissionDenied': (s) => s.recordMicPermissionDenied,
     'recordTakeClipped': (s) => s.recordTakeClipped,
     'recordClipMarkerTooltip': (s) => s.recordClipMarkerTooltip,
+    'playbackOutputRefused': (s) => s.playbackOutputRefused,
     // D26: the crossing-fade refusal warning (red corner marker).
     'tlTransitionCrossingWarning': (s) => s.tlTransitionCrossingWarning,
     // F-229: the word an O.L prints as, in the sheet's language.
@@ -99,21 +101,14 @@ void main() {
     'commonRename': (s) => s.commonRename,
     'commonLink': (s) => s.commonLink,
     'commonPreview': (s) => s.commonPreview,
-    'renameLayerTitle': (s) => s.renameLayerTitle,
-    'renameLayerField': (s) => s.renameLayerField,
+    'editNameAction': (s) => s.editNameAction,
+    'editNoteAction': (s) => s.editNoteAction,
     'renameLayerEmpty': (s) => s.renameLayerEmpty,
-    'renameCutTitle': (s) => s.renameCutTitle,
     'renameCutField': (s) => s.renameCutField,
     'renameCutEmpty': (s) => s.renameCutEmpty,
-    'renameFrameTitle': (s) => s.renameFrameTitle,
-    'renameFrameField': (s) => s.renameFrameField,
-    'renameKeyTitle': (s) => s.renameKeyTitle,
-    'renameKeyField': (s) => s.renameKeyField,
     'renameGuideTitle': (s) => s.renameGuideTitle,
     'renameGuideField': (s) => s.renameGuideField,
     'renameGuideEmpty': (s) => s.renameGuideEmpty,
-    'cutNoteTitle': (s) => s.cutNoteTitle,
-    'cutNoteField': (s) => s.cutNoteField,
     'deleteLayerTitle': (s) => s.deleteLayerTitle,
     'deleteLayersMessage': (s) => s.deleteLayersMessage,
     'deleteLayersHeading': (s) => s.deleteLayersHeading,
@@ -256,6 +251,7 @@ void main() {
     'inputRightClick': (s) => s.inputRightClick,
     'inputWheelClick': (s) => s.inputWheelClick,
     'inputCanvasTouchHeading': (s) => s.inputCanvasTouchHeading,
+    'inputIgnoreTouch': (s) => s.inputIgnoreTouch,
     'inputDragOneFinger': (s) => s.inputDragOneFinger,
     'inputDragTwoFingers': (s) => s.inputDragTwoFingers,
     'inputDragThreeFingers': (s) => s.inputDragThreeFingers,
@@ -269,8 +265,8 @@ void main() {
     'inputRotationLockHelp': (s) => s.inputRotationLockHelp,
     'inputRotationSnap': (s) => s.inputRotationSnap,
     'inputZoomSnaps': (s) => s.inputZoomSnaps,
+    'inputZoomSnapAdd': (s) => s.inputZoomSnapAdd,
     'inputZoomCeiling': (s) => s.inputZoomCeiling,
-    'inputBrushSizeSnaps': (s) => s.inputBrushSizeSnaps,
     'inputTabletHeading': (s) => s.inputTabletHeading,
     'inputTabletStandard': (s) => s.inputTabletStandard,
     'inputTabletStandardHelp': (s) => s.inputTabletStandardHelp,
@@ -352,6 +348,10 @@ void main() {
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'blockFrameLinesLabel': (s) => s.blockFrameLinesLabel,
+    'drawingCursorLabel': (s) => s.drawingCursorLabel,
+    'drawingCursorBrush': (s) => s.drawingCursorBrush,
+    'drawingCursorPen': (s) => s.drawingCursorPen,
+    'drawingCursorCrosshair': (s) => s.drawingCursorCrosshair,
     'accent1Label': (s) => s.accent1Label,
     'accent1Help': (s) => s.accent1Help,
     'sheetFormatTitle': (s) => s.sheetFormatTitle,
@@ -414,7 +414,6 @@ void main() {
     'instructionEditorMark': (s) => s.instructionEditorMark,
     'systemStatusHelp': (s) => s.systemStatusHelp,
     'cutCommands': (s) => s.cutCommands,
-    'cutAddCut': (s) => s.cutAddCut,
     'mediaActions': (s) => s.mediaActions,
     'mediaPoolEmpty': (s) => s.mediaPoolEmpty,
     'mediaRename': (s) => s.mediaRename,
@@ -509,6 +508,12 @@ void main() {
     'shortcutSearch': (s) => s.shortcutSearch,
     'shortcutConflictBanner': (s) => s.shortcutConflictBanner,
     'shortcutRecordingHint': (s) => s.shortcutRecordingHint,
+    'shortcutPresets': (s) => s.shortcutPresets,
+    'shortcutPresetNew': (s) => s.shortcutPresetNew,
+    'shortcutPresetNameEmpty': (s) => s.shortcutPresetNameEmpty,
+    'shortcutPresetDelete': (s) => s.shortcutPresetDelete,
+    'shortcutPresetRename': (s) => s.shortcutPresetRename,
+    'shortcutPresetDuplicate': (s) => s.shortcutPresetDuplicate,
     'playbackMode': (s) => s.playbackMode,
     'playbackModeSkipFrames': (s) => s.playbackModeSkipFrames,
     'playbackModeEveryPicture': (s) => s.playbackModeEveryPicture,
@@ -793,6 +798,8 @@ void main() {
     'brBlend': (s) => s.brBlend,
     'brBlendMode': (s) => s.brBlendMode,
     'brDualBlend': (s) => s.brDualBlend,
+    'brTextureMode': (s) => s.brTextureMode,
+    'brTextureModeHeight': (s) => s.brTextureModeHeight,
     'brFeather': (s) => s.brFeather,
     'brTolerance': (s) => s.brTolerance,
     'brGapClose': (s) => s.brGapClose,
@@ -831,10 +838,13 @@ void main() {
     'brTipOrderRandom': (s) => s.brTipOrderRandom,
     'brTipOrderOneLap': (s) => s.brTipOrderOneLap,
     'brTipOrderShuffledLap': (s) => s.brTipOrderShuffledLap,
+    'brTipOrderLean': (s) => s.brTipOrderLean,
+    'brTipsPerTurn': (s) => s.brTipsPerTurn,
     'brTipRotation': (s) => s.brTipRotation,
     'brRotationFixed': (s) => s.brRotationFixed,
     'brRotationDirection': (s) => s.brRotationDirection,
     'brRotationPenTilt': (s) => s.brRotationPenTilt,
+    'brRotationPenTwist': (s) => s.brRotationPenTwist,
     'brDualTip': (s) => s.brDualTip,
     'brTexture': (s) => s.brTexture,
     'brTextureDensity': (s) => s.brTextureDensity,
@@ -913,8 +923,6 @@ void main() {
     'tlOnionOnDisplayedToggle': (s) => s.tlOnionOnDisplayedToggle,
     'tlCollapseAllLayers': (s) => s.tlCollapseAllLayers,
     'tlExpandAllLayers': (s) => s.tlExpandAllLayers,
-    'tlMuteAllSe': (s) => s.tlMuteAllSe,
-    'tlUnmuteAllSe': (s) => s.tlUnmuteAllSe,
     'tlShowXSheet': (s) => s.tlShowXSheet,
     'tlShowTimeline': (s) => s.tlShowTimeline,
     'cameraViewOn': (s) => s.cameraViewOn,
@@ -942,6 +950,10 @@ void main() {
     'laneGraphSpeed': (s) => s.laneGraphSpeed,
     'laneGraphEnlarge': (s) => s.laneGraphEnlarge,
     'laneGraphEnlargeOn': (s) => s.laneGraphEnlargeOn,
+    'laneGraphPen': (s) => s.laneGraphPen,
+    'laneGraphPenOn': (s) => s.laneGraphPenOn,
+    'laneGraphTransformBox': (s) => s.laneGraphTransformBox,
+    'laneGraphTransformBoxOn': (s) => s.laneGraphTransformBoxOn,
     'railFillReferenceOn': (s) => s.railFillReferenceOn,
     'railFillReference': (s) => s.railFillReference,
     'tlLayerMark': (s) => s.tlLayerMark,
@@ -977,7 +989,6 @@ void main() {
     'semSelectedTrack': (s) => s.semSelectedTrack,
     'sbVideoTrack': (s) => s.sbVideoTrack,
     'noticeFillRegionOpen': (s) => s.noticeFillRegionOpen,
-    'noticeCameraKeysCopied': (s) => s.noticeCameraKeysCopied,
     'tlKindAnimation': (s) => s.tlKindAnimation,
     'tlKindStoryboard': (s) => s.tlKindStoryboard,
     'tlKindImage': (s) => s.tlKindImage,
@@ -994,6 +1005,7 @@ void main() {
     'tlCut': (s) => s.tlCut,
     'tlLayer': (s) => s.tlLayer,
     'tlFrame': (s) => s.tlFrame,
+    'tlKey': (s) => s.tlKey,
     'linkWindowUnlink': (s) => s.linkWindowUnlink,
     'linkWindowUnlinkLinkedCut': (s) => s.linkWindowUnlinkLinkedCut,
     'tlEffects': (s) => s.tlEffects,
@@ -1030,8 +1042,7 @@ void main() {
     'sheetPrintPage': (s) => s.sheetPrintPage,
     'sheetPrintRepeat': (s) => s.sheetPrintRepeat,
     'sheetPrintHold': (s) => s.sheetPrintHold,
-    'setCommasTitle': (s) => s.setCommasTitle,
-    'setCommasField': (s) => s.setCommasField,
+    'setLengthAction': (s) => s.setLengthAction,
     'markEveryField': (s) => s.markEveryField,
     'frameCountEntryFrames': (s) => s.frameCountEntryFrames,
     'frameCountEntrySecondsPlusFrames': (s) =>
@@ -1110,32 +1121,37 @@ void main() {
     );
   });
 
-  test('B9: bar-button writing carries no trailing ellipsis — 編集, not '
-      '編集… (유저 2026-08-17: 「심플하게 編集」)', () {
-    // The '…' convention belongs to menu ENTRIES that open a dialog; on a
-    // bar button it reads as an ellipsized label. These two are the bar
-    // buttons that wore it.
-    // ↩️F-261: the Edit button wears its registry action's name now, so
-    // that is where its writing is read.
+  test('no action\'s name carries a trailing ellipsis, in any language — '
+      '編集, not 編集… (B9, 유저 2026-08-17: 「심플하게 編集」; F-437, '
+      '10-21: 「점 세개 삭제 … 앱에서 찾아서 전부」)', () {
+    // ↩️B9 took it off the two bar buttons that wore it and left it on the
+    // menu entries that open a window; F-437 takes it off every name — a
+    // button's, a menu row's (every row is an action, I-40) and the
+    // shortcut list's, which are one name.
+    final before = AppText.settings.value;
+    addTearDown(() => AppText.settings.value = before);
+    for (final language in AppLanguage.values) {
+      AppText.settings.value = AppLanguageSettings(
+        programLanguage: language,
+        notationLanguage: language,
+      );
+      for (final definition in editorActionDefinitions) {
+        final name = actionLabelOf(definition);
+        expect(
+          name.endsWith('…') || name.endsWith('...'),
+          isFalse,
+          reason: '${definition.id} in ${language.name} is 「$name」',
+        );
+      }
+      expect(
+        AppText.strings.tlSetCommasN.endsWith('…'),
+        isFalse,
+        reason: 'the bar\'s N-commas button in ${language.name}',
+      );
+    }
     final editLabel = editorActionDefinitions
         .firstWhere((it) => it.id == EditorActionIds.editInstance)
         .label;
-    for (final language in AppLanguage.values) {
-      final strings = AppStrings.of(language);
-      for (final entry in {
-        'edit-instance': strings.shortcutLabel(
-          EditorActionIds.editInstance,
-          editLabel,
-        ),
-        'tlSetCommasN': strings.tlSetCommasN,
-      }.entries) {
-        expect(
-          entry.value.endsWith('…') || entry.value.endsWith('...'),
-          isFalse,
-          reason: '${entry.key} in ${language.name} ends with an ellipsis',
-        );
-      }
-    }
     // The reported case, verbatim: the edit button says 編集 and nothing
     // more.
     expect(

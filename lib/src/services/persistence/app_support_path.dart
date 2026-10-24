@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../flutter_test_run.dart';
 
 /// The app-support path for [fileName]:
 /// `<base>/anicel/<fileName>`, where base is `%APPDATA%` on
@@ -65,7 +66,7 @@ String testRedirectedAppSupportPath(
   String fileName, {
   required String sandbox,
 }) {
-  if (Platform.environment['FLUTTER_TEST'] == 'true') {
+  if (underFlutterTest) {
     return '${testContainerFolder()}/$sandbox/$fileName';
   }
   return appSupportFilePath(fileName);
@@ -125,6 +126,7 @@ const List<String> appSettingsEntries = <String>[
   'language_settings.json',
   'memory_settings.json',
   'onion_skin_settings.json',
+  'pixel_verb_settings.json',
   'recent_projects.json',
   'save_settings.json',
   'shortcut_overrides.json',

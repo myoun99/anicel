@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
+import 'package:anicel/src/models/block_row_swap.dart';
 import 'package:anicel/src/models/cel_bank_lanes.dart';
 import 'package:anicel/src/models/drawing_block_move.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
@@ -241,6 +242,7 @@ void main() {
         rangeEndIndexExclusive: 32,
         frameDelta: -5,
         sourceBank: CelBankLanes.unshared,
+        landing: const LandingSwapsThem(CelBankLanes.unshared),
         cutFrameCount: 48,
       ),
       isNull,

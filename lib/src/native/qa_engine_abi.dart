@@ -266,7 +266,24 @@ import '../core/on_a_worker.dart';
 ///   much silence ahead of its first sample, so the sample is heard as the
 ///   run's first picture is shown (`QaAudioDevice.play`, board a-start-is-
 ///   heard-ahead-of-its-first-picture).
-const int kQaEngineAbiVersion = 50;
+/// - v51: the stroke kernel's mode ids 13–25 — the seven separable blends
+///   Photoshop and Clip Studio add (linear burn … divide), which the dual
+///   mask reads too, and the six that mix the three channels
+///   (`strokeBlendModeNativeId`, board brush-fidelity). An older engine
+///   would take an id it does not know for exclusion.
+/// - v52: `qa_cel_pixel_spec` gains `threshold` — 2치화, the colour edit
+///   list's fifth pixel verb: a byte under it is written 0 and the rest the
+///   incoming byte, forward only (`CelPixelStage.threshold`, board I-13).
+///   Sizeof moves.
+/// - v54: the fill raster is premultiplied RGBA over nothing — no paper —
+///   and every flood takes its seed as one packed RGBA pixel, the coverage
+///   a lane like the colours (board F-416). `qa_fill_paper_rect` becomes
+///   `qa_fill_clear_rect`; `qa_fill_compose_batch` loses the paper.
+/// - v55: `qa_audio_device_play` returns the run it starts (it returned 1),
+///   and `qa_audio_device_stop_run` silences unless another run holds the
+///   device — a player's end stops only its own sound (board
+///   a-cue-ending-silences-a-viewer-sound-it-did-not-make).
+const int kQaEngineAbiVersion = 55;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

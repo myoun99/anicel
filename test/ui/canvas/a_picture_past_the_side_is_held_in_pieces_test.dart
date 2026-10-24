@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/image_pieces.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -50,6 +51,8 @@ import '../../helpers/placement_reading.dart';
 /// back whole), which is what lets these pins stand a cel at a side of 64 and
 /// hold what it makes in pieces to what the same cel makes whole.
 void main() {
+  setUpAll(LayerBlendShader.load);
+
   // A cel of 16-pixel noise tiles whose content is 192×96 (the canvas is 88
   // high; the tiles reach 96) — past a side of 64 both ways: six pieces.
   const tileSize = 16;
@@ -478,11 +481,10 @@ void main() {
         drawing(effects: [blur]),
         false,
       ),
-      (
-        'through an advanced blend',
-        drawing(blendMode: LayerBlendMode.multiply),
-        false,
-      ),
+      // ↩️'through an advanced blend' (multiply), until such a layer
+      // painted normal over its backdrop
+      // (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
+      ('through add', drawing(blendMode: LayerBlendMode.add), false),
       ('posed and blurred', drawing(pose: turned, effects: [blur]), true),
     ]) {
       testWidgets(name, (tester) async {
@@ -705,14 +707,12 @@ void main() {
     CompositeNode<CanvasStackRow> row(
       String id, {
       double opacity = 1,
-      LayerBlendMode blendMode = LayerBlendMode.normal,
       TransformPose? pose,
       List<ResolvedLayerEffect> effects = const [],
     }) => CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(
         frameKey: key(id),
         opacity: opacity,
-        blendMode: blendMode,
         placement: pose == null ? null : placedBy(pose, canvasSize),
         tint: null,
         effects: effects,
@@ -727,43 +727,60 @@ void main() {
     final blurred = [
       ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 3]),
     ];
+    /// [source] in multiply over [over], as the plan hands a row in an
+    /// advanced blend over: composed over what lies below it in its scope.
+    /// ↩️These scenes handed the rows their multiply to draw in, until
+    /// every advanced blend went over its backdrop in the shader
+    /// (a-blurred-folder-cut-by-the-view-moves-on-vulkan).
+    CompositeNode<CanvasStackRow> multiplied(
+      CompositeNode<CanvasStackRow> source, {
+      List<CompositeNode<CanvasStackRow>> over = const [],
+    }) => CompositeBackdropBlend<CanvasStackRow>(
+      backdrop: over,
+      source: source,
+      blendMode: LayerBlendMode.multiply,
+    );
+
     // One row a scene, so no row's pixels hide another's under them — and
     // the three over each other once.
     final scenes = <String, List<CompositeNode<CanvasStackRow>>>{
       for (final cel in ['noise', 'sparse', 'inside']) ...{
         '$cel kept as ink': [row(cel, opacity: 0.8)],
-        '$cel through multiply': [
-          row(cel, blendMode: LayerBlendMode.multiply),
-        ],
+        '$cel through multiply': [multiplied(row(cel))],
         '$cel posed': [row(cel, pose: turned)],
         '$cel blurred': [row(cel, effects: blurred)],
       },
       'the three over each other': [
-        row('noise', opacity: 0.8),
-        row('sparse', blendMode: LayerBlendMode.multiply),
+        multiplied(row('sparse'), over: [row('noise', opacity: 0.8)]),
         row('inside', effects: blurred),
       ],
       // A folder that blends and blurs is rastered apart (its sub-tree's
       // own image), and draws its rows into that.
       'a folder through multiply, blurred': [
-        CompositeGroup<CanvasStackRow>(
-          children: [row('noise'), row('sparse', opacity: 0.7)],
-          opacity: 0.9,
-          blendMode: LayerBlendMode.multiply,
-          effects: [
-            ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2]),
-          ],
+        multiplied(
+          CompositeGroup<CanvasStackRow>(
+            children: [row('noise'), row('sparse', opacity: 0.7)],
+            opacity: 0.9,
+            blendMode: LayerBlendMode.normal,
+            effects: [
+              ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2]),
+            ],
+          ),
         ),
       ],
       // Rows enough beneath the row drawn on for the bake to raster them
       // (`_backdropRasterMinReplayOps`), and one over it: each canvas the
       // bake records into says what it sees.
       'beneath the row drawn on and over it': [
-        for (final cel in ['noise', 'sparse', 'inside']) ...[
-          row(cel, opacity: 0.6),
-          row(cel, effects: blurred),
-        ],
-        row('noise', blendMode: LayerBlendMode.multiply),
+        multiplied(
+          row('noise'),
+          over: [
+            for (final cel in ['noise', 'sparse', 'inside']) ...[
+              row(cel, opacity: 0.6),
+              row(cel, effects: blurred),
+            ],
+          ],
+        ),
         const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
         row('sparse', effects: blurred),
       ],
@@ -804,6 +821,8 @@ void main() {
           case CompositeGroup(:final children):
           case CompositeAdjustment(:final children):
             yield* requestsIn(children);
+          case CompositeBackdropBlend(:final backdrop, :final source):
+            yield* requestsIn([...backdrop, source]);
         }
       }
     }
@@ -1036,7 +1055,13 @@ void main() {
             Future<Uint8List> render() async {
               final rows = _Deferred(laidTexelForTexel: !through.turns);
               final frame = await service.renderThroughCamera(
-                nodes: nodes(),
+                // As the plan hands them over: a row in multiply composed
+                // over what lies below it.
+                nodes: composeOverTheirBackdrops(
+                  nodes(),
+                  blendOf: (layer) => layer.blendMode,
+                  paintedNormal: (layer) => layer.paintedNormal(),
+                ),
                 pose: through.view.pose,
                 cameraFrameSize: through.view.frameSize,
                 outputSize: through.output,

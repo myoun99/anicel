@@ -9,7 +9,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 🗣️유저 2026-10-08 (F-291-Q1): 「원화 작업자나 시아게는 컷마다 다름 …
 /// 스태프는 콘티만 남겨둠. 나머진 삭제. 나머진 컷마다 스태프설정」. The cut
-/// button's 「컷 설정…」 names every stage but the conte's — the work's — and
+/// button's 「컷 설정」 names every stage but the conte's — the work's — and
 /// what is typed there is the cut's.
 ///
 /// ↩️It showed the work's names faintly where the cut named nobody (09-25:

@@ -1,4 +1,5 @@
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../canvas/canvas_touch_contacts.dart';
@@ -69,6 +70,29 @@ void handleWheelExclusively(
       handle(resolved);
     }
   });
+}
+
+/// How far [event]'s notch pushes along [axis] — the part a scroll view
+/// along it would take: a mouse wheel turned with one of [flipKeys] held
+/// (a [ScrollBehavior]'s `pointerAxisModifiers`, Shift) pushes the other
+/// way, as [Scrollable] reads it. Zero where the notch pushes the other
+/// way alone.
+///
+/// ⛔Read as a scroll view reads it, keys and all, and never more loosely:
+/// beside the sheet's own scrollers, a slide that read a notch they would
+/// not take would answer a Shift notch the frames answer too.
+double wheelDeltaAlong(
+  Axis axis,
+  PointerScrollEvent event, {
+  required Set<LogicalKeyboardKey> flipKeys,
+}) {
+  final flips =
+      event.kind == PointerDeviceKind.mouse &&
+      HardwareKeyboard.instance.logicalKeysPressed.any(flipKeys.contains);
+  return switch (flips ? flipAxis(axis) : axis) {
+    Axis.horizontal => event.scrollDelta.dx,
+    Axis.vertical => event.scrollDelta.dy,
+  };
 }
 
 /// [handleWheelExclusively] for a CONTROL that may find itself inside a list.

@@ -114,16 +114,6 @@ void main() {
       expect(session.activeLayerId, drawingLayerId);
     });
 
-    test("selecting a LAYER leaves the rail's row alone — that is the cut's "
-        'row selection, not this one', () {
-      final session = sessionFor(projectWithTwoCuts());
-      session.selectRow(const LayerRowAddress(seLayerId));
-
-      session.selectLayer(defaultLayerIdForSequence(1));
-
-      expect(session.selectedRow, const LayerRowAddress(seLayerId));
-    });
-
     test('R10 #13: the VERB\'s row does move, though — the rail says which '
         'row of the FILM is lit, `currentRow` says whose blocks a flip '
         'counts, and folding them into one slot breaks the rule above', () {
@@ -146,8 +136,10 @@ void main() {
       );
       expect(
         session.selectedRow,
-        const LayerRowAddress(seLayerId),
-        reason: 'and the rail does not, which is the 2026-07-27 rule',
+        const TrackRowAddress(trackId),
+        reason: 'and the rail lights the V row — the cel is no row of it '
+            '(↩️I-126: 「아니면 비디오행에 서있도록」; it stayed on S1, the '
+            '2026-07-27 rule) — still another answer than the flip\'s',
       );
     });
 

@@ -23,6 +23,7 @@ import '../../models/layer_folder.dart' show createFolderLayer;
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart';
+import '../../models/se_audio_spans.dart';
 import '../../models/new_row_placement.dart' show conteRowPlacement;
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
@@ -31,7 +32,8 @@ import '../../services/commands/cut_command_input_planner.dart'
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsRowOf, timelineDragPreviewLayerFor;
+    show TimelineDragPreview, celPixelsOf, timelineDragPreviewLayerFor;
+import '../audio/sound_cannot_play.dart';
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
 import 'render_caches.dart';
@@ -55,6 +57,8 @@ class LayerStack {
     required RenderCaches renderCaches,
     required ValueNotifier<bool> brushInputActive,
     required ValueListenable<TimelineDragPreview?> dragPreview,
+    required SoundCannotPlay? Function(String filePath) soundCannotPlay,
+    required Listenable Function() soundsMoved,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
@@ -66,7 +70,9 @@ class LayerStack {
        _folderBands = folderBands,
        _renderCaches = renderCaches,
        _brushInputActive = brushInputActive,
-       _dragPreview = dragPreview;
+       _dragPreview = dragPreview,
+       _soundCannotPlay = soundCannotPlay,
+       _soundsMoved = soundsMoved;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -83,6 +89,21 @@ class LayerStack {
   /// The drag in flight: a folder's band asks its rows where the drag has
   /// them ([celHasContentForLayer]).
   final ValueListenable<TimelineDragPreview?> _dragPreview;
+
+  /// Why the sound at a file path cannot be played
+  /// (`PlaybackRig.soundCannotPlay`) — what an SE block answers
+  /// [celCannotBeReadForLayer] by.
+  final SoundCannotPlay? Function(String filePath) _soundCannotPlay;
+
+  /// What fires when [_soundCannotPlay]'s answers may have moved
+  /// (`PlaybackRig.soundsMoved`) — asked for at [attach], once the rig is
+  /// there to give it.
+  final Listenable Function() _soundsMoved;
+  Listenable? _soundsMovedHeard;
+
+  /// Each row's sounds, block by block, read once per row as it stands —
+  /// [soundCannotPlayAt] is asked at every cell a row paints.
+  final Expando<List<SeAudioSpan>> _soundSpans = Expando('sound spans');
 
   /// THE unified Add Layer entrance: a new layer of the ACTIVE layer's
   /// kind, inserted directly above it, named by its section's own scheme
@@ -311,10 +332,33 @@ class LayerStack {
   }
 
   /// Whether the block [layer] stands at [frameIndex] shows a cel that could
-  /// not be read — false where it stands no block that could hold one.
+  /// not be read, or carries a sound that cannot be played
+  /// ([soundCannotPlayAt]) — false where it stands no block that could hold
+  /// either.
+  ///
+  /// 🗣️유저 2026-10-17 (playback-waits-for-its-sound-Q1 a): a sound a run
+  /// plays without goes red on its row as a cel that cannot be read does —
+  /// the same red, painted by the same question.
   bool _blockCannotBeReadAt(Layer layer, int frameIndex) {
+    if (soundCannotPlayAt(layer, frameIndex) != null) {
+      return true;
+    }
     final cel = _celAt(layer, frameIndex);
     return cel != null && celCannotBeRead(cel.cut, layer.id, cel.frameId);
+  }
+
+  /// Why a sound the block [layer] stands at [frameIndex] carries cannot be
+  /// played — null where every one there can, or is on its way, and where
+  /// the row carries no sound there.
+  SoundCannotPlay? soundCannotPlayAt(Layer layer, int frameIndex) {
+    if (layer.audioClips.isEmpty) {
+      return null;
+    }
+    return soundCannotPlayIn(
+      _soundSpans[layer] ??= seAudioSpans(layer),
+      frameIndex,
+      _soundCannotPlay,
+    );
   }
 
   /// The cel the block [layer] stands at [frameIndex] shows: its cut and its
@@ -370,22 +414,25 @@ class LayerStack {
         _liveStrokeCel == (row, cel)) {
       return true;
     }
-    return _storeHoldsAPicture(cut, _pixelsRowOf(row, cel), cel);
+    final pixels = _pixelsOf(row, cel);
+    return _storeHoldsAPicture(cut, pixels.row, pixels.cel);
   }
 
   /// Whether [row]'s cel [cel] in [cut] could not be read
   /// ([LayerFrameImageCache.unreadable]) — the fact of the red block, for
   /// one cel of any cut, as [celHoldsAPicture] is the grey's.
-  bool celCannotBeRead(Cut cut, LayerId row, FrameId cel) =>
-      _renderCaches.layerFrameImageCache.unreadable.has(
-        _project.brushFrameKeyForCut(cut, _pixelsRowOf(row, cel), cel),
-      );
+  bool celCannotBeRead(Cut cut, LayerId row, FrameId cel) {
+    final pixels = _pixelsOf(row, cel);
+    return _renderCaches.layerFrameImageCache.unreadable.has(
+      _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel),
+    );
+  }
 
-  /// The row [row]'s cel [cel] has its pixels under: a cel a drag carries
-  /// onto [row] is drawn where its pixels still are — under the row it came
-  /// from ([celPixelsRowOf]).
-  LayerId _pixelsRowOf(LayerId row, FrameId cel) =>
-      celPixelsRowOf(_dragPreview.value, row, cel);
+  /// Where [row]'s cel [cel] has its pixels: a cel a drag carries onto
+  /// [row], or a picture it hangs there, is drawn where its pixels still
+  /// are ([celPixelsOf]).
+  ({LayerId row, FrameId cel}) _pixelsOf(LayerId row, FrameId cel) =>
+      celPixelsOf(_dragPreview.value, row, cel);
 
   /// The cel a live stroke counts as drawn: the active row's selected
   /// frame. Null when there is none, and then no block can be it.
@@ -439,7 +486,8 @@ class LayerStack {
   }
 
   /// The two events that can flip [celHasContentForLayer]'s answer, and the
-  /// one that can flip [celCannotBeReadForLayer]'s.
+  /// two that can flip [celCannotBeReadForLayer]'s: a cel found unreadable,
+  /// and a sound's answer moving ([_soundsMoved]).
   ///
   /// ⛔NOT EVERY PIXEL EDIT. A third listener stood here, on the store's
   /// `celPixelRevision`, for 픽셀 비우기: the crossing detector used to ask
@@ -459,6 +507,7 @@ class LayerStack {
     _renderCaches.layerFrameImageCache.unreadable.revision.addListener(
       _bumpCelTintRevision,
     );
+    _soundsMovedHeard = _soundsMoved()..addListener(_bumpCelTintRevision);
   }
 
   void dispose() {
@@ -469,6 +518,7 @@ class LayerStack {
     _renderCaches.layerFrameImageCache.unreadable.revision.removeListener(
       _bumpCelTintRevision,
     );
+    _soundsMovedHeard?.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
   }
 }

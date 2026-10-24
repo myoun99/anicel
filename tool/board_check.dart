@@ -58,11 +58,15 @@ const _staleAfter = Duration(hours: 24);
 ///
 /// ⚠️`now` too: the future-stamp check needs one, and taking it from the
 /// clock inside a test makes the fixture's meaning depend on when it runs.
+///
+/// [openPrs] is what GitHub says is open, from whoever asked it — null when
+/// nobody did. See [_deadAcks].
 String boardCheckComplaints(
   File file, {
   String since = kGateSince,
   String linesSince = kLinesSince,
   DateTime? now,
+  Set<int>? openPrs,
 }) {
   final records = BoardRecords.of(file);
   final cards = records.cards(now: now);
@@ -77,7 +81,7 @@ String boardCheckComplaints(
     ..._workThatShipped(cards, acks, since),
     ..._questionsNobodyCanAnswer(cards, acks, since),
     ..._answersNobodyRead(cards, acks, since, now),
-    ..._deadAcks(cards, acks),
+    ..._deadAcks(cards, acks, openPrs),
     ..._drawnNowhere(cards, acks),
   ];
   return complaints.join('\n');
@@ -135,12 +139,18 @@ String? boardCheckRefusal(List<String> args, {bool Function(String)? exists}) {
 /// ⚠️A server that did not answer, or answered anything but 200, is a gate
 /// that DID NOT RUN — said as [refusal], never as an empty string, which is
 /// what a clean board looks like.
+///
+/// [openPrs] reaches a records file only: a server asks GitHub itself.
 Future<({String complaints, String? refusal})> boardCheckOf(
-  BoardPlace place,
-) async {
+  BoardPlace place, {
+  Set<int>? openPrs,
+}) async {
   switch (place) {
     case BoardFile(:final path):
-      return (complaints: boardCheckComplaints(File(path)), refusal: null);
+      return (
+        complaints: boardCheckComplaints(File(path), openPrs: openPrs),
+        refusal: null,
+      );
     case final BoardServer server:
       final answer = await askBoard(server, 'GET', '/api/check');
       if (answer.status == HttpStatus.ok) {
@@ -160,13 +170,49 @@ Future<({String complaints, String? refusal})> boardCheckOf(
   }
 }
 
+/// Where the Stop hook hands over the PRs GitHub says are open.
+const kOpenPrsVariable = 'ANICEL_OPEN_PRS';
+
+/// The open PRs in [environment] — null when nobody asked GitHub (no gh, no
+/// network, a run by hand) — or why the value could not be read.
+///
+/// ⚠️AN ENVIRONMENT VARIABLE, not an argument: the checker takes one path
+/// and nothing else ([boardCheckRefusal]). ⛔A value it cannot read is
+/// refused, never dropped — dropped, it reads as 「nobody asked」.
+({Set<int>? prs, String? refusal}) boardCheckOpenPrs(
+  Map<String, String> environment,
+) {
+  final raw = environment[kOpenPrsVariable];
+  if (raw == null) return (prs: null, refusal: null);
+  final prs = <int>{};
+  for (final word in raw.split(RegExp(r'\s+'))) {
+    if (word.isEmpty) continue;
+    final pr = int.tryParse(word);
+    if (pr == null || pr <= 0) {
+      return (
+        prs: null,
+        refusal: 'board_check: $kOpenPrsVariable 의 「$word」 는 PR 번호가 '
+            '아닙니다 — 공백으로 가른 번호만 받습니다.',
+      );
+    }
+    prs.add(pr);
+  }
+  return (prs: prs, refusal: null);
+}
+
 Future<void> main(List<String> args) async {
   final refusal = boardCheckRefusal(args);
   if (refusal != null) {
     stderr.writeln(refusal);
     exit(2);
   }
-  final judged = await boardCheckOf(boardPlaceOf(args.first));
+  final open = boardCheckOpenPrs(Platform.environment);
+  if (open.refusal case final why?) {
+    stderr.writeln(why);
+    exit(2);
+  }
+  final judged =
+      await boardCheckOf(boardPlaceOf(args.first), openPrs: open.prs);
   if (judged.refusal case final why?) {
     stderr.writeln(why);
     exit(2);
@@ -850,17 +896,39 @@ Iterable<String> _drawnNowhere(List<BoardCard> cards, Set<String> acks) sync* {
 ///
 /// ⚠️Every card, whatever its section. A landing whose card was archived
 /// still HAS a card — that is the point of archiving it.
-Iterable<String> _deadAcks(List<BoardCard> cards, Set<String> acks) sync* {
+///
+/// 🚨★★★A PR NUMBER IS SILENCED IN TWO PLACES, and a card answers only one.
+/// `board_gate.sh` reads the same key to leave an OPEN PR alone — red, or
+/// ready to merge — and to let a MERGED landing go by without a card. A card
+/// holding the PR settles the second and says nothing about the first.
+/// 🧪10-24: the day's bundle PR was red, a release card held it and 관제 was
+/// fixing it. The red-PR half asked every session for the ack, this check
+/// called the ack dead, and the turn was held whichever way a session went
+/// (타임라인/콘티 stepped in it — one key answering two questions).
+/// ⇒ Dead = a card holds it AND it is not open. Open is GitHub's to say, so
+/// it comes in as [openPrs] from whoever asked GitHub — the Stop hook, the
+/// board server. ⛔Without it nothing is called dead: a wrong 「dead」 here
+/// holds every session's turn, and a line left one turn longer holds none.
+Iterable<String> _deadAcks(
+  List<BoardCard> cards,
+  Set<String> acks,
+  Set<int>? openPrs,
+) sync* {
+  if (openPrs == null) return;
   final claimed = <int>{for (final c in cards) ...c.prs};
   final settled = <String>[];
   for (final key in acks) {
     final pr = int.tryParse(key);
-    if (pr != null && claimed.contains(pr)) settled.add(key);
+    if (pr != null && claimed.contains(pr) && !openPrs.contains(pr)) {
+      settled.add(key);
+    }
   }
   if (settled.isEmpty) return;
   yield '카드가 생긴 착지의 ack: ${settled.join(', ')}\n'
-      'ack 는 「이 착지는 카드 없이 지나간다」는 뜻인데 그 PR을 든 카드가 이제 '
-      '있습니다 — 그 줄을 거두세요: $kAckCommand --drop <번호>';
+      'ack 는 「이 PR 은 손대지 않는다」 — 열린 PR 이면 빨간 것 · 머지 준비가 '
+      '끝난 것을, 착지했으면 카드 없는 착지를 넘긴다는 뜻인데, 그 PR 은 이제 '
+      '열려 있지 않고 그것을 든 카드가 있습니다 — 그 줄을 거두세요: '
+      '$kAckCommand --drop <번호>';
 }
 /// Drawn on the board as a card at all.
 ///

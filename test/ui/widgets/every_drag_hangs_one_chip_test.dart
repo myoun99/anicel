@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/widgets/drag_chip.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// I-39 (유저 2026-09-17): 「무언가를 드래그할때 커서에 생기는 그립ui,
 /// 공용화가 안되있는거같음. 패널탭띠 … 풀에서 드래그하는거랑 ui가 미묘한게
@@ -256,11 +257,7 @@ void main() {
 
     // The pool ships closed, one rail button away.
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
-        ),
-      ),
+      railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 3)),
     );
     await tester.pumpAndSettle();
     await expectChipAtPointer(
@@ -332,7 +329,9 @@ void main() {
 
     final held = await pickUp(
       tester,
-      railRow('cam'),
+      // Its name's letters: the middle of a camera's name area is its path
+      // button since the names gave a third up (F-409).
+      find.descendant(of: railRow('cam'), matching: find.text('Camera')),
       select: const Offset(30, 0),
       nudge: const Offset(0, 12),
     );

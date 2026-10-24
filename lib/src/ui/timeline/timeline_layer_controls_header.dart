@@ -8,6 +8,7 @@ import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
+import 'axis_turn.dart' show alongBox;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'memo_token.dart' show BySet, KeptPiece;
@@ -46,7 +47,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     this.kinds = const {},
     this.visibilitySoloEnabled = false,
     this.anyLanesExpanded = false,
-    this.allSeMuted = false,
     this.displayedLayerIds,
     this.displayedOpacity = 1.0,
     this.displayedOnionSkinOn = false,
@@ -120,10 +120,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// toggle folds/unfolds ALL layers based on this (R3 feedback #5).
   final bool anyLanesExpanded;
 
-  /// Whether every SE row is muted — the mute legend cell is a direct
-  /// all-SE toggle (R3 feedback #10), colored by this state.
-  final bool allSeMuted;
-
   /// Grid-provided lane sweeps (the grid owns lane expansion knowledge).
   final VoidCallback? onCollapseAllLanes;
   final VoidCallback? onExpandAllLanes;
@@ -137,13 +133,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// keep is the header's now (I-57, 10-14). The words are the program
   /// language's, read at build.
   ///
-  /// ⛔Three kinds of slot outlive their mutants (10-14), kept because
-  /// every fact the header shows is here, as a row's are
-  /// ([LayerControlsRowFacts]): the language — the theme is keyed on it, so
-  /// a switch builds the header again anyway; the legend's shape — its
-  /// verbs are its host's, the same for the panel's life; and each metric
-  /// alone — a text scale moves the three together (the controls width is
-  /// the columns' sum on the rail, the row height on the sheet).
+  /// ⛔Two kinds of slot outlive their mutants (10-14), kept because every
+  /// fact the header shows is here, as a row's are
+  /// ([LayerControlsRowFacts]): the legend's shape — its verbs are its
+  /// host's, the same for the panel's life; and each metric alone — a text
+  /// scale moves the three together (the controls width is the columns' sum
+  /// on the rail, the row height on the sheet). ↩️The language was a third,
+  /// said to ride the theme; it is every keep's fact now ([keptWhileSame]).
   @override
   Object? get facts => (
     metrics.layerControlsWidth,
@@ -160,13 +156,11 @@ class TimelineLayerControlsHeader extends KeptPiece {
     BySet(kinds),
     visibilitySoloEnabled,
     anyLanesExpanded,
-    allSeMuted,
     displayedLayerIds != null,
     displayedOpacity,
     displayedOnionSkinOn,
     onCollapseAllLanes != null,
     onExpandAllLanes != null,
-    AppText.language,
   );
 
   /// The legend's menus — this header's flyouts and, published by the panel
@@ -280,8 +274,16 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
+  /// The label pair's column: the colour label's icon over the colour
+  /// label, and the take's half held empty over the take — the rows' pair
+  /// ([LayerMarkChip]), cell for cell.
+  ///
+  /// 🚨F-409 (유저 2026-10-19): 「레전드의 왼쪽 버튼(섹션버튼,색라벨버튼)이랑
+  /// 밑의 색라벨이랑 테이크등의 위치가 어긋나서 행/열 구조란 느낌이 안듬」.
+  /// ↩️The icon stood in the middle of the pair's slot, on the line between
+  /// the two plates under it.
   Widget _buildMark(TimelineLegendMenus menus, Color restColor) {
-    return _cell(
+    final markCell = _cell(
       keyValue: 'legend-mark',
       tooltip: AppText.strings.tlColMark,
       entriesBuilder: menus.mark,
@@ -290,6 +292,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
         restColor: restColor,
         engaged: rowFilter.markColors.isNotEmpty,
       ),
+    );
+    return Flex(
+      direction: axis,
+      children: [
+        alongBox(axis, layerMarkSlotWidth, child: markCell),
+        alongBox(axis, layerTakeSlotWidth),
+      ],
     );
   }
 
@@ -362,34 +371,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
-  Widget _buildMute(LayerLegendCallbacks? legend, Color restColor) {
-    // One handler for the toggle, named once — the press claim and the tap
-    // fire the same thing, and saying so twice was two more forks.
-    final toggle = legend == null
-        ? null
-        : (allSeMuted ? legend.onUnmuteAllSe : legend.onMuteAllSe);
-    return AppTooltip(
-      // ↩️Written in English here, in every language, until I-40's round on
-      // the legend found it (10-09).
-      message: allSeMuted
-          ? AppText.strings.tlUnmuteAllSe
-          : AppText.strings.tlMuteAllSe,
-      child: ControlPressClaim(
-        onPressed: toggle,
-        child: InkWell(
-          key: const ValueKey<String>('legend-mute'),
-          onTap: silentPress(toggle),
-          child: Center(
-            child: _legendIcon(
-              allSeMuted ? Icons.volume_off : Icons.volume_up_outlined,
-              restColor: restColor,
-              engaged: allSeMuted,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  /// The opacity column's heading — the master bar's resting text, and the
+  /// heading where there is no bar.
+  ///
+  /// OPAC → OP (F-409, 유저 2026-10-19: 「100이라는 숫자가 딱 들어갈 정도면 됨.
+  /// 레전드도 그로인해 OPAC라는 글자가 OPA나 OP로 되도됨」): the bar is as wide
+  /// as 「100」, and of the two offered OP is the one that fits it.
+  static const String _opacityHeading = 'OP';
 
   Widget _buildOpacity(
     BuildContext context,
@@ -406,7 +394,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
               // The COLUMN's name while it rests, its number while it is
               // dragged (R4 #6) — the one bar whose resting text is not
               // its value.
-              restingText: 'OPAC',
+              restingText: _opacityHeading,
               height: 18 + FieldSlider.growthIn(context),
               restingAccent: colorScheme.onSurfaceVariant.withValues(
                 alpha: 0.45,
@@ -420,7 +408,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
         : _cell(
             keyValue: 'legend-opacity',
             tooltip: AppText.strings.tlColOpacity,
-            child: _columnHeading('OPAC', colorScheme, axis),
+            child: _columnHeading(_opacityHeading, colorScheme, axis),
           );
   }
 
@@ -489,10 +477,10 @@ class TimelineLayerControlsHeader extends KeptPiece {
             child: Padding(
               // The rail's trailing breathing room. Stood up there is none
               // to give: the sheet's header block is sized to exactly this
-              // list of slots, so 8px of padding is 8px of overflow.
+              // list of slots, so any padding is that much overflow.
               padding: isVertical
                   ? EdgeInsets.zero
-                  : const EdgeInsets.only(right: 8),
+                  : const EdgeInsets.only(right: layerRailEndPadding),
               child: Flex(
                 direction: axis,
                 children: [
@@ -555,9 +543,9 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     fillReference: _buildFillReference(menus, restColor),
                     fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
-                    // displayed layers + the panel reveal. Hosts without
-                    // the callback (storyboard rail) skip the COLUMN so
-                    // their row columns stay aligned.
+                    // displayed layers + the panel reveal. A host that
+                    // carries no onion column skips the CELL so its row
+                    // columns stay aligned.
                     //
                     // The HEADING follows the COLUMN, and only the flyout
                     // follows the callbacks. It used to be the other way
@@ -567,10 +555,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     // on that surface with no heading over it.
                     onion: _buildOnion(menus, optional.onion, restColor),
                     visibility: _buildVisibility(menus, restColor),
-                    // The mute cell is a DIRECT all-SE toggle (R3 feedback
-                    // #10): one tap mutes/unmutes every SE row, colored by
-                    // the muted state — no flyout.
-                    mute: _buildMute(legend, restColor),
                     // MASTER opacity bar (R4 #6): drags every DISPLAYED
                     // row's opacity (filter-passing — solo a color/kind
                     // first to scope it). Gray at rest on the LAST
@@ -602,7 +586,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
-  /// A column's four-letter heading, written the way its rail runs.
+  /// A column's short heading, written the way its rail runs.
   ///
   /// R5 #1: on the sheet these were the last two labels still lying down.
   /// Every other piece of text in that column stands up — the row names,

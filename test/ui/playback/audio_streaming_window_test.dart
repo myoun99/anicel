@@ -8,6 +8,7 @@ import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/services/audio/conform_pcm_stream.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/audio/sound_cannot_play.dart';
 import 'package:anicel/src/services/audio/audio_mixer_reference.dart'
     show AudioMixClip, AudioMixSource;
 import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
@@ -227,7 +228,7 @@ void main() {
       ),
     ], deviceRate: 44100);
     expect(plan, isNotNull);
-    expect(plan!.cannotPlay, {'long'});
+    expect(plan!.cannotPlay, {'long': SoundCannotPlay.deviceRate});
     expect(plan.clips, isEmpty);
     expect(plan.hasStreaming, isFalse);
     store.dispose();
@@ -270,7 +271,7 @@ void main() {
       ),
     ], deviceRate: sampleRate);
     expect(plan, isNotNull);
-    expect(plan!.cannotPlay, {'broken'});
+    expect(plan!.cannotPlay, {'broken': SoundCannotPlay.format});
     expect(plan.resident, hasLength(1));
     expect(
       plan.clips.single.sourceIndex,

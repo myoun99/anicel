@@ -47,12 +47,14 @@ void main() {
     String? name,
     double opacity = 1,
     LayerBlendMode blendMode = LayerBlendMode.normal,
+    bool onTimesheet = true,
   }) => Layer(
     id: LayerId('$cut-$suffix'),
     name: name ?? (placement == AttachedPlacement.above ? 'Over' : 'Under'),
     kind: LayerKind.storyboard,
     opacity: opacity,
     blendMode: blendMode,
+    onTimesheet: onTimesheet,
     attachedToLayerId: LayerId('$cut-conte'),
     attachedPlacement: placement,
     attachedMode: AttachedMode.free,
@@ -509,10 +511,16 @@ void main() {
 
   group('a conte born into a track whose contes carry attach rows', () {
     test('🚨takes each seat\'s row in its place — two a side, each as its '
-        'head is: its name, its side, off the timesheet', () {
+        'head is: its name, its side, its sheet switch', () {
       final session = sessionOf([
         cutOf('a', [
-          rider('a', 'deep', placement: AttachedPlacement.below, name: 'Deep'),
+          rider(
+            'a',
+            'deep',
+            placement: AttachedPlacement.below,
+            name: 'Deep',
+            onTimesheet: false,
+          ),
           rider('a', 'under', placement: AttachedPlacement.below),
           conte('a'),
           rider('a', 'over', placement: AttachedPlacement.above),
@@ -550,8 +558,11 @@ void main() {
           for (final seat in const [2, 1, -1, -2])
             seatRow(session, 'c', seat).onTimesheet,
         ],
-        everyElement(isFalse),
-        reason: 'as the ＋ makes an attach row: off the timesheet',
+        [true, true, true, false],
+        reason: 'the conte row\'s sheet switch is its head\'s (I-89-Q22: '
+            '「콘티행은 그런부분 글로벌이니까 … 머리로 하나」) — Deep\'s off the '
+            'sheet, the rest on. ↩️It was born off the sheet, as the ＋ makes '
+            'an attach row, until the head wore the switch (F-443)',
       );
     });
 

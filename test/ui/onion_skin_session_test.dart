@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/app_shortcuts.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/rail_group_button.dart';
 
 /// P2 wiring: the session's onion requests, the O shortcut and the panel.
 void main() {
@@ -79,7 +80,7 @@ void main() {
 
     // The onion settings have their OWN sub-strip button now (유저, R3 #10)
     // and ship closed — open the group, then its tab.
-    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-R4')));
+    await tester.tap(railGroupButton('rail-R4'));
     await tester.pumpAndSettle();
     final tab = find.byKey(const ValueKey<String>('panel-tab-onion-skin'));
     await tester.ensureVisible(tab);

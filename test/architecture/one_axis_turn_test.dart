@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨★★A BOX IS TURNED BY THE AXIS IN ONE PLACE.
 ///
@@ -61,28 +62,21 @@ void main() {
     expect(seen, isNotEmpty);
   });
 
-  test('no file outside the ledger turns a box by hand', () {
-    final offenders = <String>[];
-    for (final file in dartFilesUnder('lib')) {
-      final path = libPath(file);
-      if (path == home || stillByHand.contains(path)) continue;
-      for (final line in handTurnsIn(file)) {
-        offenders.add('$path:$line');
-      }
-    }
-    expect(
-      offenders,
-      isEmpty,
-      reason: 'reach for alongBox / acrossBox / placedAlong / stripAcross',
+  test('no file outside the ledger turns a box by hand, and the ledger '
+      'holds no file that has stopped', () {
+    final turns = <String, List<int>>{
+      for (final file in dartFilesUnder('lib'))
+        if (libPath(file) != home)
+          if (handTurnsIn(file) case final lines when lines.isNotEmpty)
+            libPath(file): lines,
+    };
+    expectSetMatchesLedger(
+      turns.keys,
+      stillByHand,
+      unledgered: 'reach for alongBox / acrossBox / placedAlong / stripAcross',
+      paidOff: 'delete these lines from stillByHand',
+      hits: turns,
     );
-  });
-
-  test('the ledger holds no file that has stopped', () {
-    final paid = <String>[
-      for (final path in stillByHand)
-        if (handTurnsIn(File(path)).isEmpty) path,
-    ];
-    expect(paid, isEmpty, reason: 'delete these lines from stillByHand');
     expect(stillByHand, hasLength(1));
   });
 
@@ -164,7 +158,7 @@ void main() {
     if (!asksTheAxis.hasMatch(source)) {
       return const [];
     }
-    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    final code = codeOfLines(source);
     int lineOf(int index) =>
         '\n'.allMatches(code.substring(0, index)).length + 1;
     return [
@@ -506,7 +500,7 @@ void main() {
   /// Lines where a pick's arms come back swapped in the next pick of the
   /// same question, within a statement's reach.
   List<int> swappedPicksIn(String source) {
-    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    final code = codeOfLines(source);
     final picks = pick.allMatches(code).toList();
     String question(RegExpMatch m) => m[1]!.replaceAll(RegExp(r'\s+'), '');
     final lines = <int>[];
@@ -570,41 +564,34 @@ void main() {
     }
   });
 
-  test('no file swaps two picks by hand but the ledger', () {
+  test('no file swaps two picks by hand but the ledger, and the ledger holds '
+      'no pair that has gone', () {
     final files = [...dartFilesUnder('lib'), ...dartFilesUnder('test')];
-    final over = <String>[];
-    final heard = <String>{};
+    final heard = <String, List<int>>{};
     for (final file in files) {
       final path = file.path.replaceAll(r'\', '/');
       // The home says each once; this file spells the old pairs out.
       if (path == home || path.endsWith('one_axis_turn_test.dart')) continue;
       final found = swappedPicksIn(file.readAsStringSync());
-      if (found.isNotEmpty) heard.add(path);
-      if (found.length > (swappedByHand[path] ?? 0)) {
-        over.add('$path:${found.join(',')}');
-      }
+      if (found.isNotEmpty) heard[path] = found;
     }
     expect(
-      heard,
+      heard.keys,
       containsAll(swappedByHand.keys),
       reason: '⛔premise: the ban reads both trees — it hears the ledger\'s '
           'pairs where they stand',
     );
-    expect(
-      over,
-      isEmpty,
-      reason:
+    expectCountsMatchLedger(
+      {
+        for (final MapEntry(key: path, value: lines) in heard.entries)
+          path: lines.length,
+      },
+      swappedByHand,
+      grew:
           'reach for sizedAlong / alongBox / acrossBox / sizeAlong / '
           'stripAlong / stripAcross',
+      paidOff: 'lower or delete these in swappedByHand',
+      hits: heard,
     );
-  });
-
-  test('the ledger holds no pair that has gone', () {
-    final paid = <String>[
-      for (final MapEntry(key: path, value: count) in swappedByHand.entries)
-        if (swappedPicksIn(File(path).readAsStringSync()).length < count)
-          path,
-    ];
-    expect(paid, isEmpty, reason: 'lower or delete these in swappedByHand');
   });
 }

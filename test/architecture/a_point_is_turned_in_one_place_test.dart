@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// 🚨A POINT IS TURNED IN ONE PLACE — [PlaneTurn], beside the one table its
 /// cosine and sine come from.
@@ -18,20 +19,14 @@ import '../helpers/dart_sources.dart';
 /// at most. One alone is a point read along a direction
 /// (`projectOntoAxis`), which is not a turn.
 ///
-/// This is a RATCHET, not a ban: the files that still turn a point by hand
-/// are listed, the list only shrinks, and a file not on it that starts
-/// doing so is red. Remove a file's line when its last turn goes.
+/// ↩️It was a RATCHET until 2026-10-23: the files that still turned a point
+/// by hand stood on a ledger that only shrank. The last two — a brush
+/// dab's pixel turned into tip space, in the coverage law and again in the
+/// tile kernel's loop — turn by the home's formula now (`turnedX`, board
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`), so it is
+/// a ban.
 void main() {
   const home = 'lib/src/core/turn_trig.dart';
-
-  /// Files that still turn a point by hand. Only shrinks.
-  const stillByHand = <String>{
-    // A pixel turned into tip space, four times over, in the dab's
-    // per-pixel loop — the brush session's (브러시/렌더링), and timed
-    // against the native kernel; handed over there.
-    'lib/src/services/brush_dab_kernel.dart',
-    'lib/src/services/brush_dab_tip_geometry.dart',
-  };
 
   /// A cosine or a sine as the code names one — `cos`, `turn.sin`,
   /// `tipCos`, `affine.cosTheta`, `math.cos(radians)` — and not `cosine`,
@@ -64,7 +59,7 @@ void main() {
   /// two crossed sums stand within three lines of each other — its
   /// comments aside, so a decision that quotes the old spelling is not one.
   List<int> turnsIn(String source) {
-    final code = source.replaceAll(RegExp(r'//[^\n]*'), '');
+    final code = codeOfLines(source);
     if (!namesACosine.hasMatch(code) || !namesASine.hasMatch(code)) {
       return const [];
     }
@@ -160,22 +155,13 @@ void main() {
     }
   });
 
-  test('no file outside the ledger turns a point by hand', () {
+  test('no file but the home turns a point by hand', () {
     final offenders = <String>[
       for (final file in dartFilesUnder('lib'))
-        if (libPath(file) != home && !stillByHand.contains(libPath(file)))
+        if (libPath(file) != home)
           for (final line in turnsIn(file.readAsStringSync()))
             '${libPath(file)}:$line',
     ];
     expect(offenders, isEmpty, reason: 'reach for PlaneTurn');
-  });
-
-  test('the ledger holds no file that has stopped', () {
-    final paid = <String>[
-      for (final path in stillByHand)
-        if (turnsIn(File(path).readAsStringSync()).isEmpty) path,
-    ];
-    expect(paid, isEmpty, reason: 'delete these lines from stillByHand');
-    expect(stillByHand, hasLength(2));
   });
 }

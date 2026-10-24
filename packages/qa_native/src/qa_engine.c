@@ -213,7 +213,14 @@ enum {
   // 없음: the edge is a hard cut at half coverage. Set INSTEAD of an
   // aa_contrast; the two never both apply (see BrushAntiAlias).
   QA_DAB_FLAG_AA_THRESHOLD = 32,
+  // 高さ: the paper texture's height cuts the coverage instead of
+  // multiplying it (BrushTextureMode.height, F-451). v53.
+  QA_DAB_FLAG_TEXTURE_HEIGHT = 64,
 };
+
+/* paperHeightBand (brush_stroke_blend.dart): how far above a dab's floor
+   the paper must stand to take the dab fully. */
+#define QA_PAPER_HEIGHT_BAND 0.25
 
 // Mode ids: a fixed FFI contract - the Dart side maps BrushBlendMode
 // through `strokeBlendModeNativeId` with EXACTLY these values. color and
@@ -238,6 +245,24 @@ enum {
   QA_STROKE_BLEND_HARD_LIGHT = 10,
   QA_STROKE_BLEND_DIFFERENCE = 11,
   QA_STROKE_BLEND_EXCLUSION = 12,
+  // v51 (brush-fidelity, 유저 2026-10-17 Q3: 「13개 + 클튜의 발광 둘」): the
+  // separable seven Photoshop and Clip Studio share...
+  QA_STROKE_BLEND_LINEAR_BURN = 13,
+  QA_STROKE_BLEND_SUBTRACT = 14,
+  QA_STROKE_BLEND_VIVID_LIGHT = 15,
+  QA_STROKE_BLEND_LINEAR_LIGHT = 16,
+  QA_STROKE_BLEND_PIN_LIGHT = 17,
+  QA_STROKE_BLEND_HARD_MIX = 18,
+  QA_STROKE_BLEND_DIVIDE = 19,
+  // ...and the six that mix the three channels — NOT in the channel table:
+  // a pixel's B is a colour of three, `qa_stroke_blend_triple`. The dual
+  // mask combines one coverage with another and never sees these.
+  QA_STROKE_BLEND_DARKER_COLOR = 20,
+  QA_STROKE_BLEND_LIGHTER_COLOR = 21,
+  QA_STROKE_BLEND_HUE = 22,
+  QA_STROKE_BLEND_SATURATION = 23,
+  QA_STROKE_BLEND_CHROMA = 24,
+  QA_STROKE_BLEND_LUMINOSITY = 25,
 };
 
 static double qa_stroke_blend_channel(int32_t mode, double cs, double cd);
@@ -1015,6 +1040,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int has_dual = s->dual_alpha != NULL;
   const int has_tex = s->tex_alpha != NULL;
   const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
+  const int texture_height = (flags & QA_DAB_FLAG_TEXTURE_HEIGHT) != 0;
   const double aa_contrast = s->aa_contrast;
 #if defined(QA_DAB_PAIRS)
   const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
@@ -1159,8 +1185,18 @@ QA_EXPORT int32_t qa_dab_blend_tile(
             s->tex_u_fraction, s->tex_u_one_minus, s->tex_v_texel0,
             s->tex_v_texel1, s->tex_v_fraction, s->tex_v_one_minus,
             x - s->region_left, v_index);
-        coverage *= s->texture_one_minus_density +
-                    s->texture_density * texture_sample;
+        /* paperHeightCoverage (brush_stroke_blend.dart), same grouping.
+           ⛔MULTIPLY KEEPS ITS OWN LINE: every brush before F-451 drew it,
+           and its bytes stay as written. */
+        if (texture_height) {
+          const double touched =
+              (texture_sample + s->texture_density * coverage - 1.0) /
+              QA_PAPER_HEIGHT_BAND;
+          coverage = touched <= 0.0 ? 0.0 : (touched >= 1.0 ? 1.0 : touched);
+        } else {
+          coverage *= s->texture_one_minus_density +
+                      s->texture_density * texture_sample;
+        }
         if (coverage <= 0.0) {
           continue;
         }
@@ -1423,14 +1459,15 @@ QA_EXPORT void qa_widen_bytes(
 }
 
 // ---------------------------------------------------------------------------
-// Flood fill, frontier-stepped (R18 A-2b; RGBX + SSE2 R22-D).
+// Flood fill's tolerance tests (R18 A-2b; 4-byte pixels + SSE2 R22-D) -
+// the wave flood below and the close-gap fill share them.
 //
-// R22-D: the fill raster is RGBX - 4 bytes per pixel, X always 0 (the
-// paper fill writes whole words and the compose never touches byte 3).
-// One pixel is one 32-bit word and four pixels fill an SSE2 register,
-// so the span loops below test 4 px per step; scalar tails keep every
-// DECISION byte-identical to the Dart reference (which stays scalar
-// RGBX - the parity suite pins identical filled sets).
+// R22-D: the fill raster is 4 bytes per pixel - premultiplied RGB and
+// the coverage (F-416: it was RGBX over the paper, X always 0). One pixel
+// is one 32-bit word and four pixels fill an SSE2 register, so the span
+// loops below test 4 px per step; scalar tails keep every DECISION
+// byte-identical to the Dart reference (which stays scalar - the parity
+// suite pins identical filled sets).
 
 #if defined(QA_SSE2)
 #define QA_FLOOD_SSE2 1
@@ -1440,7 +1477,7 @@ static inline qa_vec4 qa_vec4_splat(uint32_t word) {
 }
 #elif defined(QA_NEON)
 // R28 NEON port: the ARM mirror of the SSE2 compare - same saturating
-// abs-diff (vabd), same X-lane mask, same <= tol semantics, so the
+// abs-diff (vabd) over all four lanes, same <= tol semantics, so the
 // decisions stay byte-identical (the permanent Dart oracle pins them
 // on-device). aarch64 only (vaddvq); 32-bit ARM keeps the scalar path.
 #define QA_FLOOD_NEON 1
@@ -1454,41 +1491,46 @@ static inline qa_vec4 qa_vec4_splat(uint32_t word) {
 #define QA_FLOOD_SIMD 1
 #endif
 
-// One-pixel tolerance test against the seed color (RGBX layout).
+// One-pixel tolerance test against the seed (RGBA layout: the seed is
+// packed as the raster holds a pixel, red in the low byte). Coverage is a
+// lane like the colours - a drawn pixel and the empty canvas differ by it
+// however alike their colour (F-416).
 static inline int qa_tol_ok1(
     const uint8_t* px,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance) {
-  const int32_t dr = (int32_t)px[0] - seed_r;
-  const int32_t dg = (int32_t)px[1] - seed_g;
-  const int32_t db = (int32_t)px[2] - seed_b;
-  return dr <= tolerance && -dr <= tolerance && dg <= tolerance &&
-         -dg <= tolerance && db <= tolerance && -db <= tolerance;
+  for (int32_t lane = 0; lane < 4; lane += 1) {
+    const int32_t d =
+        (int32_t)px[lane] - (int32_t)((seed >> (8 * lane)) & 0xFFu);
+    if (d > tolerance || -d > tolerance) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+// [tolerance] in each of a pixel's four lanes - the SIMD compare's bound.
+static inline uint32_t qa_tol_lanes(int32_t tolerance) {
+  return (uint32_t)tolerance * 0x01010101u;
 }
 
 #if defined(QA_FLOOD_SSE2)
-// Bit i (0..3) set = pixel i of the 16-byte RGBX block is within
-// tolerance of the seed on R, G and B. The X lane is MASKED OUT of the
-// abs-diff, so the test matches the scalar compare under ANY X bytes -
-// no hidden "X must be 0" contract. The per-byte |p-seed| <= tol via
+// Bit i (0..3) set = pixel i of the 16-byte RGBA block is within
+// tolerance of the seed on every lane. The per-byte |p-seed| <= tol via
 // saturating unsigned abs-diff is exact for the integer compare above.
-static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
-  const __m128i p = _mm_loadu_si128((const __m128i*)rgbx);
-  const __m128i d = _mm_and_si128(
-      _mm_or_si128(_mm_subs_epu8(p, seed4), _mm_subs_epu8(seed4, p)),
-      _mm_set1_epi32(0x00FFFFFF));
+static inline int qa_tol_ok4(const uint8_t* rgba, qa_vec4 seed4, qa_vec4 tol4) {
+  const __m128i p = _mm_loadu_si128((const __m128i*)rgba);
+  const __m128i d =
+      _mm_or_si128(_mm_subs_epu8(p, seed4), _mm_subs_epu8(seed4, p));
   const __m128i ok8 =
       _mm_cmpeq_epi8(_mm_subs_epu8(d, tol4), _mm_setzero_si128());
   const __m128i ok32 = _mm_cmpeq_epi32(ok8, _mm_set1_epi32(-1));
   return _mm_movemask_ps(_mm_castsi128_ps(ok32));
 }
 #elif defined(QA_FLOOD_NEON)
-static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
-  const uint8x16_t p = vld1q_u8(rgbx);
-  const uint8x16_t xmask = vreinterpretq_u8_u32(vdupq_n_u32(0x00FFFFFFu));
-  const uint8x16_t d = vandq_u8(vabdq_u8(p, seed4), xmask);
+static inline int qa_tol_ok4(const uint8_t* rgba, qa_vec4 seed4, qa_vec4 tol4) {
+  const uint8x16_t p = vld1q_u8(rgba);
+  const uint8x16_t d = vabdq_u8(p, seed4);
   const uint8x16_t ok8 = vcleq_u8(d, tol4);
   const uint32x4_t ok32 =
       vceqq_u32(vreinterpretq_u32_u8(ok8), vdupq_n_u32(0xFFFFFFFFu));
@@ -1497,308 +1539,32 @@ static inline int qa_tol_ok4(const uint8_t* rgbx, qa_vec4 seed4, qa_vec4 tol4) {
 }
 #endif
 
-// EXACT port of the Dart scanline flood (floodFillRegion): expand each
-// popped run left/right, seed the rows above/below once per contiguous
-// matching run. The Dart original composes raster tiles LAZILY through a
-// callback; C cannot call back into Dart, so composition is stepped
-// instead: pixels that fall in a not-yet-composed 2^shift tile are
-// reported as CANDIDATES and treated as run boundaries. The Dart driver
-// composes those tiles, re-tests the candidates (filled[] dedupes), and
-// re-enters with them as fresh seeds. A scanline flood fills the whole
-// connected tolerance-region from any seed inside it, so the final
-// filled set is identical to the single-pass reference - the parity
-// suite pins it.
-//
-// Guards keep every early return BETWEEN runs (never mid-run): before a
-// pop, the call returns if the candidate buffer could not absorb a
-// whole worst-case run (~4*width) or the stack could not absorb its
-// pushes (~width). The driver then composes / grows and re-enters with
-// the stack state intact (it lives in caller-owned native memory).
-//
-// Returns the number of candidate pixel indices written.
-QA_EXPORT int32_t qa_flood_fill_step(
-    const uint8_t* rgb,
-    uint8_t* filled,
-    const uint8_t* composed,
-    int32_t width,
-    int32_t height,
-    int32_t compose_tile_shift,
-    int32_t tiles_x,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
-    int32_t tolerance,
-    int32_t* stack,
-    int32_t* stack_size,
-    int32_t stack_capacity,
-    int32_t* candidates,
-    int32_t candidates_capacity,
-    int32_t* bounds) {
-  int32_t candidate_count = 0;
-  const int32_t candidate_margin = 4 * width + 16;
-  const int32_t stack_margin = width + 4;
-  int32_t min_x = bounds[0];
-  int32_t max_x = bounds[1];
-  int32_t min_y = bounds[2];
-  int32_t max_y = bounds[3];
-#ifdef QA_FLOOD_SIMD
-  const qa_vec4 seed4 = qa_vec4_splat(
-      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-      ((uint32_t)seed_b << 16));
-  const qa_vec4 tol4 = qa_vec4_splat(
-      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-      ((uint32_t)tolerance << 16));
-#endif
-
-  while (*stack_size > 0) {
-    if (candidate_count + candidate_margin > candidates_capacity ||
-        *stack_size + stack_margin > stack_capacity) {
-      break;
-    }
-    *stack_size -= 1;
-    const int32_t index = stack[*stack_size];
-    const int32_t y = index / width;
-    const int32_t row_start = y * width;
-    const int32_t tile_row = (y >> compose_tile_shift) * tiles_x;
-
-    // Expand the scanline run left and right; an uncomposed tile is a
-    // candidate + run boundary (the driver re-seeds it after compose).
-    // Scans run per compose-tile SEGMENT (composed[] is constant inside
-    // one), 4 px per SSE2 step with a scalar tail owning every edge
-    // decision - identical stop points to the plain loop.
-    int32_t left = index - row_start;
-    for (;;) {
-      if (left <= 0 || filled[row_start + left - 1] != 0) {
-        break;
-      }
-      const int32_t px = left - 1;
-      if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
-        candidates[candidate_count] = row_start + px;
-        candidate_count += 1;
-        break;
-      }
-      const int32_t seg_start = (px >> compose_tile_shift)
-                                << compose_tile_shift;
-      int32_t x = px;
-      int32_t stop = 0;
-#ifdef QA_FLOOD_SIMD
-      while (x - 3 >= seg_start) {
-        uint32_t f4;
-        memcpy(&f4, filled + row_start + x - 3, 4);
-        if (f4 != 0) {
-          break;
-        }
-        if (qa_tol_ok4(
-                rgb + ((ptrdiff_t)(row_start + x - 3) << 2), seed4, tol4) !=
-            0xF) {
-          break;
-        }
-        memset(filled + row_start + x - 3, 255, 4);
-        x -= 4;
-      }
-#endif
-      while (x >= seg_start) {
-        const int32_t p = row_start + x;
-        if (filled[p] != 0 ||
-            !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
-                tolerance)) {
-          stop = 1;
-          break;
-        }
-        filled[p] = 255;
-        x -= 1;
-      }
-      left = x + 1;
-      if (stop) {
-        break;
-      }
-    }
-    int32_t right = index - row_start;
-    for (;;) {
-      if (right >= width - 1 || filled[row_start + right + 1] != 0) {
-        break;
-      }
-      const int32_t px = right + 1;
-      if (composed[tile_row + (px >> compose_tile_shift)] == 0) {
-        candidates[candidate_count] = row_start + px;
-        candidate_count += 1;
-        break;
-      }
-      int32_t seg_end =
-          ((((px >> compose_tile_shift) + 1) << compose_tile_shift)) - 1;
-      if (seg_end > width - 1) {
-        seg_end = width - 1;
-      }
-      int32_t x = px;
-      int32_t stop = 0;
-#ifdef QA_FLOOD_SIMD
-      while (x + 3 <= seg_end) {
-        uint32_t f4;
-        memcpy(&f4, filled + row_start + x, 4);
-        if (f4 != 0) {
-          break;
-        }
-        if (qa_tol_ok4(rgb + ((ptrdiff_t)(row_start + x) << 2), seed4, tol4) !=
-            0xF) {
-          break;
-        }
-        memset(filled + row_start + x, 255, 4);
-        x += 4;
-      }
-#endif
-      while (x <= seg_end) {
-        const int32_t p = row_start + x;
-        if (filled[p] != 0 ||
-            !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
-                tolerance)) {
-          stop = 1;
-          break;
-        }
-        filled[p] = 255;
-        x += 1;
-      }
-      right = x - 1;
-      if (stop) {
-        break;
-      }
-    }
-    if (left < min_x) min_x = left;
-    if (right > max_x) max_x = right;
-    if (y < min_y) min_y = y;
-    if (y > max_y) max_y = y;
-
-    // Seed the rows above and below across the run - ONE seed per
-    // contiguous matching run; uncomposed pixels are candidates and
-    // close the current run exactly like a non-match. The composed
-    // check hoists per segment; the SSE2 block computes a 4-px match
-    // mask (unfilled AND within tolerance) and a scalar walk over the
-    // bits runs the run_open state machine - decision-identical to the
-    // plain loop.
-    for (int32_t direction = 0; direction < 2; direction += 1) {
-      const int32_t neighbor_y = direction == 0 ? y - 1 : y + 1;
-      if (neighbor_y < 0 || neighbor_y >= height) {
-        continue;
-      }
-      const int32_t neighbor_row = neighbor_y * width;
-      const int32_t neighbor_tile_row =
-          (neighbor_y >> compose_tile_shift) * tiles_x;
-      int32_t run_open = 0;
-      int32_t x = left;
-      while (x <= right) {
-        if (composed[neighbor_tile_row + (x >> compose_tile_shift)] == 0) {
-          candidates[candidate_count] = neighbor_row + x;
-          candidate_count += 1;
-          run_open = 0;
-          x += 1;
-          continue;
-        }
-        int32_t seg_end =
-            ((((x >> compose_tile_shift) + 1) << compose_tile_shift)) - 1;
-        if (seg_end > right) {
-          seg_end = right;
-        }
-#ifdef QA_FLOOD_SIMD
-        while (x + 3 <= seg_end) {
-          const int32_t p0 = neighbor_row + x;
-          uint32_t f4;
-          memcpy(&f4, filled + p0, 4);
-          int32_t match =
-              qa_tol_ok4(rgb + ((ptrdiff_t)p0 << 2), seed4, tol4);
-          // Clear match bits for already-filled pixels (they close a
-          // run exactly like a non-match in the reference loop).
-          if (f4 != 0) {
-            if (f4 & 0xFFu) match &= ~1;
-            if (f4 & 0xFF00u) match &= ~2;
-            if (f4 & 0xFF0000u) match &= ~4;
-            if (f4 & 0xFF000000u) match &= ~8;
-          }
-          if (match == 0) {
-            run_open = 0;
-            x += 4;
-            continue;
-          }
-          for (int32_t i = 0; i < 4; i += 1) {
-            if (match & (1 << i)) {
-              if (!run_open) {
-                const int32_t p = p0 + i;
-                filled[p] = 255;
-                stack[*stack_size] = p;
-                *stack_size += 1;
-                run_open = 1;
-              }
-            } else {
-              run_open = 0;
-            }
-          }
-          x += 4;
-        }
-#endif
-        while (x <= seg_end) {
-          const int32_t p = neighbor_row + x;
-          if (filled[p] == 0 &&
-              qa_tol_ok1(
-                  rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
-                  tolerance)) {
-            if (!run_open) {
-              filled[p] = 255;
-              stack[*stack_size] = p;
-              *stack_size += 1;
-              run_open = 1;
-            }
-          } else {
-            run_open = 0;
-          }
-          x += 1;
-        }
-      }
-    }
-  }
-
-  bounds[0] = min_x;
-  bounds[1] = max_x;
-  bounds[2] = min_y;
-  bounds[3] = max_y;
-  return candidate_count;
-}
-
 // ---------------------------------------------------------------------------
 // Fill raster compose (R18 A-2c): LazyCanvasRasterRgb's per-tile compose
-// ported verbatim - the clean-run lab showed the lazy compose (paper
-// fill + integer source-over of layer tiles onto the RGB raster) is
-// most of what remains inside the fill.flood probe now that the flood
-// itself is native.
+// ported verbatim - the clean-run lab showed the lazy compose (clearing
+// + integer source-over of layer tiles onto the raster) is most of what
+// remains inside the fill.flood probe now that the flood itself is
+// native.
 
-// Fills a raster rect with the paper color (RGBX, 4 bytes per pixel;
-// X writes 0 for determinism - the SIMD tolerance compare masks the X
-// lane out, so nothing depends on it).
-QA_EXPORT void qa_fill_paper_rect(
+// Clears a raster rect to nothing drawn: every lane 0 (the raster is
+// premultiplied RGBA - no paper under it, F-416).
+QA_EXPORT void qa_fill_clear_rect(
     uint8_t* rgb,
     int32_t raster_width,
     int32_t left,
     int32_t top,
     int32_t right_exclusive,
-    int32_t bottom_exclusive,
-    int32_t paper_r,
-    int32_t paper_g,
-    int32_t paper_b) {
-  const uint32_t paper = (uint32_t)paper_r | ((uint32_t)paper_g << 8) |
-                         ((uint32_t)paper_b << 16);
+    int32_t bottom_exclusive) {
   for (int32_t y = top; y < bottom_exclusive; y += 1) {
-    uint32_t* dst =
-        (uint32_t*)(rgb + (((ptrdiff_t)y * raster_width + left) << 2));
-    for (int32_t x = left; x < right_exclusive; x += 1) {
-      *dst = paper;
-      dst += 1;
-    }
+    memset(
+        rgb + (((ptrdiff_t)y * raster_width + left) << 2), 0,
+        (size_t)(right_exclusive - left) << 2);
   }
 }
 
-// Integer source-over of one RGBA surface-tile clip onto the RGBX
-// raster (byte-rounded, exactly the Dart loop: effective =
-// (a*o+127)/255 etc.). The X byte stays untouched (0 from the paper
-// fill).
+// Integer source-over of one RGBA surface-tile clip onto the
+// premultiplied raster (byte-rounded, exactly the Dart loop: effective =
+// (a*o+127)/255 etc.); the fourth lane gathers the coverage the same way.
 QA_EXPORT void qa_fill_compose_tile(
     uint8_t* rgb,
     int32_t raster_width,
@@ -1824,6 +1590,7 @@ QA_EXPORT void qa_fill_compose_tile(
         dst[0] = (uint8_t)((src[0] * effective + dst[0] * inverse + 127) / 255);
         dst[1] = (uint8_t)((src[1] * effective + dst[1] * inverse + 127) / 255);
         dst[2] = (uint8_t)((src[2] * effective + dst[2] * inverse + 127) / 255);
+        dst[3] = (uint8_t)((255 * effective + dst[3] * inverse + 127) / 255);
       }
       src += 4;
       dst += 4;
@@ -1991,10 +1758,10 @@ QA_EXPORT void qa_fill_finish_mask(
 
 // ---------------------------------------------------------------------------
 // Batched fill compose (R25-3): the lazy raster used to compose each
-// 256px tile through per-tile serial FFI calls (paper rect + one call
-// per intersecting layer tile). One batch call now fans compose TILES
-// across the worker pool; within one tile the paper fill and the layer
-// blends run sequentially in order (source-over order IS the bytes),
+// 256px tile through per-tile serial FFI calls (a clear + one call per
+// intersecting layer tile). One batch call now fans compose TILES across
+// the worker pool; within one tile the clear and the layer blends run
+// sequentially in order (source-over order IS the bytes),
 // and tiles are disjoint - so the result is byte-identical to the
 // serial path while the wall time divides by cores.
 
@@ -2017,7 +1784,7 @@ QA_EXPORT int32_t qa_compose_blend_sizeof(void) {
   return (int32_t)sizeof(qa_compose_blend);
 }
 
-// One compose TILE of a batch: paper-fill its rect, then run its slice
+// One compose TILE of a batch: clear its rect, then run its slice
 // of the shared blend array in order. Mirrors QaComposeTileItemStruct.
 typedef struct {
   int32_t tile_left;
@@ -2032,49 +1799,41 @@ QA_EXPORT int32_t qa_compose_tile_item_sizeof(void) {
   return (int32_t)sizeof(qa_compose_tile_item);
 }
 
-static struct {
+// One call's job, on its caller's stack. ↩️It was a static, and two
+// callers at once — two isolates, each on a thread of its own — would
+// each have run the other's tiles (card clip-import-hangs-on-three-samples,
+// 2026-10-23).
+typedef struct {
   uint8_t* rgb;
   int32_t raster_width;
-  int32_t paper_r, paper_g, paper_b;
   const qa_compose_tile_item* items;
   const qa_compose_blend* blends;
-} g_compose_job;
+} qa_compose_job;
 
 static void qa_compose_batch_item(int32_t item_index, void* context) {
-  (void)context;
-  const qa_compose_tile_item* item = &g_compose_job.items[item_index];
-  qa_fill_paper_rect(
-      g_compose_job.rgb, g_compose_job.raster_width, item->tile_left,
-      item->tile_top, item->tile_right_exclusive, item->tile_bottom_exclusive,
-      g_compose_job.paper_r, g_compose_job.paper_g, g_compose_job.paper_b);
+  const qa_compose_job* job = (const qa_compose_job*)context;
+  const qa_compose_tile_item* item = &job->items[item_index];
+  qa_fill_clear_rect(
+      job->rgb, job->raster_width, item->tile_left, item->tile_top,
+      item->tile_right_exclusive, item->tile_bottom_exclusive);
   for (int32_t i = 0; i < item->blend_count; i += 1) {
-    const qa_compose_blend* blend =
-        &g_compose_job.blends[item->first_blend + i];
+    const qa_compose_blend* blend = &job->blends[item->first_blend + i];
     qa_fill_compose_tile(
-        g_compose_job.rgb, g_compose_job.raster_width, blend->tile_pixels,
-        blend->tile_size, blend->base_x, blend->base_y, blend->clip_left,
-        blend->clip_top, blend->clip_right_exclusive,
-        blend->clip_bottom_exclusive, blend->opacity_int);
+        job->rgb, job->raster_width, blend->tile_pixels, blend->tile_size,
+        blend->base_x, blend->base_y, blend->clip_left, blend->clip_top,
+        blend->clip_right_exclusive, blend->clip_bottom_exclusive,
+        blend->opacity_int);
   }
 }
 
 QA_EXPORT void qa_fill_compose_batch(
     uint8_t* rgb,
     int32_t raster_width,
-    int32_t paper_r,
-    int32_t paper_g,
-    int32_t paper_b,
     const qa_compose_tile_item* items,
     int32_t item_count,
     const qa_compose_blend* blends) {
-  g_compose_job.rgb = rgb;
-  g_compose_job.raster_width = raster_width;
-  g_compose_job.paper_r = paper_r;
-  g_compose_job.paper_g = paper_g;
-  g_compose_job.paper_b = paper_b;
-  g_compose_job.items = items;
-  g_compose_job.blends = blends;
-  qa_pool_run(qa_compose_batch_item, NULL, item_count);
+  qa_compose_job job = {rgb, raster_width, items, blends};
+  qa_pool_run(qa_compose_batch_item, &job, item_count);
 }
 
 // ---------------------------------------------------------------------------
@@ -2145,9 +1904,7 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
     int32_t height,
     int32_t seed_x,
     int32_t seed_y,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance,
     int32_t gap_px,
     uint8_t* fillable,
@@ -2159,14 +1916,10 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
   const int64_t count = (int64_t)width * height;
   int64_t i = 0;
 #ifdef QA_FLOOD_SIMD
-  // Full-canvas tolerance mask, 4 px per step (RGBX) - at 8K this pass
+  // Full-canvas tolerance mask, 4 px per step (RGBA) - at 8K this pass
   // alone walks 132MB.
-  const qa_vec4 seed4 = qa_vec4_splat(
-      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-      ((uint32_t)seed_b << 16));
-  const qa_vec4 tol4 = qa_vec4_splat(
-      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-      ((uint32_t)tolerance << 16));
+  const qa_vec4 seed4 = qa_vec4_splat(seed);
+  const qa_vec4 tol4 = qa_vec4_splat(qa_tol_lanes(tolerance));
   for (; i + 4 <= count; i += 4) {
     const int32_t ok = qa_tol_ok4(rgb + (i << 2), seed4, tol4);
     fillable[i] = (uint8_t)(ok & 1);
@@ -2177,7 +1930,7 @@ QA_EXPORT int32_t qa_fill_gap_close_run(
 #endif
   for (; i < count; i += 1) {
     fillable[i] = qa_tol_ok1(
-                      rgb + (i << 2), seed_r, seed_g, seed_b, tolerance)
+                      rgb + (i << 2), seed, tolerance)
                       ? 1
                       : 0;
   }
@@ -2316,6 +2069,19 @@ QA_EXPORT int32_t qa_stamp_blend_tile(
 // pthread mirror below (R22-E2) - same dynamic atomic distribution,
 // same byte-identical contract. QA_ENGINE_THREADS caps the TOTAL
 // thread count including the caller (0 or 1 disables the pool).
+//
+// 🚨ONE CALLER OWNS THE POOL AT A TIME; ANY OTHER RUNS ITS OWN ITEMS ON
+// ITS OWN THREAD (qa_pool_run). The pool is one for the process and so
+// are its job slot and its wake-ups, while every isolate that loads the
+// engine calls it from a thread of its own. Two at once overwrote each
+// other's job, and with auto-reset wake-ups a worker woken once for two
+// jobs left one caller waiting on a signal nobody would send: a .clip
+// whose vector layers were drawn on several workers never finished
+// opening (card clip-import-hangs-on-three-samples, 2026-10-23 — three
+// samples, every time, and none with QA_ENGINE_THREADS=1).
+// ⛔Not a wait for the pool: a caller held behind another's job — the UI
+// thread behind an import's — is the stall the pool is here to shorten,
+// and the items come out byte-identical on any number of threads.
 
 // One tile's span of a batch job. Field order/types MUST match the Dart
 // QaTileSpanStruct exactly; the loader cross-checks qa_tile_span_sizeof.
@@ -2363,6 +2129,18 @@ QA_EXPORT int32_t qa_tile_span_sizeof(void) {
 #include <process.h>
 #include <stdlib.h>
 
+// A flag one thread holds at a time: qa_claim answers whether this one now
+// does — until it calls qa_release.
+typedef volatile LONG qa_claim_flag;
+
+static int qa_claim(qa_claim_flag* flag) {
+  return InterlockedCompareExchange(flag, 1, 0) == 0;
+}
+
+static void qa_release(qa_claim_flag* flag) {
+  InterlockedExchange(flag, 0);
+}
+
 static struct {
   int initialized;
   int worker_count;
@@ -2373,6 +2151,7 @@ static struct {
   void* job_context;
   volatile LONG next_item;
   int32_t item_count;
+  qa_claim_flag owned;
 } g_pool;
 
 static void qa_pool_run_items(void) {
@@ -2427,19 +2206,12 @@ static void qa_pool_init_once(void) {
   }
 }
 
-// Runs job_fn(0..item_count-1, context) across the pool + the caller;
-// returns only when every item completed.
-static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
-  if (item_count <= 0) {
-    return;
-  }
-  qa_pool_init_once();
-  if (g_pool.worker_count == 0 || item_count == 1) {
-    for (int32_t i = 0; i < item_count; i += 1) {
-      job_fn(i, context);
-    }
-    return;
-  }
+// Runs job_fn(0..item_count-1, context) across the workers + the caller,
+// which owns the pool; returns only when every item completed.
+static void qa_pool_spread(
+    qa_job_fn job_fn,
+    void* context,
+    int32_t item_count) {
   g_pool.job_fn = job_fn;
   g_pool.job_context = context;
   g_pool.item_count = item_count;
@@ -2469,6 +2241,20 @@ static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
 #include <stdlib.h>
 #include <unistd.h>
 
+// A flag one thread holds at a time: qa_claim answers whether this one now
+// does — until it calls qa_release.
+typedef int32_t qa_claim_flag;
+
+static int qa_claim(qa_claim_flag* flag) {
+  qa_claim_flag unclaimed = 0;
+  return __atomic_compare_exchange_n(
+      flag, &unclaimed, 1, 0, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+}
+
+static void qa_release(qa_claim_flag* flag) {
+  __atomic_store_n(flag, 0, __ATOMIC_RELEASE);
+}
+
 static struct {
   int initialized;
   int worker_count;
@@ -2482,6 +2268,7 @@ static struct {
   void* job_context;
   volatile int32_t next_item;
   int32_t item_count;
+  qa_claim_flag owned;
 } g_pool;
 
 static void qa_pool_run_items(void) {
@@ -2539,19 +2326,12 @@ static void qa_pool_init_once(void) {
   }
 }
 
-// Runs job_fn(0..item_count-1, context) across the pool + the caller;
-// returns only when every item completed.
-static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
-  if (item_count <= 0) {
-    return;
-  }
-  qa_pool_init_once();
-  if (g_pool.worker_count == 0 || item_count == 1) {
-    for (int32_t i = 0; i < item_count; i += 1) {
-      job_fn(i, context);
-    }
-    return;
-  }
+// Runs job_fn(0..item_count-1, context) across the workers + the caller,
+// which owns the pool; returns only when every item completed.
+static void qa_pool_spread(
+    qa_job_fn job_fn,
+    void* context,
+    int32_t item_count) {
   g_pool.job_fn = job_fn;
   g_pool.job_context = context;
   g_pool.item_count = item_count;
@@ -2574,6 +2354,34 @@ static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
 }
 
 #endif
+
+// Runs job_fn(0..item_count-1, context) on the calling thread alone.
+static void qa_run_here(qa_job_fn job_fn, void* context, int32_t item_count) {
+  for (int32_t i = 0; i < item_count; i += 1) {
+    job_fn(i, context);
+  }
+}
+
+// Runs job_fn(0..item_count-1, context) across the pool + the caller — or
+// on the caller's thread alone while another caller owns the pool (the
+// head of the pool says why); returns only when every item completed.
+static void qa_pool_run(qa_job_fn job_fn, void* context, int32_t item_count) {
+  if (item_count <= 0) {
+    return;
+  }
+  if (item_count == 1 || !qa_claim(&g_pool.owned)) {
+    qa_run_here(job_fn, context, item_count);
+    return;
+  }
+  // Started by its first owner, so never by two threads at once.
+  qa_pool_init_once();
+  if (g_pool.worker_count == 0) {
+    qa_run_here(job_fn, context, item_count);
+  } else {
+    qa_pool_spread(job_fn, context, item_count);
+  }
+  qa_release(&g_pool.owned);
+}
 
 // --- Batched generic dab blend -------------------------------------------
 //
@@ -2899,10 +2707,175 @@ static double qa_stroke_blend_channel(int32_t mode, double cs, double cd) {
                        : (2.0 * cs - 1.0) + cd - (2.0 * cs - 1.0) * cd;
     case QA_STROKE_BLEND_DIFFERENCE:
       return fabs(cs - cd);
+    case QA_STROKE_BLEND_LINEAR_BURN: {
+      const double sum = cs + cd - 1.0;
+      return sum > 0.0 ? sum : 0.0;
+    }
+    case QA_STROKE_BLEND_SUBTRACT: {
+      const double rest = cd - cs;
+      return rest > 0.0 ? rest : 0.0;
+    }
+    case QA_STROKE_BLEND_VIVID_LIGHT:
+      // colorBurn(2cs, cd) below the pivot, colorDodge(2cs-1, cd) above —
+      // hardLight's split with the two dodge/burn heads in place of
+      // multiply/screen.
+      return cs <= 0.5
+                 ? qa_stroke_blend_channel(QA_STROKE_BLEND_COLOR_BURN,
+                                           2.0 * cs, cd)
+                 : qa_stroke_blend_channel(QA_STROKE_BLEND_COLOR_DODGE,
+                                           2.0 * cs - 1.0, cd);
+    case QA_STROKE_BLEND_LINEAR_LIGHT: {
+      const double sum = cd + 2.0 * cs - 1.0;
+      return sum < 0.0 ? 0.0 : (sum > 1.0 ? 1.0 : sum);
+    }
+    case QA_STROKE_BLEND_PIN_LIGHT: {
+      if (cs <= 0.5) {
+        const double doubled = 2.0 * cs;
+        return cd < doubled ? cd : doubled;
+      }
+      const double raised = 2.0 * cs - 1.0;
+      return cd > raised ? cd : raised;
+    }
+    case QA_STROKE_BLEND_HARD_MIX:
+      // Every channel goes all the way: white where the two reach a whole,
+      // black where they fall short — on bytes, s + d >= 255. 🔬Every pair
+      // of bytes summing to 255 lands on exactly 1.0 here (all 256 checked,
+      // 2026-10-17), so the plain comparison is the byte rule.
+      return cs + cd >= 1.0 ? 1.0 : 0.0;
+    case QA_STROKE_BLEND_DIVIDE: {
+      // The destination divided by the source. Nothing divided is nothing;
+      // anything divided by nothing is as bright as a channel goes.
+      if (cd <= 0.0) return 0.0;
+      if (cs <= 0.0) return 1.0;
+      const double quotient = cd / cs;
+      return quotient < 1.0 ? quotient : 1.0;
+    }
     case QA_STROKE_BLEND_EXCLUSION:
     default:
       return cs + cd - 2.0 * cs * cd;
   }
+}
+
+// ---- The six that mix the three channels (brush-fidelity) ----
+//
+// Their B is a COLOUR of three, so they are not in the table above:
+// W3C Compositing and Blending Level 1's non-separable modes — Lum,
+// ClipColor, SetLum, Sat, SetSat — plus Photoshop's darker/lighter colour,
+// which keep one of the two colours whole. SetSat is written the way Skia
+// writes it (every channel (c - min) * s / (max - min)): the spec's
+// max/mid/min assignment without ranking the three, ties included.
+//
+// 🚨Every expression keeps the Dart reference's grouping
+// (brush_stroke_blend.dart `_ChannelMix`); FP contraction is
+// off in every build, so the parity suite holds them byte for byte.
+
+static int32_t qa_stroke_blend_is_triple(int32_t mode) {
+  return mode >= QA_STROKE_BLEND_DARKER_COLOR &&
+         mode <= QA_STROKE_BLEND_LUMINOSITY;
+}
+
+static double qa_triple_min(const double* c) {
+  const double low = c[0] < c[1] ? c[0] : c[1];
+  return low < c[2] ? low : c[2];
+}
+
+static double qa_triple_max(const double* c) {
+  const double high = c[0] > c[1] ? c[0] : c[1];
+  return high > c[2] ? high : c[2];
+}
+
+static double qa_triple_lum(const double* c) {
+  return 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+}
+
+// ⚠️The two `!= 0.0` guards are Skia's: a grey whose luminosity landed an
+// ulp under 0 (or over 1) would otherwise divide 0 by 0, and the Dart
+// reference's `round()` throws on NaN.
+static void qa_triple_clip(double* c) {
+  const double l = qa_triple_lum(c);
+  const double low = qa_triple_min(c);
+  const double high = qa_triple_max(c);
+  for (int32_t k = 0; k < 3; k += 1) {
+    double v = c[k];
+    if (low < 0.0 && l - low != 0.0) {
+      v = l + (v - l) * l / (l - low);
+    }
+    if (high > 1.0 && high - l != 0.0) {
+      v = l + (v - l) * (1.0 - l) / (high - l);
+    }
+    c[k] = v;
+  }
+}
+
+static void qa_triple_set_lum(double* c, double l) {
+  const double d = l - qa_triple_lum(c);
+  c[0] = c[0] + d;
+  c[1] = c[1] + d;
+  c[2] = c[2] + d;
+  qa_triple_clip(c);
+}
+
+static double qa_triple_sat(const double* c) {
+  return qa_triple_max(c) - qa_triple_min(c);
+}
+
+static void qa_triple_set_sat(double* c, double s) {
+  const double low = qa_triple_min(c);
+  const double sat = qa_triple_max(c) - low;
+  for (int32_t k = 0; k < 3; k += 1) {
+    c[k] = sat > 0.0 ? (c[k] - low) * s / sat : 0.0;
+  }
+}
+
+// B(Cs, Cd) for the six, into [b]. Takes the BYTES because darker/lighter
+// colour compare the two colours' channel totals, and a total of thirds
+// of 255 in doubles can call two equal totals unequal.
+static void qa_stroke_blend_triple(int32_t mode, const uint8_t* src,
+                                   const uint8_t* dst, double* b) {
+  const double cs[3] = {src[0] / 255.0, src[1] / 255.0, src[2] / 255.0};
+  const double cd[3] = {dst[0] / 255.0, dst[1] / 255.0, dst[2] / 255.0};
+  const int32_t source_total = src[0] + src[1] + src[2];
+  const int32_t dest_total = dst[0] + dst[1] + dst[2];
+  const double* whole = cd;
+  switch (mode) {
+    case QA_STROKE_BLEND_DARKER_COLOR:
+      // A tie keeps what is there.
+      whole = source_total < dest_total ? cs : cd;
+      break;
+    case QA_STROKE_BLEND_LIGHTER_COLOR:
+      whole = source_total > dest_total ? cs : cd;
+      break;
+    case QA_STROKE_BLEND_HUE:
+      b[0] = cs[0];
+      b[1] = cs[1];
+      b[2] = cs[2];
+      qa_triple_set_sat(b, qa_triple_sat(cd));
+      qa_triple_set_lum(b, qa_triple_lum(cd));
+      return;
+    case QA_STROKE_BLEND_SATURATION:
+      b[0] = cd[0];
+      b[1] = cd[1];
+      b[2] = cd[2];
+      qa_triple_set_sat(b, qa_triple_sat(cs));
+      qa_triple_set_lum(b, qa_triple_lum(cd));
+      return;
+    case QA_STROKE_BLEND_CHROMA:
+      b[0] = cs[0];
+      b[1] = cs[1];
+      b[2] = cs[2];
+      qa_triple_set_lum(b, qa_triple_lum(cd));
+      return;
+    case QA_STROKE_BLEND_LUMINOSITY:
+    default:
+      b[0] = cd[0];
+      b[1] = cd[1];
+      b[2] = cd[2];
+      qa_triple_set_lum(b, qa_triple_lum(cs));
+      return;
+  }
+  b[0] = whole[0];
+  b[1] = whole[1];
+  b[2] = whole[2];
 }
 
 // Blends one stroke row span into a tile row in place. Returns nonzero
@@ -2981,17 +2954,27 @@ static int32_t qa_stroke_blend_row(
         const double cs_r = src[0] / 255.0, cd_r = dst[0] / 255.0;
         const double cs_g = src[1] / 255.0, cd_g = dst[1] / 255.0;
         const double cs_b = src[2] / 255.0, cd_b = dst[2] / 255.0;
+        // One composite for both kinds of B: per channel, or a colour of
+        // three (the six that mix the channels).
+        double b[3];
+        if (qa_stroke_blend_is_triple(mode)) {
+          qa_stroke_blend_triple(mode, src, dst, b);
+        } else {
+          b[0] = qa_stroke_blend_channel(mode, cs_r, cd_r);
+          b[1] = qa_stroke_blend_channel(mode, cs_g, cd_g);
+          b[2] = qa_stroke_blend_channel(mode, cs_b, cd_b);
+        }
         out_r = qa_stroke_clamp_byte(
             (as_ * (1.0 - ad) * cs_r + ad * (1.0 - as_) * cd_r +
-             as_ * ad * qa_stroke_blend_channel(mode, cs_r, cd_r)) /
+             as_ * ad * b[0]) /
             ao);
         out_g = qa_stroke_clamp_byte(
             (as_ * (1.0 - ad) * cs_g + ad * (1.0 - as_) * cd_g +
-             as_ * ad * qa_stroke_blend_channel(mode, cs_g, cd_g)) /
+             as_ * ad * b[1]) /
             ao);
         out_b = qa_stroke_clamp_byte(
             (as_ * (1.0 - ad) * cs_b + ad * (1.0 - as_) * cd_b +
-             as_ * ad * qa_stroke_blend_channel(mode, cs_b, cd_b)) /
+             as_ * ad * b[2]) /
             ao);
         out_a = qa_stroke_clamp_byte(ao);
       }
@@ -3143,7 +3126,7 @@ QA_EXPORT void qa_tile_alpha_bounds(
 enum {
   QA_PRE_BLEND_SRC_OVER = 0,  // plain colour: the stamp kernel's srcOver
   QA_PRE_BLEND_ERASE = 1,     // eraser / 소거: the stamp kernel's dstOut
-  QA_PRE_BLEND_STROKE = 2,    // the 13 brush blends (mode = QA_STROKE_BLEND_*)
+  QA_PRE_BLEND_STROKE = 2,    // every other blend (mode = QA_STROKE_BLEND_*)
 };
 
 // Pixels of masked stroke staged per pass. Rows longer than this are
@@ -3339,9 +3322,10 @@ QA_EXPORT void qa_alpha_bounds_tiles(
 // ---------------------------------------------------------------------------
 // Parallel flood fill (R22-E3): wave-parallel connected growth.
 //
-// The sequential stepper (qa_flood_fill_step) grows the region pixel by
-// pixel; at 64MP it is the app's dominant fill term. This engine keeps
-// the SAME lazy-compose protocol with the Dart driver (uncomposed
+// A sequential stepper grows the region pixel by pixel; at 64MP it was
+// the app's dominant fill term (↩️`qa_flood_fill_step`, R18 A-2b — unbound
+// since this engine replaced it, deleted with F-416). This engine keeps
+// the lazy-compose protocol with the Dart driver (uncomposed
 // pixels come back as candidates) but grows the region one compose-tile
 // WAVE at a time: every tile with pending seeds floods LOCALLY (scan-
 // line + the SSE2 tolerance spans, no composed checks inside a tile) in
@@ -3405,7 +3389,8 @@ static struct {
   uint8_t* filled;
   int32_t width;
   int32_t height;
-  int32_t seed_r, seed_g, seed_b, tolerance;
+  uint32_t seed;
+  int32_t tolerance;
 } g_wave_job;
 
 // Worker-local scanline stack, lazily allocated per thread and kept.
@@ -3506,17 +3491,11 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
   const uint8_t* rgb = g_wave_job.rgb;
   uint8_t* filled = g_wave_job.filled;
   const int32_t width = g_wave_job.width;
-  const int32_t seed_r = g_wave_job.seed_r;
-  const int32_t seed_g = g_wave_job.seed_g;
-  const int32_t seed_b = g_wave_job.seed_b;
+  const uint32_t seed = g_wave_job.seed;
   const int32_t tolerance = g_wave_job.tolerance;
 #ifdef QA_FLOOD_SIMD
-  const qa_vec4 seed4 = qa_vec4_splat(
-      (uint32_t)seed_r | ((uint32_t)seed_g << 8) |
-      ((uint32_t)seed_b << 16));
-  const qa_vec4 tol4 = qa_vec4_splat(
-      (uint32_t)tolerance | ((uint32_t)tolerance << 8) |
-      ((uint32_t)tolerance << 16));
+  const qa_vec4 seed4 = qa_vec4_splat(seed);
+  const qa_vec4 tol4 = qa_vec4_splat(qa_tol_lanes(tolerance));
 #endif
 
   if (g_wave_local_stack == NULL) {
@@ -3536,7 +3515,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
     const int32_t p = pending[i];
     if (filled[p] == 0) {
       if (!qa_tol_ok1(
-              rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b, tolerance)) {
+              rgb + ((ptrdiff_t)p << 2), seed, tolerance)) {
         continue;
       }
       const int32_t x = p % width;
@@ -3589,7 +3568,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
         const int32_t p = row_start + x;
         if (filled[p] != 0 ||
             !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                rgb + ((ptrdiff_t)p << 2), seed,
                 tolerance)) {
           break;
         }
@@ -3623,7 +3602,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
         const int32_t p = row_start + x;
         if (filled[p] != 0 ||
             !qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                rgb + ((ptrdiff_t)p << 2), seed,
                 tolerance)) {
           break;
         }
@@ -3650,7 +3629,7 @@ static void qa_wave_flood_tile(int32_t tile_id, void* context) {
         const int32_t p = neighbor_row + x;
         if (filled[p] == 0 &&
             qa_tol_ok1(
-                rgb + ((ptrdiff_t)p << 2), seed_r, seed_g, seed_b,
+                rgb + ((ptrdiff_t)p << 2), seed,
                 tolerance)) {
           if (!run_open) {
             qa_wave_fill_px(t, tile_id, x, neighbor_y);
@@ -3675,14 +3654,8 @@ static void qa_wave_flood_wave_item(int32_t item_index, void* context) {
   qa_wave_flood_tile(g_wave.wave_list[item_index], NULL);
 }
 
-// One full lazy-protocol round: floods EVERYTHING reachable through
-// currently-composed tiles (wave-parallel), returns crossings into
-// uncomposed tiles as candidates (same contract as the sequential
-// stepper: the driver composes them, re-seeds the matches, re-enters).
-// stack in: the driver's seeds; out: always fully consumed (0).
-// Returns the candidate count, or -1 on any allocation/bound failure -
-// the caller redoes the fill on the sequential path from clean state.
-QA_EXPORT int32_t qa_flood_fill_wave(
+// qa_flood_fill_wave's round, run by the caller that holds the arena.
+static int32_t qa_flood_fill_wave_owned(
     const uint8_t* rgb,
     uint8_t* filled,
     const uint8_t* composed,
@@ -3690,9 +3663,7 @@ QA_EXPORT int32_t qa_flood_fill_wave(
     int32_t height,
     int32_t compose_tile_shift,
     int32_t tiles_x,
-    int32_t seed_r,
-    int32_t seed_g,
-    int32_t seed_b,
+    uint32_t seed,
     int32_t tolerance,
     int32_t* stack,
     int32_t* stack_size,
@@ -3798,9 +3769,7 @@ QA_EXPORT int32_t qa_flood_fill_wave(
   g_wave_job.filled = filled;
   g_wave_job.width = width;
   g_wave_job.height = height;
-  g_wave_job.seed_r = seed_r;
-  g_wave_job.seed_g = seed_g;
-  g_wave_job.seed_b = seed_b;
+  g_wave_job.seed = seed;
   g_wave_job.tolerance = tolerance;
 
   while (queue_count > 0) {
@@ -3865,6 +3834,45 @@ QA_EXPORT int32_t qa_flood_fill_wave(
   bounds[1] = max_x;
   bounds[2] = min_y;
   bounds[3] = max_y;
+  return candidate_count;
+}
+
+// The arena (g_wave, g_wave_job) is one for the process, like the pool:
+// one fill at a time holds it, and another finds the round failed (card
+// clip-import-hangs-on-three-samples, 2026-10-23).
+static qa_claim_flag g_wave_owned;
+
+// One full lazy-protocol round: floods EVERYTHING reachable through
+// currently-composed tiles (wave-parallel), returns crossings into
+// uncomposed tiles as candidates (same contract as the sequential
+// stepper: the driver composes them, re-seeds the matches, re-enters).
+// stack in: the driver's seeds; out: always fully consumed (0).
+// Returns the candidate count, or -1 on any allocation/bound failure or
+// while another fill holds the arena - the caller redoes the fill on the
+// sequential path from clean state.
+QA_EXPORT int32_t qa_flood_fill_wave(
+    const uint8_t* rgb,
+    uint8_t* filled,
+    const uint8_t* composed,
+    int32_t width,
+    int32_t height,
+    int32_t compose_tile_shift,
+    int32_t tiles_x,
+    uint32_t seed,
+    int32_t tolerance,
+    int32_t* stack,
+    int32_t* stack_size,
+    int32_t* candidates,
+    int32_t candidates_capacity,
+    int32_t* bounds) {
+  if (!qa_claim(&g_wave_owned)) {
+    return -1;
+  }
+  const int32_t candidate_count = qa_flood_fill_wave_owned(
+      rgb, filled, composed, width, height, compose_tile_shift, tiles_x,
+      seed, tolerance, stack, stack_size, candidates,
+      candidates_capacity, bounds);
+  qa_release(&g_wave_owned);
   return candidate_count;
 }
 
@@ -5977,6 +5985,13 @@ typedef struct {
   // laid out at all.
   int32_t incoming_count;
   int32_t incoming_step;
+  // 2치화 (ABI 50): 0 = off. Otherwise a channel byte at or above it takes
+  // the incoming byte and one below it takes 0 — alpha at or over the cut
+  // goes opaque, the rest empty. ⛔It shapes the VALUE written, never
+  // whether a pixel takes part: that reads R, G and B only, so the undo
+  // walks the same pixels after the alpha has changed. Forward only — an
+  // undo assigns its recipe, and is sent 0 (the Dart side asserts it).
+  int32_t threshold;
 } qa_cel_pixel_spec;
 
 QA_EXPORT int32_t qa_cel_pixel_spec_sizeof(void) {
@@ -6061,6 +6076,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
   const int32_t stride = spec->byte_offset_stride;
   const int64_t incoming_count = spec->incoming_count;
   const ptrdiff_t incoming_step = spec->incoming_step;
+  const int32_t threshold = spec->threshold;
   int32_t copied = 0;
   int32_t runs = 0;
   int64_t index = start_index;
@@ -6109,12 +6125,14 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
         spec->is_undo ? incoming + index * incoming_step : incoming;
     for (int32_t byte = 0; byte < bytes; byte += 1) {
       const ptrdiff_t at = offset + base + (ptrdiff_t)byte * stride;
+      const uint8_t target =
+          threshold > 0 && in_pixels[at] < threshold ? 0 : source[byte];
       // 🚨UNDO WRITES, IT DOES NOT BLEND — the same law the Dart loop's
       // comment states at length: running the recipe through the blend only
       // converges toward the original and never reaches it.
       out_pixels[at] = (spec->is_undo || mask_value == 255)
-                           ? source[byte]
-                           : qa_cel_pixel_blend(in_pixels[at], source[byte],
+                           ? target
+                           : qa_cel_pixel_blend(in_pixels[at], target,
                                                 mask_value);
     }
     index += 1;
@@ -6209,4 +6227,19 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v50: qa_audio_device_play gains lead_samples - a run started that much
 // silence ahead of its first sample, so that sample is heard as its first
 // picture is shown.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 50; }
+// v51: the stroke kernel's mode ids 13-25 - seven separable blends Photoshop
+// and Clip Studio add (linear burn ... divide), which the dual mask reads
+// too, and six that mix the three channels (qa_stroke_blend_triple). An
+// older engine would take an id it does not know for exclusion.
+// v52: qa_cel_pixel_spec gains threshold - 2치화: a byte under it is written
+// 0 and the rest the incoming byte, forward only. Sizeof moves.
+// v53: QA_DAB_FLAG_TEXTURE_HEIGHT - the paper's height cuts a dab's
+// coverage (F-451). An older engine would multiply it.
+// v54: the fill raster is premultiplied RGBA over nothing - no paper -
+// and every flood takes its seed as one packed RGBA pixel, the coverage
+// a lane like the colours (F-416). qa_fill_paper_rect becomes
+// qa_fill_clear_rect; qa_fill_compose_batch loses the paper.
+// v55: qa_audio_device_play returns the run it starts (it returned 1), and
+// qa_audio_device_stop_run silences unless another run holds the device -
+// a player's end stops only its own sound.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 55; }

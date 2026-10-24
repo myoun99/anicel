@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -16,6 +17,8 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/display_resample.dart';
+import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
@@ -81,10 +84,13 @@ void main() {
   /// [disableBuffer] takes the DIRECT WALK instead of the buffer blit: the
   /// paper rect and the tiles drawn straight under the viewport transform,
   /// which is the route a frame falls to when the buffer is refused.
+  /// Without [live] the stack has no surface to draw and no bake: the walk
+  /// lays its paper straight onto the screen.
   Future<CustomPainter> pumpEditingStack(
     WidgetTester tester, {
     bool disableBuffer = false,
     bool ink = true,
+    bool live = true,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -107,7 +113,7 @@ void main() {
                 ),
                 canvasSize: canvasSize,
                 viewport: viewport,
-                activeSurfacePainter: cornerInkSurface(ink: ink),
+                activeSurfacePainter: live ? cornerInkSurface(ink: ink) : null,
                 paintPaper: true,
                 paperBackground: paper,
                 debugDisableSingleBuffer: disableBuffer,
@@ -132,11 +138,18 @@ void main() {
   }
 
   /// Logical == device pixels: the painter snaps in device pixels through
-  /// the view's DPR, and the raster below is at logical size.
-  Future<Uint8List> rasterize(CustomPainter painter) async {
+  /// the view's DPR, and the raster below is at logical size. With
+  /// [everyEdgeBlended] the painter draws onto [_EveryEdgeBlended].
+  Future<Uint8List> rasterize(
+    CustomPainter painter, {
+    bool everyEdgeBlended = false,
+  }) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder, Offset.zero & logical);
-    painter.paint(canvas, logical);
+    painter.paint(
+      everyEdgeBlended ? _EveryEdgeBlended(canvas) : canvas,
+      logical,
+    );
     final image = await recorder.endRecording().toImage(
       logical.width.round(),
       logical.height.round(),
@@ -278,6 +291,227 @@ void main() {
     },
   );
 
+  group('🚨on an engine that blends every edge it is handed — Impeller, whose '
+      'MSAA does not honour isAntiAlias = false', () {
+    // The edge is cut by putting it ON the grid, not by asking the engine
+    // not to blend it: measured under `--enable-impeller` (2026-10-24), the
+    // flag alone left paper at 50% one pixel past the canvas. This runner
+    // honours the flag, so here every edge is handed over anti-aliased.
+    testWidgets('the editing stack', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final painter = await pumpEditingStack(tester);
+      final bytes = (await tester.runAsync(
+        () => rasterize(painter, everyEdgeBlended: true),
+      ))!;
+      expectCutOnTheGrid(bytes, 'editing, every edge blended');
+    });
+
+    testWidgets('the playback painter', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final playback = PlaybackFramePainter(
+        canvasSize: canvasSize,
+        viewport: viewport,
+        devicePixelRatio: 1.0,
+        paperBackground: paper,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(playback, everyEdgeBlended: true),
+      ))!;
+      expectCutOnTheGrid(bytes, 'playback, every edge blended', ink: false);
+    });
+
+    /// Every pixel inside the pixel-centre cut wholly covered, and none
+    /// past it touched — whatever [route] lays there.
+    void expectWhollyInside(Uint8List rgba, String route) {
+      final snapped = renderSnappedViewport(viewport, 1.0);
+      final columns = pixelsInside(
+        snapped.panX,
+        snapped.panX + canvasSize.width * zoom,
+      );
+      final rows = pixelsInside(
+        snapped.panY,
+        snapped.panY + canvasSize.height * zoom,
+      );
+      for (var y = 0; y < logical.height.round(); y += 1) {
+        for (var x = 0; x < logical.width.round(); x += 1) {
+          final inside =
+              x >= columns.first &&
+              x <= columns.last &&
+              y >= rows.first &&
+              y <= rows.last;
+          expect(
+            alphaAt(rgba, x, y),
+            inside ? 255 : 0,
+            reason: '$route ($x,$y): wholly covered inside the pixel-centre '
+                'cut, untouched past it',
+          );
+        }
+      }
+    }
+
+    testWidgets('the canvas\'s absent paper', (tester) async {
+      // Its checkerboard covers the pixels the paper covers, so turning
+      // the paper off and on moves no edge.
+      final planes = StagePlanesPainter(
+        pasteboardReach: PasteboardReach.whole,
+        paperNone: true,
+        canvasSize: canvasSize,
+        viewport: viewport,
+        devicePixelRatio: 1.0,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(planes, everyEdgeBlended: true),
+      ))!;
+      expectWhollyInside(bytes, 'absent paper');
+    });
+
+    testWidgets('the blank canvas — a paper of the default colour', (
+      tester,
+    ) async {
+      // What the brush host paints where no cel stands.
+      final blank = PlaybackFramePainter(
+        canvasSize: canvasSize,
+        viewport: viewport,
+        devicePixelRatio: 1.0,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(blank, everyEdgeBlended: true),
+      ))!;
+      expectWhollyInside(bytes, 'blank canvas');
+    });
+
+    testWidgets('the direct walk laying its paper straight on the screen', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final walk = await pumpEditingStack(
+        tester,
+        disableBuffer: true,
+        live: false,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(walk, everyEdgeBlended: true),
+      ))!;
+      expectWhollyInside(bytes, 'walk, no surface');
+    });
+  });
+
+  test('the grid\'s blit lays the texels a nearest sample picks — only its '
+      'edge moves', () async {
+    // A part of a 4×3 picture of twelve colours, twice its size, at a
+    // phase off the grid.
+    List<int> colourOf(int x, int y) => [60 * x, 80 * y, 20 + x * y, 255];
+    final recorder = ui.PictureRecorder();
+    final paint = Canvas(recorder);
+    for (var y = 0; y < 3; y += 1) {
+      for (var x = 0; x < 4; x += 1) {
+        final [r, g, b, a] = colourOf(x, y);
+        paint.drawRect(
+          Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+          Paint()..color = Color.fromARGB(a, r, g, b),
+        );
+      }
+    }
+    final picture = await recorder.endRecording().toImage(4, 3);
+    const source = Rect.fromLTWH(1, 0, 3, 3);
+    const destination = Rect.fromLTWH(0, 0, 6, 6);
+    const phase = Offset(1.3, 0.7);
+    const size = (width: 10, height: 8);
+
+    final drawn = ui.PictureRecorder();
+    drawImageRectOnThePixelGrid(
+      Canvas(drawn)..translate(phase.dx, phase.dy),
+      picture,
+      source,
+      destination,
+      filterQuality: ui.FilterQuality.none,
+      pixelRatio: 1,
+    );
+    final image = await drawn.endRecording().toImage(size.width, size.height);
+    final bytes = (await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!.buffer.asUint8List();
+
+    // Worked out here, not drawn by the engine: a reference drawn with
+    // `drawImageRect` would blend its own edge on Impeller.
+    for (var y = 0; y < size.height; y += 1) {
+      for (var x = 0; x < size.width; x += 1) {
+        final centre = Offset(x + 0.5, y + 0.5) - phase;
+        final at = (y * size.width + x) * 4;
+        expect(
+          bytes.sublist(at, at + 4),
+          destination.contains(centre)
+              ? colourOf(
+                  (source.left + centre.dx / 2).floor(),
+                  (source.top + centre.dy / 2).floor(),
+                )
+              : const [0, 0, 0, 0],
+          reason: '($x,$y): the texel its centre falls on, or nothing',
+        );
+      }
+    }
+  });
+
+  test('the cut is the pixel centres — on a flip and at a ratio too, and a '
+      'turned space keeps its rect', () {
+    Rect cutUnder(void Function(Canvas canvas) move, Rect rect, double r) {
+      final canvas = Canvas(ui.PictureRecorder());
+      move(canvas);
+      final cut = cutOnThePixelGrid(canvas, rect, r);
+      return cut;
+    }
+
+    // Device x = 5.05 + 1.1·x: the left edge 5.05 → 5, the right 9.45 → 9.
+    // ⚠️To the canvas's own precision: it keeps its transform in single
+    // floats, so 1.1 comes back 2e-7 off — far inside a sample's 1/8.
+    final cut = cutUnder(
+      (canvas) => canvas
+        ..translate(5.05, 3.05)
+        ..scale(1.1),
+      const Rect.fromLTWH(0, 0, 4, 4),
+      1,
+    );
+    expect(cut.left * 1.1 + 5.05, closeTo(5, 1e-5));
+    expect(cut.right * 1.1 + 5.05, closeTo(9, 1e-5));
+    expect(cut.top * 1.1 + 3.05, closeTo(3, 1e-5));
+    expect(cut.bottom * 1.1 + 3.05, closeTo(7, 1e-5));
+
+    // Past the half the edge goes OUT to the next boundary.
+    final out = cutUnder(
+      (canvas) => canvas..translate(5.7, 0),
+      const Rect.fromLTWH(0, 0, 4, 4),
+      1,
+    );
+    expect(out.left + 5.7, closeTo(6, 1e-5));
+    expect(out.right + 5.7, closeTo(10, 1e-5));
+
+    // At a ratio of 2 the grid is half a logical pixel.
+    final ratio = cutUnder(
+      (canvas) => canvas..translate(0.3, 0),
+      const Rect.fromLTWH(0, 0, 4, 4),
+      2,
+    );
+    expect((ratio.left + 0.3) * 2, closeTo(1, 1e-5));
+    expect((ratio.right + 0.3) * 2, closeTo(9, 1e-5));
+
+    // Flipped, the canvas's left edge is the screen's right.
+    final flipped = cutUnder(
+      (canvas) => canvas
+        ..translate(10.3, 0)
+        ..scale(-1, 1),
+      const Rect.fromLTWH(0, 0, 4, 4),
+      1,
+    );
+    expect(10.3 - flipped.left, closeTo(10, 1e-5));
+    expect(10.3 - flipped.right, closeTo(6, 1e-5));
+
+    const square = Rect.fromLTWH(0.3, 0.3, 4, 4);
+    expect(cutUnder((canvas) => canvas.rotate(0.5), square, 1), square);
+  });
+
   testWidgets('a rotated view keeps its anti-aliased edge', (tester) async {
     // The law's other half: a rotated edge is a diagonal, and a diagonal
     // cut on pixel centres is a staircase. Blended pixels along the edge
@@ -309,4 +543,86 @@ void main() {
           'law leaked past the axis-aligned case',
     );
   });
+}
+
+/// [inner], with every edge handed over anti-aliased: each paint's
+/// `isAntiAlias` and each clip's `doAntiAlias` forced on — an engine that
+/// blends what it is told not to, as Impeller's MSAA does. What this
+/// canvas does not forward fails loudly rather than drawing nothing.
+class _EveryEdgeBlended implements ui.Canvas {
+  _EveryEdgeBlended(this._inner);
+
+  final ui.Canvas _inner;
+
+  ui.Paint _blended(ui.Paint paint) => paint..isAntiAlias = true;
+
+  @override
+  void save() => _inner.save();
+
+  @override
+  void saveLayer(ui.Rect? bounds, ui.Paint paint) =>
+      _inner.saveLayer(bounds, _blended(paint));
+
+  @override
+  void restore() => _inner.restore();
+
+  @override
+  void restoreToCount(int count) => _inner.restoreToCount(count);
+
+  @override
+  int getSaveCount() => _inner.getSaveCount();
+
+  @override
+  void translate(double dx, double dy) => _inner.translate(dx, dy);
+
+  @override
+  void scale(double sx, [double? sy]) => _inner.scale(sx, sy);
+
+  @override
+  void rotate(double radians) => _inner.rotate(radians);
+
+  @override
+  void transform(Float64List matrix4) => _inner.transform(matrix4);
+
+  @override
+  Float64List getTransform() => _inner.getTransform();
+
+  @override
+  void clipRect(
+    ui.Rect rect, {
+    ui.ClipOp clipOp = ui.ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) => _inner.clipRect(rect, clipOp: clipOp);
+
+  @override
+  void clipPath(ui.Path path, {bool doAntiAlias = true}) =>
+      _inner.clipPath(path);
+
+  @override
+  ui.Rect getLocalClipBounds() => _inner.getLocalClipBounds();
+
+  @override
+  ui.Rect getDestinationClipBounds() => _inner.getDestinationClipBounds();
+
+  @override
+  void drawPaint(ui.Paint paint) => _inner.drawPaint(_blended(paint));
+
+  @override
+  void drawRect(ui.Rect rect, ui.Paint paint) =>
+      _inner.drawRect(rect, _blended(paint));
+
+  @override
+  void drawImageRect(
+    ui.Image image,
+    ui.Rect src,
+    ui.Rect dst,
+    ui.Paint paint,
+  ) => _inner.drawImageRect(image, src, dst, _blended(paint));
+
+  @override
+  void drawPicture(ui.Picture picture) => _inner.drawPicture(picture);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName} is not forwarded');
 }

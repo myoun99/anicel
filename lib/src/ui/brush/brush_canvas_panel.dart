@@ -1,20 +1,21 @@
 import 'dart:async';
-import 'dart:ui' as ui show Image;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, PointerHoverEvent;
+    show GestureBinding, PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
 import '../canvas/view_hand.dart';
-import '../timeline/memo_token.dart' show ByList;
+import '../timeline/memo_token.dart'
+    show ByIdentity, ByList, Kept, keptWhileSame;
 import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/input/modifier_keys.dart';
+import '../../services/input/pen_pose.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
@@ -91,12 +92,15 @@ import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/stage_planes_painter.dart';
+import '../effective_device_pixel_ratio.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../theme/app_theme.dart';
 import '../../models/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
+import '../../services/brush_poised_tip.dart';
 import 'brush_cursor_geometry.dart' show brushCursorShape;
-import 'brush_cursor_painter.dart' show brushCursorLook;
+import 'brush_cursor_painter.dart' show brushCursorLook, crosshairCursorLook;
+import 'drawing_cursor.dart';
 import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
 import 'tool_cursor_look.dart';
 import 'tool_cursor_sprite.dart';
@@ -152,6 +156,7 @@ part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
 part 'canvas_panel/canvas_panel_build.dart';
+part 'canvas_panel/canvas_panel_control_holds.dart';
 
 /// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
 /// changes between widget updates the panel fits the viewport around
@@ -205,6 +210,20 @@ class CanvasTransportBand {
         );
 
   final double height;
+  final Widget child;
+}
+
+/// What stands on a canvas panel's LEFT edge, in the middle of the room
+/// there ([BrushCanvasPanel.leftPill]) — the brush's values on the
+/// drawing (I-34).
+///
+/// The [width] travels with the widget for [CanvasTransportBand.height]'s
+/// reason: nothing the panel frames may lie under it, and framing is read
+/// before anything is laid out.
+class CanvasEdgePill {
+  const CanvasEdgePill({required this.width, required this.child});
+
+  final double width;
   final Widget child;
 }
 
@@ -274,6 +293,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentTakesPressAt,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
+    this.floorLeftRailBand,
     this.floorRightRailBand,
     this.floorBottomOverlaySpan = 0,
     this.autoFrame,
@@ -329,6 +349,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.transport,
+    this.leftPill,
     this.documentName,
     this.documentAbsent = false,
     this.bottomBarHostToken,
@@ -506,7 +527,8 @@ class BrushCanvasPanel extends StatefulWidget {
   final bool Function()? onStrokeNeedsCel;
 
   /// Settles a block [onStrokeNeedsCel] made that no stroke claimed —
-  /// the host's pointer-up does it for a press (I-10).
+  /// the tool's entrance does it at a press's end (I-10,
+  /// `_PanelBuild._toolEntrance`).
   final VoidCallback? onAutoFrameSettled;
 
   /// The view PUSHED by a caller that keeps it in its own `setState` — an
@@ -601,6 +623,16 @@ class BrushCanvasPanel extends StatefulWidget {
   /// It hides the artwork as a lane does, so framing keeps out from under
   /// it (`_framingInsets`).
   final CanvasTransportBand? transport;
+
+  /// What stands on the LEFT edge: the brush's values on the drawing panel
+  /// (I-34, 유저 2026-10-18: 「캔버스 패널의 왼쪽 중앙 알약 만들어서 거기로
+  /// 이동」). Null stands nothing there.
+  ///
+  /// It is seated as the page strip that stood on this edge was
+  /// ([_LeftEdgeSeat]): in the middle of the room between the pill's band
+  /// and the file's name, and past the left rail where the rail is beside
+  /// it. It is cover to framing as that strip was (F-346).
+  final CanvasEdgePill? leftPill;
 
   /// The name of the FILE shown, written at the artwork's lower left over
   /// the horizontal panbar. Null writes nothing.
@@ -739,8 +771,8 @@ class BrushCanvasPanel extends StatefulWidget {
   /// which is every canvas surface but the floor.
   ///
   /// The PANELS only. This panel's own capsules are added where framing
-  /// reads the window (`_framingInsets`): the pill and the transport are
-  /// cover there, the panbars float on the drawing.
+  /// reads the window (`_framingInsets`): the pill, the transport and the
+  /// left pill are cover there, the panbars float on the drawing.
   /// ↩️None was until 2026-09-30 — a capsule hiding a corner of the artwork
   /// was the price of not spending a strip of the screen on idle chrome.
   /// The user took that back for the pill (「판정을 알약까지 포함해서
@@ -748,16 +780,20 @@ class BrushCanvasPanel extends StatefulWidget {
   /// strip that stood on the left edge (F-346).
   final EdgeInsets floorCover;
 
-  /// WHERE the rail on the right edge actually is, vertically — null when
+  /// WHERE the rail on each side edge actually is, vertically — null when
   /// nothing is open there.
   ///
   /// [floorCover] says how much of the edge is unusable, which is the right
   /// question for FRAMING and the wrong one for the control that lives on
-  /// that edge — the vertical panbar: a short rail panel covers a band, and
-  /// a control that steps aside for a panel nowhere near it reads as
-  /// floating (유저, R3 #5). ↩️The left rail's band was asked the same for
-  /// the page strip on that edge, until the strip went under the bars
-  /// (F-383).
+  /// that edge — the vertical panbar on the right, the [leftPill] on the
+  /// left: a short rail panel covers a band, and a control that steps aside
+  /// for a panel nowhere near it reads as floating (유저, R3 #5).
+  /// ↩️The left rail's band was asked for the page strip on that edge, gone
+  /// with the strip under the bars (F-383), and asked again for the brush
+  /// pill there (I-34).
+  final CanvasFloorBand? floorLeftRailBand;
+
+  /// See [floorLeftRailBand].
   final CanvasFloorBand? floorRightRailBand;
 
   /// ⑩: what floats over the floor's BOTTOM edge without framing the
@@ -1045,9 +1081,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// only (the timesheet's ink and header-edit overlays).
   final bool allowViewRotation;
 
-  /// False suppresses the tool cursors (brush tip outline, fill icon) —
-  /// for strictly read-only hosts (the media viewer), where a paint
-  /// cursor over undrawable content is a false affordance.
+  /// False suppresses the marking tools' cursors (the drawing cursor, the
+  /// fill's bucket, the text tool's caret) where the content under them
+  /// cannot be drawn on — a
+  /// paint cursor there is a false affordance: a strictly read-only host
+  /// (the media viewer), and on the drawing canvas a row that is no drawing
+  /// surface (the camera, a property lane, a data or reference row).
+  ///
+  /// 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  /// 도구가 연관이 없는 곳에선 기본커서」 — the system's default stands there.
   final bool toolCursorsEnabled;
 
   /// False stands down the layers a tool takes the pointer through — the tap
@@ -1136,17 +1178,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the position AND the colour sampled under it on every pointer event.
   /// F-130 retired it: the swatch reads this aim and samples in its own
   /// `paint`, once per frame (`eyedropper_swatch_painter.dart`).
-  final ValueNotifier<Offset?> _toolCursorHover = ValueNotifier<Offset?>(null);
+  final ValueNotifier<_Aim?> _toolCursorHover = ValueNotifier<_Aim?>(null);
 
-  /// 🚨★★★F-33: what the surface painter draws as the stamp's ghost.
+  /// How the pen at the aim is held — its lean and its twist — for the brush
+  /// outline, which shows the tip that pose lays down (F-176-Q7, 유저
+  /// 2026-10-21 「펜을 따라 바뀐다」). Written beside the aim by the same
+  /// census, from the same event; a mouse writes no pose.
+  final ValueNotifier<PenPose> _penPose = ValueNotifier<PenPose>((
+    lean: null,
+    twist: null,
+  ));
+
+  /// 🚨★★★F-33: the stamp's AIM — what a click there would press — which
+  /// the ghost is laid from ([_showStampGhost]). A notifier, so a hover
+  /// re-lays the ghost without rebuilding the panel.
   ///
-  /// A notifier rather than a build-time value so a hover REPAINTS the
-  /// painter without rebuilding it — a fresh painter per pointer position
-  /// would break the memo that keeps the whole stack from recompositing
-  /// ([_activeSurfacePainter]'s token).
-  ///
-  /// ⛔Holds a BORROWED image: [CutStampPreviewPublisher] clears this in
-  /// the same dispose that frees it.
+  /// ↩️It was what the surface painter drew as the ghost — a listenable so a
+  /// hover repainted the painter instead of making a new one per position
+  /// ([_activeSurfacePainter]'s token) — holding an image borrowed from the
+  /// piece, until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved
+  /// the stamp ghost to the overlay's CPU pre-blended tiles.
   final ValueNotifier<CutStampPreview?> _stampPreview =
       ValueNotifier<CutStampPreview?>(null);
 
@@ -1203,6 +1254,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// [CanvasFloorInsets] was built on: five hosts mount this panel and the
   /// question is about WHERE, not about who mounted it.
   late bool _onFloor;
+
+  /// How thick this panel's bars are — the panbars and any bar inside it,
+  /// which the panel tells through [AppScrollbarLaneScope].
+  ///
+  /// 🗣️F-440 (유저 2026-10-23): 「뒷 배경에 깔리는 패널만 두꺼운 스크롤바
+  /// 사용. 나중에 콘티용지패널을 뒤에 깔수있게 할거기 때문에 입구를
+  /// 그런식으로 설계」 — so the answer is the FLOOR's ([_onFloor]): whatever
+  /// panel lies there takes the thick bar, and the same panel docked takes
+  /// the lane its seat gives (the thin one, outside any scope). ⛔Not a
+  /// second scope at the workspace's floor: the floor would then be said
+  /// twice, and a floor stood up without one would draw the thin bar.
+  late double _lane;
 
   /// The MERGED-mode surface painter, kept ALIVE across rebuilds.
   ///
@@ -1305,7 +1368,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // painter draws in canvas space.
       showTransparentBackground: false,
       lineage: (token.key.layerId, token.key.frameId),
-      stampPreview: _stampPreview,
       landingPreview: _text.float,
     );
   }
@@ -1336,9 +1398,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).
   /// The drawing view stands down in place, or would draw, under a layer
   /// that takes the press. Where a cel IS there and its row takes no marks,
-  /// or nothing stands here at all, the host's own listener speaks
-  /// (`MainCanvasBrushHost`) and this is null — a second question would say
-  /// it twice.
+  /// or nothing stands here at all, the tool's entrance speaks
+  /// ([_CanvasPanelTap.pressNoLayerHears]) and this is null — a second
+  /// question would say it twice.
   bool Function()? get _markDoorOverTheView {
     final door = widget.onPressNeedsCel;
     if (widget.coordinator == null || door == null) {
@@ -1397,6 +1459,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _saveKeeper?.up(_landWorkInFlight);
     _viewportState.bindViewCommands();
     _hearTheHand();
+    _stampPreview.addListener(_showStampGhost);
+    // The softness is read where it is used, so nothing rebuilds this panel
+    // when it moves — the one thing the ghost is made of that it has to
+    // hear for itself ([_askTheGhostAgain]).
+    widget.selectionMaskOptions?.addListener(_askTheGhostAgain);
     CanvasViewHold.held.addListener(_onViewHoldChanged);
     _line.bind();
     _viewportState._listenedViewport = _viewportState.viewportNotifier
@@ -1480,6 +1547,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _shellBars.readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
+    _lane = _onFloor
+        ? AppScrollbarLane.thick
+        : AppScrollbarLaneScope.of(context);
     _pillBand = _CanvasEditorPanelShell.pillBandIn(context);
     // ⛔Nothing here answers a RATIO change any more, deliberately. Holding
     // the percentage across one used to take a remembered scale, a re-zoom
@@ -1575,6 +1645,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     CanvasViewHold.held.removeListener(_onViewHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
+    _stopAskingTheGhost();
     // What the text tool held lands on the way out, and its channel goes
     // quiet.
     _text.dispose();
@@ -1598,7 +1669,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _idleAnts.dispose();
     _selectionFloat.dispose();
     _toolCursorHover.dispose();
+    _penPose.dispose();
     _stampPreview.dispose();
+    _controlHolds.dispose();
     widget.viewCommands?.unbind(this);
     super.dispose();
   }
@@ -1701,6 +1774,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Flutter's own bookkeeping uses — a hover has no stable pointer id.
   final Set<int> _hoverDevicesInside = <int>{};
 
+  /// The pointers a control over the tools holds — while one does, the
+  /// tool's entrance takes none ([_ControlHolds]).
+  final _ControlHolds _controlHolds = _ControlHolds();
+
   /// The census records a pointer only if that pointer could DRIVE a tool.
   ///
   /// 🚨★★유저 (2026-08-15 #2): 「브러시툴인채로 터치하면 브러시의 커서가
@@ -1724,10 +1801,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ⚠️Consequence, and it is the right one: on a pen-less tablet with the
   /// slot on flip/none, no brush outline ever appears. There is nothing being
   /// aimed. Lift a pen and it follows the pen.
-  void _noteCanvasPointer(
-    Offset localPosition, {
-    required PointerDeviceKind kind,
-  }) {
+  void _noteCanvasPointer(PointerEvent event) {
+    final kind = event.kind;
     // I-15 · I-88: nor while a view hold has the pointer — it drives no tool.
     if (!AppInput.toolAcceptsPointer(kind) ||
         CanvasViewHold.held.value != null) {
@@ -1767,9 +1842,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // The cursors were always mounted behind their own `_brushCursorActive`
     // gates, so the value simply being there is what arms them — the seed
     // was doing by hand what the mount already does.
-    _toolCursor.setToolCursorHover(localPosition, 'census:${kind.name}');
-    if (_toolCursor.brushCursorActive ||
-        _toolCursor.fillCursorActive ||
+    _toolCursor.setToolCursorHover(
+      (at: event.localPosition, kind: kind),
+      'census:${kind.name}',
+    );
+    // How the pen at the aim is held, off the same event — what the brush
+    // outline turns and stretches by (F-176-Q7).
+    _penPose.value = penPoseOf(event);
+    if (_toolCursor.drawsAtTheAim(kind) ||
         // The stamp's piece preview reads the same census — one writer,
         // every cursor a reader.
         canvasToolStamps(_brush.tool)) {
@@ -1838,6 +1918,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       oldWidget.selectionCommands,
       widget.selectionCommands,
       _selectionSeat.handleSelectionChannelChanged,
+    );
+    rebindListener(
+      oldWidget.selectionMaskOptions,
+      widget.selectionMaskOptions,
+      _askTheGhostAgain,
     );
     _text.bind();
     // A host can hand over another brush to hear (the viewer's cut tool per
@@ -1908,7 +1993,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   // One build of the panel, as its own object (Round 6) — constructed PER
   // BUILD: its fields hold one build's state.
-  Widget build(BuildContext context) => _PanelBuild(this).build(context);
+  Widget build(BuildContext context) {
+    // What rebuilds this panel is what moves the ghost's makings: a cel
+    // written (the pixel signal's rebuild), the marquee (the ants'), the
+    // cel stood on and the rows' placements (the host's).
+    _askTheGhostAgain();
+    return _PanelBuild(this).build(context);
+  }
 
   Positioned _idleSelectionAnts(CanvasSelectionRegion idleSelection) {
     return Positioned.fill(
@@ -2116,126 +2207,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     ),
   );
 
-  /// The three regions below each do two things and nothing else: hide
-  /// the system cursor while the tool's own cursor is up (the app draws
-  /// every tool cursor — 유저, F-130: 「앱 커서만 최대한 가볍게」), and say
-  /// when the pointer has gone.
-  List<Widget> _brushCursorLayers() {
-    return [
-      Positioned.fill(
-        child: MouseRegion(
-          key: const ValueKey<String>(
-            'brush-cursor-region',
-          ),
-          // The outline IS the cursor, so
-          // the system one steps aside.
-          // Its POSITION comes from the
-          // always-mounted census (R28
-          // #8): a tracker mounted here
-          // would sit outside an
-          // in-flight stroke's route and
-          // freeze the moment the pen
-          // touched down.
-          cursor: SystemMouseCursors.none,
-          opaque: false,
-          hitTestBehavior:
-              HitTestBehavior
-                  .translucent,
-          // 🚨D34: through the ONE
-          // writer, which clears the
-          // POSITION too. Nulling the
-          // notifier alone left
-          // `_lastCanvasPointer` holding
-          // the departed pointer, and the
-          // build-time seed republished
-          // it on the next rebuild — so
-          // the ring came back where
-          // nobody was pointing.
-          onExit: (_) =>
-              _forgetCanvasPointer(),
-          child:
-              const SizedBox.expand(),
-        ),
-      ),
-    ];
-  }
-
-  List<Widget> _fillCursorLayers() {
-    return [
-      Positioned.fill(
-        child: MouseRegion(
-          cursor: SystemMouseCursors.none,
-          opaque: false,
-          hitTestBehavior:
-              HitTestBehavior
-                  .translucent,
-          // 🚨D34: through the ONE
-          // writer, which clears the
-          // POSITION too. Nulling the
-          // notifier alone left
-          // `_lastCanvasPointer` holding
-          // the departed pointer, and the
-          // build-time seed republished
-          // it on the next rebuild — so
-          // the ring came back where
-          // nobody was pointing.
-          onExit: (_) =>
-              _forgetCanvasPointer(),
-          // ⛔No tracker of its own: the
-          // census writes this notifier
-          // for the fill tool now. This
-          // region is left with the two
-          // jobs only it can do — hiding
-          // the system cursor, and
-          // saying when the pointer has
-          // gone.
-          child: const SizedBox.expand(
-            key: ValueKey<String>(
-              'fill-cursor-tracker',
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
-
-  List<Widget> _eyedropperCursorLayers() {
-    return [
-      Positioned.fill(
-        child: MouseRegion(
-          // R26 #22: the eyedropper wears its
-          // OWN icon, not a crosshair — the
-          // system cursor hides and the icon
-          // rides the aim.
-          cursor: SystemMouseCursors.none,
-          opaque: false,
-          hitTestBehavior:
-              HitTestBehavior
-                  .translucent,
-          // One aim for the icon and the
-          // swatch since F-130, so an exit
-          // forgets it the way the other two
-          // regions do.
-          onExit: (_) =>
-              _forgetCanvasPointer(),
-          // R28 #8: the swatch/icon is fed by
-          // the panel's always-mounted pointer
-          // census, not by a tracker mounted
-          // here — one mounted at arming time
-          // is outside an in-flight pointer's
-          // route and hears nothing. This
-          // region only hides the system
-          // cursor and clears on exit.
-          child: const SizedBox.expand(
-            key: ValueKey<String>(
-              'eyedropper-hover-tracker',
-            ),
-          ),
-        ),
-      ),
-    ];
-  }
-
   Widget _buildViewportContent(BuildContext context) {
     final override = widget.contentOverride;
     if (override != null) {
@@ -2347,23 +2318,60 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// bottom edges (F-209) — the pill's band across the top edge
   /// ([_CanvasEditorPanelShell.pillBandIn]), and the transport under a
   /// document you move through ([_CanvasEditorPanelShell.transportCover]) —
-  /// a book's page turner as a movie's player (F-383). Framing keeps out
-  /// from under all of it as it keeps out from under a panel.
-  EdgeInsets get _framingInsets =>
-      widget.floorCover +
-      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
-      EdgeInsets.only(
-        top: _pillBand,
-        bottom: _CanvasEditorPanelShell.transportCover(
-          widget.transport,
-          onFloor: _onFloor,
-          floorOverlay: widget.floorBottomOverlaySpan,
-        ),
-      );
+  /// a book's page turner as a movie's player (F-383) — and the left pill's
+  /// band down the left edge ([_CanvasEditorPanelShell.leftPillBandOf]).
+  /// Framing keeps out from under all of it as it keeps out from under a
+  /// panel.
+  ///
+  /// ⚠️The left pill's band adds to the floor's left cover only where the
+  /// pill has stepped past the left rail ([_leftPillBesideRail]). On the
+  /// box's own left edge it is the larger of the two, not their sum:
+  /// framing counts a rail's band as its whole edge, so a rail there
+  /// already covers the pill — the page strip's law on that edge.
+  EdgeInsets get _framingInsets {
+    final covered =
+        widget.floorCover +
+        (_onFloor
+            ? EdgeInsets.zero
+            : _CanvasEditorPanelShell.dockedLanesOf(_lane)) +
+        EdgeInsets.only(
+          top: _pillBand,
+          bottom: _CanvasEditorPanelShell.transportCover(
+            widget.transport,
+            onFloor: _onFloor,
+            floorOverlay: widget.floorBottomOverlaySpan,
+          ),
+        );
+    final pill = _CanvasEditorPanelShell.leftPillBandOf(widget.leftPill);
+    return covered.copyWith(
+      left: _leftPillBesideRail
+          ? covered.left + pill
+          : math.max(covered.left, pill),
+    );
+  }
 
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
   late double _pillBand;
+
+  /// Whether the left pill stood past the left rail when it was last laid
+  /// out — what its seat decided ([_LeftEdgeSeat]), kept because framing is
+  /// read before the layout that places it.
+  bool _leftPillBesideRail = false;
+
+  void _rememberLeftPillBeside(bool beside) {
+    if (beside == _leftPillBesideRail) {
+      return;
+    }
+    _leftPillBesideRail = beside;
+    // Learned in a layout, after this frame's build framed the view with
+    // the answer before it: the next build frames with this one.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _rebuild(() {});
+      }
+    });
+  }
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
@@ -2702,6 +2710,136 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     };
   }
 
+  /// Whether the stamp's ghost is what [_shapeShow] shows — so a ghost
+  /// going away takes back only itself, never a shape being dragged.
+  bool _ghostShown = false;
+
+  /// Whether the ghost is to be asked again at the end of this frame
+  /// ([_askTheGhostAgain]) — once however many things ask.
+  bool _ghostAskWaiting = false;
+
+  /// 🚨THE STAMP'S GHOST IS WHAT A CLICK THERE LANDS — on the cel on screen,
+  /// the door's own answer for it ([pieceDabs]), laid by the view as a
+  /// dragged shape is: the last whole ghost stays up until the next is
+  /// whole, while the cursor keeps its own pace.
+  /// 🗣️brush-fidelity-Q9 (유저 2026-10-18): 「통일하면 좋음」 — every mode,
+  /// normal too, pre-blended on the CPU; Q10: the shape tool's law.
+  ///
+  /// ↩️It was drawn on the GPU, `preBlended: false` on purpose: a hover
+  /// ghost has no committed tiles to stand for, so pre-blending (what buys
+  /// a stroke its byte-exact preview, R27 #4) was judged not worth it. That
+  /// drew a mode the GPU has no blend for as normal (brush-fidelity-Q7), and
+  /// a selection not at all.
+  void _showStampGhost() {
+    final show = _shapeShow.now;
+    final preview = _stampPreview.value;
+    final coordinator = widget.coordinator;
+    if (show == null) {
+      return;
+    }
+    if (preview == null || coordinator == null) {
+      if (_ghostShown) {
+        _ghostShown = false;
+        show.drop();
+      }
+      return;
+    }
+    _ghostShown = true;
+    show.show(_stampGhostArea(preview, coordinator));
+  }
+
+  /// The ghost of [preview] as the area the view lays ([ShapeArea]): the
+  /// door's own answer for the cel on screen ([pieceDabs]), read and cut
+  /// when the view lays it — inside a frame's share, never in the build or
+  /// the hover that asked.
+  ShapeArea _stampGhostArea(
+    CutStampPreview preview,
+    BrushFrameEditingCoordinator coordinator,
+  ) {
+    final store = coordinator.frameStore;
+    final ground = _pieceGround(coordinator);
+    final rect = preview.canvasRect;
+    final onCanvas = CanvasPoint(x: rect.center.dx, y: rect.center.dy);
+    // The aim's own blend: its change is what re-lays the ghost
+    // ([CutStampPreview.blendMode]).
+    final blend = preview.blendMode;
+    final stamp = PieceStamp(
+      // The click's own piece ([_CanvasPanelTap.pieceCentredOn]).
+      onTheRow: _tap.pieceCentredOn(
+        preview.piece,
+        onCanvas,
+        opacity: preview.opacity,
+      ),
+      blend: blend,
+      description: 'Stamp',
+    );
+    final standing = store.canonicalKeyOf(coordinator.activeFrameKey);
+    return (
+      // 🚨EVERYTHING THE GHOST'S BYTES ARE MADE OF — the aim, the cel as it
+      // is now, and every fact of the ground the door reads — so whatever
+      // moves under a resting hand lays it again ([_askTheGhostAgain]),
+      // and nothing else does.
+      shape: (
+        piece: preview.piece,
+        at: onCanvas,
+        opacity: preview.opacity,
+        blend: blend,
+        standing: standing,
+        cel: ByIdentity(coordinator.currentSurfaceOf(standing)),
+        selection: ground.selection,
+        softness: ground.options,
+        ladder: ByList([
+          for (final key in ground.cels)
+            (key, store.canonicalKeyOf(key), ground.placementOf(key)),
+        ]),
+      ),
+      pieces: () sync* {
+        final answer = pieceDabs(
+          coordinator: coordinator,
+          ground: ground,
+          stamp: stamp,
+          only: standing,
+        )[standing];
+        if (answer != null) {
+          yield answer.dab;
+        }
+      },
+      blend: blend,
+    );
+  }
+
+  /// What the stamp's ghost listens to, let go: the aim and the softness
+  /// it is cut at ([_showStampGhost], [_askTheGhostAgain]).
+  void _stopAskingTheGhost() {
+    widget.selectionMaskOptions?.removeListener(_askTheGhostAgain);
+    _stampPreview.removeListener(_showStampGhost);
+  }
+
+  /// 🚨THE GHOST FOLLOWS WHAT IT IS MADE OF, NOT ONLY THE HAND: asks
+  /// [_showStampGhost] again at the end of the frame while a ghost is up —
+  /// the cel under it written (a landing, an undo, a verb pressed on the
+  /// timeline), the marquee or its softness changed, the panel stood on
+  /// another cel. Its shape holds all of that, so a ghost nothing moved
+  /// under asks for nothing.
+  ///
+  /// At the end of the frame, because the drawing view hears a build after
+  /// this panel does: a cel changed under it drops the ghost of the cel
+  /// that went, and one asked for before would be laid on that cel.
+  void _askTheGhostAgain() {
+    if (!_ghostShown || _ghostAskWaiting) {
+      return;
+    }
+    _ghostAskWaiting = true;
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
+        _ghostAskWaiting = false;
+        if (mounted) {
+          _showStampGhost();
+        }
+      })
+      ..ensureVisualUpdate();
+  }
+
   /// Draw a finished shape-tool drag (I-69) — [copies], the traced path
   /// and every copy the symmetry guide made of it, the original first — as
   /// the tool is set to lay it, and as the drag showed it (Q4ⓒ):
@@ -2825,16 +2963,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ShapePart.line => _brush.activeOpacity * line.opacity,
     };
     final blend = _brush.activeBlendMode;
+    // The maker cuts ([ShapeArea]): the selection's hard outline on the row,
+    // as the view's own clip cut it before (brush-fidelity-Q11 asks whether
+    // a shape should take the selection's softness as a held picture does).
+    final selection = switch (widget.selectionCommands?.region) {
+      null => null,
+      final live => _selectionSeat.regionOnTheRow(live),
+    };
     return (
       shape: (region, color, opacity, antiAlias, blend),
       pieces: () => region == null
           ? const <BrushDab>[]
-          : regionFillPieces(
-              region: region,
-              color: color,
-              opacity: opacity,
-              options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
-            ),
+          : [
+              for (final piece in regionFillPieces(
+                region: region,
+                color: color,
+                opacity: opacity,
+                options: FloodFillOptions(expandPx: 0, antiAlias: antiAlias),
+              ))
+                if (selection == null)
+                  piece
+                else
+                  ?clipStampDabToSelection(piece, region: selection),
+            ],
       blend: blend,
     );
   }
@@ -2954,10 +3105,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null) {
       return;
     }
-    final blend = _brush.activeBlendMode;
+    // The stamp's own, as its opacity is ([pasteCutPieceAtOrigin]) and as
+    // its ghost shows it. ↩️It read the tool in hand — the same number only
+    // while the stamp's own tile was the one pressing.
+    final blend = _brush.cutStampBlendMode;
     final landed = pieceLandings(
       coordinator: coordinator,
-      ground: widget.pieceGround?.call() ?? _pieceGround(coordinator),
+      ground: _pieceGround(coordinator),
       stamp: PieceStamp(
         onTheRow: onTheRow,
         blend: blend,
@@ -2995,12 +3149,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       }
       historyManager.executeAsOneStep('Stamp', landings);
     });
+    // ⛔The ghost is not asked again here: the rebuild above asks, as an
+    // undo's does ([_askTheGhostAgain]) — one road for every write under
+    // it. ↩️It was asked here, a count of stamps landed in its shape: an
+    // undo, or a verb pressed on the timeline, left it showing a cel that
+    // was gone.
   }
 
-  /// The ground for a host with no session behind it
-  /// ([BrushCanvasPanel.pieceGround] null): the cel you stand on, when it
-  /// can be drawn on, through what this panel holds.
+  /// The ground a press reads, and the ghost with it: the host's
+  /// ([BrushCanvasPanel.pieceGround]) — or, with no session behind this
+  /// panel, the cel you stand on, when it can be drawn on, through what
+  /// this panel holds.
   PieceGround _pieceGround(BrushFrameEditingCoordinator coordinator) =>
+      widget.pieceGround?.call() ??
       PieceGround(
         cels: [
           if (widget._editableCoordinator != null) coordinator.activeFrameKey,
@@ -3119,10 +3280,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 /// a paper panel differs from the drawing only in which buttons its pill
 /// carries.
 class _CanvasEditorPanelShell extends StatelessWidget {
-  /// The strip holds exactly one thing — the vertical panbar — so its
-  /// width IS that bar's hit lane.
-  static const double rightStripWidth = AppScrollbarLane.medium;
-
   /// 🗣️F-209 (유저 2026-09-28): 「도킹시 스크롤바는 어차피 창 최대크기로
   /// 되어있으니까 그냥 알약이아니라 패널로서 공간 차지해서? 두자. 뒤에 캔버스
   /// 안보이게 되도 되니까」 — and the two capsules that F-201 stretched along
@@ -3132,13 +3289,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// flush with its right and bottom edges and meeting at a corner square of
   /// neither's. The artwork runs on behind them, and framing keeps out from
   /// under them as it does from under a panel (`_framingInsets`). A lane in
-  /// a column of its own is the timeline rails' width.
-  static const double dockedLane = AppScrollbarLane.wide;
-
-  static const EdgeInsets dockedLanes = EdgeInsets.only(
-    right: dockedLane,
-    bottom: dockedLane,
-  );
+  /// a column of its own is [lane] wide.
+  static EdgeInsets dockedLanesOf(double lane) =>
+      EdgeInsets.only(right: lane, bottom: lane);
 
   /// 🗣️(유저 2026-09-30): 「판정을 알약까지 포함해서 판정. 타임시트 최대
   /// 스크롤기준이나 캔버스 재생시나 그런거」 — the pill is part of what hides
@@ -3186,6 +3339,15 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// The hairline between a docked panel's lanes and the band under them.
   static const double _transportRule = 1;
 
+  /// 🗣️F-346 (유저 2026-10-12): 「왼쪽알약도 동일하게 하나의 기준? 아무튼
+  /// 그쪽도 이동가능해야하는 부분으로서 판정하도록」 — what stands on the left
+  /// edge is cover as the pill is ([pillBandIn]): the band it floats in down
+  /// that edge, its margin either side. Zoomed in, the view goes on until
+  /// the paper's left edge stands beside it. Nothing with nothing there.
+  /// ↩️Asked of the page strip; the brush pill took the edge (I-34).
+  static double leftPillBandOf(CanvasEdgePill? pill) =>
+      pill == null ? 0 : _capsuleBand(pill.width);
+
   const _CanvasEditorPanelShell({
     required this.child,
     required this.bottomBar,
@@ -3193,11 +3355,15 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.horizontalStripBar,
     required this.cover,
     required this.onFloor,
+    required this.lane,
     this.transport,
+    this.leftPill,
     this.documentName,
     this.documentAbsent = false,
     this.bottomOverlaySpan = 0,
+    this.leftRailBand,
     this.rightRailBand,
+    required this.onLeftPillLaidOut,
   });
 
   final Widget child;
@@ -3205,8 +3371,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final Widget rightStripBar;
 
   /// Whether this panel is the FLOOR under the others — the canvas or the
-  /// viewer — rather than a panel docked in a rail ([dockedLanes]).
+  /// viewer — rather than a panel docked in a rail ([dockedLanesOf]).
   final bool onFloor;
+
+  /// How thick its panbars are — the floor's capsule across, a docked
+  /// panel's lane: the seat's ([AppScrollbarLaneScope], F-440).
+  final double lane;
 
   /// The horizontal panbar: its own capsule on the floor's bottom edge, its
   /// own lane on a docked panel's.
@@ -3214,6 +3384,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   /// See [BrushCanvasPanel.transport] — null means nothing under the bars.
   final CanvasTransportBand? transport;
+
+  /// See [BrushCanvasPanel.leftPill] — null means nothing on the left edge.
+  final CanvasEdgePill? leftPill;
+
+  /// Told whether the left pill was laid out past the left rail
+  /// ([_LeftEdgeSeat]).
+  final ValueChanged<bool> onLeftPillLaidOut;
 
   /// See [BrushCanvasPanel.documentName].
   final String? documentName;
@@ -3245,8 +3422,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// The horizontal bar steps up by it; framing does not.
   final double bottomOverlaySpan;
 
-  /// The vertical band the rail on the right edge occupies — see
-  /// [BrushCanvasPanel.floorRightRailBand].
+  /// The vertical bands the rails on the two side edges occupy — see
+  /// [BrushCanvasPanel.floorLeftRailBand].
+  final CanvasFloorBand? leftRailBand;
   final CanvasFloorBand? rightRailBand;
 
   /// How far a floating capsule sits in from the window's edge.
@@ -3263,7 +3441,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// What a scrollbar capsule spans — only the floor has capsules — as a
   /// share of the edge it rides: clamped, because the point of a capsule is
   /// that it says where you are and lets you drag back, not that it maps
-  /// the whole pasteboard. A docked panel's bars are lanes ([dockedLanes]).
+  /// the whole pasteboard. A docked panel's bars are lanes ([dockedLanesOf]).
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
 
@@ -3293,13 +3471,14 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     return Stack(
       key: const ValueKey<String>('canvas-editor-panel-shell'),
       children: [
-        // Nothing is meant to show through — the canvas paints its own
-        // backdrop over the whole box — but the floor is the one surface
+        // Nothing shows through — the canvas lays its backdrop over the
+        // whole box as the screen shows it, over THIS ground
+        // ([backdropOnScreen], F-114) — but the floor is the one surface
         // with no panel behind it, so it states its own floor colour rather
-        // than borrowing whatever the route happens to be sitting on.
-        Positioned.fill(
-          child: ColoredBox(color: colorScheme.surfaceContainerLowest),
-        ),
+        // than borrowing whatever the route happens to be sitting on. One
+        // answer for it ([stageGroundOf]): the film and the fade's wash lay
+        // the backdrop over the same ground.
+        Positioned.fill(child: ColoredBox(color: stageGroundOf(context))),
         // ★THE CANVAS IS ITS OWN LAYER, and the shell's furniture is
         // another. This is where a cursor move's repaint stops.
         //
@@ -3335,7 +3514,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           _floorCapsules()
         else
           ..._dockedLanes(colorScheme),
-        if (documentName case final name?) _documentName(name),
+        if (documentName != null || leftPill != null) _leftEdge(context),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
           // R4): it holds the window's centre across the axis it sits on,
@@ -3344,8 +3523,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           // panel it floats over what the lanes and the transport leave.
           left: 0,
           top: cover.top,
-          right: onFloor ? 0 : dockedLane,
-          bottom: cover.bottom + (onFloor ? 0 : dockedLane + _transportCover),
+          right: onFloor ? 0 : lane,
+          bottom: cover.bottom + (onFloor ? 0 : lane + _transportCover),
           child: _FloatingCanvasControls(
             children: [
               // THE PILL, at the TOP CENTRE (유저, R3 #6).
@@ -3435,10 +3614,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
               cover: cover,
               bottomCover: _transportCover,
               railBand: rightRailBand,
+              lane: lane,
             ),
             child: CanvasCapsule(
               keyValue: 'canvas-panbar-vertical',
-              width: rightStripWidth,
+              width: lane,
               child: rightStripBar,
             ),
           ),
@@ -3450,10 +3630,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         // bar stands on it.
         Positioned.fill(
           child: CustomSingleChildLayout(
-            delegate: _FloorHorizontalBarSeat(bottom: _floorBarBottom),
+            delegate: _FloorHorizontalBarSeat(
+              bottom: _floorBarBottom,
+              lane: lane,
+            ),
             child: CanvasCapsule(
               keyValue: 'canvas-panbar-horizontal',
-              height: AppScrollbarLane.medium,
+              height: lane,
               child: horizontalStripBar,
             ),
           ),
@@ -3492,26 +3675,59 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     ),
   );
 
-  /// Where the file's name stands ([_CanvasDocumentName]): the artwork's
-  /// lower left, over the horizontal bar — a docked panel's lane, the
-  /// floor's capsule — and inside what the side panels leave.
-  Widget _documentName(String name) => Positioned(
-    left: (onFloor ? cover.left : 0) + _capsuleMargin,
-    right: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
-    bottom: onFloor
-        ? _floorBarBottom + AppScrollbarLane.medium + _capsuleMargin
-        : _transportCover + dockedLane + _capsuleMargin,
-    child: _CanvasDocumentName(name, absent: documentAbsent),
+  /// What stands on the left edge, seated together ([_LeftEdgeSeat]): the
+  /// file's name ([_CanvasDocumentName]) and the left pill over it.
+  Widget _leftEdge(BuildContext context) => Positioned.fill(
+    child: CustomMultiChildLayout(
+      delegate: _LeftEdgeSeat(
+        cover: cover,
+        onFloor: onFloor,
+        top: cover.top + pillBandIn(context),
+        nameBottom: onFloor
+            ? _floorBarBottom + lane + _capsuleMargin
+            : _transportCover + lane + _capsuleMargin,
+        nameRight: (onFloor ? cover.right : lane) + _capsuleMargin,
+        railBand: leftRailBand,
+        onPillLaidOut: onLeftPillLaidOut,
+      ),
+      children: [
+        if (documentName case final name?)
+          LayoutId(
+            id: _LeftEdgeSlot.name,
+            child: _CanvasDocumentName(name, absent: documentAbsent),
+          ),
+        if (leftPill case final pill?)
+          LayoutId(
+            id: _LeftEdgeSlot.pill,
+            // ★Its own layer: its bars repaint through every frame of a
+            // drag, and without a boundary each one re-records the
+            // furniture around it — the pill, the panbars — that has not
+            // changed (I-57's lesson about this shell).
+            child: RepaintBoundary(
+              key: const ValueKey<String>('canvas-left-pill'),
+              // A panel shorter than the pill gets the whole pill, smaller
+              // — never a column that overflows, and never one missing a
+              // control: the page strip's law on this edge, and the page
+              // turner's under the bars.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: pill.child,
+              ),
+            ),
+          ),
+      ],
+    ),
   );
 
-  /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
+  /// A docked panel's panbars ([dockedLanesOf]): each bar in a lane of its
   /// own, flush with its edge, and the corner between them left to neither.
   /// Each lane is ringed on its artwork side in the backdrop, for the
   /// capsule's reason ([CanvasCapsule]). The transport of a document that runs
   /// is a band under them, ruled off the same way.
   List<Widget> _dockedLanes(ColorScheme colorScheme) {
     const ring = BorderSide(color: AppColors.backdrop);
-    Widget lane(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
+    Widget strip(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: BoxDecoration(color: colorScheme.surface, border: ringed),
       child: bar,
@@ -3520,9 +3736,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       Positioned(
         top: 0,
         right: 0,
-        bottom: dockedLane + _transportCover,
-        width: dockedLane,
-        child: lane(
+        bottom: lane + _transportCover,
+        width: lane,
+        child: strip(
           'canvas-panbar-vertical',
           const Border(left: ring),
           rightStripBar,
@@ -3530,10 +3746,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       ),
       Positioned(
         left: 0,
-        right: dockedLane,
+        right: lane,
         bottom: _transportCover,
-        height: dockedLane,
-        child: lane(
+        height: lane,
+        child: strip(
           'canvas-panbar-horizontal',
           const Border(top: ring),
           horizontalStripBar,
@@ -3542,9 +3758,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       Positioned(
         right: 0,
         bottom: _transportCover,
-        width: dockedLane,
-        height: dockedLane,
-        child: lane('canvas-panbar-corner', const Border()),
+        width: lane,
+        height: lane,
+        child: strip('canvas-panbar-corner', const Border()),
       ),
       if (transport case final transport?)
         Positioned(
@@ -3552,7 +3768,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           right: 0,
           bottom: 0,
           height: _transportCover,
-          child: lane(
+          child: strip(
             'canvas-transport',
             const Border(top: ring),
             Padding(
@@ -3609,6 +3825,107 @@ class _CanvasDocumentName extends StatelessWidget {
   );
 }
 
+/// What stands on the left edge ([_LeftEdgeSeat]).
+enum _LeftEdgeSlot { name, pill }
+
+/// Seats what stands on the LEFT edge: the file's name at the artwork's
+/// lower left ([BrushCanvasPanel.documentName]) — over the horizontal bar
+/// and inside what the side panels leave — and the left pill
+/// ([BrushCanvasPanel.leftPill]) in the middle of the room between the
+/// pill's band and the name.
+///
+/// The axis law the two bars follow (유저, R4): ALONG the edge it rides the
+/// left pill holds the room's centre, and ACROSS that edge it sits on the
+/// edge — past the left rail where the rail's band is beside it, as the
+/// vertical bar steps past the right one ([_FloorVerticalBarSeat]): under
+/// a rail nothing on it could be reached, and a control that steps aside
+/// for a panel nowhere near it reads as floating (유저, R3 #5). It was the
+/// page strip's seat on this edge, gone with the strip under the bars
+/// (F-383). It reports which it did, for framing (`_framingInsets`).
+///
+/// The room ends over the name (I-34): a column this tall would otherwise
+/// stand on it. With no name written it ends where the name would stand.
+class _LeftEdgeSeat extends MultiChildLayoutDelegate {
+  _LeftEdgeSeat({
+    required this.cover,
+    required this.onFloor,
+    required this.top,
+    required this.nameBottom,
+    required this.nameRight,
+    required this.railBand,
+    required this.onPillLaidOut,
+  });
+
+  /// See [_CanvasEditorPanelShell.cover].
+  final EdgeInsets cover;
+
+  /// See [_CanvasEditorPanelShell.onFloor].
+  final bool onFloor;
+
+  /// How far down the box the room starts: under the pill's band.
+  final double top;
+
+  /// How far up the box the name stands.
+  final double nameBottom;
+
+  /// How far in from the right edge the name may run.
+  final double nameRight;
+
+  /// See [_CanvasEditorPanelShell.leftRailBand].
+  final CanvasFloorBand? railBand;
+
+  final ValueChanged<bool> onPillLaidOut;
+
+  static const double _margin = _CanvasEditorPanelShell._capsuleMargin;
+
+  @override
+  void performLayout(Size size) {
+    final nameLeft = (onFloor ? cover.left : 0) + _margin;
+    var roomBottom = size.height - nameBottom;
+    if (hasChild(_LeftEdgeSlot.name)) {
+      final name = layoutChild(
+        _LeftEdgeSlot.name,
+        BoxConstraints(
+          maxWidth: math.max(0.0, size.width - nameLeft - nameRight),
+        ),
+      );
+      positionChild(
+        _LeftEdgeSlot.name,
+        Offset(nameLeft, roomBottom - name.height),
+      );
+      roomBottom -= name.height + _margin;
+    }
+    if (!hasChild(_LeftEdgeSlot.pill)) {
+      return;
+    }
+    final room = math.max(0.0, roomBottom - top);
+    final pill = layoutChild(
+      _LeftEdgeSlot.pill,
+      BoxConstraints(maxHeight: room),
+    );
+    final pillTop = top + (room - pill.height) / 2;
+    final beside = canvasFloorBandIntrudes(
+      railBand,
+      top: pillTop,
+      bottom: pillTop + pill.height,
+    );
+    onPillLaidOut(beside);
+    positionChild(
+      _LeftEdgeSlot.pill,
+      Offset((beside ? cover.left : 0) + _margin, pillTop),
+    );
+  }
+
+  @override
+  bool shouldRelayout(_LeftEdgeSeat oldDelegate) =>
+      oldDelegate.cover != cover ||
+      oldDelegate.onFloor != onFloor ||
+      oldDelegate.top != top ||
+      oldDelegate.nameBottom != nameBottom ||
+      oldDelegate.nameRight != nameRight ||
+      oldDelegate.railBand != railBand;
+}
+
 /// Seats the floor's vertical panbar in the middle of the visible HEIGHT,
 /// on the right edge — past the right rail when the rail is beside it —
 /// as long as that height allows ([_CanvasEditorPanelShell._capsuleTrack]).
@@ -3619,10 +3936,14 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
     required this.cover,
     required this.bottomCover,
     required this.railBand,
+    required this.lane,
   });
 
   /// See [_CanvasEditorPanelShell.cover].
   final EdgeInsets cover;
+
+  /// See [_CanvasEditorPanelShell.lane].
+  final double lane;
 
   /// What the transport hides of the bottom edge, past [cover]
   /// ([_CanvasEditorPanelShell.transportCover]).
@@ -3639,7 +3960,7 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       BoxConstraints.tightFor(
-        width: _CanvasEditorPanelShell.rightStripWidth,
+        width: lane,
         height: _CanvasEditorPanelShell._capsuleTrack(
           _visibleBottom(constraints.maxHeight) - cover.top,
         ),
@@ -3663,7 +3984,8 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
   bool shouldRelayout(_FloorVerticalBarSeat oldDelegate) =>
       oldDelegate.cover != cover ||
       oldDelegate.bottomCover != bottomCover ||
-      oldDelegate.railBand != railBand;
+      oldDelegate.railBand != railBand ||
+      oldDelegate.lane != lane;
 }
 
 /// Seats the floor's horizontal panbar on the bottom edge, [bottom] up it,
@@ -3684,17 +4006,20 @@ class _FloorVerticalBarSeat extends SingleChildLayoutDelegate {
 ///
 /// The capsule's corner follows the lane it stands in, its stated axis.
 class _FloorHorizontalBarSeat extends SingleChildLayoutDelegate {
-  const _FloorHorizontalBarSeat({required this.bottom});
+  const _FloorHorizontalBarSeat({required this.bottom, required this.lane});
 
   /// How far up the bottom edge the bar stands
   /// ([_CanvasEditorPanelShell._floorBarBottom]).
   final double bottom;
 
+  /// See [_CanvasEditorPanelShell.lane].
+  final double lane;
+
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       BoxConstraints.tightFor(
         width: _CanvasEditorPanelShell._capsuleTrack(constraints.maxWidth),
-        height: AppScrollbarLane.medium,
+        height: lane,
       );
 
   @override
@@ -3705,7 +4030,7 @@ class _FloorHorizontalBarSeat extends SingleChildLayoutDelegate {
 
   @override
   bool shouldRelayout(_FloorHorizontalBarSeat oldDelegate) =>
-      oldDelegate.bottom != bottom;
+      oldDelegate.bottom != bottom || oldDelegate.lane != lane;
 }
 
 /// The floor's controls, laid on the drawing.
@@ -4186,7 +4511,7 @@ class _CanvasViewportPanbar extends StatelessWidget {
             : 'canvas-viewport-vertical-scrollbar',
       ),
       along: double.infinity,
-      across: 14,
+      across: AppScrollbarLaneScope.of(context),
       child: AppScrollbar(
         axis: axis,
         offset: metrics.scrollOffset,
@@ -4204,10 +4529,12 @@ class _CanvasViewportPanbar extends StatelessWidget {
   }
 }
 
-/// The stage's outer planes behind the artwork (R3b): the opaque backdrop
-/// with the RGBA pasteboard over it, and the checkerboard wherever one of
-/// them is ABSENT — laid as every cut seen through no camera lays them
-/// ([StagePlanesPainter], where the laws of where each plane lies live).
+/// The stage's outer planes behind the artwork (R3b): the backdrop with
+/// the pasteboard over it, both RGBA (F-114), and the checkerboard
+/// wherever one of them is ABSENT — laid as every cut seen through no
+/// camera lays them ([StagePlanesPainter], where the laws of where each
+/// plane lies live). The backdrop goes down as the screen shows it, over
+/// the panel's ground ([backdropOnScreen]), as the film's floor does.
 ///
 /// 🪦It used to subscribe to an ALPHA-PREVIEW toggle in the settings menu,
 /// which replaced BOTH planes with the checkerboard. 유저 2026-09-16: 「설정의
@@ -4249,7 +4576,10 @@ class _StagePlanes extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: StagePlanesPainter(
-        backdrop: (color: Color(backdropArgb), none: backdropNone),
+        backdrop: backdropOnScreen((
+          color: Color(backdropArgb),
+          none: backdropNone,
+        ), stageGroundOf(context)),
         pasteboard: hasPasteboard
             ? (color: Color(pasteboardArgb), none: pasteboardNone)
             : null,
@@ -4257,6 +4587,7 @@ class _StagePlanes extends StatelessWidget {
         paperNone: paperNone,
         canvasSize: canvasSize,
         viewport: viewport,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
       ),
       child: child,
     );

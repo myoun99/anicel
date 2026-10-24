@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../layout/device_grid.dart';
 import '../theme/app_theme.dart';
+import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/drag_chip.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/kept_tail_row.dart';
@@ -16,6 +17,7 @@ import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
 import '../widgets/tick_layer.dart';
 import 'panel_collapsed_scope.dart';
+import 'open_tab_content.dart';
 import 'panel_flash.dart';
 import '../input/control_press_claim.dart';
 
@@ -30,9 +32,9 @@ class EditorPanelTab {
     this.minContentWidth,
     this.minContentHeight,
     this.locked = false,
-    this.cachesContent = false,
     this.staticRaster = true,
     this.stillRaster = true,
+    this.sparesSplitters = true,
     this.sillTrailing,
     this.collapsedExtent = 0,
     this.contentIdentity,
@@ -47,18 +49,10 @@ class EditorPanelTab {
   /// Builds the tab's content. Only the ACTIVE tab is built, and only while
   /// its region shows it — what must survive a switch lives above the tab
   /// group ([EditorPanelTabs]).
-  final WidgetBuilder builder;
-
-  /// Whether the group may hand back the content it built for this tab, as
-  /// the same instance, every time the group itself is built again while
-  /// the tab stays open (R12-①): a heavy panel's subtree is then skipped
-  /// wholesale by a tab switch elsewhere, a lock toggle or a layout notify.
   ///
-  /// CONTRACT: the builder closes over stable objects only (the session,
-  /// long-lived notifiers) and subscribes to what it shows itself — the
-  /// group never runs it again while the tab stays open for the same
-  /// [contentIdentity].
-  final bool cachesContent;
+  /// Run once while the tab stays open ([OpenTabContent] — its CONTRACT is
+  /// this builder's).
+  final WidgetBuilder builder;
 
   /// Key for the tab strip button. Groups replacing older toggle buttons
   /// keep the legacy keys here so existing flows and tests keep working.
@@ -108,6 +102,15 @@ class EditorPanelTab {
   /// 「결과 절대 바뀌면 안되는건 캔버스뿐임」.
   final bool stillRaster;
 
+  /// Whether the content stands off the edges its group's splitters lie on
+  /// ([DockSplitterEdges]), so a scrollbar on such an edge is not under the
+  /// band. Defaults to ON.
+  ///
+  /// 🗣️F-452 (유저 2026-10-23): 「타임라인/콘티패널은 예외. 겹치는게
+  /// 세로스크롤바인데 여긴 애초에 큰 스크롤바 써서 신경안쓰이고 공간 안주는게
+  /// 세련되보임」.
+  final bool sparesSplitters;
+
   /// What THIS tab puts on the group's 문턱, right-aligned, ahead of the
   /// group's own [EditorPanelTabs.trailing].
   ///
@@ -128,7 +131,7 @@ class EditorPanelTab {
   final double collapsedExtent;
 
   /// What this tab's content is built FOR — null for a tab whose builder
-  /// is the same whatever happens. Cached content ([cachesContent]) is
+  /// is the same whatever happens. The open content ([OpenTabContent]) is
   /// handed back only while this stays the same; see [builtFor].
   final Object? contentIdentity;
 
@@ -148,9 +151,9 @@ class EditorPanelTab {
       minContentWidth: minContentWidth,
       minContentHeight: minContentHeight,
       locked: locked,
-      cachesContent: cachesContent,
       staticRaster: staticRaster,
       stillRaster: stillRaster,
+      sparesSplitters: sparesSplitters,
       sillTrailing: sill == null
           ? null
           : (context) => KeyedSubtree(key: key, child: sill(context)),
@@ -310,20 +313,9 @@ class EditorPanelTabs extends StatefulWidget {
 }
 
 class _EditorPanelTabsState extends State<EditorPanelTabs> {
-  /// The open tab's built content, while it stays open
-  /// ([EditorPanelTab.cachesContent], R12-①): a strip rebuild hands Flutter
-  /// the IDENTICAL widget instance, so the heavy panel subtree is skipped
-  /// wholesale.
-  ///
-  /// 🚨…while the tab is built for the SAME thing ([EditorPanelTab
-  /// .contentIdentity]). The session stopped being stable with a project
-  /// per tab (I-7): the cached canvas went on showing the project that was
-  /// switched away from, because nothing here re-ran its builder.
-  ({String tabId, Object? identity, Widget content})? _openContent;
-
   /// What the content area holds: the open tab's content, as its region
   /// shows it — nothing at all when the region is folded and the tab has no
-  /// folded form.
+  /// folded form. Built once while the tab stays open ([OpenTabContent]).
   ///
   /// 🚨★★★A PANEL IS BUILT ONLY WHILE IT SHOWS (유저 2026-10-14: 「한번이라도
   /// 열린 뒤? 열려있을때만 지어지는게 맞는구조 아닌가?」 · 「이건 모든 패널
@@ -351,32 +343,16 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// panel has no ticker to mute: ⛔put no `TickerMode` around a tab here.
   Widget? _contentOf(EditorPanelTab active) {
     if (widget.collapsed && active.collapsedExtent <= 0) {
-      _openContent = null;
       return null;
     }
-    if (!active.cachesContent) {
-      _openContent = null;
-      return _buildTabContent(active);
-    }
-    return _cachedContent(active);
-  }
-
-  /// [tab]'s content — the one built when it was opened, unless it is
-  /// built for something else now.
-  Widget _cachedContent(EditorPanelTab tab) {
-    final open = _openContent;
-    if (open != null &&
-        open.tabId == tab.id &&
-        identical(open.identity, tab.contentIdentity)) {
-      return open.content;
-    }
-    final content = _buildTabContent(tab);
-    _openContent = (
-      tabId: tab.id,
-      identity: tab.contentIdentity,
-      content: content,
+    return _onItsFloor(
+      active,
+      OpenTabContent(
+        tabId: active.id,
+        identity: active.contentIdentity,
+        build: () => _bake(active, Builder(builder: active.builder)),
+      ),
     );
-    return content;
   }
 
   /// Whether the pointer is anywhere on this PANEL.
@@ -448,9 +424,17 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                         // dependency marks its dependents dirty directly —
                         // so a fold reaches the panel without dropping the
                         // cache.
-                        child: PanelCollapsedScope(
-                          collapsed: widget.collapsed,
-                          child: content,
+                        child: Padding(
+                          // Mounted whether it pads or not: a panel moved
+                          // between rails changes how far it stands off,
+                          // never what it sits in (F-103's one tree shape).
+                          padding: active.sparesSplitters
+                              ? DockSplitterEdges.of(context)
+                              : EdgeInsets.zero,
+                          child: PanelCollapsedScope(
+                            collapsed: widget.collapsed,
+                            child: content,
+                          ),
                         ),
                       ),
                     if (widget.flash != null) _flashOverlay(tabs),
@@ -669,25 +653,20 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     );
   }
 
-  /// One tab's content; panels with a minimum content size larger than
-  /// the dock render at that size inside scrollers.
-  ///
-  /// ★THE funnel every docked panel passes through, and therefore the
-  /// only place the "a panel is light unless it says otherwise" rule can
-  /// live. See [EditorPanelTab.staticRaster].
-  Widget _buildTabContent(EditorPanelTab tab) => _buildTabInterior(tab);
-
   /// Wraps [child] in the panel bake unless the tab opted out.
   ///
-  /// ⚠️Called at each of the interior's leaves rather than once around
-  /// the outside, and that placement is not cosmetic. The overflow
-  /// branches below put the panel inside a `SingleChildScrollView`, and a
-  /// viewport IS a repaint boundary — so a bake around the outside would
-  /// find one, stand down, and the panel would silently go back to
-  /// paying full raster price. It would do that only when the dock is
-  /// narrow enough to overflow, which means the cost would appear and
-  /// disappear as the user drags a splitter, and no test that pumps a
-  /// single window size would ever see it.
+  /// ★THE funnel every docked panel passes through ([_contentOf]), and
+  /// therefore the only place the "a panel is light unless it says
+  /// otherwise" rule can live. See [EditorPanelTab.staticRaster].
+  ///
+  /// ⚠️Innermost, under the floor's scrollers ([_onItsFloor]), and that
+  /// placement is not cosmetic. The scrollers put the panel inside a
+  /// `SingleChildScrollView`, and a viewport IS a repaint boundary — so a
+  /// bake around the outside would find one, stand down, and the panel
+  /// would silently go back to paying full raster price. It would do that
+  /// only when the dock is narrow enough to overflow, which means the cost
+  /// would appear and disappear as the user drags a splitter, and no test
+  /// that pumps a single window size would ever see it.
   Widget _bake(EditorPanelTab tab, Widget child) {
     if (!tab.staticRaster) {
       return child;
@@ -695,9 +674,19 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     return StaticRaster(debugLabel: 'panel:${tab.id}', child: child);
   }
 
-  Widget _buildTabInterior(EditorPanelTab tab) {
+  /// [content] on [tab]'s floor: a panel with a minimum content size
+  /// larger than the dock renders at that size inside scrollers.
+  ///
+  /// 🚨THE FLOOR IS THE TAB'S AS IT STANDS — read here, round the open
+  /// content and never inside it, which is handed back as first built
+  /// ([OpenTabContent]). A floor is measured in words at the OS's text size,
+  /// and the timeline's in its orientation. ↩️ca4b75959 kept the scrollers
+  /// with the content: the OS text size doubled under a running app left
+  /// the colour panel on its 1× floor, and its status bar overflowed 52px
+  /// (master_check, 2026-10-24).
+  Widget _onItsFloor(EditorPanelTab tab, Widget content) {
     if (tab.minContentWidth == null && tab.minContentHeight == null) {
-      return _bake(tab, Builder(builder: tab.builder));
+      return content;
     }
     // 🚨ONE TREE SHAPE whether the dock fits the panel or not, open or folded
     // (F-103, 유저:
@@ -710,8 +699,9 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     // again. A fold did the same from its own bare branch. Both scrollers
     // are always there now ([OverflowScrollers]), and a fold only drops the
     // floor, so crossing the floor or folding changes how far they scroll,
-    // never what the panel sits in. The bake stays innermost ([_bake]).
-    final body = _bake(tab, Builder(builder: tab.builder));
+    // never what the panel sits in. Whether a tab has a floor at all is its
+    // id's, so the shape holds from build to build. The bake stays
+    // innermost ([_bake]).
     return Builder(
       builder: (context) {
         // ★A COLLAPSED panel never meets its floor. The floor is what
@@ -723,15 +713,15 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         // would give it back a height it did not ask for.
         //
         // The fold is read HERE, through the scope, and not where the tab's
-        // content is built: cached content ([EditorPanelTab.cachesContent])
-        // is built once, so a fold decided there held whatever its first
-        // build saw (F-103). [body] is built OUTSIDE this builder, so a fold
-        // rebuilds the scrollers and not the panel.
+        // content is built: the open content ([OpenTabContent]) is built
+        // once, so a fold decided there held whatever its first
+        // build saw (F-103). [content] is built OUTSIDE this builder, so a
+        // fold rebuilds the scrollers and not the panel.
         final folded = PanelCollapsedScope.of(context);
         return OverflowScrollers(
           minWidth: folded ? 0 : tab.minContentWidth ?? 0,
           minHeight: folded ? 0 : tab.minContentHeight ?? 0,
-          child: body,
+          child: content,
         );
       },
     );

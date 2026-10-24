@@ -28,7 +28,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
-import 'package:anicel/src/ui/widgets/tick_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show timelineFrameCellWidth;
 
@@ -275,18 +274,8 @@ void main() {
       of: find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
       matching: find.byType(RepaintBoundary),
     );
-    List<String> strays() => [
-      for (final stray in repaintStrays(
-        tester.renderObject(content.first),
-        allowed: {
-          for (final layer in find
-              .descendant(of: content.first, matching: find.byType(TickLayer))
-              .evaluate())
-            layer.renderObject!,
-        },
-      ))
-        nameOfBoundary(stray),
-    ];
+    List<String> strays() =>
+        tickStraysUnder(tester.renderObject(content.first));
     final gesture = await selectAndGrab(
       tester,
       from: (a, 3),

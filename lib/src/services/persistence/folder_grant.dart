@@ -228,6 +228,20 @@ class FolderGrant {
   }
 }
 
+/// A path handed over with nothing granted for it — a drop on the window,
+/// the file the viewer is showing, a file the OS opened the app with: a
+/// folder or a file, as the disk says, spelled as a pick of it is
+/// ([FolderPicker._normalize]). ↩️It kept the spelling it came in, and the
+/// import window named a file Windows opened the app with `C:\Users\…`
+/// where 「開く」 named the same file `C:/Users/…` (서피스 AI 실기
+/// 2026-10-23, card open-door-windows-open-with).
+FolderGrant handedPath(String path) => FolderGrant.granted(
+  path: FolderPicker._normalize(path),
+  kind: FileSystemEntity.isDirectorySync(path)
+      ? GrantKind.folder
+      : GrantKind.file,
+);
+
 /// The one place that asks for a writable directory.
 ///
 /// Two platforms answer differently and the difference is not cosmetic:
@@ -237,13 +251,21 @@ class FolderGrant {
 /// - **iOS, macOS, Android** each need a grant the app has to hold onto —
 ///   a security scope on Apple, a real path resolved out of a SAF tree on
 ///   Android — so they route through the `qa_storage` channel.
-/// The user stopped waiting for a file to arrive.
+/// The user stopped waiting — for a file to arrive, or for an open to make
+/// a project of it (a .anicel read, a .clip or .tvpp baked).
 ///
 /// Its own type because it is not a failure: nothing was applied, nothing
 /// is broken, and the door that raised the wait should close quietly
 /// rather than say something went wrong.
 class MaterializeCancelled implements Exception {
   const MaterializeCancelled();
+
+  /// Stops the work here once [isCancelled] says the wait was stopped.
+  static void throwIf(bool Function()? isCancelled) {
+    if (isCancelled?.call() ?? false) {
+      throw const MaterializeCancelled();
+    }
+  }
 
   @override
   String toString() => 'MaterializeCancelled';
@@ -986,9 +1008,7 @@ abstract final class FolderPicker {
     Future<bool> tick({Future<void>? sooner, bool Function()? settled}) async {
       var slept = Duration.zero;
       while (true) {
-        if (isCancelled?.call() ?? false) {
-          throw const MaterializeCancelled();
-        }
+        MaterializeCancelled.throwIf(isCancelled);
         if (within != null && clock.elapsed() >= within) {
           return false;
         }
@@ -1281,7 +1301,7 @@ abstract final class FolderPicker {
           // not successful.
           return const [FolderGrant.unavailable()];
         }
-        final grants = [for (final item in items) ?_itemGrant(item, kind)];
+        final grants = [for (final item in items) ?itemGrant(item, kind)];
         return grants.isEmpty ? const [FolderGrant.unavailable()] : grants;
       case 'cancelled':
         return const [FolderGrant.cancelled()];
@@ -1297,7 +1317,10 @@ abstract final class FolderPicker {
   /// no caller can take its URI for a path. Null for an item that names
   /// neither: it is dropped rather than becoming a grant every caller would
   /// have to guard.
-  static FolderGrant? _itemGrant(Object? item, GrantKind kind) {
+  ///
+  /// What another app hands Android is said in these items too, one per
+  /// file (`HandedFiles`): a share is a pick made for the app.
+  static FolderGrant? itemGrant(Object? item, GrantKind kind) {
     if (item is! Map) {
       return null;
     }

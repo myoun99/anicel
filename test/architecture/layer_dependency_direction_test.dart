@@ -46,6 +46,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/import_graph.dart';
 import '../helpers/dart_sources.dart';
+import '../helpers/source_ledger.dart';
 
 /// The layers that must not know what the app looks like.
 ///
@@ -96,32 +97,25 @@ class _Debt {
 
 void main() {
   group('layer dependency direction', () {
-    test('inner layers do not import ui/ or the widget framework', () {
-      final unledgered = <String>[];
-
-      for (final file in _innerDartFiles()) {
-        final path = _normalise(file.path);
-        final allowed = _ledger[path] ?? const <_Debt>[];
-
-        for (final target in _importsOf(file)) {
-          if (!_isOutward(target)) {
-            continue;
-          }
-          if (allowed.any((debt) => debt.target == target)) {
-            continue;
-          }
-          unledgered.add('$path -> $target');
-        }
-      }
-
-      expect(
-        unledgered,
-        isEmpty,
-        reason:
+    test('inner layers do not import ui/ or the widget framework, and the '
+        'ledger has no entries that were already paid off', () {
+      expectSetMatchesLedger(
+        [
+          for (final file in _innerDartFiles())
+            for (final target in _importsOf(file))
+              if (_isOutward(target)) '${_normalise(file.path)} -> $target',
+        ],
+        [
+          for (final MapEntry(key: path, value: debts) in _ledger.entries)
+            for (final debt in debts) '$path -> ${debt.target}',
+        ],
+        unledgered:
             'These inner-layer files reach outward and are not on the ledger. '
             'Either move the type inward, or add the pair to `_ledger` in this '
-            'file with the reason it cannot move:\n  '
-            '${unledgered.join('\n  ')}',
+            'file with the reason it cannot move:',
+        paidOff:
+            'These ledger entries no longer describe anything. Delete them — a '
+            'ledger nobody can trust is a ledger nobody reads:',
       );
     });
 
@@ -153,32 +147,6 @@ void main() {
             'move the imported piece inward — it is a type in the wrong '
             'folder, not a layer that needs the outer one:\n  '
             '${outward.join('\n  ')}',
-      );
-    });
-    test('the ledger has no entries that were already paid off', () {
-      final stale = <String>[];
-
-      for (final entry in _ledger.entries) {
-        final file = File(entry.key);
-        if (!file.existsSync()) {
-          stale.add('${entry.key} (file is gone)');
-          continue;
-        }
-        final imports = _importsOf(file).toSet();
-        for (final debt in entry.value) {
-          if (!imports.contains(debt.target)) {
-            stale.add('${entry.key} -> ${debt.target}');
-          }
-        }
-      }
-
-      expect(
-        stale,
-        isEmpty,
-        reason:
-            'These ledger entries no longer describe anything. Delete them — a '
-            'ledger nobody can trust is a ledger nobody reads:\n  '
-            '${stale.join('\n  ')}',
       );
     });
 

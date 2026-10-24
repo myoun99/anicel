@@ -311,13 +311,15 @@ void main() {
             keyValue: 'row-short',
             label: 'Probe Sans',
             warning: short,
-            action: PanelFlyoutRowAction(
-              keyValue: 'row-short-delete',
-              icon: Icons.delete_outline,
-              tooltip: 'Delete',
-              does: PanelFlyoutActionDoes.deletes,
-              onPressed: () {},
-            ),
+            actions: [
+              PanelFlyoutRowAction(
+                keyValue: 'row-short-delete',
+                icon: Icons.delete_outline,
+                tooltip: 'Delete',
+                does: PanelFlyoutActionDoes.deletes,
+                onPressed: () {},
+              ),
+            ],
           ),
         ],
       );

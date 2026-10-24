@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/input/modifier_keys.dart';
+import '../../services/shortcuts/program_keymap.dart';
 import '../debug/key_trace.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
@@ -87,7 +88,8 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The layout the keys start from (I-63).
+  /// The layout the keys start from (I-63): a preset the app ships, or one
+  /// of the user's ([userPresets], I-107).
   ///
   /// 🗣️I-63-Q5 (유저 2026-10-09): an install opens on 「클립 스튜디오
   /// 기반」. ↩️It opened on [ShortcutPreset.anicel] until that answer; the
@@ -96,11 +98,16 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// ⚠️Only the shortcut file tells a device in use from a new install, and
   /// a device whose keys were never changed has none — it opens here too, as
   /// the question said it would.
-  ShortcutPreset get preset => _preset;
-  ShortcutPreset _preset = ShortcutPreset.clipStudio;
+  ShortcutLayout get preset => _preset;
+  ShortcutLayout _preset = ShortcutPreset.clipStudio;
+
+  /// The presets the user made, in the order they were made (I-107).
+  List<UserShortcutPreset> get userPresets => _userPresets;
+  List<UserShortcutPreset> _userPresets = const [];
 
   /// What the user recorded, PER PRESET: a key recorded while one layout is
-  /// in use is a change to that layout, and stays with it.
+  /// in use is a change to that layout, and stays with it — a preset of the
+  /// user's keeps its own ([UserShortcutPreset.recorded]).
   ///
   /// ⚠️Not said by the user — asked on the board (I-63-Q6). One set over
   /// every preset would carry a repair made for one program's layout (a key
@@ -110,12 +117,18 @@ class EditorShortcutBindings extends ChangeNotifier {
     for (final preset in ShortcutPreset.values) preset: {},
   };
 
-  Map<String, List<SingleActivator>> get _overrides =>
-      _overridesByPreset[_preset]!;
+  /// What was recorded while [layout] was in use.
+  Map<String, List<SingleActivator>> _recordedUnder(ShortcutLayout layout) =>
+      switch (layout) {
+        ShortcutPreset() => _overridesByPreset[layout]!,
+        UserShortcutPreset(:final recorded) => recorded,
+      };
+
+  Map<String, List<SingleActivator>> get _overrides => _recordedUnder(_preset);
 
   /// Starts from [preset]'s keys, under whatever was recorded while it was
   /// last in use. Persists and notifies.
-  void setPreset(ShortcutPreset preset) {
+  void setPreset(ShortcutLayout preset) {
     if (preset == _preset) {
       return;
     }
@@ -134,23 +147,35 @@ class EditorShortcutBindings extends ChangeNotifier {
       isBrushActionId(actionId) ||
       isPanelActionId(actionId);
 
-  /// The keys the preset in use ships [actionId] with ([presetActivators]),
-  /// as THIS platform presses them: the command modifier written as Ctrl is
-  /// ⌘ on a Mac or an iPad ([platformActivator]).
-  List<SingleActivator> defaultActivatorsFor(String actionId) {
+  /// The keys the preset in use was made with for [actionId].
+  List<SingleActivator> defaultActivatorsFor(String actionId) =>
+      _madeKeys(_preset, actionId);
+
+  /// The keys [layout] was made with for [actionId]: its own, or the ones
+  /// the preset it stands on ships the action with ([presetActivators]) as
+  /// THIS platform presses them — the command modifier written as Ctrl is ⌘
+  /// on a Mac or an iPad ([platformActivator]).
+  List<SingleActivator> _madeKeys(ShortcutLayout layout, String actionId) {
+    if (layout.ownKeys[actionId] case final own?) {
+      return own;
+    }
     final definition = definitionFor(actionId);
     return [
       if (definition != null)
-        for (final activator in presetActivators(_preset, definition))
+        for (final activator in presetActivators(layout.base, definition))
           platformActivator(activator),
     ];
   }
 
   /// The action's LIVE activators (override or defaults). An override may
   /// be an empty list = the action is deliberately unbound.
-  List<SingleActivator> activatorsFor(String actionId) {
-    return _overrides[actionId] ?? defaultActivatorsFor(actionId);
-  }
+  List<SingleActivator> activatorsFor(String actionId) =>
+      _heldUnder(_preset, actionId);
+
+  /// What [actionId] holds under [layout]: what was recorded while it was in
+  /// use, or what it was made with.
+  List<SingleActivator> _heldUnder(ShortcutLayout layout, String actionId) =>
+      _recordedUnder(layout)[actionId] ?? _madeKeys(layout, actionId);
 
   /// The first live activator — what menu items show as their shortcut
   /// label; null while unbound.
@@ -342,20 +367,119 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// Replaces [actionId]'s activators; a value equal to the defaults
   /// clears the override. Persists and notifies.
   void setActivators(String actionId, List<SingleActivator> activators) {
-    final defaults = defaultActivatorsFor(actionId);
-    final matchesDefaults =
-        activators.length == defaults.length &&
-        [
-          for (var i = 0; i < activators.length; i += 1)
-            activatorsEqual(activators[i], defaults[i]),
-        ].every((equal) => equal);
-    if (matchesDefaults) {
+    if (_sameKeys(activators, defaultActivatorsFor(actionId))) {
       _overrides.remove(actionId);
     } else {
       _overrides[actionId] = List.unmodifiable(activators);
     }
     _persist();
     notifyListeners();
+  }
+
+  static bool _sameKeys(List<SingleActivator> a, List<SingleActivator> b) =>
+      a.length == b.length &&
+      Iterable<int>.generate(a.length).every(
+        (i) => activatorsEqual(a[i], b[i]),
+      );
+
+  /// [preset] copied — what it was made with and what was recorded over that
+  /// — into a new preset of the user's named [name], which comes into use:
+  /// the layout in use by the ＋ of the window's list (I-107-Q1), any of the
+  /// list's by its row's duplicate (I-107-Q3).
+  UserShortcutPreset duplicatePreset(ShortcutLayout preset, String name) =>
+      _add(name, preset.base, {
+        ...preset.ownKeys,
+        ..._recordedUnder(preset),
+      });
+
+  /// [preset] under [name]. Saves and notifies.
+  void renamePreset(UserShortcutPreset preset, String name) {
+    preset.name = name;
+    _persist();
+    notifyListeners();
+  }
+
+  /// [keys] over [base]'s as a new preset of the user's named [name], which
+  /// comes into use. Persists and notifies.
+  UserShortcutPreset _add(
+    String name,
+    ShortcutPreset base,
+    Map<String, List<SingleActivator>> keys,
+  ) {
+    final preset = UserShortcutPreset(
+      id: _unusedId(),
+      name: name,
+      base: base,
+      keys: keys,
+    );
+    _userPresets = List.unmodifiable([..._userPresets, preset]);
+    _preset = preset;
+    _persist();
+    notifyListeners();
+    return preset;
+  }
+
+  /// An id none of the user's presets has.
+  String _unusedId() {
+    var number = _userPresets.length + 1;
+    while (_userPresets.any((preset) => preset.id == 'user-$number')) {
+      number += 1;
+    }
+    return 'user-$number';
+  }
+
+  /// Takes [preset] off the list, and what was recorded under it with it.
+  /// ⚠️MY READING — not said: one deleted while it is in use leaves the
+  /// preset it stood on in use.
+  void deletePreset(UserShortcutPreset preset) {
+    if (!_userPresets.contains(preset)) {
+      return;
+    }
+    _userPresets = List.unmodifiable([
+      for (final kept in _userPresets)
+        if (kept != preset) kept,
+    ]);
+    if (_preset == preset) {
+      _preset = preset.base;
+    }
+    _persist();
+    notifyListeners();
+  }
+
+  /// A new preset of the user's named [name], made of [keymaps] — files of
+  /// the program whose preset is [base].
+  ///
+  /// The presets' law ([ProgramKeys]) with the files as the program: an
+  /// action they give keys takes those and no other, and every other action
+  /// keeps what it holds, less any key they gave another.
+  /// ⚠️MY READING of 「파일이 말하지 않은 동작은 그대로」: what an action
+  /// holds is what it holds in the layout in use where that stands on the
+  /// same program's preset — CLIP STUDIO's two files may come in one after
+  /// the other, and the second builds on the first — and otherwise what it
+  /// holds in that program's preset, as the user has it.
+  UserShortcutPreset presetOfFiles(
+    String name,
+    ShortcutPreset base,
+    List<ProgramKeymap> keymaps,
+  ) {
+    final law = ProgramKeys({
+      for (final MapEntry(key: actionId, value: keys)
+          in fileKeysOf(keymaps).entries)
+        actionId: [for (final key in keys) platformActivator(key)],
+    });
+    final from = _preset.base == base ? _preset : base;
+    final made = <String, List<SingleActivator>>{};
+    for (final actionId in {
+      for (final definition in definitions) definition.id,
+      ...from.ownKeys.keys,
+      ..._recordedUnder(from).keys,
+    }) {
+      final keys = law.of(actionId, _heldUnder(from, actionId));
+      if (!_sameKeys(keys, _madeKeys(base, actionId))) {
+        made[actionId] = List.unmodifiable(keys);
+      }
+    }
+    return _add(name, base, made);
   }
 
   void resetAction(String actionId) {
@@ -438,58 +562,25 @@ class EditorShortcutBindings extends ChangeNotifier {
     if (byPreset is! Map) {
       return;
     }
-    // ⚠️NOT the preset an install with no file opens on ([preset]'s first
-    // value, Clip Studio's since I-63-Q5). A file that names no preset this
-    // build knows was written over the registry's keys: before the presets,
-    // or by a build whose preset this one lacks.
-    _preset = ShortcutPreset.named(payload?['preset']) ?? ShortcutPreset.anicel;
+    _userPresets = List.unmodifiable([
+      if (payload?['presets'] case final List saved)
+        for (final json in saved)
+          ?userPresetFromJson(json, recordedById: byPreset, keeps: _keeps),
+    ]);
+    final inUse = payload?['preset'];
+    _preset =
+        _userPresets.where((preset) => preset.id == inUse).firstOrNull ??
+        shippedPresetNamed(inUse);
     for (final MapEntry(key: preset, value: overrides)
         in _overridesByPreset.entries) {
       overrides
         ..clear()
-        ..addAll(_keyOverridesFrom(byPreset[preset.name]));
+        ..addAll(shortcutKeysFromJson(byPreset[preset.name], _keeps));
     }
-    _restoreTouch(payload?['touch']);
+    _touchOverrides
+      ..clear()
+      ..addAll(touchGesturesFromJson(payload?['touch'], _keeps));
     notifyListeners();
-  }
-
-  /// One preset's recorded keys out of its saved [json].
-  Map<String, List<SingleActivator>> _keyOverridesFrom(Object? json) {
-    if (json is! Map) {
-      return const {};
-    }
-    return {
-      for (final MapEntry(key: actionId, value: listJson) in json.entries)
-        if (actionId is String &&
-            _keeps(actionId) &&
-            listJson is List)
-          actionId: List.unmodifiable([
-            for (final activatorJson in listJson)
-              ?singleActivatorFromJson(activatorJson),
-          ]),
-    };
-  }
-
-  void _restoreTouch(Object? touchJson) {
-    _touchOverrides.clear();
-    if (touchJson is! Map) {
-      return;
-    }
-    for (final entry in touchJson.entries) {
-      final actionId = entry.key;
-      if (actionId is! String || !_keeps(actionId)) {
-        continue;
-      }
-      final name = entry.value;
-      if (name == null) {
-        _touchOverrides[actionId] = null;
-      } else if (name is String) {
-        final gesture = TouchGesture.fromName(name);
-        if (gesture != null) {
-          _touchOverrides[actionId] = gesture;
-        }
-      }
-    }
   }
 
   Future<void> _pendingPersist = Future<void>.value();
@@ -504,25 +595,17 @@ class EditorShortcutBindings extends ChangeNotifier {
     if (store == null) {
       return;
     }
-    final payload = {
-      'preset': _preset.name,
-      'overrides': {
-        for (final MapEntry(key: preset, value: overrides)
-            in _overridesByPreset.entries)
-          preset.name: {
-            for (final entry in overrides.entries)
-              entry.key: [
-                for (final activator in entry.value)
-                  singleActivatorToJson(activator),
-              ],
-          },
-      },
-      'touch': {
-        for (final entry in _touchOverrides.entries)
-          entry.key: entry.value?.name,
-      },
-    };
-    _pendingPersist = store.save(payload);
+    _pendingPersist = store.save(
+      shortcutSettingsPayload(
+        inUse: _preset,
+        recorded: {
+          for (final layout in [...ShortcutPreset.values, ..._userPresets])
+            layout: _recordedUnder(layout),
+        },
+        userPresets: _userPresets,
+        touch: _touchOverrides,
+      ),
+    );
   }
 }
 

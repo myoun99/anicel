@@ -1,6 +1,8 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_texture_mode.dart';
 
 void main() {
   group('BrushSettings', () {
@@ -98,6 +100,50 @@ void main() {
       );
 
       expect(BrushSettings.fromJson(brush.toJson()), brush);
+    });
+
+    test('the paper\'s height survives the round trip, and a multiplied '
+        'paper writes nothing new (F-451)', () {
+      final brush = BrushSettings(textureMode: BrushTextureMode.height);
+      expect(BrushSettings.fromJson(brush.toJson()), brush);
+      expect(BrushSettings().toJson().containsKey('textureMode'), isFalse);
+    });
+
+    test('the tips a turn holds survive the round trip, one writes nothing, '
+        'and none is refused (F-456-Q4)', () {
+      final brush = BrushSettings(tipsPerTurn: 3);
+      expect(BrushSettings.fromJson(brush.toJson()).tipsPerTurn, 3);
+      expect(BrushSettings.fromJson(brush.toJson()), brush);
+      expect(brush, isNot(BrushSettings()));
+      expect(BrushSettings().toJson().containsKey('tipsPerTurn'), isFalse);
+      expect(() => BrushSettings(tipsPerTurn: 0), throwsArgumentError);
+    });
+
+    test('🚨pressure on a target with no legacy key survives the round trip '
+        '— the pencil pressing into the tooth (F-451)', () {
+      final curve = BrushPressureCurve.linearFrom(0.5);
+      final brush = BrushSettings(
+        sizePressureCurve: curve,
+        curves: {
+          for (final target in [
+            BrushPressureTarget.textureDensity,
+            BrushPressureTarget.roundness,
+            BrushPressureTarget.spacing,
+          ])
+            (target, BrushInputSource.pressure): curve,
+        },
+      );
+      final json = brush.toJson();
+      expect(BrushSettings.fromJson(json), brush);
+      expect(
+        (json['curves'] as Map).keys,
+        unorderedEquals([
+          'textureDensity.pressure',
+          'roundness.pressure',
+          'spacing.pressure',
+        ]),
+        reason: 'the four legacy keys are not written twice',
+      );
     });
 
     test('fromJson supports legacy color/size/opacity JSON', () {

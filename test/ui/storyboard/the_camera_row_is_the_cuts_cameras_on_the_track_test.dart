@@ -807,7 +807,11 @@ void main() {
 
       await clickTwice(tester, at(tester, 30));
 
-      expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
+      final strings = AppText.strings;
+      expect(
+        find.text(strings.windowTitleOn(strings.editNameAction, strings.tlKey)),
+        findsOneWidget,
+      );
       expect(keysOf(session, b), [2, 6, 12], reason: 'nothing made');
     });
   });

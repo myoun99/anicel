@@ -6,9 +6,9 @@
 /// The color carries its own ALPHA (user 2026-07-29): a thinned paper
 /// reveals the pasteboard and the backdrop behind it, on screen and in
 /// print alike — the old display-only "transparent" flag collapsed into
-/// alpha 0, and the alpha checkerboard moved to the backdrop's
-/// alpha-preview toggle where it says what it means (what an alpha export
-/// leaves open).
+/// alpha 0. ↩️The alpha checkerboard moved to an alpha-preview toggle that
+/// swapped the backdrop for it, and the toggle went (F-146): an ABSENT
+/// plane is the checkerboard now (below).
 ///
 /// 🚨F-114 brings an ABSENCE back, and it is not alpha (유저 2026-09-15):
 /// 「없음버튼은 표시상? 없애서 체크무늬가 되도록 하는거고, 불투명도는 체크무늬는
@@ -30,9 +30,10 @@ class ProjectBackground {
 
   /// What the paper actually puts into a picture: its colour, or nothing at
   /// all while it is absent. ONE answer for everything that reads the paper
-  /// as pixels — the painter, the eyedropper's paper fallback, the fill's
-  /// paper — so an absent paper cannot be skipped by one of them and sampled
-  /// as white by another. [argb] stays the kept colour a swatch shows.
+  /// as pixels — the painter, the eyedropper's paper fallback — so an
+  /// absent paper cannot be skipped by one of them and sampled as white by
+  /// another. [argb] stays the kept colour a swatch shows. (The fill reads
+  /// no paper at all — board F-416, `pixelWithinTolerance`.)
   int get paintedArgb => none ? 0x00000000 : argb;
 
   /// The default paper — R28 #9: PURE white.

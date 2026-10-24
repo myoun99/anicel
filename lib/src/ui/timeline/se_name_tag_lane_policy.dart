@@ -97,10 +97,12 @@ PropertyLaneLens<SeNameTagTrack, Object?>? seNameTagLaneLens(String laneId) =>
       seNameTagSizeLaneId => PropertyLaneLens<SeNameTagTrack, double>(
         get: (keys) => keys.fontSize,
         set: (keys, lane) => keys.copyWith(fontSize: lane),
+        numbers: numbersAsHeld,
       ),
       seNameTagTrackingLaneId => PropertyLaneLens<SeNameTagTrack, double>(
         get: (keys) => keys.letterSpacing,
         set: (keys, lane) => keys.copyWith(letterSpacing: lane),
+        numbers: numbersAsHeld,
       ),
       seNameTagBoldLaneId => PropertyLaneLens<SeNameTagTrack, bool>(
         get: (keys) => keys.bold,

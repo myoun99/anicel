@@ -23,7 +23,7 @@ import '../../helpers/native_engine_path.dart';
 /// through the session: the run's clock asks for its sound beside its
 /// picture (`PlaybackWait`), and the rig's transport answers.
 ///
-/// The bench never hears what a session plays (`audioOutputUnlessTesting`),
+/// The bench never hears what a session plays (`audioDeviceUnlessTesting`),
 /// so the rig's transport gets a device opened once on miniaudio's null
 /// backend (`PlaybackRig.debugTransportOutput`).
 void main() {

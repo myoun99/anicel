@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/turn_trig.dart';
 import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
@@ -54,15 +55,10 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final isRound = tip.tipShape == BrushTipShape.round;
   final tipMask = tip.tipMask;
   final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
-  var tipCos = 1.0;
-  var tipSin = 0.0;
-  var inverseRoundness = 1.0;
-  if (isEllipse || tipMask != null) {
-    final angleRadians = tip.angleDegrees * (math.pi / 180.0);
-    tipCos = math.cos(angleRadians);
-    tipSin = math.sin(angleRadians);
-    inverseRoundness = 1.0 / tip.roundness;
-  }
+  // A circle and a square do not turn; the others take their cosine and
+  // sine from the one table, exact at the quarter turns ([turnCos]).
+  final turns = isEllipse || tipMask != null;
+  final degrees = turns ? tip.angleDegrees : 0.0;
   return (
     radius: radius,
     minorRadius: radius * tip.roundness,
@@ -70,9 +66,9 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
     isRound: isRound,
     tipMask: tipMask,
     isEllipse: isEllipse,
-    tipCos: tipCos,
-    tipSin: tipSin,
-    inverseRoundness: inverseRoundness,
+    tipCos: turnCos(degrees),
+    tipSin: turnSin(degrees),
+    inverseRoundness: turns ? 1.0 / tip.roundness : 1.0,
   );
 }
 
@@ -134,12 +130,31 @@ double brushEdgeApplied(BrushEdgeLaw law, double coverage) {
 /// and the coverage list each picked raster, round or square themselves
 /// until 2026-10-01, and this is now the one place the choice is made. The
 /// three are one body so the per-pixel loop still makes one call.
+/// ↩️The tile kernel's loop (`blendDabTilesDart`) wrote the cascade out a
+/// fourth time; it calls this now wherever it does not read an unrotated
+/// raster tip off its lattices (board
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`).
+@pragma('vm:prefer-inline')
 double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
   final mask = tip.tipMask;
+  if (mask == null && !tip.isRound) {
+    // A square dab is the fill and stamp verbs' "cover exactly this rect",
+    // and the dab constructor refuses to build one that is squashed or
+    // rotated — so there is no rotated-rect case to test.
+    return 1.0;
+  }
+  // Into the tip's own space: turned by its angle ([turnedX]), pressed
+  // along its minor axis by its roundness. A circle's turn is the identity
+  // to the bit (cosine 1 and sine 0 from the table, roundness 1), so its
+  // distance is the plain one.
+  // 🔬A circle takes the turn too, and must: the debug JIT cannot inline a
+  // leaf that has never run, so a loop warmed on circles alone, with their
+  // own branch, kept [turnedX] a call — ellipse and raster tips then cost
+  // 30 → 66 and 79 → 104 ns a pixel (2026-10-23).
+  final tipU = turnedX(dx, dy, tip.tipCos, tip.tipSin);
+  final tipV = turnedY(dx, dy, tip.tipCos, tip.tipSin) * tip.inverseRoundness;
   if (mask != null) {
-    // A ROTATED raster tip: nothing outside the mask's square.
-    final tipU = dx * tip.tipCos - dy * tip.tipSin;
-    final tipV = (dx * tip.tipSin + dy * tip.tipCos) * tip.inverseRoundness;
+    // A raster tip: nothing outside the mask's square.
     if (tipU.abs() > tip.radius || tipV.abs() > tip.radius) {
       return 0.0;
     }
@@ -150,20 +165,7 @@ double tipCoverageAt(BrushDabTipGeometry tip, double dx, double dy) {
       radius: tip.radius,
     );
   }
-  if (!tip.isRound) {
-    // A square dab is the fill and stamp verbs' "cover exactly this rect",
-    // and the dab constructor refuses to build one that is squashed or
-    // rotated — so there is no rotated-rect case to test.
-    return 1.0;
-  }
-  final double distance;
-  if (tip.isEllipse) {
-    final tipU = dx * tip.tipCos - dy * tip.tipSin;
-    final tipV = (dx * tip.tipSin + dy * tip.tipCos) * tip.inverseRoundness;
-    distance = math.sqrt(tipU * tipU + tipV * tipV);
-  } else {
-    distance = math.sqrt(dx * dx + dy * dy);
-  }
+  final distance = math.sqrt(tipU * tipU + tipV * tipV);
   if (distance > tip.radius) {
     return 0.0;
   }

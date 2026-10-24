@@ -76,6 +76,9 @@ final class RailTextGlyph extends RailGlyph {
 /// stop and the focus ring. Its Enter/Space were already silent by 유저's
 /// call (2026-09-10: 「탭은 다른 숏컷 쓸수도있어서 굳이 필요없을거같고」), so
 /// focus led nowhere. A screen reader still finds and presses it.
+/// ⚠️That premise fell on 2026-10-23 (board `F-450-Q1`: every other icon
+/// button now answers Enter/Space); whether the rail takes its focus back,
+/// at the cost the leaf was built to shed, is board `F-450-Q2`.
 class RailGlyphButton extends StatelessWidget {
   const RailGlyphButton({
     super.key,
@@ -86,7 +89,6 @@ class RailGlyphButton extends StatelessWidget {
     required this.size,
     this.isSelected = false,
     this.danger = false,
-    this.outlined = false,
     this.semanticLabel,
   });
 
@@ -117,9 +119,6 @@ class RailGlyphButton extends StatelessWidget {
   /// danger]).
   final bool danger;
 
-  /// Draws the box's edge ([AppIconButton.outlined]).
-  final bool outlined;
-
   @override
   Widget build(BuildContext context) => ControlPressClaim(
     onPressed: onPressed,
@@ -135,7 +134,6 @@ class RailGlyphButton extends StatelessWidget {
         semanticLabel: semanticLabel,
         isSelected: isSelected,
         danger: danger,
-        outlined: outlined,
         size: size,
       ),
     ),
@@ -152,7 +150,6 @@ class RailGlyphFace extends LeafRenderObjectWidget {
     required this.onSemanticTap,
     required this.isSelected,
     required this.danger,
-    required this.outlined,
     required this.size,
     this.semanticLabel,
   });
@@ -165,7 +162,6 @@ class RailGlyphFace extends LeafRenderObjectWidget {
   final String? semanticLabel;
   final bool isSelected;
   final bool danger;
-  final bool outlined;
   final AppIconButtonMetrics size;
 
   bool get enabled => onSemanticTap != null;
@@ -196,7 +192,7 @@ class RailGlyphFace extends LeafRenderObjectWidget {
       ink: IconButtonInk.of(context, isSelected: isSelected, danger: danger),
       shape: appIconButtonShape(
         size.height,
-        outlined: outlined,
+        outlined: false,
         danger: danger,
         isSelected: isSelected,
       ),

@@ -305,7 +305,6 @@ void main() {
   tearDown(() {
     StillRaster.debugCachePaysOverride = null;
     StaticRaster.debugCapturePaysOverride = null;
-    StaticRaster.globallyEnabled.value = true;
     MeasurementMode.reset();
   });
 
@@ -554,25 +553,6 @@ void main() {
     final region = _region(tester);
     expect(region.debugCaptureCount, 0);
     expect(region.standDown, StillStandDown.renderer);
-  });
-
-  testWidgets('the bake switch puts it back to painting, and back', (
-    tester,
-  ) async {
-    await _pump(tester, _box());
-    await _untilImage(tester);
-    final region = _region(tester);
-    expect(region.debugDrawnFromImage, isTrue);
-
-    StaticRaster.globallyEnabled.value = false;
-    await tester.pump();
-    expect(region.debugDrawnFromImage, isFalse);
-    expect(region.standDown, StillStandDown.disabled);
-    expect(StillRaster.censusBytes, 0);
-
-    StaticRaster.globallyEnabled.value = true;
-    await _untilImage(tester);
-    expect(region.debugDrawnFromImage, isTrue);
   });
 
   testWidgets('Show Repaints takes the image again, tinted', (tester) async {

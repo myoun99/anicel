@@ -30,7 +30,6 @@ import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
 import '../../models/exposure_memo.dart';
-import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
@@ -251,13 +250,6 @@ class CutCommandCoordinator {
     CutId? cutId,
     TimesheetSheetKind? kind,
   }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
-  void reorderCut({
-    required TrackId trackId,
-    required CutId cutId,
-    required int newIndex,
-  }) => _cuts.reorderCut(trackId: trackId, cutId: cutId, newIndex: newIndex);
-  void setCutOrder({required TrackId trackId, required List<CutId> order}) =>
-      _cuts.setCutOrder(trackId: trackId, order: order);
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,
@@ -276,10 +268,12 @@ class CutCommandCoordinator {
     required CutId sourceCutId,
     required TrackId targetTrackId,
     String? newName,
+    int? index,
   }) => _cuts.duplicateCut(
     sourceCutId: sourceCutId,
     targetTrackId: targetTrackId,
     newName: newName,
+    index: index,
   );
 
   // ── the camera commands: their own object ───────────────────────────
@@ -406,7 +400,9 @@ class CutCommandCoordinator {
     // owner's OLD name follows, and whatever comes after that prefix rides
     // over verbatim. The `±N` default is now one case of this instead of
     // the only one, and nothing is renumbered (numbers go non-contiguous
-    // after deletions, and renumbering would be inventing state).
+    // after deletions, and renumbering would be inventing state). ⚠️A SEAT
+    // move does renumber — 유저 asked for that one (I-122 · F-436 ③,
+    // [attachNamesForMovedSeats]) — and keeps a deletion's gap all the same.
     //
     // ★Still answered RIGHT HERE, against the OLD name: ask a moment later
     // and the prefix is gone with the name it hung off.
@@ -732,9 +728,12 @@ class CutCommandCoordinator {
     );
   }
 
+  /// [sourceLayerId] copied in [cutId], at [insertionIndex] — right above
+  /// its source when none is named.
   PastedLayer duplicateLayer({
     required CutId cutId,
     required LayerId sourceLayerId,
+    int? insertionIndex,
   }) {
     final cut = _requireCut(cutId);
     final sourceLayer = _requireLayer(cutId: cutId, layerId: sourceLayerId);
@@ -751,7 +750,7 @@ class CutCommandCoordinator {
     return pasteLayer(
       cutId: cutId,
       payload: copyLayerToPayload(sourceLayer),
-      insertionIndex: sourceIndex + 1,
+      insertionIndex: insertionIndex ?? sourceIndex + 1,
     );
   }
 
@@ -1180,7 +1179,7 @@ class CutCommandCoordinator {
     // be written into every other cut's conte here, seat by seat
     // (I-73-one-head-Q2). The track's structure carries them now (F-343,
     // `trackWithItsConteLaid`): this writes the cut it was given.
-    historyManager.executeAsOneStep(description, [
+    _executeMovingSeats(cutId, description, [
       ...layerPlacementCommands(
         cutId: cutId,
         order: order,
@@ -1197,6 +1196,37 @@ class CutCommandCoordinator {
         description: description,
       ),
     ]);
+  }
+
+  /// Runs [commands] — a write that may move attach rows' seats — as ONE
+  /// undo step, with the renames those moves owe inside it
+  /// ([attachNamesForMovedSeats], I-122 · F-436 ③). The two doors that move
+  /// a seat come through here: a drag's [setLayerPlacement] and the menu's
+  /// [setLayerAttachment].
+  void _executeMovingSeats(
+    CutId cutId,
+    String description,
+    List<Command> commands,
+  ) {
+    if (commands.isEmpty) {
+      return;
+    }
+    final before = _requireCut(cutId).layers;
+    historyManager.runAsOneStep(description, () {
+      commands.forEach(historyManager.execute);
+      final after = _requireCut(cutId).layers;
+      for (final MapEntry(key: layerId, value: name)
+          in attachNamesForMovedSeats(before, after).entries) {
+        historyManager.execute(
+          UpdateLayerNameCommand(
+            repository: repository,
+            cutId: cutId,
+            layerId: layerId,
+            name: name,
+          ),
+        );
+      }
+    });
   }
 
   /// The commands one row-placement write needs, INCLUDING the 겸용 link

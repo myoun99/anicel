@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import 'property_lane_model.dart';
 import 'rail_column_swipe.dart' show RailSweepHistory;
@@ -63,7 +62,6 @@ final class TimelineGridLegendRail {
       kinds: timelineRailKinds,
       visibilitySoloEnabled: legend.visibilitySoloEnabled,
       anyLanesExpanded: hooks.expandedLaneLayerIds.isNotEmpty,
-      allSeMuted: _allSeMuted(),
       // The set a bulk verb ACTS on, read at the press — of the rows the
       // latest pass drew. 🚨I-57 ㉢-2 (10-13, measured on the user's
       // project): captured here and kept fresh by the token, it changed at
@@ -92,22 +90,6 @@ final class TimelineGridLegendRail {
     for (final row in _grid.drawnRows)
       if (!row.isLane && row.layer.kind.hasPictureOpacity) row.layer.id,
   };
-
-  /// Whether every SE row is muted — the legend mute cell's toggle state
-  /// (no SE rows reads as unmuted, so the first tap mutes).
-  bool _allSeMuted() {
-    var sawSe = false;
-    for (final layer in _grid.layers) {
-      if (layer.kind != LayerKind.se) {
-        continue;
-      }
-      sawSe = true;
-      if (!layer.muted) {
-        return false;
-      }
-    }
-    return sawSe;
-  }
 
   /// Legend LAYER-cell sweeps: the grid owns the lane knowledge (which
   /// layers HAVE lanes, which are expanded), so the all-lane fold rides its

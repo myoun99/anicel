@@ -161,10 +161,10 @@ void main() {
       // Each brought face with a delete of its own; the app's with none.
       expect(row('font-Probe Sans-delete'), findsOneWidget);
       expect(row('font-Probe Serif-delete'), findsOneWidget);
-      expect(face(tester, AppTypography.bundledFamily).action, isNull);
-      expect(face(tester, 'Nanum Gothic').action, isNull);
+      expect(face(tester, AppTypography.bundledFamily).actions, isEmpty);
+      expect(face(tester, 'Nanum Gothic').actions, isEmpty);
       expect(
-        face(tester, 'Probe Sans').action!.does,
+        face(tester, 'Probe Sans').actions.single.does,
         PanelFlyoutActionDoes.deletes,
       );
     });
@@ -467,8 +467,11 @@ void main() {
       expect(find.text(AppText.strings.textToolFontsOfDevice), findsOneWidget);
       final carried = projectFace(tester, 'Probe Carried');
       expect(carried.warning, isNull);
-      expect(carried.action!.does, PanelFlyoutActionDoes.deletes);
-      expect(carried.action!.tooltip, AppText.strings.textToolFontTakeOut);
+      expect(carried.actions.single.does, PanelFlyoutActionDoes.deletes);
+      expect(
+        carried.actions.single.tooltip,
+        AppText.strings.textToolFontTakeOut,
+      );
       expect(row('project-font-Probe Carried-take-out'), findsOneWidget);
       expect(
         row('font-Probe Carried-delete'),
@@ -590,7 +593,7 @@ void main() {
       expect(missing.selected, isTrue);
       expect(missing.warning, AppText.strings.textToolFontNotOnThisDevice);
       expect(missing.onSelected, isNull);
-      expect(missing.action, isNull);
+      expect(missing.actions, isEmpty);
       expect(face(tester, AppTypography.bundledFamily).selected, isFalse);
     });
 

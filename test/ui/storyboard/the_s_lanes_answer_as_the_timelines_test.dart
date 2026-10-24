@@ -124,6 +124,10 @@ void main() {
     strip(tester, se).laneRange!.onActivateAt!(se, 'position', 6);
     await tester.pumpAndSettle();
 
-    expect(find.text(AppText.strings.renameKeyTitle), findsOneWidget);
+    final strings = AppText.strings;
+    expect(
+      find.text(strings.windowTitleOn(strings.editNameAction, strings.tlKey)),
+      findsOneWidget,
+    );
   });
 }

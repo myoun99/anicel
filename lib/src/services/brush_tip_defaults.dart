@@ -25,6 +25,15 @@ final List<BrushTipEntry> defaultBrushTipEntries = List.unmodifiable([
   _entry(paperGrainTextureMask, 'Paper Grain'),
   _entry(canvasWeaveTextureMask, 'Canvas Weave'),
   _entry(coldPressTextureMask, 'Cold Press'),
+  _entry(pencilSideBrushTipMask, 'Pencil Side'),
+  _entry(graphiteToothTextureMask, 'Graphite Tooth'),
+  _entry(colorClumpBrushTipMask, 'Color Clumps'),
+  for (final (index, lead) in pencilLeadBrushTipMasks.indexed)
+    _entry(
+      lead,
+      'Pencil Lead ${index ~/ pencilLeadFacesPerStep + 1}-'
+      '${index % pencilLeadFacesPerStep + 1}',
+    ),
 ]);
 
 BrushTipEntry _entry(BrushTipMask mask, String name) => BrushTipEntry(

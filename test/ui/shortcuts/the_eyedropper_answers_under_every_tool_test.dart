@@ -241,6 +241,12 @@ void main() {
       'lib/src/ui/canvas/canvas_selection_layer.dart',
       // The shortcut window, hearing a chord being typed in.
       'lib/src/ui/shortcuts/shortcut_settings_dialog.dart',
+      // Off the canvas: a header graph's Alt-click on a line, which picks
+      // its keys (graph-key-pick-rest, AE's graph editor) — and its box's
+      // corner pulled with Ctrl+Alt, which tapers or moves a side of it
+      // (graph-box-handles-more ⓑ ⓒ, AE's transform box).
+      'lib/src/ui/timeline/timeline_lane_graph.dart',
+      'lib/src/ui/timeline/timeline_lane_graph.dart',
     ]);
   });
 }

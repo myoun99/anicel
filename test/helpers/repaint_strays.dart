@@ -42,11 +42,57 @@ Set<RenderObject> repaintStrays(
   return found;
 }
 
-/// What a playback tick may repaint anywhere on screen: every [TickLayer]
-/// (a tick layer's first render object is its boundary) and the canvas,
-/// whose picture changing IS the tick.
+/// What a playback tick may repaint anywhere on screen: every tick layer's
+/// boundary ([tickBoundariesUnder]) and the canvas, whose picture changing
+/// IS the tick.
 Set<RenderObject> tickLayersAndCanvas(WidgetTester tester) => {
+  for (final view in tester.binding.renderViews) ...tickBoundariesUnder(view),
+  ..._canvas(tester),
+};
+
+/// What an EDIT may repaint: the tick layers, the canvas — and the panels'
+/// hosts ([TickLayer.host]), which stand on layers of their own to be
+/// painted again for their panels' edits.
+Set<RenderObject> panelsTicksAndCanvas(WidgetTester tester) => {
   for (final layer in find.byType(TickLayer).evaluate()) layer.renderObject!,
+  ..._canvas(tester),
+};
+
+/// What a gesture repaints under [root] besides its ticks, by name — the
+/// strays ([repaintStrays]) of a region whose tick boundaries
+/// ([tickBoundariesUnder]) alone may repaint.
+///
+/// ONE question for the pins that ask a region (a scrub's, a sheet's pan,
+/// a carried block's): each built that allow list on its own, and each
+/// built it of every [TickLayer] — a panel's host among them (10-24).
+List<String> tickStraysUnder(RenderObject root) => [
+  for (final stray in repaintStrays(root, allowed: tickBoundariesUnder(root)))
+    nameOfBoundary(stray),
+];
+
+/// The boundaries a tick is laid out and painted on under [root] — every
+/// [RenderTickBoundary].
+///
+/// 🚨⛔Not every [TickLayer]: a panel's host stands on one too
+/// ([TickLayer.host]), whose boundary is the panel's, and a pin that let it
+/// repaint let everything in every panel repaint. 🪦Asked that way, the
+/// drag-step pin read nothing while a cut-end trim on the user's cut laid
+/// out and repainted the timeline's whole rows viewport at every step
+/// (F-446, 10-24).
+Set<RenderObject> tickBoundariesUnder(RenderObject root) {
+  final found = <RenderObject>{};
+  void walk(RenderObject node) {
+    if (node is RenderTickBoundary) {
+      found.add(node);
+    }
+    node.visitChildren(walk);
+  }
+
+  walk(root);
+  return found;
+}
+
+Iterable<RenderObject> _canvas(WidgetTester tester) => {
   for (final canvas in find
       .byKey(const ValueKey<String>('canvas-editor-panel-content'))
       .evaluate())

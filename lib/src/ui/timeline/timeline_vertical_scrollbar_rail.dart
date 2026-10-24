@@ -3,42 +3,23 @@ import 'package:flutter/material.dart';
 import '../widgets/app_scrollbar.dart';
 import 'memo_token.dart' show KeptPiece;
 
-class TimelineVerticalScrollbarSlot extends StatelessWidget {
-  const TimelineVerticalScrollbarSlot({
-    super.key = const ValueKey<String>('timeline-vertical-scrollbar-slot'),
-    required this.width,
-    required this.height,
-  });
-
-  final double width;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(width: width, height: height);
-  }
-}
-
-/// The timeline's right-edge scrollbar rail: the shared
-/// [AppControllerScrollbar] on the panel's own surface. The rail width is the
-/// hit lane; the thumb inside stays visually thin.
+/// A grid's layer-axis bar, between the splitter and the frames
+/// (`timeline_grid_frame.dart`): the shared [AppControllerScrollbar] on the
+/// panel's own surface, as wide as the lane its parent gives it.
 class TimelineVerticalScrollbarRail extends KeptPiece {
   const TimelineVerticalScrollbarRail({
     super.key = const ValueKey<String>('timeline-vertical-scrollbar'),
     required this.controller,
     required this.viewportHeight,
     required this.contentHeight,
-    required this.width,
   });
-
 
   final ScrollController controller;
   final double viewportHeight;
   final double contentHeight;
-  final double width;
 
   @override
-  Object? get facts => (controller, viewportHeight, contentHeight, width);
+  Object? get facts => (controller, viewportHeight, contentHeight);
 
   @override
   Widget buildKept(BuildContext context) {

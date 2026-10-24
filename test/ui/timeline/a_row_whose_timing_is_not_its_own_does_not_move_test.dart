@@ -38,13 +38,12 @@ void main() {
   test('its block does not pick up for a block move', () {
     final (s, picture) = sessionOnAPictureRow();
 
-    expect(
-      s.drawingBlockMove.beginDrawingBlockMoveDrag(
-        layerId: picture.id,
-        blockStartIndex: 0,
-      ),
-      isFalse,
+    s.updateFrameRangeSelectionDrag(
+      layerId: picture.id,
+      anchorIndex: 0,
+      headIndex: 0,
     );
+    expect(s.rangeMove.beginFrameRangeMoveDrag(picture.id), isFalse);
   });
 
   test('its block takes no frames from the add-frames grip', () {

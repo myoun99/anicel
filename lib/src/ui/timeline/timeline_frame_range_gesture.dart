@@ -8,6 +8,7 @@ import '../debug/input_inspector.dart' show InputInspector;
 import '../widgets/instant_tap_region.dart' show InstantTapRegion;
 import '../widgets/named.dart';
 
+import '../../models/key_range_shift.dart' show FrameStretch;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
@@ -601,7 +602,7 @@ class _TimelineFrameRangeGestureLayerState
               widget.callbacks.onTapClear(_rowNow);
             }
           },
-          child: _eagerPanDetector(
+          child: timelineEagerPanDetector(
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
@@ -632,6 +633,7 @@ class TimelineLaneRangeHooks {
     required this.onMoveEnd,
     required this.onMoveCancel,
     this.onActivateAt,
+    this.onCreateKeys,
   });
 
   /// The session's live LANE selection.
@@ -670,11 +672,25 @@ class TimelineLaneRangeHooks {
   /// settled into a tap, so a click on an fx row left a one-cell band.
   final VoidCallback onTapClear;
 
+  /// The ＋ on the lane selection as it stands — see
+  /// [TimelineLaneRangeCallbacks.onCreateKeys]. Null leaves a header
+  /// graph's pen adding nothing.
+  final VoidCallback? onCreateKeys;
+
   final bool Function() onMoveBegin;
 
-  /// A move step: the selection [frameDelta] frames along — and, carried
-  /// by a header graph's key, its keys' [values] (I-3 ②).
-  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
+  /// A move step: the selection [frameDelta] frames along — after
+  /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
+  /// and, carried by a header graph's key or box, its keys' [values]
+  /// (I-3 ②) — each key where its [landings] say, where one corner of the
+  /// box goes alone (graph-box-handles-more ⓐ).
+  final void Function(
+    int frameDelta, {
+    FrameStretch? stretch,
+    LaneKeyValues? values,
+    LaneKeyLandings? landings,
+  })
+  onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }
@@ -696,6 +712,8 @@ class TimelineLaneRangeCallbacks {
     this.onGripTaken,
     this.onGripReleased,
     this.onActivateAt,
+    this.onCreateKeys,
+    this.onSelectRows,
   });
 
   /// The same A5/D42 grip seam the cells layer carries: a lane drag holds
@@ -753,11 +771,41 @@ class TimelineLaneRangeCallbacks {
   /// lanes (H18, 유저 2026-08-22: 「fx헤더,멤버행의 선택범위 규칙이 다름」).
   final VoidCallback onTapClear;
 
+  /// The ＋ on the lane selection as it stands — a key on each of its
+  /// unkeyed frames, the value there kept: what a header graph's pen
+  /// presses once it has picked the cell its line was pressed in (I-3 ④,
+  /// AE's pen puts a key on the line). The ＋'s own verb, so the pen's key
+  /// is the one the button would have made there. Null leaves the pen
+  /// without one.
+  final VoidCallback? onCreateKeys;
+
+  /// A BOX drawn on a header graph (I-3 ⑤, AE's graph editor) picking the
+  /// frames from [anchorIndex] to [headIndex] across the lanes of [rows] —
+  /// the lanes holding the keys it holds, in the order the graph draws
+  /// them. One layer's are a lane selection of those lanes; where they
+  /// reach another layer's, the MOUNT answers as it answers a lane drag
+  /// leaving its group. Null leaves a graph's box picking nothing.
+  final void Function(
+    List<LaneRowAddress> rows,
+    int anchorIndex,
+    int headIndex,
+  )?
+  onSelectRows;
+
   final bool Function() onMoveBegin;
 
-  /// A move step: the selection [frameDelta] frames along — and, carried
-  /// by a header graph's key, its keys' [values] (I-3 ②).
-  final void Function(int frameDelta, {LaneKeyValues? values}) onMoveUpdate;
+  /// A move step: the selection [frameDelta] frames along — after
+  /// [stretch], where a header graph's box stretches its keys (I-3 ⑥) —
+  /// and, carried by a header graph's key or box, its keys' [values]
+  /// (I-3 ②) — each key where its [landings] say, where one corner of the
+  /// box goes alone (graph-box-handles-more ⓐ).
+  final void Function(
+    int frameDelta, {
+    FrameStretch? stretch,
+    LaneKeyValues? values,
+    LaneKeyLandings? landings,
+  })
+  onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
 }
@@ -1033,7 +1081,7 @@ class _TimelineLaneRangeGestureLayerState
                       activate(widget.layer.id, widget.laneId, frame),
                 ),
           onDoubleTap: activate == null ? null : () {},
-          child: _eagerPanDetector(
+          child: timelineEagerPanDetector(
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
@@ -1051,8 +1099,8 @@ class _TimelineLaneRangeGestureLayerState
 
 /// The eager pan that owns a range drag from its first pixel — one
 /// recogniser set-up for the cell layer and the lane layer (the audit's
-/// clone scan, 2026-09-03).
-Widget _eagerPanDetector({
+/// clone scan, 2026-09-03), and a header graph's box (I-3 ⑤).
+Widget timelineEagerPanDetector({
   required BuildContext context,
   required Object debugOwner,
   required bool Function(Offset down, Offset now) firstStepAt,

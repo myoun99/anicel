@@ -1,9 +1,9 @@
 import 'dart:async' show unawaited;
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../services/flutter_test_run.dart';
 import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
@@ -83,7 +83,7 @@ import '../services/command.dart' show WorkAhead;
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/link_mirror.dart' show headMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
-import '../native/qa_audio_device.dart' show audioOutputUnlessTesting;
+import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
 import 'session/cache_budgets.dart';
@@ -149,6 +149,7 @@ import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
 import 'session/key_clipboard.dart';
+import 'session/text_clipboard.dart';
 import 'session/active_cut_controllers.dart';
 import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
@@ -158,7 +159,7 @@ import 'session/panel_view_memory.dart';
 import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
-import 'session/drawing_block_move_drag.dart';
+import 'session/block_move_commands.dart';
 import 'session/run_frames_add_drag.dart';
 import 'session/opacity_verbs.dart';
 import 'session/active_cut_edits.dart';
@@ -750,6 +751,14 @@ class EditorSessionManager extends ChangeNotifier
   late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
   late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs);
   late final KeyClipboard keyClipboard = KeyClipboard(board: _appClipboard.keys, laneVerbs: laneVerbs, changes: this);
+  late final TextClipboard textClipboard = TextClipboard(
+    board: _appClipboard.texts,
+    project: this,
+    pixelEditing: pixelEditing,
+    pixelVerbs: pixelVerbs,
+    renderCaches: renderCaches,
+    changes: this,
+  );
 
   /// What the boards above hold — the APP's, handed to every open project
   /// by the shell (I-7, 유저 2026-09-26: 「탭사이에 복사나 붙여넣기 뭐든
@@ -786,6 +795,8 @@ class EditorSessionManager extends ChangeNotifier
     renderCaches: renderCaches,
     brushInputActive: brushInputActive,
     dragPreview: dragPreview,
+    soundCannotPlay: (filePath) => playbackRig.soundCannotPlay(filePath),
+    soundsMoved: () => playbackRig.soundsMoved,
   );
 
   bool get canCopyFrameAtCurrentFrame => clipboard.canCopyFrameAtCurrentFrame;
@@ -1347,7 +1358,7 @@ class EditorSessionManager extends ChangeNotifier
   String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
     frameIndex: frameIndex,
     framesPerSecond: projectSettings.projectFrameRate.countingBase,
-    showSeconds: appSettings.showSecondsDisplay.value,
+    showSeconds: panelViews.showSeconds.value,
   );
 
   // ── the track SE display: its own object, in its own file ───────────
@@ -1670,11 +1681,11 @@ class EditorSessionManager extends ChangeNotifier
               // under fake async outlives the test (the prerender scheduler's
               // FLUTTER_TEST branch, same reason). Missing fixture paths
               // short-circuit before any decode, so this stays cheap.
-              runner: Platform.environment['FLUTTER_TEST'] == 'true'
+              runner: underFlutterTest
                   ? (request) => Future.value(runConformHere(request))
                   : null,
               placeForPlayback: (floats) =>
-                  audioOutputUnlessTesting()?.newSamples(floats),
+                  audioDeviceUnlessTesting()?.newSamples(floats),
             ))
         // The store answers when a conform lands or is let go, which is
         // exactly when the pool's size column stops being true.
@@ -2553,7 +2564,6 @@ class EditorSessionManager extends ChangeNotifier
     controllers: activeCutControllers,
     camera: camera,
     rangeSelections: rangeSelections,
-    cells: cells,
   );
 
   @override
@@ -2662,14 +2672,14 @@ class EditorSessionManager extends ChangeNotifier
     dragPreview: dragPreview,
   );
 
-  // --- Whole-block move drags (R10-④b) --------------------------------------
+  // --- Which rows a block move takes part on --------------------------------
   //
-  // Grabbing a drawing block's BODY moves the block whole: along the frame
-  // axis (slide) and across drawing layers (the cel travels, its brush
-  // drawings re-keyed to the new layer). Landing requires empty space —
-  // a block move never retimes other blocks. Same channel discipline as
-  // the edge drags: repo untouched until release, one undo per drag. The
-  // drag in flight is held by [drawingBlockMove], which starts and closes it.
+  // A block moves by being selected and dragged as a range — along the frame
+  // axis and across drawing layers, its cels travelling with it — through the
+  // frame-range move ([rangeMove]), the one door since UI-R8 (#517).
+  // ↩️Grabbing a drawing block's BODY was a drag of its own (R10-④b) until
+  // then, and it went for good with the tests that alone still drove it
+  // (2026-10-24).
 
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
@@ -2856,6 +2866,7 @@ class EditorSessionManager extends ChangeNotifier
     trackSe: trackSe,
     controllers: activeCutControllers,
     cutShift: cutShift,
+    rangeSelections: rangeSelections,
   );
 
   // ── the cut-axis shove: its own object, in its own file ───────────────
@@ -2865,9 +2876,9 @@ class EditorSessionManager extends ChangeNotifier
   // after it.
   late final CutShift cutShift = CutShift(
     project: this,
-    selection: this,
     changes: this,
     storyboardRows: storyboardRows,
+    rangeSelections: rangeSelections,
   );
 
   // --- Frame RANGE selection (UI-R8, TVP-style) ----------------------------
@@ -2969,11 +2980,15 @@ class EditorSessionManager extends ChangeNotifier
       ? trackSeGlobalLayerById(layerId)
       : layerById(layerId);
 
-  // ── the drawing block move drag: its own object ─────────────────────
+  // ── what a block move lands by: its own object ──────────────────────
   //
-  // A collaborator (session/drawing_block_move_drag.dart). Callers name it: a forwarder here
-  // would be a second name for the same verb (round 8, G4).
-  late final DrawingBlockMoveDragVerbs drawingBlockMove = DrawingBlockMoveDragVerbs(project: this, changes: this, controllers: activeCutControllers, folders: folders, renderCaches: renderCaches, retime: this, dragPreview: dragPreview);
+  // A collaborator (session/block_move_commands.dart), handed to the range
+  // move, which lands every block move.
+  late final BlockMoveCommands blockMoveCommands = BlockMoveCommands(
+    project: this,
+    renderCaches: renderCaches,
+    pixelEditing: pixelEditing,
+  );
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
@@ -2994,7 +3009,7 @@ class EditorSessionManager extends ChangeNotifier
     folders: folders,
     rangeSelections: rangeSelections,
     rowSpans: rowSpans,
-    blockMove: drawingBlockMove,
+    blockMove: blockMoveCommands,
     transitions: transitions,
     trackSe: trackSe,
     retime: this,
@@ -3029,7 +3044,7 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     changes: this,
     controllers: activeCutControllers,
-    retime: this,
+    rangeSelections: rangeSelections,
     dragPreview: dragPreview,
   );
 
@@ -3048,7 +3063,9 @@ class EditorSessionManager extends ChangeNotifier
   /// Whether the live frame-range selection can SCOPE a repeat pattern on
   /// this run edge (UI-R10 #5 rules: the selection must cover the edge
   /// block and cut the run short of the other end) — the tag flyout shows
-  /// its explicit "Repeat selection" entry from this (UI-R19 #2).
+  /// its explicit "Repeat selection" entry from this (UI-R19 #2). Any row
+  /// the selection spans asks it, not only the one its drag began on
+  /// (F-410).
   bool canScopeRepeatToSelection({
     required LayerId layerId,
     required int blockStartIndex,
@@ -3060,7 +3077,7 @@ class EditorSessionManager extends ChangeNotifier
     }
     final run = gluedRunAt(layer, blockStartIndex);
     final selection = frameRangeSelection.value;
-    if (run == null || selection == null || selection.layerId != layerId) {
+    if (run == null || selection == null || !selection.coversLayer(layerId)) {
       return false;
     }
     if (side == TimelineRunEdgeSide.end) {

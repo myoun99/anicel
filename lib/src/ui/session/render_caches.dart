@@ -20,10 +20,10 @@
 // reached back out for the warmer neither could be built.
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../services/flutter_test_run.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_cache_invalidation.dart';
 import '../../models/brush_frame_key.dart';
@@ -330,7 +330,7 @@ class RenderCaches {
   Timer? _warmDebounce;
 
   static final Duration _warmDebounceWindow =
-      Platform.environment['FLUTTER_TEST'] == 'true'
+      underFlutterTest
       // Tests: next-turn, mirroring the scheduler's zero idleDelay — a
       // pending 200ms timer at teardown trips the binding's timer
       // invariant before the session's tearDown dispose runs. Zero still

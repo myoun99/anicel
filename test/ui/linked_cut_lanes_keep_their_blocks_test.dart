@@ -220,24 +220,47 @@ void main() {
     expectRefused(pair, when: 'row move');
   });
 
-  test('and the grip drag of that block asks the same bank', () {
-    final pair = celInBothCuts(secondRow: true);
-    final otherRow2 = otherRowOf(pair);
+  // F-384: a block a move lands on goes back to the row the move left — but
+  // not one whose cel the other cut's lane still shows: sending it across
+  // would carry that cel off, so the move is refused, as a moved cel's is.
+  group('a move that lands on a block whose cel another cut still shows', () {
+    ({_CelInBothCuts pair, LayerId other, FrameId own}) landing() {
+      final pair = celInBothCuts(secondRow: true);
+      final other = otherRowOf(pair);
+      session.selectLayer(other);
+      session.selectFrameIndex(0);
+      session.createDrawingAtCurrentFrame();
+      final own = rowIn(pair.cut2, other).timeline[0]!.frameId!;
+      expect(own, isNot(pair.cel), reason: 'LIVENESS — a cel of its own');
+      return (pair: pair, other: other, own: own);
+    }
 
-    expect(
-      session.drawingBlockMove.beginDrawingBlockMoveDrag(
-        layerId: pair.row2,
-        blockStartIndex: 0,
-      ),
-      isTrue,
-    );
-    session.drawingBlockMove.updateDrawingBlockMoveDrag(
-      frameDelta: 0,
-      targetLayerId: otherRow2,
-    );
-    session.drawingBlockMove.endDrawingBlockMoveDrag();
+    void expectNothingMoved(
+      ({_CelInBothCuts pair, LayerId other, FrameId own}) at, {
+      required String when,
+    }) {
+      expectRefused(at.pair, when: when);
+      expect(rowIn(at.pair.cut2, at.other).timeline[0]?.frameId, at.own);
+    }
 
-    expectRefused(pair, when: 'grip drag');
+    test('a row move is refused', () {
+      final at = landing();
+      session.updateFrameRangeSelectionDrag(
+        layerId: at.other,
+        anchorIndex: 0,
+        headIndex: 0,
+      );
+
+      expect(session.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+      session.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: at.pair.row2,
+      );
+      session.rangeMove.endFrameRangeMoveDrag();
+
+      expectNothingMoved(at, when: 'row move');
+    });
+
   });
 
   test('a MULTI-ROW move asks every carried row\'s bank', () {
@@ -335,20 +358,6 @@ void main() {
     }
 
     final carries = <String, void Function(LayerId from, LayerId onto)>{
-      'the grip drag': (from, onto) {
-        expect(
-          session.drawingBlockMove.beginDrawingBlockMoveDrag(
-            layerId: from,
-            blockStartIndex: 2,
-          ),
-          isTrue,
-        );
-        session.drawingBlockMove.updateDrawingBlockMoveDrag(
-          frameDelta: 0,
-          targetLayerId: onto,
-        );
-        session.drawingBlockMove.endDrawingBlockMoveDrag();
-      },
       'the band move': (from, onto) {
         session.updateFrameRangeSelectionDrag(
           layerId: from,

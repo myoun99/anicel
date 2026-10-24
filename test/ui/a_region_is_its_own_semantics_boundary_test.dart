@@ -64,7 +64,7 @@ void main() {
   testWidgets('every value bar is a boundary of its own', (tester) async {
     await pumpHome(tester);
     final bars = find.byType(FieldSlider);
-    expect(bars, findsWidgets, reason: 'premise: the strip shows its bars');
+    expect(bars, findsWidgets, reason: "premise: the brush's bars stand");
     bool isTheSlider(Widget widget) =>
         widget is Semantics && widget.properties.slider == true;
     for (final bar in bars.evaluate()) {

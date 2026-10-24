@@ -192,7 +192,7 @@ void main() {
 
     await _doubleTapCell(tester, 'timeline-cell-cam-2');
     expect(
-      find.text('Rename key'),
+      find.text(_keyNameWindow),
       findsNothing,
       reason:
           'an empty cell has nothing to open — creation is silent, the '
@@ -208,7 +208,7 @@ void main() {
     // COMMON key window (F-17): the camera row is its transform header, and
     // its cell's instance is its key.
     await _doubleTapCell(tester, 'timeline-cell-cam-2');
-    expect(find.text('Rename key'), findsOneWidget);
+    expect(find.text(_keyNameWindow), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
@@ -324,7 +324,7 @@ void main() {
       const ValueKey<String>('shared-edit-button'),
     );
     expect(
-      find.text('Rename key'),
+      find.text(_keyNameWindow),
       findsOneWidget,
       reason: 'the common window — the camera no longer keeps one of its own',
     );
@@ -490,7 +490,7 @@ void main() {
       const ValueKey<String>('shared-edit-button'),
     );
 
-    expect(find.text('Rename key'), findsOneWidget);
+    expect(find.text(_keyNameWindow), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('rename-frame-cancel-button')),
     );
@@ -535,3 +535,9 @@ void main() {
     );
   });
 }
+
+/// The key name window's title: what it does, to what (I-24-open-entry).
+String get _keyNameWindow => AppText.strings.windowTitleOn(
+  AppText.strings.editNameAction,
+  AppText.strings.tlKey,
+);

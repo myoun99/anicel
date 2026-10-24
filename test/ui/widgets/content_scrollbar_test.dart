@@ -42,13 +42,29 @@ void main() {
     await tester.pumpAndSettle();
 
     final lane = laneOf(tester);
-    expect(lane.width, AppScrollbarLane.wide, reason: 'CLAUDE.md: 레인 16px');
+    expect(lane.width, AppScrollbarLane.thin, reason: 'CLAUDE.md: 얇은 8px');
     expect(lane.height, 300, reason: 'the whole height of the content');
     expect(
       tester.getRect(find.byType(ListView)).right,
       lane.left,
       reason: 'a reserved lane beside the content, not a bar laid over it',
     );
+  });
+
+  // F-440 (user): 「뒷 배경에 깔리는 패널만 두꺼운 스크롤바 사용」 — the
+  // floor's scope reaches the reserved lane as it does the overlay one.
+  testWidgets('under a scope, the scope\'s lane', (tester) async {
+    await tester.pumpWidget(
+      AppScrollbarLaneScope(
+        lane: AppScrollbarLane.thick,
+        child: host(rows: 2),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final lane = laneOf(tester);
+    expect(lane.width, AppScrollbarLane.thick);
+    expect(tester.getRect(find.byType(ListView)).right, lane.left);
   });
 
   testWidgets('dragging the lane scrolls the content it belongs to', (

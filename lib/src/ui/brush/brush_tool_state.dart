@@ -11,6 +11,7 @@ import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_order.dart';
+import '../../models/brush_texture_mode.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/shape_tool_options.dart';
@@ -331,6 +332,7 @@ class BrushToolState {
     double angleDegrees = defaultAngleDegrees,
     List<BrushTipMask> tips = const [],
     BrushTipOrder tipOrder = BrushTipOrder.repeat,
+    int tipsPerTurn = 1,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -346,6 +348,7 @@ class BrushToolState {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    BrushTextureMode textureMode = BrushTextureMode.multiply,
     CanvasTool tool = CanvasTool.brush,
     CanvasShapeKind selectShape = CanvasShapeKind.rect,
     CanvasShapeKind cutShape = CanvasShapeKind.rect,
@@ -377,6 +380,7 @@ class BrushToolState {
       angleDegrees: angleDegrees,
       tips: tips,
       tipOrder: tipOrder,
+      tipsPerTurn: tipsPerTurn,
       rotationMode: rotationMode,
       angleJitter: angleJitter,
       scatterRadiusRatio: scatterRadiusRatio,
@@ -392,6 +396,7 @@ class BrushToolState {
       textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      textureMode: textureMode,
       tool: tool,
       selectShape: selectShape,
       cutShape: cutShape,
@@ -486,6 +491,7 @@ class BrushToolState {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -501,6 +507,7 @@ class BrushToolState {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -539,6 +546,7 @@ class BrushToolState {
         angleDegrees: angleDegrees ?? defaultAngleDegrees,
         tips: tips ?? const [],
         tipOrder: tipOrder ?? BrushTipOrder.repeat,
+        tipsPerTurn: tipsPerTurn ?? 1,
         rotationMode: rotationMode ?? BrushTipRotationMode.fixed,
         angleJitter: angleJitter ?? 0.0,
         scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
@@ -555,6 +563,7 @@ class BrushToolState {
         textureContrast: textureContrast ?? 0.0,
         textureScale: textureScale ?? 1.0,
         textureDensity: textureDensity ?? 1.0,
+        textureMode: textureMode ?? BrushTextureMode.multiply,
         mixesGroundColor: mixesGroundColor ?? false,
         paintAmount: paintAmount ?? 1.0,
         paintDensity: paintDensity ?? 1.0,
@@ -693,6 +702,9 @@ class BrushToolState {
   /// Which tip each dab takes — see `BrushTipOrder`.
   BrushTipOrder get tipOrder => shape.tipOrder;
 
+  /// How many tips each turn holds — see `BrushShape.tipsPerTurn`.
+  int get tipsPerTurn => shape.tipsPerTurn;
+
   /// The first of [tips], or `null` for the round tip.
   BrushTipMask? get tipMask => shape.tipMask;
 
@@ -731,6 +743,9 @@ class BrushToolState {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+
+  /// See [BrushShape.textureMode].
+  BrushTextureMode get textureMode => shape.textureMode;
   bool get mixesGroundColor => shape.mixesGroundColor;
   double get paintAmount => shape.paintAmount;
   double get paintDensity => shape.paintDensity;
@@ -964,14 +979,14 @@ class BrushToolState {
   /// 위/아래 붙여넣기 pair was already spelling `color`/`behind` by hand.
   bool get toolHasBlendMode => supports(ToolParameter.blend);
 
-  /// Whether the active tool's blend is FIXED rather than chosen: the ERASER
-  /// is the erase blend, so the strip shows it with a padlock (유저 확정
-  /// 2026-08-15, see [supports]).
-  bool get blendIsFixed => tool == CanvasTool.eraser;
-
   /// Whether the active tool's blend is there to CHOOSE — the one question
-  /// the strip's blend chooser and the blend shortcuts (I-31) both ask.
-  bool get blendIsAChoice => toolHasBlendMode && !blendIsFixed;
+  /// the strip's blend chooser and the blend shortcuts (I-31) both ask. The
+  /// ERASER is the erase blend, so it has one and no choice: its chooser
+  /// stands dimmed on 消去/Erase, by the law every tool's control keeps for
+  /// what does not apply (TP2). 🗣️F-442 (유저 2026-10-23 「다른 도구랑 법
+  /// 통일해서 지우기 모드인채로 비활성화만」). ↩️It was a padlock box of its
+  /// own (2026-08-15).
+  bool get blendIsAChoice => toolHasBlendMode && tool != CanvasTool.eraser;
 
   /// Whether [parameter] means anything for the active tool (TP2).
   ///
@@ -1156,6 +1171,7 @@ class BrushToolState {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -1171,6 +1187,7 @@ class BrushToolState {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -1215,6 +1232,7 @@ class BrushToolState {
           angleDegrees: angleDegrees,
           tips: tips,
           tipOrder: tipOrder,
+          tipsPerTurn: tipsPerTurn,
           rotationMode: rotationMode,
           angleJitter: angleJitter,
           scatterRadiusRatio: scatterRadiusRatio,
@@ -1238,6 +1256,7 @@ class BrushToolState {
           textureContrast: textureContrast,
           textureScale: textureScale,
           textureDensity: textureDensity,
+          textureMode: textureMode,
           mixesGroundColor: mixesGroundColor,
           paintAmount: paintAmount,
           paintDensity: paintDensity,

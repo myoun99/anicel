@@ -7,6 +7,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
 import '../timeline/axis_turn.dart' show alongBox;
 import '../theme/app_theme.dart';
+import '../theme/disabled_ink.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
@@ -84,17 +85,69 @@ class PanelFlyoutRow extends PanelFlyoutEntry {
   final double height;
 }
 
-/// The ONE small command a row can carry at its end, beside what choosing
-/// the row does — the delete of one item in a list of items.
+/// Rows that change while the list is OPEN — a list edited in place: each
+/// row with its own command, and at the foot a control with one command of
+/// its own (what to put in, and the putting in).
+///
+/// 🗣️F-391 (유저 2026-10-17): 「이런 스냅 숫자 적는거 … 리스트팝오버형식으로?
+/// 추가/삭제 할수있게?」 — the zoom snaps, each with its −, and the number to
+/// put in under them (F-391-Q1 a, the answer recommended and built first).
+///
+/// ★A KIND OF ITS OWN BECAUSE A LIST IS BUILT ONCE. Its entries are laid
+/// out when it opens, so a row's command there closes the list and the next
+/// open shows what it did. Here [rows] is read again whenever [listenable]
+/// says, so a change shows where it was made — and every command runs AT
+/// ONCE and leaves the list open, for the next row and the one after.
+///
+/// Its rows are not chosen: a press on one does nothing, its command is all
+/// it does. Top level only, as [PanelFlyoutRow] is.
+class PanelFlyoutLiveRows extends PanelFlyoutEntry {
+  const PanelFlyoutLiveRows({
+    required this.keyValue,
+    required this.listenable,
+    required this.rows,
+    this.foot,
+  });
+
+  final String keyValue;
+
+  /// What the rows are a reading of.
+  final Listenable listenable;
+
+  /// The rows as they stand — read again at every change of [listenable].
+  final List<PanelFlyoutItem> Function() rows;
+
+  /// The foot as it stands — read with the rows, since whether its command
+  /// can run is a reading too (a number already in the list puts in
+  /// nothing).
+  final PanelFlyoutLiveFoot Function()? foot;
+}
+
+/// The foot of [PanelFlyoutLiveRows]: [control] where a row's words stand,
+/// and [action] where every row's command does.
+class PanelFlyoutLiveFoot {
+  const PanelFlyoutLiveFoot({required this.control, required this.action});
+
+  final WidgetBuilder control;
+  final PanelFlyoutRowAction action;
+}
+
+/// A small command a row can carry at its end, beside what choosing the row
+/// does — the delete of one item in a list of items.
 ///
 /// 🗣️유저 2026-10-06, of the text tool's 「선택된 텍스트」 list: 「거기서 다른
 /// 텍스트 선택할수있게 리스트 고르는. 팝오버로 리스트 고를수있게하고 …
 /// 그리고 옆에 삭제버튼 있고」 — and of the layout drawn from it, with a
 /// delete on every row of the list: 「1 ok」. The list is this app's one
 /// picker (F-230), so the button is the picker's to draw.
+/// ➕A row can carry several (I-107-Q3, 유저 2026-10-18: the shortcut
+/// presets' rename and duplicate beside their delete — 「a + 이름 바꾸기」,
+/// 「프리셋 복제버튼도 추가」). ↩️A row carried ONE until then.
 ///
 /// It closes the list, as choosing a row does, and runs after — and it is
-/// pressed INSTEAD of the row: a press on it chooses nothing.
+/// pressed INSTEAD of the row: a press on it chooses nothing. In a list
+/// that shows its change while open ([PanelFlyoutLiveRows]) it runs at once
+/// and the list stays.
 class PanelFlyoutRowAction {
   const PanelFlyoutRowAction({
     required this.keyValue,
@@ -102,25 +155,31 @@ class PanelFlyoutRowAction {
     required this.tooltip,
     required this.onPressed,
     this.does = PanelFlyoutActionDoes.other,
+    this.enabled = true,
   });
 
   final String keyValue;
   final IconData icon;
   final String tooltip;
 
-  /// Runs AFTER the flyout closes.
+  /// Runs AFTER the flyout closes — at once in [PanelFlyoutLiveRows].
   final VoidCallback onPressed;
 
   /// What the command does to the list — which is what colours its glyph.
   final PanelFlyoutActionDoes does;
+
+  /// Whether it can run now. Dim where it cannot, and in its place: the
+  /// last zoom snap cannot be taken away (F-391), and its − stays where
+  /// every row's stands.
+  final bool enabled;
 
   /// The glyph's colour: the two the app keeps for these two acts wherever
   /// they appear (`AppColors.addGlyph`, `AppColors.deleteGlyph` — 유저
   /// 2026-08-12: 「+버튼은 강조색이라는 공통규칙있는데, 딜리트는 지금처럼
   /// 빨간색 공통규칙두자」), and the row's own ink for any other.
   Color? get glyphColor => switch (does) {
-    PanelFlyoutActionDoes.adds => AppColors.addGlyph(enabled: true),
-    PanelFlyoutActionDoes.deletes => AppColors.deleteGlyph(enabled: true),
+    PanelFlyoutActionDoes.adds => AppColors.addGlyph(enabled: enabled),
+    PanelFlyoutActionDoes.deletes => AppColors.deleteGlyph(enabled: enabled),
     PanelFlyoutActionDoes.other => null,
   };
 }
@@ -129,6 +188,36 @@ class PanelFlyoutRowAction {
 /// more into it, takes one away, or something else. One of the three — a
 /// command is never both a plus and a delete.
 enum PanelFlyoutActionDoes { adds, deletes, other }
+
+/// The KNOB a command row carries at its end: the value its command runs
+/// with, turned without running it.
+///
+/// 🗣️I-13 (유저 2026-09-11, of 2치화's cut): 「임계값 유저가 설정할수있게
+/// 해당 팝오버 내에서 설정하게한다던가 하고싶은데. 버튼 안에 공간을 두개로
+/// 나눠서. 뭐 임계값 슬라이더라던가 텍스트 드래그 ui라던가 재사용해서?」 —
+/// the row is split in two: its name runs the command and closes the list,
+/// the knob turns and does neither. The list is this app's one picker, so
+/// the knob went INTO its row rather than beside the list.
+class PanelFlyoutKnob {
+  const PanelFlyoutKnob({
+    required this.builder,
+    this.listenable,
+    this.width = 96,
+  });
+
+  /// Built lazily and rebuilt on [listenable] — [PanelFlyoutRow.builder]'s
+  /// reason, the same one: a list is built once, when it opens, and a knob
+  /// that cannot show its own turn is a knob nobody can read.
+  final WidgetBuilder builder;
+
+  /// What the knob is ABOUT.
+  final Listenable? listenable;
+
+  /// ⚠️FIXED, and the box answers for the knob: the list sizes itself by its
+  /// rows' intrinsic widths, which a bar laid out through a LayoutBuilder
+  /// cannot answer (the dialogs shield theirs the same way).
+  final double width;
+}
 
 /// A selectable command.
 class PanelFlyoutItem extends PanelFlyoutEntry {
@@ -145,12 +234,17 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.onSelected,
     this.submenuBuilder,
     this.shortcuts = const [],
-    this.action,
+    this.actions = const [],
     this.warning,
+    this.knob,
   }) : assert(
          icon == null || swatch == null,
          'a row has ONE leading mark: a glyph or a colour, not both',
        );
+
+  /// The value this row's command runs with, turned at the row's end
+  /// ([PanelFlyoutKnob]). Top-level rows only: a submenu draws none.
+  final PanelFlyoutKnob? knob;
 
   /// What a person should know before choosing this row, written under its
   /// name in the warning colour — the row is as tall as the sentence needs.
@@ -164,9 +258,9 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   /// a row does is its name's to say. Top-level rows only.
   final String? warning;
 
-  /// The small command at the row's end, if it carries one
+  /// The small commands at the row's end, in this order
   /// ([PanelFlyoutRowAction]). Top-level rows only: a submenu draws none.
-  final PanelFlyoutRowAction? action;
+  final List<PanelFlyoutRowAction> actions;
 
   /// Widget key string — menu items that replaced toolbar buttons reuse the
   /// retired button's key string so tests only gain a menu-open tap.
@@ -556,17 +650,64 @@ Future<void> showPanelFlyout(
                     // (`canvas-settings-view-row-runs-over-at-2x`).
                     child: FittedBox(
                       fit: BoxFit.scaleDown,
-                      child: _ControlsAtFullStrength(
-                        child: listenable == null
-                            ? Builder(builder: builder)
-                            : ListenableBuilder(
-                                listenable: listenable,
-                                builder: (context, _) => builder(context),
-                              ),
-                      ),
+                      child: _liveControls(builder, listenable),
                     ),
                   ),
                 ],
+              ),
+            ),
+          // Disabled for the reason a knob row is: the rows take no tap and
+          // never close the list — their commands do the work, at once.
+          PanelFlyoutLiveRows(:final listenable, :final rows, :final foot) =>
+            PopupMenuItem<PanelFlyoutItem>(
+              key: ValueKey<String>(entry.keyValue),
+              enabled: false,
+              height: flyoutRowHeight,
+              padding: EdgeInsets.zero,
+              child: _ControlsAtFullStrength(
+                child: ListenableBuilder(
+                  listenable: listenable,
+                  builder: (context, _) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final row in rows())
+                        _HoverReporter(
+                          // By the row's own key: a row taken away takes its
+                          // state with it, not its neighbour's.
+                          key: ValueKey<String>(row.keyValue),
+                          entry: row,
+                          open: open,
+                          depth: 0,
+                          child: flyoutRowSurface(
+                            _itemBody(
+                              row,
+                              bindings: bindings,
+                              onAction: _runAtOnce,
+                            ),
+                          ),
+                        ),
+                      if (foot?.call() case final shown?)
+                        flyoutRowSurface(
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: shown.control(context),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _actionButton(
+                                shown.action,
+                                onAction: _runAtOnce,
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ),
           PanelFlyoutItem() => PopupMenuItem<PanelFlyoutItem>(
@@ -600,11 +741,14 @@ Future<void> showPanelFlyout(
               child: _warnedBelow(
                 entry,
                 flyoutRowSurface(
-                  _itemBody(
+                  _knobbed(
                     entry,
-                    bindings: bindings,
-                    hasSubmenu: entry.submenuBuilder != null,
-                    onAction: pressAction,
+                    _itemBody(
+                      entry,
+                      bindings: bindings,
+                      hasSubmenu: entry.submenuBuilder != null,
+                      onAction: pressAction,
+                    ),
                   ),
                 ),
               ),
@@ -661,6 +805,10 @@ double _entryHeight(PanelFlyoutEntry entry) => switch (entry) {
   PanelFlyoutHeader() => _headerHeight,
   PanelFlyoutDivider() => 6.0,
   PanelFlyoutRow(:final height) => height,
+  // As many rows as stand when the list opens — and all this sum is asked
+  // is whether the list opens upward.
+  PanelFlyoutLiveRows(:final rows, :final foot) =>
+    flyoutRowHeight * (rows().length + (foot == null ? 0 : 1)),
   // ⚠️A row with a warning is as tall as its sentence turns out to need,
   // which is not known before it is laid out: two lines of it are counted
   // here. Only the top-level list draws one, and all that list asks of
@@ -702,6 +850,55 @@ Widget _warnedBelow(PanelFlyoutItem entry, Widget row) {
     ],
   );
 }
+
+/// [builder]'s controls, rebuilt on [listenable] where there is one, and at
+/// full strength in a row the list has disabled — a knobs row's, and a
+/// command row's knob.
+Widget _liveControls(WidgetBuilder builder, Listenable? listenable) =>
+    _ControlsAtFullStrength(
+      child: listenable == null
+          ? Builder(builder: builder)
+          : ListenableBuilder(
+              listenable: listenable,
+              builder: (context, _) => builder(context),
+            ),
+    );
+
+/// [row] with [entry]'s knob at its end ([PanelFlyoutKnob]) — [row] itself
+/// where there is none.
+///
+/// 🚨★★A PRESS ON THE KNOB IS THE KNOB'S (CLAUDE.md: 「컨트롤 위에서 시작한
+/// 제스처는 그 컨트롤의 것이다」). The row is one tap over its whole width,
+/// and a bar takes no tap of its own — it answers one from its drag
+/// recogniser, which stands down when the pointer lifts unmoved — so a
+/// click on the bar would fall through to the row and run the command. The
+/// knob's column holds a silent tap BELOW the row's, and the deepest tap
+/// wins the arena's sweep: the row-end command's face wins it the same way
+/// ([silentPress]). Opaque over the row's height, so a press beside the bar
+/// in its own column is not the command's either.
+Widget _knobbed(PanelFlyoutItem entry, Widget row) {
+  final knob = entry.knob;
+  if (knob == null) {
+    return row;
+  }
+  return Row(
+    children: [
+      Expanded(child: row),
+      const SizedBox(width: 8),
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: () {},
+        child: SizedBox(
+          width: knob.width,
+          height: flyoutRowHeight,
+          child: Center(child: _liveControls(knob.builder, knob.listenable)),
+        ),
+      ),
+    ],
+  );
+}
+
 const EdgeInsets flyoutRowPadding = EdgeInsets.symmetric(horizontal: 16);
 
 /// A row laid out so its ink and its hit area are the WHOLE row.
@@ -743,6 +940,7 @@ class _OpenSubmenu {
 /// submenu standing over a stage nobody was looking at.
 class _HoverReporter extends StatelessWidget {
   const _HoverReporter({
+    super.key,
     required this.entry,
     required this.open,
     required this.depth,
@@ -909,10 +1107,14 @@ class _SubmenuLayer extends StatelessWidget {
     //
     // ⛔[PanelFlyoutRow] stays out, loudly: it carries a builder and a
     // listenable, and rendering it here would be a second implementation of
-    // what the parent's `showMenu` does for it. No caller passes one.
+    // what the parent's `showMenu` does for it. No caller passes one — nor
+    // [PanelFlyoutLiveRows], for the same reason.
     assert(
-      !request.entries.any((entry) => entry is PanelFlyoutRow),
-      'a submenu cannot draw a PanelFlyoutRow — put it on the top level',
+      !request.entries.any(
+        (entry) => entry is PanelFlyoutRow || entry is PanelFlyoutLiveRows,
+      ),
+      'a submenu cannot draw a PanelFlyoutRow or PanelFlyoutLiveRows — put '
+      'it on the top level',
     );
     // ⛔Nor a command — a row's own or a header's: it closes the ROUTE the
     // top list is, and a level down there is none of its own to close. Nor
@@ -921,8 +1123,8 @@ class _SubmenuLayer extends StatelessWidget {
     assert(
       !request.entries.any(
         (entry) => switch (entry) {
-          PanelFlyoutItem(:final action, :final warning) =>
-            action != null || warning != null,
+          PanelFlyoutItem(:final actions, :final warning) =>
+            actions.isNotEmpty || warning != null,
           PanelFlyoutHeader(:final action) => action != null,
           _ => false,
         },
@@ -991,7 +1193,8 @@ class _SubmenuLayer extends StatelessWidget {
                     ),
                   ),
                   PanelFlyoutDivider() => const Divider(height: 6),
-                  PanelFlyoutRow() => const SizedBox.shrink(),
+                  PanelFlyoutRow() ||
+                  PanelFlyoutLiveRows() => const SizedBox.shrink(),
                   // ★THE PARENT LIST'S REPORTER, one level down: a row here
                   // with a child of its own opens it beside this level, and
                   // a plain row closes whatever this level had open.
@@ -1073,10 +1276,11 @@ Widget _itemBody(
       const SizedBox(width: 8),
       BooleanDot(value: on, enabled: entry.enabled, size: 14),
     ],
-    // The row's own command, at its end: pressed INSTEAD of the row.
-    if (entry.action case final action? when onAction != null) ...[
+    // The row's own commands, at its end: each pressed INSTEAD of the row.
+    if (onAction != null && entry.actions.isNotEmpty) ...[
       const SizedBox(width: 8),
-      _actionButton(action, onAction: onAction),
+      for (final action in entry.actions)
+        _actionButton(action, onAction: onAction),
     ],
     // The one glyph a submenu row wears: it says there is another level,
     // which the row cannot say with colour the way «selected» does.
@@ -1097,8 +1301,12 @@ Widget _actionButton(
   tooltip: action.tooltip,
   size: AppIconButtonSize.dense,
   icon: Icon(action.icon, color: action.glyphColor),
-  onPressed: () => onAction(action),
+  onPressed: action.enabled ? () => onAction(action) : null,
 );
+
+/// What a command in [PanelFlyoutLiveRows] does when pressed: its work, now
+/// — the list it stands in shows the change and stays open.
+void _runAtOnce(PanelFlyoutRowAction action) => action.onPressed();
 
 /// What a row wears before its label: its swatch, or else its glyph, and
 /// the gap after either — nothing at all for a row with neither.
@@ -1189,8 +1397,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
         // `customBorder` and not `borderRadius`: the splash is a corner like
         // any other and takes the app's superellipse, so this widget adds
         // nothing to the circular-corner debt (`app_shapes_coverage_test`,
-        // which only ever ratchets down). [PanelFlyoutButton] beside it still
-        // hand-types a `circular(4)` on both its border and its splash.
+        // which only ever ratchets down).
         customBorder: AppShapes.container(AppShapes.wellRadius),
         onTap: silentPress(() => showPanelFlyout(context, entries: entriesBuilder())),
         child: Padding(padding: padding, child: child),
@@ -1254,19 +1461,27 @@ class RailFlyoutTrigger extends StatelessWidget {
   }
 }
 
-/// A labeled flyout trigger ('Layer ▾', 'Frame ▾', 'Cut ▾'): compact
-/// bordered chip that opens [showPanelFlyout] with lazily built entries.
+/// A labeled flyout trigger ('Layer', 'Frame', 'Cut'): compact bordered
+/// chip that opens [showPanelFlyout] with lazily built entries.
+///
+/// ↩️It wore a caret (▼) after its label, behind a switch that dropped it
+/// (R28 #2). 유저 2026-10-18: 「그리고 합성모드 옆에 밑화살표 텍스트? 이거
+/// 필요없으니 제거하자. 다른데도 마찬가지 확인해서 법 통일」 — the border
+/// already says the button opens something, so no button that opens a list
+/// wears one (law-패널), and there is no switch left to put it back with.
+/// The chip is its label and its padding, as the x-sheet's blend chip — the
+/// one that had already dropped it — always was.
 class PanelFlyoutButton extends StatelessWidget {
   const PanelFlyoutButton({
     super.key,
     required this.label,
     required this.entriesBuilder,
     this.tooltip,
-    this.showCaret = true,
     this.fontSize = 12,
     this.labelColor,
+    this.fill,
     this.fontWeight,
-    this.padding = const EdgeInsets.fromLTRB(8, 4, 5, 4),
+    this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     this.expand = false,
     this.axis = Axis.horizontal,
     this.enabled = true,
@@ -1280,8 +1495,8 @@ class PanelFlyoutButton extends StatelessWidget {
   /// False = the button says what it holds and refuses to open.
   ///
   /// 유저, R4 #12: 잠궜는데 바꿀 수 있으면 잠금이 아니잖아. A control behind a
-  /// lock has to LOOK shut, not merely be labelled shut — so the ink and the
-  /// caret dim together and the tap stops resolving.
+  /// lock has to LOOK shut, not merely be labelled shut — so the ink, the
+  /// edge and a [fill] dim together and the tap stops resolving.
   final bool enabled;
 
   /// Which way the button READS. Vertical writes its label down the
@@ -1293,16 +1508,19 @@ class PanelFlyoutButton extends StatelessWidget {
   final List<PanelFlyoutEntry> Function() entriesBuilder;
   final String? tooltip;
 
-  /// R28 #2: the caret is optional. Slot-width rails (the layer rail's
-  /// blend column) drop it and keep the text alone — the border still
-  /// says "button", which is the whole point of sharing this widget.
-  final bool showCaret;
-
   final double fontSize;
 
   /// Null = the standard button ink; callers pass a color to carry state
   /// (the layer rail accents a non-normal mode).
   final Color? labelColor;
+
+  /// The button's ground. Null = clear, its edge the hairline; a colour = a
+  /// plate of that colour, which is its own edge (the export dialog's label
+  /// picker wears the picked label's colour — 유저: 「그냥 원화작감이라고
+  /// 심플하게 텍스트 두고, 버튼 색만 색라벨 색 그대로」). The caller passes an
+  /// ink that reads on it as [labelColor].
+  final Color? fill;
+
   final FontWeight? fontWeight;
   final EdgeInsetsGeometry padding;
 
@@ -1329,6 +1547,25 @@ class PanelFlyoutButton extends StatelessWidget {
             textAlign: expand ? TextAlign.center : TextAlign.start,
             style: labelStyle,
           );
+    final glyph = icon;
+    // A label alone is not put in a Flex: outside one it ellipsises in a
+    // slot narrower than itself instead of overflowing it (the export
+    // dialog's label and take pickers share one row so).
+    final line = glyph == null && !expand
+        ? text
+        : Flex(
+            direction: axis,
+            mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (glyph != null) ...[
+                Icon(glyph, size: 16, color: labelStyle.color),
+                alongBox(axis, 6),
+              ],
+              if (expand) Flexible(child: text) else text,
+            ],
+          );
+    final ground = fill;
     final chip = Material(
       color: Colors.transparent,
       child: ControlPressClaim(onPressed: enabled
@@ -1343,40 +1580,23 @@ class PanelFlyoutButton extends StatelessWidget {
             : null),
         child: DecoratedBox(
           decoration: ShapeDecoration(
+            // A plate is a control that IS its ground, so the whole of it
+            // dims ([dimmedIfDisabled]); a clear chip dims its ink and edge.
+            color: ground == null
+                ? null
+                : dimmedIfDisabled(ground, enabled: enabled),
             shape: AppShapes.container(
               AppShapes.wellRadius,
-              side: BorderSide(
-                color: enabled
-                    ? AppColors.hairline
-                    : AppColors.hairline.withValues(alpha: 0.5),
-              ),
+              side: ground != null
+                  ? BorderSide.none
+                  : BorderSide(
+                      color: enabled
+                          ? AppColors.hairline
+                          : AppColors.hairline.withValues(alpha: 0.5),
+                    ),
             ),
           ),
-          child: Padding(
-            padding: padding,
-            child: Flex(
-              direction: axis,
-              mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (icon case final glyph?) ...[
-                  Icon(glyph, size: 16, color: labelStyle.color),
-                  alongBox(axis, 6),
-                ],
-                if (expand) Flexible(child: text) else text,
-                if (showCaret) ...[
-                  alongBox(axis, 2),
-                  Icon(
-                    Icons.arrow_drop_down,
-                    size: 16,
-                    color: enabled
-                        ? AppColors.textDim
-                        : AppColors.textDim.withValues(alpha: 0.4),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          child: Padding(padding: padding, child: line),
         ),
       )),
     );

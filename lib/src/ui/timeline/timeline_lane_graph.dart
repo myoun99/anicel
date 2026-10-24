@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/gestures.dart'
     show DragDownDetails, DragGestureRecognizer, DragStartBehavior;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 
+import '../../core/neighbour_pairs.dart';
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/key_side.dart'
     show
@@ -18,11 +19,18 @@ import '../../models/key_side.dart'
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
+import '../../core/segment_share.dart' show nearestOnSegment;
 import '../../services/input/modifier_keys.dart' show ModifierKeys;
-import '../dashed_path.dart' show DashPattern, dashesAlong;
+import '../dashed_path.dart'
+    show
+        DashPattern,
+        antsColour,
+        antsDashes,
+        dashesAlong,
+        paintDashedOutline;
 import '../input/hit_gate.dart' show HitGate;
 import '../layout/device_grid_scroll_controller.dart' show ScrollStill;
-import '../text/app_strings.dart' show AppText;
+import '../text/app_strings.dart' show AppStrings, AppText;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
 import '../widgets/app_icon_button.dart'
     show AppIconButton, AppIconButtonSize;
@@ -40,6 +48,7 @@ import 'axis_turn.dart'
         stripAcross;
 import 'key_mark_glyph.dart' show paintKeyMark;
 import 'lane_graph.dart';
+import 'lane_graph_box_stretch.dart';
 import 'lane_graph_seats.dart'
     show LaneGraphLine, laneGraphDrawnLanes, laneGraphGuests;
 import 'layer_label_controls.dart' show layerMarkColor;
@@ -53,7 +62,8 @@ import 'timeline_frame_range_gesture.dart'
     show
         TimelineLaneRangeCallbacks,
         reportRangeDragFinished,
-        retireRangeDragOnUnmount;
+        retireRangeDragOnUnmount,
+        timelineEagerPanDetector;
 import 'timeline_frame_window.dart'
     show frameWindowContains, visibleFrameWindowFor;
 import 'timeline_grid_hooks.dart' show TimelineGridHooks;
@@ -332,6 +342,8 @@ class TimelineLaneGraph extends StatelessWidget {
                 edits: grid.laneEdit,
                 lanes: grid.laneRange,
                 mode: seat.graph.mode,
+                pen: seat.graph.pen,
+                transformBox: seat.graph.transformBox,
               ),
             ),
           ),
@@ -364,6 +376,12 @@ class TimelineLaneGraph extends StatelessWidget {
             onEnlarge: verbs == null
                 ? null
                 : () => verbs.enlarge(seat.groupKey),
+            pen: seat.graph.pen,
+            onPen: verbs == null ? null : () => verbs.pen(seat.groupKey),
+            transformBox: seat.graph.transformBox,
+            onTransformBox: verbs == null
+                ? null
+                : () => verbs.transformBox(seat.groupKey),
           ),
         ),
         if (guests.isNotEmpty)
@@ -429,6 +447,16 @@ class TimelineLaneGraph extends StatelessWidget {
 /// lanes' own law (2026-08-08: a key is moved by moving the selection that
 /// holds it), so a key carried here lands where its row would have put it.
 ///
+/// And its PEN (I-3 ④, AE's pen in the graph editor): with it up, or Ctrl
+/// held (⌘ on a Mac), a press on a line puts a key there, the value it
+/// holds kept — through the ＋ its lanes' rows take, on the cell pressed.
+///
+/// And its BOX (I-3 ⑤, AE's graph editor): a drag on its ground — where
+/// none of those takes the press — draws a box, and what it holds is
+/// picked as it is drawn: the frames it spans across the lanes of the
+/// keys inside it ([TimelineLaneRangeCallbacks.onSelectRows]). A tap there
+/// lets every key go, as a tap on a lane's band does.
+///
 /// While a handle or a key is in hand the picture is held to what its
 /// lines were fitted to when it was taken ([TimelineLaneGraphPainter.held]).
 class LaneGraphPicture extends StatefulWidget {
@@ -440,6 +468,8 @@ class LaneGraphPicture extends StatefulWidget {
     required this.edits,
     required this.lanes,
     required this.mode,
+    this.pen = false,
+    this.transformBox = true,
   });
 
   final List<LaneGraphLine> own;
@@ -456,6 +486,12 @@ class LaneGraphPicture extends StatefulWidget {
   /// rows'; null where the host takes none, and a key takes no press.
   final TimelineLaneRangeCallbacks? lanes;
   final LaneGraphMode mode;
+
+  /// Whether its graph's pen is up ([LaneGraph.pen]).
+  final bool pen;
+
+  /// Whether its graph's transform box is shown ([LaneGraph.transformBox]).
+  final bool transformBox;
 
   @override
   State<LaneGraphPicture> createState() => _LaneGraphPictureState();
@@ -488,11 +524,28 @@ typedef _KeyLifted = ({
 /// carried it — none until the hand moves, and none where there was
 /// nothing to move.
 class _KeyInHand {
-  _KeyInHand(this.key, this.press, this.fits);
+  _KeyInHand(
+    this.key,
+    this.press,
+    this.fits, {
+    this.box,
+    this.marks = const [],
+  });
 
   final LaneGraphKey key;
   final Offset press;
   final Map<String, LaneGraphFit> fits;
+
+  /// The handle of the box round the keys picked the press took, and what
+  /// they stood at (I-3 ⑥) — null where it took a key: the hand stretches
+  /// the keys picked rather than carrying them, with [key] the one picked
+  /// nearest the handle.
+  final LaneGraphBoxHeld? box;
+
+  /// The marks a stretch raises across a value graph, as they stood when
+  /// the handle was taken, and where each stood — at what time on the
+  /// graph's frames, and how far across it ([_LaneGraphLift.marksOf]).
+  final List<({_KeyLifted lifted, double time, double across})> marks;
   bool moving = false;
   int frames = 0;
 
@@ -501,7 +554,7 @@ class _KeyInHand {
   double rise = 0;
 
   /// The keys it lifts, as they stood when the move began — none until it
-  /// does ([_LaneGraphPictureState._liftedBy]).
+  /// does ([_LaneGraphLift.keysOf]).
   List<_KeyLifted> lifted = const [];
 
   /// The row the key is on — what a grid holds built while it is carried.
@@ -509,14 +562,72 @@ class _KeyInHand {
       LaneRowAddress(key.line.layer.id, key.line.lane.laneId);
 }
 
+/// A BOX in hand (I-3 ⑤): where the press that drew it went down, where
+/// the hand is now, and what it picked last — none until it picks.
+class _BoxInHand {
+  _BoxInHand(this.press) : now = press;
+
+  final Offset press;
+  Offset now;
+  List<LaneRowAddress>? rows;
+  int anchor = 0;
+  int head = 0;
+
+  Rect get rect => Rect.fromPoints(press, now);
+}
+
 class _LaneGraphPictureState extends State<LaneGraphPicture> {
   _HandleInHand? _inHand;
   _KeyInHand? _keyInHand;
+  _BoxInHand? _box;
+
+  /// The ANCHOR POINT of the box round the keys picked where the hand has
+  /// put it (graph-box-handles-more ⓓ) — null where it stands in the
+  /// middle, as on keys picked anew ([_pickedAnew]).
+  LaneGraphBoxPoint? _pivot;
+
+  /// How far off the anchor point the hand holding it holds it — null where
+  /// the press under way did not take it ([_pick] asks anew at every one).
+  Offset? _pivotGrab;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.lanes?.selection.addListener(_pickedAnew);
+  }
+
+  @override
+  void didUpdateWidget(LaneGraphPicture oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final was = oldWidget.lanes?.selection;
+    final now = widget.lanes?.selection;
+    if (was != now) {
+      was?.removeListener(_pickedAnew);
+      now?.addListener(_pickedAnew);
+    }
+  }
+
+  /// The keys picked anew: the anchor point back in the middle, as AE's on
+  /// a new box. A carry's selection riding with its keys is the same keys
+  /// picked, and keeps it — and its landing leaves the selection where the
+  /// ride put it.
+  void _pickedAnew() {
+    if (_pivot == null || (_keyInHand?.moving ?? false)) {
+      return;
+    }
+    setState(() => _pivot = null);
+  }
 
   /// The painter the last build drew with — what a press is asked of.
   late TimelineLaneGraphPainter _painter;
 
   PropertyLaneEditCallbacks? get _edits => widget.edits;
+
+  /// What its hand lifts of its lines, on the picture as it is laid out.
+  _LaneGraphLift get _lift => _LaneGraphLift(widget, context.size!);
+
+  /// What a press picks on its lines.
+  _LaneGraphPicks get _picks => _LaneGraphPicks(widget);
 
   @override
   Widget build(BuildContext context) {
@@ -527,8 +638,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       mode: widget.mode,
       selection: widget.lanes?.selection,
       held: _inHand?.fits ?? _keyInHand?.fits ?? const {},
+      box: _box?.rect,
+      transformBox: widget.transformBox,
+      pivot: _pivot ?? laneGraphBoxMiddle,
     );
-    return HitGate(
+    final picture = HitGate(
       admits: _takesPressAt,
       child: OwningAxisGrip(
         axis: null,
@@ -536,14 +650,127 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
         child: CustomPaint(painter: painter, child: const SizedBox.expand()),
       ),
     );
+    final lanes = widget.lanes;
+    if (lanes == null || lanes.onSelectRows == null) {
+      return picture;
+    }
+    return Stack(fit: StackFit.expand, children: [_ground(lanes), picture]);
   }
 
-  /// Whether a press at [position] is the picture's: on a handle, or on a
-  /// key where a key takes a press.
+  /// Its GROUND, under the picture: wherever no handle, key, line or the
+  /// box round the keys picked ([LaneGraphPicked.box])
+  /// takes the press, a drag draws a box (I-3 ⑤) — with the devices a lane's
+  /// band selects with, a finger scrolling where they do not — and a tap
+  /// lets every key go, as a tap on the band does (H18).
+  Widget _ground(TimelineLaneRangeCallbacks lanes) => GestureDetector(
+    key: const ValueKey<String>('lane-graph-ground'),
+    behavior: HitTestBehavior.opaque,
+    onTap: lanes.onTapClear,
+    child: timelineEagerPanDetector(
+      context: context,
+      debugOwner: this,
+      firstStepAt: _boxSteppedAt,
+      draggedAStep: () => _box != null,
+      onStart: _openBox,
+      onUpdate: _drawBox,
+      onEnd: _closeBox,
+      // Nothing to close: the recogniser cancels only a press it never
+      // accepted, before [_openBox] — a pointer cancelled after it ends the
+      // drag through onEnd.
+      onCancel: () {},
+    ),
+  );
+
+  /// Whether a box pressed at [down] has taken its first step at [now]: the
+  /// hand has left the box it pressed — its frame's cell, and the row of a
+  /// lane's extent it is in across the graph — as every select's does
+  /// (F-138-Q1 「누른 상자 벗어나면 시작」).
+  bool _boxSteppedAt(Offset down, Offset now) {
+    final axis = widget.frameAxis.axis;
+    final frames = widget.frameAxis.geometry.value;
+    final lane = widget.frameAxis.laneExtent;
+    int rowAt(Offset at) => (partAcross(axis, at) / lane).floor();
+    return frames.cellAt(partAlong(axis, down)) !=
+            frames.cellAt(partAlong(axis, now)) ||
+        rowAt(down) != rowAt(now);
+  }
+
+  void _openBox(Offset at) => setState(() => _box = _BoxInHand(at));
+
+  /// The box drawn on to where the hand is — and the view panned where the
+  /// hand reaches its edge, as under a key carried.
+  void _drawBox(DragUpdateDetails details) {
+    final box = _box;
+    if (box == null) {
+      return;
+    }
+    edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: widget.frameAxis.axis,
+    );
+    setState(() => box.now = details.localPosition);
+    _picks.heldBy(box, _painter.keysIn(context.size!));
+  }
+
+  /// Let go of: the box goes, and what it picked stays picked.
+  void _closeBox() => setState(() => _box = null);
+
+  /// Whether a press at [position] is the picture's: on a handle, on a
+  /// key where a key takes a press, or on a line where the pen puts a key
+  /// or Alt picks its keys.
   bool _takesPressAt(Offset position) {
     final size = context.size!;
     return _painter.handleAt(position, size) != null ||
-        (widget.lanes != null && _painter.keyAt(position, size) != null);
+        (widget.lanes != null &&
+            (_painter.pickedIn(size).handleAt(position) != null ||
+                _pivotTakenAt(position) != null ||
+                _keyTakenAt(position) != null ||
+                _lineTakenAt(position) != null)) ||
+        _penAt(position) != null;
+  }
+
+  /// The key a press at [position] takes in hand: the one it is on — or,
+  /// off every key and off a line the pen puts one on ([_penAt]) or Alt
+  /// picks whole ([_lineTakenAt]), inside the box round the keys picked,
+  /// the picked key nearest it (I-3 ⑤b).
+  LaneGraphKey? _keyTakenAt(Offset position) {
+    final size = context.size!;
+    return _painter.keyAt(position, size) ??
+        (_penAt(position) == null && _lineTakenAt(position) == null
+            ? _painter.pickedIn(size).nearest(position)
+            : null);
+  }
+
+  /// Where the box's anchor point stands, where a press at [position] takes
+  /// it — off a line the pen puts a key on ([_penAt]) or Alt picks whole
+  /// ([_lineTakenAt]), as a key is taken inside the box ([_keyTakenAt]).
+  Offset? _pivotTakenAt(Offset position) =>
+      _penAt(position) == null && _lineTakenAt(position) == null
+      ? _painter.pickedIn(context.size!).pivotPressedAt(position)
+      : null;
+
+  /// The line whose keys a press at [position] picks, every one — with Alt
+  /// held (⌥ on a Mac), on its stroke as drawn: AE's Alt-click between two
+  /// keys of a line (graph-key-pick-rest ⓑ). Null off every line, and on
+  /// one with no key.
+  LaneGraphLine? _lineTakenAt(Offset position) {
+    if (widget.lanes?.onSelectRows == null || !ModifierKeys.isAltPressed) {
+      return null;
+    }
+    final line = _painter.curveAt(position, context.size!)?.line;
+    return line == null || line.lane.keyedFrames.isEmpty ? null : line;
+  }
+
+  /// Where a press at [position] puts a key (I-3 ④): the line it lands on
+  /// and the frame of its own pressed — with the pen up or Ctrl held (⌘ on
+  /// a Mac), where the host takes the ＋; null anywhere else.
+  ({LaneGraphLine line, int frame})? _penAt(Offset position) {
+    if (widget.lanes?.onCreateKeys == null ||
+        !(widget.pen || ModifierKeys.isControlOrCommandPressed)) {
+      return null;
+    }
+    return _painter.curveAt(position, context.size!);
   }
 
   // A drag the platform cancels once it has started ends as a release does
@@ -567,7 +794,9 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// A press on a key PICKS it (I-3, AE's graph editor: a click selects the
   /// key) — the key's cell, as the lane selection its row's band makes —
   /// unless the selection holds it already: then it stands, and the drag
-  /// carries all of it, as a drag begun inside a band's selection does.
+  /// carries all of it, as a drag begun inside a band's selection does. A
+  /// press inside the box round the keys picked takes one of them so
+  /// ([_keyTakenAt]); one on its anchor point takes that.
   ///
   /// ⚠️Mine: the press does not stand the playhead on the key, as a press
   /// on a band does. AE's click on a key leaves the current time where it
@@ -577,22 +806,78 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     final lanes = widget.lanes;
     final position = details.localPosition;
     final size = context.size!;
-    final key = lanes == null || _painter.handleAt(position, size) != null
-        ? null
-        : _painter.keyAt(position, size);
-    if (lanes == null || key == null) {
+    _pivotGrab = null;
+    if (lanes == null || _painter.handleAt(position, size) != null) {
+      return;
+    }
+    if (_painter.pickedIn(size).handleAt(position) case final handle?) {
+      setState(() => _keyInHand = _boxTaken(handle, position, size));
+      return;
+    }
+    if (_pivotTakenAt(position) case final pivot?) {
+      _pivotGrab = pivot - position;
+      return;
+    }
+    final key = _keyTakenAt(position);
+    if (key == null) {
+      if (_lineTakenAt(position) case final line?) {
+        _picks.everyKeyOf(line);
+      } else {
+        _putKeyAt(position, lanes);
+      }
       return;
     }
     final (:line, :frame, part: _, at: _, mark: _) = key;
-    if (!laneSelectionPicksKey(
+    if (ModifierKeys.isShiftPressed) {
+      _picks.onTo(line, frame);
+    } else if (!laneSelectionPicksKey(
       lanes.selection.value,
       line.layer.id,
       line.lane.laneId,
       frame,
     )) {
-      lanes.onSelectUpdate(line.layer.id, line.lane.laneId, frame, frame, 0);
+      _picks.cellOf(line, frame);
     }
     setState(() => _keyInHand = _KeyInHand(key, position, _painter.fits));
+  }
+
+  /// A press on a line where the pen puts a key ([_penAt]) PUTS ONE THERE
+  /// (I-3 ④) — the cell pressed picked, as a press on a key picks its own,
+  /// and the ＋ pressed on it: the key the button would make there, the
+  /// value the line holds kept, and none where one stands already.
+  ///
+  /// 🗣️I-3-Q2 (유저 2026-10-21): 「곡선 선 위만 (AE · 보이는 만큼)」 — the
+  /// mouse's Ctrl+click and the pen's tap alike, on the line as drawn.
+  void _putKeyAt(Offset position, TimelineLaneRangeCallbacks lanes) {
+    if (_penAt(position) case (:final line, :final frame)) {
+      _picks.cellOf(line, frame);
+      lanes.onCreateKeys!();
+    }
+  }
+
+  /// A press on a handle of the box round the keys picked TAKES IT (I-3 ⑥,
+  /// AE's transform box): the times of the keys picked and their marks
+  /// across the graph held for the stretch — the selection standing as it
+  /// is — with the first of them in hand: what holds its row, and says how
+  /// far its line's own frames stand from the graph's.
+  _KeyInHand _boxTaken(LaneGraphBoxHandle handle, Offset position, Size size) {
+    final picked = _painter.pickedIn(size);
+    final times = picked.keys.map(
+      (key) => TimelineLaneGraphPainter._timeOf(key.line, key.frame).toDouble(),
+    );
+    final fits = _painter.fits;
+    return _KeyInHand(
+      picked.keys.first,
+      position,
+      fits,
+      box: (
+        handle: handle,
+        times: (low: times.reduce(math.min), high: times.reduce(math.max)),
+        across: picked.acrossSpan,
+        pivot: _pivot ?? laneGraphBoxMiddle,
+      ),
+      marks: _lift.marksOf(picked.keys, fits),
+    );
   }
 
   /// The hand moved off the key it picked: the selection's move begins —
@@ -603,7 +888,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       return;
     }
     inHand.moving = true;
-    inHand.lifted = _liftedBy(inHand);
+    inHand.lifted = _lift.keysOf(inHand);
     lanes.onGripTaken?.call(inHand.row);
   }
 
@@ -614,6 +899,10 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   /// With Shift held, one of the two alone ([_keptToOneWay]).
   void _carryTo(_KeyInHand inHand, DragUpdateDetails details) {
     if (!inHand.moving) {
+      return;
+    }
+    if (inHand.box case final box?) {
+      _stretchTo(inHand, box, details);
       return;
     }
     final axis = widget.frameAxis.axis;
@@ -636,6 +925,76 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
     widget.lanes!.onMoveUpdate(frames, values: _valuesRaised(inHand));
   }
 
+  /// The keys the box holds STRETCHED as far as its handle in hand has
+  /// been pulled (I-3 ⑥, AE's transform box): along the frames about the
+  /// box's other end — its anchor point with Ctrl held (⌘ on a Mac) — and
+  /// across a value graph; a corner with Shift held keeps the box's shape,
+  /// and one with Ctrl and Alt held (⌥) tapers its side, or with Shift too
+  /// moves it (graph-box-handles-more ⓑ ⓒ), and one with Alt alone goes
+  /// alone, each key along the frames as far as the one of its marks that
+  /// goes the furthest (ⓐ, [laneGraphBoxLandings]) — each mark going where
+  /// the box pulled puts it ([laneGraphBoxAcrossOf]). The view pans where
+  /// the hand reaches its edge, as under a key carried.
+  void _stretchTo(
+    _KeyInHand inHand,
+    LaneGraphBoxHeld held,
+    DragUpdateDetails details,
+  ) {
+    final axis = widget.frameAxis.axis;
+    final frames = widget.frameAxis.geometry.value;
+    edgeAutoPanApply(
+      context: context,
+      globalPosition: details.globalPosition,
+      axis: axis,
+    );
+    final moved = details.localPosition - inHand.press;
+    final (:handle, :times, :across, pivot: _) = held;
+    final edge = handle.along > 0 ? times.high : times.low;
+    final pull = laneGraphBoxPulled(
+      held,
+      (
+        time: laneGraphTimeAt(
+          laneGraphAlong(edge, frames) + partAlong(axis, moved),
+          frames,
+        ),
+        across:
+            (handle.across > 0 ? across.high : across.low) +
+            partAcross(axis, moved),
+      ),
+      (
+        control: ModifierKeys.isControlOrCommandPressed,
+        alt: ModifierKeys.isAltPressed,
+        shift: ModifierKeys.isShiftPressed,
+      ),
+    );
+    final (:anchor, :factor) = pull.time;
+    final shift = TimelineLaneGraphPainter._shiftOf(inHand.key.line);
+    widget.lanes!.onMoveUpdate(
+      0,
+      stretch: pull.alone == null
+          ? (anchor: anchor - shift, factor: factor)
+          : null,
+      landings: pull.alone == null
+          ? null
+          : laneGraphBoxLandings(held, pull, [
+              for (final (:lifted, :time, :across) in inHand.marks)
+                (
+                  laneId: lifted.laneId,
+                  frame: lifted.frame,
+                  time: time,
+                  across: across,
+                ),
+            ]),
+      values: _lift.valuesOf([
+        for (final (:lifted, :time, across: at) in inHand.marks)
+          (
+            lifted: lifted,
+            rise: laneGraphBoxAcrossOf(held, pull, time: time, across: at) - at,
+          ),
+      ]),
+    );
+  }
+
   /// [moved] as a carry takes it: with Shift held, the one way it has gone
   /// further alone — along the frames or across the graph (I-3 ③, AE's
   /// Shift-drag in its graph editor). Read at every move, as the canvas
@@ -653,72 +1012,15 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
         : offsetAlong(axis, along: 0, across: across);
   }
 
-  /// The keys the selection holds on this graph's own lines, as they stand
-  /// when [inHand]'s move begins — what the hand raises them from: the
-  /// lines draw the move in flight, so they are read before it.
-  ///
-  /// 🗣️I-3-Q1 B (유저 2026-10-21): 「고른 키 전부 (AE)」 — every key picked
-  /// goes as far as the hand on the screen, each line by its own range: the
-  /// one it was fitted to when the key was taken. Of a line of two numbers
-  /// (a position, a Scale), the one the key in hand is on — 「한 번에 숫자
-  /// 하나」, the value scrub's law (10-10).
-  ///
-  /// ⚠️Mine: a line of one number answers for the key in hand's either way,
-  /// and a line of two the first of its own where the key in hand is on a
-  /// line of one. A key the graph does not draw — another group's — goes
-  /// along the frames alone: it has no range to go across by.
-  List<_KeyLifted> _liftedBy(_KeyInHand inHand) {
-    final selection = widget.lanes!.selection.value;
-    if (selection == null) {
-      return const [];
-    }
-    return [
-      for (final line in widget.own)
-        if ((
-              line.lane.curve,
-              inHand.fits[laneGroupKey(line.layer.id, line.lane.laneId)],
-            )
-            case (final curve?, final fit?))
-          for (final frame in line.lane.keyedFrames)
-            if (laneSelectionPicksKey(
-              selection,
-              line.layer.id,
-              line.lane.laneId,
-              frame,
-            ))
-              (
-                laneId: line.lane.laneId,
-                frame: frame,
-                numbers: curve.at(frame.toDouble()),
-                part: math.min(inHand.key.part, fit.ranges.length - 1),
-                range: fit.ranges[math.min(
-                  inHand.key.part,
-                  fit.ranges.length - 1,
-                )],
-              ),
-    ];
-  }
-
   /// What [inHand]'s lifted keys say once the hand has gone
   /// [_KeyInHand.rise] across the graph — each as far as the hand on its
   /// own range — null where it has not, or lifts none.
-  LaneKeyValues? _valuesRaised(_KeyInHand inHand) {
-    if (inHand.rise == 0 || inHand.lifted.isEmpty) {
-      return null;
-    }
-    final axis = widget.frameAxis.axis;
-    final extent = extentAcross(axis, context.size!);
-    final inputs = <String, Map<int, String>>{};
-    for (final (:laneId, :frame, :numbers, :part, :range) in inHand.lifted) {
-      final raised = [...numbers];
-      raised[part] += laneGraphValueRise(inHand.rise, range, extent, axis);
-      (inputs[laneId] ??= {})[frame] = raised.join(', ');
-    }
-    return (
-      inputs: inputs,
-      scaleLinked: widget.edits?.valueLink?.isOn() ?? false,
-    );
-  }
+  LaneKeyValues? _valuesRaised(_KeyInHand inHand) => inHand.rise == 0
+      ? null
+      : _lift.valuesOf([
+          for (final lifted in inHand.lifted)
+            (lifted: lifted, rise: inHand.rise),
+        ]);
 
   /// The key let go of: the move it carried ends by [finished] — landed on
   /// a release, put back on a cancel — and the row it held is let go.
@@ -759,8 +1061,14 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
   }
 
   /// The handle follows the hand by as far as the hand has gone — and a key
-  /// in hand carries the selection that far.
+  /// in hand carries the selection that far, and the box's anchor point in
+  /// hand goes where the hand has (graph-box-handles-more ⓓ).
   void _pull(DragUpdateDetails details) {
+    if (_pivotGrab case final grab?) {
+      final picked = _painter.pickedIn(context.size!);
+      setState(() => _pivot = picked.pointOf(details.localPosition + grab));
+      return;
+    }
     final key = _keyInHand;
     if (key != null) {
       _carryTo(key, details);
@@ -811,6 +1119,7 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
 
   @override
   void dispose() {
+    widget.lanes?.selection.removeListener(_pickedAnew);
     // A picture taken away with a handle in hand never sees its release:
     // what it was showing is dropped once the tree settles — a notifier
     // fired while the tree is torn down would be too soon.
@@ -831,6 +1140,255 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       );
     }
     super.dispose();
+  }
+}
+
+/// WHAT A PRESS PICKS on a header graph's lines (I-3): the lane selection
+/// a key's cell makes, a key picked on to what is picked, a line's every
+/// key, and what a box drawn holds — told to the [picture]'s lanes.
+class _LaneGraphPicks {
+  const _LaneGraphPicks(this.picture);
+
+  final LaneGraphPicture picture;
+
+  /// [line]'s cell on [frame] picked — the lane selection its row's band
+  /// makes there.
+  void cellOf(LaneGraphLine line, int frame) => picture.lanes!.onSelectUpdate(
+    line.layer.id,
+    line.lane.laneId,
+    frame,
+    frame,
+    0,
+  );
+
+  /// [line]'s key on [frame] picked ON TO what is picked, with Shift held
+  /// (🗣️graph-key-pick-rest-Q1, 유저 2026-10-22: 「사각형을 그 키까지
+  /// 넓힌다」): the lane selection widened to the key's cell — its frames
+  /// to the key's, its lanes to the key's, as the box picks rows
+  /// ([heldBy]) — a key picked already staying picked. With nothing
+  /// picked, the key's cell alone.
+  void onTo(LaneGraphLine line, int frame) {
+    final lanes = picture.lanes!;
+    final picked = lanes.selection.value;
+    if (picked == null || lanes.onSelectRows == null) {
+      cellOf(line, frame);
+      return;
+    }
+    final anchor = [...picture.own, ...picture.guests]
+        .where(
+          (each) =>
+              each.layer.id == picked.layerId &&
+              each.lane.laneId == picked.laneId,
+        )
+        .firstOrNull;
+    final drawn = TimelineLaneGraphPainter._timeOf(line, frame);
+    final at = anchor == null ? drawn : _ownFrameOf(anchor, drawn);
+    lanes.onSelectRows!(
+      {
+        for (final lane in picked.spanLaneIds)
+          LaneRowAddress(picked.layerId, lane),
+        LaneRowAddress(line.layer.id, line.lane.laneId),
+      }.toList(),
+      math.min(picked.startIndex, at),
+      math.max(picked.endIndexExclusive - 1, at),
+    );
+  }
+
+  /// Every key of [line] picked: its lane's cells from its first key to its
+  /// last, the way the box picks the keys it holds ([heldBy]).
+  void everyKeyOf(LaneGraphLine line) {
+    final keyed = line.lane.keyedFrames;
+    picture.lanes!.onSelectRows!(
+      [LaneRowAddress(line.layer.id, line.lane.laneId)],
+      keyed.reduce(math.min),
+      keyed.reduce(math.max),
+    );
+  }
+
+  /// What [box] holds, picked: the frames it spans, across the lanes of the
+  /// keys inside it — and the selection let go of where it holds none. Of
+  /// the lines a cut, the keys of the one cut it began in, in that cut's
+  /// own frames: a sweep on a projection row's lane picks so.
+  ///
+  /// 🗣️I-3-Q3 (유저 2026-10-21): 「레인 칸 선택으로 (상자가 걸친 프레임 ×
+  /// 안에 든 키의 레인)」. 🗣️I-3-Q4 (유저 2026-10-22): 「레인 행을 끌 때와
+  /// 똑같이」 — the lanes of two layers, or two cuts, picked as a lane drag
+  /// across them picks.
+  void heldBy(_BoxInHand box, List<LaneGraphKey> keys) {
+    final lanes = picture.lanes!;
+    final axis = picture.frameAxis.axis;
+    final frames = picture.frameAxis.geometry.value;
+    final pressed = frames.frameIndexAt(partAlong(axis, box.press));
+    final rect = box.rect;
+    final held = [
+      for (final key in keys)
+        if (rect.contains(key.at) &&
+            TimelineLaneGraphPainter._reaches(
+              key.line,
+              pressed - TimelineLaneGraphPainter._shiftOf(key.line),
+            ))
+          key.line,
+    ];
+    final rows = {
+      for (final line in held) LaneRowAddress(line.layer.id, line.lane.laneId),
+    }.toList();
+    final anchor = held.isEmpty ? 0 : _ownFrameOf(held.first, pressed);
+    final head = held.isEmpty
+        ? 0
+        : _ownFrameOf(
+            held.first,
+            frames.frameIndexAt(partAlong(axis, box.now)),
+          );
+    if (listEquals(rows, box.rows) &&
+        anchor == box.anchor &&
+        head == box.head) {
+      return;
+    }
+    box
+      ..rows = rows
+      ..anchor = anchor
+      ..head = head;
+    if (rows.isEmpty) {
+      lanes.onTapClear();
+      return;
+    }
+    lanes.onSelectRows!(rows, anchor, head);
+  }
+
+  /// The graph's frame [frame] as one of [line]'s own — held to them, as a
+  /// sweep on a cut's lane is held to the cut (`CameraRowReach.ownFrameAt`).
+  static int _ownFrameOf(LaneGraphLine line, int frame) =>
+      switch (line.reach) {
+        null => frame,
+        (:final start, :final end) =>
+          math.max(start, math.min(frame, end - 1)) - start,
+      };
+}
+
+/// WHAT A HAND LIFTS of a header graph's own lines (I-3): the keys it
+/// picks as they stand, and what they say once raised across the picture
+/// [size] big — read off the [picture]'s lines, written as its lanes'
+/// value editor writes each.
+class _LaneGraphLift {
+  const _LaneGraphLift(this.picture, this.size);
+
+  final LaneGraphPicture picture;
+  final Size size;
+
+  /// The keys the selection holds on this graph's own lines, as they stand
+  /// when [inHand]'s move begins — what the hand raises them from: the
+  /// lines draw the move in flight, so they are read before it.
+  ///
+  /// 🗣️I-3-Q1 B (유저 2026-10-21): 「고른 키 전부 (AE)」 — every key picked
+  /// goes as far as the hand on the screen, each line by its own range: the
+  /// one it was fitted to when the key was taken. Of a line of two numbers
+  /// (a position, a Scale), the one the key in hand is on — 「한 번에 숫자
+  /// 하나」, the value scrub's law (10-10).
+  ///
+  /// ⚠️Mine: a line of one number answers for the key in hand's either way,
+  /// and a line of two the first of its own where the key in hand is on a
+  /// line of one. A key the graph does not draw — another group's — goes
+  /// along the frames alone: it has no range to go across by.
+  List<_KeyLifted> keysOf(_KeyInHand inHand) {
+    final selection = picture.lanes!.selection.value;
+    if (selection == null) {
+      return const [];
+    }
+    return [
+      for (final line in picture.own)
+        if ((
+              line.lane.curve,
+              inHand.fits[laneGroupKey(line.layer.id, line.lane.laneId)],
+            )
+            case (final curve?, final fit?))
+          for (final frame in line.lane.keyedFrames)
+            if (laneSelectionPicksKey(
+              selection,
+              line.layer.id,
+              line.lane.laneId,
+              frame,
+            ))
+              (
+                laneId: line.lane.laneId,
+                frame: frame,
+                numbers: curve.at(frame.toDouble()),
+                part: math.min(inHand.key.part, fit.ranges.length - 1),
+                range: fit.ranges[math.min(
+                  inHand.key.part,
+                  fit.ranges.length - 1,
+                )],
+              ),
+    ];
+  }
+
+  /// The marks of [picked] a stretch raises across the graph (I-3 ⑥), each
+  /// with its key's numbers and the range its line is fitted to. A speed
+  /// graph marks no key, so it boxes none to stretch.
+  ///
+  /// 🗣️graph-box-handles-scale-keys-Q1 (유저 2026-10-22): 「둘 다 (AE
+  /// 그대로)」 — a line of two numbers (a position, a Scale) is stretched
+  /// mark by mark, each number on its own range, though a carry moves the
+  /// one number in hand (「한 번에 숫자 하나」).
+  List<({_KeyLifted lifted, double time, double across})> marksOf(
+    List<LaneGraphKey> picked,
+    Map<String, LaneGraphFit> fits,
+  ) {
+    final axis = picture.frameAxis.axis;
+    return [
+      for (final key in picked)
+        if ((
+              key.line.lane.curve,
+              fits[laneGroupKey(key.line.layer.id, key.line.lane.laneId)],
+            )
+            case (final curve?, final fit?))
+          (
+            lifted: (
+              laneId: key.line.lane.laneId,
+              frame: key.frame,
+              numbers: curve.at(key.frame.toDouble()),
+              part: key.part,
+              range: fit.ranges[key.part],
+            ),
+            time: TimelineLaneGraphPainter._timeOf(
+              key.line,
+              key.frame,
+            ).toDouble(),
+            across: partAcross(axis, key.at),
+          ),
+    ];
+  }
+
+  /// What each of [raised]'s keys says once raised its rise in pixels
+  /// across the graph, each on its own range — a carry's all as far, a
+  /// stretch's each as far as its mark goes (I-3 ⑥) — null where it raises
+  /// none.
+  LaneKeyValues? valuesOf(List<({_KeyLifted lifted, double rise})> raised) {
+    if (raised.isEmpty) {
+      return null;
+    }
+    final axis = picture.frameAxis.axis;
+    final extent = extentAcross(axis, size);
+    final values = <String, Map<int, List<double>>>{};
+    for (final (
+          lifted: (:laneId, :frame, :numbers, :part, :range),
+          :rise,
+        )
+        in raised) {
+      // A key's two marks a stretch raises each — a position's x and y —
+      // write ONE value between them.
+      final value = (values[laneId] ??= {})[frame] ??= [...numbers];
+      value[part] += laneGraphValueRise(rise, range, extent, axis);
+    }
+    return (
+      inputs: {
+        for (final MapEntry(key: laneId, value: frames) in values.entries)
+          laneId: {
+            for (final MapEntry(key: frame, :value) in frames.entries)
+              frame: value.join(', '),
+          },
+      },
+      scaleLinked: picture.edits?.valueLink?.isOn() ?? false,
+    );
   }
 }
 
@@ -896,15 +1454,16 @@ class _LaneGraphGripState extends State<LaneGraphGrip> {
 
 /// What a graph's tools keep clear of the view's start along the frames
 /// and of the graph's edge across them, what their well keeps around the
-/// pills, and what stands between the pills and the enlarge button (the
-/// mock's, 5판).
+/// pills, and what stands between the pills and each button (the mock's,
+/// 5판).
 const double _graphToolsInset = 6;
 const double _graphToolsPadding = 2;
 const double _graphToolsGap = 6;
 
 /// A graph's own tools, at the view's start (I-89 ③, the mock's 5판): what
-/// it plots — its values, or how fast they change — and the button that
-/// enlarges it over every other row or lets it back (③D).
+/// it plots — its values, or how fast they change — its pen (I-3 ④), its
+/// transform box shown or hidden (AE's 「Show Transform Box」), and the
+/// button that enlarges it over every other row or lets it back (③D).
 class LaneGraphTools extends StatelessWidget {
   const LaneGraphTools({
     super.key,
@@ -914,6 +1473,10 @@ class LaneGraphTools extends StatelessWidget {
     required this.onPlot,
     required this.enlarged,
     required this.onEnlarge,
+    this.pen = false,
+    this.onPen,
+    this.transformBox = true,
+    this.onTransformBox,
   });
 
   /// The grid's key prefix and the graph's group, which its pills' keys
@@ -934,16 +1497,32 @@ class LaneGraphTools extends StatelessWidget {
   /// Null where the host hands the graph no verbs, as [onPlot].
   final VoidCallback? onEnlarge;
 
+  /// Whether the graph's pen is up — its button on ([LaneGraph.pen]).
+  final bool pen;
+
+  /// Null where the host hands the graph no verbs, as [onPlot].
+  final VoidCallback? onPen;
+
+  /// Whether the graph's transform box is shown — its button on
+  /// ([LaneGraph.transformBox]).
+  final bool transformBox;
+
+  /// Null where the host hands the graph no verbs, as [onPlot].
+  final VoidCallback? onTransformBox;
+
+  /// The pills, the pen and the box are laid out in the room they are
+  /// given, but never in less than the pen's and the box's own.
+  static BoxConstraints _roomForTheButtons(BoxConstraints room) =>
+      room.copyWith(
+        maxWidth: math.max(
+          room.maxWidth,
+          2 * (_graphToolsGap + AppIconButtonSize.strip.maxWidth),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final onPlot = this.onPlot;
-    PillItem pill(LaneGraphMode plotted, String label) => PillItem(
-      keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
-      label: label,
-      selected: mode == plotted,
-      onTap: onPlot == null ? null : () => onPlot(plotted),
-    );
     return DecoratedBox(
       decoration: ShapeDecoration(
         color: AppColors.surface,
@@ -954,12 +1533,16 @@ class LaneGraphTools extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // ⚠️Mine: in a view too narrow for every button, the pen and the
+            // box give their width up after the pills — cut where their room
+            // ends — and the enlarge button keeps all of its own, as it did
+            // before the pen stood beside it.
             Flexible(
-              child: PillStrip(
-                items: [
-                  pill(LaneGraphMode.value, strings.laneGraphValue),
-                  pill(LaneGraphMode.speed, strings.laneGraphSpeed),
-                ],
+              child: ConstraintsTransformBox(
+                alignment: AlignmentDirectional.centerStart,
+                clipBehavior: Clip.hardEdge,
+                constraintsTransform: _roomForTheButtons,
+                child: _pillsPenAndBox(strings),
               ),
             ),
             const SizedBox(width: _graphToolsGap),
@@ -978,6 +1561,54 @@ class LaneGraphTools extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// The plot's two pills, and the pen and the box beside them.
+  Widget _pillsPenAndBox(AppStrings strings) {
+    final onPlot = this.onPlot;
+    PillItem pill(LaneGraphMode plotted, String label) => PillItem(
+      keyValue: '$keyPrefix-lane-graph-plot-${plotted.name}-$groupKey',
+      label: label,
+      selected: mode == plotted,
+      onTap: onPlot == null ? null : () => onPlot(plotted),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: PillStrip(
+            items: [
+              pill(LaneGraphMode.value, strings.laneGraphValue),
+              pill(LaneGraphMode.speed, strings.laneGraphSpeed),
+            ],
+          ),
+        ),
+        const SizedBox(width: _graphToolsGap),
+        // ⚠️Mine: Material draws no pen nib (AE's glyph); this one is a pen
+        // drawing its line.
+        AppIconButton(
+          keyValue: '$keyPrefix-lane-graph-pen-$groupKey',
+          tooltip: pen ? strings.laneGraphPenOn : strings.laneGraphPen,
+          size: AppIconButtonSize.strip,
+          isSelected: pen,
+          icon: const Icon(Icons.draw),
+          onPressed: onPen,
+        ),
+        const SizedBox(width: _graphToolsGap),
+        // ⚠️Mine: AE's glyph is a box with its handles; Material's nearest
+        // is the corners of a frame.
+        AppIconButton(
+          keyValue: '$keyPrefix-lane-graph-box-$groupKey',
+          tooltip: transformBox
+              ? strings.laneGraphTransformBoxOn
+              : strings.laneGraphTransformBox,
+          size: AppIconButtonSize.strip,
+          isSelected: transformBox,
+          icon: const Icon(Icons.crop_free),
+          onPressed: onTransformBox,
+        ),
+      ],
     );
   }
 }
@@ -1222,6 +1853,10 @@ const DashPattern _laneGraphGuestDashes = DashPattern(on: 6, off: 4);
 /// A handle's circle and its ink, and its stem's width (the mock's, 5판).
 const double _laneGraphHandleRadius = 4.5;
 const double _laneGraphHandleStroke = 1.6;
+
+/// How wide a handle of the box round the keys picked is drawn (I-3 ⑥):
+/// as wide as a key's handle.
+const double _laneGraphBoxHandleSide = 2 * _laneGraphHandleRadius;
 const double _laneGraphStemStroke = 1;
 
 /// How finely a line is read between two keys for its range, and between
@@ -1380,9 +2015,7 @@ Iterable<({double time, double speed})> laneGraphSpeeds(
 /// A line that never moves is given 0 to 1.
 LaneGraphRange laneGraphSpeedRange(LaneCurve curve, List<int> keyed) {
   var fastest = 0.0;
-  for (var index = 0; index + 1 < keyed.length; index += 1) {
-    final from = keyed[index];
-    final to = keyed[index + 1];
+  for (final (from, to) in neighbourPairs(keyed)) {
     for (var step = 0; step <= _laneGraphRangeSteps; step += 1) {
       final time = from + (to - from) * step / _laneGraphRangeSteps;
       fastest = math.max(
@@ -1466,16 +2099,36 @@ Iterable<double> laneGraphTimes(
   yield to;
 }
 
-/// One paint of a graph: the [frames] its grid lays, the [window] of them
-/// it draws, the [times] it reads each line at, and how far across it
-/// reaches.
-typedef _LaneGraphPass = ({
-  Canvas canvas,
-  TimelineFrameGeometry frames,
-  ({int startIndex, int endIndexExclusive}) window,
-  List<double> times,
-  double extent,
+/// One STROKE of a graph's line (I-3 ④): [line]'s number — in a speed
+/// graph, the one speed its numbers move at — through [points], in
+/// [color], in dashes for a guest's. What is painted, and so what a pen
+/// press is asked against.
+typedef _LaneGraphStroke = ({
+  LaneGraphLine line,
+  List<Offset> points,
+  Color color,
+  bool dashed,
 });
+
+/// Whether [position] is on [stroke] as it is drawn: within half its
+/// width of the line through its points — and, a guest's, on one of its
+/// dashes ([DashPattern.dashesAt]).
+bool _laneGraphStrokeHolds(_LaneGraphStroke stroke, Offset position) {
+  final (line: _, :points, color: _, :dashed) = stroke;
+  var along = 0.0;
+  for (final (from, to) in neighbourPairs(points)) {
+    final nearest = nearestOnSegment(position, from, to);
+    if ((nearest - position).distance <= _laneGraphStroke / 2 &&
+        (!dashed ||
+            _laneGraphGuestDashes.dashesAt(
+              along + (nearest - from).distance,
+            ))) {
+      return true;
+    }
+    along += (to - from).distance;
+  }
+  return false;
+}
 
 /// A KEY a value graph marks (I-89 ③), and a press picks (I-3): [line]'s
 /// key on [frame] — the line's own — marked [at] on the line of its
@@ -1575,6 +2228,9 @@ class TimelineLaneGraphPainter extends CustomPainter {
     this.mode = LaneGraphMode.value,
     this.selection,
     this.held = const {},
+    this.box,
+    this.transformBox = true,
+    this.pivot = laneGraphBoxMiddle,
   }) : super(
          repaint: Listenable.merge([
            frameAxis.geometry,
@@ -1600,6 +2256,18 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// under the hand that carries it.
   final Map<String, LaneGraphFit> held;
 
+  /// The box a drag on the graph's ground is drawing (I-3 ⑤) — in the
+  /// ants, standing still ([antsColour]) — or null.
+  final Rect? box;
+
+  /// Whether the box round the keys picked stands — drawn, its handles and
+  /// the inside of it taking a press ([LaneGraph.transformBox]).
+  final bool transformBox;
+
+  /// Where the box's anchor point stands between the keys picked
+  /// ([LaneGraphPicked.pivotAt]).
+  final LaneGraphBoxPoint pivot;
+
   Axis get axis => frameAxis.axis;
 
   /// Each of [own]'s lines and [guests]', with what it is fitted to — read
@@ -1622,12 +2290,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
   static String _lineKey(LaneGraphLine line) =>
       laneGroupKey(line.layer.id, line.lane.laneId);
 
-  /// The handles and the keys [_readIn] last read, and where they were
-  /// read for.
+  /// The strokes, the handles and the keys [_readIn] last read, and where
+  /// they were read for.
   ({
     Size size,
     TimelineFrameGeometry frames,
     ({int startIndex, int endIndexExclusive}) window,
+    List<_LaneGraphStroke> strokes,
     List<LaneGraphHandle> handles,
     List<LaneGraphKey> keys,
   })?
@@ -1637,6 +2306,10 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// along: a cut's lane's on its track's ([LaneGraphReach]), none for a
   /// lane on the axis its own frames are counted on.
   static int _shiftOf(LaneGraphLine line) => line.reach?.start ?? 0;
+
+  /// Where [line]'s own [frame] stands on the frames its graph is laid
+  /// along ([_shiftOf]).
+  static int _timeOf(LaneGraphLine line, int frame) => frame + _shiftOf(line);
 
   /// Whether [line] is drawn at [time], one of its own: everywhere on the
   /// axis its own frames are counted on — on a track's, a cut's lane from
@@ -1701,48 +2374,37 @@ class TimelineLaneGraphPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final frames = frameAxis.geometry.value;
-    final window = visibleFrameWindow();
-    final pass = (
-      canvas: canvas,
-      frames: frames,
-      window: window,
-      times: laneGraphTimes(window, frames.frameCellExtent).toList(),
-      extent: extentAcross(axis, size),
-    );
     // A pull bends a line past what it was fitted to, and a handle stands
     // off its line: the picture stays inside its own box.
     canvas.clipRect(Offset.zero & size);
+    final (:strokes, :handles, :keys) = _readIn(size);
     // The marks go on last, over every line and the handles' stems — and
     // the handles over them (the mock's, 5판).
-    for (final plot in _plots) {
-      _drawLine(pass, plot);
+    for (final (line: _, :points, :color, :dashed) in strokes) {
+      _strokeLaneGraphLine(
+        canvas,
+        Path()..addPolygon(points, false),
+        color,
+        dashed: dashed,
+      );
     }
-    final (:handles, :keys) = _readIn(size);
     final stem = Paint()
       ..strokeWidth = _laneGraphStemStroke
       ..color = AppColors.textDim;
     for (final handle in handles) {
       canvas.drawLine(handle.key, handle.at, stem);
     }
-    final picked = selection?.value;
-    for (final (:line, :frame, part: _, :at, :mark) in keys) {
+    final ring = selectedLaneKeyRing;
+    pickedIn(size).paint(canvas);
+    for (final key in keys) {
       paintKeyMark(
         canvas,
-        mark,
-        center: at,
+        key.mark,
+        center: key.at,
         box: _keySize,
         standing: axis == Axis.vertical,
-        color: layerMarkColor(line.layer.mark),
-        ring:
-            laneSelectionPicksKey(
-              picked,
-              line.layer.id,
-              line.lane.laneId,
-              frame,
-            )
-            ? selectedLaneKeyRing
-            : null,
+        color: layerMarkColor(key.line.layer.mark),
+        ring: _picks(key) ? ring : null,
       );
     }
     final fill = Paint()..color = AppColors.surface;
@@ -1754,6 +2416,14 @@ class TimelineLaneGraphPainter extends CustomPainter {
       canvas
         ..drawCircle(handle.at, _laneGraphHandleRadius, fill)
         ..drawCircle(handle.at, _laneGraphHandleRadius, ink);
+    }
+    if (box case final box?) {
+      paintDashedOutline(
+        canvas,
+        Path()..addRect(box),
+        color: antsColour,
+        dashes: antsDashes,
+      );
     }
   }
 
@@ -1770,16 +2440,57 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// The key a press at [position] picks on a picture [size] big (I-3) —
   /// in the box its mark is drawn in, stood a quarter turn on the X-sheet
   /// as [paintKeyMark] stands it ([_drawnLastAt]).
-  LaneGraphKey? keyAt(Offset position, Size size) {
+  LaneGraphKey? keyAt(Offset position, Size size) =>
+      _drawnLastAt(keysIn(size), (key) => _markOf(key).contains(position));
+
+  /// The box [key]'s mark is drawn in.
+  Rect _markOf(LaneGraphKey key) {
     final box = axis == Axis.vertical ? _keySize.flipped : _keySize;
-    return _drawnLastAt(
-      keysIn(size),
-      (key) => Rect.fromCenter(
-        center: key.at,
-        width: box.width,
-        height: box.height,
-      ).contains(position),
+    return Rect.fromCenter(
+      center: key.at,
+      width: box.width,
+      height: box.height,
     );
+  }
+
+  /// Whether [selection] picks [key] — the key wears its ring.
+  bool _picks(LaneGraphKey key) => laneSelectionPicksKey(
+    selection?.value,
+    key.line.layer.id,
+    key.line.lane.laneId,
+    key.frame,
+  );
+
+  /// The keys [selection] picks of those a picture [size] big marks, and
+  /// the box round them.
+  LaneGraphPicked pickedIn(Size size) => LaneGraphPicked._(
+    keysIn(size).where(_picks).toList(),
+    markOf: _markOf,
+    axis: axis,
+    boxed: transformBox,
+    pivot: pivot,
+  );
+
+  /// Where a pen press at [position] puts a key on a picture [size] big
+  /// (I-3 ④, AE's pen): the line it lands on — on its stroke as drawn and
+  /// nowhere round it ([_drawnLastAt], [_laneGraphStrokeHolds]) — and the
+  /// frame of the line's own whose cell it is in. Null off every line, and
+  /// off the frames the line has.
+  ({LaneGraphLine line, int frame})? curveAt(Offset position, Size size) {
+    final stroke = _drawnLastAt(
+      _readIn(size).strokes,
+      (stroke) => _laneGraphStrokeHolds(stroke, position),
+    );
+    if (stroke == null) {
+      return null;
+    }
+    final frames = frameAxis.geometry.value;
+    final cell = frames.cellAt(partAlong(axis, position));
+    final line = stroke.line;
+    final frame = cell - _shiftOf(line);
+    return frames.contains(cell) && _reaches(line, frame)
+        ? (line: line, frame: frame)
+        : null;
   }
 
   /// Of [marks], in the order they are drawn, the one drawn last that a
@@ -1808,21 +2519,29 @@ class TimelineLaneGraphPainter extends CustomPainter {
   /// keys' tests.
   List<LaneGraphKey> keysIn(Size size) => _readIn(size).keys;
 
-  /// The handles and the keys a picture [size] big shows — read once for
-  /// where the grid lays its window, since a mouse asks [handleAt] and
-  /// [keyAt] on every move it makes over the picture.
-  ({List<LaneGraphHandle> handles, List<LaneGraphKey> keys}) _readIn(
-    Size size,
-  ) {
+  /// The strokes, the handles and the keys a picture [size] big shows —
+  /// read once for where the grid lays its window, since a mouse asks
+  /// [handleAt], [keyAt] and [curveAt] on every move it makes over the
+  /// picture, and what a press is asked against is what was painted.
+  ({
+    List<_LaneGraphStroke> strokes,
+    List<LaneGraphHandle> handles,
+    List<LaneGraphKey> keys,
+  })
+  _readIn(Size size) {
     final frames = frameAxis.geometry.value;
     final window = visibleFrameWindow();
     if (_read case final last?
         when last.size == size &&
             last.frames == frames &&
             last.window == window) {
-      return (handles: last.handles, keys: last.keys);
+      return (strokes: last.strokes, handles: last.handles, keys: last.keys);
     }
     final extent = extentAcross(axis, size);
+    final times = laneGraphTimes(window, frames.frameCellExtent).toList();
+    final strokes = [
+      for (final plot in _plots) ..._strokesOf(plot, frames, times, extent),
+    ];
     final handles = [
       for (final plot in _plots) ..._handlesOf(plot, frames, window, extent),
     ];
@@ -1833,10 +2552,11 @@ class TimelineLaneGraphPainter extends CustomPainter {
       size: size,
       frames: frames,
       window: window,
+      strokes: strokes,
       handles: handles,
       keys: keys,
     );
-    return (handles: handles, keys: keys);
+    return (strokes: strokes, handles: handles, keys: keys);
   }
 
   /// The handles [plot]'s line takes (the mock's, 5판): one on each side of
@@ -1863,12 +2583,12 @@ class TimelineLaneGraphPainter extends CustomPainter {
     final shift = _shiftOf(line);
     double across(double value) =>
         laneGraphAcross(value, ranges.single, extent, axis);
-    for (final span in _segmentsOf(curve, keyed)) {
+    for (final span in _laneGraphSegmentsOf(curve, keyed)) {
       if (span.to + shift < window.startIndex ||
           span.from + shift >= window.endIndexExclusive) {
         continue;
       }
-      final eases = _easesToward(curve, span);
+      final eases = _laneGraphEasesToward(curve, span);
       if (eases.isEmpty) {
         continue;
       }
@@ -1921,7 +2641,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
       from: curve.at(span.from.toDouble()).single,
       to: curve.at(span.to.toDouble()).single,
     ),
-    LaneGraphMode.speed => (from: 0.0, to: _averageSpeed(curve, span)),
+    LaneGraphMode.speed => (from: 0.0, to: _laneGraphAverageSpeed(curve, span)),
   };
 
   /// Whether [line] takes the handle of its key at [frame] that bends
@@ -1939,55 +2659,6 @@ class TimelineLaneGraphPainter extends CustomPainter {
   ) =>
       _reaches(line, frame) &&
       _reaches(line, span.from + x * (span.to - span.from));
-
-  /// The segments [curve]'s handles bend, in order: from each of its
-  /// [keyed] frames to the next — where it walks a path, from each that
-  /// keeps its time to the next that does ([LaneCurve.way]), the roving
-  /// ones between passed at the pace those two set.
-  static Iterable<({int from, int to})> _segmentsOf(
-    LaneCurve curve,
-    List<int> keyed,
-  ) sync* {
-    final way = curve.way;
-    if (way == null) {
-      for (var index = 0; index + 1 < keyed.length; index += 1) {
-        yield (from: keyed[index], to: keyed[index + 1]);
-      }
-      return;
-    }
-    for (int? from = keyed.first; from != null;) {
-      final to = way(from)?.to;
-      if (to != null) {
-        yield (from: from, to: to);
-      }
-      from = to;
-    }
-  }
-
-  /// How fast [curve] moves over [span] on average — as far as it goes,
-  /// along its way where it walks one, over the frames it takes: what a
-  /// side's speed is a multiple of ([EaseSide.speed]).
-  static double _averageSpeed(LaneCurve curve, ({int from, int to}) span) {
-    final length =
-        curve.way?.call(span.from)?.length ??
-        _laneGraphApart(
-          curve.at(span.from.toDouble()),
-          curve.at(span.to.toDouble()),
-        );
-    return length / (span.to - span.from);
-  }
-
-  /// The sides of [span]'s two keys that ease toward each other — the
-  /// first's leaving and the last's arriving, each where it is an ease.
-  static List<({EaseSide side, bool leaving})> _easesToward(
-    LaneCurve curve,
-    ({int from, int to}) span,
-  ) => [
-    if (curve.sides[span.from]?.outgoing case final EaseSide side)
-      (side: side, leaving: true),
-    if (curve.sides[span.to]?.incoming case final EaseSide side)
-      (side: side, leaving: false),
-  ];
 
   /// Where [line]'s numbers stand on a graph [extent] across, laid along
   /// [frames] and fitted to [ranges]: its [part]-th number at its own
@@ -2039,17 +2710,21 @@ class TimelineLaneGraphPainter extends CustomPainter {
     }
   }
 
-  /// Draws [plot]'s line through [pass] — every number it holds, or in a
-  /// speed graph the one speed they move at (I-89-Q5 B) — in dashes for a
-  /// guest.
-  void _drawLine(_LaneGraphPass pass, _LaneGraphPlot plot) {
+  /// [plot]'s line as it is stroked over [frames], read at [times] on a
+  /// graph [extent] across — every number it holds, or in a speed graph the
+  /// one speed they move at (I-89-Q5 B) — in dashes for a guest.
+  Iterable<_LaneGraphStroke> _strokesOf(
+    _LaneGraphPlot plot,
+    TimelineFrameGeometry frames,
+    List<double> times,
+    double extent,
+  ) sync* {
     final (:line, :dashed, :fit) = plot;
     final curve = line.lane.curve;
     if (curve == null || fit == null) {
       return;
     }
     final (:keyed, :ranges) = fit;
-    final (:canvas, :frames, window: _, :times, :extent) = pass;
     final shift = _shiftOf(line);
     final at = _placerOf(line, ranges, frames, extent);
     // The times it is drawn at, its own.
@@ -2071,13 +2746,13 @@ class TimelineLaneGraphPainter extends CustomPainter {
     // takes its first number's colour — mine (I-89-Q5 B): the mock drew a
     // point's speed as two lines, and AE's one line has no colour of ours.
     for (var part = 0; part < ranges.length; part += 1) {
-      _strokeLaneGraphLine(
-        canvas,
-        Path()..addPolygon([
+      yield (
+        line: line,
+        points: [
           for (final (:time, :numbers) in readings)
             at(time, numbers[part], part),
-        ], false),
-        curve.parts[part],
+        ],
+        color: curve.parts[part],
         dashed: dashed,
       );
     }
@@ -2090,5 +2765,221 @@ class TimelineLaneGraphPainter extends CustomPainter {
       oldDelegate.frameAxis != frameAxis ||
       oldDelegate.mode != mode ||
       oldDelegate.selection != selection ||
-      oldDelegate.held != held;
+      oldDelegate.held != held ||
+      oldDelegate.box != box ||
+      oldDelegate.transformBox != transformBox ||
+      oldDelegate.pivot != pivot;
+}
+
+/// The segments [curve]'s handles bend, in order: from each of its
+/// [keyed] frames to the next — where it walks a path, from each that
+/// keeps its time to the next that does ([LaneCurve.way]), the roving
+/// ones between passed at the pace those two set.
+Iterable<({int from, int to})> _laneGraphSegmentsOf(
+  LaneCurve curve,
+  List<int> keyed,
+) sync* {
+  final way = curve.way;
+  if (way == null) {
+    for (final (from, to) in neighbourPairs(keyed)) {
+      yield (from: from, to: to);
+    }
+    return;
+  }
+  for (int? from = keyed.first; from != null;) {
+    final to = way(from)?.to;
+    if (to != null) {
+      yield (from: from, to: to);
+    }
+    from = to;
+  }
+}
+
+/// How fast [curve] moves over [span] on average — as far as it goes,
+/// along its way where it walks one, over the frames it takes: what a
+/// side's speed is a multiple of ([EaseSide.speed]).
+double _laneGraphAverageSpeed(LaneCurve curve, ({int from, int to}) span) {
+  final length =
+      curve.way?.call(span.from)?.length ??
+      _laneGraphApart(
+        curve.at(span.from.toDouble()),
+        curve.at(span.to.toDouble()),
+      );
+  return length / (span.to - span.from);
+}
+
+/// The sides of [span]'s two keys that ease toward each other — the
+/// first's leaving and the last's arriving, each where it is an ease.
+List<({EaseSide side, bool leaving})> _laneGraphEasesToward(
+  LaneCurve curve,
+  ({int from, int to}) span,
+) => [
+  if (curve.sides[span.from]?.outgoing case final EaseSide side)
+    (side: side, leaving: true),
+  if (curve.sides[span.to]?.incoming case final EaseSide side)
+    (side: side, leaving: false),
+];
+
+/// The keys a lane selection picks on a header graph's picture, in the
+/// order they are marked, and the BOX ROUND them (I-3 ⑤b, AE's transform
+/// box) — their marks' bounds, where it picks two or more — with its eight
+/// handles on it (I-3 ⑥) and its anchor point (graph-box-handles-more ⓓ).
+/// A drag begun inside the box carries the keys ([nearest]); one begun on
+/// a handle stretches them, one on the anchor point moves it.
+///
+/// 🗣️I-3-Q5 (유저 2026-10-22): 「경계 상자를 둔다 (AE 변형 상자)」.
+class LaneGraphPicked {
+  LaneGraphPicked._(
+    this.keys, {
+    required Rect Function(LaneGraphKey key) markOf,
+    required Axis axis,
+    required bool boxed,
+    required LaneGraphBoxPoint pivot,
+  }) : _markOf = markOf,
+       _axis = axis,
+       _boxed = boxed,
+       _pivot = pivot;
+
+  final List<LaneGraphKey> keys;
+
+  /// The box each key's mark is drawn in.
+  final Rect Function(LaneGraphKey key) _markOf;
+  final Axis _axis;
+
+  /// Whether the graph's transform box is shown ([LaneGraph.transformBox]).
+  final bool _boxed;
+
+  /// Where the box's anchor point stands between [keys].
+  final LaneGraphBoxPoint _pivot;
+
+  /// How far along the frames the keys stand, the lowest and the highest.
+  late final LaneGraphSpan alongSpan = _spanOf(
+    (key) => partAlong(_axis, key.at),
+  );
+
+  /// How far across the graph the keys stand, the lowest and the highest.
+  late final LaneGraphSpan acrossSpan = _spanOf(
+    (key) => partAcross(_axis, key.at),
+  );
+
+  LaneGraphSpan _spanOf(double Function(LaneGraphKey key) of) {
+    final all = keys.map(of);
+    return (low: all.reduce(math.min), high: all.reduce(math.max));
+  }
+
+  /// The box's ANCHOR POINT (graph-box-handles-more ⓓ, AE's): [_pivot] of
+  /// the way between the keys each way — null where there is no box.
+  late final Offset? pivotAt = box == null
+      ? null
+      : offsetAlong(
+          _axis,
+          along: laneGraphSpanAt(alongSpan, _pivot.along),
+          across: laneGraphSpanAt(acrossSpan, _pivot.across),
+        );
+
+  /// [at] as a point between the keys — [pivotAt] read back. A way the
+  /// keys do not spread, it stands where the anchor point does.
+  LaneGraphBoxPoint pointOf(Offset at) => (
+    along: laneGraphSpanOf(alongSpan, partAlong(_axis, at)) ?? _pivot.along,
+    across:
+        laneGraphSpanOf(acrossSpan, partAcross(_axis, at)) ?? _pivot.across,
+  );
+
+  /// Where the anchor point stands, where a press at [position] takes it —
+  /// on the ring drawn of it; null off it, and where there is no box.
+  Offset? pivotPressedAt(Offset position) {
+    final at = pivotAt;
+    return at != null && _pivotRect(at).contains(position) ? at : null;
+  }
+
+  /// The square the anchor point standing [at] is drawn in — a handle's.
+  static Rect _pivotRect(Offset at) => Rect.fromCenter(
+    center: at,
+    width: _laneGraphBoxHandleSide,
+    height: _laneGraphBoxHandleSide,
+  );
+
+  /// The box round [keys] — null for fewer than two keys: a key of two
+  /// numbers is marked twice and is one key — and where the graph's
+  /// transform box is hidden.
+  late final Rect? box = _boxed ? _boxRound() : null;
+
+  Rect? _boxRound() {
+    final distinct = {
+      for (final key in keys)
+        (key.line.layer.id, key.line.lane.laneId, key.frame),
+    };
+    return distinct.length < 2
+        ? null
+        : keys
+              .map(_markOf)
+              .reduce((round, mark) => round.expandToInclude(mark));
+  }
+
+  /// The [box] in the rings' ink, its eight handles on it — filled in the
+  /// same ink (I-3 ⑥, AE's transform box) — and its anchor point.
+  void paint(Canvas canvas) {
+    final round = box;
+    if (round == null) {
+      return;
+    }
+    final ring = selectedLaneKeyRing;
+    canvas.drawRect(
+      round,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ring.width
+        ..color = ring.color,
+    );
+    final ink = Paint()..color = ring.color;
+    for (final handle in laneGraphBoxHandles) {
+      canvas.drawRect(_handleRect(handle, round), ink);
+    }
+    // ⚠️Mine: AE's anchor point is a ring crossed by two lines; this one is
+    // drawn so, in the ring's ink, as wide as a handle.
+    final pivot = _pivotRect(pivotAt!);
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = ring.width
+      ..color = ring.color;
+    canvas
+      ..drawCircle(pivot.center, pivot.width / 2, stroke)
+      ..drawLine(pivot.centerLeft, pivot.centerRight, stroke)
+      ..drawLine(pivot.topCenter, pivot.bottomCenter, stroke);
+  }
+
+  /// The handle of the [box] a press at [position] takes (I-3 ⑥) — on the
+  /// square drawn of it ([TimelineLaneGraphPainter._drawnLastAt]); null off
+  /// them, and where there is no box.
+  LaneGraphBoxHandle? handleAt(Offset position) {
+    final round = box;
+    if (round == null) {
+      return null;
+    }
+    return TimelineLaneGraphPainter._drawnLastAt(
+      laneGraphBoxHandles,
+      (handle) => _handleRect(handle, round).contains(position),
+    );
+  }
+
+  /// The square [handle] is drawn in on the box [round].
+  Rect _handleRect(LaneGraphBoxHandle handle, Rect round) => Rect.fromCenter(
+    center: laneGraphBoxHandleAt(handle, round, _axis),
+    width: _laneGraphBoxHandleSide,
+    height: _laneGraphBoxHandleSide,
+  );
+
+  /// The key picked nearest [position] where it is inside the [box] — what
+  /// a press there takes in hand: of a line of two numbers, the number
+  /// marked nearest it (I-3-Q5). Null outside the box, and where there is
+  /// none.
+  LaneGraphKey? nearest(Offset position) {
+    if (!(box?.contains(position) ?? false)) {
+      return null;
+    }
+    double away(LaneGraphKey key) => (key.at - position).distance;
+    return keys.reduce(
+      (nearest, key) => away(key) < away(nearest) ? key : nearest,
+    );
+  }
 }

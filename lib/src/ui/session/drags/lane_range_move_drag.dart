@@ -1,8 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 
+import '../../../models/key_range_shift.dart'
+    show FrameStretch, frameStretched;
 import '../../../models/layer_effect.dart';
 import '../../../models/timeline_frame_range.dart';
-import '../../timeline/property_lane_model.dart' show LaneKeyValues;
+import '../../timeline/property_lane_model.dart'
+    show LaneKeyLandings, LaneKeyValues;
 import '../../timeline/timeline_drag_preview.dart';
 import '../lane_edit_subject.dart';
 import '../lane_homes.dart';
@@ -30,7 +35,10 @@ typedef LaneValuesWrite =
 ///
 /// And a header graph's key carries the keys' VALUES with it (I-3 ②,
 /// AE's graph editor): written as the value editor writes each — the row
-/// [LaneValuesWrite] hands back — and then shifted, in the one step.
+/// [LaneValuesWrite] hands back — and then shifted, in the one step. A
+/// graph's box STRETCHES them (I-3 ⑥, AE's transform box): each key moved
+/// as far as its frame stretched ([FrameStretch]) — the same one group, the
+/// same block discipline, a shift being a stretch of none.
 ///
 /// ⛔It does NOT sign `EditorDragSession`.
 class LaneRangeMoveDrag {
@@ -103,63 +111,94 @@ class LaneRangeMoveDrag {
     );
   }
 
-  /// Shifts every spanned lane's ranged keys by [frameDelta] — their
-  /// [values] written first, where a graph's key carries them — and
-  /// previews the result. A blocked landing returns having changed nothing,
-  /// which is what makes the last valid preview and outline hold.
-  void update({required int frameDelta, LaneKeyValues? values}) {
+  /// Moves every spanned lane's ranged keys [frameDelta] frames on — after
+  /// [stretch], where a graph's box stretches them (I-3 ⑥), and each where
+  /// its [landings] say, where one corner of the box goes alone
+  /// (graph-box-handles-more ⓐ) — their [values] written first, where a
+  /// graph's key or box carries them, and previews the result. A blocked
+  /// landing returns having changed nothing, which is what makes the last
+  /// valid preview and outline hold.
+  void update({
+    required int frameDelta,
+    FrameStretch? stretch,
+    LaneKeyValues? values,
+    LaneKeyLandings? landings,
+  }) {
+    int to(String laneId, int frame) =>
+        landings?[laneId]?[frame] ??
+        (stretch == null ? frame : frameStretched(stretch, frame)) +
+            frameDelta;
     final written = values == null ? null : _write(_subject, values);
-    if (frameDelta == 0 && written == null) {
+    final moved = _movedBy(
+      written == null ? _subject : _subject.after(written),
+      to,
+    );
+    if (moved == null) {
+      // Blocked landing: the last valid preview and outline HOLD.
+      return;
+    }
+    final edit = written == null ? moved : written.then(moved);
+    if (edit.isEmpty) {
       _shifted = null;
       _preview.value = null;
       _selection.value = _selectionBefore;
       return;
     }
-    // The keys written are the span's, so the shift holds every home they
-    // were written in: what it leaves the row at is the whole step.
-    final edit = frameDelta == 0
-        ? written
-        : _shiftedBy(
-            written == null ? _subject : _subject.after(written),
-            frameDelta,
-          );
-    final shown = edit == null ? null : _subject.preview(edit);
+    final shown = _subject.preview(edit);
     if (shown == null) {
-      // Blocked landing — or one its home will not take, a camera key put
-      // out of its cut: the last valid preview and outline HOLD.
+      // A landing its home will not take — a camera key put out of its
+      // cut: the last valid preview and outline HOLD.
       return;
     }
     _shifted = edit;
     _preview.value = shown;
-    _rideSelection(frameDelta);
+    _rideSelection((frame) => to(_selectionBefore.laneId, frame), landings);
   }
 
-  /// [row]'s span of keys shifted by [frameDelta], home by home: ONE rigid
-  /// group, so a home whose landing is blocked blocks the move, and a home
-  /// with no key in the span rides along. Null when blocked.
-  LaneEdit? _shiftedBy(LaneEditSubject row, int frameDelta) {
+  /// [row]'s span of keys, each moved to the frame [to] gives it on its
+  /// lane, home by home: ONE rigid group, so a home whose landing is
+  /// blocked blocks the move, and a home with no key moving rides along.
+  /// Null when blocked; empty where nothing moves.
+  LaneEdit? _movedBy(
+    LaneEditSubject row,
+    int Function(String laneId, int frame) to,
+  ) {
     var blocked = false;
-    T? shifted<T>(LaneHome<T> home) {
-      if (!home.keyedWhere(_selectionBefore.contains)) {
+    T? moved<T>(LaneHome<T> home) {
+      if (!home.keyedOnWhere(
+        (laneId, frame) =>
+            _selectionBefore.contains(frame) && to(laneId, frame) != frame,
+      )) {
         return null;
       }
-      final next = home.shifted(_selectionBefore, frameDelta);
+      final next = home.moved(_selectionBefore, to);
       blocked = blocked || next == null;
       return next;
     }
 
-    final edit = rowLaneHomesEdited(
-      row,
-      rowLaneHomes(row, _laneIds),
-      shifted,
-    );
-    return blocked || edit.isEmpty ? null : edit;
+    final edit = rowLaneHomesEdited(row, rowLaneHomes(row, _laneIds), moved);
+    return blocked ? null : edit;
   }
 
-  /// The step's selection ride: the outline follows the shifted span
-  /// (never below 0).
-  void _rideSelection(int frameDelta) {
-    final newStart = _selectionBefore.startIndex + frameDelta;
+  /// The step's selection ride: the outline follows the span's ends where
+  /// [to] takes them — turned about, where a stretch turns them — and holds
+  /// every key [landings] put down; never below 0.
+  ///
+  /// ⚖️Mine (graph-box-handles-more ⓐ): a corner gone alone moves the keys
+  /// by as much as each stood near it, so no one frame's move is the
+  /// span's — the outline keeps its ends and widens to the keys landed
+  /// past them.
+  void _rideSelection(
+    int Function(int frame) to,
+    LaneKeyLandings? landings,
+  ) {
+    final ends = [
+      to(_selectionBefore.startIndex),
+      to(_selectionBefore.endIndexExclusive - 1),
+      for (final frames in landings?.values ?? const <Map<int, int>>[])
+        ...frames.values,
+    ];
+    final newStart = ends.reduce(math.min);
     if (newStart < 0) {
       return;
     }
@@ -167,7 +206,7 @@ class LaneRangeMoveDrag {
       layerId: _selectionBefore.layerId,
       laneId: _selectionBefore.laneId,
       startIndex: newStart,
-      endIndexExclusive: _selectionBefore.endIndexExclusive + frameDelta,
+      endIndexExclusive: ends.reduce(math.max) + 1,
       laneIds: _selectionBefore.laneIds,
     );
   }

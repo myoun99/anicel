@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../models/canvas_viewport.dart';
@@ -198,13 +199,8 @@ ui.Rect rectOutwardOnGrid(
 /// grid like any 1:1 view's. Level 0 (the default) is the device scale
 /// itself: the walk, and playback's canvas-resolution composite.
 ///
-/// ⚠️Impeller may not honour `isAntiAlias = false` at all. If it does not,
-/// those devices keep the blended line they have today, which is no worse;
-/// the phase snap does not depend on this either way.
-/// 🆕2026-09-16: this stopped being unverifiable here — Impeller became the
-/// default on Windows in Flutter 3.47 and this repo moved to it, so the
-/// desktop now draws the edge the same engine the tablets do. ⚠️Still
-/// unverified: nobody has looked at the boundary since.
+/// An edge this answers false for is cut by moving it ONTO the grid
+/// ([cutOnThePixelGrid]), not by asking the engine not to blend it.
 bool displayEdgeAntiAliased(
   CanvasViewport viewport,
   double devicePixelRatio, {
@@ -215,3 +211,91 @@ bool displayEdgeAntiAliased(
           displayScaleOf(viewport.zoom, devicePixelRatio) * (1 << level),
         ) !=
         ui.FilterQuality.none;
+
+/// [rect] — in the space [canvas] draws in now — with each edge moved onto
+/// the pixel boundary the pixel centres decide: a pixel is inside exactly
+/// when its centre is, `ceil(e − ½)` on every edge, as a nearest sample
+/// decides every boundary inside the image ([displayEdgeAntiAliased]).
+/// [pixelRatio] carries the canvas's space to its pixels past the canvas's
+/// own transform: the screen's device pixel ratio on screen, 1 in a raster
+/// whose transform lands on its pixels already.
+///
+/// 🚨WHAT CUTS THE EDGE ON THE GRID, ON EVERY ENGINE. Impeller does not
+/// honour `isAntiAlias = false`: its MSAA covers a pixel by the samples
+/// that fall inside, so an edge at 9.45 lit two of pixel 9's four —
+/// measured under `--enable-impeller`, 2026-10-24: paper at 50% one pixel
+/// past the canvas, the line F-67-paper-edge took away, back on every
+/// device since the move to Impeller (09-16). An edge ON a pixel boundary
+/// is covered wholly or not at all, whatever the engine.
+///
+/// A turned or projected space has no edge on the grid: [rect] comes back
+/// as it is.
+ui.Rect cutOnThePixelGrid(ui.Canvas canvas, ui.Rect rect, double pixelRatio) {
+  final m = canvas.getTransform();
+  if (m[1] != 0 || m[4] != 0 || m[3] != 0 || m[7] != 0 || m[15] != 1) {
+    return rect;
+  }
+  final (sx, sy) = (m[0] * pixelRatio, m[5] * pixelRatio);
+  final (tx, ty) = (m[12] * pixelRatio, m[13] * pixelRatio);
+  if (sx == 0 || sy == 0) {
+    return rect;
+  }
+  double cut(double value, double scale, double origin) =>
+      (((value * scale + origin) - 0.5).ceilToDouble() - origin) / scale;
+  return ui.Rect.fromPoints(
+    ui.Offset(cut(rect.left, sx, tx), cut(rect.top, sy, ty)),
+    ui.Offset(cut(rect.right, sx, tx), cut(rect.bottom, sy, ty)),
+  );
+}
+
+/// [rect] with its edge cut as the display law says: as it is where the
+/// edge is [antiAlias]ed — the engine blends it — and on the grid of
+/// [pixelRatio] everywhere else ([cutOnThePixelGrid]).
+ui.Rect displayEdgeRect(
+  ui.Canvas canvas,
+  ui.Rect rect, {
+  required bool antiAlias,
+  required double pixelRatio,
+}) => antiAlias ? rect : cutOnThePixelGrid(canvas, rect, pixelRatio);
+
+/// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel
+/// shows what its centre falls on — with the edge cut on the grid
+/// ([cutOnThePixelGrid]): the texels ride a shader mapped [src] → [dst],
+/// and only the rect it fills is cut, so moving the edge moves no texel.
+/// Every pixel inside the cut rect has its centre inside [dst], so nothing
+/// past the image is ever shown.
+void drawImageRectOnThePixelGrid(
+  ui.Canvas canvas,
+  ui.Image image,
+  ui.Rect src,
+  ui.Rect dst, {
+  required ui.FilterQuality filterQuality,
+  required double pixelRatio,
+}) {
+  final sx = dst.width / src.width;
+  final sy = dst.height / src.height;
+  final shader = ui.ImageShader(
+    image,
+    ui.TileMode.clamp,
+    ui.TileMode.clamp,
+    Float64List(16)
+      ..[0] = sx
+      ..[5] = sy
+      ..[10] = 1
+      ..[12] = dst.left - src.left * sx
+      ..[13] = dst.top - src.top * sy
+      ..[15] = 1,
+    filterQuality: filterQuality,
+  );
+  try {
+    canvas.drawRect(
+      cutOnThePixelGrid(canvas, dst, pixelRatio),
+      ui.Paint()
+        ..shader = shader
+        ..isAntiAlias = false,
+    );
+  } finally {
+    // The drawing holds the shader from the draw on, as it holds an image.
+    shader.dispose();
+  }
+}

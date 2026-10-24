@@ -535,10 +535,16 @@ class _StoryboardRowsAndLabels {
   ///
   /// The head's contents are the drawn proposal's: 「이름 옆의 접기(∨)로
   /// 어태치 행을 접고, 라벨 · fx · 눈 · 불투명도 · 블렌드 · 레인 펼침이
-  /// 타임라인과 같이 됩니다」. So the cells that proposal does not name are
-  /// not handed their verbs here, and the row mounts none of them: the
-  /// sheet toggle (each cut's own flag, not the head's), the onion and the
-  /// fill-reference switches, the link badge.
+  /// 타임라인과 같이 됩니다」. Past it, the head carries what is ONE for
+  /// the track's cuts and nothing that is each cut's own (🗣️I-89-Q22, 유저
+  /// 2026-10-16: 「공통으로 안되는건 애초에 콘티패널에 버튼두지않음 …
+  /// 콘티행은 그런부분 글로벌이니까 아니면 글로벌시키고 넣고 머리로 하나.
+  /// 어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」): the sheet toggle,
+  /// made the head's ([ConteHead.onTimesheet]), and the onion, read
+  /// through the head's rows (`OnionSkin.isLayerOnionSkinEnabled`). The
+  /// fill-reference switch and the link badge are not handed here, and the
+  /// row mounts neither. ↩️The sheet toggle and the onion stayed off it too
+  /// until Q22 — the flag was each cut's own.
   ///
   /// A press picks the ROW ([trackConteRowId]) — never the head's layer,
   /// which is one cut's — and the session lands it on the layer at this
@@ -895,6 +901,9 @@ class _StoryboardRowsAndLabels {
       opacityDragPreview: widget.opacityDragPreview,
       onLayerMarkSelected: widget.onLayerMarkSelected,
       onToggleLayerTimesheet: _sheetToggleOf(rowId),
+      onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
+      onionSkinEnabled:
+          widget.layerOnionSkinEnabledOf?.call(head.row.id) ?? false,
       fxState: widget.layerFxStateOf?.call(head.row.id) ?? LayerFxState.on,
       onToggleLayerFx: widget.onToggleLayerFx,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
@@ -906,8 +915,7 @@ class _StoryboardRowsAndLabels {
         head.row,
         head.cut.layers,
       ),
-      // The base's twirl folds the attach rows riding it (UI-R20 #9).
-      hasGroupFold: seat == 0 && conteSeatsOf(track.cuts).length > 1,
+      hasGroupFold: _conteHeadFolds(track, seat),
       groupFoldExpanded: !widget.collapsedAttachBaseIds.contains(
         head.row.id,
       ),
@@ -1163,3 +1171,9 @@ final class _KeptRailRows {
 /// ([storyboardVideoRowName]), and what its chip shows once the row is
 /// picked up (I-39).
 const IconData _vRowGlyph = Icons.movie_outlined;
+
+/// Whether [track]'s conte row at [seat] folds rows of its own: the base's
+/// twirl folds the attach rows riding it (UI-R20 #9) — what its label ends
+/// its name with, and a sweep lays past the graph's button (F-454).
+bool _conteHeadFolds(Track track, int seat) =>
+    seat == 0 && conteSeatsOf(track.cuts).length > 1;

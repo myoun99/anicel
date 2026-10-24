@@ -1,25 +1,27 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/workspace/workspace_door_commands.dart';
 
 /// The workspace's door as the shell knocks on it: a launch's files reach
 /// the workspace that bound it, and nothing once that workspace has gone.
 void main() {
-  test('paths reach the bound door, and none after its owner lets go', () {
+  test('files reach the bound door, and none after its owner lets go', () {
     final door = WorkspaceDoorCommands();
     final owner = Object();
-    final handed = <List<String>>[];
+    final handed = <List<String?>>[];
     door.bind(
       owner,
       openFiles: () {},
       openFolder: () {},
-      openPaths: handed.add,
+      openHanded: (grants) => handed.add([for (final g in grants) g.path]),
     );
 
-    door.openPaths(['a.png']);
+    FolderGrant file(String path) => FolderGrant.granted(path: path);
+    door.openHanded([file('a.png')]);
     door.unbind(Object());
-    door.openPaths(['b.png']);
+    door.openHanded([file('b.png')]);
     door.unbind(owner);
-    door.openPaths(['c.png']);
+    door.openHanded([file('c.png')]);
 
     expect(handed, [
       ['a.png'],

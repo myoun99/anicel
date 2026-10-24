@@ -44,6 +44,11 @@ const ledger = <String, Why>{
       Why.aChoice,
   "brush/text_tool_settings.dart | 'text-tool-text-\$index'": Why.aChoice,
   "cut_command_group.dart | 'cut-mark-button'": Why.aSecondLevel,
+  // F-391: a stop of the zoom list — one value of a settings list; all its
+  // row does is its own ⊖, which takes the stop out.
+  'dialogs/input_settings_dialog.dart | '
+          "'settings-zoom-snap-\${_shownPercent(stop)}'":
+      Why.aChoice,
   // 🗣️I-40-Q2 (유저 2026-10-09, a file row's ⋮ — which file would a key
   // take?): 「그런건 단축키 안만들어도됨」.
   "media/media_pool_panel.dart | 'media-asset-menu-export-wav'": Why.declined,
@@ -67,6 +72,9 @@ const ledger = <String, Why>{
   // a panel's own action already shows it): 「주지 않는다」.
   "panels/editor_panel_tabs.dart | 'panel-tab-overflow-item-\${tab.id}'":
       Why.declined,
+  // The shortcut window's list of presets (I-107): which layout the keys
+  // are, one out of the list — `key` is `'shortcut-preset-${preset.id}'`.
+  'shortcuts/shortcut_settings_dialog.dart | key': Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-\${option.keySlug}'":
       Why.aChoice,
   "timeline/layer_label_controls.dart | 'layer-mark-option-none'": Why.aChoice,
@@ -126,7 +134,7 @@ final second = PanelFlyoutItem(label: 'keyless too');
       'and the ones that are not', () {
     expect(
       rows.named,
-      contains("cut_command_group.dart | 'rename-cut-button'"),
+      contains("cut_command_group.dart | 'edit-cut-note-button'"),
     );
     expect(
       rows.named,

@@ -82,7 +82,7 @@ void main() {
     // drawing's name.
     expect(replaced(), ['2 · A · 1 · 1', '2 · A · 2 · 2']);
 
-    s.appSettings.showSecondsDisplay.value = true;
+    s.panelViews.showSeconds.value = true;
     expect(
       replaced(),
       ['2 · A · 1 · 0+1', '2 · A · 2 · 0+2'],

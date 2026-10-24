@@ -538,7 +538,17 @@ void main() {
         conteCut('37', [conteRow('37')]),
         conteCut('38', [conteRow('38')]),
       ], active: '38');
-      session.cutVerbs.moveActiveCutLeft();
+      // The two trade places as a move drag's reorder commits it.
+      final track = session.activeTrack;
+      session.cutCommandCoordinator.commitCutMoveReorder(
+        trackId: track.id,
+        order: [track.cuts[1].id, track.cuts[0].id],
+        beforeGaps: const {},
+        afterGaps: const {},
+      );
+      session
+        ..refreshAfterCutCommand()
+        ..notifyChanged();
       await tester.pumpAndSettle();
       final picture = pictureOf(tester, '38');
       final from = picture.slot.center;

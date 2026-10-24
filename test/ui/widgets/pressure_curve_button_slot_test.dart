@@ -67,6 +67,30 @@ void main() {
     }
   });
 
+  testWidgets('the button is square, as wide as the brush pill\'s bars are '
+      'thick (유저 2026-10-18: 「압력버튼 특히 그냥 정사각형이어도 '
+      '문제없겟는데」)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: PressureCurveButton(
+              keyValue: 'slot-probe',
+              target: BrushPressureTarget.size,
+              curves: const {},
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey<String>('slot-probe'))),
+      const Size(20, 20),
+    );
+  });
+
   testWidgets('a curve on the button does not change its width', (
     tester,
   ) async {

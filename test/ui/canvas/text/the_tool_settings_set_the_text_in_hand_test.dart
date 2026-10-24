@@ -11,7 +11,6 @@ import 'package:anicel/src/ui/brush/tool_settings_section.dart'
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/brush/tool_setting_rows.dart'
     show ToolSettingAction, ToolSettingChoiceRow, ToolSettingRow;
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/panel_keys.dart' show PanelKeysBinding;
 import 'package:anicel/src/ui/text/cel_text_layout.dart' show celTextBoxOf;
 import 'package:anicel/src/ui/text/readout_text.dart' show columnValueText;
@@ -32,9 +31,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../../helpers/boolean_dot_probe.dart';
 import '../../../helpers/cel_text_tool_harness.dart';
 import '../../../helpers/frame_census.dart';
 import '../../../helpers/tool_setting_action_probe.dart';
+import '../../../helpers/rail_group_button.dart';
 
 /// 🚨★★★THE TOOL SETTINGS AND THE TEXT ON THE CANVAS (R9-rest) — the real
 /// app, the real panel, a real mouse.
@@ -71,8 +72,7 @@ void main() {
       project: project,
     );
     await takeTextTool(tester);
-    final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$settingsGroup')));
+    await pressToolSettingsButton(tester);
     await pumpFrames(tester);
     expect(find.byType(ToolSettingsPanel), findsOneWidget, reason: '⛔fixture');
     expect(row('bold'), findsOneWidget, reason: '⛔fixture');
@@ -123,6 +123,13 @@ void main() {
     await pumpFrames(tester);
   }
 
+  /// Presses the ring of the switch row [name], brought on screen first.
+  Future<void> pressRing(WidgetTester tester, String name) async {
+    await reach(tester, name);
+    await tester.pressRingIn(row(name));
+    await pumpFrames(tester);
+  }
+
   List<TextLetterStyle> stylesOnCel(WidgetTester tester) => [
     for (final span in celOf(tester).texts.single.content.spans) span.style,
   ];
@@ -135,7 +142,7 @@ void main() {
     final history = sessionOf(tester).historyManager;
     final steps = history.undoCount;
 
-    await press(tester, 'bold');
+    await pressRing(tester, 'bold');
 
     expect(stylesOnCel(tester).single.bold, isTrue);
     expect(history.undoCount, steps + 1);
@@ -164,7 +171,7 @@ void main() {
       reason: '⛔fixture',
     );
 
-    await press(tester, 'bold');
+    await pressRing(tester, 'bold');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await pumpFrames(tester);
 
@@ -182,7 +189,7 @@ void main() {
     final field = tester.widget<EditableText>(textField());
     expect(field.focusNode.hasFocus, isTrue, reason: '⛔fixture');
 
-    await press(tester, 'bold');
+    await pressRing(tester, 'bold');
     await press(tester, 'align-center');
 
     expect(
@@ -381,7 +388,7 @@ void main() {
     final history = sessionOf(tester).historyManager;
     final steps = history.undoCount;
 
-    await press(tester, 'bold');
+    await pressRing(tester, 'bold');
     expect(history.undoCount, steps, reason: 'nothing to land on');
 
     final c = canvasPixelInView(tester);

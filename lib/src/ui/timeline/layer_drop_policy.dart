@@ -152,7 +152,8 @@ class LayerDropPlan {
 /// [slot] is a gap in [displayRows]: 0 is before the first row, `length` is
 /// after the last. Returns null when neither neighbour is a row of [stack]
 /// (the caret is off in another owner's rows — the track's SE list, which
-/// no cut-layer drag can reach).
+/// no cut-layer drag can reach), and when the one that is stands across
+/// such rows from where the seat is ([_gapBordersItsSeat]).
 int? modelInsertionForSlot({
   required List<Layer> stack,
   required List<Layer> displayRows,
@@ -236,7 +237,33 @@ int? modelInsertionForSlot({
   // (F-312): a folded base at the foot of the rail has its below riders
   // under it, and the last line of the list is under those.
   final carried = _carriedFrom(stack, only);
-  return reversed == atListEnd ? carried.start : carried.endExclusive;
+  final seat = reversed == atListEnd ? carried.start : carried.endExclusive;
+  return _gapBordersItsSeat(stack, seat, displayRows, slot) ? seat : null;
+}
+
+/// Whether the gap [slot] of [displayRows] lies against a row standing where
+/// the seat [insertAt] of [stack] is ([_inOnePlace]) — the seat's place read
+/// off the row below it, as a landing's is (`_Lift.below`).
+///
+/// 🗣️F-372 ② (검증 2026-10-23): a picture held on the rail's line between
+/// the cut's Direction row and the track's SE rows raised the caret, and
+/// let go there it became the top row of ACTION — under the SE rows.
+/// Another owner's rows stand between this stack's rows on screen and
+/// nowhere in [stack], so the line over them and the line under them named
+/// ONE seat; the row is drawn on one side only, and the other line promised
+/// a place it does not go. The track's transition row splits the camera
+/// section the same way.
+bool _gapBordersItsSeat(
+  List<Layer> stack,
+  int insertAt,
+  List<Layer> displayRows,
+  int slot,
+) {
+  final seated = insertAt > 0 ? stack[insertAt - 1] : stack[insertAt];
+  return [
+    if (slot > 0) displayRows[slot - 1],
+    if (slot < displayRows.length) displayRows[slot],
+  ].any((row) => _inOnePlace(row, seated));
 }
 
 /// Where a NEW row lands for the caret gap [slot] of [displayRows] — the
@@ -640,12 +667,16 @@ bool _lands(
 bool _leavesSection(_Lift lift) {
   final neighbour = lift.below ?? lift.above;
   if (neighbour == null) return false;
-  final moving = lift.moving;
-  return timelineSectionForLayerKind(neighbour.kind) !=
-          timelineSectionForLayerKind(moving.kind) ||
-      timelineCameraSectionRank(neighbour.kind) !=
-          timelineCameraSectionRank(moving.kind);
+  return !_inOnePlace(neighbour, lift.moving);
 }
+
+/// Whether two rows stand in one place of the order: one section, and in
+/// the camera section one rank — the place a landing may not leave (A5-4),
+/// and the place a line must lie against ([_gapBordersItsSeat]).
+bool _inOnePlace(Layer a, Layer b) =>
+    timelineSectionForLayerKind(a.kind) ==
+        timelineSectionForLayerKind(b.kind) &&
+    timelineCameraSectionRank(a.kind) == timelineCameraSectionRank(b.kind);
 
 /// MEMBERSHIP: the folder the slot sits inside is the folder of the row
 /// BELOW it — a member names its own folder, and a folder row (whose run
@@ -799,23 +830,25 @@ List<({LayerId layerId, AttachedPlacement placement})> _sideChanges(
 /// drawing required it, and plain folders already nest. The walk reads
 /// the subtree's leaves now, so a carried folder is just structure and
 /// its leaves are the riders.
-/// 🚨★★★**NULL AND EMPTY ARE DIFFERENT ANSWERS, AND THAT IS F-139.** Null is
-/// 「this run cannot ride at all」 — a plain row that brings a group with it,
-/// which would make the relation chain. Empty is 「there is nothing INSIDE
-/// to ride」, which only a folder can say and which is not a refusal.
+/// 🚨★★★**EMPTY IS NOT A REFUSAL, AND THAT IS F-139.** Empty is 「there is
+/// nothing INSIDE to ride」, which only a folder can say. 「This run cannot
+/// ride at all」 — a run that brings a group of its own, which would make
+/// the relation chain — is [_mountsOn]'s `carriesAttaches`, a question of
+/// its own. They were one answer (`const <Layer>[]` for both) and the
+/// caller read it as a refusal, so an empty folder could not be attached.
+/// 유저 2026-09-18: 「폴더에 내용물이 있으면 … 드래그드롭으로 어태치
+/// 장착되는데 **아무것도 없으면 안되. 규칙 다른거 두지않도록**」.
 ///
-/// They were one answer (`const <Layer>[]` for both) and the caller read it
-/// as a refusal, so an empty folder could not be attached. 유저 2026-09-18:
-/// 「폴더에 내용물이 있으면 … 드래그드롭으로 어태치 장착되는데 **아무것도
-/// 없으면 안되. 규칙 다른거 두지않도록**」. One value answering two
-/// questions is the shape this repo forbids by name.
-List<Layer>? _ridersOf(_Lift lift) {
-  final moving = lift.moving;
-  if (!moving.kind.groupsLayers) {
-    return lift.carried.length == 1 ? [moving] : null;
-  }
-  return lift.carried.where((layer) => !layer.kind.groupsLayers).toList();
-}
+/// ★EVERY carried row rides, whoever holds the run — a plain row, a
+/// folder, a selection of them (F-436②, 유저 2026-10-21: 「여러 레이어
+/// 드래그로 한 레이어에 어태치장착 가능. 지금은 한 레이어만 드래그해야
+/// 장착가능」). ↩️A plain row rode only when it travelled alone, so a
+/// selection was refused outright — the selection's size deciding the law
+/// (CLAUDE.md 절대명령 2), which nobody asked for: the arm predates the
+/// selection carry (㊵) and meant 「a base that brings its riders」, which
+/// `carriesAttaches` already refuses.
+List<Layer> _ridersOf(_Lift lift) =>
+    lift.carried.where((layer) => !layer.kind.groupsLayers).toList();
 
 /// The mounts onto [target], or null when the slice cannot join that group
 /// — letting it land there anyway would split a group that is unsplittable
@@ -833,7 +866,7 @@ List<_Mount>? _mountsOn(_Lift lift, _Target target) {
   final carriesAttaches = lift.stack.any(
     (other) => lift.carriedIds.contains(other.attachedToLayerId),
   );
-  if (riders == null || carriesAttaches) {
+  if (carriesAttaches) {
     return null;
   }
   if (riders.isEmpty) {

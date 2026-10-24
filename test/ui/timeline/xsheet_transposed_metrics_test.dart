@@ -139,8 +139,11 @@ void main() {
       // under its name — paid, the block outgrew the tallest dock. And it
       // keeps the 22 a header graph's slot gave it, where a stood-up lane
       // stands its pin and chips (I-89-Q17 A: 「시트 머리는 지금 높이
-      // 그대로(+22)」).
-      const carried = timelineLayerControlsWidth -
+      // 그대로(+22)」). And it keeps the 58 the rail's names gave up (F-409,
+      // 유저 2026-10-19: 「x시트는 … 총 길이는 유지해도됨」) — the length it
+      // had, below.
+      const carried = timelineLayerControlsWidth +
+          58 -
           layerLaneValueHandsWidth +
           22 +
           2;
@@ -180,7 +183,8 @@ void main() {
           columns: grown,
           optionalColumns: (onion: true, blend: true),
         ),
-        timelineLayerControlsWidthFor(grown) -
+        timelineLayerControlsWidthFor(grown) +
+            58 -
             layerLaneValueHandsWidth +
             22 +
             2,
@@ -289,15 +293,44 @@ void main() {
         XSheetTimelineGrid.defaultMetrics.verticalScrollbarWidth,
       );
       expect(railBar.left, closeTo(frameBar.left, 0.01));
+      // F-459-Q1 (user, 2026-10-23): 「x시트의 왼쪽 끝을 원함. 룰러랑 칸
+      // 사이가 아님」 — the column at the sheet's far left, the corner over
+      // it at the start of the top strip, then the frame numbers, then the
+      // cells. ↩️F-409 had them at the far right; before that the column
+      // stood between the frame numbers and the cells.
+      final sheet = tester.getRect(find.byType(XSheetTimelineGrid));
+      final numbers = XSheetTimelineGrid.defaultMetrics.layerControlsWidth;
+      expect(frameBar.left, closeTo(sheetLeft(tester), 0.01));
+      final corner = tester.getRect(
+        find.byKey(const ValueKey<String>('xsheet-time-display-toggle-button')),
+      );
+      expect(
+        [corner.left, corner.right, corner.top, corner.bottom],
+        [
+          closeTo(sheetLeft(tester), 0.01),
+          closeTo(railBar.right, 0.01),
+          closeTo(sheetTop, 0.01),
+          closeTo(railBar.top, 0.01),
+        ],
+      );
+      expect(layerAxisBar.left, closeTo(corner.right + numbers, 0.01));
+      expect(layerAxisBar.right, closeTo(sheet.right, 0.01));
+      expect(
+        tester
+            .getRect(
+              find.byKey(
+                const ValueKey<String>('xsheet-layer-horizontal-viewport'),
+              ),
+            )
+            .left,
+        closeTo(frameBar.right + numbers, 0.01),
+        reason: 'the frame numbers, then the cells, past the column',
+      );
       // The splitter starts after the frame-number rail: that column is
       // the FRAME axis's and the splitter has nothing to say about it.
       expect(
         splitter.left,
-        closeTo(
-          sheetLeft(tester) +
-              XSheetTimelineGrid.defaultMetrics.layerControlsWidth,
-          0.01,
-        ),
+        closeTo(frameBar.right + numbers, 0.01),
       );
     });
 
@@ -436,7 +469,6 @@ void main() {
         'legend-fill-ref',
         'legend-fx',
         'legend-eye',
-        'legend-mute',
       ]) {
         expect(
           find.byKey(ValueKey<String>(key)),
@@ -643,18 +675,18 @@ void main() {
       expect(
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
-          from: LayerRailTrailingSlot.mute,
+          from: LayerRailTrailingSlot.visibility,
           optionalColumns: noOptionalRailColumns,
         ),
-        layerMuteSlotWidth + layerOpacitySlotWidth,
+        layerVisibilitySlotWidth + layerOpacitySlotWidth,
       );
       expect(
         layerRailTrailingWidth(
           columns: layerRailColumnWidthsAtOne,
-          from: LayerRailTrailingSlot.mute,
+          from: LayerRailTrailingSlot.visibility,
           optionalColumns: (onion: false, blend: true),
         ),
-        layerMuteSlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
+        layerVisibilitySlotWidth + layerOpacitySlotWidth + layerBlendSlotWidth,
       );
       // R10 R6: the eye-swipe band read the tail by hand and forgot BLEND
       // entirely, so the band sat 58px off the eye whenever blend showed.
@@ -662,12 +694,12 @@ void main() {
       expect(
         layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              from: LayerRailTrailingSlot.mute,
+              from: LayerRailTrailingSlot.visibility,
               optionalColumns: (onion: false, blend: true),
             ) -
             layerRailTrailingWidth(
               columns: layerRailColumnWidthsAtOne,
-              from: LayerRailTrailingSlot.mute,
+              from: LayerRailTrailingSlot.visibility,
               optionalColumns: noOptionalRailColumns,
             ),
         layerBlendSlotWidth,

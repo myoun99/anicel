@@ -68,7 +68,10 @@ void main() {
       headIndex: 4,
     );
 
-    expect(commaOf(session).setCommaForSelection(8), isTrue);
+    commaOf(session).setCommaOn(
+      session.rangeSelections.selectionBlockStartsByLayer()!,
+      8,
+    );
 
     expect(rowOf(session, storyboardId), {0: 8, 8: 19});
     expect(session.requireActiveCut.duration, 27);

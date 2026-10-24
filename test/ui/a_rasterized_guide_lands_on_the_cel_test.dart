@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/settle_async.dart';
+import '../helpers/rail_group_button.dart';
 
 /// 🗣️vanishing-point-types-Q5 (유저 2026-10-16): 래스터라이즈 draws 「지금
 /// 레이어의 지금 셀에」 — not the new row the question recommended — and
@@ -75,8 +76,7 @@ void main() {
     tool.value = tool.value.copyWith(tool: CanvasTool.guide);
     await tester.pumpAndSettle();
     // The tool settings group ships closed on the left rail (slot 2).
-    final group = EditorWorkspace.railGroupId(right: false, slot: 2);
-    await tester.tap(find.byKey(ValueKey<String>('rail-group-$group')));
+    await pressToolSettingsButton(tester);
     await tester.pumpAndSettle();
     final rows = session.requireActiveCut.layers.length;
     final steps = session.historyManager.undoCount;

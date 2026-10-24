@@ -2,7 +2,6 @@ import 'dart:ui' show Offset;
 
 import '../models/canvas_size.dart';
 import '../models/layer.dart';
-import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show ResolvedLayerEffect, resolveLayerEffectsAt;
 import '../models/se_name_tag.dart';
@@ -28,7 +27,6 @@ class ResolvedSeNameTag {
     required this.shot,
     this.inShot = const LayerPlacement.identity(),
     this.opacity = 1,
-    this.blendMode = LayerBlendMode.normal,
     this.effects = const [],
     this.line,
     this.delivery,
@@ -65,10 +63,15 @@ class ResolvedSeNameTag {
 
   /// The row's effective opacity at this frame — what a layer's multiplies
   /// its picture by ([resolveLayerEffectiveOpacityAt]).
+  ///
+  /// The tag takes the row's opacity and effects but NOT its blend: it is
+  /// drawn normal, whatever the row's blend. 🗣️F-387-Q5 (유저 2026-10-22:
+  /// 「이름표는 블렌드 합성 필요없음. 그냥 일반. 노말블렌드면 됨. 아래 그림에
+  /// 곱해서 보이게할 필요도 이유도 없음」). ↩️F-387 handed the tag the row's
+  /// blend as well, so a multiply SE row multiplied its name into the picture
+  /// under it — and an advanced blend needs that picture, which a tag drawn
+  /// over the composite never holds.
   final double opacity;
-
-  /// The row's blend — what a layer composites its picture with.
-  final LayerBlendMode blendMode;
 
   /// The row's effect chain at this frame ([resolveLayerEffectsAt]) — what
   /// a layer's picture takes before it is composited.
@@ -185,7 +188,6 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
           layer: layer,
           frameIndex: globalFrame,
         ),
-        blendMode: layer.blendMode,
         effects: resolveLayerEffectsAt(
           effects: layer.effects,
           frameIndex: globalFrame,
@@ -226,7 +228,6 @@ Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
       tag.shot,
       tag.inShot,
       tag.opacity,
-      tag.blendMode,
       Object.hashAll(tag.effects),
     ),
 ]);

@@ -51,8 +51,6 @@ void main() {
                 onSheetAllOff: () {},
                 onClearMarkFilter: () => cleared.add('marks'),
                 onClearAllFillReferences: () {},
-                onMuteAllSe: () {},
-                onUnmuteAllSe: () {},
                 onBypassAllFx: () {},
                 onEnableAllFx: () {},
                 onToggleMarkFilter: marks.add,

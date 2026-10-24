@@ -39,9 +39,14 @@ import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/display_resample.dart' show displayScaleOf;
+import 'canvas/paper_background.dart' show paintAbsentPlane;
+import 'canvas/stage_planes_painter.dart'
+    show StagePlane, backdropOnScreen, stageGroundOf;
 import 'canvas/viewport_canvas_transform.dart';
+import '../services/composite_effect_paint.dart' show alphaOnly;
 import 'brush/main_canvas_brush_host.dart';
-import 'brush/brush_canvas_panel.dart' show BrushCanvasPanel, CanvasFloats;
+import 'brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel, CanvasEdgePill, CanvasFloats;
 import 'sliced_value_listenable_builder.dart';
 import '../models/canvas_shape_kind.dart';
 import 'camera/camera_frame_overlay.dart';
@@ -65,15 +70,17 @@ import 'playback/canvas_track_stack_view.dart';
 import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';
+import 'panels/tool_size_preset_panel.dart' show ToolSizePresetPanel;
 import 'debug/input_inspector.dart';
 import 'text/app_face.dart';
 import 'text/app_strings.dart';
 import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
-import 'timeline/memo_token.dart' show ByList;
+import 'timeline/memo_token.dart' show ByIdentity, ByList;
 import 'timeline/timeline_drag_preview.dart'
     show
+        BlockMoveDragPreview,
         TimelineDragPreview,
         timelineDragPreviewGlobalLayerFor,
         timelineDragPreviewLayerFor;
@@ -204,6 +211,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.eyedropperSource,
     this.onInvokeAction,
     this.flipHud,
+    this.leftPill,
   });
 
   final EditorSessionManager session;
@@ -215,6 +223,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The flip HUD's state (shell-owned), forwarded to the panel that
   /// mounts the window.
   final FlipHudController? flipHud;
+
+  /// What stands on the canvas's left edge, forwarded to its panel — see
+  /// [BrushCanvasPanel.leftPill].
+  final CanvasEdgePill? leftPill;
 
   /// The active brush tool + settings (workspace-owned; the tools and
   /// brush-settings panels write it).
@@ -279,6 +291,61 @@ class EditorCanvasArea extends StatefulWidget {
   /// The transform tool's settings (mode, scale anchor, resampler, mesh
   /// grid); null keeps the defaults.
   final ValueListenable<TransformToolOptions>? transformOptions;
+
+  /// What the canvas shows of the session: the area hears the session only
+  /// when this changes ([SlicedListenableBuilder]).
+  ///
+  /// 🔬Every session notify built the area again — 77 elements, and the
+  /// panel laid out under them — for a guide picked with another tool in
+  /// hand or a sheet's title typed (session-news-rebuilds-unsliced,
+  /// measured 2026-10-22 in the app at 1600x1000).
+  ///
+  /// The session announces from 165 places (counted 2026-10-22). The 137
+  /// that change the project reach the canvas through the project's fields
+  /// it draws from — every field but the work's name, id and date, the
+  /// sheet's, the sound's rate, the export's and the viewer's, which
+  /// `the_canvas_hears_what_it_shows_test` names. The other 28 change what
+  /// is kept beside the project. Where the user stands — a gap is no cut
+  /// stood on — and the cels' pictures (an open or an import lays them
+  /// without a project change) are drawn and heard here; the frame and a
+  /// run come by channels of their own (`_FrameRetargetScope`, the playback
+  /// flag). The clipboards, the solo switches, the timeline's master
+  /// opacity, the media's existence and movies' lengths, the file the work
+  /// is bound to, the playback mode and the sound's conforms are drawn
+  /// nowhere on the canvas; the guide picked and a recording's streamer
+  /// are, by the guides and the streamer, which hear them themselves.
+  static Object shownBy(EditorSessionManager session) {
+    final project = session.repository.requireProject();
+    final cels = session.renderCaches.brushFrameStore;
+    // ⚠️A project's lists are made anew by every write (`Project` holds them
+    // unmodifiable), so they compare by what they hold: the tracks each by
+    // identity — a write keeps the ones it did not touch — and the media's
+    // and the fonts' entries, small values, by `==`.
+    return (
+      tracks: ByList([for (final track in project.tracks) ByIdentity(track)]),
+      frameRate: project.frameRate,
+      cameraSize: project.cameraSize,
+      trailingFrames: project.trailingFrames,
+      background: project.background,
+      backdrop: (project.backdropArgb, project.backdropNone),
+      pasteboard: (
+        project.pasteboardArgb,
+        project.pasteboardNone,
+        project.pasteboardSize,
+        project.pasteboardInUse,
+      ),
+      cameraInstructions: ByIdentity(project.cameraInstructions),
+      mediaAssets: ByList(project.mediaAssets),
+      fonts: ByList(project.fonts),
+      linkRegistry: ByIdentity(project.linkRegistry),
+      // A movie's frames are timed by the sound's pull (`MovieClock`).
+      audioSpeed: (project.audioSpeedNumerator, project.audioSpeedDenominator),
+      cut: session.activeCutId,
+      layer: session.activeLayerId,
+      celContent: cels.celContentRevision.value,
+      celPixels: cels.celPixelRevision.value,
+    );
+  }
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -365,6 +432,33 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 children: walk(children),
                 effects: effects,
                 mix: mix,
+              ),
+            );
+          case CompositeBackdropBlend(
+            :final backdrop,
+            :final source,
+            :final blendMode,
+          ):
+            // Under the active row wherever it stands: in what the blend
+            // reads below it — at its top when the row IS the blended one,
+            // directly under it, which it then composes over as it would
+            // over a ghost in a GPU blend.
+            final below = walk(backdrop);
+            final CompositeNode<CanvasStackRow> row;
+            if (!placed &&
+                source is CompositeLeaf<CanvasStackRow> &&
+                source.payload is CanvasActiveLayerRow) {
+              below.addAll(ghostNodes);
+              placed = true;
+              row = source;
+            } else {
+              row = walk([source]).single;
+            }
+            out.add(
+              CompositeBackdropBlend<CanvasStackRow>(
+                backdrop: below,
+                source: row,
+                blendMode: blendMode,
               ),
             );
           case CompositeLeaf(payload: CanvasLayerImageRequest()):
@@ -593,9 +687,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// Every row of the open cut and of its track as a drag shows it, in both
-  /// forms, and the camera the canvas draws — equal while the drag changes
-  /// none of them (a movie's end, a sound's silhouette on an SE cell, a V
-  /// track's chain, another cut's rows).
+  /// forms, the pictures it moves among cels with no row changing (F-330,
+  /// [celPixelsOf]) and the camera the canvas draws — equal while the drag
+  /// changes none of them (a movie's end, a sound's silhouette on an SE
+  /// cell, a V track's chain, another cut's rows).
   ///
   /// ⚠️A new reader of the channel on the canvas reads rows by the same two
   /// functions ([timelineDragPreviewLayerFor], [timelineDragPreviewGlobalLayerFor])
@@ -615,19 +710,30 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         timelineDragPreviewLayerFor(preview, row.id),
         timelineDragPreviewGlobalLayerFor(preview, row.id),
       ],
+      if (preview case BlockMoveDragPreview(:final picturesMoved))
+        picturesMoved,
       session.camera.activeCutCameraTrack,
     ]);
   }
 
   Widget _buildFollowingSession(EditorSessionManager session) {
+    // The session subscription lives HERE now (HomePage no longer setStates
+    // the world), for what the canvas shows of it
+    // ([EditorCanvasArea.shownBy]). Committed seeks retarget the editing
+    // stack through the _FrameRetargetScope below — deliberately NOT the
+    // frame cursor, whose per-move scrub firehose must never rebuild the
+    // brush host — and only when the playhead actually changed frames
+    // (R13-3).
+    return SlicedListenableBuilder<Object>(
+      listenable: session,
+      slice: () => EditorCanvasArea.shownBy(session),
+      builder: (context, _) => _buildFollowingItsChannels(session),
+    );
+  }
+
+  Widget _buildFollowingItsChannels(EditorSessionManager session) {
     return ListenableBuilder(
-      // The session subscription lives HERE now (HomePage no longer
-      // setStates the world). Committed seeks retarget the editing stack
-      // through the _FrameRetargetScope below — deliberately NOT the frame
-      // cursor, whose per-move scrub firehose must never rebuild the brush
-      // host — and only when the playhead actually changed frames (R13-3).
       listenable: Listenable.merge([
-        session,
         // Onion-skin pegs + the per-layer set re-plan the underlay
         // ghosts (P2 → UI-R17 #5).
         session.onionSkin.settings,
@@ -855,6 +961,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       _rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
       session.editingCanvas.activeRowStrokeRefusal == null;
 
+  /// Whether the row you stand on is a DRAWING SURFACE at all: not a
+  /// property lane, and a layer whose kind takes strokes — the rows
+  /// [_drawRefusalFor] does not call undrawable. A HIDDEN row is one: it
+  /// takes no stroke while its eye is off, and is still the tool's.
+  ///
+  /// 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로
+  /// 도구가 연관이 없는 곳에선 기본커서. 트랜스폼fx든 뭐 그런거 전부」 — on any
+  /// other row a marking tool wears no cursor of its own.
+  static bool _standingRowIsDrawn(EditorSessionManager session) =>
+      _rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+      session.editingCanvas.activeRowStrokeRefusal !=
+          StrokeRefusal.notDrawable;
+
   void _noteCanvasProbe(
     EditorSessionManager session,
     bool inGap,
@@ -891,7 +1010,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     }
     var next = start * math.pow(2, upwardDelta / 120).toDouble();
     if (snap) {
-      next = AppInput.snapToList(next, AppInput.settings.value.brushSizeSnaps);
+      // 🗣️F-391 (유저 2026-10-17): 「브러시 크기 스냅은 … 툴 사이즈 패널을
+      // 바탕으로」 — the rack the size bar's ± step through (F-325).
+      next = AppInput.snapToList(next, ToolSizePresetPanel.presets);
     }
     widget.onBrushToolStateChanged?.call(
       widget.brushToolState.value.withActiveSize(next),
@@ -1750,6 +1871,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final standing = session.editingGlobalFrame;
     final partners = _olPartnersAt(session, standing);
     final frame = session.camera.cameraFrameSize;
+    final project = session.repository.requireProject();
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -1758,6 +1880,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       // backdrop-colored wash at (1 − fade) is
       // pixel-equal to thinning the unit, without
       // re-compositing the editing stack.
+      //
+      // The backdrop AS THE SCREEN SHOWS IT ([backdropOnScreen]): over the
+      // panel's ground, opaque — what the film's floor is under the thinned
+      // unit. ↩️The wash took the backdrop's own colour at the fade's share,
+      // its alpha dropped: a translucent backdrop thinned the cut to a
+      // colour the film never showed (a-translucent-backdrop-lies-twice-
+      // on-the-film, measured 10-23).
       //
       // A run seen through the camera has the camera's frame for its unit
       // ([PlaybackFramePainter.veils]), and its O.L partner the camera too.
@@ -1788,13 +1917,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     ? frame.canvasRect
                     : session.pasteboardOf(canvasSize).rect,
                 veils: veils,
-                color: Color(
-                  session.repository.requireProject().backdropArgb,
-                ).withValues(
-                  alpha: backdropShareUnder(cutFadeOpacity, [
-                    for (final partner in partners) partner.opacity,
-                  ]),
-                ),
+                backdrop: backdropOnScreen((
+                  color: Color(project.backdropArgb),
+                  none: project.backdropNone,
+                ), stageGroundOf(context)),
+                share: backdropShareUnder(cutFadeOpacity, [
+                  for (final partner in partners) partner.opacity,
+                ]),
                 devicePixelRatio: EffectiveDevicePixelRatio.of(context),
               ),
             ),
@@ -1888,19 +2017,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       child: IgnorePointer(
         // The drag in flight repaints the guides and nothing else: the
         // preview is a channel of its own, where a `setState` here used to
-        // rebuild the whole canvas area per pointer sample.
-        child: ValueListenableBuilder<CutGuides?>(
-          valueListenable: verbs.guidesDragPreview,
-          builder: (context, _, _) => CustomPaint(
+        // rebuild the whole canvas area per pointer sample. So does the
+        // guide picked, which the area does not hear
+        // ([EditorCanvasArea.shownBy]).
+        child: SlicedListenableBuilder<({CutGuides guides, GuideId? picked})>(
+          listenable: Listenable.merge([session, verbs.guidesDragPreview]),
+          slice: () => (
+            guides: verbs.activeCutGuidesForDisplay,
+            picked: verbs.selectedGuideId,
+          ),
+          builder: (context, shown) => CustomPaint(
             painter: GuideOverlayPainter(
-              guides: verbs.activeCutGuidesForDisplay,
+              guides: shown.guides,
               viewport: viewport,
               canvasSize: canvasSize,
               emphasized: tool == CanvasTool.guide,
               vanishingPointLabel: AppText.strings.guideVanishingPoint,
               color: guideColorOf(context),
               face: appFaceOf(DefaultTextStyle.of(context).style),
-              selectedGuideId: session.cutVerbs.selectedGuideId,
+              selectedGuideId: shown.picked,
             ),
           ),
         ),
@@ -1909,16 +2044,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 }
 
-/// The editing canvas's cut-fade wash (R9-C): the fade target color over
-/// the cut's unit at (1 − fadeOpacity), under the panel viewport — what
+/// The editing canvas's cut-fade wash (R9-C): the backdrop over the cut's
+/// unit at its [share] of the frame, under the panel viewport — what
 /// playback's thinning of the unit shows, so an fx-on faded frame reads
 /// identically while editing.
+///
+/// 🚨An ABSENT backdrop washes the CHECKERBOARD (F-114,
+/// fade-wash-ignores-an-absent-backdrop, 2026-10-23): what the thinned unit
+/// reveals on the film is its floor, and an absent backdrop's floor is the
+/// checkerboard — in the screen's cells, so the wash's lie exactly on the
+/// floor's own. ↩️It washed the backdrop's kept colour, so standing on a
+/// fade showed a colour the film never did.
 class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   const _CutFadeWashPainter({
     required this.viewport,
     required this.unit,
     required this.veils,
-    required this.color,
+    required this.backdrop,
+    required this.share,
     required this.devicePixelRatio,
   });
 
@@ -1931,7 +2074,15 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
   /// The screens one-sided transitions lay over the cut (F-192), under the
   /// wash — they are the unit's, and the wash thins the unit.
   final List<TransitionVeil> veils;
-  final Color color;
+
+  /// The stage's backdrop as the screen shows it ([backdropOnScreen]) —
+  /// opaque, or absent — so laid at [share] over the unit it is the unit
+  /// thinned over the film's floor.
+  final StagePlane backdrop;
+
+  /// How much of the frame the backdrop takes over the unit
+  /// ([backdropShareUnder]).
+  final double share;
 
   /// The pan-phase snap's device grid — the wash covers the unit the
   /// snapped stack painted, not a sub-pixel beside it.
@@ -1939,6 +2090,7 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final screen = canvas.getTransform();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     applyViewportTransform(
@@ -1947,12 +2099,22 @@ class _CutFadeWashPainter extends CustomPainter with RepaintOnProps {
       devicePixelRatio: devicePixelRatio,
     );
     paintTransitionVeils(canvas, unit, veils);
-    canvas.drawRect(unit, Paint()..color = color);
+    if (!backdrop.none) {
+      canvas.drawRect(
+        unit,
+        Paint()..color = backdrop.color.withValues(alpha: share),
+      );
+    } else if (share > 0) {
+      canvas.saveLayer(unit, Paint()..color = alphaOnly(share));
+      paintAbsentPlane(canvas, unit, screen: screen, antiAlias: true);
+      canvas.restore();
+    }
     canvas.restore();
   }
 
   @override
-  Object get props => (viewport, unit, ByList(veils), color, devicePixelRatio);
+  Object get props =>
+      (viewport, unit, ByList(veils), backdrop, share, devicePixelRatio);
 }
 
 /// The editing canvas's SE name tags (R5b): the same draw the frame

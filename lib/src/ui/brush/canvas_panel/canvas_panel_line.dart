@@ -96,7 +96,7 @@ class _CanvasPanelLine {
   /// drawn: a key that went down under a drawing pen starts its line where
   /// that stroke ends.
   void follow() {
-    final hand = _state._toolCursorHover.value;
+    final hand = _state._toolCursorHover.value?.at;
     _show(
       !inForce.value || hand == null || _state._strokeActive
           ? null

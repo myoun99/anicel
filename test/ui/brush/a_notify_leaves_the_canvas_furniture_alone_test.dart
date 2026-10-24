@@ -18,6 +18,12 @@ import '../../helpers/frame_census.dart';
 /// the room in three LayoutBuilders that ran again whenever the panel was
 /// built, and a docked panel's host laid its layer out with every rebuild.
 /// Every cut a run crosses is such a notify, for the shell.
+///
+/// ↩️The notify was a bare `notifyChanged`. Since the canvas hears the
+/// session only for what it shows (session-news-rebuilds-unsliced ㉡,
+/// `the_canvas_hears_what_it_shows_test.dart`), that one builds no panel at
+/// all — so it is asked with a notify the canvas DOES hear and its shell
+/// does not show: a layer's eye.
 void main() {
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
@@ -74,12 +80,18 @@ void main() {
     }
   }
 
-  testWidgets('a notify that changes nothing paints none of the canvas '
-      'furniture, on the floor or docked', (tester) async {
+  testWidgets('a notify that changes nothing the shell shows paints none of '
+      'the canvas furniture, on the floor or docked', (tester) async {
     await pumpApp(tester);
+    final session = sessionOf(tester);
     final pieces = furniture(tester);
 
-    final frame = await frameCensus(tester, sessionOf(tester).notifyChanged);
+    final frame = await frameCensus(
+      tester,
+      () => session.layerSwitches.toggleLayerVisibility(
+        session.activeLayerId!,
+      ),
+    );
 
     expectNonePainted(pieces, frame);
   });

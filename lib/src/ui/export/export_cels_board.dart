@@ -189,7 +189,7 @@ class ExportCelsBoard extends StatefulWidget {
       bandHeight +
       rowsShown * timelineLayerRowHeightIn(context) +
       1 +
-      AppScrollbarLane.wide +
+      AppScrollbarLane.thin +
       2;
 
   /// The attach column's width (export-four-tabs-Q1, 유저 2026-10-08: 「안 A —
@@ -204,7 +204,7 @@ class ExportCelsBoard extends StatefulWidget {
   static const double minimumWidth =
       rulesWidth +
       stackWidth +
-      AppScrollbarLane.wide +
+      AppScrollbarLane.thin +
       railWidth +
       5 * blockWidth +
       2;
@@ -274,7 +274,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          width: AppScrollbarLane.wide,
+          width: AppScrollbarLane.thin,
           child: AppControllerScrollbar(
             controller: _down,
             axis: Axis.vertical,
@@ -344,10 +344,10 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   /// The horizontal bar's lane, under its hairline: the bar runs under the
   /// blocks it scrolls, not under the rail that stays.
   Widget _acrossLane(BorderSide line) => Container(
-    height: AppScrollbarLane.wide + 1,
+    height: AppScrollbarLane.thin + 1,
     decoration: BoxDecoration(border: Border(top: line)),
     padding: const EdgeInsets.only(
-      left: AppScrollbarLane.wide + ExportCelsBoard.railWidth,
+      left: AppScrollbarLane.thin + ExportCelsBoard.railWidth,
     ),
     child: AppControllerScrollbar(
       controller: _across,

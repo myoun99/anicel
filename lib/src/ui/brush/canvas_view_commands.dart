@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 /// viewport interaction math and the viewport-center anchor. Unbound
 /// calls are no-ops (no canvas panel on screen).
 class CanvasViewCommands {
-  void Function(double degrees)? _rotateBy;
+  void Function({required bool clockwise})? _rotateStep;
   VoidCallback? _toggleFlipHorizontal;
   VoidCallback? _toggleFlipVertical;
   VoidCallback? _resetRotation;
@@ -19,7 +19,7 @@ class CanvasViewCommands {
   /// an unconditional `unbind()` produced (유저 #13, 2026-08-14).
   void bind(
     Object owner, {
-    required void Function(double degrees) rotateBy,
+    required void Function({required bool clockwise}) rotateStep,
     required VoidCallback toggleFlipHorizontal,
     VoidCallback? toggleFlipVertical,
     VoidCallback? resetRotation,
@@ -28,7 +28,7 @@ class CanvasViewCommands {
     VoidCallback? resetView,
   }) {
     _owner = owner;
-    _rotateBy = rotateBy;
+    _rotateStep = rotateStep;
     _toggleFlipHorizontal = toggleFlipHorizontal;
     _toggleFlipVertical = toggleFlipVertical;
     _resetRotation = resetRotation;
@@ -42,7 +42,7 @@ class CanvasViewCommands {
       return;
     }
     _owner = null;
-    _rotateBy = null;
+    _rotateStep = null;
     _toggleFlipHorizontal = null;
     _toggleFlipVertical = null;
     _resetRotation = null;
@@ -55,9 +55,11 @@ class CanvasViewCommands {
   /// buttons take (I-19: Shift+. and Shift+, press them).
   void zoomStep({required bool zoomIn}) => _zoomStep?.call(zoomIn: zoomIn);
 
-  /// Rotates the canvas VIEW by [degrees] (clockwise positive) around the
-  /// viewport center.
-  void rotateBy(double degrees) => _rotateBy?.call(degrees);
+  /// One press of the canvas bar's rotate left / right — the same step the
+  /// buttons take, on the rotation snap's grid (F-391). ↩️The keys turned
+  /// the view by a 15° of their own (`rotateBy`).
+  void rotateStep({required bool clockwise}) =>
+      _rotateStep?.call(clockwise: clockwise);
 
   /// Toggles the horizontal view mirror around the viewport center.
   void toggleFlipHorizontal() => _toggleFlipHorizontal?.call();

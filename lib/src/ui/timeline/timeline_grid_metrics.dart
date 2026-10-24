@@ -109,7 +109,14 @@ double timelineLayerRowGrowthIn(BuildContext context) {
 /// 「추가로 공간 만드는게아니라 이름공간을 줄여서 오른쪽정렬로 두는방식으로
 /// … 레이어의 가로길이도 전처럼 줄이자 … 즉 레이어 이름행이 2개분
 /// 줄어드는거지」. The graph's column went, and the legend's head over it.
-const double timelineLayerControlsWidth = 443 + layerLaneValueHandsWidth;
+/// 519 → 461 (F-409, 유저 2026-10-19): 「레이어 이름영역이 너무 김. 이정도로
+/// 안길어도됨. 지금의 2/3여도 됨」 — a layer row's name 176 → 117. The
+/// trailing run gave and took on the way (the speaker +4, the opacity −7
+/// and the blend +4, the plates' gaps in both), and the name is the rest.
+/// A lane's name gives up as much, and its member rows stood their
+/// navigator right after the section band to take some back (「이거 다
+/// 왼쪽정렬로 왼쪽에 붙어있도록. 공간만들고싶은거임」).
+const double timelineLayerControlsWidth = 385 + layerLaneValueHandsWidth;
 
 /// [timelineLayerControlsWidth] with [columns] in place of the 1× ones —
 /// the rail pays for its word-holding columns' growth
@@ -134,16 +141,24 @@ const double timelineSectionLabelGutterWidth = 0;
 ///
 /// 14 → 16 (rail-window round): the lane has to be comfortable to grab
 /// because it stopped being a leftover gap between the rail and the cells.
-/// The timeline moved it to the far left so the splitter could have that
-/// gap; the x-sheet's column now carries two bars, the rail's above the
-/// splitter and the frame's below it.
-const double timelineVerticalScrollbarWidth = AppScrollbarLane.wide;
+/// It went to the far left so the splitter could have that gap, and it
+/// stood at the frame area's far right for F-409, and past the splitter
+/// again since F-459 (`timeline_grid_frame`);
+/// the x-sheet's column carries two bars, the rail's above the splitter
+/// and the frame's below it.
+///
+/// F-409 (유저): 「프레임영역의 세로 스크롤바. 지금보다 살짝 더 두꺼운 스크롤바
+/// 사용」 — the thick bar ([AppScrollbarLane.thick]), and F-440 (유저
+/// 2026-10-23) keeps it so in either orientation: 「타임라인/콘티패널쪽은
+/// 세로 이동을 두꺼운거, 가로를 얇은것」.
+const double timelineVerticalScrollbarWidth = AppScrollbarLane.thick;
 
 /// The horizontal scrollbar rail closing the bottom of a grid. Both grids
 /// declared it privately (R10 R6 found the third copy while deriving the
 /// x-sheet's header against it); a number two surfaces subtract from the
-/// same viewport belongs to neither of them.
-const double timelineBottomScrollbarRailHeight = AppScrollbarLane.wide;
+/// same viewport belongs to neither of them. The thin bar — F-440: 「가로를
+/// 얇은것」.
+const double timelineBottomScrollbarRailHeight = AppScrollbarLane.thin;
 
 /// The paper-timesheet stride LADDER a frame axis thins its marks on (user
 /// rule, R-toolbar slim round): every frame, then every 3rd (1, 4, 7, …),
@@ -258,8 +273,8 @@ class TimelineGridMetrics {
   /// Height of each layer row and the frame header row.
   final double layerRowHeight;
 
-  /// Width reserved for the visible vertical scrollbar between the layer rail
-  /// and frame grid area.
+  /// Width of the layer-axis bar's column, at the frame area's far right
+  /// ([timelineVerticalScrollbarWidth]).
   final double verticalScrollbarWidth;
 
   /// The section-bracket gutter leading the layer rail (the timesheet's

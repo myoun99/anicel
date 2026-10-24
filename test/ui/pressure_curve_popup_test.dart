@@ -1,8 +1,8 @@
-import 'dart:typed_data';
 import 'dart:ui' show ImageByteFormat;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
@@ -369,6 +369,60 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('pressure-curve-popup')),
       findsNothing,
+    );
+  });
+
+  testWidgets('F-450: Escape closes it, as it closes every other window — '
+      'R27 #5 took the barrier\'s tap and Escape went with it', (
+    tester,
+  ) async {
+    await pumpButton(
+      tester,
+      curve: BrushPressureCurve.identity(),
+      onChanged: (_) {},
+    );
+    await openPopup(tester);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('pressure-curve-popup')),
+      findsNothing,
+      reason: '유저 2026-10-23 (F-450), the window up: 「키보드도 안먹힘」',
+    );
+  });
+
+  testWidgets('F-456: the graph draws the line joining its points, which '
+      'pull the curve from off it — Clip Studio\'s graph', (tester) async {
+    await pumpButton(
+      tester,
+      curve: BrushPressureCurve(const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.5, 0.8),
+        BrushCurvePoint(1.0, 1.0),
+      ]),
+      onChanged: (_) {},
+    );
+    await openPopup(tester);
+
+    final painter = find.descendant(
+      of: graph,
+      matching: find.byType(CustomPaint),
+    );
+    final size = tester.getSize(painter);
+    Offset at(double x, double y) =>
+        Offset(x * size.width, (1.0 - y) * size.height);
+    // The grid is drawn in lines too: each edge is the first line between
+    // its two points, the grid's passed over.
+    PaintPatternPredicate edge(Offset from, Offset to) =>
+        (method, arguments) =>
+            method == #drawLine && arguments[0] == from && arguments[1] == to;
+    expect(
+      tester.renderObject(painter),
+      paints
+        ..something(edge(at(0.0, 0.0), at(0.5, 0.8)))
+        ..something(edge(at(0.5, 0.8), at(1.0, 1.0))),
     );
   });
 

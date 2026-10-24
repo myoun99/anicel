@@ -6,6 +6,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_layer_resolve.dart';
@@ -386,85 +387,52 @@ void main() {
 
   group('the store', () {
     final dllPath = nativeEngineLibraryPathOrNull();
+    final store = TimelineGridTileStore.instance;
 
     setUp(() {
       QaNativeEngine.debugResetForTests();
       debugQaEngineLibraryPathOverride = dllPath;
       QaNativeEngine.debugForceDartFallback = false;
-      TimelineGridTileStore.instance.clear();
+      store.clear();
     });
 
     tearDown(() {
       QaNativeEngine.debugResetForTests();
       debugQaEngineLibraryPathOverride = null;
       QaNativeEngine.debugForceDartFallback = false;
-      TimelineGridTileStore.instance.clear();
+      store.clear();
     });
 
-    test('a comma step bakes again only the spans that reach the edit — the '
-        'ones before it keep their pixels', () async {
-      if (dllPath == null) {
-        markTestSkipped('qa_engine.dll not built');
-        return;
-      }
-      final store = TimelineGridTileStore.instance;
-      var landings = 0;
-      store.revision.addListener(() => landings += 1);
-      Future<void> waitIdle() =>
-          tileStoreIdle(store, seen: () => '$landings landings');
-
-      TimelineExposure block(int cel, int length) =>
-          TimelineExposure.drawing(FrameId('c$cel'), length: length);
-      // Three blocks, a gap, and at 16 — a span's edge — the block the
-      // comma drags.
-      final before = Layer(
-        id: const LayerId('row'),
-        name: 'Row',
-        frames: cels(),
-        timeline: {
-          0: block(0, 5),
-          6: block(1, 5),
-          12: block(2, 3),
-          16: block(3, 4),
-          20: block(4, 6),
-        },
-      );
-      // The comma at 16 grows by two; the block after it rides along.
-      final after = before.copyWith(
-        timeline: {
-          0: block(0, 5),
-          6: block(1, 5),
-          12: block(2, 3),
-          16: block(3, 6),
-          22: block(4, 6),
-        },
-      );
-      expect(
-        firstCellThatMayDiffer(before, after),
-        16,
-        reason: 'premise: the comma is where the two may part',
-      );
-      TimelineRowCellsPainter painterFor(Layer layer) =>
-          TimelineRowCellsPainter(
-            layer: layer,
-            geometry: testFrameGeometry(
-              frameCellExtent: 24,
-              frameEndIndexExclusive: 40,
-            ),
-            crossAxisExtent: 28,
-            exposureStateForLayer: stateFor,
-            frameNameForLayer: nameFor,
-            colorScheme: const ColorScheme.dark(),
-            baseTextStyle: const TextStyle(fontSize: 11),
-            tileStore: store,
-            substrateGeneration: 'p:cut',
-          );
-      // 24px cells: a span is four of them.
-      const spans = [
-        (0, 4), (4, 8), (8, 12), (12, 16), (16, 20),
-        (20, 24), (24, 28), (28, 32), (32, 36), (36, 40),
-      ];
-      Map<(int, int), Object?> paint(TimelineRowCellsPainter painter) => {
+    TimelineExposure block(int cel, int length) =>
+        TimelineExposure.drawing(FrameId('c$cel'), length: length);
+    Layer row(Map<int, TimelineExposure> timeline) => Layer(
+      id: const LayerId('row'),
+      name: 'Row',
+      frames: cels(),
+      timeline: timeline,
+    );
+    TimelineRowCellsPainter painterFor(Layer layer) => TimelineRowCellsPainter(
+      layer: layer,
+      geometry: testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: 40,
+      ),
+      crossAxisExtent: 28,
+      exposureStateForLayer: stateFor,
+      frameNameForLayer: nameFor,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      tileStore: store,
+      substrateGeneration: 'p:cut',
+    );
+    // 24px cells: a span is four of them.
+    const spans = [
+      (0, 4), (4, 8), (8, 12), (12, 16), (16, 20),
+      (20, 24), (24, 28), (28, 32), (32, 36), (36, 40),
+    ];
+    Map<(int, int), Object?> paint(Layer layer) {
+      final painter = painterFor(layer);
+      return {
         for (final span in spans)
           span: store.tileFor(
             painter: painter,
@@ -473,68 +441,198 @@ void main() {
             devicePixelRatio: 1.0,
           ),
       };
+    }
 
-      expect(paint(painterFor(before)).values, everyElement(isNull));
+    // What the store's answer is held to: whether a span bakes the same
+    // paper, lines and ink from two layers.
+    Future<bool> bakesAlike(Layer a, Layer b, (int, int) span) async {
+      final (from, to) = span;
+      Future<List<int>> inkOf(TimelineRowCellsPainter painter) =>
+          store.debugForegroundOps(
+            painter: painter,
+            spanStartIndex: from,
+            spanEndIndexExclusive: to,
+            devicePixelRatio: 1.0,
+          );
+      final (pa, pb) = (painterFor(a), painterFor(b));
+      final (sa, sb) = (pa.substrateIn(from, to), pb.substrateIn(from, to));
+      return listEquals(sa.paper, sb.paper) &&
+          listEquals(sa.lines, sb.lines) &&
+          listEquals(await inkOf(pa), await inkOf(pb));
+    }
+
+    Future<List<(int, int)>> movedBetween(Layer a, Layer b) async => [
+      for (final span in spans)
+        if (!await bakesAlike(a, b, span)) span,
+    ];
+
+    test('a comma step bakes again only the spans whose bake it moved — the '
+        'rest keep their pixels', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      var landings = 0;
+      store.revision.addListener(() => landings += 1);
+      Future<void> waitIdle() =>
+          tileStoreIdle(store, seen: () => '$landings landings');
+
+      // Three blocks, a gap, and at 16 — a span's edge — the block the
+      // comma drags.
+      final before = row({
+        0: block(0, 5),
+        6: block(1, 5),
+        12: block(2, 3),
+        16: block(3, 4),
+        20: block(4, 6),
+      });
+      // The comma at 16 grows by two; the block after it rides along.
+      final after = row({
+        0: block(0, 5),
+        6: block(1, 5),
+        12: block(2, 3),
+        16: block(3, 6),
+        22: block(4, 6),
+      });
+      expect(
+        firstCellThatMayDiffer(before, after),
+        16,
+        reason: 'premise: the comma is where the two may part',
+      );
+
+      expect(paint(before).values, everyElement(isNull));
       await waitIdle();
-      final warm = paint(painterFor(before));
+      final warm = paint(before);
       expect(warm.values, everyElement(isNotNull));
       final baked = landings;
 
       // A release lands the row a new instance of the same cells: every
       // tile serves it.
-      final released = paint(
-        painterFor(before.copyWith(timeline: {...before.timeline})),
-      );
+      final released = paint(row({...before.timeline}));
       for (final span in spans) {
         expect(identical(released[span], warm[span]), isTrue, reason: '$span');
       }
       await waitIdle();
       expect(landings, baked, reason: 'the same cells bake nothing');
 
-      final stepped = paint(painterFor(after));
+      final stepped = paint(after);
+      final moved = await movedBetween(before, after);
+      expect(
+        moved,
+        const [(16, 20), (20, 24), (24, 28), (28, 32)],
+        reason: 'premise: the comma moves what these bake — the block it '
+            'grows, the one riding along, the empty cell after that — and '
+            'what lies past them is empty paper in both',
+      );
       for (final span in spans) {
-        if (span.$2 < 16) {
+        if (!moved.contains(span)) {
           expect(
             identical(stepped[span], warm[span]),
             isTrue,
-            reason: 'span $span ends before the comma can show: kept',
+            reason: 'span $span bakes as it did: kept',
           );
         }
       }
       await waitIdle();
+      // 🗣️F-446: ↩️every span from the first cell the two may part at baked
+      // again — (12, 16) because its last paper asks cell 16, and the empty
+      // spans past the blocks for nothing.
       expect(
         landings - baked,
-        spans.where((span) => span.$2 >= 16).length,
-        reason: 'exactly the spans that reach the comma bake again — '
-            '(12, 16) among them: its last paper asks cell 16',
+        moved.length,
+        reason: 'exactly the spans whose bake the comma moved bake again',
       );
-      final settled = paint(painterFor(after));
-      for (final span in spans.where((span) => span.$2 < 16)) {
+      final settled = paint(after);
+      for (final span in spans.where((span) => !moved.contains(span))) {
         expect(identical(settled[span], warm[span]), isTrue);
       }
 
       // A second edit that parts EARLIER than the first: what the first
       // kept is asked again, of the newest layer — not answered by the pair
       // the first one asked about.
-      final again = after.copyWith(
-        timeline: {
-          0: block(0, 5),
-          6: block(2, 5),
-          12: block(2, 3),
-          16: block(3, 6),
-          22: block(4, 6),
-        },
-      );
+      final again = row({
+        0: block(0, 5),
+        6: block(2, 5),
+        12: block(2, 3),
+        16: block(3, 6),
+        22: block(4, 6),
+      });
       expect(firstCellThatMayDiffer(before, again), 6, reason: 'premise');
+      final renamed = await movedBetween(after, again);
+      expect(
+        renamed,
+        const [(4, 8)],
+        reason: 'premise: another cel at 6 moves the name it prints alone',
+      );
       final landed = landings;
-      final second = paint(painterFor(again));
-      expect(identical(second[(0, 4)], warm[(0, 4)]), isTrue);
+      final second = paint(again);
+      for (final span in spans.where((span) => !renamed.contains(span))) {
+        expect(identical(second[span], settled[span]), isTrue, reason: '$span');
+      }
       await waitIdle();
       expect(
         landings - landed,
-        spans.where((span) => span.$2 >= 6).length,
-        reason: 'the spans the first edit kept and this one reaches',
+        renamed.length,
+        reason: 'the spans the first edit kept and this one reaches are '
+            'asked what they bake now',
       );
+    });
+
+    // 🗣️F-446 (유저 2026-10-23): 「타임라인패널에서 엔드라인 드래그로
+    // 조절하는게 레이어가 많아질수록 렉이 심함」.
+    test("an end-line step grows each row's last ghost by a cell, and no "
+        'span bakes again', () async {
+      if (dllPath == null) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      var landings = 0;
+      store.revision.addListener(() => landings += 1);
+      Future<void> waitIdle() =>
+          tileStoreIdle(store, seen: () => '$landings landings');
+
+      // A TVPaint row: its last block holds on to the cut's end, a ghost
+      // the cut's length draws (`timeline_repeat`).
+      Layer heldTo(int end) => row({
+        0: block(0, 5),
+        6: block(1, 6),
+        12: TimelineExposure.drawing(
+          const FrameId('c1'),
+          length: end - 12,
+          ghostOf: const TimelineRunEdgeGhost(
+            side: TimelineRunEdgeSide.end,
+            mode: TimelineRunEdgeMode.hold,
+          ),
+        ),
+      });
+      final before = heldTo(16);
+      final after = heldTo(17);
+      expect(
+        firstCellThatMayDiffer(before, after),
+        12,
+        reason: 'premise: the two part where the ghost starts — the rule '
+            'alone baked every span from (12, 16) on again',
+      );
+      paint(before);
+      await waitIdle();
+      final warm = paint(before);
+      expect(warm.values, everyElement(isNotNull));
+      final baked = landings;
+
+      // ↩️(12, 16) and (16, 20) baked again: the hold's line ran on out of
+      // the one into the other, and the X that closes it moved a cell. Both
+      // are the ghost's ink, which the row lays over its tiles now.
+      expect(
+        await movedBetween(before, after),
+        isEmpty,
+        reason: "premise: nothing a tile bakes follows the ghost's end",
+      );
+      final stepped = paint(after);
+      for (final span in spans) {
+        expect(identical(stepped[span], warm[span]), isTrue, reason: '$span');
+      }
+      await waitIdle();
+      expect(landings, baked);
     });
   });
 }

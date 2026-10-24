@@ -8,6 +8,7 @@ import 'separable_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
+import 'brush_texture_mode.dart';
 import 'brush_tip_rotation_mode.dart';
 
 /// What a response curve is FOR: the setting it drives, and the input that
@@ -51,6 +52,7 @@ class BrushShape {
     this.angleDegrees = 0.0,
     this.tips = const [],
     this.tipOrder = BrushTipOrder.repeat,
+    this.tipsPerTurn = 1,
     this.rotationMode = BrushTipRotationMode.fixed,
     this.angleJitter = 0.0,
     this.scatterRadiusRatio = 0.0,
@@ -66,6 +68,7 @@ class BrushShape {
     this.textureContrast = 0.0,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.textureMode = BrushTextureMode.multiply,
     this.antiAlias = BrushAntiAlias.high,
     this.blendMode = BrushBlendMode.color,
     this.mixesGroundColor = false,
@@ -161,6 +164,17 @@ class BrushShape {
   /// Which tip each dab of a stroke takes — see [BrushTipOrder].
   final BrushTipOrder tipOrder;
 
+  /// How many of [tips] each turn of [tipOrder] holds: the order picks the
+  /// turn, and a dab throws one of that turn's tips at random. 1, every tip
+  /// a turn of its own, is Clip Studio's; more is GIMP's and Krita's image
+  /// pipe, a second rank selected at random. The last turn may hold fewer.
+  ///
+  /// 🗣️F-456-Q4 (유저 2026-10-23): 「기울기가 단계를 고르고, 그 단계 안에서
+  /// 여러 장 중 무작위」 — a pencil's lean picks the face its lead wears,
+  /// and of the faces worn that way any one lands, so the line's edge
+  /// breaks somewhere new every dab.
+  final int tipsPerTurn;
+
   /// The first tip, or `null` for the round one: what a single picture of
   /// the brush shows (its cursor, its tip swatch) and what a dab takes when
   /// nothing turns the tips.
@@ -243,6 +257,10 @@ class BrushShape {
 
   final double textureScale;
   final double textureDensity;
+
+  /// How the paper texture meets each dab's coverage — see
+  /// [BrushTextureMode].
+  final BrushTextureMode textureMode;
 
   /// How this brush composites. Every brush states one; [BrushBlendMode.color]
   /// IS 通常, so "normal" is a value here rather than an absence.
@@ -385,6 +403,7 @@ class BrushShape {
       angleDegrees: angleDegrees,
       tips: tips,
       tipOrder: tipOrder,
+      tipsPerTurn: tipsPerTurn,
       blendMode: blendMode,
       antiAlias: antiAlias,
       mixesGroundColor: mixesGroundColor,
@@ -409,6 +428,7 @@ class BrushShape {
       textureContrast: textureContrast,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      textureMode: textureMode,
     );
   }
 
@@ -424,6 +444,7 @@ class BrushShape {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -439,6 +460,7 @@ class BrushShape {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? mixesGroundColor,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
@@ -459,6 +481,7 @@ class BrushShape {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tips: tips ?? this.tips,
       tipOrder: tipOrder ?? this.tipOrder,
+      tipsPerTurn: tipsPerTurn ?? this.tipsPerTurn,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
@@ -474,6 +497,7 @@ class BrushShape {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      textureMode: textureMode ?? this.textureMode,
       blendMode: blendMode ?? this.blendMode,
       antiAlias: antiAlias ?? this.antiAlias,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
@@ -501,6 +525,7 @@ class BrushShape {
           other.angleDegrees == angleDegrees &&
           listEquals(other.tips, tips) &&
           other.tipOrder == tipOrder &&
+          other.tipsPerTurn == tipsPerTurn &&
           other.rotationMode == rotationMode &&
           other.angleJitter == angleJitter &&
           other.scatterRadiusRatio == scatterRadiusRatio &&
@@ -516,6 +541,7 @@ class BrushShape {
           other.textureContrast == textureContrast &&
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
+          other.textureMode == textureMode &&
           other.blendMode == blendMode &&
           other.antiAlias == antiAlias &&
           other.mixesGroundColor == mixesGroundColor &&
@@ -539,6 +565,7 @@ class BrushShape {
     angleDegrees,
     Object.hashAll(tips),
     tipOrder,
+    tipsPerTurn,
     rotationMode,
     angleJitter,
     scatterRadiusRatio,
@@ -553,6 +580,7 @@ class BrushShape {
     textureContrast,
     textureScale,
     textureDensity,
+    textureMode,
     blendMode,
     antiAlias,
     mixesGroundColor,
@@ -568,7 +596,7 @@ class BrushShape {
       'flow: $flow, hardness: $hardness, spacing: $spacing, '
       'curves: $curves, '
       'roundness: $roundness, angleDegrees: $angleDegrees, tips: $tips, '
-      'tipOrder: $tipOrder, '
+      'tipOrder: $tipOrder, tipsPerTurn: $tipsPerTurn, '
       'rotationMode: $rotationMode, angleJitter: $angleJitter, '
       'scatterRadiusRatio: $scatterRadiusRatio, scatterCount: $scatterCount, '
       'scatterBothAxes: $scatterBothAxes, dualMask: $dualMask, '
@@ -578,6 +606,7 @@ class BrushShape {
       'textureBrightness: $textureBrightness, '
       'textureContrast: $textureContrast, '
       'textureScale: $textureScale, textureDensity: $textureDensity, '
+      'textureMode: $textureMode, '
       'correction: $correction)';
 }
 

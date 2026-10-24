@@ -37,6 +37,7 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import '../helpers/cel_photo_fixture.dart';
 import '../helpers/reference_to.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/rail_group_button.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
@@ -79,11 +80,7 @@ Future<void> _pumpHome(WidgetTester tester, {Project? project}) async {
 /// about tab mechanics still want its tab, so they open its group first.
 Future<void> _openMedia(WidgetTester tester) async {
   await tester.tap(
-    find.byKey(
-      ValueKey<String>(
-        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
-      ),
-    ),
+    railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 3)),
   );
   await tester.pumpAndSettle();
 }
@@ -94,11 +91,7 @@ Future<void> _openMedia(WidgetTester tester) async {
 /// whole column rather than one panel hidden.
 Future<void> _closeRightRail(WidgetTester tester) async {
   await tester.tap(
-    find.byKey(
-      ValueKey<String>(
-        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 2)}',
-      ),
-    ),
+    railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 2)),
   );
   await tester.pumpAndSettle();
 }
@@ -484,18 +477,12 @@ void main() {
       expect(find.byType(BrushPresetPanel), findsOneWidget);
 
       // The settings have their own slot under it, and it ships closed.
-      final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
-      expect(
-        find.byKey(ValueKey<String>('rail-group-$settingsGroup')),
-        findsOneWidget,
-      );
+      expect(railGroupButton(toolSettingsGroupId), findsOneWidget);
       expect(find.byType(BrushSettingsPanel), findsNothing);
       // …and the media pool is not on this rail at all any more.
       expect(find.byKey(_mediaTabKey), findsNothing);
 
-      await tester.tap(
-        find.byKey(ValueKey<String>('rail-group-$settingsGroup')),
-      );
+      await pressToolSettingsButton(tester);
       await tester.pumpAndSettle();
       expect(find.byType(BrushSettingsPanel), findsOneWidget);
       expect(
@@ -1032,10 +1019,8 @@ void main() {
 
       // The button is still a target, and dropping on it both docks the
       // panel AND opens the group — 「두는 것은 여는 것」.
-      final railButton = find.byKey(
-        ValueKey<String>(
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 2)}',
-        ),
+      final railButton = railGroupButton(
+        EditorWorkspace.railGroupId(right: true, slot: 2),
       );
       await gesture.moveTo(tester.getCenter(railButton));
       await tester.pump();

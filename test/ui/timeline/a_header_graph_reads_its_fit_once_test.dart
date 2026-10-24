@@ -20,8 +20,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_graph.dart';
 /// the whole line's, and only the window moves.
 void main() {
   for (final mode in LaneGraphMode.values) {
-    test('a ${mode.name} graph painted again reads only the times its '
-        'window draws', () {
+    test('a ${mode.name} graph painted again in the same window reads '
+        'nothing', () {
       var reads = 0;
       final lane = PropertyLaneRow(
         laneId: 'rotation',
@@ -75,21 +75,10 @@ void main() {
 
       final first = readsOfAPaint();
       final again = readsOfAPaint();
-      final window = painter.visibleFrameWindow();
-      final times = laneGraphTimes(window, 24).length;
-      expect(
-        window.endIndexExclusive,
-        lessThan(40),
-        reason: '⛔전제: the window shows the key on 0 and not the one on 40',
-      );
-      expect(again, switch (mode) {
-        // Each time once. The key it marks is read once for its window,
-        // with the handles, since a mouse asks for it on every move (I-3).
-        LaneGraphMode.value => times,
-        // Each time and a step ahead of it — on the key on 0, the speed it
-        // leaves at alone: it arrives from nowhere, and marks nothing.
-        LaneGraphMode.speed => 2 * times,
-      });
+      // Its lines, keys and handles are read once for its window: a mouse
+      // asks for each on every move it makes over the picture (I-3 - the
+      // key, the handle and the pen's line).
+      expect(again, 0);
       expect(first, greaterThan(again), reason: 'the first read the fit');
     });
   }

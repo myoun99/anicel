@@ -67,7 +67,7 @@ class PressureCurveButton extends StatelessWidget {
     glyph: (ink) => _MiniCurvePainter(
       // The thumbnail draws PRESSURE — the source every device has. A
       // thumbnail that tried to show three would be three unreadable lines
-      // at 22x14.
+      // at 14x14.
       curve: curves[BrushInputSource.pressure],
       color: ink,
     ),
@@ -143,12 +143,15 @@ const double _graphGap = 6;
 const double _graphTitleHeight = 16;
 const double _axisHeight = 12;
 
-/// The inputs that have a graph — every one but ランダム, which Clip Studio
-/// gives only a 最小値.
+/// The inputs that have a graph — 筆圧 and 傾き, as Clip Studio's
+/// 影響元設定 draws them; 速度 and ランダム have a 最小値 alone.
+///
+/// 🗣️F-456-Q3 (유저 2026-10-23 「속도 그래프를 없애고 두 칸으로」).
+/// ↩️速度 had a graph, built on a file read that took 0x20 for 速度 and
+/// gave it the graph the file keeps for 傾き.
 const List<BrushInputSource> _graphed = [
   BrushInputSource.pressure,
   BrushInputSource.tilt,
-  BrushInputSource.speed,
 ];
 
 double get _innerWidth =>
@@ -386,6 +389,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     BrushPressureTarget.hardness => AppText.strings.brHardness,
     BrushPressureTarget.roundness => AppText.strings.brRoundness,
     BrushPressureTarget.spacing => AppText.strings.brSpacing,
+    BrushPressureTarget.textureDensity => AppText.strings.brTextureDensity,
   };
 
   String _nameOf(BrushInputSource source) => switch (source) {
@@ -753,6 +757,20 @@ class _CurveGraphPainter extends CustomPainter {
         ..style = PaintingStyle.stroke,
     );
 
+    Offset at(BrushCurvePoint point) =>
+        Offset(point.x * size.width, (1.0 - point.y) * size.height);
+    if (enabled) {
+      // The line joining the points, under the curve they pull — Clip
+      // Studio's graph draws it, and it is what shows a point bending the
+      // curve from off it (F-456).
+      final polygon = Paint()
+        ..color = AppColors.textDim
+        ..strokeWidth = 1;
+      for (var i = 0; i + 1 < points.length; i += 1) {
+        canvas.drawLine(at(points[i]), at(points[i + 1]), polygon);
+      }
+    }
+
     final lineColor = enabled ? accent : AppColors.textDim;
     final curvePaint = Paint()
       ..color = lineColor
@@ -778,11 +796,7 @@ class _CurveGraphPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1;
       for (final point in points) {
-        final center = Offset(
-          point.x * size.width,
-          (1.0 - point.y) * size.height,
-        );
-        final rect = Rect.fromCenter(center: center, width: 7, height: 7);
+        final rect = Rect.fromCenter(center: at(point), width: 7, height: 7);
         canvas.drawRect(rect, handleFill);
         canvas.drawRect(rect, handleStroke);
       }

@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// The viewers remember what they were looking at, WITH THE FILM (유저
 /// 확정 ⑤㉑, 2026-08-12): which reference belongs beside which drawing is
@@ -58,11 +59,7 @@ Future<void> _pumpEditor(WidgetTester tester, Project project) async {
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();
   await tester.tap(
-    find.byKey(
-      ValueKey<String>(
-        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 5)}',
-      ),
-    ),
+    railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 5)),
   );
   await tester.pumpAndSettle();
 }
@@ -190,7 +187,7 @@ void main() {
       if (menu.evaluate().isEmpty) {
         await _tapKey(
           tester,
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
+          railGroupButtonKey(EditorWorkspace.railGroupId(right: true, slot: 3)),
         );
       }
       await _tapKey(tester, 'media-asset-menu-${asset.path}');
@@ -312,11 +309,7 @@ void main() {
 
     // The media pool, then its row menu's "open in sub viewer".
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
-        ),
-      ),
+      railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 3)),
     );
     await tester.pumpAndSettle();
     await tester.tap(

@@ -31,6 +31,7 @@ class BrushStrokeDynamics {
        _tipTurns = BrushTipTurns.of(
          settings.tips,
          settings.tipOrder,
+         tipsPerTurn: settings.tipsPerTurn,
          random: tipRandom ?? math.Random(),
        );
 
@@ -81,7 +82,7 @@ class BrushStrokeDynamics {
       for (var copy = 0; copy < copies; copy += 1) {
         // Every dab takes a turn — each of a spray's too (F-176-Q3: 「dab
         // 하나마다 다음 장으로」).
-        final tip = tipTurns == null ? dab.tipMask : tipTurns.next();
+        final tip = tipTurns == null ? dab.tipMask : tipTurns.next(dab);
         if (tip == null && tipTurns != null) {
           continue;
         }
@@ -95,11 +96,11 @@ class BrushStrokeDynamics {
         }
 
         var angle = dab.angleDegrees;
-        final turn = switch (settings.rotationMode) {
-          BrushTipRotationMode.fixed => null,
-          BrushTipRotationMode.direction => directionDegrees,
-          BrushTipRotationMode.penTilt => penDirectionDegrees(dab),
-        };
+        final turn = tipTurnDegrees(
+          settings.rotationMode,
+          dab,
+          directionDegrees: directionDegrees,
+        );
         if (turn != null) {
           angle += turn;
         }
@@ -172,6 +173,24 @@ double? strokeDirectionDegrees({
   return math.atan2(-dy, dx) * 180.0 / math.pi;
 }
 
+/// How far the 向き base [mode] turns [dab]'s tip from its own angle, in
+/// dab degrees — null where it turns nothing: a fixed tip, or a base that
+/// cannot say yet (no [directionDegrees] before the stroke moves, a pen that
+/// reports no lean or no twist).
+///
+/// The one answer to "which way does the tip point": a stroke's dabs and
+/// the brush cursor (`poisedTip`, F-176-Q7) both ask it.
+double? tipTurnDegrees(
+  BrushTipRotationMode mode,
+  BrushDab dab, {
+  required double? directionDegrees,
+}) => switch (mode) {
+  BrushTipRotationMode.fixed => null,
+  BrushTipRotationMode.direction => directionDegrees,
+  BrushTipRotationMode.penTilt => penDirectionDegrees(dab),
+  BrushTipRotationMode.penTwist => penTwistDegrees(dab),
+};
+
 /// Which way the pen leans, as a dab angle — visual counterclockwise degrees
 /// from the horizontal, the way [BrushDab.angleDegrees] runs — or `null`
 /// when the pen cannot say: a device with no tilt, or a pen held upright,
@@ -189,4 +208,17 @@ double? penDirectionDegrees(BrushDab dab) {
     return null;
   }
   return -dab.tiltAzimuthDegrees;
+}
+
+/// How far the pen is turned about its barrel, as a dab angle — or `null`
+/// when the device reported no turn ([BrushDab.twistDegrees]).
+///
+/// 🚨THE SIGN FLIPS, as for [penDirectionDegrees]: a pen's twist runs
+/// CLOCKWISE and a dab's angle counterclockwise, so a pen turned clockwise
+/// turns its tip clockwise on the canvas.
+///
+/// 유저 2026-10-21 (F-176-Q9): 「클튜처럼 — 방향의 기준 「펜 축 회전」 하나」.
+double? penTwistDegrees(BrushDab dab) {
+  final twist = dab.twistDegrees;
+  return twist == null ? null : -twist;
 }

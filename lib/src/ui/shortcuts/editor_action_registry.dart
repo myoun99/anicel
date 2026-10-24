@@ -662,7 +662,7 @@ List<EditorActionDefinition> _projectSettingsActions() {
     String Function(AppStrings strings) title,
   ) => EditorActionDefinition.composed(
     id: id,
-    name: (language) => '${title(AppStrings.of(language))}…',
+    name: (language) => title(AppStrings.of(language)),
     shelf: ShortcutShelf.settings,
     defaultActivators: const [],
     menuRow: true,
@@ -860,12 +860,20 @@ abstract final class EditorActionIds {
   /// 🗣️I-45 — 링크 독립, the shared pill's button beside the linked paste.
   static const editUnlink = 'edit-unlink';
 
-  /// The colour edit list's four verbs, in its order — every one an action
+  /// 🗣️F-455 — 복제, the shared pill's button beside the delete (유저
+  /// 2026-10-23: 「공용알약에 복제 버튼 만들고 레이어랑 컷버튼의
+  /// 레이어복제/컷복제 삭제」).
+  static const editDuplicate = 'edit-duplicate';
+
+  /// The colour edit list's five verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
   static const editDeleteColour = 'edit-delete-colour';
   static const editKeepColour = 'edit-keep-colour';
   static const editClearPixels = 'edit-clear-pixels';
+
+  /// 2치화 (I-13).
+  static const editBinarize = 'edit-binarize';
 
   /// Its clipboard rows — 픽셀 잘라내기 (I-90), 픽셀 복사 and the two pastes
   /// (I-55).
@@ -900,9 +908,12 @@ abstract final class EditorActionIds {
   static const frameTimingOverlay = 'edit-frame-timing-overlay';
   static const frameStats = 'edit-frame-stats';
   static const showRepaints = 'edit-show-repaints';
-  static const bakePanels = 'edit-bake-panels';
   static const toolRailOnRight = 'window-tool-rail-right';
   static const regionOnTop = 'window-region-on-top';
+
+  /// Where the brush's values stand — the top strip, or the canvas's pill
+  /// (I-34).
+  static const brushValuesOnStrip = 'window-brush-values-on-strip';
 
   /// The window's full screen (I-103-Q2) — the desktops' only.
   static const fullScreen = 'window-full-screen';
@@ -920,21 +931,15 @@ abstract final class EditorActionIds {
   static const layerAdd = 'layer-add';
 
   /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
-  /// 버튼같은거나」 — the timeline bar's menus: the cut pill's two (and its
+  /// 버튼같은거나」 — the timeline bar's menus: the cut pill's one (and its
   /// ＋), the layer pill's two, the frame pill's. Where the retired menu bar
   /// worded a row by an id (`menuAction.<id>`), the action keeps that id.
   static const cutNew = 'cut-new';
-  static const cutDuplicate = 'cut-duplicate';
   static const cutCreateLinked = 'cut-create-linked';
-  static const cutRename = 'cut-rename';
   static const cutEditNote = 'cut-edit-note';
   static const cutSettings = 'cut-settings';
   static const cutCanvasSize = 'cut-canvas-size';
   static const cutConvertLinked = 'cut-convert-linked';
-  static const cutMoveLeft = 'cut-move-left';
-  static const cutMoveRight = 'cut-move-right';
-  static const cutCopyAeCamera = 'cut-copy-ae-camera';
-  static const layerDuplicate = 'layer-duplicate';
   static const layerDetach = 'layer-detach';
   static const layerRasterize = 'layer-rasterize';
   static const layerStoryboard = 'layer-storyboard';
@@ -1231,11 +1236,20 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.sharedPill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
   ),
+  // 🗣️F-455 — a button, so a row a key can be put on (유저 2026-09-13:
+  // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
+  // key.
+  const EditorActionDefinition(
+    id: EditorActionIds.editDuplicate,
+    label: 'Duplicate',
+    shelf: ShortcutShelf.sharedPill,
+    defaultActivators: [],
+  ),
   // 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
   // 지정」 — a button, so a row a key can be put on (유저 2026-09-13:
   // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
-  // key. The label is the button's own, and a bar button's writing carries
-  // no '…' (B9).
+  // key. The label is the button's own, and no action's name carries a '…'
+  // (B9, F-437).
   // 🗣️F-261: the Edit beside it — D, with the left hand's other keys (see
   // the play key). ↩️X once D walked right (「편집을 x」). ↩️I-63 (유저
   // 2026-10-03): 「지금 편집버튼 x인데 쉬프트+f로」 — X is the lasso
@@ -1257,7 +1271,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   // 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야.
   // 버튼이면 왠만해선 숏컷 지정 가능하게 리스트로 올리는걸 기본으로 두고
-  // 싶어」 — the colour edit list's four rows, in its order; Backspace is the
+  // 싶어」 — the colour edit list's rows, in its order; Backspace is the
   // one key the list ships with.
   const EditorActionDefinition(
     id: EditorActionIds.editReplaceColour,
@@ -1289,6 +1303,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.colourEdit,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
     pixelVerb: CelPixelVerb.clearPixels,
+    menuRow: true,
+  ),
+  // 🗣️I-13 (유저 2026-10-16): 2치화, under 픽셀 비우기 (Q1 = a). No key
+  // ships with it: none was named.
+  const EditorActionDefinition(
+    id: EditorActionIds.editBinarize,
+    label: 'Binarize',
+    shelf: ShortcutShelf.colourEdit,
+    defaultActivators: [],
+    pixelVerb: CelPixelVerb.binarize,
     menuRow: true,
   ),
   // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule
@@ -1339,14 +1363,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpen,
-    label: 'Open File…',
+    label: 'Open File',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileOpenFolder,
-    label: 'Open Folder…',
+    label: 'Open Folder',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
@@ -1362,7 +1386,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSaveAs,
-    label: 'Save as…',
+    label: 'Save as',
     shelf: ShortcutShelf.file,
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
@@ -1372,14 +1396,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ..._saveAsImageActions(),
   const EditorActionDefinition(
     id: EditorActionIds.fileBackUpFailedCopy,
-    label: 'Back up failed copy…',
+    label: 'Back up failed copy',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileExport,
-    label: 'Export…',
+    label: 'Export',
     shelf: ShortcutShelf.file,
     defaultActivators: [],
     menuRow: true,
@@ -1783,7 +1807,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   const EditorActionDefinition(
     id: EditorActionIds.timelineCommaN,
-    label: 'Set N Commas…',
+    label: 'Set N Commas',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit5)],
   ),
@@ -1896,20 +1920,38 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 하자」. Every verb that makes a thing reads 「새 ㅁㅁ」 (New …), its pair
   // 「ㅁㅁ 삭제」. ↩️It read 'New cut', then 'Add cut' (the first half, before
   // the form was chosen).
+  // ↩️F-455 (유저 2026-10-23: 「컷 종류버튼의 새 컷은 +버튼이랑 겹치니
+  // 삭제」): 새 컷 is the ＋ itself now, not a row of its band — a key
+  // presses the ＋'s own press (`newCutPress`), as the layer pill's ＋'s does.
   const EditorActionDefinition(
     id: EditorActionIds.cutNew,
     label: 'New cut',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
-    menuRow: true,
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.cutDuplicate,
-    label: 'Duplicate cut',
+    id: EditorActionIds.cutEditNote,
+    label: 'Edit cut note',
     shelf: ShortcutShelf.cutPill,
     defaultActivators: [],
     menuRow: true,
   ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutSettings,
+    label: 'Cut settings',
+    shelf: ShortcutShelf.cutPill,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCanvasSize,
+    label: 'Canvas size',
+    shelf: ShortcutShelf.cutPill,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // F-455: 겸용컷 만들기 left the ＋'s band for the menu, above 겸용컷 변환
+  // (유저: 「종류버튼의 겸용컷 만들기는 컷 버튼으로 옮김. 겸용컷 변환 위」).
   const EditorActionDefinition(
     id: EditorActionIds.cutCreateLinked,
     label: 'Create linked cut',
@@ -1918,65 +1960,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     menuRow: true,
   ),
   const EditorActionDefinition(
-    id: EditorActionIds.cutRename,
-    label: 'Rename cut…',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutEditNote,
-    label: 'Edit cut note…',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutSettings,
-    label: 'Cut settings…',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutCanvasSize,
-    label: 'Canvas size…',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
     id: EditorActionIds.cutConvertLinked,
-    label: 'Convert to linked cut…',
+    label: 'Convert to linked cut',
     shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutMoveLeft,
-    label: 'Move cut left',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutMoveRight,
-    label: 'Move cut right',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.cutCopyAeCamera,
-    label: 'Copy camera AE keyframes',
-    shelf: ShortcutShelf.cutPill,
-    defaultActivators: [],
-    menuRow: true,
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerDuplicate,
-    label: 'Duplicate layer',
-    shelf: ShortcutShelf.layerPill,
     defaultActivators: [],
     menuRow: true,
   ),
@@ -2059,14 +2045,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // its notation ⇄ data switch.
   EditorActionDefinition.composed(
     id: EditorActionIds.mediaPoolImport,
-    name: (language) => '${AppStrings.of(language).imImport}…',
+    name: (language) => AppStrings.of(language).imImport,
     shelf: ShortcutShelf.media,
     defaultActivators: const [],
     panelButton: true,
   ),
   EditorActionDefinition.composed(
     id: EditorActionIds.timesheetFormat,
-    name: (language) => '${AppStrings.of(language).sheetFormatTitle}…',
+    name: (language) => AppStrings.of(language).sheetFormatTitle,
     shelf: ShortcutShelf.timesheet,
     defaultActivators: const [],
     panelButton: true,
@@ -2084,14 +2070,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // as every window's, take no key (I-40-Q1).
   EditorActionDefinition.composed(
     id: EditorActionIds.conteFormat,
-    name: (language) => '${AppStrings.of(language).conteFormatTitle}…',
+    name: (language) => AppStrings.of(language).conteFormatTitle,
     shelf: ShortcutShelf.conteSheet,
     defaultActivators: const [],
     panelButton: true,
   ),
   EditorActionDefinition.composed(
     id: EditorActionIds.envelopeFormat,
-    name: (language) => '${AppStrings.of(language).envelopeFormatTitle}…',
+    name: (language) => AppStrings.of(language).envelopeFormatTitle,
     shelf: ShortcutShelf.envelope,
     defaultActivators: const [],
     panelButton: true,
@@ -2101,7 +2087,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // nothing and is no action; the rows under it are.
   const EditorActionDefinition(
     id: EditorActionIds.workSettings,
-    label: 'Work settings…',
+    label: 'Work settings',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
@@ -2109,14 +2095,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ..._projectSettingsActions(),
   const EditorActionDefinition(
     id: EditorActionIds.keyboardShortcuts,
-    label: 'Keyboard shortcuts…',
+    label: 'Keyboard shortcuts',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.preferences,
-    label: 'Preferences…',
+    label: 'Preferences',
     shelf: ShortcutShelf.settings,
     defaultActivators: [],
     menuRow: true,
@@ -2156,13 +2142,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
-  const EditorActionDefinition(
-    id: EditorActionIds.bakePanels,
-    label: 'Bake Static Panels',
-    shelf: ShortcutShelf.debug,
-    defaultActivators: [],
-    menuRow: true,
-  ),
   // ⚠️LAST, and that is the point: the workspace's own panels follow these
   // as rows of the same shelf (`panelActionsOf`).
   const EditorActionDefinition(
@@ -2175,6 +2154,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   const EditorActionDefinition(
     id: EditorActionIds.regionOnTop,
     label: 'Timeline region on top',
+    shelf: ShortcutShelf.panels,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // 🗣️I-34 (유저 2026-10-18): named for the place that is NOT the default
+  // — 「이름도 브러시 값을 상단띠로로 바꾸자. 기본이 알약이다라는걸
+  // 암묵적으로 표시하려고」.
+  const EditorActionDefinition(
+    id: EditorActionIds.brushValuesOnStrip,
+    label: 'Brush values on the top strip',
     shelf: ShortcutShelf.panels,
     defaultActivators: [],
     menuRow: true,

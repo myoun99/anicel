@@ -65,38 +65,126 @@ void main() {
     expect(pencil, findsNothing);
   });
 
-  testWidgets('nor does a STOOD-UP bar, whatever it is named — its row has '
-      'no room across for the pair', (tester) async {
-    // The rule's other half, in the bar's own words: 「A VERTICAL bar is out
-    // for a plainer reason: it is the timeline's turned axis, whose row has
-    // no horizontal room at all」. ⛔Nothing pinned it until 2026-10-08, when
-    // the rule gained a second reader (the bar's narrowest) and a mutant
-    // that dropped this half lived.
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: 28,
-              height: 200,
-              child: FieldSlider(
-                value: 0.5,
-                min: 0,
-                max: 1,
-                label: 'Size',
-                unit: '%',
-                axis: Axis.vertical,
-                onChanged: (_) {},
+  /// A bar stood 20 thick in a 200-tall slot — the canvas's brush pill's
+  /// (I-34): its number alone, so [label] names it to a screen reader only.
+  Future<void> pumpStood(WidgetTester tester, {String? label}) =>
+      tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 20,
+                height: 200,
+                child: FieldSlider(
+                  value: 0.5,
+                  min: 0,
+                  max: 1,
+                  divisions: 100,
+                  displayScale: 100,
+                  label: label,
+                  unit: '%',
+                  height: 20,
+                  axis: Axis.vertical,
+                  nameInside: false,
+                  onChanged: (_) {},
+                ),
               ),
             ),
           ),
         ),
-      ),
+      );
+
+  testWidgets('a STOOD-UP bar carries them too, under it and turned with it '
+      '— − then +, then the pencil; its micro variant stays bare', (
+    tester,
+  ) async {
+    // ↩️It did not (pinned 2026-10-08): the only stood bar was the x-sheet's
+    // turned rail, whose row has no room across. The canvas's brush pill
+    // (I-34, drawn and taken 2026-10-18) stands the brush's bars up with
+    // their hands under them; the rail's bar is the micro variant, and the
+    // variant is what keeps it bare.
+    await pumpStood(tester, label: 'Size');
+    expect(find.text('50%'), findsOneWidget, reason: '⛔LIVENESS');
+    expect(find.text('Size'), findsNothing, reason: 'the number alone');
+    final bar = tester.getRect(find.byType(FieldSlider));
+    final minus = tester.getRect(down);
+    final plus = tester.getRect(up);
+    final pen = tester.getRect(pencil);
+    expect(minus.right, plus.left, reason: '− then +, side by side');
+    expect((minus.left, plus.right), (bar.left, bar.right));
+    expect((minus.width, plus.width), (10.0, 10.0));
+    expect(pen.top, greaterThan(plus.bottom));
+    expect(
+      (pen.left, pen.right, pen.bottom),
+      (bar.left, bar.right, bar.bottom),
     );
-    expect(find.text('Size'), findsOneWidget, reason: '⛔LIVENESS');
+    // The number at the foot of its track, where a lying bar writes it at
+    // its right end.
+    expect(
+      tester.getRect(find.text('50%')).center.dy,
+      greaterThan((bar.top + minus.top) / 2),
+    );
+
+    await pumpStood(tester);
+    expect(find.text('50%'), findsOneWidget, reason: '⛔LIVENESS');
     expect(up, findsNothing);
     expect(down, findsNothing);
     expect(pencil, findsNothing);
+  });
+
+  testWidgets('a stood bar is typed in turned, as it writes', (tester) async {
+    await pumpStood(tester, label: 'Size');
+    await tester.tap(pencil);
+    await tester.pump();
+    final editable = tester.getRect(find.byType(EditableText));
+    expect(editable.height, greaterThan(editable.width));
+    expect(editable.width, lessThanOrEqualTo(20));
+  });
+
+  testWidgets('a stood bar\'s ± stand inside their cells (유저 2026-10-18: '
+      '「더 작게해도되니까 안에 들어가도록하자」)', (tester) async {
+    await pumpStood(tester, label: 'Size');
+    for (final cell in [down, up]) {
+      final glyph = tester.getRect(
+        find.descendant(of: cell, matching: find.byType(Icon)),
+      );
+      final room = tester.getRect(cell);
+      expect(glyph.width, lessThan(room.width));
+      expect(room.contains(glyph.topLeft), isTrue);
+      expect(
+        room.contains(glyph.bottomRight - const Offset(0.01, 0.01)),
+        isTrue,
+      );
+    }
+  });
+
+  testWidgets('a name a bar does not write takes no room in it', (
+    tester,
+  ) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (built) {
+            context = built;
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+    double narrowest(String label) => FieldSlider(
+      value: 0.5,
+      min: 0,
+      max: 1,
+      label: label,
+      unit: '%',
+      height: 20,
+      axis: Axis.vertical,
+      nameInside: false,
+      onChanged: (_) {},
+    ).narrowestIn(context);
+
+    expect(narrowest('A much longer name than the number'), narrowest('S'));
   });
 
   testWidgets('a DISABLED bar keeps the slot — the row must not resize when '

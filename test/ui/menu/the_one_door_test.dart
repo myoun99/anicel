@@ -3,24 +3,31 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/file_type_groups.dart'
+    show openableExtensions;
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/menu/opened_files_door.dart';
 import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
+import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
 /// F-282 (유저 2026-10-09): 「열기랑 임포트랑 되도록 하나로」 — every door
 /// hands what it holds to ONE door, and one judgement says where each goes:
 /// a project to a tab, media and a folder to the import window, a brush to
-/// the library, a font to this device's fonts — and what nothing opens is
-/// named. ↩️A drop let anything into the window, and the window registered
-/// what it could not name as a picture.
+/// the library, a font to this device's fonts, a program's shortcut files
+/// into a preset (I-107) — and what nothing opens is named. ↩️A drop let
+/// anything into the window, and the window registered what it could not
+/// name as a picture.
 void main() {
   late Directory folder;
 
   setUp(() => folder = Directory.systemTemp.createTempSync('qa_one_door_'));
   tearDown(() => deleteTempQuietly(folder));
+
+  /// [path] as a pick spells it — and so a drop ([handedPath]).
+  String spelled(String path) => path.replaceAll(r'\', '/');
 
   /// A file named [name] holding [bytes], handed over as a drop hands it.
   FolderGrant fileNamed(String name, [List<int> bytes = const [1, 2, 3]]) {
@@ -35,6 +42,7 @@ void main() {
   late List<ProjectPick> projectsGot;
   late Map<String, Uint8List> brushesGot;
   late List<Uint8List> fontsGot;
+  late Map<String, Uint8List> shortcutsGot;
 
   OpenedFilesDoor door() {
     windowGot = [];
@@ -42,6 +50,7 @@ void main() {
     projectsGot = [];
     brushesGot = {};
     fontsGot = [];
+    shortcutsGot = {};
     return OpenedFilesDoor(
       openProjects: (picks) async {
         done.add('projects');
@@ -61,6 +70,11 @@ void main() {
         done.add('font');
         fontsGot.add(bytes);
         return 'a font';
+      },
+      bringShortcuts: (files) async {
+        done.add('shortcuts');
+        shortcutsGot = {for (final (:name, :bytes) in files) name: bytes};
+        return ['keys from ${[for (final file in files) file.name]}'];
       },
     );
   }
@@ -117,15 +131,54 @@ void main() {
     final picture = fileNamed('A1.png');
     final brush = fileNamed('Pack.abr', [7, 7]);
     final font = fileNamed('Face.otf', [9]);
+    final keys = fileNamed('default.khc', [4]);
 
-    await knock(tester, [project, picture, brush, font]);
+    await knock(tester, [project, keys, picture, brush, font]);
 
-    expect(done, ['brushes', 'font', 'notice', 'window', 'projects']);
+    expect(done, [
+      'brushes',
+      'font',
+      'shortcuts',
+      'notice',
+      'window',
+      'projects',
+    ]);
     expect([for (final grant in windowGot) grant.path], [picture.path]);
     expect([for (final pick in projectsGot) pick.path], [project.path]);
     expect(brushesGot.keys, ['Pack.abr']);
     expect(brushesGot['Pack.abr'], [7, 7]);
     expect(fontsGot.single, [9]);
+    expect(shortcutsGot.keys, ['default.khc']);
+    expect(shortcutsGot['default.khc'], [4]);
+  });
+
+  testWidgets('a program\'s shortcut files are handed over together, once '
+      '— one program\'s make one preset — and one that cannot be read is '
+      'named', (tester) async {
+    final menus = fileNamed('default.khc', [4]);
+    final tools = fileNamed('EditImageTool.todb', [5]);
+    final gone = fileNamed('config.ini');
+    File(gone.path!).deleteSync();
+    String? message;
+
+    await knock(
+      tester,
+      [menus, gone, tools],
+      onNotice: () => message = tester
+          .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
+          .message,
+    );
+
+    expect(done.where((step) => step == 'shortcuts'), hasLength(1));
+    expect(shortcutsGot, {
+      'default.khc': [4],
+      'EditImageTool.todb': [5],
+    });
+    expect(
+      message,
+      '${AppText.strings.imUnreadable('config.ini')}\n'
+      'keys from [default.khc, EditImageTool.todb]',
+    );
   });
 
   testWidgets('what the libraries said is said once, together', (
@@ -134,40 +187,48 @@ void main() {
     String? message;
     await knock(
       tester,
-      [fileNamed('Pack.abr'), fileNamed('Face.ttf')],
+      [fileNamed('Pack.abr'), fileNamed('config.ini'), fileNamed('Face.ttf')],
       onNotice: () => message = tester
           .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
           .message,
     );
 
-    expect(message, 'brushes from Pack.abr\na font');
+    expect(message, 'brushes from Pack.abr\na font\nkeys from [config.ini]');
     expect(done.where((step) => step == 'notice'), hasLength(1));
   });
 
   testWidgets('🎯a file nothing opens is named — and goes nowhere, the '
       'import window least of all', (tester) async {
     List<String>? named;
+    String? said;
     await knock(
       tester,
-      [fileNamed('notes.txt'), fileNamed('A1.png')],
-      onNotice: () => named ??= tester
-          .widget<AppConfirmDialog>(find.byType(AppConfirmDialog))
-          .details
-          .single
-          .lines,
+      [fileNamed('notes.docx'), fileNamed('A1.png')],
+      onNotice: () {
+        final notice = tester.widget<AppConfirmDialog>(
+          find.byType(AppConfirmDialog),
+        );
+        named ??= notice.details.single.lines;
+        said ??= notice.message;
+      },
     );
 
     expect(
       named,
-      ['${folder.path}/notes.txt'],
+      [spelled('${folder.path}/notes.docx')],
       reason: 'named as every pick names a refusal — a file by its path',
+    );
+    expect(
+      said,
+      AppText.strings.unsupportedFileMessage(openableExtensions),
+      reason: 'the sentence names what the door takes, and no file',
     );
     expect(
       find.byKey(const ValueKey<String>('unsupported-file-notice')),
       findsNothing,
     );
     expect([for (final grant in windowGot) grant.path], [
-      '${folder.path}/A1.png',
+      spelled('${folder.path}/A1.png'),
     ], reason: 'what CAN come in still does');
     expect(done, ['notice', 'window']);
   });
@@ -179,7 +240,7 @@ void main() {
 
     await knock(tester, [handedPath(cut.path)]);
 
-    expect([for (final grant in windowGot) grant.path], [cut.path]);
+    expect([for (final grant in windowGot) grant.path], [spelled(cut.path)]);
     expect(windowGot.single.kind, GrantKind.folder);
   });
 

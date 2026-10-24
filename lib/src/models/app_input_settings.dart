@@ -60,7 +60,9 @@ class AppInputSettings {
     this.zoomSnapPercents = defaultZoomSnapPercents,
     this.zoomCeilingOn = false,
     this.zoomCeilingPercent = defaultZoomCeilingPercent,
-    this.brushSizeSnaps = defaultBrushSizeSnaps,
+    // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
+    this.drawingCursor = DrawingCursor.crosshair,
+    this.touchIgnored = false,
   });
 
   /// The finger-count drag slots (PEN-7b), all user-assignable. PEN-12
@@ -125,8 +127,15 @@ class AppInputSettings {
   /// modifier landed on (pure pan+snap-zoom).
   final bool navigationModifierRotationLock;
 
-  /// Snap tables (PEN-7b) — every list user-editable.
+  /// THE rotation step — one number, not a list. 🗣️F-391 (유저 2026-10-17):
+  /// 「회전 스냅은 하나만 존재가능할거같은데 그런부분도 하나만 존재하도록
+  /// 알아서. 쓰기쉽게」. The modifier's twist snaps to its multiples, and the
+  /// view's rotate buttons and keys step to the next one
+  /// ([AppInput.stepOnTheGrid]). ↩️Those two turned a 15° of their own,
+  /// whatever this said.
   final double rotationSnapDegrees;
+
+  /// The zoom snaps (PEN-7b), a list the user edits.
   final List<double> zoomSnapPercents;
 
   /// 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능.
@@ -153,11 +162,15 @@ class AppInputSettings {
   /// The percent a locked view may not be zoomed past, or null while the
   /// lock is off.
   double? get zoomCeiling => zoomCeilingOn ? zoomCeilingPercent : null;
-  final List<double> brushSizeSnaps;
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
   /// modifier constraint glues the CURRENT zoom to the nearest entry —
   /// with 50 as the floor, engaging at 30% read as "reset to 50%").
+  ///
+  /// 🗣️F-391 (유저 2026-10-17): 「줌 스냅 저번 기본 캔버스 줌 되도록 800
+  /// 1600% 이런거 추가해주고」 — the zoom buttons multiplied by 1.25 up to
+  /// the view's 1600% before they walked this list (I-19), and the list
+  /// stopped at 400. It reaches the view's end again.
   static const List<double> defaultZoomSnapPercents = [
     10,
     25,
@@ -169,19 +182,8 @@ class AppInputSettings {
     200,
     300,
     400,
-  ];
-
-  /// PEN-15: the doubling ladder continues past 64 (brushes go to 2000).
-  static const List<double> defaultBrushSizeSnaps = [
-    2,
-    4,
-    8,
-    16,
-    32,
-    64,
-    128,
-    256,
-    512,
+    800,
+    1600,
   ];
 
   /// The PREVIOUS default lists (PEN-15): stored settings that still
@@ -189,9 +191,7 @@ class AppInputSettings {
   /// user-customized list persists as-is.
   static const List<List<double>> legacyZoomSnapDefaults = [
     [50, 75, 100, 125, 150, 200, 300, 400],
-  ];
-  static const List<List<double>> legacyBrushSizeSnapDefaults = [
-    [2, 4, 8, 16, 32, 64],
+    [10, 25, 50, 75, 100, 125, 150, 200, 300, 400],
   ];
 
   /// The TEST-CORPUS baseline (see test/flutter_test_config.dart): the
@@ -200,8 +200,12 @@ class AppInputSettings {
   /// suites asserting those opt in explicitly. Every test that mutates
   /// [AppInput.settings] must tearDown-reset to THIS, never to
   /// `AppInputSettings()`.
+  ///
+  /// The corpus was written, too, while the drawing tools wore the tip's
+  /// outline and nothing else (I-54 came later), so it starts from that.
   static const AppInputSettings testCorpusBaseline = AppInputSettings(
     touchDragOneFinger: CanvasTouchDragAction.draw,
+    drawingCursor: DrawingCursor.brush,
   );
 
   /// The canvas mapping for the RIGHT-CLICK bit (PEN-7a): pen side/
@@ -260,6 +264,19 @@ class AppInputSettings {
   ///   escape hatch for drivers whose OS path misreports the pen.
   final TabletService tabletService;
 
+  /// The cursor the drawing tools wear on the canvas.
+  final DrawingCursor drawingCursor;
+
+  /// Every finger on the glass is nobody's — not a stroke, not a pan, not
+  /// a press on a button.
+  ///
+  /// 🗣️I-124 (유저 2026-10-22): 「터치 존재하는 태블릿으로 사용시, 키보드 써서
+  /// 터치 쓸일없는데 터치가 쓸데없이 작동해서 방해하는 일이 있음. 그럴때를 위해
+  /// 모든 터치입력 무시하는 옵션」. The fingers stay out at the one door the
+  /// platform's pointers come in by (`UiScaleBinding`), so no reader of a
+  /// pointer's kind has to ask this again. OFF by default.
+  final bool touchIgnored;
+
   AppInputSettings copyWith({
     TabletService? tabletService,
     double? pressureCurveGamma,
@@ -280,7 +297,8 @@ class AppInputSettings {
     List<double>? zoomSnapPercents,
     bool? zoomCeilingOn,
     double? zoomCeilingPercent,
-    List<double>? brushSizeSnaps,
+    DrawingCursor? drawingCursor,
+    bool? touchIgnored,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
@@ -304,7 +322,8 @@ class AppInputSettings {
     zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
     zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
     zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
-    brushSizeSnaps: brushSizeSnaps ?? this.brushSizeSnaps,
+    drawingCursor: drawingCursor ?? this.drawingCursor,
+    touchIgnored: touchIgnored ?? this.touchIgnored,
   );
 
   Map<String, dynamic> toJson() => {
@@ -327,7 +346,8 @@ class AppInputSettings {
     'zoomSnapPercents': zoomSnapPercents,
     'zoomCeilingOn': zoomCeilingOn,
     'zoomCeilingPercent': zoomCeilingPercent,
-    'brushSizeSnaps': brushSizeSnaps,
+    'drawingCursor': drawingCursor.name,
+    'touchIgnored': touchIgnored,
   };
 
   /// [json] as a number above zero, or [fallback] — a lock at nothing, or
@@ -418,11 +438,10 @@ class AppInputSettings {
       json['zoomCeilingPercent'],
       defaultZoomCeilingPercent,
     ),
-    brushSizeSnaps: _upgradedList(
-      _doubleList(json['brushSizeSnaps'], defaultBrushSizeSnaps),
-      legacyDefaults: legacyBrushSizeSnapDefaults,
-      current: defaultBrushSizeSnaps,
-    ),
+    drawingCursor:
+        DrawingCursor.values.asNameMap()[json['drawingCursor']] ??
+        DrawingCursor.crosshair,
+    touchIgnored: json['touchIgnored'] as bool? ?? false,
   );
 
   @override
@@ -447,10 +466,11 @@ class AppInputSettings {
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
       other.zoomCeilingOn == zoomCeilingOn &&
       other.zoomCeilingPercent == zoomCeilingPercent &&
-      listEquals(other.brushSizeSnaps, brushSizeSnaps);
+      other.drawingCursor == drawingCursor &&
+      other.touchIgnored == touchIgnored;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     tabletService,
     pressureCurveGamma,
     speedReferencePixelsPerSecond,
@@ -470,14 +490,34 @@ class AppInputSettings {
     Object.hashAll(zoomSnapPercents),
     zoomCeilingOn,
     zoomCeilingPercent,
-    Object.hashAll(brushSizeSnaps),
-  );
+    drawingCursor,
+    touchIgnored,
+  ]);
 }
 
 /// The tablet backend choice (PEN-2). CSP's '사용할 태블릿 서비스'
 /// analogue: standard = the OS pointer path ('Tablet PC'), wintab = the
 /// driver-direct sidecar.
 enum TabletService { standard, wintab }
+
+/// The cursor the drawing tools wear on the canvas (I-54).
+///
+/// 🗣️유저 2026-09-30 (I-54): 「브러시 커서, 여러 커서 옵션으로 고를수있게.
+/// 지금처럼 브러시커서, 펜 커서(크기고정, 펜 모양 아이콘, os커서를 바꿈으로서
+/// 앱이랑 관계없이 빠르게), 십자커서(크기고정, 동일하게 os커서 바꿈) 이렇게
+/// 세개」 — one for every drawing tool, in Preferences (I-54-Q1: 「환경설정 ›
+/// 표시 — 하나로」). In the order the user named them, which is the row's.
+enum DrawingCursor {
+  /// The outline of the tip, drawn by the app: its size, roundness and angle
+  /// as the stroke will lay them.
+  brush,
+
+  /// A pen of one size, its point where the stroke starts.
+  pen,
+
+  /// A crosshair of one size, the system's own.
+  crosshair,
+}
 
 /// What a STANDARD secondary input does on the CANVAS (PEN-7a) — the
 /// app's one in-house mapping layer. Everywhere else follows the
@@ -696,8 +736,9 @@ abstract final class AppInput {
           PointerDeviceKind.unknown,
         };
 
-  /// Nearest-value snapping against a user-editable list (PEN-7b) —
-  /// shared by the navigate constraints and the brush-size drag.
+  /// Nearest-value snapping against a list (PEN-7b) — shared by the
+  /// navigate constraints (the zoom snaps) and the brush-size drag (the tool
+  /// size panel's rack, F-391).
   static double snapToList(double value, List<double> snaps) {
     if (snaps.isEmpty) {
       return value;
@@ -738,6 +779,29 @@ abstract final class AppInput {
       }
     }
     return next;
+  }
+
+  /// The next multiple of [step] past [value], [up] or down — the grid
+  /// [stepThroughList] would walk if the list were every multiple.
+  ///
+  /// 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재하도록」 — the
+  /// view's rotate buttons and keys step on the rotation snap's grid, as the
+  /// zoom buttons step through the zoom snaps (I-19): from 7° with a 15°
+  /// snap, clockwise lands on 15°, not on 22°.
+  ///
+  /// ⚠️As in [stepThroughList], a value ON a line steps to the next one, and
+  /// "on" is relative — an angle comes back through the readout's grid.
+  static double stepOnTheGrid(
+    double value,
+    double step, {
+    required bool up,
+  }) {
+    const tolerance = 1e-6;
+    final lines = value / step;
+    final next = up
+        ? (lines + tolerance).floor() + 1
+        : (lines - tolerance).ceil() - 1;
+    return next * step;
   }
 
   /// The pen pressure response curve (PEN-3): output = input^gamma.

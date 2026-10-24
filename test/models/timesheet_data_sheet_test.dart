@@ -6,6 +6,8 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
@@ -195,5 +197,40 @@ void main() {
       expect(data[row].kind, TimesheetCellKind.held, reason: 'row $row');
       expect(data[row].mark, isNull, reason: 'row $row');
     }
+  });
+
+  // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
+  // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」.
+  test('the CELL block prints its data on a NOTATION sheet too; the ACTION '
+      'block prints the notation', () {
+    final action = _repeatLayer();
+    final douga = _repeatLayer().copyWith(
+      id: const LayerId('d'),
+      name: 'D',
+      mark: const LayerMark(process: LayerProcess.inbetween),
+    );
+    final document = TimesheetDocument.fromCut(
+      cut: Cut(
+        id: const CutId('cut-1'),
+        name: 'Cut 1',
+        layers: [action, douga],
+        duration: 12,
+        canvasSize: const CanvasSize(width: 1280, height: 720),
+      ),
+      projectName: 'Project',
+      fps: 24,
+    );
+    List<TimesheetCell> cellsOf(LayerId id) =>
+        document.columns.singleWhere((column) => column.layerId == id).cells;
+
+    expect(
+      document.columns.singleWhere((c) => c.layerId == douga.id).kind,
+      TimesheetColumnKind.cel,
+      reason: '⛔전제: a 動画 row takes the CELL block',
+    );
+    expect(cellsOf(action.id)[4].kind, TimesheetCellKind.repeatStart);
+    expect(cellsOf(douga.id)[4].kind, TimesheetCellKind.drawing);
+    expect(cellsOf(douga.id)[4].label, '1');
+    expect(cellsOf(douga.id)[6].label, '2');
   });
 }

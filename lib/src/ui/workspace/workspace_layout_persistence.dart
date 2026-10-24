@@ -68,6 +68,7 @@ class _WorkspaceLayoutPersistence {
         _state._openRails = defaultOpenRails();
         _state._bottomDockCollapsed = false;
         _state._regionOnTop = false;
+        _state._brushValuesOnStrip.value = false;
       });
       _state._layout.restore(docks: _EditorWorkspaceState._defaultDocks());
     });
@@ -102,6 +103,8 @@ class _WorkspaceLayoutPersistence {
       _state._lockedTabIds = restored.lockedTabIds;
       _state._bottomDockCollapsed = payload['bottomCollapsed'] == true;
       _state._regionOnTop = payload['regionOnTop'] == true;
+      _state._brushValuesOnStrip.value =
+          payload['brushValuesOnStrip'] == true;
       final savedInset = payload['bottomInset'];
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
         _state._bottomInsetOverride.value = savedInset.toDouble();
@@ -208,6 +211,7 @@ class _WorkspaceLayoutPersistence {
           _state._storyboardTrackLaneHeight.value,
     'openRails': _state._openRails.toList(),
     'regionOnTop': _state._regionOnTop,
+    'brushValuesOnStrip': _state._brushValuesOnStrip.value,
     'brushPresetView': _state._brushPresetView.value.toJson(),
   };
 }

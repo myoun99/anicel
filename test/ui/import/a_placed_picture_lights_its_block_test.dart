@@ -20,6 +20,7 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// F-155 (유저 2026-09-17), three reports of one placement:
 /// 「미디어 풀 파일 png를 기존 애니메이션 레이어의 프레임영역에 떨궈서
@@ -78,11 +79,7 @@ void main() {
     await tester.pumpAndSettle();
     // The pool ships closed, one rail button away.
     await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
-        ),
-      ),
+      railGroupButton(EditorWorkspace.railGroupId(right: true, slot: 3)),
     );
     await tester.pumpAndSettle();
     final session = tester

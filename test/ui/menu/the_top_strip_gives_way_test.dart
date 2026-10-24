@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/brush_values_on_strip.dart';
 import '../../helpers/words_cut_off.dart';
 
 const sizeBar = ValueKey<String>('top-strip-size-bar');
@@ -44,7 +45,9 @@ const tabPlace = 96.0;
 /// What the strip's brush group is at one window width.
 enum Standing { full, narrowed, button }
 
-/// The app at [width] — on a device with [battery] where one is handed in.
+/// The app at [width] — on a device with [battery] where one is handed in —
+/// with the brush's values on the strip (I-34: by default the canvas's pill
+/// holds them).
 Future<void> pumpAt(
   WidgetTester tester,
   double width, {
@@ -56,6 +59,7 @@ Future<void> pumpAt(
     MaterialApp(theme: buildAppTheme(), home: HomePage(battery: battery)),
   );
   await tester.pumpAndSettle();
+  await standBrushValuesOnStrip(tester);
 }
 
 Future<void> narrowTo(WidgetTester tester, double width) async {

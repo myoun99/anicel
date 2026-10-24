@@ -48,6 +48,21 @@ class CutFrameCompositeLayer {
   }) : surface = celSurfaceAsShown(surface, effects),
        effects = splitSourceEffects(effects).paint;
 
+  CutFrameCompositeLayer._paintedNormal(CutFrameCompositeLayer row)
+    : surface = row.surface,
+      opacity = row.opacity,
+      blendMode = LayerBlendMode.normal,
+      placement = row.placement,
+      effects = row.effects;
+
+  /// The same row painting normal — what a row in an advanced blend
+  /// is, composed over its backdrop ([CompositeBackdropBlend]).
+  ///
+  /// ⛔Not through the constructor: [surface] and [effects] are the ones its
+  /// CPU half already ran on, and running it again would key the keyed.
+  CutFrameCompositeLayer paintedNormal() =>
+      CutFrameCompositeLayer._paintedNormal(this);
+
   /// The pixels this layer draws — the cel's own surface, or the derived
   /// one its texts and the color keys produced from it.
   final BitmapSurface surface;
@@ -144,6 +159,13 @@ typedef LayerFrameSurfaceResolver =
 /// export and the editing canvas cannot drift.
 sealed class CutFrameCompositeRow {
   const CutFrameCompositeRow();
+
+  /// The blend the row composites with against everything below it.
+  LayerBlendMode get blendMode;
+
+  /// The same row painting normal — what a row in an advanced blend
+  /// is, composed over its backdrop ([CompositeBackdropBlend]).
+  CutFrameCompositeRow paintedNormal();
 }
 
 /// One resolved contributor to the cut's picture at a frame — the SHARED
@@ -166,6 +188,7 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
   final double opacity;
 
   /// The layer's composite blend against everything below (R26 #30).
+  @override
   final LayerBlendMode blendMode;
 
   /// Where the layer lies at this frame — its own pose under every
@@ -176,6 +199,15 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
   /// CARRIER, so an attach row wears its base's effects exactly as it wears
   /// its base's pose, and the carrier's fx switch bypasses both.
   final List<ResolvedLayerEffect> effects;
+
+  @override
+  CutFrameCompositeEntry paintedNormal() => CutFrameCompositeEntry(
+    layer: layer,
+    frame: frame,
+    opacity: opacity,
+    placement: placement,
+    effects: effects,
+  );
 }
 
 /// What the plan resolved about HOW a row draws, apart from its pixels —
@@ -215,6 +247,20 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
 
   /// Resolved exactly as an entry's is — same gates, same folds.
   final ResolvedRowRender render;
+
+  @override
+  LayerBlendMode get blendMode => render.blendMode;
+
+  @override
+  CutFrameCompositeLiveRow paintedNormal() => CutFrameCompositeLiveRow(
+    layer: layer,
+    render: (
+      opacity: render.opacity,
+      blendMode: LayerBlendMode.normal,
+      placement: render.placement,
+      effects: render.effects,
+    ),
+  );
 }
 
 /// Whether [folder] must compose into its own buffer at [frameIndex].
@@ -901,8 +947,10 @@ _adjustmentScopeNode({
 /// The cut's picture at [frameIndex] as a TREE, bottom → top: every
 /// visible entry, with each BUFFERING folder's members wrapped in a
 /// [CompositeGroup] so the folder's opacity and blend apply
-/// ONCE to their composed buffer (R27 #29), and each ADJUSTMENT row's
-/// scope wrapped in a [CompositeAdjustment] (R6b).
+/// ONCE to their composed buffer (R27 #29), each ADJUSTMENT row's
+/// scope wrapped in a [CompositeAdjustment] (R6b), and each row in an
+/// advanced blend composed over its scope ([CompositeBackdropBlend],
+/// brush-fidelity-Q4).
 ///
 /// The stack list IS the structure: a folder's members occupy a
 /// contiguous run with the folder row directly above it, so this single
@@ -992,8 +1040,15 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       addTo(layer.folderId, CompositeLeaf(row));
     }
   }
+  // A row in an advanced blend goes over a picture of its scope — once
+  // the tree is whole, because a scope is then simply a list (the law's own
+  // doc says why).
   return List.unmodifiable(
-    childrenOf[null] ?? const <CompositeNode<CutFrameCompositeRow>>[],
+    composeOverTheirBackdrops(
+      childrenOf[null] ?? const <CompositeNode<CutFrameCompositeRow>>[],
+      blendOf: (row) => row.blendMode,
+      paintedNormal: (row) => row.paintedNormal(),
+    ),
   );
 }
 

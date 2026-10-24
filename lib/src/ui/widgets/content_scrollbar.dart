@@ -58,7 +58,7 @@ class _ContentScrollbarState extends State<ContentScrollbar> {
 
   @override
   Widget build(BuildContext context) {
-    const lane = AppScrollbarLane.wide;
+    final lane = AppScrollbarLaneScope.of(context);
     final controller = _controller;
     // A STACK, not a Row: the content keeps deciding the size, exactly as it
     // did before the lane (a panel pumped somewhere unbounded still lays
@@ -68,7 +68,7 @@ class _ContentScrollbarState extends State<ContentScrollbar> {
       fit: StackFit.passthrough,
       children: [
         Padding(
-          padding: const EdgeInsets.only(right: lane),
+          padding: EdgeInsets.only(right: lane),
           child: UnbarredScrollable(child: widget.builder(context, controller)),
         ),
         Positioned(

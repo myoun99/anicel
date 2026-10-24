@@ -25,6 +25,13 @@ import '../helpers/placement_reading.dart';
 ///   that buffer instead of on each member;
 /// - a folder that does NOT need one costs nothing at all — no node, no
 ///   saveLayer — which is what makes 통과 the safe default.
+///
+/// ↩️The buffering folders here were in multiply and screen, until every
+/// advanced blend went over its backdrop in the shader
+/// (a-blurred-folder-cut-by-the-view-moves-on-vulkan): a folder in one is
+/// a blend of its own now, its buffer the row it composes
+/// (`a_row_in_an_advanced_blend_gathers_its_backdrop_test`). Add and
+/// normal still buffer as a group that lays its own blend.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
 
@@ -79,10 +86,10 @@ void main() {
     test('a real BLEND isolates the group', () {
       final tree = treeOf([
         member('a', folder: 'f'),
-        folderRow('f', blend: LayerBlendMode.multiply),
+        folderRow('f', blend: LayerBlendMode.add),
       ]);
       final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
-      expect(group.blendMode, LayerBlendMode.multiply);
+      expect(group.blendMode, LayerBlendMode.add);
       expect(group.opacity, 1);
       expect(group.children, hasLength(1));
     });
@@ -133,14 +140,14 @@ void main() {
         'the darkening bug', () {
       final tree = treeOf([
         member('a', folder: 'f'),
-        folderRow('f', blend: LayerBlendMode.multiply, opacity: 0.5),
+        folderRow('f', blend: LayerBlendMode.add, opacity: 0.5),
       ]);
       final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
       final leaf = group.children.single as CompositeLeaf<CutFrameCompositeRow>;
       final entry = leaf.payload as CutFrameCompositeEntry;
 
       expect(group.opacity, closeTo(0.5, 1e-9));
-      expect(group.blendMode, LayerBlendMode.multiply);
+      expect(group.blendMode, LayerBlendMode.add);
       expect(
         entry.opacity,
         1,
@@ -172,10 +179,10 @@ void main() {
       final tree = treeOf([
         member('a', folder: 'inner'),
         folderRow('inner', parent: 'outer'),
-        folderRow('outer', blend: LayerBlendMode.screen),
+        folderRow('outer', blend: LayerBlendMode.add),
       ]);
       final group = tree.single as CompositeGroup<CutFrameCompositeRow>;
-      expect(group.blendMode, LayerBlendMode.screen);
+      expect(group.blendMode, LayerBlendMode.add);
       expect(
         group.children.single,
         isA<CompositeLeaf<CutFrameCompositeRow>>(),
@@ -186,13 +193,13 @@ void main() {
     test('buffering folders nest', () {
       final tree = treeOf([
         member('a', folder: 'inner'),
-        folderRow('inner', parent: 'outer', blend: LayerBlendMode.multiply),
-        folderRow('outer', blend: LayerBlendMode.screen),
+        folderRow('inner', parent: 'outer', blend: LayerBlendMode.normal),
+        folderRow('outer', blend: LayerBlendMode.add),
       ]);
       final outer = tree.single as CompositeGroup<CutFrameCompositeRow>;
       final inner = outer.children.single as CompositeGroup<CutFrameCompositeRow>;
-      expect(outer.blendMode, LayerBlendMode.screen);
-      expect(inner.blendMode, LayerBlendMode.multiply);
+      expect(outer.blendMode, LayerBlendMode.add);
+      expect(inner.blendMode, LayerBlendMode.normal);
     });
 
     test('a hidden folder drops its subtree; an empty one leaves no node', () {

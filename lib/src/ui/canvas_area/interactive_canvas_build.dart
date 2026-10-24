@@ -311,6 +311,7 @@ class _InteractiveCanvasBuild {
       rowAcceptsStrokes: _EditorCanvasAreaState._standingRowTakesStrokes(
         session,
       ),
+      toolCursorsEnabled: _EditorCanvasAreaState._standingRowIsDrawn(session),
       // MERGED canvas: we own the live-stroke overlay, so the
       // layer stack can paint the active layer inside the
       // composite tree and a folder's group buffer can enclose
@@ -405,8 +406,8 @@ class _InteractiveCanvasBuild {
           : session.endSelectionInteraction(),
       // 🚨ONE ANSWER TO 「이 프레스 밑에 셀이 없다」 (I-10 + R26 #35),
       // because two callers ask it now: the interactive view, which
-      // stands down on an empty cel, and the shell listener above it
-      // for a project that has no editing stack yet.
+      // stands down on an empty cel, and the panel's tool entrance for a
+      // press no layer under it hears (`_CanvasPanelTap.pressNoLayerHears`).
       //
       // ⛔The TOOL first, and HERE rather than at either caller: the
       // eyedropper reads a colour and the _selection tools mark
@@ -524,6 +525,7 @@ class _InteractiveCanvasBuild {
       onBrushSizeDragUpdate: _state._dragBrushSize,
       onBrushSizeDragEnd: () => _state._brushSizeDragStartSize = null,
       flipHud: _state.widget.flipHud,
+      leftPill: _state.widget.leftPill,
       // P6 fill: the flood region as stamp pieces; the panel commits them
       // through the stroke funnel onto the active layer's frame.
       selectionMaskOptions: _state.widget.selectionMaskOptions,
@@ -538,7 +540,6 @@ class _InteractiveCanvasBuild {
         // writes the fill's field, not the brush's.
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),
-        paperColor: session.projectSettings.projectBackground.paintedArgb,
         // The 「현재」 of the fill's reference source (I-36) — the same
         // layer the eyedropper's reads, above.
         activeLayerId: session.activeLayer?.id,

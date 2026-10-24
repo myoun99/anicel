@@ -1,9 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 import 'package:anicel/src/services/photoshop/photoshop_byte_reader.dart';
 import 'package:anicel/src/services/abr/abr_decoder.dart';
 import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
@@ -29,8 +31,15 @@ void _writeBrVr(
   desc.untf('#Prc', jitterPercent);
 }
 
-/// Sampled + computed brush descriptor payload (`desc` section).
-Uint8List _descPayload({required String sampledUuid, int angleControl = 6}) {
+/// Sampled + computed brush descriptor payload (`desc` section). The first
+/// brush blends with [mainBlend], and its dual tip names [dualBlend] when
+/// one is given — `BlnM` terms, written as Photoshop writes them.
+Uint8List _descPayload({
+  required String sampledUuid,
+  int angleControl = 6,
+  String mainBlend = 'Mltp',
+  String? dualBlend,
+}) {
   final desc = AbrBytes();
   desc.i32(16); // descriptor version
   desc.unicode(''); // root class name
@@ -64,7 +73,7 @@ Uint8List _descPayload({required String sampledUuid, int angleControl = 6}) {
   desc.key('Md  ');
   desc.asciiChars('enum');
   desc.key('BlnM');
-  desc.key('Mltp');
+  desc.key(mainBlend);
   desc.key('smoothing');
   desc.asciiChars('bool');
   desc.u8(1);
@@ -72,10 +81,16 @@ Uint8List _descPayload({required String sampledUuid, int angleControl = 6}) {
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('dualBrush');
-  desc.i32(2);
+  desc.i32(dualBlend == null ? 2 : 3);
   desc.key('useDualBrush');
   desc.asciiChars('bool');
   desc.u8(1);
+  if (dualBlend != null) {
+    desc.key('BlnM');
+    desc.asciiChars('enum');
+    desc.key('BlnM');
+    desc.key(dualBlend);
+  }
   desc.key('Brsh');
   desc.asciiChars('Objc');
   desc.unicode('');
@@ -257,6 +272,8 @@ Uint8List _fixtureAbr({
   bool corruptDesc = false,
   bool patternsMissing = false,
   int angleControl = 6,
+  String mainBlend = 'Mltp',
+  String? dualBlend,
 }) {
   final samp = AbrBytes();
   writeSampEntry(
@@ -309,7 +326,12 @@ Uint8List _fixtureAbr({
   if (includeDesc) {
     final payload = corruptDesc
         ? Uint8List.fromList([0, 0, 0, 99, 1, 2, 3])
-        : _descPayload(sampledUuid: 'tip-one-uuid', angleControl: angleControl);
+        : _descPayload(
+            sampledUuid: 'tip-one-uuid',
+            angleControl: angleControl,
+            mainBlend: mainBlend,
+            dualBlend: dualBlend,
+          );
     write8bimSection(file, 'desc', payload);
   }
   return file.bytes;
@@ -326,6 +348,17 @@ void main() {
       );
       final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
       expect(chalk.settings.rotationMode, BrushTipRotationMode.penTilt);
+    });
+
+    test('the Rotation angle control turns the tip as the pen turns about '
+        'its barrel', () {
+      // 5 is Photoshop's Rotation — Clip Studio's ペン軸の回転 (F-176-Q9).
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(angleControl: 5),
+        sourceName: 'fixture',
+      );
+      final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
+      expect(chalk.settings.rotationMode, BrushTipRotationMode.penTwist);
     });
 
     test('imports sampled and computed brushes with their parameters', () {
@@ -424,6 +457,72 @@ void main() {
       // The brush that asked for no texture keeps none.
       expect(chalk.settings.textureMaskSource, isNull);
       expect(chalk.settings.textureMask, isNull);
+    });
+
+    test('the BlnM terms import as the blends they name', () {
+      // brush-fidelity: the thirteen beyond the first twelve, under the
+      // enumeration's own terms — string ids for the newer ones.
+      const expected = <String, BrushBlendMode>{
+        'Nrml': BrushBlendMode.color,
+        'Mltp': BrushBlendMode.multiply,
+        'linearBurn': BrushBlendMode.linearBurn,
+        'blendSubtraction': BrushBlendMode.subtract,
+        'vividLight': BrushBlendMode.vividLight,
+        'linearLight': BrushBlendMode.linearLight,
+        'pinLight': BrushBlendMode.pinLight,
+        'hardMix': BrushBlendMode.hardMix,
+        'darkerColor': BrushBlendMode.darkerColor,
+        'lighterColor': BrushBlendMode.lighterColor,
+        'blendDivide': BrushBlendMode.divide,
+        'H   ': BrushBlendMode.hue,
+        'Strt': BrushBlendMode.saturation,
+        'Clr ': BrushBlendMode.chroma,
+        'Lmns': BrushBlendMode.luminosity,
+      };
+      expected.forEach((term, mode) {
+        final result = decodeAbrBrushFile(
+          _fixtureAbr(mainBlend: term),
+          sourceName: 'fixture',
+        );
+        final chalk = result.presets.firstWhere(
+          (p) => p.name == 'Fancy Chalk',
+        );
+        expect(chalk.settings.blendMode, mode, reason: term);
+      });
+    });
+
+    test('a dual tip combines through linear burn and hard mix', () {
+      // 🔬2026-10-17, the user's nine packs: 11 dual tips name linearBurn
+      // and 10 hardMix — both arrived as multiply, with a warning, until
+      // the brush learned them.
+      for (final (term, mode) in [
+        ('linearBurn', SeparableBlendMode.linearBurn),
+        ('hardMix', SeparableBlendMode.hardMix),
+      ]) {
+        final result = decodeAbrBrushFile(
+          _fixtureAbr(dualBlend: term),
+          sourceName: 'fixture',
+        );
+        final chalk = result.presets.firstWhere(
+          (p) => p.name == 'Fancy Chalk',
+        );
+        expect(chalk.settings.dualCompositeMode, mode, reason: term);
+        expect(result.warnings, isEmpty, reason: term);
+      }
+    });
+
+    test('a dual tip naming a blend of three channels keeps the multiply '
+        'and says so', () {
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(dualBlend: 'H   '),
+        sourceName: 'fixture',
+      );
+      final chalk = result.presets.firstWhere((p) => p.name == 'Fancy Chalk');
+      expect(chalk.settings.dualCompositeMode, SeparableBlendMode.multiply);
+      expect(
+        result.warnings.any((w) => w.contains('dual-brush blend mode')),
+        isTrue,
+      );
     });
 
     test('a texture reference with no embedded pattern warns', () {

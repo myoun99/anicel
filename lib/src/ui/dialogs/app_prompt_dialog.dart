@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/selected_text_controller.dart';
 
 /// The one "type a short string" window: rename a layer, a cut, a frame, a
 /// brush, a media asset; name a new folder or a preset.
@@ -17,9 +18,9 @@ class AppPromptDialog extends StatefulWidget {
   const AppPromptDialog({
     super.key,
     required this.title,
-    required this.fieldLabel,
     required this.initialValue,
     required this.confirmLabel,
+    this.fieldLabel,
     this.titleIcon,
     this.emptyError,
     this.multiline = false,
@@ -53,9 +54,9 @@ class AppPromptDialog extends StatefulWidget {
     super.key,
     required String keyPrefix,
     required this.title,
-    required this.fieldLabel,
     required this.initialValue,
     required this.confirmLabel,
+    this.fieldLabel,
     this.titleIcon,
     this.emptyError,
     this.multiline = false,
@@ -83,7 +84,11 @@ class AppPromptDialog extends StatefulWidget {
 
   final String title;
   final IconData? titleIcon;
-  final String fieldLabel;
+
+  /// The cap over the field; null where the title already says what is
+  /// typed (I-24-open-entry: 「텍스트편집위에 레이어 이름이나 프레임
+  /// 이름이란 텍스트 필요없음」).
+  final String? fieldLabel;
   final String initialValue;
 
   /// Verb, not 'OK' — 'Rename', 'Save', 'Create'.
@@ -107,13 +112,8 @@ class AppPromptDialog extends StatefulWidget {
 }
 
 class _AppPromptDialogState extends State<AppPromptDialog> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initialValue,
-  )..selection = TextSelection(
-    // Preselected, so typing REPLACES the old name — renaming is nearly
-    // always a replacement, and reaching for ctrl+A first was friction.
-    baseOffset: 0,
-    extentOffset: widget.initialValue.length,
+  late final TextEditingController _controller = selectedTextController(
+    widget.initialValue,
   );
   String? _errorText;
 

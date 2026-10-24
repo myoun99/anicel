@@ -305,6 +305,28 @@ bool keepsEveryPixel(BitmapSurface surface, BitmapSurface behind) {
   return true;
 }
 
+/// [tiles] on a grid of [tileSize] with what lies past [wall] cut away, to
+/// the pixel — [surfaceBehindReach]'s cut, for tiles that were laid out
+/// behind another wall: a text copied in another project (I-101), whose
+/// pasteboard may reach further than this one's.
+Map<TileCoord, BitmapTile> tilesBehindWall(
+  Map<TileCoord, BitmapTile> tiles, {
+  required DirtyRegion wall,
+  required int tileSize,
+}) => _BehindWall(wall: wall, laid: null, tileSize: tileSize).tilesOf(tiles);
+
+/// [tiles] — a cel's, as plain bytes, on a grid of [tileSize] — behind
+/// [wall], a file's picture [laid] left whole: [surfaceBehindReach]'s cut,
+/// made of the bytes before they are laid into tiles (`layCelInWorker`), so
+/// a tile the wall keeps whole is laid as it came and only one it crosses
+/// is copied.
+List<({int x, int y, Uint8List pixels})> tileBytesBehindWall(
+  List<({int x, int y, Uint8List pixels})> tiles, {
+  required DirtyRegion wall,
+  required DirtyRegion? laid,
+  required int tileSize,
+}) => _BehindWall(wall: wall, laid: laid, tileSize: tileSize).recordsOf(tiles);
+
 /// What of a tile is kept behind a [wall] — inside it, or inside where a
 /// file was [laid].
 final class _BehindWall {
@@ -326,6 +348,17 @@ final class _BehindWall {
       coord: ?_kept(coord, tile, crossed),
   };
 
+  /// [records] — tiles as plain bytes — cut as [tilesOf] cuts tiles: the
+  /// very bytes of one the wall keeps whole, a cleared copy of one it
+  /// crosses, nothing of one past it.
+  List<({int x, int y, Uint8List pixels})> recordsOf(
+    List<({int x, int y, Uint8List pixels})> records,
+  ) => [
+    for (final record in records)
+      if (_keptBytes(record) case final pixels?)
+        (x: record.x, y: record.y, pixels: pixels),
+  ];
+
   /// [tile] at [coord] with what lies outside cleared: the very tile where
   /// nothing does, null where nothing of it is left — as [crossed] has it
   /// already where it was cleared elsewhere.
@@ -333,30 +366,63 @@ final class _BehindWall {
     TileCoord coord,
     BitmapTile tile,
     Map<TileCoord, BitmapTile>? crossed,
-  ) {
-    final box = DirtyRegion(
-      left: coord.x * tileSize,
-      top: coord.y * tileSize,
-      rightExclusive: (coord.x + 1) * tileSize,
-      bottomExclusive: (coord.y + 1) * tileSize,
-    );
+  ) => switch (_keepsOf(coord)) {
+    null => tile,
+    [] => null,
+    final keeps =>
+      crossed != null
+          ? crossed[coord]
+          : _cleared(coord, keeps, tile.copyPixelsInto),
+  };
+
+  /// [record]'s bytes as [_kept] keeps its tile.
+  Uint8List? _keptBytes(({int x, int y, Uint8List pixels}) record) {
+    final coord = TileCoord(x: record.x, y: record.y);
+    return switch (_keepsOf(coord)) {
+      null => record.pixels,
+      [] => null,
+      final keeps => _cleared(
+        coord,
+        keeps,
+        (pixels) => pixels.setAll(0, record.pixels),
+      )?.pixels,
+    };
+  }
+
+  /// What of the tile at [coord] lies behind the wall — inside it, or
+  /// inside where a file was laid: null where all of it does, none where
+  /// nothing of it does.
+  List<DirtyRegion>? _keepsOf(TileCoord coord) {
+    final box = _boxOf(coord);
     final inWall = box.intersection(wall);
     final inLaid = laid == null ? null : box.intersection(laid!);
     if (inWall == box || inLaid == box) {
-      return tile;
-    }
-    if (inWall == null && inLaid == null) {
       return null;
     }
-    if (crossed != null) {
-      return crossed[coord];
-    }
+    return [?inWall, ?inLaid];
+  }
+
+  DirtyRegion _boxOf(TileCoord coord) => DirtyRegion(
+    left: coord.x * tileSize,
+    top: coord.y * tileSize,
+    rightExclusive: (coord.x + 1) * tileSize,
+    bottomExclusive: (coord.y + 1) * tileSize,
+  );
+
+  /// The tile at [coord] of the pixels [copyInto] writes, cleared but for
+  /// [keeps] — null where nothing of it is left.
+  BitmapTile? _cleared(
+    TileCoord coord,
+    List<DirtyRegion> keeps,
+    void Function(Uint8List pixels) copyInto,
+  ) {
+    final box = _boxOf(coord);
     final cleared = BitmapTile.written(
       size: tileSize,
       write: (pixels) {
-        tile.copyPixelsInto(pixels);
+        copyInto(pixels);
         for (var row = 0; row < tileSize; row += 1) {
-          _clearRowOutside(pixels, row, box, [?inWall, ?inLaid]);
+          _clearRowOutside(pixels, row, box, keeps);
         }
       },
     );

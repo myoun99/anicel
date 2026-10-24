@@ -8,12 +8,14 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
+import '../../models/pixel_verb_settings.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
+import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
 import 'rasterize_reference_rows.dart';
@@ -32,8 +34,8 @@ void toggleAutoCreateFrameOnDraw(EditorSessionManager session) {
 
 /// The timeline bar's menus as they open, for ONE panel: the layer pill's
 /// two, the frame pill's, the shared pill's colour edit list and the
-/// effects' here, and with the cut pill's ([cutMenuEntries],
-/// [cutAddEntries]) every row of the bar ([rows]).
+/// effects' here, and with the cut pill's ([cutMenuEntries]) every row of
+/// the bar ([rows]).
 ///
 /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
 /// 버튼같은거나 … 뭐든 모든 버튼」. ★A KEY AND ITS MENU ROW ARE ONE PRESS
@@ -56,12 +58,11 @@ class TimelineBarMenus {
   final ToolbarPanelContext panel;
 
   /// Every row of the bar's menus as they would open right now
-  /// ([flyoutRowsOf]) — the cut pill's two, then the layer pill's two, the
+  /// ([flyoutRowsOf]) — the cut pill's one, then the layer pill's two, the
   /// frame pill's, the shared pill's colour edit list and the effects'.
   /// [context] is where a row's window opens.
   List<PanelFlyoutItem> rows(BuildContext context) => flyoutRowsOf([
     ...cutMenuEntries(context, session),
-    ...cutAddEntries(session),
     ...layer(context),
     ...addLayer(),
     ...frame(),
@@ -207,7 +208,8 @@ class TimelineBarMenus {
 
   /// A track's fixture row takes no row verb from here
   /// ([LayerKind.isTrackFixture]) — selecting the transition row must not
-  /// light up duplicate.
+  /// light up rename (↩️it said duplicate, which F-455 moved to the shared
+  /// pill).
   ///
   /// A getter because ① moved rename OUT of the menu: the pill's button and
   /// the entries that stayed behind have to answer the same question, and
@@ -225,21 +227,16 @@ class TimelineBarMenus {
     // panel's noun — so the storyboard's menu greys them all out honestly
     // instead of editing a row that panel is not showing.
     final serves = panel.servesActiveLayerVerbs;
-    final editable = serves && canEditActiveLayer;
     return [
       // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
       // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
       // MENU and onto that pill, which is where 컷 삭제 went for the same
       // sentence; it does not mean the shared pill, whose residents 확정 #11
       // fixes at four.
-      PanelFlyoutItem(
-        keyValue: 'duplicate-layer-button',
-        label: editorActionLabel(EditorActionIds.layerDuplicate),
-        shortcuts: const [EditorActionIds.layerDuplicate],
-        icon: Icons.copy_outlined,
-        enabled: editable,
-        onSelected: session.layerVerbs.duplicateActiveLayer,
-      ),
+      // ⛔DUPLICATE IS NOT HERE EITHER (F-455, 유저 2026-10-23: 「공용알약에
+      // 복제 버튼 만들고 레이어랑 컷버튼의 레이어복제/컷복제 삭제」). The
+      // shared pill's 복제 duplicates the selected rows, as its copy takes
+      // them.
       // ⛔COPY AND PASTE ARE NOT HERE, AND NEITHER IS 「링크해서 복제」
       // (I-77, 유저 2026-10-06: 「복사/붙여넣기버튼 레이어도 연결 … 그러고
       // 레이어버튼의 레이어복사/붙여넣기는 필요없으니 삭제」 · 「링크해서
@@ -379,10 +376,13 @@ class TimelineBarMenus {
   /// groups are the verbs' own answer ([CelPixelVerb.usesTheColour]), not a
   /// list of rows kept here.
   ///
-  /// ⛔NO TOLERANCE KNOB HERE. 유저 2026-08-27 (I-8-Q2): 「허용차 같은
-  /// 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
-  /// 하고싶음」 — the buttons match the colour exactly, and the graded
-  /// version is the Delete Color / Keep Color EFFECT.
+  /// ↩️NO TOLERANCE KNOB HERE — until I-13-Q4 (유저 2026-10-16: 「색 삭제 ·
+  /// 색 유지의 허용차(지금 0 = 색이 똑같을 때만)」 as a knob in the row, the
+  /// shape 2치화's cut has). It had been 유저 2026-08-27 (I-8-Q2): 「허용차
+  /// 같은 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
+  /// 하고싶음」 — the buttons matched the colour exactly, and the graded
+  /// version was the Delete Color / Keep Color EFFECT. A knob's 0 is still
+  /// that exact match.
   ///
   /// ↩️The four were live whenever the head was — one gate for all of them.
   /// I-55 put a second kind of verb in the list, so the head opens when any
@@ -421,12 +421,13 @@ class TimelineBarMenus {
       ),
   ];
 
-  /// One of the four overwrite verbs' rows.
+  /// One of the overwrite verbs' rows, with the knob its verb runs by.
   PanelFlyoutItem _pixelVerbRow(CelPixelVerb verb) => PanelFlyoutItem(
     keyValue: switch (verb) {
       // The retired buttons' own key strings, kept.
       CelPixelVerb.replaceColour => 'shared-replace-colour-button',
       CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
+      CelPixelVerb.binarize => 'shared-binarize-button',
       CelPixelVerb.deleteColour => 'shared-delete-colour-button',
       CelPixelVerb.keepColour => 'shared-keep-colour-button',
     },
@@ -438,11 +439,63 @@ class TimelineBarMenus {
     icon: switch (verb) {
       CelPixelVerb.replaceColour => Icons.format_color_fill,
       CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
+      CelPixelVerb.binarize => Icons.contrast,
       CelPixelVerb.deleteColour => Icons.format_color_reset,
       CelPixelVerb.keepColour => Icons.colorize_outlined,
     },
     shortcuts: [pixelVerbActionIdFor(verb)],
     enabled: session.pixelVerbs.canRunPixelVerb,
     onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+    // 🗣️I-13: 2치화's cut (09-11) and the colour verbs' reach (Q4 = a), each
+    // in its own row — the value the row's command runs with.
+    knob: switch (verb) {
+      CelPixelVerb.binarize => _byteKnob(
+        'shared-binarize-cut',
+        lowest: PixelVerbSettings.lowestBinarizeThreshold,
+        read: (settings) => settings.binarizeThreshold,
+        write: (settings, byte) => settings.copyWith(binarizeThreshold: byte),
+      ),
+      CelPixelVerb.deleteColour => _byteKnob(
+        'shared-delete-colour-tolerance',
+        lowest: 0,
+        read: (settings) => settings.deleteColourTolerance,
+        write: (settings, byte) =>
+            settings.copyWith(deleteColourTolerance: byte),
+      ),
+      CelPixelVerb.keepColour => _byteKnob(
+        'shared-keep-colour-tolerance',
+        lowest: 0,
+        read: (settings) => settings.keepColourTolerance,
+        write: (settings, byte) => settings.copyWith(keepColourTolerance: byte),
+      ),
+      CelPixelVerb.replaceColour || CelPixelVerb.clearPixels => null,
+    },
   );
+
+  /// A byte from [lowest] to 255 that a row's verb runs with: the live
+  /// value follows the bar as it goes, and the app's settings keep it when
+  /// it is let go — a drag is not a disk write per step.
+  PanelFlyoutKnob _byteKnob(
+    String keyValue, {
+    required int lowest,
+    required int Function(PixelVerbSettings settings) read,
+    required PixelVerbSettings Function(PixelVerbSettings settings, int byte)
+    write,
+  }) {
+    PixelVerbSettings at(double value) =>
+        write(PixelVerbSettings.settings.value, value.round());
+    return PanelFlyoutKnob(
+      listenable: PixelVerbSettings.settings,
+      builder: (_) => FieldSlider(
+        key: ValueKey<String>(keyValue),
+        value: read(PixelVerbSettings.settings.value).toDouble(),
+        min: lowest.toDouble(),
+        max: 255,
+        divisions: 255 - lowest,
+        onChanged: (value) => PixelVerbSettings.settings.value = at(value),
+        onChangeEnd: (value) =>
+            session.appSettings.setPixelVerbSettings(at(value)),
+      ),
+    );
+  }
 }

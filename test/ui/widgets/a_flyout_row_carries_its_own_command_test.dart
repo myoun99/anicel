@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -13,9 +14,10 @@ import 'package:flutter_test/flutter_test.dart';
 /// 「1 ok」.
 ///
 /// The list is the app's one picker (F-230), so what it lacked went INTO it
-/// rather than round it: a row can carry one small command of its own at
-/// its end ([PanelFlyoutRowAction]), and a name as long as its owner likes
-/// stays on one line.
+/// rather than round it: a row can carry small commands of its own at its
+/// end ([PanelFlyoutRowAction]) — several since the shortcut presets'
+/// rename and duplicate came beside their delete (I-107-Q3) — and a name
+/// as long as its owner likes stays on one line.
 void main() {
   const opener = ValueKey<String>('flyout-under-test');
 
@@ -55,25 +57,29 @@ void main() {
           keyValue: 'row-a',
           label: 'a',
           onSelected: () => heard.add('chose a'),
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => heard.add('deleted a'),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () => heard.add('deleted a'),
+            ),
+          ],
         ),
         PanelFlyoutItem(
           keyValue: 'row-b',
           label: 'b',
           onSelected: () => heard.add('chose b'),
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-b-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => heard.add('deleted b'),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-b-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () => heard.add('deleted b'),
+            ),
+          ],
         ),
       ],
     );
@@ -84,6 +90,51 @@ void main() {
 
     expect(heard, ['deleted b']);
     expect(key('row-b'), findsNothing, reason: 'the list closed');
+  });
+
+  testWidgets('a row carries several commands at its end, in the order it '
+      'gives them — each pressed alone, instead of the row', (tester) async {
+    final heard = <String>[];
+    PanelFlyoutRowAction command(String name) => PanelFlyoutRowAction(
+      keyValue: 'row-a-$name',
+      icon: switch (name) {
+        'rename' => Icons.edit_outlined,
+        'copy' => Icons.content_copy,
+        _ => Icons.delete_outline,
+      },
+      tooltip: name,
+      onPressed: () => heard.add(name),
+    );
+    final entries = [
+      PanelFlyoutItem(
+        keyValue: 'row-a',
+        label: 'a',
+        onSelected: () => heard.add('chose a'),
+        actions: [command('rename'), command('copy'), command('delete')],
+      ),
+    ];
+    await pumpList(tester, () => entries);
+
+    final [rename, copy, delete] = [
+      for (final name in ['rename', 'copy', 'delete'])
+        tester.getRect(key('row-a-$name')),
+    ];
+    expect(rename.right, lessThanOrEqualTo(copy.left));
+    expect(copy.right, lessThanOrEqualTo(delete.left));
+    expect(
+      tester.getRect(key('row-a-delete')).right,
+      lessThanOrEqualTo(tester.getRect(key('row-a')).right),
+    );
+
+    await tester.tap(key('row-a-copy'));
+    await tester.pumpAndSettle();
+    expect(heard, ['copy']);
+
+    await tester.tap(find.byKey(opener));
+    await tester.pumpAndSettle();
+    await tester.tap(key('row-a-rename'));
+    await tester.pumpAndSettle();
+    expect(heard, ['copy', 'rename']);
   });
 
   testWidgets('a press on the ROW chooses it, and its command is not run', (
@@ -97,12 +148,14 @@ void main() {
           keyValue: 'row-a',
           label: 'a',
           onSelected: () => heard.add('chose a'),
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            onPressed: () => heard.add('deleted a'),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              onPressed: () => heard.add('deleted a'),
+            ),
+          ],
         ),
       ],
     );
@@ -123,16 +176,18 @@ void main() {
         PanelFlyoutItem(
           keyValue: 'row-a',
           label: 'a',
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            // The list is a route over the page: while it is open there
-            // is one to pop.
-            onPressed: () => listStillOpen = tester
-                .state<NavigatorState>(find.byType(Navigator))
-                .canPop(),
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              // The list is a route over the page: while it is open there
+              // is one to pop.
+              onPressed: () => listStillOpen = tester
+                  .state<NavigatorState>(find.byType(Navigator))
+                  .canPop(),
+            ),
+          ],
         ),
       ],
     );
@@ -156,23 +211,27 @@ void main() {
         PanelFlyoutItem(
           keyValue: 'row-a',
           label: 'a',
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-a-delete',
-            icon: Icons.delete_outline,
-            tooltip: 'Delete',
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () {},
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-a-delete',
+              icon: Icons.delete_outline,
+              tooltip: 'Delete',
+              does: PanelFlyoutActionDoes.deletes,
+              onPressed: () {},
+            ),
+          ],
         ),
         PanelFlyoutItem(
           keyValue: 'row-b',
           label: 'b',
-          action: PanelFlyoutRowAction(
-            keyValue: 'row-b-rename',
-            icon: Icons.edit_outlined,
-            tooltip: 'Rename',
-            onPressed: () {},
-          ),
+          actions: [
+            PanelFlyoutRowAction(
+              keyValue: 'row-b-rename',
+              icon: Icons.edit_outlined,
+              tooltip: 'Rename',
+              onPressed: () {},
+            ),
+          ],
         ),
       ],
     );
@@ -253,5 +312,124 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.byType(PopupMenuItem<PanelFlyoutItem>), findsNothing);
+  });
+
+  /// 🗣️I-13 (유저 2026-09-11, of 2치화's cut): 「버튼 안에 공간을 두개로
+  /// 나눠서」 — a row carries the VALUE its command runs with, too: its name
+  /// runs the command and closes the list, its knob turns and does neither.
+  group('and the knob its command runs by', () {
+    late ValueNotifier<double> cut;
+    late List<String> heard;
+
+    Future<void> pumpKnobbedRow(WidgetTester tester) async {
+      cut = ValueNotifier<double>(128);
+      addTearDown(cut.dispose);
+      heard = <String>[];
+      await pumpList(
+        tester,
+        () => [
+          PanelFlyoutItem(
+            keyValue: 'row-a',
+            label: 'a',
+            onSelected: () => heard.add('ran a at ${cut.value.round()}'),
+            knob: PanelFlyoutKnob(
+              listenable: cut,
+              builder: (_) => FieldSlider(
+                key: const ValueKey<String>('row-a-knob'),
+                value: cut.value,
+                min: 1,
+                max: 255,
+                divisions: 254,
+                onChanged: (value) => cut.value = value,
+              ),
+            ),
+          ),
+        ],
+      );
+      expect(key('row-a-knob'), findsOneWidget, reason: '⛔fixture');
+    }
+
+    testWidgets('🚨a DRAG on the knob turns it, and neither runs the row nor '
+        'closes the list', (tester) async {
+      await pumpKnobbedRow(tester);
+
+      await tester.drag(key('row-a-knob'), const Offset(-30, 0));
+      await tester.pumpAndSettle();
+
+      expect(cut.value, lessThan(128));
+      expect(heard, isEmpty);
+      expect(key('row-a'), findsOneWidget, reason: 'the list is still open');
+    });
+
+    testWidgets('🚨and a CLICK on it is the knob\'s too: the value lands '
+        'where it was pressed, and the row does not run', (tester) async {
+      await pumpKnobbedRow(tester);
+
+      // Near the bar's left end: a value well under the 128 it holds.
+      await tester.tapAt(
+        tester.getRect(key('row-a-knob')).centerLeft + const Offset(4, 0),
+      );
+      await tester.pumpAndSettle();
+
+      expect(cut.value, lessThan(50));
+      expect(heard, isEmpty, reason: 'a bar takes no tap of its own — the '
+          'row\'s must not get it');
+      expect(key('row-a'), findsOneWidget, reason: 'the list is still open');
+    });
+
+    testWidgets('and so is a press BESIDE the bar, in the knob\'s own '
+        'column: the row does not run', (tester) async {
+      await pumpKnobbedRow(tester);
+      final bar = tester.getRect(key('row-a-knob'));
+      final row = tester.getRect(key('row-a'));
+      expect(
+        bar.top,
+        greaterThan(row.top + 2),
+        reason: '⛔fixture: the bar is thinner than its row',
+      );
+
+      await tester.tapAt(Offset(bar.center.dx, row.top + 1));
+      await tester.pumpAndSettle();
+
+      expect(cut.value, 128, reason: 'nothing turned');
+      expect(heard, isEmpty);
+      expect(key('row-a'), findsOneWidget, reason: 'the list is still open');
+    });
+
+    testWidgets('a press on the row\'s NAME runs it at the knob\'s value and '
+        'closes the list', (tester) async {
+      await pumpKnobbedRow(tester);
+      await tester.drag(key('row-a-knob'), const Offset(-30, 0));
+      await tester.pumpAndSettle();
+      final turned = cut.value.round();
+      expect(turned, lessThan(128), reason: '⛔fixture');
+
+      await tester.tapAt(
+        tester.getTopLeft(key('row-a')) + const Offset(24, 16),
+      );
+      await tester.pumpAndSettle();
+
+      expect(heard, ['ran a at $turned']);
+      expect(key('row-a'), findsNothing, reason: 'the list closed');
+    });
+
+    testWidgets('the knob shows a turn made while the list is open', (
+      tester,
+    ) async {
+      await pumpKnobbedRow(tester);
+      expect(
+        find.descendant(of: key('row-a-knob'), matching: find.text('128')),
+        findsOneWidget,
+        reason: '⛔fixture',
+      );
+
+      cut.value = 12;
+      await tester.pump();
+
+      expect(
+        find.descendant(of: key('row-a-knob'), matching: find.text('12')),
+        findsOneWidget,
+      );
+    });
   });
 }

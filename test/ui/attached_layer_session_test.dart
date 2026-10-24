@@ -346,10 +346,13 @@ void main() {
     expect(selection.startIndex, 0);
     expect(selection.endIndexExclusive, 1);
 
-    // Mirror-only selection: nothing of its own to move — and the
-    // refusal SAYS so at the cursor (the synced-block UI made the row
-    // look grabbable).
-    expect(s.rangeMove.beginFrameRangeMoveDrag(), isFalse);
+    // Mirror-only selection: no block of its own to move — it may only
+    // trade pictures in its group (F-330), and a release that traded none
+    // SAYS so at the cursor (the synced-block UI made the row look
+    // grabbable).
+    expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
+    s.rangeMove.endFrameRangeMoveDrag();
     expect(cursorNotices.message, AppText.strings.noticeEditAttachOwner);
     cursorNotices.clear();
 

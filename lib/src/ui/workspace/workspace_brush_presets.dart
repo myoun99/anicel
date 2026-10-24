@@ -44,30 +44,20 @@ class _WorkspaceBrushPresets {
   /// that explanatory notices are noise — but deleting is destructive and
   /// unlike a stroke it has no undo behind it. Photoshop and Clip Studio
   /// both ask here too.
+  ///
+  /// The app's yes/no window ([askConfirm]), as a preset's delete asks —
+  /// ↩️it was an `AlertDialog` of its own whose sentence never went
+  /// through the string tables, so it spoke English in every language.
   Future<void> _deleteTip(BrushTipEntry tip) async {
-    final confirmed = await showDialog<bool>(
-      context: _state.context,
-      builder: (dialogContext) => AlertDialog(
-        key: const ValueKey<String>('delete-tip-dialog'),
-        title: Text(AppText.strings.brDeleteTip),
-        content: Text('“${tip.name}” will be removed from the library.'),
-        actions: [
-          ControlPressClaim(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: TextButton(
-              onPressed: silentPress(
-                () => Navigator.of(dialogContext).pop(false),
-              ),
-              child: Text(AppText.strings.commonCancel),
-            ),
-          ),
-          FilledButton(
-            key: const ValueKey<String>('delete-tip-confirm'),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(AppText.strings.commonDelete),
-          ),
-        ],
+    final confirmed = await askConfirm(
+      _state.context,
+      ConfirmQuestion(
+        keys: confirmDialogKeys('delete-tip'),
+        title: AppText.strings.brDeleteTip,
+        titleIcon: Icons.delete_outline,
+        message: AppText.strings.brDeleteTipBody(tip.name),
       ),
+      accept: ConfirmChoice(AppText.strings.commonDelete),
     );
     if (confirmed ?? false) {
       await _state._tipLibrary.delete(tip.id);
@@ -365,36 +355,49 @@ class _WorkspaceBrushPresets {
   /// F-63 state ([openingPresetFor]).
   void deletePreset(BrushPresetId id) {
     final beside = _state._presetLibrary.presetBeside(id);
-    _whileDropping({id}, () => _state._presetLibrary.delete(id), beside);
+    _whileDropping({id}, () => _state._presetLibrary.delete(id), (_) => beside);
   }
 
-  /// Deletes a group and its presets; a tool that held one of them takes up
-  /// the library's opening preset — nothing is left beside it.
+  /// Deletes a group and its presets; every paint tool that held one of them
+  /// enters the tab beside it ([BrushPresetLibrary.groupBeside]), holding
+  /// what a press of that tab hands it ([_WorkspaceBrushGroups.entering]).
+  /// The library shows the hand's brush, as after any change of hand
+  /// (F-319) — and a look into the deleted tab ends with it.
+  ///
+  /// 🗣️F-426 (유저 2026-10-21): 「선택한 브러시 그룹 삭제시, 다른 그룹
+  /// 선택하도록. 왜 저번에 브러시 삭제하면 다른 브러시 선택하게할때
+  /// 유동적으로 이부분도 안했는지 의문. 최대한 법 통일」 — the brush's law
+  /// (F-250 ③, [deletePreset]), a tab over.
+  /// ↩️They took up the library's opening preset: 「nothing is left beside
+  /// it」 — which was so of the group's own brushes, not of its tab.
   void deleteGroup(BrushGroupId id) {
-    final gone = {
-      for (final preset in _state._presetLibrary.presetsInGroup(id)) preset.id,
-    };
-    _whileDropping(gone, () => _state._presetLibrary.deleteGroup(id), null);
+    final library = _state._presetLibrary;
+    final groups = _state._brushGroups;
+    final gone = {for (final preset in library.presetsInGroup(id)) preset.id};
+    final beside = library.groupBeside(id);
+    _whileDropping(
+      gone,
+      () => library.deleteGroup(id),
+      (tool) => beside == null ? null : groups.entering(tool, beside.group),
+    );
+    groups.look.tabGone(id);
   }
 
-  /// Runs [drop], then hands every paint tool that held one of [gone] the
-  /// preset [beside] — or, with none, the library's first, the brush a tool
-  /// with no nameable brush opens on (F-63) — down the road a reset and a
-  /// resumed project take ([takeUpBrushes]).
+  /// Runs [drop], then hands every paint tool that held one of [gone] its
+  /// preset [besideFor] — or, with none, the library's first, the brush a
+  /// tool with no nameable brush opens on (F-63) — down the road a reset and
+  /// a resumed project take ([takeUpBrushes]).
   void _whileDropping(
     Set<BrushPresetId> gone,
     void Function() drop,
-    BrushPresetId? beside,
+    BrushPresetId? Function(CanvasTool tool) besideFor,
   ) {
     final held = toolChoiceOf(_state._brushTool);
     drop();
-    final next = beside ?? _state._presetLibrary.presets.firstOrNull?.id;
-    if (next == null) {
-      return;
-    }
+    final opening = _state._presetLibrary.presets.firstOrNull?.id;
     final orphaned = {
       for (final MapEntry(key: tool, value: id) in held.presets.entries)
-        if (gone.contains(id)) tool: next,
+        if (gone.contains(id)) tool: ?(besideFor(tool) ?? opening),
     };
     if (orphaned.isEmpty) {
       return;

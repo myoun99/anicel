@@ -284,7 +284,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('duplicate-layer-button')),
+      find.byKey(const ValueKey<String>('timeline-rasterize-layer-button')),
       findsOneWidget,
       reason: '⛔전제: the flyout is open',
     );
@@ -292,6 +292,8 @@ void main() {
       'copy-layer-button',
       'paste-layer-button',
       'timeline-link-duplicate-button',
+      // F-455: and its duplicate is the shared pill's 복제 now.
+      'duplicate-layer-button',
     ]) {
       expect(find.byKey(ValueKey<String>(gone)), findsNothing, reason: gone);
     }
@@ -399,21 +401,22 @@ void main() {
   });
 
   testWidgets(
-    'Duplicate Layer button duplicates active layer and selects copy',
+    'the shared pill\'s 복제 duplicates the active layer and selects the copy '
+    '(F-455 — the layer menu\'s button moved there)',
     (WidgetTester tester) async {
       await tester.pumpWidget(const AnicelApp());
 
       expect(
         await isActionButtonEnabled(
           tester,
-          const ValueKey<String>('duplicate-layer-button'),
+          const ValueKey<String>('shared-duplicate-button'),
         ),
         isTrue,
       );
 
       await tapToolbarButton(
         tester,
-        const ValueKey<String>('duplicate-layer-button'),
+        const ValueKey<String>('shared-duplicate-button'),
       );
 
       expect(find.text('A'), findsWidgets);
@@ -437,7 +440,7 @@ void main() {
 
     await tapToolbarButton(
       tester,
-      const ValueKey<String>('duplicate-layer-button'),
+      const ValueKey<String>('shared-duplicate-button'),
     );
     // T25: the loose rename is folded into the shared Edit Instance, whose
     // subject is the selection — so the row is named first, exactly as the

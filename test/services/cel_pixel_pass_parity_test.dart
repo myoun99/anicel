@@ -134,6 +134,7 @@ void main() {
     required CelPixelChannel channel,
     required Uint8List? mask,
     required CelColorKey? selector,
+    int threshold = 0,
   }) {
     QaNativeEngine.debugResetForTests();
     QaNativeEngine.debugForceDartFallback = !native;
@@ -149,15 +150,18 @@ void main() {
       expect(QaNativeEngine.instance, isNull);
     }
     final surface = artwork();
-    final value = Uint8List.fromList(
-      channel == CelPixelChannel.colour ? [12, 140, 230] : [0],
-    );
+    // 2치화 writes opaque over its cut — the value `forVerb` hands it.
+    final value = Uint8List.fromList(switch (channel) {
+      CelPixelChannel.colour => [12, 140, 230],
+      CelPixelChannel.alpha => [if (threshold > 0) 255 else 0],
+    });
     final forward = overwriteCelPixels(
       surface: surface,
       channel: channel,
       walk: walkOver(surface, mask),
       value: value,
       selector: selector,
+      threshold: threshold,
     );
     final undone = forward.restore == null
         ? forward.surface
@@ -177,32 +181,38 @@ void main() {
 
   final selectorNamesTheColour = CelPixelVerb.deleteColour.selectorFor(
     0xFFC8280A, // (200, 40, 10)
+    tolerance: 0,
   );
   final selectorKeepsTheColour = CelPixelVerb.keepColour.selectorFor(
     0xFFC8280A,
+    tolerance: 0,
   );
-  // The button's selector is tolerance 0 by design, and 0 cannot tell a
-  // per-channel box from any other distance — so the kernel's reading of
-  // the tolerance the key ADMITS is pinned with a key the button never makes.
-  final selectorNearTheColour = CelColorKey(
-    red: 200,
-    green: 40,
-    blue: 10,
+  // 0 cannot tell a per-channel box from any other distance — so the
+  // kernel's reading of the tolerance the key ADMITS is pinned at a reach
+  // of 3, one the row's knob makes. ↩️It was a key made by hand while no
+  // knob made 3: the button's reach was 0 by design until I-13-Q4, then
+  // whole per cent until I-13-Q5.
+  final selectorNearTheColour = CelPixelVerb.deleteColour.selectorFor(
+    0xFFC8280A,
     tolerance: 3,
-    amount: 1,
-    keepsMatches: false,
   );
 
   final cases =
-      <({String name, CelPixelChannel channel, bool masked, CelColorKey? key})>[
-        (name: '색 변환, full', channel: CelPixelChannel.colour, masked: false, key: null),
-        (name: '색 변환, soft mask', channel: CelPixelChannel.colour, masked: true, key: null),
-        (name: '픽셀 비우기, full', channel: CelPixelChannel.alpha, masked: false, key: null),
-        (name: '픽셀 비우기, soft mask', channel: CelPixelChannel.alpha, masked: true, key: null),
-        (name: '색 삭제', channel: CelPixelChannel.alpha, masked: false, key: selectorNamesTheColour),
-        (name: '색 삭제, soft mask', channel: CelPixelChannel.alpha, masked: true, key: selectorNamesTheColour),
-        (name: '색 남기기', channel: CelPixelChannel.alpha, masked: false, key: selectorKeepsTheColour),
-        (name: '색 삭제, tolerance 3', channel: CelPixelChannel.alpha, masked: true, key: selectorNearTheColour),
+      <({String name, CelPixelChannel channel, bool masked, CelColorKey? key, int cut})>[
+        (name: '색 변환, full', channel: CelPixelChannel.colour, masked: false, key: null, cut: 0),
+        (name: '색 변환, soft mask', channel: CelPixelChannel.colour, masked: true, key: null, cut: 0),
+        (name: '픽셀 비우기, full', channel: CelPixelChannel.alpha, masked: false, key: null, cut: 0),
+        (name: '픽셀 비우기, soft mask', channel: CelPixelChannel.alpha, masked: true, key: null, cut: 0),
+        (name: '색 삭제', channel: CelPixelChannel.alpha, masked: false, key: selectorNamesTheColour, cut: 0),
+        (name: '색 삭제, soft mask', channel: CelPixelChannel.alpha, masked: true, key: selectorNamesTheColour, cut: 0),
+        (name: '색 남기기', channel: CelPixelChannel.alpha, masked: false, key: selectorKeepsTheColour, cut: 0),
+        (name: '색 삭제, tolerance 3', channel: CelPixelChannel.alpha, masked: true, key: selectorNearTheColour, cut: 0),
+        // 2치화 (ABI 50) — the cut at its default, at its ends, and under a
+        // soft mask, where a pixel goes PART of the way to its side.
+        (name: '2치화 128', channel: CelPixelChannel.alpha, masked: false, key: null, cut: 128),
+        (name: '2치화 128, soft mask', channel: CelPixelChannel.alpha, masked: true, key: null, cut: 128),
+        (name: '2치화 1', channel: CelPixelChannel.alpha, masked: false, key: null, cut: 1),
+        (name: '2치화 255', channel: CelPixelChannel.alpha, masked: false, key: null, cut: 255),
       ];
 
   test('🚨a recipe SHORTER than its walk is refused by both passes — the C '
@@ -253,12 +263,14 @@ void main() {
         channel: c.channel,
         mask: mask,
         selector: c.key,
+        threshold: c.cut,
       );
       final native = run(
         native: true,
         channel: c.channel,
         mask: mask,
         selector: c.key,
+        threshold: c.cut,
       );
       expect(
         reference.recipe,

@@ -31,6 +31,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/photoshop/psd_reader.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
@@ -55,6 +56,10 @@ import '../../helpers/temp_dir.dart';
 /// what no row of it holds — the cost the answer was chosen at.
 void main() {
   const size = CanvasSize(width: 8, height: 8);
+
+  // A row in multiply is composed over its backdrop in the shader.
+  setUpAll(LayerBlendShader.load);
+
   const cutId = CutId('cut');
   const black = [0, 0, 0, 255];
   const blue = [10, 20, 220, 255];

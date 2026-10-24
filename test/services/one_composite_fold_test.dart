@@ -24,6 +24,11 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// that can be driven without a canvas ([planCutFrameCompositeTree], whose
 /// leaf mapping is "resolve a surface, or drop"), so the shared fold has
 /// to keep answering exactly this.
+///
+/// ↩️The folders here were in multiply, until every advanced blend went
+/// over its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-
+/// on-vulkan) and a folder in one became a blend of its own. Add still
+/// buffers as a group.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
 
@@ -39,7 +44,7 @@ void main() {
     id: LayerId(id),
     name: id.toUpperCase(),
     parentId: parent == null ? null : LayerId(parent),
-  ).copyWith(blendMode: LayerBlendMode.multiply);
+  ).copyWith(blendMode: LayerBlendMode.add);
 
   Layer adjustmentRow(String id, {String? folder}) =>
       createAdjustmentLayer(id: LayerId(id), name: id.toUpperCase()).copyWith(
@@ -116,7 +121,7 @@ void main() {
       );
       final group = nodes.single as CompositeGroup<CutFrameCompositeLayer>;
       expect(group.children, hasLength(1));
-      expect(group.blendMode, LayerBlendMode.multiply);
+      expect(group.blendMode, LayerBlendMode.add);
     });
 
     test('an outer folder drops when the inner one it held was emptied', () {

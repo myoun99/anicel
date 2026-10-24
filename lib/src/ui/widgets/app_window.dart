@@ -96,8 +96,17 @@ class AppWindow extends StatelessWidget {
     this.maxWidth = 720,
     this.height,
     this.scrollBody = true,
-    this.bodyPadding = const EdgeInsets.fromLTRB(12, 14, 12, 12),
+    this.bodyPadding = defaultBodyPadding,
   });
+
+  /// The room around a body that does not say otherwise — and around the
+  /// content of one that scrolls in a lane of its own (Preferences).
+  static const EdgeInsets defaultBodyPadding = EdgeInsets.fromLTRB(
+    12,
+    14,
+    12,
+    12,
+  );
 
   final String title;
   final IconData? titleIcon;
@@ -444,7 +453,10 @@ class AppWindowField extends StatelessWidget {
     this.emphasized = false,
   });
 
-  final String label;
+  /// Null stands the control alone, where the window's title already says
+  /// what it takes (I-24-open-entry: 「안써도 이미 헤더랑 버튼에서
+  /// 설명됨」).
+  final String? label;
   final Widget child;
 
   /// What the field means, as a tooltip on its cap — the settings rows' law
@@ -461,6 +473,10 @@ class AppWindowField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label = this.label;
+    if (label == null) {
+      return child;
+    }
     final theme = Theme.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,

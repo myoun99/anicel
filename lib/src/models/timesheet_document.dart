@@ -367,7 +367,8 @@ class TimesheetDocument {
     // of the notation shorthand — every ghost chain (repeat word, 止め,
     // front-hold relocation) renders verbatim as the concrete per-entry
     // cel labels XDTS/TDTS write. Holds stay holds (labels never tile
-    // down held rows).
+    // down held rows). The ACTION and SE blocks follow it; the CELL block
+    // prints data always (F-453, below).
     bool dataSheet = false,
   }) {
     const seColumnCount = 2;
@@ -458,8 +459,11 @@ class TimesheetDocument {
           sources.clipToSheet,
           drawnFrameCount: drawnFrameCount,
         ),
+      // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
+      // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」 —
+      // the CELL block prints its data whichever way the sheet reads.
       for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
-        _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, dataSheet),
+        _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, true),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
       // past the fixed count when a cut carries more.

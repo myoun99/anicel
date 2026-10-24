@@ -52,8 +52,12 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<TestGesture> hover(WidgetTester tester, Offset local) async {
-    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  Future<TestGesture> hover(
+    WidgetTester tester,
+    Offset local, {
+    PointerDeviceKind kind = PointerDeviceKind.mouse,
+  }) async {
+    final mouse = await tester.createGesture(kind: kind);
     await mouse.addPointer(location: Offset.zero);
     addTearDown(mouse.removePointer);
     await mouse.moveTo(canvasGlobalOffset(tester, local));
@@ -64,15 +68,11 @@ void main() {
   testWidgets('the system cursor hides while a tool cursor is up, and the '
       'app draws the ring where the pointer is', (tester) async {
     await pumpPanel(tester);
+    await hover(tester, const Offset(40, 40));
     expect(
-      tester
-          .widget<MouseRegion>(
-            find.byKey(const ValueKey<String>('brush-cursor-region')),
-          )
-          .cursor,
+      RendererBinding.instance.mouseTracker.debugDeviceActiveCursor(1),
       SystemMouseCursors.none,
     );
-    await hover(tester, const Offset(40, 40));
     expect(toolCursorShownAt(tester, find.byKey(outlineKey)), isNotNull);
   });
 
@@ -123,15 +123,17 @@ void main() {
     );
   });
 
-  testWidgets('the bucket and the dropper are sprites with the spout and '
+  testWidgets('the bucket and the dropper are sprites with the drop and '
       'the tip as hot spots; the swatch is a sprite of its own', (
     tester,
   ) async {
     await pumpPanel(tester, tool: CanvasTool.fill);
-    await hover(tester, const Offset(40, 40));
+    // A pen hovering: the pointer the app draws the bucket for — a mouse
+    // is shown the system's (`appDrawsLook`).
+    await hover(tester, const Offset(40, 40), kind: PointerDeviceKind.stylus);
     final bucket = find.byKey(const ValueKey<String>('fill-cursor-icon'));
     expect(toolCursorShownAt(tester, bucket), isNotNull);
-    expect(tester.widget<ToolCursorSprite>(bucket).look.hotspot, const Offset(3, 20));
+    expect(tester.widget<ToolCursorSprite>(bucket).look.hotspot, const Offset(4.5, 19));
 
     await pumpPanel(tester, tool: CanvasTool.eyedropper);
     await tester.pump();

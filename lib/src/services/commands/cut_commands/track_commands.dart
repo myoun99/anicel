@@ -170,13 +170,4 @@ class _TrackCommands {
       ),
     );
   }
-
-  Track _requireTrack(TrackId trackId) {
-    for (final track in _coordinator.repository.requireProject().tracks) {
-      if (track.id == trackId) {
-        return track;
-      }
-    }
-    throw StateError('Track not found: $trackId');
-  }
 }

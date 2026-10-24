@@ -1,0 +1,125 @@
+import 'dart:ui' as ui;
+
+import '../../models/layer_blend_mode.dart';
+import '../../services/brush_stroke_blend.dart';
+
+/// 🚨★★★ONE BLEND, TWO PROCESSORS (brush-fidelity-Q4, 유저 2026-10-17
+/// 「레이어까지 같이」).
+///
+/// A BRUSH in multiply, linear burn, hue … lands on a cel's bytes, where the
+/// pixels are Dart's: [blendStrokeRegionPixels], on the CPU. A LAYER in one
+/// is composed over everything below it — a composite, whose pixels only
+/// ever exist on the GPU. So the layer's road draws a picture of the
+/// backdrop and hands both pictures to `shaders/layer_blend.frag`, which
+/// takes the CPU's formulas of the same bytes;
+/// `test/ui/canvas/one_blend_two_processors_test.dart` sweeps the pair. Why
+/// none of them is left to the GPU's own blend is the shader's header.
+///
+/// ⛔NOT a fallback pair, as the colour key's two are not: each runs where
+/// its pixels are, and neither is the other's stand-in.
+///
+/// ⚠️The second program loader after `ColourKeyShader`, the same few lines.
+/// Not merged, by the rule of three — a third shader merges them.
+class LayerBlendShader {
+  LayerBlendShader._();
+
+  static const String assetKey = 'shaders/layer_blend.frag';
+
+  static ui.FragmentProgram? _program;
+
+  /// Whether [shaderFor] can be called. False until [load] completes.
+  ///
+  /// ⚠️`FragmentProgram.fromAsset` is async and a paint is not, so the
+  /// program has to be in hand before the first frame: a composite that
+  /// reached such a layer with no program would have to draw it in some
+  /// other blend, and that is the screen lying about the file.
+  static bool get isReady => _program != null;
+
+  /// Loads the program. Idempotent; safe to call from app start and from a
+  /// test's setUp.
+  static Future<void> load() async {
+    _program ??= await ui.FragmentProgram.fromAsset(assetKey);
+  }
+
+  /// Releases the loaded program so a test can prove the unloaded path.
+  static void debugUnload() {
+    _program = null;
+  }
+
+  /// A shader that composes [source] over [backdrop] through [mode] for
+  /// every pixel of a [width] x [height] draw — both pictures premultiplied,
+  /// the backdrop on that grid, the source where [sourceRect] lays it in the
+  /// draw's own 0..1: the whole of it ([wholeDraw]) for a raster on that
+  /// grid, a part for a row's own image laid texel for texel on it, which
+  /// shows nothing past its edge.
+  ///
+  /// ⚠️The caller owns the returned shader and must `dispose()` it after the
+  /// draw that used it is recorded.
+  static ui.FragmentShader shaderFor({
+    required ui.Image backdrop,
+    required ui.Image source,
+    required LayerBlendMode mode,
+    required double width,
+    required double height,
+    ui.Rect sourceRect = wholeDraw,
+  }) {
+    if (!mode.needsItsBackdrop) {
+      throw ArgumentError.value(
+        mode,
+        'mode',
+        'is laid by the GPU where it draws — composing it here would draw '
+            'it in the shader\'s default, the backdrop',
+      );
+    }
+    final program = _program;
+    if (program == null) {
+      throw StateError(
+        'LayerBlendShader.load() has not completed. A layer in an advanced '
+        'blend cannot be drawn without it, so the load is a prerequisite '
+        'of offering those blends at all.',
+      );
+    }
+    final shader = program.fragmentShader();
+    // ⛔Indices are declaration order, floats only — a sampler takes no float
+    // slot, and getting this wrong does not throw.
+    shader.setFloat(0, width);
+    shader.setFloat(1, height);
+    shader.setFloat(2, _nativeId(mode).toDouble());
+    shader.setFloat(3, sourceRect.left);
+    shader.setFloat(4, sourceRect.top);
+    shader.setFloat(5, sourceRect.width);
+    shader.setFloat(6, sourceRect.height);
+    shader.setImageSampler(0, backdrop);
+    shader.setImageSampler(1, source);
+    return shader;
+  }
+
+  /// [shaderFor] as an image filter's (`ui.ImageFilter.shader`): the ENGINE
+  /// binds the layer filtered — the backdrop, drawn into it — to the first
+  /// sampler and that layer's size to `uSize`; [source] is the second.
+  ///
+  /// ⚠️The first sampler is handed [source] only so that none is left unset;
+  /// the engine binds the layer over it.
+  static ui.FragmentShader filterFor({
+    required ui.Image source,
+    required LayerBlendMode mode,
+    ui.Rect sourceRect = wholeDraw,
+  }) => shaderFor(
+    backdrop: source,
+    source: source,
+    mode: mode,
+    width: source.width.toDouble(),
+    height: source.height.toDouble(),
+    sourceRect: sourceRect,
+  );
+
+  /// The whole draw, in its own 0..1 — where a source rastered on the
+  /// draw's grid lies ([shaderFor]).
+  static const ui.Rect wholeDraw = ui.Rect.fromLTWH(0, 0, 1, 1);
+
+  /// The kernel's own id for [mode] — the table the brush's C and Dart read.
+  static int _nativeId(LayerBlendMode mode) => switch (mode.separable) {
+    final separable? => separableBlendModeNativeId(separable),
+    null => nonSeparableBlendModeNativeId(mode.nonSeparable!),
+  };
+}

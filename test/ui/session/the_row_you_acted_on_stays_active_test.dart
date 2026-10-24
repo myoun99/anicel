@@ -16,9 +16,9 @@ import '../../helpers/pill_row_clipboard.dart';
 /// THAT ROW ACTIVE and notify.
 ///
 /// The trailing step is the one that goes missing when the envelope is
-/// written out four times — `CutVerbs._moveActiveCut` carries a comment
-/// recording exactly that loss. Pinned here for all four before they were
-/// folded onto one call.
+/// written out four times — the cut left/right verbs (gone since F-455)
+/// carried a comment recording exactly that loss. Pinned here for all four
+/// before they were folded onto one call.
 ///
 /// ↩️Two of the four have left it since: 링크 해제 went to the link window
 /// (I-25), and 링크 복제 is the shared pill's linked PASTE (I-77), which

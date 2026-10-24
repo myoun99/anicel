@@ -6,6 +6,7 @@ import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_order.dart';
+import 'brush_texture_mode.dart';
 import 'brush_tip_rotation_mode.dart';
 
 class BrushEditCanvasInputSettings {
@@ -28,6 +29,7 @@ class BrushEditCanvasInputSettings {
     double angleDegrees = 0.0,
     List<BrushTipMask> tips = const [],
     BrushTipOrder tipOrder = BrushTipOrder.repeat,
+    int tipsPerTurn = 1,
     BrushTipRotationMode rotationMode = BrushTipRotationMode.fixed,
     double angleJitter = 0.0,
     double scatterRadiusRatio = 0.0,
@@ -43,6 +45,7 @@ class BrushEditCanvasInputSettings {
     double textureContrast = 0.0,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    BrushTextureMode textureMode = BrushTextureMode.multiply,
     bool erase = false,
     BrushBlendMode blendMode = BrushBlendMode.color,
     BrushAntiAlias antiAlias = BrushAntiAlias.high,
@@ -107,6 +110,7 @@ class BrushEditCanvasInputSettings {
         angleDegrees: angleDegrees,
         tips: tips,
         tipOrder: tipOrder,
+        tipsPerTurn: tipsPerTurn,
         rotationMode: rotationMode,
         angleJitter: angleJitter,
         scatterRadiusRatio: scatterRadiusRatio,
@@ -122,6 +126,7 @@ class BrushEditCanvasInputSettings {
         textureContrast: textureContrast,
         textureScale: textureScale,
         textureDensity: textureDensity,
+        textureMode: textureMode,
         antiAlias: antiAlias,
         correction: correction,
       ),
@@ -196,6 +201,7 @@ class BrushEditCanvasInputSettings {
   /// See [BrushShape.tips] — and [tipMask], the first of them.
   List<BrushTipMask> get tips => shape.tips;
   BrushTipOrder get tipOrder => shape.tipOrder;
+  int get tipsPerTurn => shape.tipsPerTurn;
   BrushTipMask? get tipMask => shape.tipMask;
   BrushTipRotationMode get rotationMode => shape.rotationMode;
   double get angleJitter => shape.angleJitter;
@@ -220,6 +226,7 @@ class BrushEditCanvasInputSettings {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+  BrushTextureMode get textureMode => shape.textureMode;
 
   /// How hard the edge lands — see [BrushShape.antiAlias].
   BrushAntiAlias get antiAlias => shape.antiAlias;
@@ -251,6 +258,7 @@ class BrushEditCanvasInputSettings {
     double? angleDegrees,
     List<BrushTipMask>? tips,
     BrushTipOrder? tipOrder,
+    int? tipsPerTurn,
     BrushTipRotationMode? rotationMode,
     double? angleJitter,
     double? scatterRadiusRatio,
@@ -266,6 +274,7 @@ class BrushEditCanvasInputSettings {
     double? textureContrast,
     double? textureScale,
     double? textureDensity,
+    BrushTextureMode? textureMode,
     bool? erase,
     BrushBlendMode? blendMode,
     BrushAntiAlias? antiAlias,
@@ -296,6 +305,7 @@ class BrushEditCanvasInputSettings {
       angleDegrees: angleDegrees ?? this.angleDegrees,
       tips: tips ?? this.tips,
       tipOrder: tipOrder ?? this.tipOrder,
+      tipsPerTurn: tipsPerTurn ?? this.tipsPerTurn,
       rotationMode: rotationMode ?? this.rotationMode,
       angleJitter: angleJitter ?? this.angleJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
@@ -311,6 +321,7 @@ class BrushEditCanvasInputSettings {
       textureContrast: textureContrast ?? this.textureContrast,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      textureMode: textureMode ?? this.textureMode,
       erase: erase ?? this.erase,
       blendMode: blendMode ?? this.blendMode,
       // ↩️The edge step rode the rebuild at its default until 2026-10-01: a

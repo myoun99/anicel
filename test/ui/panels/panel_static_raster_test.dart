@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 import '../../helpers/panel_finders.dart';
+import '../../helpers/rail_group_button.dart';
 
 /// The rule this file exists to keep: **a docked panel is baked into one
 /// image while it is not changing, and nobody has to remember to make
@@ -484,16 +485,16 @@ void main() {
       //
       // Each group is opened, walked and put back — a rail may keep one
       // group open at a time, so auditing them together is not available.
-      // ⚠️`rail-group-rail-`, not `rail-group-`: the spacer between the two
-      // rails is keyed `rail-group-gap` and there are several of it, so the
-      // looser prefix finds a non-button many times over ("Too many
-      // elements", which the loop below reports as a group it could not
-      // open — correctly, and uselessly).
+      // ⚠️The key of a `rail-…` id, not the bare `rail-group-`: the spacer
+      // between the two rails is keyed `rail-group-gap` and there are
+      // several of it, so the looser prefix finds a non-button many times
+      // over ("Too many elements", which the loop below reports as a group
+      // it could not open — correctly, and uselessly).
       final railButtons = find.byWidgetPredicate(
         (widget) =>
             widget.key is ValueKey<String> &&
             (widget.key! as ValueKey<String>).value.startsWith(
-              'rail-group-rail-',
+              railGroupButtonKey('rail-'),
             ),
       );
       final unreachable = <String>[];

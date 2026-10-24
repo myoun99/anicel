@@ -210,6 +210,19 @@ String? resolveInGroupHeadLane({
   return (anchorIndex: anchorIndex, headIndex: headIndex);
 }
 
+/// The lanes of [rows] in its first one's layer — a header graph's box
+/// (I-3 ⑤): all of them where every row is that layer's, and the lane
+/// selection keeps the pick; where fewer, the box reached another layer's
+/// lanes and the pick JOINS the cells law with [rows] as its span, as a
+/// lane drag does the moment it leaves its group
+/// ([resolveLaneSpanEscalation]).
+///
+/// 🗣️I-3-Q4 (유저 2026-10-22): 「레인 행을 끌 때와 똑같이」.
+List<String> laneBoxLanesOf(List<LaneRowAddress> rows) => [
+  for (final row in rows)
+    if (row.layerId == rows.first.layerId) row.laneId,
+];
+
 /// [resolveLaneSpanEscalation] stated in the ADDRESS vocabulary — the ONE
 /// escalation law, now consumable by surfaces whose rows are not
 /// [TimelineDisplayRow]s: the storyboard rail holds a TRACK row (no Layer

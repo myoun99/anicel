@@ -191,17 +191,19 @@ void main() {
     session.selectGlobalFrame(400);
     await tester.pumpAndSettle();
     final afterRelease = _bar(tester);
-    // ⚠️ONE button legitimately waits for the release: the shift pair is
+    // ⚠️Two buttons legitimately wait for the release. The shift pair is
     // anchored on the ACTIVE CUT, and a scrub is a preview that has not
     // taken a cut yet. Its answer is about what a press would do RIGHT
     // NOW, so it must not move until the seek commits — measured, not
     // assumed (`canPushCuts` reads `_cutShiftScope`, which asks for the
     // active cut and never for the parked frame).
+    // F-455 added the second, for the same reason: the storyboard's 복제
+    // copies the active cut (F-455-Q1), so it asks for that cut too.
     final movedOnRelease = [
       for (final key in afterRelease.keys)
         if (afterRelease[key] != duringDrag[key]) key,
     ];
-    expect(movedOnRelease, ['push-blocks-button']);
+    expect(movedOnRelease, ['push-blocks-button', 'shared-duplicate-button']);
   });
 
   /// The fold, measured against itself: same panel, same drag, folded and

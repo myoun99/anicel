@@ -273,20 +273,25 @@ void main() {
     );
   });
 
+  // 🗣️I-126 (유저 2026-10-23): 「기본적으로 서로 서있는거 동기화되도록」.
+  // ↩️The rail was left on the V row by a row made in the timeline.
+  test('a row made in the timeline stands the rail at its seat too', () {
+    final session = standingAt(const TrackRowAddress(trackId), 3);
+    final timeline = TimelineToolbarPanelContext(
+      session..standOnRow(const LayerRowAddress(LayerId('a-conte'))),
+    );
+    expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔전제');
+
+    timeline.addAttachedLayer(AttachedPlacement.above);
+
+    expect(session.activeLayerId, isNot(const LayerId('a-conte')));
+    expect(
+      session.storyboardStandingRow,
+      LayerRowAddress(trackConteRowId(trackId, seat: 2)),
+    );
+  });
+
   group('🚨the rail is left where it stands', () {
-    test('by a row made in the timeline', () {
-      final session = standingAt(const TrackRowAddress(trackId), 3);
-      final timeline = TimelineToolbarPanelContext(
-        session..standOnRow(const LayerRowAddress(LayerId('a-conte'))),
-      );
-      expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔전제');
-
-      timeline.addAttachedLayer(AttachedPlacement.above);
-
-      expect(session.activeLayerId, isNot(const LayerId('a-conte')));
-      expect(session.storyboardStandingRow, const TrackRowAddress(trackId));
-    });
-
     test('by a flip onto a cut, whatever row of it the timeline comes back '
         'on', () {
       // 「컷에 설때는 예전처럼 마지막에 섯던 행에 서있는채로 그대로. 콘티행에

@@ -104,21 +104,22 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(device.isPlaying, isFalse, reason: 'the press only arms it');
 
-    // The look starts the device and then reads it: by the reading the
-    // device has played no more than the look took, past what it holds.
+    // The look starts the device and then reads it: from where play was
+    // pressed, never past what the device has been handed — the clock's
+    // own law (`DeviceClockLine`), whatever the device did in between.
     // ↩️Read as exactly 1, a look the machine was busy through failed
-    // (1.02 — 960 samples — in a loaded gate run, 저장 10-15).
-    final look = Stopwatch()..start();
+    // (1.02 — 960 samples — in a loaded gate run, 저장 10-15). ↩️Held to the
+    // look's own time and the latency, it failed again (1.0512 on a loaded
+    // mac runner, 10-24): the null device runs on a timer from its open,
+    // and a worker that fell behind hands every period it owes at once as
+    // the run starts (miniaudio's `ma_device_write__null` waits only while
+    // it is ahead). Real hardware never takes more than its buffer.
     final heard = sound.heardAt()!.seconds;
-    look.stop();
+    final handed = device.readClock().stairSamples / rate;
     expect(
       heard,
-      inInclusiveRange(
-        1,
-        1 + look.elapsedMicroseconds / 1e6 + device.latencySamples / rate,
-      ),
-      reason: '↩️started at the press, the first look read 1.3 seconds less '
-          'the device\'s latency',
+      inInclusiveRange(1, handed),
+      reason: 'heard from where play was pressed, and no further than handed',
     );
     expect(device.isPlaying, isTrue, reason: 'the first look starts it');
     sound.stop();
@@ -158,17 +159,17 @@ void main() {
 
     test('the look that reads the clock first', () async {
       final (device, sound) = await playing(fromSeconds: 1, look: false);
-      final heard = sound
-          .heardAt(
-            frameTime: shownIn(const Duration(milliseconds: 300)),
-          )!
-          .seconds;
+      const ahead = Duration(milliseconds: 300);
+      final heard = sound.heardAt(frameTime: shownIn(ahead))!.seconds;
       final handed = device.positionSamples;
 
+      // ↩️1.05 — a callback's time on at most — is the bound a starved null
+      // device breaks as it starts (the test above has why).
       expect(
         heard,
-        inInclusiveRange(1, 1.05),
-        reason: 'read where play was pressed — a callback\'s time on at most',
+        inInclusiveRange(1, handed / rate + ahead.inMicroseconds / 1e6),
+        reason: 'read where play was pressed — no further than handed, and '
+            'played on until the frame is shown',
       );
       expect(
         handed,
@@ -294,5 +295,27 @@ void main() {
           'samples behind where play was pressed',
     );
     sound.stop();
+  }, skip: skip);
+
+  test('a viewer going silent silences its own sound at once', () async {
+    final (device, sound) = await playing(fromSeconds: 1);
+    expect(device.isPlaying, isTrue, reason: 'fixture: the viewer sounds');
+
+    sound.stop();
+    expect(device.isPlaying, isFalse);
+  }, skip: skip);
+
+  test('🚨a viewer going silent leaves another player\'s sound alone — it '
+      'silences its own run only', () async {
+    final (device, sound) = await playing(fromSeconds: 1);
+    expect(device.isPlaying, isTrue, reason: 'fixture: the viewer sounds');
+    expect(device.play(startSample: 0), isNonZero, reason: 'another\'s');
+
+    sound.stop();
+    expect(
+      device.isPlaying,
+      isTrue,
+      reason: '↩️the viewer stopped the output whatever played',
+    );
   }, skip: skip);
 }

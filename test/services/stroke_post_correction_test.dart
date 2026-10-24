@@ -5,7 +5,7 @@ import 'package:anicel/src/services/stroke_post_correction.dart';
 
 PenPoint _at(double x, double y, {double pressure = 1}) => (
   position: CanvasPoint(x: x, y: y),
-  readings: (pressure: pressure, lean: null, speed: 0.5),
+  readings: (pressure: pressure, lean: null, twist: null, speed: 0.5),
 );
 
 /// A line along y = 20 from x = 0 to x = 100, wobbling ±[wobble] every
@@ -142,13 +142,31 @@ void main() {
     expect(postCorrected(two, within: 2, bezier: false), same(two));
   });
 
-  test('a lean is read the shorter way round', () {
+  test('a lean and a twist are read the shorter way round', () {
     final between = readingsBetween(
-      (pressure: 1, lean: (azimuthDegrees: 350, altitude: 0.5), speed: 0),
-      (pressure: 1, lean: (azimuthDegrees: 10, altitude: 0.7), speed: 0),
+      (
+        pressure: 1,
+        lean: (azimuthDegrees: 350, altitude: 0.5),
+        twist: 20,
+        speed: 0,
+      ),
+      (
+        pressure: 1,
+        lean: (azimuthDegrees: 10, altitude: 0.7),
+        twist: 340,
+        speed: 0,
+      ),
       0.5,
     );
     expect(between.lean!.azimuthDegrees, closeTo(0, 1e-9));
     expect(between.lean!.altitude, closeTo(0.6, 1e-9));
+    expect(between.twist, closeTo(0, 1e-9));
+  });
+
+  test('a twist only one side measured is the later side\'s as it is', () {
+    PenReadings turned(double? twist) =>
+        (pressure: 1, lean: null, twist: twist, speed: 0);
+    expect(readingsBetween(turned(null), turned(90), 0.5).twist, 90);
+    expect(readingsBetween(turned(90), turned(null), 0.5).twist, isNull);
   });
 }

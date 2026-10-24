@@ -34,9 +34,13 @@ void main() {
 
   tearDown(() => deleteTempQuietly(tempDirectory));
 
-  /// An effector blob. [curve] appends the response-curve block Clip Studio
-  /// writes in the tail: a `12, <point count>, 16, 0, 0, 0, 0` marker at int
-  /// 11, then one (x, y) float64 pair per point BEYOND the implied origin.
+  /// An effector blob as Clip Studio writes one: a 44-byte header — the
+  /// flags at `int[2]`, the four 最小値 at `int[3..6]`, the two graph
+  /// blocks' byte lengths at `int[8]` and `int[9]`, 傾き's 最大値 at
+  /// `int[10]` — then the 筆圧設定 block and the 傾き設定 block, each
+  /// `12 · count · 16` and every one of its points, the first included.
+  /// `int[1]` is the 0x1F0 the user's pencils carry; nothing reads it.
+  ///
   /// 🚨**THE FOUR MINIMUM SLOTS ARE WRITTEN SEPARATELY**, at `int[3..6]` in
   /// panel order (筆圧 · 傾き · 速度 · ランダム).
   ///
@@ -46,45 +50,57 @@ void main() {
   /// exactly how the decoder once took pressure's floor as random's
   /// amplitude and no test complained. A fixture that cannot express the
   /// defect cannot catch it.
+  ///
+  /// 🚨**THE TWO GRAPHS GO IN WHATEVER THE FLAGS TICK**, as 鉛筆's 不透明度
+  /// carries both while ticking 筆圧 alone. ↩️This wrote one curve, for
+  /// the first ticked source, with its first point left implied — so it
+  /// could not tell a decoder reading a graph by its RANK among the ticked
+  /// sources from one reading it by its place, and could not hold a graph
+  /// that starts anywhere but (0, 0) (F-456).
   Uint8List effector(
     int flags, {
     int minimumPercent = 0,
     int? tiltMinimumPercent,
     int? speedMinimumPercent,
     int? randomMinimumPercent,
-    List<(double, double)>? curve,
+    int tiltMaximumPercent = 100,
+    List<(double, double)>? pressureGraph,
+    List<(double, double)>? tiltGraph,
   }) {
-    void writeMinimums(ByteData bytes) {
-      bytes
-        ..setInt32(12, minimumPercent)
-        ..setInt32(16, tiltMinimumPercent ?? 0)
-        ..setInt32(20, speedMinimumPercent ?? 0)
-        ..setInt32(24, randomMinimumPercent ?? 0);
-    }
-
-    if (curve == null) {
-      final bytes = ByteData(28)
-        ..setInt32(0, 44)
-        ..setInt32(4, 0xf0)
-        ..setInt32(8, flags);
-      writeMinimums(bytes);
+    Uint8List block(List<(double, double)>? points) {
+      if (points == null) {
+        return Uint8List(0);
+      }
+      final bytes = ByteData(12 + points.length * 16)
+        ..setInt32(0, 12)
+        ..setInt32(4, points.length)
+        ..setInt32(8, 16);
+      for (var i = 0; i < points.length; i += 1) {
+        bytes
+          ..setFloat64(12 + i * 16, points[i].$1)
+          ..setFloat64(20 + i * 16, points[i].$2);
+      }
       return bytes.buffer.asUint8List();
     }
-    final length = 72 + curve.length * 16;
-    final bytes = ByteData(length)
+
+    final pressure = block(pressureGraph);
+    final tilt = block(tiltGraph);
+    final header = ByteData(44)
       ..setInt32(0, 44)
-      ..setInt32(4, length)
+      ..setInt32(4, 0x1f0)
       ..setInt32(8, flags)
-      ..setInt32(44, 12) // marker at int 11
-      ..setInt32(48, curve.length + 1) // count includes the implied origin
-      ..setInt32(52, 16);
-    writeMinimums(bytes);
-    for (var i = 0; i < curve.length; i += 1) {
-      bytes
-        ..setFloat64(72 + i * 16, curve[i].$1)
-        ..setFloat64(72 + i * 16 + 8, curve[i].$2);
-    }
-    return bytes.buffer.asUint8List();
+      ..setInt32(12, minimumPercent)
+      ..setInt32(16, tiltMinimumPercent ?? 0)
+      ..setInt32(20, speedMinimumPercent ?? 0)
+      ..setInt32(24, randomMinimumPercent ?? 0)
+      ..setInt32(32, pressure.length)
+      ..setInt32(36, tilt.length)
+      ..setInt32(40, tiltMaximumPercent);
+    return Uint8List.fromList([
+      ...header.buffer.asUint8List(),
+      ...pressure,
+      ...tilt,
+    ]);
   }
 
   Uint8List u32(int value) =>
@@ -154,7 +170,10 @@ void main() {
     int sizeEffectorFlags = 0x10,
     int sizeEffectorMinimum = 59,
     int sizeEffectorRandomMinimum = 0,
-    List<(double, double)>? sizeEffectorCurve,
+    List<(double, double)>? sizePressureGraph,
+    // F-456: the whole size effector, for a test that sets what the
+    // arguments above do not reach.
+    Uint8List? sizeEffector,
     int flowEffectorFlags = 0x30,
     int flowEffectorMinimum = 0,
     int flowEffectorRandomMinimum = 0,
@@ -270,12 +289,13 @@ void main() {
       '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         tipArray ?? patternArray(catalogPath),
-        effector(
-          sizeEffectorFlags,
-          minimumPercent: sizeEffectorMinimum,
-          randomMinimumPercent: sizeEffectorRandomMinimum,
-          curve: sizeEffectorCurve,
-        ),
+        sizeEffector ??
+            effector(
+              sizeEffectorFlags,
+              minimumPercent: sizeEffectorMinimum,
+              randomMinimumPercent: sizeEffectorRandomMinimum,
+              pressureGraph: sizePressureGraph,
+            ),
         effector(0x00),
         effector(
           flowEffectorFlags,
@@ -536,6 +556,28 @@ void main() {
     expect([for (final tip in tips) tip.size], [6]);
   });
 
+  test('🚨a material with an EMPTY catalog path is found by its layer path '
+      '(F-456 — 색연필)', () async {
+    // The user's 색연필 stores '' as the catalog path and its array spells
+    // the layer path alone. ↩️Only a MISSING catalog path fell back, so the
+    // tip came in as a plain circle.
+    const layer = '.:Paint003:fixture-colored:data:material.layer';
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      moreTipMaterials: [
+        (catalogPath: '', originalPath: layer, png: await blackPng(6, 6)),
+      ],
+      tipArray: patternArrayOf([(layer: layer, catalog: '')]),
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    final tips = result.presets.first.settings.tips;
+    expect([for (final tip in tips) tip.size], [6]);
+  });
+
   test('繰り返し方法 comes in by the number Clip Studio stores', () async {
     // All six measured off one brush the user saved six times, the method
     // alone changed (board F-176-Q5, 2026-10-21).
@@ -605,7 +647,12 @@ void main() {
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorMinimum: 40,
-      sizeEffectorCurve: const [(0.25, 0.1), (0.75, 0.9), (1.0, 1.0)],
+      sizePressureGraph: const [
+        (0.0, 0.0),
+        (0.25, 0.1),
+        (0.75, 0.9),
+        (1.0, 1.0),
+      ],
     );
     final curve = (await decodeSutBrushFile(
       filePath: path,
@@ -629,7 +676,7 @@ void main() {
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       sizeEffectorMinimum: 59,
-      sizeEffectorCurve: const [(1.0, 1.0)],
+      sizePressureGraph: const [(0.0, 0.0), (1.0, 1.0)],
     );
     final curve = (await decodeSutBrushFile(
       filePath: path,
@@ -637,6 +684,134 @@ void main() {
     )).presets.first.settings.sizePressureCurve;
 
     expect(curve, BrushPressureCurve.linearFrom(0.59));
+  });
+
+  test('🚨a graph that does not start at the origin keeps its first point '
+      '(F-456)', () async {
+    // ↩️The first stored point was taken for padding that had to be (0, 0),
+    // so a falling graph was not seen as a graph at all and came in as the
+    // straight line up.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      sizePressureGraph: const [(0.0, 1.0), (0.5, 0.2), (1.0, 0.0)],
+    );
+    final curve = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings.sizePressureCurve!;
+
+    expect(curve.points, const [
+      BrushCurvePoint(0.0, 1.0),
+      BrushCurvePoint(0.5, 0.2),
+      BrushCurvePoint(1.0, 0.0),
+    ]);
+  });
+
+  test('a graph that does not run from 0 to 1 comes in straight — no file '
+      'has one, so nothing says how to finish it', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      sizeEffectorMinimum: 59,
+      sizePressureGraph: const [(0.2, 0.0), (0.7, 0.9), (1.0, 1.0)],
+    );
+    final curve = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings.sizePressureCurve;
+
+    expect(curve, BrushPressureCurve.linearFrom(0.59));
+  });
+
+  group('🚨傾き (F-456 — Clip Studio\'s 影響元設定 window and the user\'s '
+      'pencils)', () {
+    const pressureGraph = [(0.0, 0.0), (0.5, 0.9), (1.0, 1.0)];
+    // 水平 → 垂直, the way Clip Studio's 傾き設定 graph runs.
+    const tiltGraph = [(0.0, 0.2), (0.4, 0.6), (1.0, 1.0)];
+    // The same graph over how far the pen LEANS — mirrored.
+    const leanPoints = [
+      BrushCurvePoint(0.0, 1.0),
+      BrushCurvePoint(0.6, 0.6),
+      BrushCurvePoint(1.0, 0.2),
+    ];
+
+    Future<BrushSettings> decoded(Uint8List sizeEffector) async {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        sizeEffector: sizeEffector,
+      );
+      return (await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      )).presets.first.settings;
+    }
+
+    test('0x20 ticked alone reads the SECOND graph, as 傾き, between its '
+        'own 最小値 and 最大値', () async {
+      // ↩️A graph was the rank of its source among the ticked ones, so 傾き
+      // ticked alone read 筆圧設定 as its own — and 0x20 was 速度.
+      final s = await decoded(
+        effector(
+          0x20,
+          minimumPercent: 70,
+          tiltMinimumPercent: 30,
+          tiltMaximumPercent: 300,
+          pressureGraph: pressureGraph,
+          tiltGraph: tiltGraph,
+        ),
+      );
+      final tilt = s.shape.curveFor(
+        BrushPressureTarget.size,
+        BrushInputSource.tilt,
+      )!;
+
+      expect(tilt.points, leanPoints);
+      expect(tilt.minimum, closeTo(0.3, 1e-12));
+      expect(tilt.maximum, closeTo(3.0, 1e-12));
+      expect(s.sizePressureCurve, isNull, reason: '筆圧 is not ticked');
+    });
+
+    test('筆圧 and 傾き ticked together each read their own graph', () async {
+      final s = await decoded(
+        effector(
+          0x30,
+          pressureGraph: pressureGraph,
+          tiltGraph: tiltGraph,
+        ),
+      );
+
+      expect(s.sizePressureCurve!.points, const [
+        BrushCurvePoint(0.0, 0.0),
+        BrushCurvePoint(0.5, 0.9),
+        BrushCurvePoint(1.0, 1.0),
+      ]);
+      expect(
+        s.shape
+            .curveFor(BrushPressureTarget.size, BrushInputSource.tilt)!
+            .points,
+        leanPoints,
+      );
+    });
+
+    test('0x40 is 速度 — a straight line from its 最小値, whatever graphs '
+        'the file carries', () async {
+      final s = await decoded(
+        effector(
+          0x40,
+          speedMinimumPercent: 25,
+          pressureGraph: pressureGraph,
+          tiltGraph: tiltGraph,
+        ),
+      );
+
+      expect(
+        s.shape.curveFor(BrushPressureTarget.size, BrushInputSource.speed),
+        BrushPressureCurve.linearFrom(0.25),
+      );
+      expect(
+        s.shape.curveFor(BrushPressureTarget.size, BrushInputSource.tilt),
+        isNull,
+      );
+    });
   });
 
   test('the effector minimum applies to opacity and flow too', () async {
@@ -914,12 +1089,31 @@ void main() {
     expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
   });
 
+  Future<void> expectMenuIndices(Map<int, BrushBlendMode> expected) async {
+    for (final entry in expected.entries) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        compositeMode: entry.key,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(
+        result.presets.first.settings.blendMode,
+        entry.value,
+        reason: 'menu index ${entry.key}',
+      );
+      expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
+    }
+  }
+
   test(
     'the composite mode index runs the whole 合成モード menu',
     () async {
       // `CompositeMode` is the index of Clip Studio's brush blend menu, which
       // is what puts 乗算 at 2 — the value real files carry.
-      const expected = <int, BrushBlendMode>{
+      await expectMenuIndices(const {
         1: BrushBlendMode.darken,
         2: BrushBlendMode.multiply,
         3: BrushBlendMode.colorBurn,
@@ -934,23 +1128,7 @@ void main() {
         18: BrushBlendMode.erase,
         19: BrushBlendMode.behind,
         27: BrushBlendMode.exclusion,
-      };
-      for (final entry in expected.entries) {
-        final path = await buildFixture(
-          tipPng: await blackPng(4, 4),
-          compositeMode: entry.key,
-        );
-        final result = await decodeSutBrushFile(
-          filePath: path,
-          sourceName: 'fixture',
-        );
-        expect(
-          result.presets.first.settings.blendMode,
-          entry.value,
-          reason: 'menu index ${entry.key}',
-        );
-        expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
-      }
+      });
     },
     // FOURTEEN fixtures where every sibling test builds one: each is a
     // real sqlite database plus PNG encode/decode, so this case does
@@ -961,12 +1139,39 @@ void main() {
     timeout: const Timeout(Duration(minutes: 3)),
   );
 
+  test(
+    'the menu\'s entries Photoshop shares import as themselves',
+    () async {
+      // brush-fidelity (유저 2026-10-17 Q3: 「13개 + 클튜의 발광 둘」) — the
+      // thirteen beyond the first twelve. A table of its own rather than
+      // more rows above: thirteen more fixtures in one case would cross
+      // the budget the case above was given for fourteen.
+      await expectMenuIndices(const {
+        4: BrushBlendMode.linearBurn,
+        6: BrushBlendMode.subtract,
+        23: BrushBlendMode.vividLight,
+        24: BrushBlendMode.linearLight,
+        25: BrushBlendMode.pinLight,
+        26: BrushBlendMode.hardMix,
+        28: BrushBlendMode.darkerColor,
+        29: BrushBlendMode.lighterColor,
+        30: BrushBlendMode.divide,
+        31: BrushBlendMode.hue,
+        32: BrushBlendMode.saturation,
+        33: BrushBlendMode.chroma,
+        34: BrushBlendMode.luminosity,
+      });
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
   test('a mode with no kernel yet warns by NAME, not by number', () async {
-    // 除算 is a real menu entry this engine cannot composite. Saying so by
-    // name is what tells you which kernel a brush would need.
+    // 透明度置換 is a real menu entry this engine cannot composite. Saying so
+    // by name is what tells you which kernel a brush would need. ↩️This was
+    // 除算 until the brush learned it (brush-fidelity).
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
-      compositeMode: 30,
+      compositeMode: 20,
     );
     final result = await decodeSutBrushFile(
       filePath: path,
@@ -974,7 +1179,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.blendMode, BrushBlendMode.color);
-    expect(result.warnings.any((w) => w.contains('除算')), isTrue);
+    expect(result.warnings.any((w) => w.contains('透明度置換')), isTrue);
   });
 
   test('the four アンチエイリアス buttons import as the four levels', () async {

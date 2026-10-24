@@ -173,8 +173,9 @@ class ProjectFileDoor {
   /// ([ProjectResume.timelineZoom]).
   final TimelineZoomMemory _timelineZoom;
 
-  /// Whose conte zoom and panel scrolls a save keeps and an open puts back
-  /// ([ProjectResume.storyboardZoom], [ProjectResume.frameAxisOffsets]).
+  /// Whose conte zoom, panel scrolls and frames display a save keeps and an
+  /// open puts back ([ProjectResume.storyboardZoom],
+  /// [ProjectResume.frameAxisOffsets], [ProjectResume.showSeconds]).
   final PanelViewMemory _panelViews;
 
   /// Whose header graphs and pinned lanes a save keeps and an open puts
@@ -913,6 +914,7 @@ class ProjectFileDoor {
     layerAxisOffsets: PanelViewMemory.awayFromTheStart(
       _panelViews.layerAxisOffsets,
     ),
+    showSeconds: _panelViews.showSeconds.value,
     laneGraphs: _laneGraphs.value,
     mediaFileViews: _mediaFileViews.views,
   );
@@ -1190,8 +1192,8 @@ class ProjectFileDoor {
       }
     }
     // The conte at the zoom it was left at, and each panel scrolled where it
-    // was along both axes — set before any panel is built, so each is born
-    // there (F-267).
+    // was along both axes (F-267) and writing frames as it was (F-354) — set
+    // before any panel is built, so each is born there.
     if (resume.storyboardZoom case final zoom?) {
       _panelViews.storyboardPixelsPerFrame.value = zoom;
     }
@@ -1203,6 +1205,7 @@ class ProjectFileDoor {
       _panelViews.layerAxisOffsets,
       resume.layerAxisOffsets,
     );
+    _panelViews.showSeconds.value = resume.showSeconds;
     // The header graphs and their pins as they stood (F-360-Q1) — each on a
     // row the project still has: a new row's id is minted afresh every
     // session, skipping only the ids in use, so a graph kept for a row
@@ -1285,9 +1288,7 @@ Future<ProjectFileRead> readProjectFile(
   // is handed back to the OS — past this line the project is resolved and
   // a session is born for it. The same answer the materializer gives for
   // the same press.
-  if (isCancelled?.call() ?? false) {
-    throw const MaterializeCancelled();
-  }
+  MaterializeCancelled.throwIf(isCancelled);
   // BEFORE the session is born: a bookmark tracks the file rather than the
   // path, so resolving one is how a referenced movie that was renamed or
   // moved is found again — and the project has to be told, or the pool

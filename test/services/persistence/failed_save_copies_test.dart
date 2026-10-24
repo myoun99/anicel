@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
 
-/// The list 「실패본 백업…」 offers, and the copy a backup is.
+/// The list 「실패본 백업」 offers, and the copy a backup is.
 ///
 /// 🗣️유저 2026-09-23 (whole-write-temp-beside-the-file): 「해당파일
 /// 지정해서 백업할수있게」.

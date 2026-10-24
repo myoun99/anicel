@@ -102,7 +102,7 @@ void main() {
     expect(rgbAt(2, 2), backdrop & 0xFFFFFF, reason: 'top-left corner');
     // The bottom-right corner of what the lanes leave: a docked panel's
     // scrollbars stand in lanes of their own on those edges (F-209).
-    const lane = AppScrollbarLane.wide;
+    const lane = AppScrollbarLane.thin;
     expect(
       rgbAt((897 - lane).toInt(), (597 - lane).toInt()),
       backdrop & 0xFFFFFF,

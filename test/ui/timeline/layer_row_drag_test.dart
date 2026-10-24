@@ -733,15 +733,16 @@ void main() {
       const ValueKey<String>('timeline-row-swallow-b'),
     );
     expect(swallow, findsOneWidget);
-    // What the drop does is said at the row's FAR end, centred across it.
+    // What the drop does is said at the row's START, where a line says it,
+    // centred across (F-436①, 유저 2026-10-21 — ↩️it stood at the far end).
     final box = tester.getRect(swallow);
     final badge = tester.getRect(
       find.descendant(of: swallow, matching: find.byType(Text)),
     );
     expect(
-      box.right - badge.right,
-      lessThan(badge.left - box.left),
-      reason: 'the badge stands at the end the row runs to',
+      badge.left - box.left,
+      lessThan(box.right - badge.right),
+      reason: 'the badge stands at the start the row runs from',
     );
     expect(badge.center.dy, moreOrLessEquals(box.center.dy, epsilon: 0.5));
 
@@ -1023,6 +1024,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(_order(session), ['q', 'b1', 'b1up', 'b2down', 'b2', 'p']);
     expect(_layerOf(session, 'b1up').attachedToLayerId, isNull);
+  });
+
+  // 🗣️F-436① (유저 2026-10-21): 「어태치 장착 텍스트가 블렌드쪽에 뜨는데,
+  // 그게아니라 C에 어태치 라는 텍스트가 뜨는 위치처럼 왼쪽에 통일해서. 가로선
+  // 텍스트 위치는 이 위치로 통일」.
+  testWidgets('🚨F-436①: a row\'s word stands where a line\'s does — the '
+      'same distance past the layer area\'s start', (tester) async {
+    await _pump(tester, project: _facingGroupsProject());
+
+    // A row's word: P carried onto B2-1 says whose attach it becomes.
+    var gesture = await carryP(tester, row: 'b2down');
+    final swallow = find.byKey(
+      const ValueKey<String>('timeline-row-swallow-b2down'),
+    );
+    final rowWord =
+        tester
+            .getRect(find.descendant(of: swallow, matching: find.byType(Text)))
+            .left -
+        tester.getRect(swallow).left;
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+
+    // A line's word: B2-1 over its own edge lets go of its base.
+    final dx = tester.getCenter(_railRowGrip('b2down')).dx;
+    gesture = await lift(tester, 'b2down');
+    await pointInto(tester, gesture, 'b1up', fraction: 0.15, dx: dx);
+    final caret = caretBefore('b1up');
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    final bar = find.descendant(
+      of: caret,
+      matching: find.byWidgetPredicate(
+        (w) => w is Container && w.constraints?.maxHeight == 2,
+      ),
+    );
+    final lineWord =
+        tester
+            .getRect(find.descendant(of: caret, matching: find.byType(Text)))
+            .left -
+        tester.getRect(bar).left;
+    await gesture.cancel();
+    await tester.pumpAndSettle();
+
+    expect(rowWord, greaterThan(0), reason: '⛔전제: past the start');
+    expect(rowWord, moreOrLessEquals(lineWord));
   });
 
   testWidgets('🚨F-312 (10-08): a FOLDER\'s bottom line splits the same way '

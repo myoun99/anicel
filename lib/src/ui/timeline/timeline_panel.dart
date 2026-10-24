@@ -11,6 +11,7 @@ import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../audio/sound_cannot_play.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import 'lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
@@ -80,6 +81,7 @@ class TimelinePanel extends StatefulWidget {
     this.instructionDefById,
     this.instructionCrossingTooltip,
     this.audioPeaksFor,
+    this.soundCannotPlay,
     this.seClipMarkerTooltip,
     this.audioLane,
     this.onDropMediaAssetOnLayer,
@@ -262,6 +264,10 @@ class TimelinePanel extends StatefulWidget {
   /// Waveform peaks for SE rows' audio clips + the removal hook (both
   /// orientations; frames↔seconds via [projectFrameRate]).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
+
+  /// Why an SE row's sound cannot be played
+  /// ([TimelineGridHooks.soundCannotPlay]).
+  final SoundCannotPlay? Function(String filePath)? soundCannotPlay;
 
   /// Clipped-take marker tooltip (REC1-D); null = markers off. Horizontal
   /// rows only for now — the xsheet's marker joins with its page work.
@@ -674,6 +680,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       instructionDefById: widget.instructionDefById,
       instructionCrossingTooltip: widget.instructionCrossingTooltip,
       audioPeaksFor: widget.audioPeaksFor,
+      soundCannotPlay: widget.soundCannotPlay,
       seClipMarkerTooltip: widget.seClipMarkerTooltip,
       projectFrameRate: widget.projectFrameRate,
       showSeconds: widget.showSeconds,
@@ -810,40 +817,39 @@ class _TimelinePanelState extends State<TimelinePanel> {
             ),
           ),
           // ★COLLAPSED = the command bar and nothing else (유저 확정,
-          // 2026-08-10: 「접으면 버튼행만 남는다」). The grid goes OFFSTAGE
-          // rather than out of the tree: it keeps its scroll positions, its
-          // tile caches and its whole element subtree, so unfolding is a
-          // flag flip instead of a rebuild — and the parent chain never
-          // changes, which is the thing that silently remounts a panel
-          // (the flip-HUD round paid for that lesson once already).
+          // 2026-08-10: 「접으면 버튼행만 남는다」) — and the grid is not
+          // built while it is folded (유저 2026-10-14: 「열려있을때만
+          // 지어지는게 맞는구조」 · 「이건 모든 패널 공통적인 사항이야」). Its
+          // scroll positions are the workspace's ([timelineFrameAxisOffset]
+          // and the rest), which the folded row turns, so the grid
+          // opens where the axis stands on its first frame. ↩️It went
+          // OFFSTAGE to keep its positions, caches and subtree through a
+          // fold — laid out, never painted, and following the axis while
+          // hidden.
           //
-          // The `Expanded` stays too, and it is what makes the arithmetic
-          // work out: at the collapsed height the bar takes the whole
-          // column and this gets zero. ↩️It said an offstage child 「does not
-          // lay out at all」: it does (measured 09-27: the grid at 936×0, its
-          // frame axis 472×168), it is only never painted — so nothing
-          // reports an overflow.
+          // The `Expanded` stays, and it is what makes the arithmetic work
+          // out: at the collapsed height the bar takes the whole column and
+          // this gets zero.
           Expanded(
-            child: Offstage(
-              offstage: collapsed,
-              child: widget.orientation == TimelineOrientation.horizontal
-                  ? LayerTimelineGrid(
-                      hooks: hooks,
-                      layers: horizontalLayers,
-                      railExtent: widget.timelineRailExtent,
-                      frameAxisOffset: widget.timelineFrameAxisOffset,
-                      layerAxisOffset: widget.timelineLayerAxisOffset,
-                      metrics: horizontalMetrics,
-                    )
-                  : XSheetTimelineGrid(
-                      hooks: hooks,
-                      layers: xsheetLayerDisplayOrder(widget.layers),
-                      railExtent: widget.xsheetRailExtent,
-                      frameAxisOffset: widget.xsheetFrameAxisOffset,
-                      layerAxisOffset: widget.xsheetLayerAxisOffset,
-                      metrics: xsheetMetrics,
-                    ),
-            ),
+            child: collapsed
+                ? const SizedBox.shrink()
+                : widget.orientation == TimelineOrientation.horizontal
+                ? LayerTimelineGrid(
+                    hooks: hooks,
+                    layers: horizontalLayers,
+                    railExtent: widget.timelineRailExtent,
+                    frameAxisOffset: widget.timelineFrameAxisOffset,
+                    layerAxisOffset: widget.timelineLayerAxisOffset,
+                    metrics: horizontalMetrics,
+                  )
+                : XSheetTimelineGrid(
+                    hooks: hooks,
+                    layers: xsheetLayerDisplayOrder(widget.layers),
+                    railExtent: widget.xsheetRailExtent,
+                    frameAxisOffset: widget.xsheetFrameAxisOffset,
+                    layerAxisOffset: widget.xsheetLayerAxisOffset,
+                    metrics: xsheetMetrics,
+                  ),
           ),
         ],
       ),

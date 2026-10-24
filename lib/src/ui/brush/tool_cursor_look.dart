@@ -29,7 +29,7 @@ class ToolCursorLook {
   final Size extent;
 
   /// Where in the box the pointer's point sits — the ring's centre, the
-  /// bucket's spout, the dropper's tip.
+  /// drop under the bucket, the dropper's tip.
   final Offset hotspot;
 }
 
@@ -81,12 +81,62 @@ class ToolIconCursorPainter extends CustomPainter with RepaintOnProps {
   Object get props => icon;
 }
 
-/// R26 #23: the fill tool wears the bucket; its spout is the hot spot.
+/// R26 #23: the fill tool wears the bucket ([BucketCursorPainter]); the
+/// foot of its drop is the hot spot.
 ToolCursorLook fillCursorLook() => const ToolCursorLook(
   key: 'fill',
-  painter: ToolIconCursorPainter(icon: Icons.format_color_fill),
+  painter: BucketCursorPainter(),
   extent: Size(ToolIconCursorPainter.boxSide, ToolIconCursorPainter.boxSide),
-  hotspot: Offset(3, 20),
+  hotspot: Offset(4.5, 19),
+);
+
+/// The fill's bucket POURING LEFT, the glyph's colour bar cut away and the
+/// drop lowered to the box's foot: the drop is where the fill lands, and it
+/// lands at the bottom-left, where every other tool's point is.
+///
+/// 🗣️F-441 (유저 2026-10-23): 「채우기도구, 커서가 정확히 어느 포인트가
+/// 채워지는 포인트인지 모르겟음. 액체 떨어지는곳인지 뭔지. 그러니 알기쉽게
+/// 도구 아이콘 변경하고 좌우반전 가능한가. 다른 도구 다 왼쪽아래가
+/// 포인트니까」. ↩️It was the glyph as it is — the drop at the right, a bar
+/// along the foot — with the hot spot at the bar's left end, a point
+/// nothing in the picture marked.
+class BucketCursorPainter extends CustomPainter with RepaintOnProps {
+  const BucketCursorPainter();
+
+  static const ToolIconCursorPainter _bucket = ToolIconCursorPainter(
+    icon: Icons.format_color_fill,
+  );
+
+  /// How far the glyph is lowered: the drop's foot to the box's.
+  static const double _lowered = 4;
+
+  /// Where the glyph's colour bar begins, in the glyph's own box.
+  static const double _barTop = 16.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas
+      ..save()
+      ..translate(size.width, _lowered)
+      ..scale(-1, 1)
+      ..clipRect(Rect.fromLTWH(0, -_lowered, size.width, _barTop + _lowered));
+    _bucket.paint(canvas, size);
+    canvas.restore();
+  }
+
+  @override
+  Object get props => _bucket.props;
+}
+
+/// I-54: the pen the drawing tools wear when the user chose it — 「펜 모양
+/// 아이콘」, one size; its point is the hot spot. The system wears it as its
+/// cursor (`lookSystemCursor`); the app draws it, a sprite, for a pointer
+/// the system shows none (`appDrawsDrawingCursor`).
+ToolCursorLook penCursorLook() => const ToolCursorLook(
+  key: 'pen',
+  painter: ToolIconCursorPainter(icon: Icons.edit),
+  extent: Size(ToolIconCursorPainter.boxSide, ToolIconCursorPainter.boxSide),
+  hotspot: Offset(3, 19),
 );
 
 /// R26 #22: the eyedropper wears its own icon; its tip is the hot spot, so

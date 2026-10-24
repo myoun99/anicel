@@ -25,6 +25,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/commands/set_project_pasteboard_command.dart';
+import 'package:anicel/src/services/persistence/scratch_file.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -403,13 +404,18 @@ void main() {
     // compressed again on the UI thread. It is worked out ahead now, on the
     // machine's workers, while the wait window is up.
     group('worked out ahead (F-432)', () {
-      /// Every file in the run's room, by its path inside it.
-      Set<String> roomFiles() =>
-          filesWrittenUnder(Directory(SessionScratch.stagedFolder())).toSet();
+      /// Every file in the run's room, by its path inside it — once what was
+      /// let go is gone ([ScratchFile.letGo]).
+      Future<Set<String>> roomFiles() async {
+        await ScratchFile.lettingGo;
+        return filesWrittenUnder(
+          Directory(SessionScratch.stagedFolder()),
+        ).toSet();
+      }
 
       /// What the rounds worked out ahead have parked in the room.
-      Set<String> parkedAhead() => {
-        for (final path in roomFiles())
+      Future<Set<String>> parkedAhead() async => {
+        for (final path in await roomFiles())
           if (path.contains('-ahead')) path,
       };
 
@@ -574,12 +580,18 @@ void main() {
       ) async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.none);
-        expect(parkedAhead().difference(before), hasLength(1));
+        expect((await parkedAhead()).difference(before), hasLength(1));
         expect(store.adoptPasteboardReach(PasteboardReach.quarter).keys, [cut]);
+        expect(
+          ScratchFile.stillLettingGo,
+          1,
+          reason: 'what was worked out for the other wall, let go off the '
+              'UI thread',
+        );
         expectCut(store.bakedSurfaceOrNull(cut));
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('hot, worked out for another wall: not taken', () async {
@@ -594,11 +606,11 @@ void main() {
       test('worked out again, the last round goes', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.none);
-        final first = parkedAhead().difference(before);
+        final first = (await parkedAhead()).difference(before);
         await store.cutCelsAhead(PasteboardReach.quarter);
-        final second = parkedAhead().difference(before);
+        final second = (await parkedAhead()).difference(before);
         expect(second, hasLength(1));
         expect(second.intersection(first), isEmpty);
       });
@@ -606,10 +618,10 @@ void main() {
       test('a store laid in anew lets what was worked out go', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.none);
         parkCold(store, const {});
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('a wall that does not shrink works nothing out', () async {
@@ -626,31 +638,37 @@ void main() {
       test('a move that goes nowhere lets what was worked out go', () async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         await store.cutCelsAhead(PasteboardReach.quarter);
         expect(store.adoptPasteboardReach(PasteboardReach.whole), isEmpty);
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('answers landing after their round was let go leave nothing', (
       ) async {
         final store = BrushFrameStore();
         keepInAFile(store, {cut: drawn()});
-        final before = parkedAhead();
+        final before = await parkedAhead();
         final working = store.cutCelsAhead(PasteboardReach.none);
         parkCold(store, const {});
         await working;
-        expect(parkedAhead().difference(before), isEmpty);
+        expect((await parkedAhead()).difference(before), isEmpty);
       });
 
       test('parked cold, the bytes a cut replaces leave the room', () async {
-        final before = roomFiles();
+        final before = await roomFiles();
         final store = BrushFrameStore();
         parkCold(store, {cut: drawn(), clean: inkInside()});
         await store.cutCelsAhead(PasteboardReach.quarter);
+        await ScratchFile.lettingGo;
         store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(
-          roomFiles().difference(before),
+          ScratchFile.stillLettingGo,
+          1,
+          reason: "the cut's last park, let go off the UI thread",
+        );
+        expect(
+          (await roomFiles()).difference(before),
           hasLength(2),
           reason: "the clean cel's, and the cut parked ahead — the cut's "
               'last bytes went when it was kept anew',
@@ -875,6 +893,36 @@ void main() {
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
     });
 
+    // 🗣️Card a-pasteboard-undo-runs-on-the-ui-thread: 🔬S5_BA (2026-10-23):
+    // the first undo of the pasteboard turned off removed the parked bytes
+    // of the 99 cels it laid back, a file at a time on the UI thread —
+    // 30–61 ms of its 33–67.
+    test('🚨its undo hands what it lays back\'s parked bytes off the UI '
+        'thread, and leaves none of them in the room', () async {
+      final before = drawn();
+      final f = fixture((store) => keepInAFile(store, {cut: before}));
+      final command = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        inUse: false,
+      );
+      await command.workAhead(undo: false)!.run((_) {});
+      command.execute();
+      expect(f.store.isCelCold(cut), isTrue, reason: 'premise: cut, parked');
+      final parked = f.store.bakedSnapshotForSave().cold[cut]!.filePath;
+      await ScratchFile.lettingGo;
+
+      command.undo();
+      expect(
+        ScratchFile.stillLettingGo,
+        1,
+        reason: 'handed off by the undo, not removed inside it',
+      );
+      expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+      await ScratchFile.lettingGo;
+      expect(File(parked).existsSync(), isFalse);
+    });
+
     test('a parked payload still lays every pixel back', () async {
       final before = drawn();
       final f = fixture((store) => store.storeBakedSurface(cut, before));
@@ -886,6 +934,30 @@ void main() {
       expect(await command.parkPayload(), isTrue);
       command.undo();
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+    });
+
+    test('a parked payload read back is let go off the UI thread', () async {
+      final f = fixture((store) => store.storeBakedSurface(cut, drawn()));
+      final command = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        inUse: false,
+      )..execute();
+      final room = Directory(SessionScratch.volatileFolder());
+      final before = filesWrittenUnder(room).toSet();
+      expect(await command.parkPayload(), isTrue);
+      final parked = filesWrittenUnder(room).toSet().difference(before);
+      expect(parked, hasLength(1), reason: 'premise: the cut tiles parked');
+      await ScratchFile.lettingGo;
+
+      command.undo();
+      expect(
+        ScratchFile.stillLettingGo,
+        1,
+        reason: 'the payload, read back, let go off the UI thread',
+      );
+      await ScratchFile.lettingGo;
+      expect(filesWrittenUnder(room).toSet().intersection(parked), isEmpty);
     });
   });
 
@@ -925,6 +997,120 @@ void main() {
       expect(now.pasteboardReach, PasteboardReach.quarter);
       expect(now.tileAt(pastLeft), isNull);
     });
+  });
+
+  // 🗣️Card a-thawed-cel-is-walled-again-on-the-ui-thread: kept bytes carry
+  // no wall, so a kept cel a worker laid came back standing behind none
+  // and was walled on the UI thread — every tile the wall crosses copied
+  // again there, on every thaw. 🔬S5_BA off: 61 ms over 122 cels. A worker
+  // lays it behind the wall now, and the store takes it as it came.
+  group('a kept cel laid on a worker comes back behind the wall', () {
+    setUp(() => debugWorkersRunHere = false);
+    tearDown(() => debugWorkersRunHere = true);
+
+    final cel = key('kept');
+
+    /// Ink everywhere the wall decides on — a file's picture laid across
+    /// the left of it, and a text's letters it crosses.
+    BitmapSurface drawnWithLetters() =>
+        drawn(
+          laid: DirtyRegion(
+            left: -6,
+            top: 0,
+            rightExclusive: 2,
+            bottomExclusive: 4,
+          ),
+        ).copyWith(
+          texts: [
+            CelText(
+              id: 1,
+              content: CelTextContent(
+                spans: const [
+                  CelTextSpan(text: 'a', style: TextLetterStyle()),
+                ],
+                anchor: CanvasPoint(x: 0, y: 0),
+              ),
+              plate: {
+                straddling: tile(70),
+                pastRight: tile(80),
+                inside: tile(90),
+              },
+            ),
+          ],
+        );
+
+    void expectSamePicture(BitmapSurface? actual, BitmapSurface expected) {
+      expect(actual, isNotNull);
+      expect(actual!.pasteboardReach, expected.pasteboardReach);
+      expect(actual.laidBounds, expected.laidBounds);
+      void samePixels(
+        Map<TileCoord, BitmapTile> tiles,
+        Map<TileCoord, BitmapTile> expected,
+      ) {
+        expect(tiles.keys.toSet(), expected.keys.toSet());
+        for (final MapEntry(key: coord, :value) in expected.entries) {
+          expect(tiles[coord]!.pixels, value.pixels, reason: '$coord');
+        }
+      }
+
+      samePixels(actual.tiles, expected.tiles);
+      expect(actual.texts.length, expected.texts.length);
+      for (final (index, text) in expected.texts.indexed) {
+        expect(actual.texts[index].content, text.content);
+        samePixels(actual.texts[index].plate, text.plate);
+      }
+    }
+
+    for (final (tier, keep) in <(String, _KeepAll)>[
+      (
+        'parked cold',
+        (store, cels) =>
+            parkCold(store, cels, pasteboardReach: PasteboardReach.quarter),
+      ),
+      (
+        'kept in a file',
+        (store, cels) =>
+            keepInAFile(store, cels, pasteboardReach: PasteboardReach.quarter),
+      ),
+    ]) {
+      group(tier, () {
+        BrushFrameStore kept() {
+          final store = BrushFrameStore();
+          keep(store, {cel: drawnWithLetters()});
+          return store;
+        }
+
+        test('🚨thawed ahead: behind the wall a read here puts it behind, '
+            'and walled here not at all', () async {
+          final here = kept();
+          final ahead = kept();
+          final read = here.bakedSurfaceOrNull(cel);
+          expect(here.celsWalledHere, 1, reason: 'premise: walled here');
+
+          await ahead.thawAhead(cel, canvasSize: canvas);
+
+          expect(ahead.celsWalledHere, 0, reason: 'laid behind it there');
+          expectSamePicture(ahead.hotBakedSurfaceOrNull(cel), read!);
+        });
+
+        test('🚨cut ahead: the picture the undo keeps stands behind the wall '
+            'it was kept at, and is laid back there walled here not at '
+            'all', () async {
+          final store = kept();
+          await store.cutCelsAhead(PasteboardReach.none);
+          final was = store.adoptPasteboardReach(PasteboardReach.none)[cel];
+
+          expectSamePicture(
+            was,
+            surfaceBehindReach(drawnWithLetters(), PasteboardReach.quarter),
+          );
+          final walled = store.celsWalledHere;
+          store.adoptPasteboardReach(PasteboardReach.quarter);
+          store.storeBakedSurface(cel, was!);
+          expect(store.celsWalledHere, walled, reason: 'as the undo lays it');
+        });
+      });
+    }
   });
 }
 

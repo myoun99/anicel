@@ -38,6 +38,15 @@ import 'row_control_surface.dart';
 /// The gap between the reserved section band and the first control slot.
 const double layerRailSectionGap = 8;
 
+/// What a rail row keeps past its last column, along the rail — the room
+/// after the blend chip (F-443, 유저 2026-10-23: 「합성모드버튼의 오른쪽에
+/// 쓸데없는 패딩이 너무 큰데, 다른 패딩이랑 규칙 통일해서 적용. 예를들어
+/// 불투명도랑 블렌드모드 사이의 공간정도만 패딩주면 될듯. 통일감우선」): half
+/// a chip gap, which with the chip's own half ([_plateIn]) is the gap the
+/// bar and the chip stand apart by. ↩️8, written into every surface that
+/// ends a rail row.
+const double layerRailEndPadding = layerControlChipGap / 2;
+
 /// The TYPE BUTTON's slot (UI-R24 #7) — the row's KIND icon, on every row
 /// kind including attach rows (R10 R3 moved their placement arrow to the
 /// sheet slot). A fixed column of its own, so attach rows align with every
@@ -424,7 +433,6 @@ List<Widget> layerRailTrailingCells({
   Widget? fx,
   Widget? onion,
   Widget? visibility,
-  Widget? mute,
   Widget? opacity,
   Widget? blend,
   Widget? trailingRegion,
@@ -433,7 +441,7 @@ List<Widget> layerRailTrailingCells({
     layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
     layerRailSlot(axis, layerFxSlotWidth, fx),
     // R5 #7: everything AFTER fx as ONE region instead of its columns — a
-    // group header has no eye, no mute and no blend, so the space is free
+    // group header has no eye and no blend, so the space is free
     // and a preview wants it whole. The EXTENT is identical either way (it
     // comes from [layerRailTrailingWidth]), which is what keeps the fx
     // column pinned however this branches.
@@ -451,12 +459,28 @@ List<Widget> layerRailTrailingCells({
       if (optionalColumns.onion)
         layerRailSlot(axis, layerOnionSlotWidth, onion),
       layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
-      layerRailSlot(axis, layerMuteSlotWidth, mute),
-      layerRailSlot(axis, columns.opacity, opacity),
-      if (optionalColumns.blend) layerRailSlot(axis, columns.blend, blend),
+      layerRailSlot(axis, columns.opacity, _plateIn(axis, opacity)),
+      if (optionalColumns.blend)
+        layerRailSlot(axis, columns.blend, _plateIn(axis, blend)),
     ],
   ];
 }
+
+/// A PLATE in its slot — the opacity bar, the blend chip — with half the
+/// rail's [layerControlChipGap] at each end of it along the rail, so a
+/// plate stands off what is beside it as the buttons stand off each other.
+///
+/// 🚨F-409 (유저 2026-10-19): 「불투명도랑 합성모드 버튼이랑 이상하게 얘네만
+/// 딱붙어있음. 다른것처럼 통일해서 패딩주도록」. ↩️Each plate filled its slot
+/// to the edge, so the two met.
+Widget? _plateIn(Axis axis, Widget? plate) => plate == null
+    ? null
+    : Padding(
+        padding: axis == Axis.horizontal
+            ? const EdgeInsets.symmetric(horizontal: layerControlChipGap / 2)
+            : const EdgeInsets.symmetric(vertical: layerControlChipGap / 2),
+        child: plate,
+      );
 
 /// The trailing run's slots, in the order [layerRailTrailingCells] emits
 /// them. Naming them lets a host LOCATE a column instead of re-adding the
@@ -466,7 +490,6 @@ enum LayerRailTrailingSlot {
   fx,
   onion,
   visibility,
-  mute,
   opacity,
   blend,
 }
@@ -474,7 +497,8 @@ enum LayerRailTrailingSlot {
 /// Which of the rail's OPTIONAL columns a HOST carries — its answer, as
 /// distinct from a row that merely has nothing to put in one: a null cell
 /// reserves its slot, a column the host does not carry is not there at all
-/// (the storyboard rail carries no onion).
+/// (a timeline host that hands no onion verb carries no onion). ↩️The
+/// storyboard rail carried none until I-89-Q22.
 ///
 /// ONE answer to every question asked of the run — the cells a row lays
 /// out, what the run costs, where a swipe finds a column, how tall the
@@ -515,7 +539,6 @@ double _trailingSlotWidth(
   LayerRailTrailingSlot.fx => layerFxSlotWidth,
   LayerRailTrailingSlot.onion => layerOnionSlotWidth,
   LayerRailTrailingSlot.visibility => layerVisibilitySlotWidth,
-  LayerRailTrailingSlot.mute => layerMuteSlotWidth,
   LayerRailTrailingSlot.opacity => columns.opacity,
   LayerRailTrailingSlot.blend => columns.blend,
 };

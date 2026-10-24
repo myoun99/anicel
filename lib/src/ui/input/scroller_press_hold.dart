@@ -216,11 +216,7 @@ class _HeldAcross extends PanGestureRecognizer {
     PointerDeviceKind pointerDeviceKind,
     double? deviceTouchSlop,
   ) =>
-      _moved.abs() >
-      computeHitSlop(
-        PenSidecars.kindOf(pointerDeviceKind),
-        gestureSettings,
-      );
+      _moved.abs() > PenSidecars.hitSlopOf(pointerDeviceKind, gestureSettings);
 
   @override
   void didStopTrackingLastPointer(int pointer) {

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io' show File;
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -20,13 +19,11 @@ import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
-import '../../models/brush_blend_mode.dart';
 import '../../native/device_battery.dart';
-import '../../models/brush_pressure_curve.dart';
-import '../../models/brush_shape.dart';
 import '../../native/window_full_screen.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
+import '../brush/brush_value_group.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
@@ -34,7 +31,6 @@ import '../widgets/kept_tail_row.dart';
 import '../text/app_strings.dart';
 import '../../models/media_asset.dart' show MediaAssetKind;
 import '../../models/timesheet_info.dart';
-import '../text/model_vocabulary.dart';
 import '../text/place_lines.dart' show celPlaceLine;
 import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
@@ -43,8 +39,8 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
-import '../widgets/pressure_curve_popup.dart';
 import '../widgets/setting_source_button.dart';
+import '../widgets/strip_group_rule.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../dialogs/dialog_verb.dart';
 import '../dialogs/preferences_dialog.dart';
@@ -52,8 +48,6 @@ import '../dialogs/work_settings_window.dart';
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../sliced_value_listenable_builder.dart';
-import '../widgets/static_raster.dart';
-import '../widgets/value_hands.dart' show ValuePencil;
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
@@ -68,7 +62,6 @@ import '../export/export_plan.dart'
 import '../export/frame_image_file.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_spec.dart' show ImageExportSpec;
-import '../panels/tool_size_preset_panel.dart';
 import '../panels/workspace_panels_menu.dart';
 import 'project_open_door.dart';
 import 'project_settings_menu.dart';
@@ -119,7 +112,7 @@ class EditorTopStrip extends StatelessWidget {
 
   final WorkspacePanelsMenuController panelsMenu;
 
-  /// The one door the 「파일 열기…」 and 「폴더 열기…」 rows knock on
+  /// The one door the 「파일 열기」 and 「폴더 열기」 rows knock on
   /// (F-282) — the workspace's, which holds what it hands files to. Null
   /// leaves the two rows dim (focused tests).
   final WorkspaceDoorCommands? door;
@@ -128,6 +121,10 @@ class EditorTopStrip extends StatelessWidget {
   /// right end (프로크리·카리페그 배치) because they are values you set
   /// mid-stroke, and an anchored popover closes the moment you touch the
   /// canvas — a value button could never be adjusted against a test mark.
+  ///
+  /// They stand here only when [panelsMenu] says the brush's values are the
+  /// strip's ([WorkspacePanelsMenuController.brushValuesOnStrip]); by
+  /// default the canvas's pill holds them (I-34).
   ///
   /// Null leaves the right end empty (passive hosts and focused tests).
   final ValueNotifier<BrushToolState>? brushTool;
@@ -427,14 +424,14 @@ class EditorTopStrip extends StatelessWidget {
       submenuBuilder: () => [
         _item(
           id: 'file-save-as',
-          label: 'Project (.anicel)…',
+          label: 'Project (.anicel)',
           shortcuts: const [EditorActionIds.fileSaveAs],
           onPressed: () => unawaited(promptSaveProjectAs(context, session)),
         ),
         for (final format in saveAsImageFormats)
           _item(
             id: saveAsImageActionId(format),
-            label: '${format.label}…',
+            label: format.label,
             shortcuts: [saveAsImageActionId(format)],
             onPressed: _onACut && stillFormatWritable(format)
                 ? () => unawaited(saveFrameAsImage(context, session, format))
@@ -630,6 +627,20 @@ class EditorTopStrip extends StatelessWidget {
               ? () => panelsMenu.setRegionOnTop(!panelsMenu.regionOnTop)
               : null,
         ),
+        // 🗣️I-34 (유저 2026-10-18): the brush's values stand in the canvas's
+        // pill unless this row puts them back here.
+        _item(
+          id: 'window-brush-values-on-strip',
+          label: editorActionLabel(EditorActionIds.brushValuesOnStrip),
+          shortcuts: const [EditorActionIds.brushValuesOnStrip],
+          icon: Icons.tune,
+          checked: panelsMenu.brushValuesOnStrip,
+          onPressed: panelsMenu.canMoveBrushValues
+              ? () => panelsMenu.setBrushValuesOnStrip(
+                  !panelsMenu.brushValuesOnStrip,
+                )
+              : null,
+        ),
         // 🗣️I-103-Q2 (유저 2026-10-16): 「데스크톱만 켜고 끄기, 모바일은
         // 지금처럼 늘 전체 화면」 — a row on the three desktops and none on
         // the iPad and Android, where there is nothing to switch. Its mark
@@ -733,25 +744,10 @@ class EditorTopStrip extends StatelessWidget {
                 !MeasurementMode.showRepaints.value;
           },
         ),
-        // The A/B. Turning the bakes off puts the app back the way it was
-        // before them, in the SAME build, so "what did this actually buy" is
-        // two readings a few seconds apart rather than an argument.
-        //
-        // 🚨 It existed as a `ValueNotifier` from the day the bakes shipped
-        // and was never wired to anything, so the one switch the whole
-        // measurement needs could not be reached without editing code. A
-        // debug affordance nobody can press is a debug affordance nobody has.
-        _item(
-          id: 'edit-bake-panels',
-          label: editorActionLabel(EditorActionIds.bakePanels),
-          shortcuts: const [EditorActionIds.bakePanels],
-          icon: Icons.layers_outlined,
-          checked: StaticRaster.globallyEnabled.value,
-          onPressed: () {
-            StaticRaster.globallyEnabled.value =
-                !StaticRaster.globallyEnabled.value;
-          },
-        ),
+        // ↩️「Bake Static Panels」, the bakes' A/B switch, stood here from
+        // 2026-08-09 until the user had it taken out: off is only ever a loss
+        // (유저 2026-10-23, F-448 「없애고 on인채로 두는게 맞지않을까」). Why
+        // there is no global switch any more: `StaticRaster.enabled`.
       ],
     ),
     const PanelFlyoutDivider(),
@@ -783,16 +779,22 @@ class EditorTopStrip extends StatelessWidget {
           icon: Icons.settings_outlined,
           entriesBuilder: () => _settingsEntries(context),
         ),
-        const SizedBox(width: 6),
-        const _StripGroupRule(),
-        const SizedBox(width: 6),
+        const SizedBox(width: StripGroupRule.margin),
+        const StripGroupRule(),
+        const SizedBox(width: StripGroupRule.margin),
         _FloorSwitch(panelsMenu: panelsMenu),
         const SizedBox(width: 6),
         Expanded(
-          child: _TabsAndBrushGroup(
-            tabs: _ProjectTabRow(projects: projects, onClose: onCloseProject),
-            brushTool: brushTool,
-            battery: battery,
+          // The brush's values stand here only where the workspace says
+          // so ([WorkspacePanelsMenuController.brushValuesOnStrip]).
+          child: SlicedListenableBuilder<bool>(
+            listenable: panelsMenu,
+            slice: () => panelsMenu.brushValuesOnStrip,
+            builder: (context, onStrip) => _TabsAndBrushGroup(
+              tabs: _ProjectTabRow(projects: projects, onClose: onCloseProject),
+              brushTool: onStrip ? brushTool : null,
+              battery: battery,
+            ),
           ),
         ),
         const SizedBox(width: 3),
@@ -877,10 +879,10 @@ class _TabsAndBrushGroup extends StatelessWidget {
               tail: gauge,
             );
     }
-    final narrowest = _BrushValueBars.narrowestIn(context);
+    final narrowest = BrushValueBars.narrowestIn(context);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final bars = _BrushValueBars.widthsIn(
+        final bars = BrushValueBars.widthsIn(
           // What the two bars may take between them once the tabs hold
           // only their list button's place and the group's fixed parts
           // and the battery stand.
@@ -986,25 +988,23 @@ class _BatteryGauge extends StatelessWidget {
   }
 }
 
-/// How wide the size bar and the opacity bar each stand.
-typedef _BarWidths = ({double size, double opacity});
-
 /// The brush's group as the strip shows it.
 class _BrushGroup extends StatelessWidget {
   const _BrushGroup({required this.brushTool, required this.bars});
 
   final ValueNotifier<BrushToolState> brushTool;
-  final _BarWidths bars;
+  final BrushBarWidths bars;
 
-  static const double _gap = 6;
+  /// Between the blend, the rule and the bars — the rule's own margin.
+  static const double _gap = StripGroupRule.margin;
 
   /// Everything of the group that is not a bar.
   static const double fixedWidth =
-      _BlendModeControl._buttonWidth +
+      BrushBlendModeControl.buttonWidth +
       _gap +
-      _StripGroupRule.width +
+      StripGroupRule.width +
       _gap +
-      _BrushValueBars.fixedWidth;
+      BrushValueBars.fixedWidth;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -1014,11 +1014,11 @@ class _BrushGroup extends StatelessWidget {
       // size and opacity each with their pressure curve, then the colour.
       // The rule is what makes the first two read as one group rather
       // than as a button that has wandered next to a slider.
-      _BlendModeControl(brushTool: brushTool),
+      BrushBlendModeControl(brushTool: brushTool),
       const SizedBox(width: _gap),
-      const _StripGroupRule(),
+      const StripGroupRule(),
       const SizedBox(width: _gap),
-      _BrushValueBars(brushTool: brushTool, widths: bars),
+      BrushValueBars(brushTool: brushTool, widths: bars),
       // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was
       // the one surface that opened DOWNWARD out of a strip; as a rail
       // group it opens sideways like everything else, and the swatch
@@ -1041,7 +1041,7 @@ class _BrushGroupButton extends StatelessWidget {
   final ValueNotifier<BrushToolState> brushTool;
 
   static const double _padding = 8;
-  static const double _lineGap = 6;
+  static const double _lineGap = BrushValueBars.lineGap;
 
   @override
   Widget build(BuildContext context) {
@@ -1062,418 +1062,34 @@ class _BrushGroupButton extends StatelessWidget {
           label: name,
           width:
               _padding * 2 +
-              _BrushValueBars.fullBar +
-              _BrushValueBars._gap +
+              BrushValueBars.fullBar +
+              BrushValueBars.gap +
               SettingSourceButton.slotWidth,
           height:
-              _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
+              _padding * 2 + BrushValueBars.barHeight * 3 + _lineGap * 2,
           builder: (context, _) => Padding(
             padding: const EdgeInsets.all(_padding),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  height: _BrushValueBars._barHeight,
+                  height: BrushValueBars.barHeight,
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: _BlendModeControl(brushTool: brushTool),
+                    child: BrushBlendModeControl(brushTool: brushTool),
                   ),
                 ),
                 const SizedBox(height: _lineGap),
-                _BrushValueBars(
+                BrushValueBars(
                   brushTool: brushTool,
-                  widths: _BrushValueBars.full,
-                  axis: Axis.vertical,
+                  widths: BrushValueBars.full,
+                  layout: BrushValuesLayout.popover,
                 ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Size and opacity, each followed by its pressure curve button.
-///
-/// Bars rather than value buttons: these are set WHILE drawing, against a
-/// test mark on the canvas, and an anchored popover closes on the first
-/// pointer-down outside it (R27 #5) — a button would force open-adjust-
-/// close-draw every time. [FieldSlider] already puts the name and the
-/// number inside the track, so one 140px run says everything.
-///
-/// The pressure buttons came WITH them from the tool settings panel (유저
-/// 확정): a curve belongs beside the value it shapes, and splitting them
-/// across two surfaces would mean setting a size here and asking how the
-/// pen affects it over there.
-///
-/// Its own listener: a size drag must not rebuild the popover buttons or
-/// re-read the project name beside them.
-class _BrushValueBars extends StatelessWidget {
-  const _BrushValueBars({
-    required this.brushTool,
-    required this.widths,
-    this.axis = Axis.horizontal,
-  });
-
-  final ValueNotifier<BrushToolState> brushTool;
-
-  /// How wide the two bars stand — [full] where there is room.
-  final _BarWidths widths;
-
-  /// Side by side in the strip; one over the other in the group's popover.
-  final Axis axis;
-
-  /// A bar at its full width — its track as it was at 140 and its pencil
-  /// after it ([ValuePencil.reach]), so a bar that took its pencil writes
-  /// in the room it always had (at twice the OS text its widest number
-  /// ran past its track without it).
-  static const double fullBar = 140 + ValuePencil.reach;
-  static const _BarWidths full = (size: fullBar, opacity: fullBar);
-  static const double _barHeight = 42;
-  static const double _gap = 4;
-
-  /// Everything beside the two bars when they stand side by side: a
-  /// pressure button after each, and the gaps.
-  static const double fixedWidth =
-      _gap +
-      SettingSourceButton.slotWidth +
-      _gap +
-      _gap +
-      SettingSourceButton.slotWidth;
-
-  /// The size bar as the strip writes it — the one the strip shows, and the
-  /// one [narrowestIn] measures.
-  static FieldSlider _sizeBar({
-    required double value,
-    required ValueChanged<double>? onChanged,
-  }) => FieldSlider(
-    key: const ValueKey<String>('top-strip-size-bar'),
-    label: AppText.strings.brSize,
-    value: value,
-    min: BrushToolState.minSize,
-    max: BrushToolState.maxSize,
-    // Equal travel multiplies the value, so the left half covers the small
-    // sizes where a pixel matters.
-    scale: FieldSliderScale.exponential,
-    // F-325 (유저 2026-10-09): the +/− and the wheel step through the tool
-    // size panel's rack, as it is.
-    stops: ToolSizePresetPanel.presets,
-    unit: ' px',
-    height: _barHeight,
-    onChanged: onChanged,
-  );
-
-  /// The opacity bar as the strip writes it — as [_sizeBar].
-  static FieldSlider _opacityBar({
-    required double value,
-    required ValueChanged<double>? onChanged,
-  }) => FieldSlider.opacity(
-    key: const ValueKey<String>('top-strip-opacity-bar'),
-    label: AppText.strings.brOpacity,
-    value: value,
-    height: _barHeight,
-    onChanged: onChanged,
-  );
-
-  /// The narrowest each bar goes: where it still writes its name and its
-  /// widest number whole ([FieldSlider.narrowestIn]).
-  ///
-  /// Each its OWN: the answer's words are 「이름과 숫자가 막대 안에 들어가는
-  /// 최소 폭」, and the two bars do not write the same words.
-  ///
-  /// Never past [fullBar]: where the writing asks for more than the full
-  /// bar (a long name under a large OS text size) there is nothing to
-  /// narrow, and the bar cuts its name short at 140 as it always has.
-  static _BarWidths narrowestIn(BuildContext context) {
-    double of(FieldSlider bar) =>
-        math.min(fullBar, bar.narrowestIn(context));
-    return (
-      size: of(_sizeBar(value: BrushToolState.maxSize, onChanged: null)),
-      opacity: of(_opacityBar(value: 1, onChanged: null)),
-    );
-  }
-
-  /// The two bars' widths where [room] is what they may take between them:
-  /// [full] where there is room; where there is not, each gives up the same
-  /// share of what it can spare, so both reach their [narrowest] together;
-  /// and null where even those do not fit.
-  ///
-  /// In whole pixels, rounded down — a bar's edge stays on the grid, and
-  /// the two never take more than [room]. (The pixel that rounding can take
-  /// from a bar at its narrowest comes out of the breath between its name
-  /// and its number, never out of either.)
-  static _BarWidths? widthsIn(double room, _BarWidths narrowest) {
-    final short = fullBar * 2 - room;
-    if (short <= 0) {
-      return full;
-    }
-    final spare = fullBar * 2 - narrowest.size - narrowest.opacity;
-    if (short > spare) {
-      return null;
-    }
-    final share = short / spare;
-    double narrowed(double least) =>
-        (fullBar - (fullBar - least) * share).floorToDouble();
-    return (
-      size: narrowed(narrowest.size),
-      opacity: narrowed(narrowest.opacity),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 🚨Sliced to what the bars SHOW (2026-09-26): the whole state moved them
-    // on every colour-wheel frame and every other bar's drag, two bars and
-    // two curve buttons rebuilt for news none of them draws. The curves are
-    // the shape's, so the shape stands for them — with its COLOUR set aside,
-    // because the colour lives in the shape too and is the one field that
-    // moves every frame of a colour-wheel drag.
-    // ⛔Every write reads the notifier when it happens, never the builder's
-    // state — a field outside the slice may have moved since it was built.
-    return SlicedValueListenableBuilder<
-      BrushToolState,
-      (bool, bool, bool, double, double, BrushShape)
-    >(
-      valueListenable: brushTool,
-      slice: (state) => (
-        state.supports(ToolParameter.size),
-        state.supports(ToolParameter.opacity),
-        state.supports(ToolParameter.pressure),
-        BrushToolState.clampSize(state.activeSize),
-        BrushToolState.clampOpacity(state.activeOpacity),
-        state.shape.copyWith(color: 0),
-      ),
-      builder: (context, state) {
-        // TP2: one group, and each member is DIMMED rather than hidden when
-        // the armed tool has no use for it (유저: 뭐가 적용되고 뭐가
-        // 적용안되는지 몰라할거같으니까 … 적용안되는툴이나 모드면
-        // 비활성화시키도록). The table lives on the state — see
-        // [BrushToolState.supports] — so the strip cannot disagree with the
-        // commit about what a tool reads.
-        //
-        // Dimmed, never removed: a control that comes and goes is one you
-        // have to look for, and the layout would jump every tool switch.
-        final sizeOn = state.supports(ToolParameter.size);
-        final opacityOn = state.supports(ToolParameter.opacity);
-        final pressureOn = state.supports(ToolParameter.pressure);
-        Widget pressure(BrushPressureTarget target) {
-          return PressureCurveButton(
-            keyValue: 'brush-tool-pressure-${target.name}',
-            target: target,
-            curves: state.targetCurves(target),
-            enabled: pressureOn,
-            onChanged: (curves) => brushTool.value = brushTool.value
-                .withTargetCurves(target, curves),
-          );
-        }
-
-        final sizeLine = [
-          SizedBox(
-            width: widths.size,
-            height: _barHeight,
-            child: _sizeBar(
-              // The ACTIVE tool's size, as the bar beside it is the active
-              // tool's opacity: the shape tool's plain line keeps its own.
-              value: BrushToolState.clampSize(state.activeSize),
-              onChanged: sizeOn
-                  ? (value) => brushTool.value = brushTool.value
-                        .withActiveSize(value)
-                  : null,
-            ),
-          ),
-          const SizedBox(width: _gap),
-          pressure(BrushPressureTarget.size),
-        ];
-        final opacityLine = [
-          SizedBox(
-            width: widths.opacity,
-            height: _barHeight,
-            child: _opacityBar(
-              // TP1: the ACTIVE tool's opacity — the fill and the stamp
-              // keep their own, so this bar stops being the brush's alone
-              // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
-              // 채워지게).
-              value: BrushToolState.clampOpacity(state.activeOpacity),
-              onChanged: opacityOn
-                  ? (value) => brushTool.value = brushTool.value
-                        .withActiveOpacity(value)
-                  : null,
-            ),
-          ),
-          const SizedBox(width: _gap),
-          pressure(BrushPressureTarget.opacity),
-        ];
-        if (axis == Axis.horizontal) {
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ...sizeLine,
-              const SizedBox(width: _gap),
-              ...opacityLine,
-            ],
-          );
-        }
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(mainAxisSize: MainAxisSize.min, children: sizeLine),
-            const SizedBox(height: _BrushGroupButton._lineGap),
-            Row(mainAxisSize: MainAxisSize.min, children: opacityLine),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// The rule between the strip's groups — the same one the tool rail draws
-/// between its history head and its tools, stood on its end.
-class _StripGroupRule extends StatelessWidget {
-  const _StripGroupRule();
-
-  static const double width = 1;
-
-  @override
-  Widget build(BuildContext context) {
-    return VerticalDivider(
-      width: width,
-      thickness: 1,
-      indent: 6,
-      endIndent: 6,
-      color: Theme.of(context).colorScheme.outlineVariant,
-    );
-  }
-}
-
-/// The blend mode and its lock, at the strip's left-most right-group slot.
-///
-/// The BRUSH BLEND dropdown (BB-2) moved here whole from the tool settings
-/// panel (유저 확정) — the PS/CSP vocabulary where the LABEL is the current
-/// mode, plus the pin that keeps a brush on one blend. A named button beats
-/// the icon popover the strip briefly wore: a blend you cannot read without
-/// opening it is a blend you check by opening it.
-///
-/// It is one of the three settings a preset deliberately never carries
-/// (R26 #10), which is what makes it belong out here with the hand's other
-/// standing choices rather than inside a preset.
-///
-/// The width is FIXED (유저 확정): the label is the mode name, and letting
-/// the button breathe with the text meant every blend change shoved the
-/// bars beside it sideways. Long names ellipsize instead.
-class _BlendModeControl extends StatelessWidget {
-  const _BlendModeControl({required this.brushTool});
-
-  final ValueNotifier<BrushToolState> brushTool;
-
-  /// Wider than the label needs on average, so the common modes read whole
-  /// and only the long ones are cut.
-  ///
-  /// ONE width for BOTH states, so picking up the eraser — which shows a
-  /// fixed 消去 instead of a chooser — does not slide the bars sideways.
-  static const double _buttonWidth = 116;
-
-  @override
-  Widget build(BuildContext context) {
-    // Sliced to what the button SHOWS, like the bars beside it — and its
-    // pick reads the notifier when it happens, never the builder's state.
-    return SlicedValueListenableBuilder<
-      BrushToolState,
-      (bool, CanvasTool, BrushBlendMode)
-    >(
-      valueListenable: brushTool,
-      slice: (state) => (
-        state.supports(ToolParameter.blend),
-        state.tool,
-        state.activeBlendMode,
-      ),
-      builder: (context, state) {
-        final theme = Theme.of(context);
-        final language = AppText.settings.value.programLanguage;
-        // TP2: tools that composite nothing get the control DIMMED, not an
-        // empty gap. It used to be shown for every one of them (a dropdown
-        // answering a question nobody downstream asked), then reserved as
-        // blank space — and blank space says nothing about why. Dim says
-        // "this exists and does not apply here", which is the question the
-        // user actually had: 뭐가 적용되고 뭐가 적용안되는지.
-        final blendOn = state.supports(ToolParameter.blend);
-        // The ERASER tool fixes it to 消去/Erase — the eraser IS the erase
-        // blend — and that is not a blend CHOICE, so the flyout stands down.
-        final toolLocked = state.blendIsFixed;
-        final mode = state.activeBlendMode;
-        if (toolLocked) {
-          return SizedBox(
-            width: _buttonWidth,
-            child: Container(
-              key: const ValueKey<String>('brush-tool-blend-locked'),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: ShapeDecoration(
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      mode.labelFor(language),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  Icon(
-                    Icons.lock_outline,
-                    size: 14,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        return SizedBox(
-          width: _buttonWidth,
-          child: PanelFlyoutButton(
-            key: const ValueKey<String>('brush-tool-blend-menu-button'),
-            label: mode.labelFor(language),
-            tooltip: AppText.strings.brBlendMode,
-            enabled: blendOn,
-            // `expand` is what makes the fixed box hold: the label
-            // becomes Flexible inside it, so it ellipsizes rather than
-            // overflowing the width the strip budgeted.
-            expand: true,
-            // ONE list for every tool that composites — TS8 유저 법:
-            // 「블렌드모드가 존재한다면 다 공통이야. 지우개만 이레이저만
-            // 남기는거고. 나머지는 이레이저 포함 다 있어.」 The stamp
-            // joining `toolHasBlendMode` is all it took: the eraser's
-            // single-entry case is the `toolLocked` box above, so this
-            // list needs no per-tool filter to obey that law.
-            entriesBuilder: () => BrushBlendMode.values.asFlyoutValueChoices(
-              current: mode,
-              // 🗣️I-31 made every mode an action (F1–F12); the row it is
-              // picked from says so, as every button does (I-40).
-              choiceOf: (candidate) => PanelFlyoutChoice(
-                key: 'brush-tool-blend-${candidate.name}',
-                label: candidate.labelFor(language),
-                shortcuts: [blendModeActionId(candidate)],
-              ),
-              // Writes to whichever drawer the armed tool owns — the
-              // BRUSH's is its own shape, so the mode picked here is
-              // the mode that brush keeps and exports. The button
-              // never names a tool (유저 확정: 블렌드모드 선택도 툴에
-              // 산다).
-              onPicked: (candidate) =>
-                  brushTool.value =
-                      brushTool.value.withActiveBlendMode(candidate),
-            ),
-          ),
-        );
-      },
     );
   }
 }
@@ -1798,7 +1414,7 @@ class _StripPopoverButton extends StatelessWidget {
 /// What it answers for the file it is granted is what every project pick
 /// answers ([projectPickOf]).
 ///
-/// ↩️Open was its other caller until F-282 (2026-10-09): 「파일 열기…」
+/// ↩️Open was its other caller until F-282 (2026-10-09): 「파일 열기」
 /// takes every kind now, several at once, through the one door's pick
 /// (`pickFilesToOpen`).
 Future<ProjectPick?> pickProjectFile(
@@ -2203,7 +1819,7 @@ String saveFailureMessage(SaveFailure failure) {
   return '$why\n\n$where\n\n${strings.saveFailedRetry}';
 }
 
-/// 「실패본 백업…」: a failed copy, saved where the person chooses.
+/// 「실패본 백업」: a failed copy, saved where the person chooses.
 ///
 /// 🗣️유저 2026-09-23: 「유저가 그 파일 따로 뭐 복사해서 저장해놔서 나중에
 /// 실패본에서 백업하기 … 해당파일 지정해서 백업할수있게」. [copy] names the

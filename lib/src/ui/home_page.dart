@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -10,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
+import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../models/working_panel.dart';
@@ -22,12 +22,15 @@ import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
+import '../services/persistence/folder_grant.dart'
+    show FolderGrant, handedPath;
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
 import '../services/persistence/app_camera_path_settings_store.dart';
 import '../services/persistence/app_frame_count_settings_store.dart';
 import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
+import '../services/persistence/app_pixel_verb_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
 import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
@@ -58,7 +61,7 @@ import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_traces.dart';
 import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
-import 'cut_command_group.dart' show landCanvasAdjust;
+import 'cut_command_group.dart' show landCanvasAdjust, newCutPress;
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
@@ -110,7 +113,7 @@ import 'widgets/panel_flyout.dart' show pressFlyoutRow;
 /// An app-side store, or null under `flutter test`: FLUTTER_TEST keeps
 /// widget tests off the developer's saved files (UI-R10 #7 / UI-R22 #5).
 T? _unlessTesting<T>(T Function() make) =>
-    Platform.environment.containsKey('FLUTTER_TEST') ? null : make();
+    underFlutterTest ? null : make();
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -227,6 +230,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
     frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
     cameraPathSettingsStore: _unlessTesting(AppCameraPathSettingsStore.new),
+    pixelVerbSettingsStore: _unlessTesting(AppPixelVerbSettingsStore.new),
   )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
@@ -364,7 +368,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
   final WorkspaceBarCommands _workspaceBar = WorkspaceBarCommands();
 
-  /// The one door (F-282) as the top strip's 「파일 열기…」 · 「폴더 열기…」
+  /// The one door (F-282) as the top strip's 「파일 열기」 · 「폴더 열기」
   /// reach it: the workspace binds it, holding what the door hands files to.
   final WorkspaceDoorCommands _workspaceDoor = WorkspaceDoorCommands();
 
@@ -539,16 +543,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // What the OS opened the app with goes through the one door, as a drop
     // on the window does — after the first frame, once the workspace that
-    // holds the door has bound it.
+    // holds the door has bound it ([_openHanded]).
     final handed = widget.handedAtLaunch;
     if (handed.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _workspaceDoor.openPaths(handed),
+        (_) => _openHanded([for (final path in handed) handedPath(path)]),
       );
     }
-    // And what a second Anicel hands the running one, while this window is
-    // here ([HandedFiles]).
-    HandedFiles.listen(_workspaceDoor.openPaths);
+    // And what the platform hands the running app, while this window is
+    // here — a second Anicel's files, another app's share ([HandedFiles]).
+    HandedFiles.listen(_openHanded);
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -562,6 +566,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // that, so the notifier's seam and the notice hook this line wired went
     // too (2026-09-16).
   }
+
+  /// [handed] through the one door once the saved language is back
+  /// ([EditorAppSettings.languageRestored]) — the door says what it did in
+  /// notices whose words are written as they open, and the launch knocks in
+  /// the first frame, before the language the app was left in has been
+  /// read (F-170). ↩️It knocked at once: a file nothing opens was refused
+  /// in English under a Japanese list of it (서피스 AI 실기 2026-10-23,
+  /// card open-door-windows-open-with).
+  void _openHanded(List<FolderGrant> handed) => unawaited(
+    _appSettings.languageRestored.then(
+      (_) => _workspaceDoor.openHanded(handed),
+    ),
+  );
 
   /// R9-rest: this device's font library is about to let go of [files].
   /// Every open project that carries one of them — in front or behind —
@@ -1117,6 +1134,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // storyboard an S row), which is what that button's press is.
       case EditorActionIds.layerAdd:
         _workingPanel.addLayer();
+      // F-455: the cut pill's ＋ by key — its button's own press, which
+      // makes no cut where it has no place for one.
+      case EditorActionIds.cutNew:
+        newCutPress(_session)?.call();
       case EditorActionIds.frameToggleMark:
         final panel = _workingPanel;
         if (panel.canToggleMark) {
@@ -1149,9 +1170,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.timelineOrientationToggle:
         _workspaceBar.toggleOrientation(_session.workingPanel);
       case EditorActionIds.canvasRotateCcw:
-        _canvasViewCommands.rotateBy(-15);
+        _canvasViewCommands.rotateStep(clockwise: false);
       case EditorActionIds.canvasRotateCw:
-        _canvasViewCommands.rotateBy(15);
+        _canvasViewCommands.rotateStep(clockwise: true);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
       case EditorActionIds.canvasFlipVertical:
@@ -1238,6 +1259,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.pasteIndependentPress?.call();
       case EditorActionIds.editUnlink:
         _workingPanel.unlinkPress?.call();
+      case EditorActionIds.editDuplicate:
+        _workingPanel.duplicatePress?.call();
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the

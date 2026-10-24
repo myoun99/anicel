@@ -27,8 +27,12 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+
+import '../../helpers/make_the_rows_first.dart';
+import '../../helpers/stack_as_the_plan_hands_it.dart';
 
 /// 🚨★★★ (v) 1단계의 진짜 계약 — **더 빨라도 되고, 다르게 그리면 안 된다.**
 ///
@@ -46,6 +50,10 @@ import 'package:anicel/src/models/composite_tree.dart';
 /// 「below / above」.
 void main() {
   const canvasSize = CanvasSize(width: 4, height: 4);
+
+  // The stacks are handed over as the plan hands them: a row or a folder
+  // in an advanced blend is the source of one over its backdrop.
+  setUpAll(LayerBlendShader.load);
 
   BrushFrameKey key(String id) => BrushFrameKey(
     projectId: const ProjectId('project'),
@@ -123,6 +131,25 @@ void main() {
     required LayerFrameImageCache cache,
     required bool disableBake,
   }) async {
+    final view = CanvasLayerStackView(
+      nodes: stackAsThePlanHandsIt(nodes),
+      imageCache: cache,
+      canvasSize: canvasSize,
+      viewport: CanvasViewport(),
+      activeSurfacePainter: surfacePainter,
+      paintPaper: true,
+      paperBackground: const ProjectBackground.color(0xFF00FF00),
+      debugDisableBake: disableBake,
+    );
+    // 🚨WARM FIRST, THEN LOOK. A cold `LayerFrameImageCache` resolves some
+    // rows on a later pass, so the first pump of a tree and the second draw
+    // different numbers of rows — measured: with the bake OFF on BOTH sides
+    // these comparisons still failed until a settle went in. That is the
+    // instrument disagreeing with itself, and taking it for a finding about
+    // the bake is exactly the mistake [[canvas-raster-perf-round]] records.
+    // ↩️The settle alone waited on the pumped clock, which finishes no
+    // decode: a busy machine still rastered a side with a row missing.
+    await makeTheRowsFirst(tester, view);
     await tester.pumpWidget(
       MaterialApp(
         // A distinct key per render, so the second pump builds a FRESH
@@ -130,30 +157,11 @@ void main() {
         key: ValueKey<bool>(disableBake),
         home: Scaffold(
           body: Center(
-            child: SizedBox(
-              width: 4,
-              height: 4,
-              child: CanvasLayerStackView(
-                nodes: nodes,
-                imageCache: cache,
-                canvasSize: canvasSize,
-                viewport: CanvasViewport(),
-                activeSurfacePainter: surfacePainter,
-                paintPaper: true,
-                paperBackground: const ProjectBackground.color(0xFF00FF00),
-                debugDisableBake: disableBake,
-              ),
-            ),
+            child: SizedBox(width: 4, height: 4, child: view),
           ),
         ),
       ),
     );
-    // 🚨WARM FIRST, THEN LOOK. A cold `LayerFrameImageCache` resolves some
-    // rows on a later pass, so the first pump of a tree and the second draw
-    // different numbers of rows — measured: with the bake OFF on BOTH sides
-    // these comparisons still failed until this settle went in. That is the
-    // instrument disagreeing with itself, and taking it for a finding about
-    // the bake is exactly the mistake [[canvas-raster-perf-round]] records.
     await tester.pumpAndSettle();
     final painted = tester
         .widgetList<CustomPaint>(
@@ -316,6 +324,52 @@ void main() {
       ],
       drawn: const ['graded', 'over'],
       reason: 'R6b: a stroke under a grade reads through it while you draw',
+    );
+  });
+
+  // brush-fidelity-Q4: a row whose blend the GPU lacks is composed over a
+  // picture of what lies below it — the paper too, at the root — so the
+  // split has a third structure to walk, and two places the live layer can
+  // stand in it.
+  testWidgets('the live layer as the row composed over its backdrop', (
+    tester,
+  ) async {
+    await expectSamePixels(
+      tester,
+      [
+        CompositeBackdropBlend<CanvasStackRow>(
+          backdrop: [drawnRow('under')],
+          source: const CompositeLeaf<CanvasStackRow>(
+            CanvasActiveLayerRow(opacity: 1),
+          ),
+          blendMode: LayerBlendMode.subtract,
+        ),
+        drawnRow('over'),
+      ],
+      drawn: const ['under', 'over'],
+      reason: 'the backdrop is recorded and the row over it drawn live',
+    );
+  });
+
+  testWidgets('the live layer in the backdrop a row is composed over', (
+    tester,
+  ) async {
+    await expectSamePixels(
+      tester,
+      [
+        CompositeBackdropBlend<CanvasStackRow>(
+          backdrop: [
+            drawnRow('under'),
+            const CompositeLeaf<CanvasStackRow>(
+              CanvasActiveLayerRow(opacity: 1),
+            ),
+          ],
+          source: drawnRow('blended', opacity: 0.6),
+          blendMode: LayerBlendMode.divide,
+        ),
+      ],
+      drawn: const ['under', 'blended'],
+      reason: 'the row is recorded and the backdrop it reads drawn live',
     );
   });
 

@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../flutter_test_run.dart';
 import '../../native/qa_engine_abi.dart';
 import '../../native/qa_video_decoder.dart';
 
@@ -94,7 +94,7 @@ VideoDecodeBackend? _backend;
 /// rather than at each call site so there is one answer to 「am I allowed to
 /// spawn?」.
 VideoDecodeBackend get videoDecodeBackend =>
-    _backend ??= Platform.environment['FLUTTER_TEST'] == 'true'
+    _backend ??= underFlutterTest
     ? const DirectVideoDecodeBackend()
     : IsolateVideoDecodeBackend();
 
