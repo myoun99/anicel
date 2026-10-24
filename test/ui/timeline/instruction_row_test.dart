@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGrip;
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart'
     show TimelineFrameCellsRow;
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/block_word_finder.dart';
 import '../../helpers/the_classic_rail.dart';
@@ -363,13 +364,15 @@ void main() {
     );
     expect(endGrip, findsOneWidget);
 
-    // Lengthen by 2 frames (24px slim cells). R10: the pixels the drag
-    // spends winning the arena are TRAVEL, not overhead, so the TOTAL is
-    // what counts — 19 + 29 = 48 = two cells exactly.
+    // Lengthen by 2 frames (the 19.2px cells a cut opens at, F-403;
+    // ↩️24px). R10: the pixels the drag spends winning the arena are
+    // TRAVEL, not overhead, so the TOTAL is what counts — 19 and the rest
+    // of two cells, exactly.
+    const twoCells = 2 * TimelineZoomLimits.referencePixelsPerFrame;
     final gesture = await tester.startGesture(tester.getCenter(endGrip));
     await gesture.moveBy(const Offset(19, 0));
     await tester.pump();
-    await gesture.moveBy(const Offset(29, 0));
+    await gesture.moveBy(const Offset(twoCells - 19, 0));
     await tester.pumpAndSettle();
     await gesture.up();
     await tester.pumpAndSettle();

@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_grid_stack.dart';
@@ -328,9 +330,12 @@ void main() {
       stack.noriShiro!().drawnFrameCount,
       session.activeCutSpan.activeCutDrawnFrameCount - first,
     );
+    // Boundaries through the axis' one law (F-220) — the zoom a cut opens
+    // at (19.2, F-403) is not a whole pixel.
     expect(
       washOf(tester, stackFinder).outsideStart,
-      (session.activeCutSpan.activeCutDrawnFrameCount - first) * cell,
+      timelineFrameEdge(session.activeCutSpan.activeCutDrawnFrameCount, cell) -
+          timelineFrameEdge(first, cell),
       reason: 'the open grid\'s wash starts at the DRAWN end (유저 '
           '2026-08-11), and the folded row is the open row seen through glass',
     );

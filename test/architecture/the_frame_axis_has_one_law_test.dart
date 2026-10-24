@@ -23,9 +23,11 @@ import '../helpers/source_ledger.dart';
 /// cell's extent stands only where the ledger says why it is not a
 /// boundary.
 void main() {
-  // A cell's extent times something, in either order.
+  // A cell's extent times something, in either order — its receiver chain
+  // broken across lines too (`_metrics` / `.frameCellWidth`): the ruler's
+  // width hid so from the scan until F-403 opened a cut at 19.2.
   final product = RegExp(
-    r'\*\s*[\w.!]*(?:frameCell(?:Width|Extent)|[pP]ixelsPerFrame|[cC]ellExtent|cellWidth)\b'
+    r'\*\s*(?:[\w!]*\s*\.\s*)*[\w!]*(?:frameCell(?:Width|Extent)|[pP]ixelsPerFrame|[cC]ellExtent|cellWidth)\b'
     r'|(?:frameCell(?:Width|Extent)|[pP]ixelsPerFrame|[cC]ellExtent|cellWidth)\)?\s*\*\s*[\w(]',
   );
 
@@ -71,8 +73,10 @@ void main() {
           'inside the box, whose ends ARE the law\'s',
     ),
     'lib/src/ui/timeline/timeline_zoom_limits.dart': (
-      1,
-      'the ×1.25 zoom step — a zoom times a factor, no frame count',
+      3,
+      'the ×1.25 zoom step — a zoom times a factor, no frame count — and a '
+          'zoom read to and from its count of 0.1% steps (F-403): a zoom, '
+          'not a boundary',
     ),
     'lib/src/ui/timeline/timeline_frame_axis_follower.dart': (
       1,

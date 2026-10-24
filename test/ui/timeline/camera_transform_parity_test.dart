@@ -33,7 +33,10 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
         TimelineLaneKeyMarker,
         timelineLaneKeyMarkerSize,
         timelineLaneUnionKeyMarkerSize;
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 
@@ -148,7 +151,8 @@ Future<void> _expandTransformGroup(WidgetTester tester, LayerId layerId) async {
 
 void main() {
   const rowHeight = timelineLayerRowHeight; // 28 — every timeline row.
-  const cellWidth = timelineFrameCellWidth; // 24 — the default zoom.
+  // The cell a cut opens at (F-403) — 19.2, between whole pixels.
+  const cellWidth = TimelineZoomLimits.referencePixelsPerFrame;
 
   group('B4-③ one metric law for every union mark', () {
     // 🗣️F-367 (유저 2026-10-16): 「칸 그냥 차지는 마름모라던가. 원도 칸 다
@@ -252,9 +256,12 @@ void main() {
       await _pump(
         tester,
         _project(
-          camera: CutCamera(keyframes: {0: _pose(0)}),
+          camera: CutCamera(keyframes: {0: _pose(0), 2: _pose(20)}),
           drawTransform: TransformTrack(
-            keyframes: {0: TransformPose.ofCamera(_pose(0))},
+            keyframes: {
+              0: TransformPose.ofCamera(_pose(0)),
+              2: TransformPose.ofCamera(_pose(20)),
+            },
           ),
         ),
       );
@@ -262,19 +269,38 @@ void main() {
       // the layer's lanes are twirled open.
       await _toggleLanes(tester, _drawId);
 
+      // 🚨A cell is its zoom give or take a pixel (F-220): at the 19.2 a
+      // cut opens at (F-403) frame 0's is 19 wide and frame 2's 20 — each
+      // mark fills ITS cell, as the axis lays it, on both rows.
+      final cells = {
+        for (final frame in const [0, 2])
+          frame:
+              timelineFrameEdge(frame + 1, cellWidth) -
+              timelineFrameEdge(frame, cellWidth),
+      };
+      expect(cells.values.toSet(), hasLength(2), reason: 'premise: two widths');
+      for (final MapEntry(key: frame, value: cell) in cells.entries) {
+        final cameraMark = tester.widget<TimelineLaneKeyMarker>(
+          _marker(_camId, transformGroupHeaderLane.laneId, frame),
+        );
+        final headerMark = tester.widget<TimelineLaneKeyMarker>(
+          _marker(_drawId, transformGroupHeaderLane.laneId, frame),
+        );
+        expect(cameraMark.markerSize, headerMark.markerSize, reason: '@$frame');
+        expect(
+          cameraMark.markerSize,
+          timelineLaneUnionKeyMarkerSize(
+            TimelineGridMetrics.defaults.layerRowHeight,
+            frameCellExtent: cell,
+          ),
+          reason: 'the union fills the cell at $frame',
+        );
+      }
       final cameraMark = tester.widget<TimelineLaneKeyMarker>(
         _marker(_camId, transformGroupHeaderLane.laneId, 0),
       );
       final headerMark = tester.widget<TimelineLaneKeyMarker>(
         _marker(_drawId, transformGroupHeaderLane.laneId, 0),
-      );
-      expect(cameraMark.markerSize, headerMark.markerSize);
-      expect(
-        cameraMark.markerSize,
-        timelineLaneUnionKeyMarkerSize(
-          TimelineGridMetrics.defaults.layerRowHeight,
-          frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
-        ),
       );
       expect(cameraMark.mark, KeyMark.linear);
       expect(headerMark.mark, KeyMark.linear);

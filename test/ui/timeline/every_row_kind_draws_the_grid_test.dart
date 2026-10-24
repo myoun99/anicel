@@ -188,10 +188,13 @@ void main() {
         // The row paints span by span (its tiles, or their classic stand-in
         // while they land), so its paper arrives cut at the span edges — the
         // lines are what must come out exactly: the substrate's, and none
-        // of the kind's own. A box thinner than a cell is a line.
+        // of the kind's own. A box thinner than a cell is a line — than the
+        // narrowest the axis lays: a cell is its zoom give or take a pixel
+        // (F-220), and a cut opens at 19.2 (F-403), where a one-frame block
+        // is 19 wide.
         final lines = {
           for (final box in spy.boxes)
-            if (box.width < painter.frameCellExtent) box,
+            if (box.width < painter.frameCellExtent.floorToDouble()) box,
         };
         if (lines.difference({
           for (final line in substrate.lines) line.rect,

@@ -41,8 +41,10 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
-import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
@@ -881,11 +883,15 @@ void main() {
       // not a text glyph of their own any more.
       expect(cameraUnionMarker(tester, 0).mark, KeyMark.linear);
       expect(cameraUnionMarker(tester, 8).mark, KeyMark.linear);
+      // Frame 0's cell as the axis lays it, at the zoom a cut opens at.
       expect(
         cameraUnionMarker(tester, 0).markerSize,
         timelineLaneUnionKeyMarkerSize(
           TimelineGridMetrics.defaults.layerRowHeight,
-          frameCellExtent: TimelineGridMetrics.defaults.frameCellWidth,
+          frameCellExtent: timelineFrameEdge(
+            1,
+            TimelineZoomLimits.referencePixelsPerFrame,
+          ),
         ),
       );
       // The text channel says NOTHING on a camera row — no ◆/■, and never
@@ -1226,8 +1232,9 @@ void main() {
       // grammar of its own, because the lane-move path had no arm for the
       // track its lanes actually edit (`cut.camera.track`).
       //
-      // Default zoom = 24px per frame. The first drag SELECTS from frame 8;
-      // the second, starting inside that selection, moves it +2. The select
+      // A cut opens at 19.2px a frame (F-403; ↩️24). The first drag SELECTS
+      // from frame 8; the second, starting inside that selection, moves it
+      // +2. The select
       // travels past [InstantTapRegion.travelSlop]: a press that travels
       // less is a TAP, and a tap clears — on this row exactly as on a cells
       // row, since the lane band rides the cells' own release rule.
@@ -1245,7 +1252,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(band, findsOneWidget, reason: 'the camera lane has a band now');
 
-      await tester.dragFrom(keyAt8, const Offset(48, 0), kind: PointerDeviceKind.mouse);
+      await tester.dragFrom(
+        keyAt8,
+        const Offset(2 * TimelineZoomLimits.referencePixelsPerFrame, 0),
+        kind: PointerDeviceKind.mouse,
+      );
       await tester.pumpAndSettle();
 
       expect(_laneKey('position', 8), findsNothing);
@@ -1717,16 +1728,18 @@ void main() {
       await expand(tester);
 
       // R10: the slop is part of the travel, so the TOTAL snaps — two
-      // frame rows is +2 frames. Read from the metrics rather than typed:
-      // R6 made the sheet's frame row the timeline's frame cell (36 → 24),
-      // and a literal here just meant a different answer, silently.
+      // frame rows is +2 frames. Read from the zoom a cut opens at rather
+      // than typed: R6 made the sheet's frame row the timeline's frame cell
+      // (36 → 24), F-403 opened a cut at 19.2, and a literal here just meant
+      // a different answer, silently. ↩️The sheet's default metrics, which
+      // the app's sheet stopped being laid out at with F-403.
       //
       // Drag the key at frame 0, not the one at 4: R6's header is the whole
       // rail stood up, so even a maxed bottom dock leaves the sheet about
       // four rows and frame 4's marker sits on the clip edge, where a drag
       // cannot start. (The sheet is meant for a tall SIDE dock; the bottom
       // dock's own 640 ceiling is what bounds this.)
-      final step = XSheetTimelineGrid.defaultMetrics.frameCellWidth;
+      const step = TimelineZoomLimits.referencePixelsPerFrame;
       final keyAt0 = tester.getCenter(laneKey('position', 0));
       // 2026-08-08: two drags, not one. The first selects frame 0 — the
       // marker has no drag of its own any more, on this row or any other —
@@ -1740,7 +1753,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.dragFrom(
         keyAt0,
-        Offset(0, step * 2),
+        const Offset(0, step * 2),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle();

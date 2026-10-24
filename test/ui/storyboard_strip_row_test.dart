@@ -28,6 +28,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineRangeSelectionBandDecorationAt;
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
@@ -252,8 +254,16 @@ void main() {
       final plates = conteCreatePlates(tester, _trackId.value);
 
       expect(plates, hasLength(1), reason: 'cut 3 alone has no conte layer');
-      expect(plates.single.left, moreOrLessEquals(20 * ppf));
-      expect(plates.single.right, moreOrLessEquals(30 * ppf));
+      // Its ends through the axis' one law (F-220): the conte opens at
+      // 7.68px a frame (F-403), not a whole pixel.
+      expect(
+        plates.single.left,
+        moreOrLessEquals(timelineFrameEdge(20, ppf)),
+      );
+      expect(
+        plates.single.right,
+        moreOrLessEquals(timelineFrameEdge(30, ppf)),
+      );
       expect(plates.single.top, 0);
       expect(
         plates.single.height,
@@ -529,8 +539,17 @@ void main() {
     final bandRect = tester.getRect(
       find.byKey(const ValueKey<String>('storyboard-strip-range-selection')),
     );
-    expect(bandRect.left, moreOrLessEquals(rowRect.left + 14 * ppf));
-    expect(bandRect.width, moreOrLessEquals(6 * ppf));
+    // Through the axis' one law (F-220) — 7.68px a frame is not a pixel.
+    expect(
+      bandRect.left,
+      moreOrLessEquals(rowRect.left + timelineFrameEdge(14, ppf)),
+    );
+    expect(
+      bandRect.width,
+      moreOrLessEquals(
+        timelineFrameEdge(20, ppf) - timelineFrameEdge(14, ppf),
+      ),
+    );
   });
 
   /// 🚨H13 (유저 2026-08-22) — 「스토리보드레이어 추가버튼, **액티브컷에만

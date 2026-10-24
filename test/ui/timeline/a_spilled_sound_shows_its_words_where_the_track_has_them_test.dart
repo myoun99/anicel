@@ -20,8 +20,11 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart'
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/painted_glyph_boxes.dart';
 
@@ -148,10 +151,20 @@ void main() {
     final after = tester.getRect(
       find.byKey(const ValueKey<String>('timeline-se-label-se-row-1-4')),
     );
-    final cell = after.width / 2;
+    // Its ends on the axis' one law (F-220) at the zoom a cut opens at
+    // (19.2, F-403): from four frames before the cut's 0 to its 4.
+    // ↩️Eight times a cell read off the next block — a cell is its zoom
+    // give or take a pixel, so eight of them were not the span.
+    const cell = TimelineZoomLimits.referencePixelsPerFrame;
     final rect = tester.getRect(spilled);
     expect(rect.right, moreOrLessEquals(after.left, epsilon: 0.5));
-    expect(rect.width, moreOrLessEquals(8 * cell, epsilon: 0.5));
+    expect(
+      rect.width,
+      moreOrLessEquals(
+        timelineFrameEdge(4, cell) - timelineFrameEdge(-4, cell),
+        epsilon: 0.5,
+      ),
+    );
   });
 
   testWidgets('🚨and the canvas\'s folded row sees it through the same '

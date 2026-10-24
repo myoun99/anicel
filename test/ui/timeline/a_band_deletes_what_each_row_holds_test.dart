@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross, partAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
     show StoryboardToolbarPanelContext;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
@@ -516,7 +517,8 @@ void main() {
         .session;
   }
 
-  const cell = 24.0;
+  // The cell a cut opens at (F-403).
+  const cell = TimelineZoomLimits.referencePixelsPerFrame;
   final deleteButton = find.byKey(
     const ValueKey<String>('shared-delete-button'),
   );

@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
 import 'helpers/named_finders.dart';
+import 'ui/timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 
 void main() {
   testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
@@ -168,10 +169,12 @@ void main() {
       isTrue,
     );
 
-    await tapHomeTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-default-layer-1-1'),
-    );
+    // The near half of the cell after a run is that run's end handle
+    // (UI-R11 #13 — half a cell at the zoom, which at the 19.2 a cut opens
+    // at reaches past the drawn cell's middle); the far half is the cell's.
+    final cell = timelineCellGlobalRect(tester, 'default-layer-1', 1);
+    await tester.tapAt(Offset(cell.left + cell.width * 3 / 4, cell.center.dy));
+    await tester.pumpAndSettle();
 
     await tapToolbarButton(
       tester,

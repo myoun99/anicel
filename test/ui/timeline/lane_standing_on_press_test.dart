@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
     show LaneEditPreview;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart' show FieldSlider;
 import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -41,7 +42,8 @@ import '../../helpers/the_classic_rail.dart';
 /// the lane selection stands without wiping the move it is starting.
 void main() {
   const drawId = LayerId('stand-draw');
-  const cellWidth = timelineFrameCellWidth;
+  // The cell a cut opens at (F-403).
+  const cellWidth = TimelineZoomLimits.referencePixelsPerFrame;
   const rowHeight = timelineLayerRowHeight;
 
   Project project() => Project(

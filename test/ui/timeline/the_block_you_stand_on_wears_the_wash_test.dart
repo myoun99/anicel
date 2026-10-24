@@ -21,8 +21,11 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_runs.dart'
     show timelineRowEdgesOf;
 
@@ -319,7 +322,15 @@ void main() {
         );
         session.edgeDrag.updateExposureEdgeDrag(2);
         await tester.pump();
-        expect(along() / standing, moreOrLessEquals(8 / 6));
+        // Eight frames' span over six, each laid on whole pixels (F-220) at
+        // the zoom a cut opens at (F-403).
+        const cell = TimelineZoomLimits.referencePixelsPerFrame;
+        expect(
+          along() / standing,
+          moreOrLessEquals(
+            timelineFrameEdge(8, cell) / timelineFrameEdge(6, cell),
+          ),
+        );
 
         session.edgeDrag.cancelExposureEdgeDrag();
         await tester.pumpAndSettle();

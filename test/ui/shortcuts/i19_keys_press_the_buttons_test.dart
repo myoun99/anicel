@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/panel_finders.dart';
+import '../timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 
 /// 🗣️I-19 (유저 2026-09-12 / 09-13): 「여러 단축키 기존 버튼에 연결」 — every
 /// key here presses a button that already existed, and the test for each is
@@ -117,10 +118,15 @@ void main() {
           .length;
       Future<void> copyThenMove() async {
         await _press(tester, LogicalKeyboardKey.keyC, control: true);
-        await tapHomeTimelineCell(
-          tester,
-          const ValueKey<String>('timeline-cell-default-layer-1-1'),
+        // The near half of the cell after a run is that run's end handle
+        // (UI-R11 #13 — half a cell at the zoom, which at the 19.2 a cut
+        // opens at reaches past the drawn cell's middle); the far half is
+        // the cell's.
+        final cell = timelineCellGlobalRect(tester, _row, 1);
+        await tester.tapAt(
+          Offset(cell.left + cell.width * 3 / 4, cell.center.dy),
         );
+        await tester.pumpAndSettle();
       }
 
       final byButton = await _onAFreshDrawing(tester, () async {

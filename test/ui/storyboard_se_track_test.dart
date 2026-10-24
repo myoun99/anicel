@@ -16,6 +16,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 
@@ -282,23 +284,33 @@ void main() {
     final spanOneRect = tester.getRect(spanOne);
     final spanCrossRect = tester.getRect(spanCross);
     final spanTwoRect = tester.getRect(spanTwo);
-    final pixelsPerFrame = (spanOneRect.left - rowLeft) / 1;
-    expect(pixelsPerFrame, greaterThan(0));
+    // Every boundary through the axis' one law (F-220), at the panel's own
+    // zoom — the conte opens at 40% (7.68px, F-403), not a whole pixel.
+    // ↩️A cell read off the first block's left edge, which the law had
+    // already laid on a pixel.
+    final pixelsPerFrame = tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .pixelsPerFrame;
+    double edge(int frame) => timelineFrameEdge(frame, pixelsPerFrame);
+    expect(
+      spanOneRect.left - rowLeft,
+      moreOrLessEquals(edge(1), epsilon: 0.01),
+    );
     expect(
       spanCrossRect.left - rowLeft,
-      moreOrLessEquals(6 * pixelsPerFrame, epsilon: 0.01),
+      moreOrLessEquals(edge(6), epsilon: 0.01),
     );
     expect(
       spanCrossRect.width,
-      moreOrLessEquals(4 * pixelsPerFrame, epsilon: 0.01),
+      moreOrLessEquals(edge(10) - edge(6), epsilon: 0.01),
     );
     expect(
       spanTwoRect.left - rowLeft,
-      moreOrLessEquals(10 * pixelsPerFrame, epsilon: 0.01),
+      moreOrLessEquals(edge(10), epsilon: 0.01),
     );
     expect(
       spanTwoRect.width,
-      moreOrLessEquals(2 * pixelsPerFrame, epsilon: 0.01),
+      moreOrLessEquals(edge(12) - edge(10), epsilon: 0.01),
     );
 
     // …and each block tells its writing the frames it runs: the name's
