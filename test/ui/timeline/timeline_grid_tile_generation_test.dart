@@ -27,6 +27,8 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
+    show filmSubstrateGeneration;
 
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
@@ -80,6 +82,7 @@ void main() {
     Layer layer, {
     required String generation,
     TimelineGridTileStore? store,
+    bool followsTheLiveCut = true,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -93,6 +96,7 @@ void main() {
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,
       substrateGeneration: generation,
+      followsTheLiveCut: followsTheLiveCut,
     );
   }
 
@@ -290,5 +294,101 @@ void main() {
           'inside one world — dropping to the classic pass here swaps '
           'glyph technologies for a frame',
     );
+  });
+
+  group('a row that follows no live cut — the storyboard\'s conte row, '
+      'laid over the film (frame-panels-build-in-one-frame)', () {
+    TimelineRowCellsPainter conteRow(TimelineGridTileStore store) =>
+        painterFor(
+          blockLayer(id: 'conte'),
+          generation: filmSubstrateGeneration,
+          store: store,
+          followsTheLiveCut: false,
+        );
+
+    test('keeps its request when a timeline row paints after it — its '
+        'resolvers describe its rows whatever cut is live', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final store = TimelineGridTileStore.instance;
+      var landings = 0;
+      store.revision.addListener(() => landings += 1);
+
+      // Both panels shown: the conte row asks, then a timeline row does.
+      final film = conteRow(store);
+      store.tileFor(
+        painter: film,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      );
+      store.tileFor(
+        painter: painterFor(blockLayer(), generation: 'p:cut-a', store: store),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      );
+
+      // The drain is one serial walk: idle after a landing, it has done
+      // with both requests.
+      await pollUntil(() => landings > 0 && !store.debugBusy);
+      expect(
+        store.tileFor(
+          painter: film,
+          spanStartIndex: 0,
+          spanEndIndexExclusive: 4,
+          devicePixelRatio: 1.0,
+        ),
+        isNotNull,
+        reason: '↩️the one live world was the timeline\'s, and the conte '
+            'row\'s request died as a dead generation\'s',
+      );
+    });
+
+    test('never takes the live world from the timeline — a timeline row\'s '
+        'request survives the conte row painting after it', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final store = TimelineGridTileStore.instance;
+      var landings = 0;
+      store.revision.addListener(() => landings += 1);
+
+      final timelineRow = painterFor(
+        blockLayer(),
+        generation: 'p:cut-a',
+        store: store,
+      );
+      store.tileFor(
+        painter: timelineRow,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      );
+      store.tileFor(
+        painter: conteRow(store),
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 4,
+        devicePixelRatio: 1.0,
+      );
+
+      // The drain is one serial walk: idle after a landing, it has done
+      // with both requests.
+      await pollUntil(() => landings > 0 && !store.debugBusy);
+      expect(
+        store.tileFor(
+          painter: timelineRow,
+          spanStartIndex: 0,
+          spanEndIndexExclusive: 4,
+          devicePixelRatio: 1.0,
+        ),
+        isNotNull,
+        reason: 'the conte row\'s world is no cut\'s: had its paint made it '
+            'the live one, every timeline row\'s request would die',
+      );
+    });
   });
 }

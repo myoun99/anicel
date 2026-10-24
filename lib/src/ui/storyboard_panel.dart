@@ -224,6 +224,10 @@ import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
+import 'timeline/timeline_grid_tile_store.dart' show TimelineGridTileStore;
+import 'timeline/timeline_tile_raster_source.dart'
+    show filmSubstrateGeneration;
+import 'effective_device_pixel_ratio.dart' show EffectiveDevicePixelRatio;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
 import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;

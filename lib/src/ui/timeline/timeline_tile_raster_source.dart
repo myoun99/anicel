@@ -90,6 +90,20 @@ abstract interface class TimelineTileRasterSource {
   /// switch would otherwise be rastered against another cut's answers.
   String get substrateGeneration;
 
+  /// #29: whether this source's resolvers answer from the session's LIVE
+  /// cut — a timeline row's read the active cut at drain time — so that a
+  /// request of it dies once another world's rows paint
+  /// ([substrateGeneration]).
+  ///
+  /// A row whose resolvers answer from its own layer and from the cuts that
+  /// layer names answers the same whatever cut is live: the storyboard's
+  /// conte row, laid over the film ([filmSubstrateGeneration]). The store
+  /// neither takes its world for the live one nor drops its requests for
+  /// another's — ↩️it painted every cell by hand at every opening, the
+  /// storyboard's largest paint (frame-panels-build-in-one-frame, 10-24),
+  /// because one live world could not hold both panels' rows.
+  bool get followsTheLiveCut;
+
   /// The row's layer. Layers are immutable, so an edit is a NEW instance
   /// and identity IS the edit test.
   Layer get layer;
@@ -214,3 +228,9 @@ String timelineSubstrateGeneration({
   required String projectId,
   required String? cutId,
 }) => '$projectId:${cutId ?? '-'}';
+
+/// The world of a row laid over the FILM from its own layer — the
+/// storyboard's conte row — which follows no live cut
+/// ([TimelineTileRasterSource.followsTheLiveCut]). One name for every
+/// project: such a row is known by its layer's id, which is its track's.
+const String filmSubstrateGeneration = 'film';

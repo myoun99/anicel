@@ -30,6 +30,9 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
+import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
+    show filmSubstrateGeneration;
 
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
@@ -242,6 +245,22 @@ void main() {
         shown.timeline[14]!.frameId,
         const FrameId('cut-2-4'),
         reason: 'a block shows its own cut\'s drawing',
+      );
+    });
+
+    testWidgets('bakes its cells on the tile store the timeline\'s rows '
+        'bake on, in the film\'s world — whatever cut is live '
+        '(frame-panels-build-in-one-frame)', (tester) async {
+      await _openStoryboard(tester);
+
+      final painter = conteRowPainter(tester, _trackId.value);
+      expect(painter.tileStore, same(TimelineGridTileStore.instance));
+      expect(painter.substrateGeneration, filmSubstrateGeneration);
+      expect(
+        painter.followsTheLiveCut,
+        isFalse,
+        reason: 'its resolvers answer from its own layer and the cuts it '
+            'names: a request of it must not die when a timeline row paints',
       );
     });
 

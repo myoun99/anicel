@@ -134,6 +134,7 @@ class TimelineRowCellsPainter extends CustomPainter
     this.nextPage,
     this.tileStore,
     this.substrateGeneration = '',
+    this.followsTheLiveCut = true,
     this.devicePixelRatio = 1.0,
     this.celContent,
     this.coverageIdentity,
@@ -188,6 +189,9 @@ class TimelineRowCellsPainter extends CustomPainter
   /// chromeless workspace row) simply behave as one world.
   @override
   final String substrateGeneration;
+
+  @override
+  final bool followsTheLiveCut;
 
   /// R26 #44: the unworked-block tint's fact AND its event. Null = no tint.
   final TimelineCelContentSource? celContent;
@@ -1390,6 +1394,7 @@ class TimelineRowCellsPainter extends CustomPainter
     celCannotBeReadForLayer,
     celContentRevision,
     substrateGeneration,
+    followsTheLiveCut,
     ByIdentity(tileStore),
     // I-44: what the unworked paper is pre-blended onto is a painted fact
     // like any other (a theme change moves it).

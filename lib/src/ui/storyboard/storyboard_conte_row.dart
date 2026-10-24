@@ -410,6 +410,16 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               blockFrameLines: law?.blockFrameLines ?? false,
               framesPerSecond: law?.framesPerSecond ?? 0,
               celContent: _celContent(shown),
+              // Substrate tiles, as the timeline's rows bake theirs: the
+              // app-wide store, in the film's world — this row's resolvers
+              // answer from its own layer and the cuts it names, whatever
+              // cut is live ([filmSubstrateGeneration]).
+              // ↩️It painted every cell it showed by hand at every
+              // opening (frame-panels-build-in-one-frame, 10-24).
+              tileStore: TimelineGridTileStore.instance,
+              substrateGeneration: filmSubstrateGeneration,
+              followsTheLiveCut: false,
+              devicePixelRatio: EffectiveDevicePixelRatio.of(context),
             ),
           ),
         ),

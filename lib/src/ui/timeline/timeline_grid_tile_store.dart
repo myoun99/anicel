@@ -87,7 +87,13 @@ class TimelineGridTileStore {
   /// only rows the store asks anything for of its own accord: a warm-up,
   /// or a request its queue once turned away.
   bool _showsLive(String row, TimelineTileRasterSource painter) =>
-      _shown.containsKey(row) &&
+      _shown.containsKey(row) && _answersLive(painter);
+
+  /// Whether [painter]'s resolvers still describe its rows: always, for a
+  /// source that follows no live cut; for one that does, while its world
+  /// is the live one ([_liveGeneration]).
+  bool _answersLive(TimelineTileRasterSource painter) =>
+      !painter.followsTheLiveCut ||
       painter.substrateGeneration == _liveGeneration;
 
   /// The rows the queue turned a request of away, each with the latest one
@@ -192,8 +198,10 @@ class TimelineGridTileStore {
 
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
-  /// seen. Paints only happen for the live state, so the last generation
-  /// a paint carried IS the live one; no host wiring, no setter to race.
+  /// seen of a source that follows the live cut
+  /// ([TimelineTileRasterSource.followsTheLiveCut]). Paints only happen for
+  /// the live state, so the last generation such a paint carried IS the
+  /// live one; no host wiring, no setter to race.
   ///
   /// 🚨#29 프레임 블록 회색 깜빡임: a request captures the painter, but the
   /// painter's resolvers answer FROM THE LIVE SESSION at drain time
@@ -256,7 +264,9 @@ class TimelineGridTileStore {
     if (QaNativeEngine.instance == null) {
       return null;
     }
-    _liveGeneration = painter.substrateGeneration;
+    if (painter.followsTheLiveCut) {
+      _liveGeneration = painter.substrateGeneration;
+    }
     // 🚨The generation is IN the key, not only compared later: the key is
     // deliberately the layer's ID (an edited layer is a NEW instance that
     // must find its old tile and show it stale while re-rastering), and
@@ -424,7 +434,7 @@ class TimelineGridTileStore {
     // `_raster` emits the substrate and collects the glyph cells before its
     // first await — so nothing can change the session between the check and
     // the answers it guards.
-    if (request.painter.substrateGeneration != _liveGeneration) {
+    if (!_answersLive(request.painter)) {
       return true;
     }
     _inFlight.add(key);
