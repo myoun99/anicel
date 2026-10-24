@@ -85,4 +85,115 @@ void main() {
     expect(shown.width, moreOrLessEquals(90));
     expect(shown.right, moreOrLessEquals(90));
   });
+
+  group('a row that keeps its LEAD too (F-111-Q1: the frame panels\' bar '
+      'pins the transport at its start)', () {
+    const lead = ValueKey<String>('lead');
+    const leadWidth = 60.0;
+    const leadHeight = 30.0;
+
+    /// A row [width] wide with a lead, a head and a tail — the lead a ROW
+    /// of its natural width, as the tail is, and pressable.
+    Future<void> pumpRow(
+      WidgetTester tester,
+      double width, {
+      double gap = 0,
+      double headKeeps = 0,
+      VoidCallback? onLead,
+    }) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: width,
+            height: rowHeight,
+            child: KeptTailRow(
+              gap: gap,
+              headKeeps: headKeeps,
+              lead: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onLead,
+                    child: const SizedBox(
+                      key: lead,
+                      width: leadWidth,
+                      height: leadHeight,
+                    ),
+                  ),
+                ],
+              ),
+              head: const SizedBox(key: head, height: 10),
+              tail: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(key: tail, width: tailWidth, height: tailHeight),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('where the row holds them, the lead stands at its own size '
+        'at the row\'s start, the tail at its end, and the head between — '
+        'a gap either side of it', (tester) async {
+      await pumpRow(tester, 300, gap: 8);
+
+      expect(
+        tester.getRect(find.byKey(lead)),
+        const Rect.fromLTWH(0, 5, leadWidth, leadHeight),
+      );
+      expect(
+        tester.getRect(find.byKey(tail)),
+        const Rect.fromLTWH(200, 10, tailWidth, tailHeight),
+      );
+      expect(
+        tester.getRect(find.byKey(head)),
+        const Rect.fromLTWH(leadWidth + 8, 15, 300 - 160 - 16, 10),
+      );
+    });
+
+    testWidgets('🚨where it cannot hold both ends, BOTH are all of '
+        'themselves, smaller by one factor — neither gives way for the '
+        'other, none runs over — and the head keeps its place', (
+      tester,
+    ) async {
+      const width = 120.0;
+      await pumpRow(tester, width, gap: 8, headKeeps: 20);
+
+      expect(tester.takeException(), isNull);
+      const factor = (width - 2 * 8 - 20) / (leadWidth + tailWidth);
+      final shownLead = tester.getRect(find.byKey(lead));
+      final shownTail = tester.getRect(find.byKey(tail));
+      expect(shownLead.width, moreOrLessEquals(leadWidth * factor));
+      expect(shownLead.height, moreOrLessEquals(leadHeight * factor));
+      expect(shownTail.width, moreOrLessEquals(tailWidth * factor));
+      expect(shownTail.height, moreOrLessEquals(tailHeight * factor));
+      expect(shownLead.left, moreOrLessEquals(0));
+      expect(shownTail.right, moreOrLessEquals(width));
+      expect(shownLead.center.dy, moreOrLessEquals(rowHeight / 2));
+      expect(shownTail.center.dy, moreOrLessEquals(rowHeight / 2));
+      final shownHead = tester.getRect(find.byKey(head));
+      expect(shownHead.width, moreOrLessEquals(20));
+      expect(shownHead.left, moreOrLessEquals(shownLead.right + 8));
+    });
+
+    testWidgets('a lead shown smaller is pressed where it is shown', (
+      tester,
+    ) async {
+      var pressed = 0;
+      await pumpRow(tester, 120, gap: 8, onLead: () => pressed += 1);
+      final shown = tester.getRect(find.byKey(lead));
+      expect(shown.width, lessThan(leadWidth), reason: 'premise: smaller');
+
+      await tester.tapAt(shown.center);
+      expect(pressed, 1);
+      await tester.tapAt(Offset(shown.right + 2, shown.center.dy));
+      expect(pressed, 1, reason: 'past what is shown is not the lead');
+    });
+  });
 }
