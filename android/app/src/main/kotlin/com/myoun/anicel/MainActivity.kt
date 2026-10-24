@@ -1,7 +1,6 @@
 package com.myoun.anicel
 
 import android.content.ContentResolver
-import android.content.ContentUris
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
@@ -652,10 +651,10 @@ class MainActivity : FlutterActivity() {
     }
 
     // Turns a real path back into the document Uri DocumentsUI accepts as a
-    // starting point (honoured from API 26). Null when the path is not on
-    // primary storage, in which case the picker opens where it last was.
+    // starting point. Null when the path is not on primary storage, in which
+    // case the picker opens where it last was.
     private fun initialUriFor(path: String?): Uri? {
-        if (path.isNullOrEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        if (path.isNullOrEmpty()) {
             return null
         }
         val root = Environment.getExternalStorageDirectory()?.absolutePath ?: return null
@@ -841,7 +840,7 @@ class MainActivity : FlutterActivity() {
         ) {
             return existingFile(documentId.removePrefix("raw:"))
         }
-        val mediaUri = mediaUriFor(uri, documentId) ?: return null
+        val mediaUri = mediaUriFor(uri) ?: return null
         val path = try {
             // "_data" by name: the constant is deprecated for writing, and
             // reading it is exactly what All-Files access is for.
@@ -853,30 +852,11 @@ class MainActivity : FlutterActivity() {
         return path?.let { existingFile(it) }
     }
 
-    private fun mediaUriFor(uri: Uri, documentId: String): Uri? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            return try {
-                MediaStore.getMediaUri(this, uri)
-            } catch (_: Exception) {
-                null
-            }
-        }
-        // Before Android 10 there is no such question, and the two system
-        // providers' ids are the only way in: "<type>:<id>" for media, a
-        // bare number for downloads.
-        return when (uri.authority) {
-            "com.android.providers.media.documents" -> {
-                val id = documentId.substringAfter(':').toLongOrNull() ?: return null
-                ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), id)
-            }
-            "com.android.providers.downloads.documents" -> {
-                val id = documentId.toLongOrNull() ?: return null
-                ContentUris.withAppendedId(
-                    Uri.parse("content://downloads/public_downloads"),
-                    id,
-                )
-            }
-            else -> null
+    private fun mediaUriFor(uri: Uri): Uri? {
+        return try {
+            MediaStore.getMediaUri(this, uri)
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -905,13 +885,12 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun isMicrophoneGranted(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
-                android.content.pm.PackageManager.PERMISSION_GRANTED
+        return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
     // Answers true/false AFTER the user has spoken - an already-granted
-    // (or pre-M) device answers immediately.
+    // device answers immediately.
     private fun requestMicrophone(result: MethodChannel.Result) {
         if (isMicrophoneGranted()) {
             result.success(true)

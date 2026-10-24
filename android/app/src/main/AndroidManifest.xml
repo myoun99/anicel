@@ -18,7 +18,9 @@
          project model is built on — so an API-29 tablet cannot open its
          own default folder without it. Anicel ships to old tablets on
          purpose, so the answer is the compatibility flag rather than
-         raising minSdk. -->
+         raising minSdk past 29. (minSdk is 29 since 2026-10-24 — the
+         devices below it render with Skia and are out of the release,
+         skia-devices-out-of-release — so 29 is the one level it serves.) -->
     <application
         android:label="Anicel"
         android:name="${applicationName}"
