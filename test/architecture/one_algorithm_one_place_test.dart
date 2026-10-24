@@ -560,8 +560,26 @@ import '../../tool/refactor/clone_scan.dart';
 /// back.
 /// 🔬Measured on the lane over master (`aa7160aa1`, at 90): this one
 /// added, none gone.
+/// 91 → 92 (2026-10-24, the-pill-cut-skips-text-and-keys — the shared
+/// pill's cut takes the text, the rows, the keys or the frames its copy
+/// takes). The new pair is named:
+///
+///     66 tokens
+///       lib/src/ui/timeline/toolbar_panel_context.dart
+///         _ClipboardAtThePanelsPlace.cutRun
+///       lib/src/ui/timeline/toolbar_panel_context.dart
+///         _ClipboardAtThePanelsPlace.copyFrame
+///
+/// They ARE one algorithm — "press the board the pill takes into
+/// (`_boardTaken`) with this button's verb" — and WHICH board is already
+/// said once, for both. The reading KEEPS the dispatch a pair, by the rule
+/// of three (CLAUDE.md): merged, one press would take each board's verb as
+/// an argument, four callbacks for a shape seen twice. A third button that
+/// presses the board in hand merges the three.
+/// 🔬Measured on the lane over master (`f1e746c91`, at 91): this one
+/// added, none gone.
 void main() {
-  const ceiling = 91;
+  const ceiling = 92;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

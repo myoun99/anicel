@@ -79,7 +79,7 @@ import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'session/session_row_button_presses.dart';
-import 'session/text_clipboard.dart' show TextCopy;
+import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
@@ -1371,15 +1371,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
-    // I-101: the text this window's canvas holds — what the pill's copy
-    // and cut take ahead of anything selected — the faces a pasted text
-    // brings with it, as a text the hand lands does, and the hand's delete
-    // the cut takes it off its cel with.
-    session.textClipboard.canvasText = (
-      heldByItsBox: _textHeldByItsBox,
-      landingWith: _landingWithItsFaces,
-      takeOff: _takeTheHeldTextOff,
-    );
+    session.textClipboard.canvasText = _canvasTextHand;
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1462,6 +1454,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The text in hand off its cel — Delete's press on it (R9-rest).
   void _takeTheHeldTextOff() => widget.canvasTextCommands?.deleteText();
+
+  /// I-101: the text this window's canvas holds — what the pill's copy and
+  /// cut take ahead of anything selected — the faces a pasted text brings
+  /// with it, as a text the hand lands does, and the hand's delete the cut
+  /// takes it off its cel with.
+  CanvasTextHand get _canvasTextHand => (
+    heldByItsBox: _textHeldByItsBox,
+    landingWith: _landingWithItsFaces,
+    takeOff: _takeTheHeldTextOff,
+  );
 
   /// [landing] — a text set on a cel — with the registering of the faces
   /// its letters are written in ([families]), as one step: the files each
