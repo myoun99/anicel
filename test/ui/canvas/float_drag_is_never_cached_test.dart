@@ -215,4 +215,74 @@ void main() {
 
     await expectTheDragShows(tester, float);
   });
+
+  // The third thing no token sees: a live row drawn from state its painter
+  // does not publish. ↩️`static_bake_render_parity_test`'s swappable
+  // surface (2026-09-15), which a bake replayed for the rest of the stroke.
+  testWidgets('a live row drawn from what it does not publish repaints — no '
+      'picture is kept under it', (tester) async {
+    final surface = _InkOutOfSight(canvasSize);
+    addTearDown(surface.ink.dispose);
+    await standOn(tester, nodes, (
+      activeSurfacePainter: surface,
+      floatOverlay: null,
+      liftedRows: const {},
+    ));
+
+    // A step: the live row draws something else and publishes nothing.
+    surface.ink.value = const Color(0xFFFF0000);
+    await tester.pump();
+    expect(
+      isRed(await shotOf(tester, screen), 0, 0),
+      isTrue,
+      reason: 'the live row drew red and the canvas still shows the picture '
+          'taken before — the stroke froze where the picture was taken',
+    );
+  });
+}
+
+/// A live row's painter drawing [ink], which it does not publish: blue, as
+/// the cel it is drawn over is stored, until a step changes it.
+class _InkOutOfSight extends BitmapSurfacePainter {
+  _InkOutOfSight(CanvasSize canvasSize)
+    : super(
+        surface: BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: 4,
+          tiles: const {},
+        ),
+        showTransparentBackground: false,
+      );
+
+  final ink = ValueNotifier(const Color(0xFF0000FF));
+
+  /// 🚨Nothing that inspects a surface painter can tell when, let alone
+  /// where, this one changed — the honest answer, not a concession.
+  @override
+  bool get drawsOnlyFromPublishedState => false;
+
+  @override
+  void addListener(VoidCallback listener) {
+    super.addListener(listener);
+    ink.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    super.removeListener(listener);
+    ink.removeListener(listener);
+  }
+
+  @override
+  void paintContentInto(
+    Canvas canvas, {
+    Paint? layerPaint,
+    int level = 0,
+    RowFloat? float,
+  }) {
+    canvas.drawRect(
+      const Rect.fromLTWH(0, 0, 4, 4),
+      Paint()..color = ink.value,
+    );
+  }
 }
