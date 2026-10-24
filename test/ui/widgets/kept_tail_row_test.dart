@@ -1,5 +1,6 @@
 import 'package:anicel/src/ui/widgets/kept_tail_row.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 
 /// A ROW THAT KEEPS ITS TAIL (the page turner's law): the tail whole at its
@@ -215,6 +216,44 @@ void main() {
         tester.getRect(find.byKey(tail)).size,
         const Size(tailWidth, tailHeight),
       );
+    });
+
+    testWidgets('a lead shown smaller is PAINTED smaller — nothing of it '
+        'past what is shown', (tester) async {
+      const frame = ValueKey<String>('frame');
+      await tester.pumpWidget(
+        const Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: RepaintBoundary(
+              key: frame,
+              child: SizedBox(
+                width: 120,
+                height: rowHeight,
+                child: KeptTailRow(
+                  lead: ColoredBox(
+                    color: Color(0xFFFF0000),
+                    child: SizedBox(width: leadWidth, height: leadHeight),
+                  ),
+                  tail: SizedBox(width: tailWidth, height: tailHeight),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      // One factor for both ends: 120 / (60 + 100) — the lead shown 45 wide.
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(frame),
+      );
+      final image = (await tester.runAsync(boundary.toImage))!;
+      addTearDown(image.dispose);
+      final bytes = (await tester.runAsync(image.toByteData))!;
+      int redAt(int x, int y) => bytes.getUint8((y * image.width + x) * 4);
+
+      expect(redAt(40, 20), 0xFF, reason: 'premise: what is shown is red');
+      expect(redAt(55, 20), 0, reason: 'past 45, nothing of the lead');
     });
 
     testWidgets('a lead shown smaller is pressed where it is shown', (
