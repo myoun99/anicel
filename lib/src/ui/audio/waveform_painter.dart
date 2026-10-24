@@ -83,12 +83,11 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       return;
     }
     final mainExtent = extentAlong(axis, size);
-    final pixelsPerBucket =
-        pixelsPerFrame * frameRate.approximateFps / peaks.bucketsPerSecond;
+    final pixelsPerBucket = _pixelsPerBucket;
     if (pixelsPerBucket <= 0) {
       return;
     }
-    final leadingPixels = leadingFrames * pixelsPerFrame;
+    final leadingPixels = _leadingPixels;
     final startBucket = leadingPixels <= 0
         ? 0
         : (leadingPixels / pixelsPerBucket).floor();
@@ -131,15 +130,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
     final band = _bands
         .resolve(
           (props, size, firstShown, shownTo),
-          () => (
-            band: _bandOf(
-              size,
-              firstShown: firstShown,
-              shownTo: shownTo,
-              pixelsPerBucket: pixelsPerBucket,
-              leadingPixels: leadingPixels,
-            ),
-          ),
+          () => (band: _bandOf(size, firstShown, shownTo)),
         )
         .band;
     if (band == null) {
@@ -161,16 +152,19 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
   static int get debugBandsReckoned => _bandsReckoned;
   static int _bandsReckoned = 0;
 
+  /// How many pixels one bucket of [peaks] spans along [axis].
+  double get _pixelsPerBucket =>
+      pixelsPerFrame * frameRate.approximateFps / peaks.bucketsPerSecond;
+
+  /// How far into the file main-axis 0 stands — the clip's trim.
+  double get _leadingPixels => leadingFrames * pixelsPerFrame;
+
   /// The band over the buckets from [firstShown] to the first at or past
   /// [shownTo], on a strip of [size] — null where there is none.
-  Path? _bandOf(
-    Size size, {
-    required int firstShown,
-    required double shownTo,
-    required double pixelsPerBucket,
-    required double leadingPixels,
-  }) {
+  Path? _bandOf(Size size, int firstShown, double shownTo) {
     _bandsReckoned += 1;
+    final pixelsPerBucket = _pixelsPerBucket;
+    final leadingPixels = _leadingPixels;
     final mainExtent = extentAlong(axis, size);
     final crossExtent = extentAcross(axis, size);
     final center = crossExtent / 2;
