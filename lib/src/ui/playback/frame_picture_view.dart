@@ -395,9 +395,10 @@ class _FramePictureViewState extends State<FramePictureView> {
         from) {
       return false;
     }
-    // What is still out of it goes in first, as the move's own — and is
-    // drawn at the paint after this build, whatever its painter compares.
-    _catchUp();
+    // What is still out of it goes in at the paint after this build, under
+    // the key it moves to ([_catchUp]) — painted whatever its painter
+    // compares. ↩️It was caught up here first, as the move's own, until the
+    // change went in under the key a picture moves to: the same texels.
     _repaint.value += 1;
     if (_standing.whole || !_store.move(from: from, to: key)) {
       return false;
