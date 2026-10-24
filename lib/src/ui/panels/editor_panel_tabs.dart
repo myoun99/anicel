@@ -17,6 +17,7 @@ import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
 import '../widgets/tick_layer.dart';
 import 'panel_collapsed_scope.dart';
+import 'open_tab_content.dart';
 import 'panel_flash.dart';
 import '../input/control_press_claim.dart';
 
@@ -31,7 +32,6 @@ class EditorPanelTab {
     this.minContentWidth,
     this.minContentHeight,
     this.locked = false,
-    this.cachesContent = false,
     this.staticRaster = true,
     this.stillRaster = true,
     this.sparesSplitters = true,
@@ -49,18 +49,10 @@ class EditorPanelTab {
   /// Builds the tab's content. Only the ACTIVE tab is built, and only while
   /// its region shows it — what must survive a switch lives above the tab
   /// group ([EditorPanelTabs]).
-  final WidgetBuilder builder;
-
-  /// Whether the group may hand back the content it built for this tab, as
-  /// the same instance, every time the group itself is built again while
-  /// the tab stays open (R12-①): a heavy panel's subtree is then skipped
-  /// wholesale by a tab switch elsewhere, a lock toggle or a layout notify.
   ///
-  /// CONTRACT: the builder closes over stable objects only (the session,
-  /// long-lived notifiers) and subscribes to what it shows itself — the
-  /// group never runs it again while the tab stays open for the same
-  /// [contentIdentity].
-  final bool cachesContent;
+  /// Run once while the tab stays open ([OpenTabContent] — its CONTRACT is
+  /// this builder's).
+  final WidgetBuilder builder;
 
   /// Key for the tab strip button. Groups replacing older toggle buttons
   /// keep the legacy keys here so existing flows and tests keep working.
@@ -139,7 +131,7 @@ class EditorPanelTab {
   final double collapsedExtent;
 
   /// What this tab's content is built FOR — null for a tab whose builder
-  /// is the same whatever happens. Cached content ([cachesContent]) is
+  /// is the same whatever happens. The open content ([OpenTabContent]) is
   /// handed back only while this stays the same; see [builtFor].
   final Object? contentIdentity;
 
@@ -159,7 +151,6 @@ class EditorPanelTab {
       minContentWidth: minContentWidth,
       minContentHeight: minContentHeight,
       locked: locked,
-      cachesContent: cachesContent,
       staticRaster: staticRaster,
       stillRaster: stillRaster,
       sparesSplitters: sparesSplitters,
@@ -322,20 +313,9 @@ class EditorPanelTabs extends StatefulWidget {
 }
 
 class _EditorPanelTabsState extends State<EditorPanelTabs> {
-  /// The open tab's built content, while it stays open
-  /// ([EditorPanelTab.cachesContent], R12-①): a strip rebuild hands Flutter
-  /// the IDENTICAL widget instance, so the heavy panel subtree is skipped
-  /// wholesale.
-  ///
-  /// 🚨…while the tab is built for the SAME thing ([EditorPanelTab
-  /// .contentIdentity]). The session stopped being stable with a project
-  /// per tab (I-7): the cached canvas went on showing the project that was
-  /// switched away from, because nothing here re-ran its builder.
-  ({String tabId, Object? identity, Widget content})? _openContent;
-
   /// What the content area holds: the open tab's content, as its region
   /// shows it — nothing at all when the region is folded and the tab has no
-  /// folded form.
+  /// folded form. Built once while the tab stays open ([OpenTabContent]).
   ///
   /// 🚨★★★A PANEL IS BUILT ONLY WHILE IT SHOWS (유저 2026-10-14: 「한번이라도
   /// 열린 뒤? 열려있을때만 지어지는게 맞는구조 아닌가?」 · 「이건 모든 패널
@@ -363,32 +343,13 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// panel has no ticker to mute: ⛔put no `TickerMode` around a tab here.
   Widget? _contentOf(EditorPanelTab active) {
     if (widget.collapsed && active.collapsedExtent <= 0) {
-      _openContent = null;
       return null;
     }
-    if (!active.cachesContent) {
-      _openContent = null;
-      return _buildTabContent(active);
-    }
-    return _cachedContent(active);
-  }
-
-  /// [tab]'s content — the one built when it was opened, unless it is
-  /// built for something else now.
-  Widget _cachedContent(EditorPanelTab tab) {
-    final open = _openContent;
-    if (open != null &&
-        open.tabId == tab.id &&
-        identical(open.identity, tab.contentIdentity)) {
-      return open.content;
-    }
-    final content = _buildTabContent(tab);
-    _openContent = (
-      tabId: tab.id,
-      identity: tab.contentIdentity,
-      content: content,
+    return OpenTabContent(
+      tabId: active.id,
+      identity: active.contentIdentity,
+      build: () => _buildTabContent(active),
     );
-    return content;
   }
 
   /// Whether the pointer is anywhere on this PANEL.
@@ -743,8 +704,8 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         // would give it back a height it did not ask for.
         //
         // The fold is read HERE, through the scope, and not where the tab's
-        // content is built: cached content ([EditorPanelTab.cachesContent])
-        // is built once, so a fold decided there held whatever its first
+        // content is built: the open content ([OpenTabContent]) is built
+        // once, so a fold decided there held whatever its first
         // build saw (F-103). [body] is built OUTSIDE this builder, so a fold
         // rebuilds the scrollers and not the panel.
         final folded = PanelCollapsedScope.of(context);

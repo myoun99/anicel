@@ -112,6 +112,7 @@ import 'dialogs/app_confirm_dialog.dart'
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
+import 'panels/open_tab_content.dart';
 import 'panels/panel_flash.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';

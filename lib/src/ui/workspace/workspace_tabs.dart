@@ -178,15 +178,12 @@ class _WorkspaceTabs {
       label: label,
       icon: icon,
       locked: locked,
-      cachesContent: true,
       builder: (context) => ListenableBuilder(
         // The request, the position and the viewport are the HOST's own
         // subscriptions (the page read moves with the view, F-201) — so
-        // nothing here rebuilds it for them. The brush switch is the slot's.
-        listenable: Listenable.merge([
-          _state.widget.session.languageSettings,
-          slot.brushAllowed,
-        ]),
+        // nothing here rebuilds it for them. The brush switch is the slot's;
+        // the language, every tab's ([OpenTabContent]).
+        listenable: slot.brushAllowed,
         builder: (context, _) => MediaViewerTabHost(
           viewerId: tabId,
           session: _state.widget.session,
@@ -376,7 +373,6 @@ class _WorkspaceTabs {
           label: AppText.strings.panelCanvas,
           icon: Icons.image_outlined,
           locked: locked,
-          cachesContent: true,
           // The one panel that opts out of the static bake. It is full
           // of repaint boundaries by design (the artwork, the cursor
           // deck, the ants each own one), and its live-stroke path must
@@ -921,7 +917,6 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
           // F-452: its bars are thick — the splitter may lie over them.
           sparesSplitters: false,
           // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
@@ -1064,7 +1059,6 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
           // F-452: as the timeline's.
           sparesSplitters: false,
           // The same sill controls the timeline mounts — a different
@@ -1184,7 +1178,6 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
           // The sheet reads the project and the SAME picture store the
           // storyboard strip draws from, so a cell and its strip panel are
           // one render rather than two that must be kept in step.
@@ -1198,8 +1191,6 @@ class _WorkspaceTabs {
               // Its pictures' cels, followed through the store: an undo
               // that moves no row still moves their pixels (F-80 ②).
               _state._views._contePictures,
-              // The locale reprints the sheet chrome (labels/tooltips).
-              _state.widget.session.languageSettings,
             ]),
             printed: () => ConteTabHost.printedBy(_state.widget.session),
             host: (context) => ConteTabHost(
@@ -1235,7 +1226,6 @@ class _WorkspaceTabs {
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
           minContentHeight: _state._minContentHeightFor(tabId),
           locked: locked,
-          cachesContent: true,
           // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
@@ -1246,7 +1236,6 @@ class _WorkspaceTabs {
               // F-90: the envelope of the cut under the playhead, turning
               // over at a crossing like the sheet beside it.
               _state.widget.session.cutUnderPlayhead.listenable,
-              _state.widget.session.languageSettings,
             ]),
             printed: () => CutEnvelopeTabHost.printedBy(_state.widget.session),
             host: (context) => CutEnvelopeTabHost(
@@ -1288,7 +1277,6 @@ class _WorkspaceTabs {
           // to include the playhead, and would then stand itself down
           // for the whole of playback.
           staticRaster: false,
-          cachesContent: true,
           builder: (context) => _panelHost(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
             // sheet layout never depends on it, and rebuilding the whole
@@ -1303,8 +1291,6 @@ class _WorkspaceTabs {
               // F-90: a crossing, played or dragged over, turns the sheet
               // over to the cut under the playhead.
               _state.widget.session.cutUnderPlayhead.listenable,
-              // The notation language reprints the sheet (UI-R10 #7).
-              _state.widget.session.languageSettings,
             ]),
             host: (context) => TimesheetTabHost(
               session: _state.widget.session,

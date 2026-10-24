@@ -201,7 +201,7 @@ void main() {
   testWidgets('🐛F-103: a panel keeps its State when its dock crosses the '
       'floor and back, or folds — a neighbour opening or closing must not '
       'remount it', (tester) async {
-    Widget tabsAt(Size size, {required bool cached, required bool folded}) =>
+    Widget tabsAt(Size size, {required bool folded}) =>
         MaterialApp(
           home: Scaffold(
             body: SizedBox(
@@ -217,7 +217,6 @@ void main() {
                     minContentWidth: 400,
                     minContentHeight: 250,
                     collapsedExtent: 40,
-                    cachesContent: cached,
                     builder: (context) => const _StateProbe(),
                   ),
                 ],
@@ -238,47 +237,43 @@ void main() {
             scroller.position.maxScrollExtent,
     };
 
-    for (final cached in const [false, true]) {
-      await tester.pumpWidget(const SizedBox());
-      final states = <State>{};
-      final reaches = <(Size, bool, Map<Axis, double>)>[];
-      for (final (size, folded) in const [
-        (Size(600, 400), false),
-        (Size(200, 400), false),
-        (Size(600, 400), false),
-        (Size(600, 150), false),
-        (Size(200, 150), false),
-        (Size(200, 150), true),
-        (Size(600, 400), true),
-        (Size(600, 400), false),
-      ]) {
-        await tester.pumpWidget(
-          tabsAt(size, cached: cached, folded: folded),
-        );
-        await tester.pump();
-        states.add(tester.state(find.byType(_StateProbe)));
-        reaches.add((size, folded, reach()));
-      }
+    await tester.pumpWidget(const SizedBox());
+    final states = <State>{};
+    final reaches = <(Size, bool, Map<Axis, double>)>[];
+    for (final (size, folded) in const [
+      (Size(600, 400), false),
+      (Size(200, 400), false),
+      (Size(600, 400), false),
+      (Size(600, 150), false),
+      (Size(200, 150), false),
+      (Size(200, 150), true),
+      (Size(600, 400), true),
+      (Size(600, 400), false),
+    ]) {
+      await tester.pumpWidget(tabsAt(size, folded: folded));
+      await tester.pump();
+      states.add(tester.state(find.byType(_StateProbe)));
+      reaches.add((size, folded, reach()));
+    }
+    expect(
+      states,
+      hasLength(1),
+      reason:
+          'fits, over on x, over on y, over on '
+          'both, folded — one State throughout',
+    );
+    for (final (size, folded, reached) in reaches) {
+      final step = '$size${folded ? ' folded' : ''}';
       expect(
-        states,
-        hasLength(1),
-        reason:
-            'cached: $cached — fits, over on x, over on y, over on '
-            'both, folded — one State throughout',
+        reached[Axis.horizontal],
+        !folded && size.width < 400 ? greaterThan(0) : 0,
+        reason: '$step — sideways, only under the floor and never folded',
       );
-      for (final (size, folded, reached) in reaches) {
-        final step = '$size${folded ? ' folded' : ''}, cached: $cached';
-        expect(
-          reached[Axis.horizontal],
-          !folded && size.width < 400 ? greaterThan(0) : 0,
-          reason: '$step — sideways, only under the floor and never folded',
-        );
-        expect(
-          reached[Axis.vertical],
-          !folded && size.height < 250 ? greaterThan(0) : 0,
-          reason: '$step — up and down, only under the floor and never folded',
-        );
-      }
+      expect(
+        reached[Axis.vertical],
+        !folded && size.height < 250 ? greaterThan(0) : 0,
+        reason: '$step — up and down, only under the floor and never folded',
+      );
     }
   });
 
@@ -301,7 +296,6 @@ void main() {
                   id: id,
                   label: id,
                   icon: Icons.circle,
-                  cachesContent: true,
                   minContentHeight: 600,
                   builder: (context) =>
                       _StateProbe(key: ValueKey<String>('probe-$id')),
