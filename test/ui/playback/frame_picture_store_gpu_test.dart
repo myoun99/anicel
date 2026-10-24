@@ -90,6 +90,63 @@ void main() {
     },
     skip: _noFlutterGpu,
   );
+
+  test(
+    'patches asked back to back land as the picture laid with them all, '
+    'a later one over an earlier at every level',
+    () async {
+      final store = FramePictureStore<String>();
+      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
+      // Each overlaps the one before it; the frame each patch draws is the
+      // frame with every stroke so far.
+      const strokes = [
+        (ui.Rect.fromLTWH(480, 490, 61, 50), ui.Color(0xFFFFEE00)),
+        (ui.Rect.fromLTWH(509, 503, 45, 70), ui.Color(0xFF20C040)),
+        (ui.Rect.fromLTWH(530, 470, 33, 64), ui.Color(0xFF8020C0)),
+      ];
+      void Function(ui.Canvas) upTo(int count) => (canvas) {
+        frame(canvas);
+        for (final (rect, colour) in strokes.take(count)) {
+          canvas.drawRect(rect, ui.Paint()..color = colour);
+        }
+      };
+      final patched = await store.lay('0', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: frame,
+      ));
+      for (final (index, (rect, _)) in strokes.indexed) {
+        expect(
+          store.patch(
+            from: '$index',
+            to: '${index + 1}',
+            rect: rect,
+            draw: upTo(index + 1),
+          ),
+          isTrue,
+        );
+      }
+      await store.settled();
+      expect(store.peek('${strokes.length}'), same(patched));
+
+      final fresh = await store.lay('fresh', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: upTo(strokes.length),
+      ));
+      final want = await _levels(fresh!.image);
+      final got = await _levels(patched!.image);
+      for (var level = 0; level < want.length; level += 1) {
+        expect(
+          _mostApart(got[level], want[level]),
+          lessThanOrEqualTo(1),
+          reason: 'level $level',
+        );
+      }
+      store.dispose();
+    },
+    skip: _noFlutterGpu,
+  );
 }
 
 /// Why this runner cannot write into a picture, or null when it can.

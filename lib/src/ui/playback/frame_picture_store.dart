@@ -305,73 +305,91 @@ class FramePictureStore<K extends Object> {
     _entries[asked.to] = entry;
     final landing = (rect: asked.rect, image: image);
     entry.picture._landing.add(landing);
+    entry.waiting.add(landing);
     asked.moved.complete();
-    entry.writes = entry.writes.then((_) => _land(entry, landing));
+    entry.writes = entry.writes.then((_) => _landWaiting(entry));
   }
 
-  Future<void> _land(_Entry entry, LandingPatch landing) async {
+  /// Lands every patch that has texels and is not in yet, in ONE write:
+  /// each patch's levels, a later patch over an earlier, then the levels
+  /// under the patched ones made again whole, once for them all.
+  ///
+  /// 🔬A batch, not a write a patch (D7-2, 2026-10-24): on the Surface Pro
+  /// 11 a 3840² picture took about 57 ms to land one patch — five waits on
+  /// the GPU — so a stroke patching every vsync fell 600 patches behind,
+  /// every one of them drawn over the picture each frame and held. Patches
+  /// that render while a batch lands wait for the next one.
+  Future<void> _landWaiting(_Entry entry) async {
+    if (entry.waiting.isEmpty) {
+      return;
+    }
+    final batch = List.of(entry.waiting);
+    entry.waiting.clear();
     final picture = entry.picture;
-    final at = landing.rect.topLeft - picture.extent.topLeft;
-    final x = at.dx.toInt();
-    final y = at.dy.toInt();
-    final halvings = await _halvings(landing.image, entry.patchedLevels);
+    final patched = entry.patchedLevels;
+    final below = entry.levels - 1 - patched;
+    final (halvings, deepest) = await (
+      Future.wait([
+        for (final landing in batch) _halvings(landing.image, patched),
+      ]),
+      below > 0
+          ? _deepestPatchedLevel(entry, batch)
+          : Future<ui.Image?>.value(),
+    ).wait;
+    final under = deepest == null ? null : await _halvings(deepest, below);
     if (!entry.gone) {
       await _gpu.write(entry.held!, [
-        (
-          source: landing.image,
-          from: _whole(landing.image),
-          x: x,
-          y: y,
-          level: 0,
-        ),
-        for (final (index, spot) in halvings.spots.indexed)
-          (
-            source: halvings.atlas!,
-            from: spot,
-            x: x >> (index + 1),
-            y: y >> (index + 1),
-            level: index + 1,
-          ),
+        for (final (index, landing) in batch.indexed)
+          ..._levelsOf(picture, landing, halvings[index]),
+        if (under != null)
+          for (final (index, spot) in under.spots.indexed)
+            (
+              source: under.atlas!,
+              from: spot,
+              x: 0,
+              y: 0,
+              level: patched + index + 1,
+            ),
       ]);
-      await _remakeBelowPatchedLevels(entry);
     }
-    halvings.atlas?.dispose();
+    for (final halved in halvings) {
+      halved.atlas?.dispose();
+    }
+    deepest?.dispose();
+    under?.atlas?.dispose();
     // Off the picture only once every level has it — a zoomed-out view
     // would otherwise show the old texels for as long as the deep levels
     // take.
-    picture._landing.remove(landing);
-    landing.image.dispose();
+    for (final landing in batch) {
+      picture._landing.remove(landing);
+      landing.image.dispose();
+    }
   }
 
-  /// The levels under [_Entry.patchedLevels], made again whole from that
-  /// level — which the picture itself gives exactly ([_readAt]).
-  Future<void> _remakeBelowPatchedLevels(_Entry entry) async {
-    final from = entry.patchedLevels;
-    final below = entry.levels - 1 - from;
-    if (below <= 0 || entry.gone) {
-      return;
-    }
-    final image = entry.picture.image;
-    final width = math.max(1, image.width >> from);
-    final height = math.max(1, image.height >> from);
-    final level = await _readAt(image, [
-      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+  /// The picture's deepest patched level with [batch] in it: the level as
+  /// the picture holds it, each patch drawn over its place there — the
+  /// reading its own write lays at that level ([_readAt]) — whole, so the
+  /// levels under it are its halvings.
+  Future<ui.Image> _deepestPatchedLevel(
+    _Entry entry,
+    List<LandingPatch> batch,
+  ) {
+    final picture = entry.picture;
+    final level = entry.patchedLevels;
+    final width = math.max(1, picture.image.width >> level);
+    final height = math.max(1, picture.image.height >> level);
+    final scale = 1.0 / (1 << level);
+    return _readAt([
+      (
+        image: picture.image,
+        to: ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      ),
+      for (final landing in batch)
+        (
+          image: landing.image,
+          to: _scaled(landing.rect.shift(-picture.extent.topLeft), scale),
+        ),
     ], width, height);
-    final halvings = await _halvings(level, below);
-    if (!entry.gone) {
-      await _gpu.write(entry.held!, [
-        for (final (index, spot) in halvings.spots.indexed)
-          (
-            source: halvings.atlas!,
-            from: spot,
-            x: 0,
-            y: 0,
-            level: from + index + 1,
-          ),
-      ]);
-    }
-    level.dispose();
-    halvings.atlas?.dispose();
   }
 
   /// The first [count] halvings of [image], side by side in one raster
@@ -402,28 +420,32 @@ class FramePictureStore<K extends Object> {
       tallest = math.max(tallest, height);
     }
     return (
-      atlas: await _readAt(image, spots, across, tallest),
+      atlas: await _readAt([
+        for (final spot in spots) (image: image, to: spot),
+      ], across, tallest),
       spots: spots,
     );
   }
 
-  /// [image] drawn whole into each of [spots] of one [width] x [height]
-  /// raster, under `FilterQuality.medium`: drawn at 1/2^k a side so, the
-  /// GPU samples [image]'s own level k — the engine's halving, the one the
-  /// picture's chain was made with — so a patch's levels are the very code
-  /// of the levels round it, on any backend (measured on the Surface Pro
-  /// 11: the levels it replaced, byte for byte, 2026-10-24).
+  /// Each of [reads] — an image drawn whole into its rect, a later one in
+  /// place of an earlier — in one [width] x [height] raster, under
+  /// `FilterQuality.medium`: drawn at 1/2^k a side so, the GPU samples the
+  /// image's own level k — the engine's halving, the one the picture's
+  /// chain was made with — so a patch's levels are the very code of the
+  /// levels round it, on any backend (measured on the Surface Pro 11: the
+  /// levels it replaced, byte for byte, 2026-10-24).
   Future<ui.Image> _readAt(
-    ui.Image image,
-    List<ui.Rect> spots,
+    List<({ui.Image image, ui.Rect to})> reads,
     int width,
     int height,
   ) async {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
-    final paint = ui.Paint()..filterQuality = ui.FilterQuality.medium;
-    for (final spot in spots) {
-      canvas.drawImageRect(image, _whole(image), spot, paint);
+    final paint = ui.Paint()
+      ..filterQuality = ui.FilterQuality.medium
+      ..blendMode = ui.BlendMode.src;
+    for (final (:image, :to) in reads) {
+      canvas.drawImageRect(image, _whole(image), to, paint);
     }
     final recorded = recorder.endRecording();
     try {
@@ -499,6 +521,42 @@ bool _covers(ui.Rect extent, ui.Rect rect) =>
 ui.Rect _whole(ui.Image image) =>
     ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
 
+ui.Rect _scaled(ui.Rect rect, double scale) => ui.Rect.fromLTRB(
+  rect.left * scale,
+  rect.top * scale,
+  rect.right * scale,
+  rect.bottom * scale,
+);
+
+/// [landing]'s writes into [picture]: its texels at level 0, its
+/// [halvings] at the levels under, each where the patch lies there.
+List<LevelWrite> _levelsOf(
+  FramePicture picture,
+  LandingPatch landing,
+  ({ui.Image? atlas, List<ui.Rect> spots}) halvings,
+) {
+  final at = landing.rect.topLeft - picture.extent.topLeft;
+  final x = at.dx.toInt();
+  final y = at.dy.toInt();
+  return [
+    (
+      source: landing.image,
+      from: _whole(landing.image),
+      x: x,
+      y: y,
+      level: 0,
+    ),
+    for (final (index, spot) in halvings.spots.indexed)
+      (
+        source: halvings.atlas!,
+        from: spot,
+        x: x >> (index + 1),
+        y: y >> (index + 1),
+        level: index + 1,
+      ),
+  ];
+}
+
 /// A picture of what [draw] draws over [rect] in world coordinates, with
 /// [rect]'s top left at its origin.
 ui.Picture _recorded(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
@@ -534,9 +592,13 @@ class _Entry {
   /// in the order the patches were asked for.
   Future<void> renders = Future<void>.value();
 
-  /// Writes into the texture, one patch's after another's — a patch's deep
-  /// levels are made from the levels the patches before it wrote.
+  /// Writes into the texture, one batch's after another's — a batch's deep
+  /// levels are made from the levels the batches before it wrote.
   Future<void> writes = Future<void>.value();
+
+  /// The patches with texels that no batch has taken yet, in the order
+  /// they were made ([FramePictureStore._landWaiting]).
+  final List<LandingPatch> waiting = [];
 
   int get bytes {
     final image = picture.image;

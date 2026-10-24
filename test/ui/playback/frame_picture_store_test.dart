@@ -82,13 +82,10 @@ void main() {
         draw: fill,
       );
       await store.settled();
-      expect(gpu.writes, hasLength(2));
-      expect(gpu.writes.first.map(_described), [
+      expect(gpu.writes.single.map(_described), [
         (0, 8, 20, 36, 8),
         (1, 4, 10, 18, 4),
         (2, 2, 5, 9, 2),
-      ]);
-      expect(gpu.writes.last.map(_described), [
         for (var level = 3; level <= 10; level += 1)
           (level, 0, 0, 1024 >> level, 1024 >> level),
       ]);
@@ -107,7 +104,60 @@ void main() {
         draw: fill,
       );
       await store.settled();
-      expect(gpu.writes, hasLength(1));
+      expect(gpu.writes.single.map((write) => write.level), [0, 1, 2]);
+      store.dispose();
+    });
+
+    test('is off the picture only once the write of every level of it is '
+        'done', () async {
+      final gpu = _RecordingGpu()..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => gpu.writes.isNotEmpty), isTrue);
+      expect(picture.landing, hasLength(1));
+      gpu.releaseWrite();
+      await store.settled();
+      expect(picture.landing, isEmpty);
+      store.dispose();
+    });
+
+    test('that render while a batch lands land together, in one write',
+        () async {
+      final gpu = _RecordingGpu()..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => gpu.writes.isNotEmpty), isTrue);
+      for (final left in [100.0, 200.0]) {
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+          draw: fill,
+        );
+      }
+      expect(await pollUntil(() => picture.landing.length == 3), isTrue);
+      await _landAll(gpu, store);
+      expect(gpu.writes, hasLength(2));
+      expect(
+        [
+          for (final write in gpu.writes.last)
+            if (write.level == 0) write.x,
+        ],
+        [100, 200],
+        reason: 'a later one after an earlier',
+      );
       store.dispose();
     });
 
@@ -142,12 +192,6 @@ void main() {
         ui.Offset.zero,
         const ui.Offset(100, 100),
       ]);
-      gpu.releaseWrite();
-      await pumpEventQueue();
-      expect(picture.landing.map((p) => p.rect.topLeft), [
-        ui.Offset.zero,
-        const ui.Offset(100, 100),
-      ], reason: 'the first one is in only once its deep levels are');
       await _landAll(gpu, store);
       expect(picture.landing, isEmpty);
       store.dispose();
