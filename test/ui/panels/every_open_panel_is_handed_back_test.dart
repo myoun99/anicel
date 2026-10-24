@@ -40,8 +40,13 @@ void main() {
     final brushesHost = dockHost('rail-L1');
     expect(
       before.keys,
-      containsAll(<String>['tools', 'brushes', 'canvas', 'timesheet']),
+      containsAll(<String>['brushes', 'canvas', 'timesheet']),
       reason: 'premise: the default layout has these open',
+    );
+    expect(
+      before.keys,
+      contains('tools'),
+      reason: "the strip's tool column is held as a dock's panel is",
     );
 
     await tester.tap(
@@ -65,8 +70,9 @@ void main() {
     }
   });
 
-  testWidgets('a language change builds every open panel again, with nothing '
-      'above it rebuilt', (tester) async {
+  testWidgets('a language change builds every open panel again', (
+    tester,
+  ) async {
     addTearDown(() => AppText.settings.value = const AppLanguageSettings());
     await pumpHome(tester);
     final before = openContents();
