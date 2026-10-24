@@ -270,9 +270,13 @@ void main() {
       await _pump(tester);
       await _openLanes(tester);
       final session = _sessionOf(tester);
-      session.selectLayer(_cameraLayerId);
+      // ↩️The range was the CAMERA's until the lanes' default moved to the
+      // drawing row (2026-08-12) — a lane of another layer, which
+      // `selectLayer` drops the range for anyway, so the case this names
+      // went unasked.
+      session.selectLayer(_drawLayerId);
       session.frameRangeSelection.value = const TimelineFrameRangeSelection(
-        layerId: _cameraLayerId,
+        layerId: _drawLayerId,
         startIndex: 1,
         endIndexExclusive: 4,
       );
