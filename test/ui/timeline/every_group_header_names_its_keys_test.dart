@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
@@ -17,6 +18,9 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 void main() {
   PropertyTrack<double> namedAtThree() =>
       PropertyTrack<double>().withKey(3, 1).withKeyName(3, 'A');
+  PropertyTrack<CanvasPoint> placeNamedAtThree() => PropertyTrack<CanvasPoint>()
+      .withKey(3, CanvasPoint(x: 1, y: 1))
+      .withKeyName(3, 'A');
 
   test('the Transform header', () {
     final track = TransformTrack.empty().copyWith(rotation: namedAtThree());
@@ -35,6 +39,11 @@ void main() {
           for (final spec in effectParametersOf(kind))
             spec.id: EffectParameter(track: namedAtThree()),
         },
+        // I-65: where a cel number stands is among its members too.
+        stand: TransformTrack.empty().copyWith(
+          position: placeNamedAtThree(),
+          scale: placeNamedAtThree(),
+        ),
       );
       final lanes = effectPropertyLanes([effect], isExpanded: (_) => true);
       expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart'
     show cameraKeyFits, cameraWriteKeepsKeysIn;
@@ -22,6 +23,7 @@ import '../../services/project_lookup.dart' show rowPoseSpace;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../timeline/effect_lane_editing.dart'
     show
+        effectLaneKeyCanRove,
         effectsWithEnabledToggled,
         effectsWithGroupReset,
         effectsWithLaneKeyToggled,
@@ -587,10 +589,11 @@ class LaneVerbs {
       edits: (
         nameTag: (tag, frame) =>
             seNameTagWithLaneKeyToggled(tag, laneId: laneId, frameIndex: frame),
-        effects: (effects, frame) => effectsWithLaneKeyToggled(
+        effects: (layer, effects, frame) => effectsWithLaneKeyToggled(
           effects,
           laneId: laneId,
           frameIndex: frame,
+          paper: _paperOf(layer),
         ),
         transform: (layer, track, frame, {required reference}) =>
             _transformTrackWithKeyToggled(
@@ -685,11 +688,12 @@ class LaneVerbs {
       frameIndex: frame,
       input: input,
     ),
-    effects: (effects, frame) => effectsWithLaneValueEdited(
+    effects: (_, effects, frame) => effectsWithLaneValueEdited(
       effects,
       laneId: laneId,
       frameIndex: frame,
       input: input,
+      scaleLinked: scaleLinked,
     ),
     transform: (layer, track, frame, {required reference}) =>
         transformTrackWithLaneValueEdited(
@@ -777,7 +781,7 @@ class LaneVerbs {
       );
     }
     if (parseEffectLaneId(laneId) != null) {
-      return LaneEdit(effects: edits.effects(from.effects, frame));
+      return LaneEdit(effects: edits.effects(layer, from.effects, frame));
     }
     // A reference's fx is a transform's lanes in another home (F-374).
     final reference = laneIsReference(laneId);
@@ -1370,7 +1374,8 @@ class LaneVerbs {
       return const [];
     }
     final homes = scope.homes;
-    // Only a position's keys walk a path, so only a transform's may rove.
+    // Only a position's keys walk a path, so only a transform's may rove —
+    // a row's, its reference fx's, and where an effect stands its picture.
     bool roves(TransformTrack track, String laneId, int frame) =>
         transformLaneKeyCanRove(
           track,
@@ -1380,7 +1385,7 @@ class LaneVerbs {
     return [
       ..._coveredKeys(homes.own, lane, canRove: roves),
       ..._coveredKeys(homes.reference, lane, canRove: roves),
-      ..._coveredKeys(homes.effects, lane),
+      ..._coveredKeys(homes.effects, lane, canRove: effectLaneKeyCanRove),
       ..._coveredKeys(homes.nameTag, lane, takesSides: seNameTagLaneTakesSides),
     ];
   }
@@ -1668,14 +1673,14 @@ class LaneVerbs {
 
   /// Whether keys copied on lane [from] mean on lane [to] what they meant
   /// there — AE's 「the same type of data」: a place in space
-  /// ([laneWalksAPath] — a position or an anchor, a reference's too: its
-  /// home names its lanes bare) on a place, any other on any other of its
-  /// value type ([laneKeysSpliced]).
+  /// ([rowLaneWalksAPath] — a position or an anchor, a reference's too, and
+  /// where an effect stands its picture) on a place, any other on any other
+  /// of its value type ([laneKeysSpliced]).
   /// 🗣️key-paste-across-lanes-keeps-the-raw-value-Q1 (유저 2026-10-22):
   /// 「AE 그대로 — 같은 종류의 데이터끼리」 — a position's 1170 put on a
   /// scale made it 117000%.
   static bool _sameKind(String from, String to) =>
-      laneWalksAPath(from) == laneWalksAPath(to);
+      rowLaneWalksAPath(from) == rowLaneWalksAPath(to);
 
   /// The names the range's keys carry — null for an unnamed one.
   Set<String?> _laneRangeKeyNames() => {
@@ -1716,7 +1721,7 @@ class LaneVerbs {
   /// walks a path: the row is offered and refused.
   List<KeyPath> get laneKeyPathsForSelection => [
     for (final (:laneId, :key, canRove: _, takesSides: _) in _laneRangeKeys())
-      if (laneWalksAPath(laneId)) key.path,
+      if (rowLaneWalksAPath(laneId)) key.path,
   ];
 
   /// Whether each key the range covers that may give its time up roves
@@ -1991,12 +1996,12 @@ class LaneVerbs {
           ? fx
           : null,
       effects: (laneId, name, frames) => switch (parseEffectLaneId(laneId)) {
-        (:final effectId, parameterId: final parameterId?) when cutId != null =>
+        (:final effectId, parameterId: final lane?) when cutId != null =>
           _project.cutCommandCoordinator.namedEffectKeyInSpace(
             cutId: cutId,
             layerId: layer.id,
             effectId: effectId,
-            parameterId: parameterId,
+            lane: lane,
             name: name,
             excludeFramesOnSource: frames,
           ),
@@ -2100,6 +2105,7 @@ class LaneVerbs {
         laneId: headerLaneId,
         frameIndexes: frames,
         keyedFramesOnly: scoped,
+        paper: _paperOf(layer),
       );
       if (effects == null) {
         return false;
@@ -2126,11 +2132,21 @@ class LaneVerbs {
     if (headerLaneId == referenceGroupLaneId) {
       return _resetReferenceGroup(layer, frames, scoped: scoped);
     }
-    // An effect's reset above needs no space and runs anywhere; the
-    // transform's goes to the middle of the space the row is posed in.
+    // The transform's goes to the middle of the space the row is posed in,
+    // as an effect's goes where it stands its picture.
     return headerLaneId == transformGroupHeaderLane.laneId &&
         _resetTransformGroup(layer, frames, scoped: scoped);
   }
+
+  /// The space [layer] is posed in ([rowPoseSpace]) — its cut's canvas,
+  /// stood in or not (I-89-Q23), or the shot an S row is posed in (I-67-Q1)
+  /// — whose middle its transform rests at, and where an effect of it that
+  /// stands its picture rests ([effectStandPose]). Null where there is none.
+  CanvasSize? _paperOf(Layer layer) => rowPoseSpace(
+    _project.repository.requireProject(),
+    layer,
+    standing: _project.activeCutId,
+  );
 
   /// [layer]'s reference fx back at [frames] to where an unkeyed lane of it
   /// stands — where its file was placed ([MediaReference.pose]), as a
@@ -2164,21 +2180,16 @@ class LaneVerbs {
   }
 
   /// [layer]'s transform group back to its defaults at [frames]: the middle
-  /// of the space the row is posed in ([rowPoseSpace]) — its cut's canvas,
-  /// stood in or not (I-89-Q23), or the shot an S row is posed in
-  /// (I-67-Q1), which a gap has too: the storyboard's S rows reach this
-  /// with no cut open since F-101. ↩️A cut's row read the canvas of the cut
-  /// stood in, and in a gap had nothing to reset TO.
+  /// of the space the row is posed in ([_paperOf]), which a gap has too for
+  /// an S row: the storyboard's S rows reach this with no cut open since
+  /// F-101. ↩️A cut's row read the canvas of the cut stood in, and in a gap
+  /// had nothing to reset TO.
   bool _resetTransformGroup(
     Layer layer,
     List<int> frames, {
     required bool scoped,
   }) {
-    final space = rowPoseSpace(
-      _project.repository.requireProject(),
-      layer,
-      standing: _project.activeCutId,
-    );
+    final space = _paperOf(layer);
     if (space == null) {
       return false;
     }
@@ -2403,6 +2414,7 @@ class LaneVerbs {
     final layer = scope.layer;
     final homes = scope.homes;
     final frames = _keyableFrames(layer, lane);
+    final paper = _paperOf(layer);
     TransformTrack? Function(TransformTrack, String, int) transform({
       required bool reference,
     }) => (track, laneId, frame) => _transformTrackWithKeyToggled(
@@ -2429,6 +2441,7 @@ class LaneVerbs {
             effects,
             laneId: laneId,
             frameIndex: frame,
+            paper: paper,
           ),
         ),
         nameTag: scope.subject.nameTagWith(
@@ -2453,7 +2466,14 @@ class LaneVerbs {
 /// leaves that family alone. Which one runs is [LaneVerbs]' dispatch.
 typedef _LaneEdits = ({
   SeNameTag? Function(SeNameTag tag, int frame) nameTag,
-  List<LayerEffect>? Function(List<LayerEffect> effects, int frame) effects,
+  // [layer]: the row wearing [effects] — the paper they stand on
+  // ([LaneVerbs._paperOf]).
+  List<LayerEffect>? Function(
+    Layer layer,
+    List<LayerEffect> effects,
+    int frame,
+  )
+  effects,
   // [reference]: the lane is a reference fx's (F-374), [track] that fx.
   TransformTrack? Function(
     Layer layer,
@@ -2491,7 +2511,7 @@ typedef _NameHolders = ({
   TransformTrack? Function(String laneId, String name, Set<int> frames) own,
   TransformTrack? Function(String laneId, String name, Set<int> frames)
   reference,
-  PropertyKey<double>? Function(String laneId, String name, Set<int> frames)
+  PropertyKey<Object?>? Function(String laneId, String name, Set<int> frames)
   effects,
   SeNameTagTrack? Function(String laneId, String name, Set<int> frames)
   nameTag,

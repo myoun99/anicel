@@ -707,7 +707,20 @@ void main() {
   /// reads two of the three (`QuietTurns.inAQuiet`) and the store the third
   /// (`FramePictureStore.lay`), so a value of them would be taken apart at
   /// the one place it is handed to.
-  const wideSignatures = 425;
+  /// ⚠️425 → 427 on 2026-10-25, two named as the rule above asks (I-65 — a
+  /// cel number stands on a transform's Position and Scale lanes, edited by
+  /// the transform's own verbs): `effectsWithLaneValueEdited` (five) takes
+  /// the transform tool's 「배율 연동」 for the Scale it hands
+  /// `transformTrackWithLaneValueEdited` (seven), and
+  /// `effectsWithGroupReset` (five) the paper the number rests on, for
+  /// `transformTrackWithGroupReset` (five) — each the shape of the
+  /// transform verb it hands to. 🔬`clean_code_diff` against master
+  /// (`c28ff5db3`, at 422, before the three above) named those two added
+  /// and nothing gone. ⛔Not
+  /// bundled to fit: the session reads the switch from the tool and the
+  /// paper from the row's cut, each at the call (`LaneVerbs`), so a value
+  /// of the two would be built at every call first.
+  const wideSignatures = 427;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

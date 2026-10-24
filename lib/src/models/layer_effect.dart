@@ -1,9 +1,19 @@
 import '../core/collection_equality.dart';
-import 'canvas_point.dart';
+import 'canvas_size.dart';
 import 'property_track.dart';
 import 'string_id.dart';
 import 'transform_track.dart'
-    show TransformTrack, doubleKeySpace, pathKeySpace, pointKeySpace;
+    show
+        TransformNamedChanges,
+        TransformPose,
+        TransformPropertyId,
+        TransformTrack,
+        doubleKeySpace,
+        layerIdentityPose,
+        transformLaneOf,
+        transformNamedKeyChanges,
+        transformPropertyOfLaneId,
+        transformTrackWithNamedKeys;
 
 /// Stable identity of one effect INSTANCE on a layer — the lane address
 /// (`fx:<id>:<parameter>`) and the undo commands both name effects by this,
@@ -467,7 +477,7 @@ class LayerEffect {
   /// of its Position and Scale, in the transform lanes' own words, as the
   /// reference fx keeps its file's (`MediaReference.fx`). Unkeyed, it stands
   /// where a row does at rest: the paper's middle, at its size
-  /// ([resolveEffectStandAt]). Empty for every other kind.
+  /// ([effectStandPose]). Empty for every other kind.
   ///
   /// 🗣️I-65-Q2 메모 (유저 2026-10-24): 「셀번호 fx 자체적으로 위치/크기값
   /// 구현. 트랜스폼에 있는거처럼 위치/비율 두개 키. 공용화된거 사용하면서」 ·
@@ -505,6 +515,30 @@ class LayerEffect {
   LayerEffect withParameter(String parameterId, EffectParameter parameter) {
     return copyWith(parameters: {...parameters, parameterId: parameter});
   }
+
+  /// The property of [stand] lane [lane] is — a stand lane, by the transform
+  /// lane's id ([effectStandLanes]) — on a kind that draws its own picture;
+  /// null for every other lane: a parameter's.
+  TransformPropertyId? standLaneOf(String lane) =>
+      kind.drawsItsOwnPicture && effectStandLanes.contains(lane)
+      ? transformPropertyOfLaneId(lane)
+      : null;
+
+  /// The keys lane [lane] of this effect holds — a parameter's by its id,
+  /// a stand lane's ([standLaneOf]) — read without knowing their value
+  /// type; null for a lane the effect has not.
+  PropertyTrack<Object?>? laneTrack(String lane) => switch (standLaneOf(lane)) {
+    final property? => transformLaneOf(stand, property),
+    null => parameters[lane]?.track,
+  };
+
+  /// Every lane of this effect, in the order its rows show them: where it
+  /// stands first ([effectStandLanes]), as a transform's lanes lead, then
+  /// its parameters.
+  List<String> get lanes => [
+    if (kind.drawsItsOwnPicture) ...effectStandLanes,
+    for (final spec in effectParametersOf(kind)) spec.id,
+  ];
 
   /// Whether this effect carries any animation at all (the lane group
   /// header's key union asks).
@@ -641,31 +675,34 @@ class ResolvedLayerEffect {
   String toString() => 'ResolvedLayerEffect($kind, $values, $stand)';
 }
 
-/// Where the picture of an effect that draws its own stands at one frame
-/// ([LayerEffect.stand] sampled): its Position on the row's paper — null
-/// while that lane holds no key, which is where a row stands at rest, the
-/// paper's middle (the paper is not the effect's to know) — and its Scale,
-/// along each axis.
-typedef EffectStand = ({CanvasPoint? position, CanvasPoint scale});
+/// Where the picture of an effect that draws its own stands at one time:
+/// [LayerEffect.stand]'s keys and the time to read them at — a frame, or
+/// between two. The pose they make is the transform's own resolve of them
+/// on the row's paper ([effectStandPose]); the paper is not the effect's to
+/// know. Unkeyed, every time is 0: one stand, whatever the frame.
+typedef EffectStand = ({TransformTrack keys, double time});
 
-/// [stand] at [frameIndex] ([EffectStand]).
-EffectStand resolveEffectStandAt(TransformTrack stand, int frameIndex) {
-  final time = frameIndex.toDouble();
-  return (
-    position: stand.position.isEmpty
-        ? null
-        : stand.position.resolveAtTime(
-            time: time,
-            orElse: () => CanvasPoint(x: 0, y: 0),
-            space: pathKeySpace,
-          ),
-    scale: stand.scale.resolveAtTime(
-      time: time,
-      orElse: () => CanvasPoint(x: 1, y: 1),
-      space: pointKeySpace,
-    ),
-  );
-}
+/// The lanes of [LayerEffect.stand] an effect keys, by the ids the
+/// transform's lanes go by: Position and Scale, in that order.
+///
+/// 🗣️I-65-Q2 메모: 「위치/비율 두개 키」 — no Rotation.
+const List<String> effectStandLanes = ['position', 'scale'];
+
+/// [stand] at [time] ([EffectStand]).
+EffectStand effectStandAt(TransformTrack stand, double time) =>
+    (keys: stand, time: stand.isEmpty ? 0 : time);
+
+/// Where [stand] puts the picture on [paper]: its keys resolved as a
+/// transform's are ([TransformTrack.resolveAtTime]) — unkeyed, where a row
+/// stands at rest ([layerIdentityPose]): the paper's middle, at its size.
+///
+/// 🗣️08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
+/// 공통된 거 사용」.
+TransformPose effectStandPose(EffectStand stand, CanvasSize paper) =>
+    stand.keys.resolveAtTime(
+      time: stand.time,
+      orElse: () => layerIdentityPose(paper),
+    );
 
 /// Samples [effects] at [frameIndex], dropping the disabled ones and the
 /// ones that resolve to a no-op. An empty result is the overwhelmingly
@@ -690,7 +727,7 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
           spec.clamp(effect.parameterOf(spec.id).resolveAt(frameIndex)),
       ],
       stand: effect.kind.drawsItsOwnPicture
-          ? resolveEffectStandAt(effect.stand, frameIndex)
+          ? effectStandAt(effect.stand, frameIndex.toDouble())
           : null,
     );
     if (sample.isNoOp) {
@@ -709,25 +746,29 @@ bool resolvedEffectsSpreadPixels(List<ResolvedLayerEffect> effects) =>
 /// A NAMED key whose value moved in a chain edit — what the "same name,
 /// same value" link has to carry to every other use of that name.
 ///
-/// The naming space is one PARAMETER of one effect: Blur A's radius and
-/// Blur B's radius are different properties, so a name means nothing
-/// across them. Linked rows share effect ids by construction, which is
-/// what lets the same space span 겸용 cuts.
+/// The naming space is one LANE of one effect: Blur A's radius and Blur
+/// B's radius are different properties, so a name means nothing across
+/// them. Linked rows share effect ids by construction, which is what lets
+/// the same space span 겸용 cuts.
 class NamedEffectKeyChange {
   const NamedEffectKeyChange({
     required this.effectId,
-    required this.parameterId,
+    required this.lane,
     required this.name,
     required this.held,
   });
 
   final EffectId effectId;
-  final String parameterId;
+
+  /// The lane: a parameter's id, or one where the effect stands
+  /// ([LayerEffect.standLaneOf]).
+  final String lane;
   final String name;
 
-  /// The number and both sides, carried together (F-84 실기, 유저
-  /// 2026-09-12: 「싹다링크해야하는데」).
-  final NamedKeyValue<double> held;
+  /// The value and both sides, carried together (F-84 실기, 유저
+  /// 2026-09-12: 「싹다링크해야하는데」) — a number on a parameter, a point
+  /// where the effect stands.
+  final NamedKeyValue<Object?> held;
 }
 
 /// The named keys whose VALUE differs between [before] and [after] — the
@@ -746,6 +787,19 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
     if (old == null) {
       continue;
     }
+    void moved(String lane, Map<String, NamedKeyValue<Object?>> keys) {
+      for (final MapEntry(key: name, value: held) in keys.entries) {
+        changes.add(
+          NamedEffectKeyChange(
+            effectId: effect.id,
+            lane: lane,
+            name: name,
+            held: held,
+          ),
+        );
+      }
+    }
+
     for (final entry in effect.parameters.entries) {
       final oldTrack = old.parameters[entry.key]?.track;
       if (oldTrack == null) {
@@ -755,42 +809,36 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
       // not this loop's: an effect parameter and a transform lane are the
       // same kind of thing to the link, and deciding it twice is how the
       // two would drift.
-      for (final moved
-          in movedNamedKeys(oldTrack, entry.value.track).entries) {
-        changes.add(
-          NamedEffectKeyChange(
-            effectId: effect.id,
-            parameterId: entry.key,
-            name: moved.key,
-            held: moved.value,
-          ),
-        );
-      }
+      moved(entry.key, movedNamedKeys(oldTrack, entry.value.track));
     }
+    // Where it stands is read as a transform's keys are, by the
+    // transform's own reading of them.
+    final stand = transformNamedKeyChanges(old.stand, effect.stand);
+    moved('position', stand.position);
+    moved('scale', stand.scale);
   }
   return changes;
 }
 
-/// The key [name] ALREADY holds in [effects], inside one effect's one
-/// parameter — null when the name is free there.
+/// The key [name] ALREADY holds in [effects], on one effect's one lane —
+/// null when the name is free there.
 ///
 /// This is the rename's pull: a key joining an existing name takes that
-/// name's number rather than imposing its own. Callers ask it across the
+/// name's value rather than imposing its own. Callers ask it across the
 /// whole naming space (this row AND its 겸용 siblings, which share effect
 /// ids), so a free name here can still be taken next door.
-PropertyKey<double>? namedEffectKey(
+PropertyKey<Object?>? namedEffectKey(
   List<LayerEffect> effects, {
   required EffectId effectId,
-  required String parameterId,
+  required String lane,
   required String name,
   Set<int> excludeFrames = const {},
 }) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameters[parameterId]?.track.keyForName(
-        name,
-        excludeFrames: excludeFrames,
-      );
+      return effect
+          .laneTrack(lane)
+          ?.keyForName(name, excludeFrames: excludeFrames);
     }
   }
   return null;
@@ -827,8 +875,8 @@ double effectParameterValueAtTime(
   return 0;
 }
 
-/// [effects] with every key carrying a change's name — in that change's own
-/// parameter — set to its value AND type. The other half of the link.
+/// [effects] with every key carrying a change's name — on that change's own
+/// lane — set to its value AND type. The other half of the link.
 List<LayerEffect> effectsWithNamedValues(
   List<LayerEffect> effects,
   List<NamedEffectKeyChange> changes,
@@ -843,21 +891,51 @@ List<LayerEffect> effectsWithNamedValues(
       continue;
     }
     final effect = result[index];
-    final parameter = effect.parameters[change.parameterId];
-    if (parameter == null) {
+    final next = _withNamedValue(effect, change);
+    if (next == null || next == effect) {
       continue;
     }
-    final track = parameter.track.withNamedKey(change.name, change.held);
-    if (track == parameter.track) {
-      continue;
-    }
-    result = [...result]
-      ..[index] = effect.withParameter(
-        change.parameterId,
-        EffectParameter(value: parameter.value, track: track),
-      );
+    result = [...result]..[index] = next;
   }
   return result;
+}
+
+/// [effect] with [change]'s name set on its lane — null where the effect
+/// has no such lane. Where it stands takes the name as a transform's keys
+/// do ([transformTrackWithNamedKeys]).
+LayerEffect? _withNamedValue(
+  LayerEffect effect,
+  NamedEffectKeyChange change,
+) {
+  final named = {change.name: change.held};
+  switch (effect.standLaneOf(change.lane)) {
+    case TransformPropertyId.position:
+      return effect.copyWith(
+        stand: transformTrackWithNamedKeys(
+          effect.stand,
+          TransformNamedChanges(position: named.cast()),
+        ),
+      );
+    case TransformPropertyId.scale:
+      return effect.copyWith(
+        stand: transformTrackWithNamedKeys(
+          effect.stand,
+          TransformNamedChanges(scale: named.cast()),
+        ),
+      );
+    case _:
+      final parameter = effect.parameters[change.lane];
+      if (parameter == null) {
+        return null;
+      }
+      return effect.withParameter(
+        change.lane,
+        EffectParameter(
+          value: parameter.value,
+          track: parameter.track.withNamedKeys(named.cast()),
+        ),
+      );
+  }
 }
 
 /// [shape]'s chain STRUCTURE — which effects, in what order, each on or

@@ -342,9 +342,13 @@ class EffectsAndFx {
   /// collide) — off the TRACK id, since that is what carries the chain.
   /// Shown as a layer's is: the row's lanes — its lane carrier's — and
   /// the effect's header open in the same undo step (F-396).
+  ///
+  /// A kind that draws a cel number ([EffectKind.drawsItsOwnPicture]) is
+  /// not taken, by the law the row gate keeps ([canAddEffectToActiveLayer]):
+  /// the V row has no drawing whose number the letters would print.
   void addEffectToTrack(TrackId trackId, EffectKind kind) {
     final track = _project.trackById(trackId);
-    if (track == null) {
+    if (track == null || kind.drawsItsOwnPicture) {
       return;
     }
     _effectSequence += 1;

@@ -216,6 +216,7 @@ void main() {
             laneId: effectLaneId(withEffect.effects.single.id, 'brightness'),
             frameIndex: 0,
             input: '35',
+            scaleLinked: false,
           )!,
         );
 

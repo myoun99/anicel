@@ -284,6 +284,16 @@ void main() {
       expect(chain(s), isEmpty);
     });
 
+    test('I-65: a cel number is not taken — the V row has no drawing whose '
+        'number its letters would print', () {
+      final s = session();
+
+      s.effectsAndFx.addEffectToTrack(_track, EffectKind.celNumber);
+
+      expect(chain(s), isEmpty);
+      expect(s.canUndo, isFalse);
+    });
+
     // ↩️The remove half went with `removeEffectFromTrack` (F-87, 유저
     // 2026-09-12: 「fx버튼에 있는 해당 fx 삭제버튼은 필요없으니 삭제하고 관련로직
     // 싹 제거」) — no UI called it; a range over the fx header and the one

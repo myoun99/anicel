@@ -2,11 +2,14 @@ import 'dart:ui' show Offset;
 
 import '../../models/key_mark.dart';
 import '../../models/layer_effect.dart';
+import '../../models/transform_track.dart' show TransformPose, laneWalksAPath;
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
 import '../text/readout_text.dart';
 import '../theme/lane_curve_palette.dart';
 import 'property_lane_model.dart';
+import 'scale_lane_form.dart';
+import 'transform_lane_policy.dart' show transformPropertyLanes;
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
 //
@@ -56,19 +59,37 @@ String effectLaneId(EffectId effectId, String parameterId) =>
   );
 }
 
-/// The lane rows for [effects]: each effect's header, and its parameter
-/// lanes while [isExpanded] says the header is twirled open (AE group
-/// collapse, exactly like the Transform group).
+/// Whether the keys of effect lane [laneId] walk a path: where an effect
+/// stands its picture, as a transform's Position does ([laneWalksAPath]);
+/// a parameter's never do. Asked of the id alone, as a copy's lanes and a
+/// range's are — no parameter is named as such a lane is
+/// ([effectStandLanes]).
+bool effectLaneWalksAPath(String laneId) =>
+    switch (parseEffectLaneId(laneId)) {
+      (effectId: _, parameterId: final lane?)
+          when effectStandLanes.contains(lane) =>
+        laneWalksAPath(lane),
+      _ => false,
+    };
+
+/// The lane rows for [effects]: each effect's header, and its lanes while
+/// [isExpanded] says the header is twirled open (AE group collapse, exactly
+/// like the Transform group) — where it stands first, on a kind that draws
+/// its own picture ([LayerEffect.lanes]), then its parameters.
 ///
 /// [valueAt] resolves a parameter's value at a time — the blue value
 /// column's at its frame, a header graph's curve between frames too (I-89
 /// ③); the caller owns it because the sample must come from the same
-/// resolver the composite uses.
+/// resolver the composite uses. [standAt] is where an effect stands its
+/// picture at a time ([effectStandPose]) — the caller knows the paper.
+/// Null for either leaves its lanes unvalued: a rail with no cut to read
+/// them in.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   required bool Function(EffectId effectId) isExpanded,
   double Function(EffectId effectId, String parameterId, double time)?
   valueAt,
+  TransformPose Function(EffectId effectId, double time)? standAt,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -76,6 +97,7 @@ List<PropertyLaneRow> effectPropertyLanes(
   final rows = <PropertyLaneRow>[];
   for (final effect in effects) {
     final expanded = isExpanded(effect.id);
+    final lanes = [for (final lane in effect.lanes) effect.laneTrack(lane)!];
     rows.add(
       PropertyLaneRow(
         laneId: effectGroupLaneId(effect.id),
@@ -92,13 +114,8 @@ List<PropertyLaneRow> effectPropertyLanes(
         // glance finds the effect's keys while it stays collapsed — with
         // the marks they wear and the names they carry, the same unions the
         // Transform header draws ([unionKeyMarks], [unionKeyNames]).
-        keyMarks: unionKeyMarks([
-          for (final parameter in effect.parameters.values)
-            keyMarksOf(parameter.track),
-        ]),
-        keyNames: unionKeyNames([
-          for (final parameter in effect.parameters.values) parameter.track,
-        ]),
+        keyMarks: unionKeyMarks([for (final lane in lanes) keyMarksOf(lane)]),
+        keyNames: unionKeyNames(lanes),
         showsKeyNavigator: false,
         isGroupHeader: true,
         groupExpanded: expanded,
@@ -107,6 +124,9 @@ List<PropertyLaneRow> effectPropertyLanes(
     );
     if (!expanded) {
       continue;
+    }
+    if (effect.kind.drawsItsOwnPicture) {
+      rows.addAll(_standLanes(effect, standAt));
     }
     for (final (index, spec) in effectParametersOf(effect.kind).indexed) {
       final parameter = effect.parameterOf(spec.id);
@@ -139,8 +159,36 @@ List<PropertyLaneRow> effectPropertyLanes(
   return rows;
 }
 
+/// How the Scale lane where an effect stands its picture reads and is
+/// typed: a layer's two, as the transform's (「트랜스폼에 있는거처럼」).
+const ScaleLaneForm effectStandScaleForm = TwoScales();
+
+/// [effect]'s lanes of where it stands: the transform's own Position and
+/// Scale rows of [LayerEffect.stand] ([transformPropertyLanes]), under the
+/// effect's ids, valued where [standAt] stands it.
+///
+/// 🗣️I-65-Q2 메모 (유저 2026-10-24): 「트랜스폼에 있는거처럼 위치/비율 두개
+/// 키. 공용화된거 사용하면서」.
+List<PropertyLaneRow> _standLanes(
+  LayerEffect effect,
+  TransformPose Function(EffectId effectId, double time)? standAt,
+) {
+  final ids = {
+    for (final lane in effectStandLanes) effectLaneId(effect.id, lane),
+  };
+  return [
+    for (final row in transformPropertyLanes(
+      effect.stand,
+      scaleForm: effectStandScaleForm,
+      poseAt: standAt == null ? null : (time) => standAt(effect.id, time),
+      laneIdOf: (lane) => effectLaneId(effect.id, lane),
+    ))
+      if (ids.contains(row.laneId)) row,
+  ];
+}
+
 /// The display order of ONE effect's member lanes — the order the rail
-/// draws them under the effect's group header.
+/// draws them under the effect's group header ([LayerEffect.lanes]).
 ///
 /// 🪦`effectLaneSelectionOrder` (header first, then these) and
 /// `effectLaneSpan` (a span sliced out of it, effect-scoped) are gone: the
@@ -151,25 +199,8 @@ List<PropertyLaneRow> effectPropertyLanes(
 /// SECOND parameter selected every parameter — selection did something
 /// other than what the drag drew.
 List<String> effectLaneDisplayOrder(LayerEffect effect) => [
-  for (final spec in effectParametersOf(effect.kind))
-    effectLaneId(effect.id, spec.id),
+  for (final lane in effect.lanes) effectLaneId(effect.id, lane),
 ];
-
-/// Whether a lane selection covering [spanLaneIds] should wash an effect's
-/// GROUP HEADER row — the header's counterpart of the transform group's
-/// all-members rule.
-///
-/// Approximate on purpose: the lane ids alone do not say how many
-/// parameters the effect has (that needs its kind), so "more than one lane
-/// and all of them this effect's" is the test. Selecting two of a
-/// three-lane effect therefore also washes the header, which costs nothing
-/// — it is an indicator, not a permission.
-bool effectGroupHeaderCovered(String headerLaneId, List<String> spanLaneIds) {
-  // R9 #20: the header is covered when it is IN the span, like every other
-  // row — not when its members happen to all be. The span carries it now,
-  // so this is a plain membership question.
-  return spanLaneIds.contains(headerLaneId);
-}
 
 /// AE-style value formatting for an effect parameter.
 String formatEffectLaneValue(EffectParameterSpec spec, double value) {

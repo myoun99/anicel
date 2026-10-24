@@ -1342,7 +1342,7 @@ class CutCommandCoordinator {
     return agreed ? AttachedMode.synced : AttachedMode.free;
   }
 
-  /// The value [name] ALREADY holds in one effect parameter's whole naming
+  /// The key [name] ALREADY holds in one effect lane's whole naming
   /// space — this row AND its 겸용 siblings — or null when the name is free
   /// and a rename can simply apply.
   ///
@@ -1351,11 +1351,11 @@ class CutCommandCoordinator {
   /// carries the same id in every use site. Asking only the local row would
   /// call a name free while a sibling holds it, and the rename would then
   /// silently fork one name into two values.
-  PropertyKey<double>? namedEffectKeyInSpace({
+  PropertyKey<Object?>? namedEffectKeyInSpace({
     required CutId cutId,
     required LayerId layerId,
     required EffectId effectId,
-    required String parameterId,
+    required String lane,
     required String name,
     Set<int> excludeFramesOnSource = const {},
   }) {
@@ -1369,7 +1369,7 @@ class CutCommandCoordinator {
       final key = namedEffectKey(
         _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
         effectId: effectId,
-        parameterId: parameterId,
+        lane: lane,
         name: name,
         // Only the SOURCE row holds the keys a range rename is naming; a
         // sibling's keys are all "somewhere else" by construction.

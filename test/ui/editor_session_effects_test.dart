@@ -94,6 +94,7 @@ void main() {
       laneId: laneId,
       frameIndex: 0,
       input: '9',
+      scaleLinked: false,
     )!;
     effectsOf(session).updateLayerEffects(layer.id, edited, description: 'Set Blur Width');
 
@@ -129,6 +130,7 @@ void main() {
         laneId: effectLaneId(layer.effects.single.id, 'blurX'),
         frameIndex: 0,
         input: '9',
+        scaleLinked: false,
       )!,
     );
     expect(stackEffectsOf(session.editingCanvas.stack.nodes), isNotEmpty);
@@ -153,6 +155,7 @@ void main() {
           laneId: effectLaneId(effectId, 'hue'),
           frameIndex: 0,
           input: '40',
+          scaleLinked: false,
         )!,
         laneId: effectLaneId(effectId, 'hue'),
         frameIndex: 3,
@@ -195,6 +198,7 @@ void main() {
         laneId: effectLaneId(base.effects.single.id, 'blurX'),
         frameIndex: 0,
         input: '9',
+        scaleLinked: false,
       )!,
     );
     session.folders.addAttachedLayer(AttachedPlacement.above);
@@ -332,6 +336,7 @@ void main() {
           laneId: effectLaneId(row.effects.single.id, 'brightness'),
           frameIndex: 0,
           input: '30',
+          scaleLinked: false,
         )!,
       );
 
@@ -415,6 +420,7 @@ void main() {
           laneId: effectLaneId(withValue.effects.single.id, 'brightness'),
           frameIndex: 0,
           input: '30',
+          scaleLinked: false,
         )!,
       );
       expect(
@@ -500,6 +506,7 @@ void main() {
         laneId: effectLaneId(layer.effects.single.id, 'brightness'),
         frameIndex: 0,
         input: '25',
+        scaleLinked: false,
       )!,
     );
     final before = session.activeLayer!.effects;

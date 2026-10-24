@@ -4,7 +4,6 @@ import '../models/composite_tree.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import '../models/rgba_color.dart';
-import '../models/transform_pose.dart' show layerIdentityPose;
 
 /// How a row composites, apart from its pixels and where it lies: its
 /// strength, its blend and its effect chain.
@@ -26,9 +25,9 @@ typedef RowPaint = ({
 /// (유저 08-07: 「체인 위치 고정 반대 — 블러 걸고 싶은 상황을 막는 제한」);
 /// a second number is a group around the first.
 ///
-/// The letters say [text] ([celNumberText]); unkeyed, they stand where a row
-/// stands at rest on [paper] (08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx
-/// 의 위치 기준」).
+/// The letters say [text] ([celNumberText]) and stand where the number's
+/// keys put them on [paper] ([effectStandPose]) — unkeyed, where a row
+/// stands at rest.
 ///
 /// ⚠️The links after a number apply to their group, in the space a
 /// folder's do: on a row that its transform turns or scales, a blur after
@@ -82,7 +81,7 @@ CelNumberLetters _lettersOf(
   required String text,
   required CanvasSize paper,
 }) {
-  final stand = number.stand!;
+  final stand = effectStandPose(number.stand!, paper);
   int byte(String parameter) => number.parameter(parameter).round();
   return CelNumberLetters(
     text: text,
@@ -92,7 +91,7 @@ CelNumberLetters _lettersOf(
       b: byte('blue'),
       a: 255,
     ).toArgbInt(),
-    center: stand.position ?? layerIdentityPose(paper).center,
+    center: stand.center,
     scale: stand.scale,
   );
 }

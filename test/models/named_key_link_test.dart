@@ -5,7 +5,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 /// Named keys: "same name, same value", the frame-name rule said of
-/// keyframes. The naming space is ONE parameter of ONE effect, and linked
+/// keyframes. The naming space is ONE lane of ONE effect, and linked
 /// rows share effect ids — which is how a value crosses 겸용 cuts now that
 /// their chains mirror only their shape.
 void main() {
@@ -148,7 +148,7 @@ void main() {
       expect(changes, hasLength(1));
       expect(changes.single.name, 'A');
       expect(changes.single.held.value, 5);
-      expect(changes.single.parameterId, radiusId);
+      expect(changes.single.lane, radiusId);
     });
 
     test('a key standing where none stood was moved in time, and carries '
@@ -173,7 +173,7 @@ void main() {
         namedEffectKey(
           effects,
           effectId: const EffectId('e1'),
-          parameterId: radiusId,
+          lane: radiusId,
           name: 'A',
         )!.value,
         6,
@@ -182,7 +182,7 @@ void main() {
         namedEffectKey(
           effects,
           effectId: const EffectId('e2'),
-          parameterId: radiusId,
+          lane: radiusId,
           name: 'A',
         ),
         isNull,
@@ -205,10 +205,10 @@ void main() {
       final result = effectsWithNamedValues(sibling, [
         NamedEffectKeyChange(
           effectId: const EffectId('e1'),
-          parameterId: radiusId,
+          lane: radiusId,
           name: 'A',
           held: (
-            value: 9,
+            value: 9.0,
             incoming: KeySide.linear,
             outgoing: KeyExit.hold,
             path: KeyPath.straight,
@@ -260,10 +260,10 @@ void main() {
       final result = effectsWithNamedValues(sibling, [
         NamedEffectKeyChange(
           effectId: const EffectId('other'),
-          parameterId: radiusId,
+          lane: radiusId,
           name: 'A',
           held: (
-            value: 9,
+            value: 9.0,
             incoming: KeySide.linear,
             outgoing: KeySide.linear,
             path: KeyPath.straight,
@@ -285,10 +285,10 @@ void main() {
       final result = effectsWithNamedValues(chain, [
         NamedEffectKeyChange(
           effectId: const EffectId('e1'),
-          parameterId: radiusId,
+          lane: radiusId,
           name: 'A',
           held: (
-            value: 9,
+            value: 9.0,
             incoming: KeySide.linear,
             outgoing: KeySide.linear,
             path: KeyPath.straight,
@@ -517,6 +517,79 @@ void main() {
         subject.keyForName('A', excludeFrames: {0}),
         isNull,
         reason: 'a key doing the joining must not answer for the name',
+      );
+    });
+  });
+
+  // I-65: where a cel number stands is keyed lanes of the effect, linked by
+  // name as a transform's Position and Scale are.
+  group('where an effect stands its picture', () {
+    LayerEffect number(Map<int, (CanvasPoint, String?)> position) =>
+        LayerEffect(
+          id: const EffectId('n'),
+          kind: EffectKind.celNumber,
+          stand: TransformTrack.empty().copyWith(
+            position: PropertyTrack<CanvasPoint>(
+              keys: {
+                for (final MapEntry(key: frame, value: (point, name))
+                    in position.entries)
+                  frame: PropertyKey(point, name: name),
+              },
+            ),
+          ),
+        );
+
+    test('a moved named key there is reported, by the lane it is on', () {
+      final changes = namedEffectKeyChanges(
+        [
+          number({0: (CanvasPoint(x: 1, y: 1), 'A')}),
+        ],
+        [
+          number({0: (CanvasPoint(x: 5, y: 6), 'A')}),
+        ],
+      );
+
+      expect(changes, hasLength(1));
+      expect(changes.single.lane, 'position');
+      expect(changes.single.name, 'A');
+      expect(changes.single.held.value, CanvasPoint(x: 5, y: 6));
+    });
+
+    test('and carried to the sibling\'s key of that name', () {
+      final changes = namedEffectKeyChanges(
+        [
+          number({0: (CanvasPoint(x: 1, y: 1), 'A')}),
+        ],
+        [
+          number({0: (CanvasPoint(x: 5, y: 6), 'A')}),
+        ],
+      );
+      final sibling = [
+        number({
+          3: (CanvasPoint(x: 1, y: 1), 'A'),
+          7: (CanvasPoint(x: 2, y: 2), null),
+        }),
+      ];
+
+      final position = effectsWithNamedValues(
+        sibling,
+        changes,
+      ).single.stand.position;
+      expect(position.keyAt(3)!.value, CanvasPoint(x: 5, y: 6));
+      expect(position.keyAt(7)!.value, CanvasPoint(x: 2, y: 2));
+    });
+
+    test('namedEffectKey reads a name there too', () {
+      expect(
+        namedEffectKey(
+          [
+            number({4: (CanvasPoint(x: 3, y: 4), 'B')}),
+          ],
+          effectId: const EffectId('n'),
+          lane: 'position',
+          name: 'B',
+        )!.value,
+        CanvasPoint(x: 3, y: 4),
       );
     });
   });
