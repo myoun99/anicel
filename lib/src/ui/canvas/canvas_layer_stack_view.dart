@@ -226,6 +226,18 @@ PlaybackQuality rowQualityThrough(
   displayLevelOf(displayScaleOf(viewport.zoom, devicePixelRatio)),
 );
 
+/// What a frame is drawn ON — the four a [CanvasLayerStackView] draws its
+/// nodes on: the page's size, how far its pasteboard reaches, whether it
+/// paints paper and which paper. One value because a frame's one picture
+/// is KEYED by them (`FramePictureKey`): a picture drawn on one page is
+/// not the picture of another.
+typedef FramePage = ({
+  CanvasSize canvasSize,
+  PasteboardReach pasteboardReach,
+  bool paintPaper,
+  ProjectBackground paperBackground,
+});
+
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
 /// frame as the plan hands it, composed over [FrameDrawing.extent] in world
@@ -245,10 +257,7 @@ PlaybackQuality rowQualityThrough(
 /// picture, one frame would be a picture per colour.
 FrameDrawing frameDrawingOf(
   List<CompositeNode<CutFrameCompositeLayer>> nodes, {
-  required CanvasSize canvasSize,
-  required PasteboardReach pasteboardReach,
-  required bool paintPaper,
-  required ProjectBackground paperBackground,
+  required FramePage page,
 }) {
   final painter = _LayerStackPainter(
     nodes: mapCompositeLeaves<CutFrameCompositeLayer, _PaintRow>(
@@ -257,11 +266,11 @@ FrameDrawing frameDrawingOf(
     ),
     activeSurfacePainter: null,
     floatOverlay: null,
-    canvasSize: canvasSize,
-    pasteboardReach: pasteboardReach,
+    canvasSize: page.canvasSize,
+    pasteboardReach: page.pasteboardReach,
     viewport: CanvasViewport(),
-    paintPaper: paintPaper,
-    paperBackground: paperBackground,
+    paintPaper: page.paintPaper,
+    paperBackground: page.paperBackground,
     // Nothing is kept: no bake and no buffer for a key to name.
     compositeKey: 0,
   );

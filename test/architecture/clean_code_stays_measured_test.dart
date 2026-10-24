@@ -672,16 +672,15 @@ void main() {
   /// (`renderThroughCamera`'s `paintNodes`), and a buffer hands its
   /// children a scale of its own (`drawSubtreeAsImage`'s `paintSubtree`),
   /// so a value of the two would be built at every hand-down first.
-  /// ⚠️420 → 421 on 2026-10-24, named as the rule above asks (card
-  /// one-picture-per-frame — a frame's one picture is drawn by the canvas's
-  /// own paint body). `frameDrawingOf` (five) — the frame's nodes and the
-  /// four the canvas draws them on: its size, how far its pasteboard
-  /// reaches, whether it paints paper and which paper. 🔬`clean_code_diff`
-  /// against master (`6b6ee2668`, at 420) named that one added and nothing
-  /// gone. ⛔Not bundled to fit: the four are `CanvasLayerStackView`'s own
-  /// fields, handed to the same `_LayerStackPainter` it builds, so a value
-  /// of them would be built out of those fields at every caller first.
-  const wideSignatures = 421;
+  /// ⚠️420 → 421 → 420 on 2026-10-24 (card one-picture-per-frame — a
+  /// frame's one picture is drawn by the canvas's own paint body):
+  /// `frameDrawingOf` came in at five — the frame's nodes and the four the
+  /// canvas draws them on, its size, how far its pasteboard reaches,
+  /// whether it paints paper and which paper — and was not bundled to fit,
+  /// the four being `CanvasLayerStackView`'s own fields. ↩️Bundled the same
+  /// day (`FramePage`) for a reason of its own: the frame's picture is
+  /// KEYED by the four (`FramePictureKey`), so they are one value already.
+  const wideSignatures = 420;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

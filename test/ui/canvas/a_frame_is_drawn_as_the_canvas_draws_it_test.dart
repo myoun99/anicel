@@ -25,11 +25,11 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -55,9 +55,10 @@ typedef _Cel = ({
 /// 🚨★★★A FRAME'S ONE PICTURE IS WHAT THE CANVAS SHOWS OF IT
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」).
 ///
-/// The picture a frame is kept as is drawn by the canvas's own body
-/// ([frameDrawingOf]) with every row from its tiles, where the canvas
-/// standing still draws each row as its cel's image
+/// The picture a frame is kept as is drawn off the tree the screen stacks
+/// ([stackedFrameDrawingOf]) by the canvas's own body (`frameDrawingOf`)
+/// with every row from its tiles, where the canvas standing still draws
+/// each row of that SAME tree as its cel's image
 /// ([LayerFrameImageCache]). At 100% the two must be one picture, byte for
 /// byte, wherever the canvas shows the world — the page, and the
 /// pasteboard round it — through every road the body has: rows over one
@@ -153,34 +154,6 @@ void main() {
     ),
   );
 
-  /// [scene] as the plan hands it, each cel's surface read as the image
-  /// cache reads it.
-  List<CompositeNode<CutFrameCompositeLayer>> asThePlanHandsIt(
-    List<CompositeNode<_Cel>> scene,
-    BrushFrameStore store,
-  ) {
-    final previews = BrushFrameDisplayCacheService(
-      frameStore: store,
-      canvasSize: canvasSize,
-    );
-    return composeOverTheirBackdrops(
-      mapCompositeLeaves<_Cel, CutFrameCompositeLayer>(
-        scene,
-        (cel) => CutFrameCompositeLayer(
-          surface: previews
-              .prepareFramePreview(keyOf(cel.layer))
-              .previewSurface,
-          opacity: cel.paint.opacity,
-          blendMode: cel.paint.blendMode,
-          placement: cel.paint.placement,
-          effects: cel.paint.effects,
-        ),
-      ),
-      blendOf: (layer) => layer.blendMode,
-      paintedNormal: (layer) => layer.paintedNormal(),
-    );
-  }
-
   final screen = GlobalKey();
 
   /// What the canvas standing still at 100% shows of [scene] once its rows
@@ -242,12 +215,21 @@ void main() {
     List<CompositeNode<_Cel>> scene,
     BrushFrameStore store,
   ) async {
-    final drawing = frameDrawingOf(
-      asThePlanHandsIt(scene, store),
+    final previews = BrushFrameDisplayCacheService(
+      frameStore: store,
       canvasSize: canvasSize,
-      pasteboardReach: PasteboardReach.whole,
-      paintPaper: true,
-      paperBackground: paper,
+    );
+    // The SAME tree the canvas is handed: a frame's picture is keyed and
+    // drawn off what the screen stacks.
+    final drawing = stackedFrameDrawingOf(
+      asTheCanvasAsks(scene),
+      page: (
+        canvasSize: canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: true,
+        paperBackground: paper,
+      ),
+      surfaceOf: (cel) => previews.prepareFramePreview(cel).previewSurface,
     );
     final world = Rect.fromLTWH(
       -margin.toDouble(),
