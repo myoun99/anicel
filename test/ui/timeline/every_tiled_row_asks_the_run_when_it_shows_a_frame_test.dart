@@ -130,7 +130,22 @@ void main() {
       expect(
         {for (final row in rows) row.stepsUntilShown?.call(7)},
         {null},
-        reason: 'no run plays — the warmer stands around the playhead',
+        reason: 'no run plays — the warmer follows nothing yet',
+      );
+
+      session.playbackRig.prerenderScheduler.follow(
+        StandingDemand(
+          cutId: first,
+          frameCount: length,
+          around: 7,
+          resolveCut: (_) => null,
+        ),
+      );
+      expect(
+        {for (final row in rows) row.stepsUntilShown?.call(7)},
+        {null},
+        reason: 'the warmer stands around the playhead, which no run '
+            'moves: the rows read no order off it',
       );
 
       session.playbackRig.prerenderScheduler.follow(filmFromFive());
