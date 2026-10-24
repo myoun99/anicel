@@ -27,27 +27,22 @@ void main() {
   });
 
   test('a cel indexes the pool files its photos name — each once, in the '
-      'order they first stand — by either road a cel is written', () {
+      'order they first stand', () {
     final picture = drawingOf({a: ink}).withPhotos([
       photoOf(1, path: 'C:/pool/a.png'),
       photoOf(2, path: 'C:/pool/b.png'),
       photoOf(3, path: 'C:/pool/a.png'),
     ]);
 
-    for (final blob in [
-      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, picture)),
-      AnicelCelBlob.ofPayload(encodeCelEntryFromSurface(key, picture)),
-    ]) {
-      expect(blob.photoPaths, ['C:/pool/a.png', 'C:/pool/b.png']);
-      expect(AnicelCelBlob(blob.bytes).photoPaths, blob.photoPaths);
-    }
+    final blob = AnicelCelBlob.ofSurface(key, picture);
+
+    expect(blob.photoPaths, ['C:/pool/a.png', 'C:/pool/b.png']);
+    expect(AnicelCelBlob(blob.bytes).photoPaths, blob.photoPaths);
   });
 
   test('a cel without photos names none, and its head ends where its '
       'stream begins', () {
-    final blob = AnicelCelBlob.encode(
-      AnicelCelEntry.fromSurface(key, drawingOf({a: ink})),
-    );
+    final blob = AnicelCelBlob.ofSurface(key, drawingOf({a: ink}));
 
     expect(blob.photoPaths, isEmpty);
     expect(
@@ -65,7 +60,7 @@ void main() {
     final picture = drawingOf({a: ink}).withPhotos([
       for (final (index, path) in paths.indexed) photoOf(index + 1, path: path),
     ]);
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, picture));
+    final blob = AnicelCelBlob.ofSurface(key, picture);
     final first = Uint8List.sublistView(blob.bytes, 0, 4096);
 
     final length = AnicelCelBlob.headerLengthOf(first);
@@ -94,6 +89,7 @@ void main() {
       canvasSize: picture.canvasSize,
       tileSize: picture.tileSize,
       photoPaths: const ['C:/pool/elsewhere.png'],
+      showsSomething: true,
       codec: compressed.codec,
       body: compressed.bytes,
     );
@@ -111,7 +107,7 @@ void main() {
     final picture = drawingOf({
       a: ink,
     }).withPhotos([photoOf(1, path: 'C:/pool/a.png')]);
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, picture));
+    final blob = AnicelCelBlob.ofSurface(key, picture);
     final elsewhere = BrushFrameKey(
       projectId: key.projectId,
       trackId: key.trackId,

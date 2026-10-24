@@ -78,6 +78,7 @@ void main() {
                 canvasSize: canvas,
                 tileSize: 8,
                 photoPaths: [],
+                showsSomething: true,
               ),
           },
       dirtyTicksAtSnapshot: snapshot.dirtyTicks,

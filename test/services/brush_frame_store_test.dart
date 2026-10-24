@@ -336,6 +336,7 @@ void main() {
       canvasSize: CanvasSize(width: 4, height: 4),
       tileSize: 4,
       photoPaths: [],
+      showsSomething: true,
     );
 
     // Everyday save: the cel is hot before and after — no crossing.

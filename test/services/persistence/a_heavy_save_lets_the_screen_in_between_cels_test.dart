@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -19,10 +20,9 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
     show
         AnicelCelBlob,
-        AnicelCelEntry,
         anicelCelBinaryVersion,
         decodeCelEntry,
-        encodeCelEntry;
+        encodeCelEntryFromSurface;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
@@ -130,26 +130,28 @@ void main() {
 
   test('⛔and a cel stream from a newer build is refused by the one header '
       'reader — opened or blobbed', () {
-    final payload = encodeCelEntry(
-      const AnicelCelEntry(
-        key: BrushFrameKey(
-          projectId: ProjectId('p'),
-          trackId: TrackId('t'),
-          cutId: CutId('c'),
-          layerId: LayerId('l'),
-          frameId: FrameId('f'),
-        ),
-        canvasSize: CanvasSize(width: 8, height: 8),
+    final payload = encodeCelEntryFromSurface(
+      const BrushFrameKey(
+        projectId: ProjectId('p'),
+        trackId: TrackId('t'),
+        cutId: CutId('c'),
+        layerId: LayerId('l'),
+        frameId: FrameId('f'),
+      ),
+      BitmapSurface(
+        canvasSize: const CanvasSize(width: 8, height: 8),
         tileSize: 4,
-        tiles: [],
       ),
     );
     expect(payload.first, anicelCelBinaryVersion, reason: '⛔premise');
     final newer = Uint8List.fromList(payload)
       ..[0] = anicelCelBinaryVersion + 1;
     expect(() => decodeCelEntry(newer), throwsFormatException);
-    expect(() => AnicelCelBlob.ofPayload(newer), throwsFormatException);
-    expect(AnicelCelBlob.ofPayload(payload).tileSize, 4);
+    expect(
+      () => AnicelCelBlob.ofPayload(newer, showsSomething: false),
+      throwsFormatException,
+    );
+    expect(AnicelCelBlob.ofPayload(payload, showsSomething: false).tileSize, 4);
   });
 
   test('a cel in RAM crosses as ONE serialised payload — never an entry of '

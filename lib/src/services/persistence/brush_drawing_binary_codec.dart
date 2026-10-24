@@ -327,12 +327,16 @@ BitmapSurface laidCelSurface(
 /// are. A cel with none writes a zero.
 ///
 /// v2 (pasteboard): tile coords are SIGNED i32 — pasteboard tiles sit at
-/// negative coords. v1 files (u32 coords) still decode.
+/// negative coords.
+///
+/// ⛔Only v5 is read. Every stream rides in a cel blob, and from format 29
+/// on every blob is a v4 one written from a picture by a build that writes
+/// v5 (`_anicelCelBlobVersion`) — the readers of v1–v4 went with that
+/// floor, as the blob's did.
 const int anicelCelBinaryVersion = 5;
 
-/// The same bytes [encodeCelEntry] writes, taken straight off the
-/// SURFACE — without the defensive pixel copy per tile that building
-/// an [AnicelCelEntry] first would make.
+/// A cel's stream, taken straight off its SURFACE — without the defensive
+/// pixel copy per tile that building an [AnicelCelEntry] first would make.
 ///
 /// 🚨★★★**PARKING IS WHAT MEMORY PRESSURE DOES, SO IT MUST NOT ASK
 /// FOR MEMORY.** The park path used to go surface → AnicelCelEntry
@@ -368,28 +372,6 @@ Uint8List encodeCelEntryFromSurface(BrushFrameKey key, BitmapSurface surface) {
   return writer.takeBytes();
 }
 
-/// Encodes a baked cel: key, canvas geometry, then each tile's coord and
-/// RAW straight-alpha RGBA bytes — nothing is compressed in the stream: the
-/// blob around it compresses it whole ([AnicelCelBlob.ofPayload]).
-Uint8List encodeCelEntry(AnicelCelEntry entry) {
-  final writer = _ByteWriter();
-  writer.celStreamHeader(
-    entry.key,
-    entry.canvasSize,
-    entry.tileSize,
-    entry.photos,
-  );
-  writer.u32(entry.tiles.length);
-  writer.tileRecords(entry.tiles);
-  writer.u32(entry.texts.length);
-  for (final text in entry.texts) {
-    writer.celTextHeader(text.id, text.content, text.plate.length);
-    writer.tileRecords(text.plate);
-  }
-  writer.celLaid(entry.laidBounds);
-  return writer.takeBytes();
-}
-
 /// What a cel stream says it is, up to its tiles: its version, its key,
 /// its canvas and its tile size, and the photos its picture carries — read
 /// in ONE place, for the reason [_ByteWriter.celStreamHeader] is written in
@@ -397,10 +379,9 @@ Uint8List encodeCelEntry(AnicelCelEntry entry) {
 _CelHead<List<AnicelPhotoRecord>> _celStreamHeaderOf(_ByteReader reader) =>
     reader.celHead(
       anicelCelBinaryVersion,
+      anicelCelBinaryVersion,
       'Unsupported cel entry version.',
-      // The version says whether the photos are there, as it says the
-      // texts are below.
-      (version) => version < 4 ? const [] : reader.celPhotos(),
+      (_) => reader.celPhotos(),
     );
 
 /// A cel head as [_ByteReader.celHead] reads it: the version, what the cel
@@ -415,17 +396,13 @@ typedef _CelHead<T> = ({
 
 AnicelCelEntry decodeCelEntry(Uint8List bytes) {
   final reader = _ByteReader(bytes);
-  final (:version, :key, :canvasSize, :tileSize, follows: photos) =
+  final (:key, :canvasSize, :tileSize, follows: photos, version: _) =
       _celStreamHeaderOf(reader);
   final tileCount = reader.u32();
   final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
   List<AnicelTileRecord> tiles(int count) => [
     for (var i = 0; i < count; i += 1)
-      (
-        x: version >= 2 ? reader.i32() : reader.u32(),
-        y: version >= 2 ? reader.i32() : reader.u32(),
-        pixels: reader.bytes(tileByteLength),
-      ),
+      (x: reader.i32(), y: reader.i32(), pixels: reader.bytes(tileByteLength)),
   ];
   final drawing = tiles(tileCount);
   return AnicelCelEntry(
@@ -433,21 +410,17 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
     canvasSize: canvasSize,
     tileSize: tileSize,
     tiles: drawing,
-    // The version says whether the texts are there — never the bytes left
-    // over, which a stream cut short would also have none of.
-    texts: version < 3
-        ? const []
-        : [
-            for (var i = reader.u32(); i > 0; i -= 1)
-              (
-                id: reader.i32(),
-                content: reader.longString(),
-                plate: tiles(reader.u32()),
-              ),
-          ],
+    texts: [
+      for (var i = reader.u32(); i > 0; i -= 1)
+        (
+          id: reader.i32(),
+          content: reader.longString(),
+          plate: tiles(reader.u32()),
+        ),
+    ],
     photos: photos,
     // After the texts, so read after them: arguments are read in order.
-    laidBounds: version < 5 ? null : reader.celLaid(),
+    laidBounds: reader.celLaid(),
   );
 }
 
@@ -479,10 +452,6 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
 /// data already captures what the filter was hand-rolling. ⛔A planar
 /// de-interleave was measured too: **122% worse**.
 ///
-/// v1 blobs still read: they had no codec byte and were always deflate,
-/// and the version is what says whether to look for one — never a sniff of
-/// the payload, which would be a guess.
-///
 /// v3 (2026-10-15, a sheet's photos — I-97): the header ends with the
 /// cel's PHOTO INDEX — the pool files its photos name, each once
 /// ([celPhotoPaths]) — after its byte length, so a reader of the head alone
@@ -498,11 +467,29 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
 /// a cel whose photos change is a cel written again — a pool file moved is
 /// a rewrite of every cel that names it, never a new head over an old
 /// stream (저장 세션과 합의, 2026-10-15).
-const int _anicelCelBlobVersion = 3;
+///
+/// v4 (2026-10-24, board a-cooled-empty-cel-reads-drawn): after the codec
+/// byte comes whether the picture SHOWS anything (`BitmapSurface.
+/// showsSomething` — ink in a tile, a text, a photo), a one or a zero, so
+/// a cel that is not hot answers its block without being decoded
+/// ([showsSomething]). It is asked of the picture the blob is written
+/// from, in the same call as the stream, as the photo index is.
+/// ↩️A cel that was not hot answered 「그려짐」 by being kept at all, and a
+/// cel cleared and then cooled, cut to nothing by a shrinking wall, or
+/// saved and opened again was kept with nothing in it.
+///
+/// ⛔Only v4 is read. A file older than format 29 is refused at the door
+/// by its number (`anicelOldestReadFormatVersion`) — the save law, 🗣️유저
+/// 2026-10-06 「옛파일 읽는코드는 필요없다고 확신했어」 — and no file from
+/// 29 on holds an older blob: every one was written from a picture by a
+/// build that writes v4, or spliced from such a blob ([reKeyed]). The
+/// v1–v3 readers went with that floor (a v1 blob had no codec byte, v1–v2
+/// no photo index).
+const int _anicelCelBlobVersion = 4;
 
 /// A cel in its COLD form (R20-A1): a tiny plain header (key + canvas
-/// geometry, readable WITHOUT inflating) followed by the deflated
-/// [encodeCelEntry] stream.
+/// geometry, readable WITHOUT inflating) followed by the compressed
+/// [encodeCelEntryFromSurface] stream.
 ///
 /// This one byte layout is BOTH the in-RAM cold-cel form (the store's
 /// tier-1 compression) and the .anicel v3 archive entry (STORE'd, since the
@@ -512,12 +499,12 @@ class AnicelCelBlob {
   AnicelCelBlob(this.bytes) {
     final reader = _ByteReader(bytes);
     final head = _headOf(reader);
-    version = head.version;
     key = head.key;
     canvasSize = head.canvasSize;
     tileSize = head.tileSize;
-    codec = head.follows;
-    photoPaths = version >= 3 ? reader.celPhotoIndex() : const [];
+    codec = head.follows.codec;
+    showsSomething = head.follows.showsSomething;
+    photoPaths = reader.celPhotoIndex();
     _deflatedOffset = reader.offset;
   }
 
@@ -527,22 +514,20 @@ class AnicelCelBlob {
   /// long paths, outgrows a first read of a few kilobytes.
   static int headerLengthOf(Uint8List head) {
     final reader = _ByteReader(head);
-    if (_headOf(reader).version < 3) {
-      return reader.offset;
-    }
+    _headOf(reader);
     final index = reader.u32();
     return reader.offset + index;
   }
 
   /// The header up to the photo index — read in ONE place, for a blob and
   /// for [headerLengthOf].
-  static _CelHead<int> _headOf(_ByteReader reader) => reader.celHead(
+  static _CelHead<({int codec, bool showsSomething})> _headOf(
+    _ByteReader reader,
+  ) => reader.celHead(
+    _anicelCelBlobVersion,
     _anicelCelBlobVersion,
     'Unsupported cel blob version.',
-    // v2 adds a CODEC byte. v1 had no such byte and was always deflate, so
-    // the version is what says whether to read one — not a sniff of the
-    // stream, which would guess.
-    (version) => version >= 2 ? reader.u8() : anicelCodecDeflate,
+    (_) => (codec: reader.u8(), showsSomething: reader.u8() != 0),
   );
 
   /// Rewrites ONLY the header's key label, splicing the deflate stream
@@ -550,36 +535,44 @@ class AnicelCelBlob {
   /// identical pixels, so re-encoding them would be pure waste (R22-C).
   factory AnicelCelBlob.reKeyed(AnicelCelBlob source, BrushFrameKey key) =>
       AnicelCelBlob._assembled(
-        // 🚨The SOURCE's version and codec, never the current constants:
-        // this SPLICES that payload through, so the header has to describe
-        // the payload it is wrapping. Stamping a v1 stream as v2 would tell
-        // the reader to un-filter bytes nobody filtered; writing a codec
-        // byte a v1 header does not have would push it into the payload.
-        // Both were caught by the tests here, one in each direction. And
-        // the source's photo index, which the stream spliced through still
-        // answers to.
-        version: source.version,
+        // 🚨The SOURCE's codec, never the build's: this SPLICES that
+        // payload through, so the header has to describe the payload it is
+        // wrapping. And the source's photo index and whether it shows
+        // anything, which the stream spliced through still answers to.
         key: key,
         canvasSize: source.canvasSize,
         tileSize: source.tileSize,
         codec: source.codec,
+        showsSomething: source.showsSomething,
         photoPaths: source.photoPaths,
         body: Uint8List.sublistView(source.bytes, source._deflatedOffset),
       );
 
-  factory AnicelCelBlob.encode(AnicelCelEntry entry) =>
-      AnicelCelBlob.ofPayload(encodeCelEntry(entry));
+  /// The blob of [surface], [key]'s picture: its stream straight off the
+  /// surface ([encodeCelEntryFromSurface]) and whether it shows anything
+  /// ([BitmapSurface.showsSomething]), asked of the same picture.
+  factory AnicelCelBlob.ofSurface(BrushFrameKey key, BitmapSurface surface) =>
+      AnicelCelBlob.ofPayload(
+        encodeCelEntryFromSurface(key, surface),
+        showsSomething: surface.showsSomething,
+      );
 
-  /// The blob of a cel's uncompressed [payload] — the bytes [encodeCelEntry]
-  /// writes, or [encodeCelEntryFromSurface] straight off a surface —
-  /// compressed here. The save isolate's shape: a hot cel arrives there
-  /// already serialised, because a surface cannot cross.
+  /// The blob of a cel's uncompressed [payload] — the bytes
+  /// [encodeCelEntryFromSurface] writes off a surface — compressed here.
+  /// The save isolate's shape: a hot cel arrives there already serialised,
+  /// because a surface cannot cross, and [showsSomething] with it, asked of
+  /// the surface it was serialised from.
   ///
   /// ⛔The blob's own header is READ OFF the payload's, never handed in
   /// beside it: two copies of a cel's key and size would be two answers to
   /// what the cel is, and nothing would see them disagree. The photo index
-  /// is read off the same head.
-  factory AnicelCelBlob.ofPayload(Uint8List payload) {
+  /// is read off the same head. [showsSomething] is handed in because the
+  /// stream holds no copy of it: a stream never needed one — its reader
+  /// decodes the picture — and the head's is the only one there is.
+  factory AnicelCelBlob.ofPayload(
+    Uint8List payload, {
+    required bool showsSomething,
+  }) {
     final (:key, :canvasSize, :tileSize, follows: photos, version: _) =
         _celStreamHeaderOf(_ByteReader(payload));
     final compressed = compressAnicelPayload(payload);
@@ -588,6 +581,7 @@ class AnicelCelBlob {
       canvasSize: canvasSize,
       tileSize: tileSize,
       photoPaths: celPhotoPaths([for (final photo in photos) _photoOf(photo)]),
+      showsSomething: showsSomething,
       codec: compressed.codec,
       body: compressed.bytes,
     );
@@ -596,49 +590,47 @@ class AnicelCelBlob {
   /// A blob assembled around a payload SOMEBODY ELSE compressed —
   /// the shape the park and cool paths need, because they compress in
   /// a worker isolate and hand the bytes back. [photoPaths] is what the
-  /// picture the payload was written from names ([celPhotoPaths]).
+  /// picture the payload was written from names ([celPhotoPaths]), and
+  /// [showsSomething] what it shows ([BitmapSurface.showsSomething]).
   factory AnicelCelBlob.fromCompressedBody({
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required int tileSize,
     required List<String> photoPaths,
+    required bool showsSomething,
     required int codec,
     required Uint8List body,
   }) => AnicelCelBlob._assembled(
-    version: _anicelCelBlobVersion,
     key: key,
     canvasSize: canvasSize,
     tileSize: tileSize,
     codec: codec,
+    showsSomething: showsSomething,
     photoPaths: photoPaths,
     body: body,
   );
 
   /// ⛔The header is written HERE and only here — a new blob's and a
-  /// re-keyed one's ([reKeyed]), which keeps the version of the payload it
-  /// splices; [encode] is [fromCompressedBody] with the compression done
-  /// inline. Two spellings of this header is a file format that can drift
-  /// from itself, and the re-key was the second until the photo index came
-  /// (I-97).
+  /// re-keyed one's ([reKeyed]); [ofPayload] is [fromCompressedBody] with
+  /// the compression done inline. Two spellings of this header is a file
+  /// format that can drift from itself, and the re-key was the second until
+  /// the photo index came (I-97).
   factory AnicelCelBlob._assembled({
-    required int version,
     required BrushFrameKey key,
     required CanvasSize canvasSize,
     required int tileSize,
     required int codec,
+    required bool showsSomething,
     required List<String> photoPaths,
     required Uint8List body,
   }) {
     final writer = _ByteWriter()
-      ..u8(version)
-      ..celIdentity(key, canvasSize, tileSize);
-    if (version >= 2) {
-      writer.u8(codec);
-    }
-    if (version >= 3) {
-      writer.celPhotoIndex(photoPaths);
-    }
-    writer.bytes(body);
+      ..u8(_anicelCelBlobVersion)
+      ..celIdentity(key, canvasSize, tileSize)
+      ..u8(codec)
+      ..u8(showsSomething ? 1 : 0)
+      ..celPhotoIndex(photoPaths)
+      ..bytes(body);
     return AnicelCelBlob(writer.takeBytes());
   }
 
@@ -650,21 +642,21 @@ class AnicelCelBlob {
   late final CanvasSize canvasSize;
   late final int tileSize;
 
-  /// The blob's OWN version, kept because [reKeyed] splices this blob's
-  /// deflate stream into a new header — labelling a v1 stream v2 would
-  /// tell the reader to un-filter bytes that were never filtered.
-  late final int version;
-
   /// Which compressor wrote the payload — [anicelCodecDeflate] or
   /// [anicelCodecZstd]. ⛔Read from the blob, never assumed from the build:
   /// an engine-less run must still open a zstd file it cannot decode with
   /// a clear failure rather than garbage.
   late final int codec;
 
-  /// The pool files this cel's photos name (v3; none before) — the index
-  /// its head carries for a reader that reads nothing else. ⛔Not the
-  /// photos themselves, which [decode] reads off the stream.
+  /// The pool files this cel's photos name — the index its head carries for
+  /// a reader that reads nothing else. ⛔Not the photos themselves, which
+  /// [decode] reads off the stream.
   late final List<String> photoPaths;
+
+  /// Whether the picture this blob holds shows anything (v4) — what its
+  /// head keeps for a reader that will not decode it: the block of a cel
+  /// that is not hot (`AnicelCelFileRef.showsSomething`).
+  late final bool showsSomething;
 
   late final int _deflatedOffset;
 
@@ -714,11 +706,12 @@ class _ByteWriter {
   /// key, its canvas, its tile size and the photos its picture carries
   /// (v4). The tiles' count follows it.
   ///
-  /// ⛔Two routes write this stream — one from an [AnicelCelEntry] and
-  /// one straight off a [BitmapSurface] — and they must not each spell
-  /// the header out. The clone ratchet caught exactly that when the
-  /// second route arrived (88 → 89, 2026-09-10): a file format with two
-  /// spellings of its own header is a format that can drift from itself.
+  /// ↩️Two routes wrote this stream — one from an [AnicelCelEntry] and
+  /// one straight off a [BitmapSurface] — and the clone ratchet caught them
+  /// each spelling the header out when the second arrived (88 → 89,
+  /// 2026-09-10). The entry's went with format 29 (2026-10-24: a blob is
+  /// made from a picture, which says whether it shows anything); the
+  /// stream's parts stay spelled once, beside the reader's.
   void celStreamHeader(
     BrushFrameKey key,
     CanvasSize canvasSize,
@@ -746,8 +739,7 @@ class _ByteWriter {
   }
 
   /// One text of the cel stream (v3), up to its plate's tiles: its id, what
-  /// the person set as JSON, and how many tiles follow. Written in ONE
-  /// place for the header's reason above — two routes write this stream.
+  /// the person set as JSON, and how many tiles follow.
   void celTextHeader(int id, String contentJson, int plateTileCount) {
     i32(id);
     longString(contentJson);
@@ -755,9 +747,7 @@ class _ByteWriter {
   }
 
   /// Where a file's picture lies on the cel (v5), the end of its stream: a
-  /// byte that says whether it is there, then its four edges. Written in
-  /// ONE place for the header's reason above — two routes write this
-  /// stream.
+  /// byte that says whether it is there, then its four edges.
   void celLaid(DirtyRegion? laid) {
     if (laid == null) {
       u8(0);
@@ -809,15 +799,6 @@ class _ByteWriter {
       i32(entry.key.x);
       i32(entry.key.y);
       entry.value.readPixels((_, view) => bytes(view));
-    }
-  }
-
-  /// The same tiles from their isolate-boundary records.
-  void tileRecords(List<AnicelTileRecord> tiles) {
-    for (final tile in tiles) {
-      i32(tile.x);
-      i32(tile.y);
-      bytes(tile.pixels);
     }
   }
 
@@ -895,11 +876,12 @@ class _ByteReader {
   /// codec.
   _CelHead<T> celHead<T>(
     int newest,
+    int oldest,
     String refusal,
     T Function(int version) follows,
   ) {
     final version = u8();
-    if (version > newest) {
+    if (version > newest || version < oldest) {
       throw FormatException(refusal);
     }
     return (

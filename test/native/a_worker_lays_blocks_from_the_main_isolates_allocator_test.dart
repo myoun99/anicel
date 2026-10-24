@@ -84,13 +84,14 @@ void main() {
     QaCelCompressor.debugInstanceOverride = () => null;
     final AnicelCelBlob blob;
     try {
-      blob = AnicelCelBlob.encode(
+      blob = AnicelCelBlob.ofSurface(
+        celTextTestKey,
         AnicelCelEntry(
           key: celTextTestKey,
           canvasSize: const CanvasSize(width: tileSize, height: tileSize),
           tileSize: tileSize,
           tiles: [(x: 0, y: 0, pixels: Uint8List(length))],
-        ),
+        ).toSurface(),
       );
     } finally {
       QaCelCompressor.debugInstanceOverride = null;

@@ -338,6 +338,37 @@ void main() {
       );
     });
 
+    // Card `a-cooled-empty-cel-reads-drawn` (2026-10-24): a kept cel cut to
+    // nothing stays kept, and it read 「그려짐」 by being kept at all — so the
+    // block stayed white over nothing, and the crossing below was never
+    // heard.
+    for (final (tier, keep) in [
+      ('parked cold', parkCold),
+      ('kept in a file', keepInAFile),
+    ]) {
+      test('🚨$tier, its lines only past the wall: it crosses to empty, and '
+          'the crossing names it', () {
+        final store = BrushFrameStore();
+        keep(store, {
+          cut: BitmapSurface(
+            canvasSize: canvas,
+            tileSize: tileSize,
+          ).putTiles([(coord: pastLeft, tile: tile(50))]),
+          clean: inkInside(),
+        });
+        expect(store.celHasRenderableContent(cut), isTrue, reason: '⛔premise');
+        final before = store.celContentRevision.value;
+
+        store.adoptPasteboardReach(PasteboardReach.quarter);
+
+        expect(store.celHasRenderableContent(cut), isFalse);
+        expect(store.celHasRenderableContent(clean), isTrue);
+        expect(store.hotBakedSurfaceOrNull(cut), isNull, reason: 'still kept');
+        expect(store.celContentRevision.value, greaterThan(before));
+        expect(store.celsLastCrossed, {cut});
+      });
+    }
+
     test('a wall that grows cuts nothing and touches no kept bytes', () {
       final store = BrushFrameStore();
       keepInAFile(
@@ -388,6 +419,7 @@ void main() {
           canvasSize: canvas,
           tileSize: tileSize,
           photoPaths: [],
+          showsSomething: true,
         ),
       }, dirtyTicksAtSnapshot: snapshot.dirtyTicks);
       expect(

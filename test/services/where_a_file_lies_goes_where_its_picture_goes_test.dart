@@ -51,19 +51,13 @@ void main() {
   group('the saved cel', () {
     test('🚨reads back whole — the tiles past the wall, and where the file '
         'lies', () {
-      final read = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(key, laidPicture()),
+      final read = AnicelCelBlob.ofSurface(
+        key,
+        laidPicture(),
       ).decode().toSurface();
 
       expect(read, laidPicture());
       expect(read.tileAt(beyond)!.pixels, edge.pixels);
-    });
-
-    test('the two ways of writing a cel write the same bytes', () {
-      expect(
-        encodeCelEntryFromSurface(key, laidPicture()),
-        encodeCelEntry(AnicelCelEntry.fromSurface(key, laidPicture())),
-      );
     });
 
     test('where the file lies ends the stream — a one, then its four '
@@ -82,20 +76,6 @@ void main() {
 
       expect(withNone.first, anicelCelBinaryVersion);
       expect(withNone.last, 0);
-    });
-
-    test('a cel written before a file could lie past the wall reads as it '
-        'always did', () {
-      // A v4 stream: today's with the byte at its end taken off.
-      final drawn = drawingOf({inside: ink}).withTexts([textOf(1)]);
-      final today = encodeCelEntryFromSurface(key, drawn);
-      final v4 = Uint8List.fromList(today.sublist(0, today.length - 1))
-        ..[0] = 4;
-
-      final read = decodeCelEntry(v4).toSurface();
-
-      expect(read, drawn);
-      expect(read.laidBounds, isNull);
     });
   });
 

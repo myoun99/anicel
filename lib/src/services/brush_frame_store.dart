@@ -1073,6 +1073,7 @@ class BrushFrameStore {
         canvasSize: blob.canvasSize,
         tileSize: blob.tileSize,
         photoPaths: blob.photoPaths,
+        showsSomething: blob.showsSomething,
       );
 
   /// Drops [key]'s cold ref and the file behind it.
@@ -1447,26 +1448,19 @@ class BrushFrameStore {
       // it: the block stayed white and the pixel buttons stayed lit (유저
       // 2026-08-27: 「삭제눌렀으면 그림이 사라진거니 블록이 회색되고 버튼도
       // 비활성화되야하는데 둘다 아님」).
-      //
-      // ⛔It does NOT count ink (유저: 「잉크를 세는건 무거운거아니야?」).
-      // [BitmapTile.hasInk] caches per tile and `any` stops at the first one
-      // that has some — a drawn cel answers on its first tile, and only a
-      // cel that is entirely clear reads to the end, once.
-      //
-      // ★A TEXT IS PICTURE (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a
-      // cel that carries one has something to show whatever its tiles hold,
-      // so every reader of this oracle — the row's image, the block's tint,
-      // the pixel buttons — counts it without being told about texts. A
-      // sheet's photo is kept with its picture the same way (I-97).
-      return baked.texts.isNotEmpty ||
-          baked.photos.isNotEmpty ||
-          baked.tiles.values.any((tile) => tile.hasInk);
+      return baked.showsSomething;
     }
-    // ⛔Cold and file-backed cels answer by membership, deliberately: asking
-    // them would MATERIALIZE every cel of the project, and this is called
-    // per visible block. They were written from a surface that had ink, and
-    // the moment one is edited it becomes baked and takes the branch above.
-    return _coldCels.containsKey(key) || _fileCels.containsKey(key);
+    // ⛔Cold and file-backed cels are NOT asked by decoding: that would
+    // MATERIALIZE every cel of the project, and this is called per visible
+    // block. They answer with what their head kept — the same question,
+    // asked of the picture the moment its bytes were written
+    // ([AnicelCelFileRef.showsSomething]).
+    // ↩️They answered by membership until 2026-10-24, on the premise that
+    // they were written from a surface that had ink. Three roads write one
+    // that has none — the cooling pass, a wall that shrinks past a cel's
+    // only lines, and a save of a cleared cel opened again — and each such
+    // block read 「그려짐」 again (board a-cooled-empty-cel-reads-drawn).
+    return _kept(key)?.ref.showsSomething ?? false;
   }
 
   /// The cel's current pixels: a VALID display cache at [canvasSize]
@@ -1589,6 +1583,7 @@ class BrushFrameStore {
         canvasSize: surface.canvasSize,
         tileSize: surface.tileSize,
         photoPaths: celPhotoPaths(surface.photos),
+        showsSomething: surface.showsSomething,
         codec: compressed.codec,
         body: compressed.bytes,
       );
@@ -2124,7 +2119,7 @@ class BrushFrameStore {
     if (cut == null) {
       return (rewrite: null);
     }
-    final kept = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, cut));
+    final kept = AnicelCelBlob.ofSurface(key, cut);
     final path = ScratchCelFiles.write(
       _scratchNamespace,
       anicelCelEntryName(key),
@@ -2286,6 +2281,7 @@ class AnicelCelFileRef {
     required this.canvasSize,
     required this.tileSize,
     required this.photoPaths,
+    required this.showsSomething,
   });
 
   /// The ref to the SAME bytes where they are now — moved to another file
@@ -2305,6 +2301,7 @@ class AnicelCelFileRef {
         canvasSize: canvasSize,
         tileSize: tileSize,
         photoPaths: photoPaths,
+        showsSomething: showsSomething,
       );
 
   final String filePath;
@@ -2317,6 +2314,11 @@ class AnicelCelFileRef {
   /// (`AnicelCelBlob.photoPaths`, I-97) — what the media pool asks of a cel
   /// it does not decode.
   final List<String> photoPaths;
+
+  /// Whether the picture these bytes hold has anything to show, as its head
+  /// says (`AnicelCelBlob.showsSomething`) — what a cel's block asks of a
+  /// cel that is not hot ([BrushFrameStore.celHasRenderableContent]).
+  final bool showsSomething;
 }
 
 /// A kept cel rewritten: the bytes it is [kept] as now, in the room, and the
