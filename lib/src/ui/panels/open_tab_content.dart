@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
-import '../../models/app_language.dart';
 import '../text/app_strings.dart';
+import '../timeline/memo_token.dart' show ByIdentity, Kept, keptWhileSame;
 
 /// An open tab's content, built when the tab opens and handed back as the
 /// IDENTICAL instance every time its holder is built again while the tab
@@ -23,9 +23,9 @@ import '../text/app_strings.dart';
 ///   per tab (I-7): a cached canvas went on showing the project that was
 ///   switched away from, because nothing here ran its builder again;
 /// - another LANGUAGE, program or notation (the notation reprints a sheet,
-///   UI-R10 #7) — 🚨four panels subscribed to it for themselves, and the
-///   rest were reached only by the app's root rebuild, which a handed-back
-///   instance stops.
+///   UI-R10 #7) — every keep's fact ([keptWhileSame]), heard here: 🚨four
+///   panels subscribed to it for themselves, and the rest were reached
+///   only by the app's root rebuild, which a handed-back instance stops.
 ///
 /// CONTRACT for [build]: it closes over stable objects only (the session,
 /// long-lived notifiers) and subscribes to what it shows itself.
@@ -46,13 +46,7 @@ class OpenTabContent extends StatefulWidget {
 }
 
 class _OpenTabContentState extends State<OpenTabContent> {
-  ({
-    String tabId,
-    Object? identity,
-    AppLanguageSettings language,
-    Widget content,
-  })?
-  _built;
+  final Map<Type, Kept<(String, ByIdentity<Object?>)>> _held = {};
 
   @override
   void initState() {
@@ -69,22 +63,10 @@ class _OpenTabContentState extends State<OpenTabContent> {
   void _languageChanged() => setState(() {});
 
   @override
-  Widget build(BuildContext context) {
-    final language = AppText.settings.value;
-    final built = _built;
-    if (built != null &&
-        built.tabId == widget.tabId &&
-        identical(built.identity, widget.identity) &&
-        built.language == language) {
-      return built.content;
-    }
-    final content = widget.build();
-    _built = (
-      tabId: widget.tabId,
-      identity: widget.identity,
-      language: language,
-      content: content,
-    );
-    return content;
-  }
+  Widget build(BuildContext context) => keptWhileSame(
+    _held,
+    OpenTabContent,
+    (widget.tabId, ByIdentity(widget.identity)),
+    widget.build,
+  );
 }

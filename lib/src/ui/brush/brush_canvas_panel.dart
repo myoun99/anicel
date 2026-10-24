@@ -9,7 +9,8 @@ import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
 import '../canvas/view_hand.dart';
-import '../timeline/memo_token.dart' show ByIdentity, ByList;
+import '../timeline/memo_token.dart'
+    show ByIdentity, ByList, Kept, keptWhileSame;
 import '../timeline/axis_turn.dart' show sizedAlong;
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';

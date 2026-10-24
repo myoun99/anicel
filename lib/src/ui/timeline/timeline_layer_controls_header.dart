@@ -133,13 +133,13 @@ class TimelineLayerControlsHeader extends KeptPiece {
   /// keep is the header's now (I-57, 10-14). The words are the program
   /// language's, read at build.
   ///
-  /// ⛔Three kinds of slot outlive their mutants (10-14), kept because
-  /// every fact the header shows is here, as a row's are
-  /// ([LayerControlsRowFacts]): the language — the theme is keyed on it, so
-  /// a switch builds the header again anyway; the legend's shape — its
-  /// verbs are its host's, the same for the panel's life; and each metric
-  /// alone — a text scale moves the three together (the controls width is
-  /// the columns' sum on the rail, the row height on the sheet).
+  /// ⛔Two kinds of slot outlive their mutants (10-14), kept because every
+  /// fact the header shows is here, as a row's are
+  /// ([LayerControlsRowFacts]): the legend's shape — its verbs are its
+  /// host's, the same for the panel's life; and each metric alone — a text
+  /// scale moves the three together (the controls width is the columns' sum
+  /// on the rail, the row height on the sheet). ↩️The language was a third,
+  /// said to ride the theme; it is every keep's fact now ([keptWhileSame]).
   @override
   Object? get facts => (
     metrics.layerControlsWidth,
@@ -161,7 +161,6 @@ class TimelineLayerControlsHeader extends KeptPiece {
     displayedOnionSkinOn,
     onCollapseAllLanes != null,
     onExpandAllLanes != null,
-    AppText.language,
   );
 
   /// The legend's menus — this header's flyouts and, published by the panel
