@@ -13,10 +13,9 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨I-57 (10-13, measured on the user's project): every timeline row was
 /// keyed by its layer, so a cut switch threw away every row the window
@@ -90,36 +89,40 @@ extension on _Grid {
   Finder cellsOf(String layer) => find.named('$cells$layer-cells');
 }
 
-Future<EditorSessionManager> _open(WidgetTester tester, _Grid grid) async {
-  await tester.pumpWidget(
-    MaterialApp(
-      home: HomePage(
-        initialProject: Project(
-          id: const ProjectId('berths'),
-          name: 'Berths',
-          createdAt: DateTime.utc(2026, 10, 13),
-          tracks: [
-            Track(
-              id: const TrackId('track'),
-              name: 'Video',
-              cuts: [
-                _cut(_first, ['a1', 'a2', 'a3']),
-                _cut(_second, ['b1', 'b2', 'b3']),
-              ],
-            ),
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it unless [surface] says another — the rows' berths are
+/// the panel's.
+Future<EditorSessionManager> _open(
+  WidgetTester tester,
+  _Grid grid, {
+  Size surface = const Size(640, 320),
+}) async {
+  final session = await pumpTimelineHost(
+    tester,
+    Project(
+      id: const ProjectId('berths'),
+      name: 'Berths',
+      createdAt: DateTime.utc(2026, 10, 13),
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'Video',
+          cuts: [
+            _cut(_first, ['a1', 'a2', 'a3']),
+            _cut(_second, ['b1', 'b2', 'b3']),
           ],
         ),
-      ),
+      ],
     ),
+    surface: surface,
   );
-  await tester.pumpAndSettle();
   if (grid.sheet) {
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
     await tester.pumpAndSettle();
   }
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+  return session;
 }
 
 /// The elements a family of rows is built in, in the rows' order — down
@@ -239,10 +242,13 @@ void main() {
         testWidgets('the keyboard\'s focus in a row builds them afresh', (
           tester,
         ) async {
-          // Room for the sheet's lane headers, under its layers' columns.
-          await tester.binding.setSurfaceSize(const Size(1400, 1200));
-          addTearDown(() => tester.binding.setSurfaceSize(null));
-          final session = await _open(tester, grid);
+          // Room for the sheet's lane headers, under its layers' columns —
+          // the tab as a window of 1400 × 1200 laid it.
+          final session = await _open(
+            tester,
+            grid,
+            surface: const Size(870, 546),
+          );
           // A number being typed in the rows: a lane's, from its pencil.
           // ↩️It was the focus of the blend chip's ink well until that chip
           // became a rail plate (2026-10-24), which Tab passes over as every

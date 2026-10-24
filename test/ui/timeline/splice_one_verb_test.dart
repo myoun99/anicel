@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -13,10 +12,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/project_repository.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/home_page.dart';
 
 /// 🚨★★★ T2·T3 — THE ONE SPLICE, through the session.
 ///
@@ -40,7 +36,7 @@ const _layerId = LayerId('draw');
 void main() {
   testWidgets('a copied block pastes 코마째 and pushes the tail — '
       '유저 예시 A A A B B → A A A P P P B B', (tester) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _select(session, 0, 3);
     session.copyFrameAtCurrentFrame();
@@ -53,7 +49,7 @@ void main() {
   testWidgets('F-152 — copied STANDING, the paste is ONE comma', (
     tester,
   ) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     // Mid-hold, deliberately: which cell of the block the playhead is on
     // must not matter.
@@ -66,7 +62,7 @@ void main() {
   });
 
   testWidgets('F-152 — and linked, one comma of the SAME cel', (tester) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _stand(session, 2);
     session.copyFrameAtCurrentFrame();
@@ -90,7 +86,7 @@ void main() {
       'pastes ONE comma, as the copy from the same press does', (
     tester,
   ) async {
-    final session = await _pump(tester, 'AABBBCC');
+    final session = await _open(tester, 'AABBBCC');
 
     // Mid-block, as the standing copy's pin stands.
     _stand(session, 3);
@@ -115,7 +111,7 @@ void main() {
 
   testWidgets('the linked paste places the SAME cel, and the run is still '
       'the clip\'s length', (tester) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _select(session, 0, 3);
     session.copyFrameAtCurrentFrame();
@@ -132,7 +128,7 @@ void main() {
 
   testWidgets('⛔the relink is gone: pasting on a block start no longer '
       'replaces that block', (tester) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _stand(session, 0);
     session.copyFrameAtCurrentFrame();
@@ -148,7 +144,7 @@ void main() {
 
   testWidgets('a SELECTION replaces what it covers, and the tail absorbs '
       'the difference', (tester) async {
-    final session = await _pump(tester, 'AABBBCC');
+    final session = await _open(tester, 'AABBBCC');
 
     // Copy the 2-cell A block…
     _select(session, 0, 2);
@@ -162,7 +158,7 @@ void main() {
 
   testWidgets('⛔the surplus outside the selection is never overwritten — '
       '「선택범위를 조절하는 의미가 통째로 사라지잖아」', (tester) async {
-    final session = await _pump(tester, 'AAAAABC');
+    final session = await _open(tester, 'AAAAABC');
 
     // A 5-cell clip over a 1-cell selection: B goes, C must not.
     _select(session, 0, 5);
@@ -176,7 +172,7 @@ void main() {
   testWidgets('잘라내기 stores the clip AND takes the original out', (
     tester,
   ) async {
-    final session = await _pump(tester, 'AABBBCC');
+    final session = await _open(tester, 'AABBBCC');
 
     _select(session, 2, 5);
     session.clipboard.cutRunAtCurrentFrame();
@@ -222,7 +218,7 @@ void main() {
   testWidgets('⛔잘라내기 → 독립 붙여넣기 leaves a REAL cel behind', (
     tester,
   ) async {
-    final session = await _pump(tester, 'AABBBCC');
+    final session = await _open(tester, 'AABBBCC');
 
     _select(session, 2, 5);
     session.clipboard.cutRunAtCurrentFrame();
@@ -244,7 +240,7 @@ void main() {
 
   testWidgets('the cut length is never asked: a push past the end line '
       'stays past the end line', (tester) async {
-    final session = await _pump(tester, 'AAAA', duration: 4);
+    final session = await _open(tester, 'AAAA', duration: 4);
 
     _select(session, 0, 4);
     session.copyFrameAtCurrentFrame();
@@ -269,7 +265,7 @@ void main() {
   testWidgets('복제 duplicates the block you are standing on, at its END', (
     tester,
   ) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _stand(session, 1); // mid-hold, deliberately
     session.frameVerbs.duplicateActiveBlock(linked: false);
@@ -282,7 +278,7 @@ void main() {
   });
 
   testWidgets('링크복제 makes no new cel', (tester) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _stand(session, 0);
     session.frameVerbs.duplicateActiveBlock(linked: true);
@@ -292,7 +288,7 @@ void main() {
   });
 
   testWidgets('⛔복제 does not touch the clipboard', (tester) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _select(session, 3, 5);
     session.copyFrameAtCurrentFrame(); // B's block is on the clipboard
@@ -311,7 +307,7 @@ void main() {
   testWidgets('⛔복제 ignores the selection — it acts on the active block', (
     tester,
   ) async {
-    final session = await _pump(tester, 'AAABB');
+    final session = await _open(tester, 'AAABB');
 
     _select(session, 3, 5); // B is the selected RANGE…
     session.selectFrameIndex(0); // …and the playhead stands back on A
@@ -325,7 +321,7 @@ void main() {
   });
 
   testWidgets('undo puts the whole splice back in one step', (tester) async {
-    final session = await _pump(tester, 'AABBBCC');
+    final session = await _open(tester, 'AABBBCC');
 
     _select(session, 2, 5);
     session.clipboard.cutRunAtCurrentFrame();
@@ -336,23 +332,20 @@ void main() {
   });
 }
 
-Future<EditorSessionManager> _pump(
+/// The session over [cells] — no screen: what this file proves is the
+/// session's (heavy-tests-timeline, 2026-10-25: it opened the app for each
+/// case and pressed nothing on it).
+Future<EditorSessionManager> _open(
   WidgetTester tester,
   String cells, {
   int? duration,
 }) async {
-  late ProjectRepository repository;
-  await tester.pumpWidget(
-    MaterialApp(
-      home: HomePage(
-        initialProject: _project(cells, duration ?? cells.length + 8),
-        onRepositoryCreated: (repo) => repository = repo,
-      ),
-    ),
+  final session = EditorSessionManager(
+    initialProject: _project(cells, duration ?? cells.length + 8),
   );
-  await tester.pumpAndSettle();
-  expect(repository.requireProject().tracks, isNotEmpty);
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+  addTearDown(session.dispose);
+  expect(session.repository.requireProject().tracks, isNotEmpty);
+  return session;
 }
 
 void _stand(EditorSessionManager session, int frameIndex) {

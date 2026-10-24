@@ -11,11 +11,9 @@ import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
-import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
     show InstructionEventDialog;
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart'
     show editActiveInstance;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
@@ -26,6 +24,8 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
 import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart' show TimelineTabHost;
+
+import '../../helpers/timeline_host.dart';
 
 /// The TRANSITION row inside a CUT's timeline — a projection you can edit.
 ///
@@ -64,16 +64,12 @@ void main() {
     WidgetTester tester,
     MapEntry<int, InstructionEvent> Function(int firstDuration) spanAt,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      // The app's window of 1400 × 900 laid the tab so.
+      surface: const Size(870, 396),
     );
-    await tester.pumpAndSettle();
-
-    final session = tester
-        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
-        .session;
     session.cutVerbs.createCut();
     await tester.pumpAndSettle();
     final first = session.repository.requireProject().tracks.first.cuts.first;
@@ -216,15 +212,12 @@ void main() {
       'view; an inside one stays clean; the refused block still draws', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    final session = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      // The app's window of 1400 × 900 laid the tab so.
+      surface: const Size(870, 396),
     );
-    await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
-        .session;
     session.cutVerbs.createCut();
     await tester.pumpAndSettle();
     final first = session.repository.requireProject().tracks.first.cuts.first;
@@ -304,8 +297,9 @@ void main() {
         );
         // The sheet runs its frames down the screen, and at 900 tall the
         // mark's tail sat below the window — measured: a press there hit
-        // nothing but the view.
-        await tester.binding.setSurfaceSize(const Size(1400, 1600));
+        // nothing but the view. 746: the tab as a window of 1400 × 1600
+        // laid it.
+        await tester.binding.setSurfaceSize(const Size(870, 746));
         await tester.pumpAndSettle();
       }
       expect(
