@@ -106,8 +106,11 @@ void main() {
     if (decoder == null || !decoder.isSupported) {
       return;
     }
-    // Twelve pictures at 24, whose end Media Foundation hands over as
-    // 4999999 hundred-nanosecond ticks — rounded, a tick short of twelve.
+    // Twelve pictures at 24 a tick short of twelve frames either way they
+    // are read: the track says 11999/24000 (what AVFoundation counts), and
+    // Media Foundation hands the last picture's end over as 4999999 100ns
+    // ticks. ↩️Red on the Mac and TestFlight builds of 2026-10-24 while
+    // only the Windows backend counted to the nearest frame.
     final document = decoder.openDocument(
       File('test/fixtures/tone_with_video.mp4').absolute.path,
     );

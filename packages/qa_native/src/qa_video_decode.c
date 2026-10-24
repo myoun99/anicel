@@ -261,6 +261,20 @@ static void qa_rate_to_fraction(double rate, int32_t* num, int32_t* den) {
 /// 73프레임째의 빈 화면」, only in the other direction. Media Foundation's
 /// path had always done this in integers; passing through seconds would
 /// have been a REGRESSION dressed as unification.
+///
+/// 🚨★★★**TO THE NEAREST FRAME, FOR EVERY BACKEND.** A length a tick short
+/// of whole frames is still whole frames: Media Foundation hands its times
+/// over rounded to 100ns, so twelve frames at 24 end at 4999999, and a
+/// container may write a track's length one tick short of its samples —
+/// the repo's own `tone_with_video.mp4` holds twelve pictures (stts
+/// 12 × 1000) in a track it says is 11999/24000 long. Truncated, both are
+/// eleven. The half frame of slack is the one a stamp is given
+/// ([qa_sample_reaches]).
+/// ↩️It was Windows' alone first (검증 2026-10-23,
+/// windows-counts-a-movie-by-its-longest-track), added inside that backend
+/// — and the Apple-built engine, counting the same fixture through this
+/// law, came back eleven on the Mac and TestFlight builds the next day. A
+/// rule one backend keeps for itself is the difference between them.
 static int64_t qa_frame_count_for(int64_t duration_ticks,
                                   int64_t ticks_per_second,
                                   int32_t fps_num,
@@ -269,8 +283,9 @@ static int64_t qa_frame_count_for(int64_t duration_ticks,
       fps_num <= 0) {
     return 1;
   }
-  const int64_t count = (duration_ticks * (int64_t)fps_num) /
-                        (ticks_per_second * (int64_t)fps_den);
+  const int64_t per_frame = ticks_per_second * (int64_t)fps_den;
+  const int64_t count =
+      (duration_ticks * (int64_t)fps_num + per_frame / 2) / per_frame;
   return count < 1 ? 1 : count;
 }
 
@@ -672,20 +687,17 @@ static int32_t qa_backend_open(const char* path,
   // says it.
   //
   // ⚠️Media Foundation hands every time over rounded to its 100ns tick, so
-  // twelve frames at 24 end at 4999999 — a tick short of twelve, which a
-  // count that truncates calls eleven. The end is counted to the nearest
-  // frame: the half a frame of slack a stamp is given ([qa_sample_reaches]).
+  // twelve frames at 24 end at 4999999 — a tick short of twelve.
+  // [qa_frame_count_for] counts to the nearest frame for every backend.
   // ⛔Where the samples do not say, the presentation keeps the old count
   // rather than none, which would be a worse bug than the one above.
-  int64_t duration_100ns = presentation_100ns;
-  if (video_end_100ns > 0 && g_doc.fps_num > 0 && g_doc.fps_den > 0) {
-    duration_100ns =
-        video_end_100ns + (5000000LL * g_doc.fps_den) / g_doc.fps_num;
-  }
+  const int64_t duration_100ns =
+      video_end_100ns > 0 ? video_end_100ns : presentation_100ns;
 
   // 10,000,000 hundred-nanosecond ticks in a second. ⛔The 「at least one
-  // frame」 clamp is NOT repeated here — [qa_frame_count_for] carries it for
-  // every backend, which is the only way three of them can agree.
+  // frame」 clamp and the rounding are NOT repeated here —
+  // [qa_frame_count_for] carries them for every backend, which is the only
+  // way three of them can agree.
   g_doc.frame_count = qa_frame_count_for(duration_100ns, 10000000LL,
                                          g_doc.fps_num, g_doc.fps_den);
   return 1;
