@@ -954,20 +954,16 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _clipToggle(BuildContext context) {
     final onToggle = onToggleLayerClip;
     if (onToggle == null || !layer.kind.takesClipping) return null;
-    return acrossBox(
-      axis,
-      26,
-      child: ClipButton(
-        name: '$keyPrefix-layer-clip-${layer.id}',
-        isOn: layer.clipsToBelow,
-        size: railSlotBox(
-          axis,
-          slot: layerClipSlotWidth,
-          across: 26,
-          iconSize: 16,
-        ),
-        onPressed: () => onToggle(layerIdNow(context, layer.id)),
+    return ClipButton(
+      name: '$keyPrefix-layer-clip-${layer.id}',
+      isOn: layer.clipsToBelow,
+      size: railSlotBox(
+        axis,
+        slot: layerClipSlotWidth,
+        across: 26,
+        iconSize: 16,
       ),
+      onPressed: () => onToggle(layerIdNow(context, layer.id)),
     );
   }
 
@@ -1007,29 +1003,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
     if (onToggle == null || !layer.kind.takesOnionSkin) {
       return null;
     }
-    return acrossBox(
-      axis,
-      26,
-      child: RailSwipeColumnPointer(
-        child: RailGlyphButton(
-          name: '$keyPrefix-layer-onion-${layer.id}',
-          tooltip: onionSkinEnabled
-              ? AppText.strings.railOnionSkinOn
-              : AppText.strings.railOnionSkin,
-          size: railSlotBox(
-            axis,
-            slot: layerOnionSlotWidth,
-            across: 26,
-            iconSize: 15,
-          ),
-          glyph: RailIconGlyph(
-            Icons.filter_none,
-            color: onionSkinEnabled
-                ? colorScheme.primary
-                : colorScheme.outline.withValues(alpha: 0.45),
-          ),
-          onPressed: () => onToggle(layerIdNow(context, layer.id)),
+    return RailSwipeColumnPointer(
+      child: RailGlyphButton(
+        name: '$keyPrefix-layer-onion-${layer.id}',
+        tooltip: onionSkinEnabled
+            ? AppText.strings.railOnionSkinOn
+            : AppText.strings.railOnionSkin,
+        size: railSlotBox(
+          axis,
+          slot: layerOnionSlotWidth,
+          across: 26,
+          iconSize: 15,
         ),
+        glyph: RailIconGlyph(
+          Icons.filter_none,
+          color: onionSkinEnabled
+              ? colorScheme.primary
+              : colorScheme.outline.withValues(alpha: 0.45),
+        ),
+        onPressed: () => onToggle(layerIdNow(context, layer.id)),
       ),
     );
   }

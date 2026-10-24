@@ -78,6 +78,8 @@ void main() {
     await pump(
       tester,
       RowControlSurface(
+        axis: Axis.horizontal,
+        extent: 40,
         child: SizedBox(
           width: 40,
           height: 24,
@@ -99,7 +101,11 @@ void main() {
       tester,
       const Row(
         children: [
-          RowControlSurface(child: SizedBox(width: 30, height: 24)),
+          RowControlSurface(
+            axis: Axis.horizontal,
+            extent: 30,
+            child: SizedBox(width: 30, height: 24),
+          ),
           SizedBox(width: 120, height: 24, key: ValueKey<String>('name')),
         ],
       ),
@@ -135,7 +141,11 @@ void main() {
         },
         child: const Row(
           children: [
-            RowControlSurface(child: SizedBox(width: 40, height: 24)),
+            RowControlSurface(
+              axis: Axis.horizontal,
+              extent: 40,
+              child: SizedBox(width: 40, height: 24),
+            ),
             SizedBox(
               width: 120,
               height: 24,

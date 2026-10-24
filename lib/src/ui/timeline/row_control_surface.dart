@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
 
 import '../input/hit_path.dart';
+import 'axis_turn.dart';
 
 /// A CONTROL, not a place to grab the row by (H1, 유저 2026-08-21).
 ///
@@ -24,23 +25,42 @@ import '../input/hit_path.dart';
 /// later is covered by construction and a slot left empty stays grabbable
 /// (reserved space is not a button).
 ///
-/// ★It IS the [MetaData] rather than a widget that builds one: every slot
-/// of every rail row wears it, and a wrapper that only forwards its child
-/// is one element per slot paid on every panel reopen (card
-/// frame-panels-build-in-one-frame, 2026-10-25).
-class RowControlSurface extends MetaData {
-  const RowControlSurface({super.key, required Widget super.child})
-    : super(
-        metaData: marker,
-        // TRANSLUCENT: the control underneath must still receive the press.
-        // This widget adds itself to the hit path; it does not take the
-        // path away from what it wraps.
-        behavior: HitTestBehavior.translucent,
-      );
+/// ★It IS the slot — [extent] along [axis], as [alongBox] stands an empty
+/// one — rather than a mark inside a `SizedBox`: every filled slot of every
+/// rail row wears it, and two boxes where one does is one element per slot
+/// paid on every panel reopen (card frame-panels-build-in-one-frame,
+/// 2026-10-25).
+class RowControlSurface extends SingleChildRenderObjectWidget {
+  const RowControlSurface({
+    super.key,
+    required this.axis,
+    required this.extent,
+    required Widget super.child,
+  });
 
-  /// The sentinel the hit-test looks for. Identity, not a type: any
-  /// widget may carry it without inheriting anything.
-  static const Object marker = _RowControlSurfaceMarker();
+  /// The rail's own direction.
+  final Axis axis;
+
+  /// How long the slot is along [axis]; the other way it is what it holds.
+  final double extent;
+
+  /// What [alongBox] would hold its child to.
+  BoxConstraints get _along {
+    final box = alongBox(axis, extent);
+    return BoxConstraints.tightFor(width: box.width, height: box.height);
+  }
+
+  @override
+  RenderRowControlSurface createRenderObject(BuildContext context) =>
+      RenderRowControlSurface(_along);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderRowControlSurface renderObject,
+  ) {
+    renderObject.additionalConstraints = _along;
+  }
 
   /// Whether the press at [globalPosition] landed on a control INSIDE the
   /// subtree of [host].
@@ -59,13 +79,29 @@ class RowControlSurface extends MetaData {
     if (box is! RenderBox || !box.hasSize) {
       return false;
     }
-    return hitPathWithin(box, globalPosition).any(
-      (target) =>
-          target is RenderMetaData && identical(target.metaData, marker),
-    );
+    return hitPathWithin(
+      box,
+      globalPosition,
+    ).any((target) => target is RenderRowControlSurface);
   }
 }
 
-class _RowControlSurfaceMarker {
-  const _RowControlSurfaceMarker();
+/// A filled rail slot: sized as the `SizedBox` it stands for, and on the
+/// hit path wherever a press lands inside it.
+class RenderRowControlSurface extends RenderConstrainedBox {
+  RenderRowControlSurface(BoxConstraints along)
+    : super(additionalConstraints: along);
+
+  /// TRANSLUCENT: the control underneath must still receive the press. The
+  /// slot adds itself to the hit path; it does not take the path away from
+  /// what it holds.
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!size.contains(position)) {
+      return false;
+    }
+    final hit = hitTestChildren(result, position: position);
+    result.add(BoxHitTestEntry(this, position));
+    return hit;
+  }
 }

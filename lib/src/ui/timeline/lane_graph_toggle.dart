@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/rail_glyph_button.dart';
-import 'axis_turn.dart';
 import 'layer_label_controls.dart'
     show RailSwipeColumnPointer, layerGraphSlotWidth, layerLanePinSlotWidth;
 import 'layer_rail_columns.dart' show railSlotBox;
@@ -55,18 +54,14 @@ class LaneGraphToggle extends StatelessWidget {
         on ? strings.railLanePinOn : strings.railLanePin,
       ),
     };
-    return acrossBox(
-      axis,
-      26,
-      child: RailSwipeColumnPointer(
-        child: RailGlyphButton(
-          name: name,
-          tooltip: tooltip,
-          size: railSlotBox(axis, slot: slot, across: 26, iconSize: 15),
-          isSelected: on,
-          glyph: RailIconGlyph(icon),
-          onPressed: onToggle,
-        ),
+    return RailSwipeColumnPointer(
+      child: RailGlyphButton(
+        name: name,
+        tooltip: tooltip,
+        size: railSlotBox(axis, slot: slot, across: 26, iconSize: 15),
+        isSelected: on,
+        glyph: RailIconGlyph(icon),
+        onPressed: onToggle,
       ),
     );
   }

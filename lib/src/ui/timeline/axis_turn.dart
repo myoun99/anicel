@@ -19,9 +19,12 @@ SizedBox alongBox(Axis axis, double extent, {Widget? child}) =>
     ? SizedBox(width: extent, child: child)
     : SizedBox(height: extent, child: child);
 
-/// A box of [extent] across [axis]. The rail wraps its icon buttons in one:
-/// an M3 IconButton otherwise inflates its layout box to the 48px minimum
-/// tap target and overflows the row.
+/// A box of [extent] across [axis]; the other dimension is the child's own.
+///
+/// ↩️The rail wrapped its icon buttons in one while they were M3
+/// IconButtons, which inflate to the 48px tap target. A rail button's box
+/// is its slot's now (`railSlotBox`), so the wrap held nothing and went
+/// (card frame-panels-build-in-one-frame, 2026-10-25).
 SizedBox acrossBox(Axis axis, double extent, {Widget? child}) =>
     axis == Axis.horizontal
     ? SizedBox(height: extent, child: child)
