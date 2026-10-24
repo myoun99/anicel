@@ -15,8 +15,8 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★THE ACTIVE LAYER AT A LEVEL IS ITS TILES HALVED (render round 4c,
 /// 2026-09-16). Below 100% the display buffer is a level, and until 4c the
@@ -92,14 +92,13 @@ void main() {
     required Size logicalSize,
     required BitmapSurfacePainter live,
     required LayerFrameImageCache images,
-    DisplayBufferCache? cache,
   }) => MaterialApp(
     home: Scaffold(
       body: Center(
         child: SizedBox(
           width: logicalSize.width,
           height: logicalSize.height,
-          child: CanvasLayerStackView(
+          child: TheFrameAsItStands(
             nodes: const [
               CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
             ],
@@ -109,7 +108,6 @@ void main() {
             activeSurfacePainter: live,
             paintPaper: true,
             paperBackground: ProjectBackground.defaultBackground,
-            debugBufferCache: cache,
           ),
         ),
       ),
@@ -119,7 +117,7 @@ void main() {
   CustomPainter painterOf(WidgetTester tester) => tester
       .widgetList<CustomPaint>(
         find.descendant(
-          of: find.byType(CanvasLayerStackView),
+          of: find.byType(TheFrameAsItStands),
           matching: find.byType(CustomPaint),
         ),
       )
@@ -154,8 +152,6 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final buffers = DisplayBufferCache();
-    addTearDown(buffers.dispose);
     final live = BitmapSurfacePainter(
       surface: columns(),
       showTransparentBackground: false,
@@ -169,12 +165,10 @@ void main() {
         logicalSize: logicalSize,
         live: live,
         images: images,
-        cache: buffers,
       ),
     );
     await tester.pumpAndSettle();
     final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
-    expect(buffers.lastBufferLevel, 2);
     for (var i = 0; i < bytes.length; i += 4) {
       expect(bytes[i + 3], 255, reason: 'pixel ${i ~/ 4} is opaque');
       expect(
@@ -227,8 +221,6 @@ void main() {
     );
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final buffers = DisplayBufferCache();
-    addTearDown(buffers.dispose);
     final boundary = GlobalKey();
     const logicalSize = Size(64, 40);
     await tester.pumpWidget(
@@ -240,7 +232,7 @@ void main() {
               child: SizedBox(
                 width: logicalSize.width,
                 height: logicalSize.height,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: const [
                     CompositeLeaf<CanvasStackRow>(
                       CanvasActiveLayerRow(opacity: 1),
@@ -255,7 +247,6 @@ void main() {
                   ),
                   paintPaper: true,
                   paperBackground: ProjectBackground.defaultBackground,
-                  debugBufferCache: buffers,
                 ),
               ),
             ),
@@ -271,7 +262,6 @@ void main() {
       image.dispose();
       return data!.buffer.asUint8List();
     }))!;
-    expect(buffers.lastBufferLevel, 1);
     // Every EVEN device x covers canvas x = 2·dx and 2·dx + 1, and 2·dx is
     // a multiple of four: one ink column of the two. A level tile reads
     // the mean (127); nearest reads the column itself (0).

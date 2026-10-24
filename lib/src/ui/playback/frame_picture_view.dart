@@ -14,8 +14,8 @@ import '../canvas/canvas_layer_stack_view.dart'
         CanvasStackRow,
         LiftedRowPainters,
         LiveRows,
+        LiveSurfaceTokens,
         StackedFrame;
-import '../canvas/display_buffer_cache.dart' show LiveSurfaceTokens;
 import '../canvas/display_resample.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -155,6 +155,13 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// What of the live rows the picture shown holds, to measure their next
   /// change from — null while it cannot be told.
+  ///
+  /// 🚨NULL IS 「nothing held」, never an empty set of tokens: an EMPTY
+  /// cel's tokens are empty too, and they are a base to measure from — a
+  /// stamp's usual target is an empty cel. ↩️The display buffer marked
+  /// 「nothing kept」 with a sentinel it compared by identity, after a check
+  /// by emptiness refused the stamp's ghost its patch on every move there
+  /// (F-130).
   LiveSurfaceTokens? _held;
 
   /// What of the frame is drawn as it stands over the picture shown.
@@ -194,12 +201,23 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (!identical(oldWidget.run.pictures, widget.run.pictures)) {
       _letGo(oldWidget.run.pictures.store);
     }
-    if (!identical(oldWidget.nodes, widget.nodes) ||
+    final handedAnew =
+        !identical(oldWidget.nodes, widget.nodes) ||
         !_sameLive(oldWidget.live, widget.live) ||
-        oldWidget.wholeFrames != widget.wholeFrames) {
+        oldWidget.wholeFrames != widget.wholeFrames;
+    if (handedAnew) {
       _standLive();
     }
+    // 🚨THE FRAME FIRST, THEN WHAT ITS LIVE ROWS MOVED: rows handed with
+    // another frame are that frame's. Measured against the picture of the
+    // frame left, they were patched INTO it — and every screen showing that
+    // frame drew the other one wherever the two differ (F-104 again: the
+    // frame you left stayed where the frame you went to has nothing, once
+    // you went back and forth).
     _look();
+    if (handedAnew && widget.live != null) {
+      _liveRowsHandedAnew();
+    }
   }
 
   @override
@@ -236,7 +254,6 @@ class _FramePictureViewState extends State<FramePictureView> {
     _live = frame;
     if (live != null) {
       _liveChanges = frame.changes;
-      _liveRowsHandedAnew();
     }
     final nodes = widget.nodes;
     if (!_pictures.allInHand(nodes, widget.picture)) {
@@ -395,10 +412,11 @@ class _FramePictureViewState extends State<FramePictureView> {
         from) {
       return false;
     }
-    // What is still out of it goes in at the paint after this build, under
-    // the key it moves to ([_catchUp]) — painted whatever its painter
-    // compares. ↩️It was caught up here first, as the move's own, until the
-    // change went in under the key a picture moves to: the same texels.
+    // What is still out of it goes in under the key it moves to
+    // ([_catchUp]) — where the build hands the live rows anew, and at the
+    // paint after it, painted whatever its painter compares. ↩️It was caught
+    // up here first, as the move's own, until the change went in under the
+    // key a picture moves to: the same texels.
     _repaint.value += 1;
     if (_standing.whole || !_store.move(from: from, to: key)) {
       return false;

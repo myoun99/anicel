@@ -201,12 +201,6 @@ const _notCensused = <String, String>{
 
   // — Real holdings that reach the census through something else. The
   // `via:` prefix names the reader, and the test checks it exists.
-  'lib/src/ui/canvas/display_buffer_cache.dart → heldBytes':
-      'via:stackBufferBytes — the census PULLS from holders the session '
-      'owns and this lives in a widget State, so each stack view pushes it '
-      'onto RenderCaches under its own name — the canvas, a live conte '
-      'picture, each cut of the track stack — the way the media viewers '
-      'already do, one census row',
   'lib/src/native/native_upload_cache.dart → residentBytes':
       'via:nativeUploadBytes — the engine keeps two of these (stamp bytes, '
       'mask alphas) and sums them; ALSO ledgered because the bare name is '
@@ -215,7 +209,7 @@ const _notCensused = <String, String>{
   'lib/src/ui/storyboard_cut_thumbnail_store.dart → thumbnailBytes':
       'via:storyboardThumbnailBytes — the store lives in the workspace '
       'State the session does not own, so the workspace pushes it onto '
-      'RenderCaches, the way the canvas buffer and the viewers are',
+      'RenderCaches, the way the viewers are',
   'lib/src/ui/sheet/sheet_image_cache.dart → decodedBytes':
       'via:sheetImageBytes — the sheets\' image cache lives in the '
       'workspace too, and pushes onto RenderCaches as the thumbnails do',
@@ -226,10 +220,6 @@ const _notCensused = <String, String>{
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
-  'lib/src/ui/canvas/static_composite_bake.dart → heldBytes':
-      'via:stackBufferBytes — the view that owns the bake reports it '
-      'together with its display buffer: both are the view holding a '
-      'raster of itself',
 };
 
 /// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,
@@ -396,13 +386,9 @@ const _imageHolders = <String, String>{
       'block only carries them into a paint',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
       'counted:liveImageBytes',
-  'lib/src/ui/canvas/static_composite_bake.dart → _rasters':
-      'counted:heldBytes',
   'lib/src/ui/canvas/canvas_layer_stack_view.dart → _superseded':
       'clones a settle replaced, kept only until the build the settle asks '
-      'for; each is of a picture the display buffer\'s kept image drew and '
-      'still pins until its next compose, so nothing is held through them '
-      'that the buffer does not hold anyway',
+      'for: the paint before it drew with them, and nothing keeps a paint',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
       'counted:decodedBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':

@@ -1,28 +1,5 @@
 part of '../canvas_layer_stack_view.dart';
 
-/// What a display-buffer miss can start from — the carried base to patch
-/// (with the live dirty rect), the previous buffer to scroll, or neither —
-/// and what the live surface looks like now, stored with the buffer this
-/// miss makes so the NEXT miss can measure from it.
-/// A base to start a miss from: the image, the rect its pixels cover, the
-/// tokens the dirty rect is measured from, and whether drawing it forms a
-/// link in the deferred chain (only the cache's HEAD does; its real base
-/// does not — `DisplayBufferCache` says why).
-typedef _Base = ({
-  ui.Image image,
-  Rect rect,
-  LiveSurfaceTokens tokens,
-  bool deferred,
-});
-
-typedef _MissPlan = ({
-  _Base? base,
-  Rect? dirty,
-  _Base? scroll,
-  bool canScroll,
-  LiveSurfaceTokens? tokens,
-});
-
 /// A surface row's own paint: what its layer composites with.
 typedef _SurfaceRowPaint = ({
   double opacity,
@@ -101,23 +78,15 @@ class _SurfaceSlot {
   }();
 }
 
-/// Who paints a node's children under a walk — the plain walk, or the split
-/// walk that descends the chain enclosing the active layer and replays a
-/// recording for the rest — [within] the node's own buffer, which is what
-/// reads them ([_LayerStackPaintPass._bufferBoundsFor]).
-typedef _ChildPainter =
-    void Function(
-      Canvas canvas,
-      List<CompositeNode<_PaintRow>> children,
-      double rasterScale,
-      Rect within,
-    );
-
 /// ONE PAINT OF THE LAYER STACK — the walk that draws the composite tree
-/// under the viewport, the split that paints the chain enclosing the active
-/// layer live and replays a recording for the rest, the paper and the
-/// backdrop, and the one buffer at canvas resolution that is resampled
-/// once.
+/// under the viewport, the paper, and the one buffer at canvas resolution
+/// that is resampled once.
+///
+/// ↩️It also painted the chain enclosing the active layer live and replayed
+/// a recording for the rest (`StaticCompositeBake`), and kept the buffer
+/// from paint to paint (`DisplayBufferCache`) — patched where a stroke
+/// moved, carried by a pan — until a frame became one picture its strokes
+/// are patched into (one-picture-per-frame ②-5a, 2026-10-25).
 ///
 /// 🚨A collaborator carved out of `_LayerStackPainter` (the audit's
 /// cognitive cut, Round 6, 2026-09-03): `paint` was 784 lines with six
@@ -184,16 +153,17 @@ class _LayerStackPaintPass {
   );
 
   // One paint's geometry: set by [paint] before the walk below reads it.
-  // The page rect, the on-screen part of the pasteboard, the content the
-  // display buffer must cover, the part of it the bake records over, and
-  // the active slot's two extents, each read once.
+  // The page rect, the on-screen part of the pasteboard and the content the
+  // display buffer must cover, each read once.
   late final Rect _canvasRect;
   late final Rect _visibleCanvasRect;
   late final Rect _contentExtent;
-  late final Rect _bakeExtent;
-  Rect? _memoCommittedExtent;
 
   void paint(Canvas canvas, Size size) {
+    // What this paint can show: the view, or what of it the canvas is
+    // clipped to — read before the viewport transform, in the view's own
+    // coordinates ([_reachOf]).
+    final shown = _reachOf(canvas, Offset.zero & size);
     canvas.save();
     canvas.clipRect(Offset.zero & size);
     applyViewportTransform(
@@ -252,7 +222,7 @@ class _LayerStackPaintPass {
       viewportInverseTransformMatrix(
         renderSnappedViewport(_painter.viewport, _painter.devicePixelRatio),
       ),
-      Offset.zero & size,
+      shown,
     );
     final pasteboardRect = _painter.canvasSize
         .pasteboardAt(_painter.pasteboardReach)
@@ -272,44 +242,23 @@ class _LayerStackPaintPass {
     }
 
     // What a group's buffer is sized by and, unioned, what the one display
-    // buffer covers — the law is [_compositeExtentWith]'s.
-    _contentExtent = _compositeExtentWith(_activeSurfaceExtent);
+    // buffer covers — the law is [_compositeExtent]'s.
+    _contentExtent = _compositeExtent();
     if (_contentExtent.isEmpty) {
       canvas.restore();
       return;
     }
-    // A3: the recordings depend on this rect and the build-time key cannot
-    // carry it (it is a layout fact). Declared HERE, before any slot is
-    // consulted, so a resized panel re-records instead of replaying
-    // closures that captured the old bounds — or worse, blitting the old
-    // raster with a src rect computed from the new dimensions.
-    //
-    // 🚨★★★WITHOUT THE LIVE DRAWS (review 2026-09-15). F-85 made the buffer
-    // cover everything the active slot draws, and this declared THAT extent:
-    // a stamp ghost hovering past the ink, a stroke entering a new pasteboard
-    // tile, a float dragged across the pasteboard — every such frame dropped
-    // every recording and rasterised the whole backdrop again under the
-    // pointer. Nothing the bake records draws the live slot (the backdrop is
-    // the paper and the rows below it, every other slot a sibling), so it
-    // records over the same composite measured with the active row at its
-    // COMMITTED surface, which no hover and no stroke in flight moves. The
-    // band a live draw adds lies outside every row the bake holds; the only
-    // backdrop pixels it could have shown are an effect's spread past its own
-    // row, cut there just as the idle buffer's edge cuts them.
-    _bakeExtent = _compositeExtentWith(_committedSurfaceExtent);
-    _painter.bake?.ensureExtent(_bakeExtent);
 
     // The geometry field probe — the numbers every buffer decision depends
     // on and nobody has ever measured on a device: the logical view, the
     // device pixel ratio, the zoom actually worked at, and what the buffer
-    // costs there. The 1928×1200 that circulates is a comment in the bake,
-    // not a measurement.
+    // costs there. ↩️The 1928×1200 that circulated was a comment in the
+    // bake, not a measurement.
     //
     // Same shape as the T12 probe above: release-visible (reports come from
     // release builds), gated on the inspector, deduped through a static.
     // ⛔The zoom is a continuous double — raw in the dedupe key it would
-    // emit on every drag frame, so it is bucketed to 10% steps, and the
-    // counters stay OUT of the key (they change on every stroke step).
+    // emit on every drag frame, so it is bucketed to 10% steps.
     if (InputInspector.visible.value) {
       final bufWidth =
           (_visibleCanvasRect.right.ceilToDouble() -
@@ -346,131 +295,7 @@ class _LayerStackPaintPass {
                 .join(' ');
         InputInspector.note('$key hist $top');
       }
-      final cache = _painter.bufferCache;
-      if (cache != null) {
-        // ⛔THE BUFFER COUNTERS ARE THEIR OWN LINE, ON THEIR OWN CADENCE.
-        // Appended to the geometry line they fell off the inspector's right
-        // edge (유저 스샷 2026-09-13: `…capped=` and nothing after), and
-        // they refreshed only when the GEOMETRY changed, so a stroke could
-        // not be watched at all — the one thing they exist for.
-        //
-        // ⛔ALL THREE COUNTS ARE BUCKETED, NOT JUST THE PATCHES. Keyed raw,
-        // a pan emitted a line PER PAINT (every paint of a pan carries) —
-        // and a line that moves every paint cannot be READ mid-stroke,
-        // which is the one thing it exists for. (While the inspector was a
-        // five-line ring it also evicted the geometry line beside it —
-        // `paint_geometry_probe_test` went red on master, 2026-09-13; the
-        // ring holds one slot per emitter since that day, so eviction is
-        // gone and readability is the reason that remains.) Every 32
-        // patches or carries and every 8 full composes: a paint is ~16ms,
-        // so mid-stroke and mid-pan the line moves about twice a second,
-        // and a zoom that composes whole a few times does not move it at
-        // all.
-        //
-        // ⛔THE CARRY BELONGS BESIDE THE OTHER TWO. A pan that stopped
-        // carrying looks exactly like one that never could, and this line
-        // is what a hands-on report can show.
-        // ⛔`chain` AND `real` BELONG BESIDE THEM FOR THE SAME REASON.
-        // `chain` is how deep the deferred-image chain is NOW — with the
-        // real base landing it should read 0 or 1 mid-stroke; stuck high
-        // it says the snapshots stopped landing and the head is being
-        // derived from under budget. `real` is how many snapshots became
-        // the base — a promotion that never lands looks exactly like one
-        // that works. See [DisplayBufferCache.derivedDepth] and
-        // [DisplayBufferCache.promotedCount]. `drawn` — how many of the
-        // patches rastered no head ([DisplayBufferCache.drawnCount]) — for
-        // the same reason again. ↩️And `apart`, how many recomposes went
-        // apart, while a blend could (F-287).
-        final cadence =
-            'full~${cache.fullCount ~/ 8}'
-            ' patched~${cache.patchedCount ~/ 32}'
-            ' carried~${cache.scrolledCount ~/ 32}';
-        if (cadence != CanvasPaintGeometryProbe.lastCounters) {
-          CanvasPaintGeometryProbe.lastCounters = cadence;
-          InputInspector.note(
-            'buf full=${cache.fullCount}'
-            ' patched=${cache.patchedCount}'
-            ' drawn=${cache.drawnCount}'
-            ' carried=${cache.scrolledCount}'
-            ' chain=${cache.derivedDepth}'
-            ' real=${cache.promotedCount}',
-          );
-        }
-      }
     }
-
-    /// 🚨(v) — the body, with WHO PAINTS THE CHILDREN left open.
-    ///
-    /// It was `_paintNodes` recursing straight into itself. The static bake
-    /// needs the same body with a different child strategy (descend into
-    /// the chain enclosing the active layer, replay a recording for
-    /// everything else), and copying it would have split the folder
-    /// `saveLayer` rules into two versions that then drift apart. One body,
-    /// two strategies.
-
-    /// 🚨★★★ (v) 1단계 — paint the chain that ENCLOSES the active layer live,
-    /// and replay a recording for everything else.
-    ///
-    /// ★The split axis is not "below / above". That was the flat pair this
-    /// tree was built to replace: with the active layer inside a blended
-    /// folder, three sibling painters could not share one `saveLayer` and
-    /// the canvas disagreed with playback (see the file's own header).
-    ///
-    /// There is exactly ONE [_PaintActiveSurface] in the tree, so the path
-    /// from the root to it is a chain of enclosing folders G1…Gn. At every
-    /// level, the siblings BEFORE and AFTER the chain's child are static for
-    /// the whole stroke — the stroke's pixels never pass through them — so
-    /// they bake. The folders ON the chain stay live, because the stroke's
-    /// pixels do go through their buffers.
-    ///
-    /// ⇒ 2n+2 recordings, and n is 0 or 1 in almost every project. At n=0
-    /// that is precisely "one below, one above" — the naive split was not
-    /// wrong, it was this rule's simplest case.
-    ///
-    /// ⚠️Depth identifies a level uniquely BECAUSE the chain is unique;
-    /// that is what makes a bare depth a sound slot id.
-
-    /// Everything this stack is, in CANVAS space: the paper and then the
-    /// layers over it.
-    ///
-    /// Pulled out of `paint` so it can be run against the screen directly OR
-    /// into a recorder. Those are the two halves of stage 2 and they must be
-    /// the same body — a second copy is how "the buffer path draws something
-    /// slightly different" starts.
-
-    /// 🚨★★★ (v) 2단계 후반부 — THE BOTTOM OF THE STACK IS ONE BLIT,
-    /// WHEN THE BLIT PAYS.
-    ///
-    /// Stage 1 stopped the DART walk; the engine still replayed every draw
-    /// in the recording, so a stroke on top of 500 layers re-executed 500
-    /// draws and every folder's `saveLayer` per step. Rasterising the
-    /// bottom collapses all of it to one image, and the raster is redone
-    /// only when the bake key moves — which a stroke step never does.
-    ///
-    /// ★S7 — the raster is a TRADE and the predicate is its price check.
-    /// It swaps N replay ops for one blit, at the cost of a visible-rect
-    /// image resident (4·area bytes, ~9MB at a 1928×1200 view) plus a
-    /// re-rasterisation every time the key moves. Per step, BOTH sides of
-    /// the comparison scale with the same visible area — N draws over the
-    /// rect versus one blit of the rect — so the area term cancels and
-    /// the judgment is the op count alone, decidable statically from the
-    /// node tree with no clock. Below the threshold (a paper-and-two-
-    /// layers document) the picture already replays within a handful of
-    /// engine ops of the blit itself, and the image would buy that
-    /// nothing at megabytes each and a re-raster per key change.
-    ///
-    /// ⛔The BOTTOM only. Everything above the live surface stays a picture:
-    /// a multiply up there has to blend against the stroke, and an image
-    /// drawn `srcOver` cannot. Below the live surface the destination is
-    /// empty, so flattening and replaying are the same picture — which is
-    /// exactly what the parity suite pins.
-
-    /// `intoTheBuffer` is true only when this is composing the display
-    /// buffer. The direct walk deliberately does NOT take the backdrop
-    /// raster: it draws in screen space, so a flattened backdrop would be
-    /// resampled by the CTM as one image while the rest of the stack was
-    /// resampled layer by layer — a third sampling behaviour, in the
-    /// fallback path, for no gain.
 
     // 🚨★★★ (v) 2단계 — ONE BUFFER AT CANVAS RESOLUTION, RESAMPLED ONCE.
     //
@@ -500,23 +325,26 @@ class _LayerStackPaintPass {
           intoTheBuffer: false,
           rasterScale: _displayScale,
         );
-      case final _BufferImage buffer:
-        _blitBuffer(canvas, buffer);
-      case _BufferPicture(:final picture, :final rect):
-        try {
-          // Recorded in the buffer's own pixels, which at level 0 are canvas
-          // pixels less the rect's corner.
-          canvas.save();
-          canvas.translate(rect.left, rect.top);
-          canvas.drawPicture(picture);
-          canvas.restore();
-        } finally {
-          // Safe once drawn, for the reason the image's disposal below is.
-          picture.dispose();
-        }
+      case (:final image, :final rect):
+        _blitBuffer(canvas, image, rect);
     }
     canvas.restore();
   }
+
+  /// What of [rect] a paint into [canvas] can show — all of it, or what of
+  /// it the canvas is clipped to — in [canvas]'s own coordinates.
+  ///
+  /// 🚨★★★HOLE ① AGAIN: NOT INSIDE THE CLIP MEANS NOT PAINTED. A patch on
+  /// its way into a frame's picture is drawn as it stands under its own
+  /// rects, on the screen and into the picture ([StackedFrame]) — and the
+  /// walk under the clip composed everything in view: a stroke's step at
+  /// 4K rastered the whole view's buffer, and the store's patch recorded
+  /// every row of the whole pasteboard (one-picture-per-frame ②-5a,
+  /// 2026-10-25). Cut to the clip, the same pixels inside it: what reads
+  /// past where it lands reads past it as it reads past the view's edge —
+  /// a group's buffer grows by its own spread ([effectBufferBounds]).
+  static Rect _reachOf(Canvas canvas, Rect rect) =>
+      rect.intersect(canvas.getLocalClipBounds());
 
   /// Where the frame lies in the world with no screen around it
   /// ([StackedFrame]): the rect the display buffer covers, the whole
@@ -526,11 +354,13 @@ class _LayerStackPaintPass {
     return wholeLevelPixelsOutward(_contentExtent, 0);
   }
 
-  /// The frame over [frameExtent], in world coordinates, as a miss composes
-  /// the display buffer whole at 100% ([_composeMiss]) — the same body
-  /// with no screen around it.
+  /// The frame over [frameExtent], in world coordinates, as the display
+  /// buffer is composed at 100% ([_composeDisplayBuffer]) — the same body
+  /// with no screen around it, and only where [into] is not clipped away
+  /// ([_reachOf]).
   void paintFrame(Canvas into) {
-    final extent = frameExtent();
+    _standInTheWorld(within: _reachOf(into, Rect.largest));
+    final extent = wholeLevelPixelsOutward(_contentExtent, 0);
     if (extent.isEmpty) {
       return;
     }
@@ -545,24 +375,41 @@ class _LayerStackPaintPass {
   }
 
   /// [paint]'s geometry with the whole pasteboard in view and no viewport:
-  /// the world a frame's picture holds.
-  void _standInTheWorld() {
+  /// the world a frame's picture holds — what of it lies [within] what is
+  /// drawn ([_reachOf]).
+  void _standInTheWorld({Rect within = Rect.largest}) {
     _canvasRect = _painter.canvasSize.canvasRect;
     _visibleCanvasRect = _painter.canvasSize
         .pasteboardAt(_painter.pasteboardReach)
-        .rect;
-    _contentExtent = _compositeExtentWith(_activeSurfaceExtent);
-    _bakeExtent = _contentExtent;
+        .rect
+        .intersect(within);
+    _contentExtent = _compositeExtent();
   }
 
-  void _blitBuffer(Canvas canvas, _BufferImage buffer) {
-    final source = Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight);
+  /// The display buffer — [image], over [rect] in canvas space, whole-pixel
+  /// aligned so the src/dst pair of the final draw is exact: the ONE
+  /// resample the display is entitled to happens in the viewport transform
+  /// and nowhere else.
+  ///
+  /// ⛔THE PIXEL SIZE IS THE IMAGE'S, NEVER THE RECT'S. Below 100% the two
+  /// differ — the image is the rect over 2^level a side — and that is what
+  /// the blit's source rect must say or the picture lands shrunk in the
+  /// corner. This used to be two constructors, one reading the rect for the
+  /// canvas-resolution path and one reading the image for the knee's scaled
+  /// path, and 2026-09-04 the knee path was routed through the rect one by
+  /// mistake: one wrong frame on every miss below the knee. Reading the
+  /// image answers both, because at level 0 the rect is snapped and the
+  /// raster is `toImageSync(rect.width.round(), …)` — the same number, by
+  /// construction.
+  void _blitBuffer(Canvas canvas, ui.Image image, Rect rect) {
+    final source = Offset.zero &
+        Size(image.width.toDouble(), image.height.toDouble());
     try {
       drawOnTheDisplay(
         canvas,
-        buffer.image,
+        image,
         source,
-        buffer.rect,
+        rect,
         viewport: _painter.viewport,
         devicePixelRatio: _painter.devicePixelRatio,
         // The residual, not the device scale: below 100% the buffer is a
@@ -575,9 +422,7 @@ class _LayerStackPaintPass {
       // this frame's display list, and the engine holds its own reference
       // to it from that moment. What `dispose` releases is this handle's
       // claim, not the pixels the list is going to replay.
-      if (buffer.owned) {
-        buffer.image.dispose();
-      }
+      image.dispose();
     }
   }
 
@@ -586,8 +431,7 @@ class _LayerStackPaintPass {
   /// same slot. Read off the committed surface alone, a stroke in flight, a
   /// fill's stamp, the stamp ghost and a transform's float were all cut at
   /// the edge of the ink that had already landed — and came back the moment
-  /// a commit put tiles there. What the DISPLAY BUFFER covers; the bake
-  /// measures by [_committedSurfaceExtent].
+  /// a commit put tiles there. What the DISPLAY BUFFER covers.
   ///
   /// Read ONCE per paint ([_SurfaceSlot.extent]): the node walk asks per
   /// group, and the answer walks every tile and overlay tile the slot holds.
@@ -699,22 +543,11 @@ class _LayerStackPaintPass {
     return null;
   }
 
-  /// The active row at its COMMITTED surface alone, measured as a cached row
-  /// is — what the bake records over, since nothing it records draws the
-  /// live slot (the bake's extent in [paint] says why). Read once, like
-  /// [_activeSurfaceExtent].
-  Rect _committedSurfaceExtent() =>
-      _memoCommittedExtent ??= switch (_painter.activeSurfacePainter) {
-        null => Rect.zero,
-        final painter => surfaceContentWorldRect(painter.surface),
-      };
-
-  /// What the composite covers with the active row measured by
-  /// [activeSurfaceExtent]: the page and every row's buffer bounds, clamped
-  /// to the view. CONTENT, clamped to the storable universe; the pasteboard
-  /// clamp is the backstop a pose needs, since a transform can push a layer
-  /// anywhere and an unbounded rect is an unbounded offscreen.
-  Rect _compositeExtentWith(Rect Function() activeSurfaceExtent) {
+  /// What the composite covers: the page and every row's buffer bounds,
+  /// clamped to the view. CONTENT, clamped to the storable universe; the
+  /// pasteboard clamp is the backstop a pose needs, since a transform can
+  /// push a layer anywhere and an unbounded rect is an unbounded offscreen.
+  Rect _compositeExtent() {
     // 🚨SEEDED WITH THE PAGE, not with the nodes alone.
     //
     // The composite always covers the document: the paper is drawn over the
@@ -724,11 +557,7 @@ class _LayerStackPaintPass {
     // buffer below the page, and the paper went with it.
     var extent = _canvasRect;
     for (final node in _painter.nodes) {
-      final rect = _bufferBoundsFor(
-        node,
-        activeSurfaceExtent,
-        _visibleCanvasRect,
-      );
+      final rect = _bufferBoundsFor(node, _visibleCanvasRect);
       if (rect.isEmpty) {
         continue;
       }
@@ -777,15 +606,11 @@ class _LayerStackPaintPass {
   /// [surfaceContentWorldRect]'s answer — the canvas rect unioned with the
   /// tiles that actually exist — so an ordinary page bounds to 2340×1654 and
   /// never reaches the cap. The fallback stops being reachable, and one
-  /// resolution serves every zoom. For the ACTIVE row it is whatever the
-  /// caller measures it by ([activeSurfaceExtent]): everything the slot
-  /// draws for the display buffer — its committed surface alone cut every
-  /// live draw at the edge of the ink already landed (F-85) — and that
-  /// committed surface for the bake, which never records the live slot
-  /// (review 2026-09-15).
+  /// resolution serves every zoom. For the ACTIVE row it is everything the
+  /// slot draws ([_activeSurfaceExtent]) — its committed surface alone cut
+  /// every live draw at the edge of the ink already landed (F-85).
   Rect _bufferBoundsFor(
     CompositeNode<_PaintRow> node,
-    Rect Function() activeSurfaceExtent,
     Rect within,
   ) => subtreeBufferBounds(
     node,
@@ -796,7 +621,7 @@ class _LayerStackPaintPass {
     within: within,
     extentOf: (row) => switch (row) {
       _PaintImage(:final extent) => extent,
-      _PaintActiveSurface() => activeSurfaceExtent(),
+      _PaintActiveSurface() => _activeSurfaceExtent(),
       // What a row beside the live one draws — its surface, and a lift's
       // float — as the live row's extent is measured
       // ([_activeSurfaceExtent]).
@@ -810,7 +635,7 @@ class _LayerStackPaintPass {
     },
   );
 
-  void _paintNodesWith(
+  void _paintNodes(
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
     // The scale the CTM this walk draws under is at. A group that
@@ -818,7 +643,6 @@ class _LayerStackPaintPass {
     double rasterScale,
     // What reads these nodes ([_bufferBoundsFor]).
     Rect within,
-    _ChildPainter paintChildren,
   ) {
     for (final node in list) {
       // Poses apply at composite time — the stack shows the same picture
@@ -842,37 +666,19 @@ class _LayerStackPaintPass {
         body: () {
           switch (node) {
             case final CompositeGroup<_PaintRow> group:
-              _paintGroupNode(
-                canvas,
-                group,
-                rasterScale,
-                within,
-                paintChildren,
-              );
+              _paintGroupNode(canvas, group, rasterScale, within);
             case final CompositeAdjustment<_PaintRow> adjustment:
-              _paintAdjustmentNode(
-                canvas,
-                adjustment,
-                rasterScale,
-                within,
-                paintChildren,
-              );
+              _paintAdjustmentNode(canvas, adjustment, rasterScale, within);
             case final CompositeBackdropBlend<_PaintRow> blend:
-              _paintBackdropBlendNode(
-                canvas,
-                blend,
-                rasterScale,
-                within,
-                paintChildren,
-              );
+              _paintBackdropBlendNode(canvas, blend, rasterScale, within);
             case final CompositeClip<_PaintRow> clip:
-              _paintClipNode(canvas, clip, rasterScale, within, paintChildren);
+              _paintClipNode(canvas, clip, rasterScale, within);
             case final CompositeOpaque<_PaintRow> opaque:
               drawOpaque(
                 canvas: canvas,
-                bounds: _bufferBoundsFor(opaque, _activeSurfaceExtent, within),
+                bounds: _bufferBoundsFor(opaque, within),
                 paintOf: (into) =>
-                    paintChildren(into, [opaque.of], rasterScale, within),
+                    _paintNodes(into, [opaque.of], rasterScale, within),
               );
             case CompositeLeaf(payload: _PaintPaper()):
               _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
@@ -893,7 +699,6 @@ class _LayerStackPaintPass {
     CompositeGroup<_PaintRow> node,
     double rasterScale,
     Rect within,
-    _ChildPainter paintChildren,
   ) {
     final CompositeGroup<_PaintRow>(:children, :opacity, :blendMode, :effects) =
         node;
@@ -925,7 +730,7 @@ class _LayerStackPaintPass {
     // the display buffer, which a folder inside a blurred one lies
     // past by the outer one's spread (card
     // nested-folder-buffers-read-past-the-view).
-    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent, within);
+    final contentRect = _bufferBoundsFor(node, within);
     assert(
       within.expandToInclude(contentRect) == within,
       'a group buffer must sit inside the buffer that reads it: '
@@ -949,7 +754,7 @@ class _LayerStackPaintPass {
       bounds: groupRect,
       rasterScale: rasterScale,
       paintSubtree: (into, scale) =>
-          paintChildren(into, children, scale, groupRect),
+          _paintNodes(into, children, scale, groupRect),
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
     );
@@ -961,14 +766,13 @@ class _LayerStackPaintPass {
     CompositeAdjustment<_PaintRow> node,
     double rasterScale,
     Rect within,
-    _ChildPainter paintChildren,
   ) {
     final CompositeAdjustment<_PaintRow>(:children, :effects, :mix) = node;
     // R6b: the scope into one buffer, the row's chain onto it —
     // which is what lets a stroke drawn UNDER an adjustment read
     // through the grade while you draw it.
     final pass = resolveAdjustmentScopePass(
-      bounds: _bufferBoundsFor(node, _activeSurfaceExtent, within),
+      bounds: _bufferBoundsFor(node, within),
       effects: effects,
       mix: mix,
     );
@@ -983,7 +787,7 @@ class _LayerStackPaintPass {
       bounds: pass.bufferBounds,
       rasterScale: rasterScale,
       paintSubtree: (into, scale) =>
-          paintChildren(into, children, scale, pass.bufferBounds),
+          _paintNodes(into, children, scale, pass.bufferBounds),
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
     );
@@ -997,19 +801,18 @@ class _LayerStackPaintPass {
     CompositeBackdropBlend<_PaintRow> node,
     double rasterScale,
     Rect within,
-    _ChildPainter paintChildren,
   ) {
     final CompositeBackdropBlend<_PaintRow>(:backdrop, :source, :blendMode) =
         node;
-    final bounds = _bufferBoundsFor(node, _activeSurfaceExtent, within);
+    final bounds = _bufferBoundsFor(node, within);
     drawBlendOverBackdrop(
       canvas: canvas,
       bounds: bounds,
       rasterScale: rasterScale,
       paintBackdrop: (into, scale) =>
-          paintChildren(into, backdrop, scale, bounds),
+          _paintNodes(into, backdrop, scale, bounds),
       paintSource: (into, scale) =>
-          paintChildren(into, [source], scale, bounds),
+          _paintNodes(into, [source], scale, bounds),
       sourceAsIs: _rowAsItIs(source),
       blendMode: blendMode,
       shownWithin: _shownWithin,
@@ -1024,16 +827,15 @@ class _LayerStackPaintPass {
     CompositeClip<_PaintRow> node,
     double rasterScale,
     Rect within,
-    _ChildPainter paintChildren,
   ) {
     final CompositeClip<_PaintRow>(:base, :scope, :opacity, :blendMode) = node;
-    final bounds = _bufferBoundsFor(node, _activeSurfaceExtent, within);
+    final bounds = _bufferBoundsFor(node, within);
     drawClipAsImage(
       canvas: canvas,
       bounds: bounds,
       rasterScale: rasterScale,
-      paintBase: (into, scale) => paintChildren(into, [base], scale, bounds),
-      paintScope: (into, scale) => paintChildren(into, scope, scale, bounds),
+      paintBase: (into, scale) => _paintNodes(into, [base], scale, bounds),
+      paintScope: (into, scale) => _paintNodes(into, scope, scale, bounds),
       paint: layerCompositePaint(
         opacity: opacity,
         blendMode: blendMode,
@@ -1309,91 +1111,10 @@ class _LayerStackPaintPass {
       // artwork un-tinted). The paint alpha still fades the whole
       // ghost.
       tint: tint,
-      // The held image's own: a slot recorded again — every frame a zoom
-      // moves the buffer — lays a crop's whole back once, not per record.
+      // The held image's own: the buffer composed again — every paint of a
+      // view that moves — lays a crop's whole back once, not per compose.
       laidBack: laidBack,
     );
-  }
-
-  void _paintNodes(
-    Canvas canvas,
-    List<CompositeNode<_PaintRow>> list,
-    double rasterScale,
-    Rect within,
-  ) => _paintNodesWith(canvas, list, rasterScale, within, _paintNodes);
-
-  /// [_paintNodes] into a recording the bake keeps — replayed by later
-  /// paints under whatever clip each of them has, so no blend in it is read
-  /// in the frame ([_shownWithin]).
-  void _paintBaked(
-    Canvas canvas,
-    List<CompositeNode<_PaintRow>> list,
-    double rasterScale,
-    Rect within,
-  ) {
-    final shown = _shownWithin;
-    _shownWithin = null;
-    try {
-      _paintNodes(canvas, list, rasterScale, within);
-    } finally {
-      _shownWithin = shown;
-    }
-  }
-
-  void _paintSplit(
-    Canvas canvas,
-    List<CompositeNode<_PaintRow>> list,
-    int depth,
-    double rasterScale,
-    Rect within,
-  ) {
-    final at = list.indexWhere(_LayerStackPainter._enclosesActiveSurface);
-    // Inside the buffer a slot's texel copies are copies at [rasterScale]
-    // only — and a sub-tree raster's scale is its own (a capped one is
-    // smaller) — so the scale is part of what the slot IS. The walk copies
-    // nothing, and names its slots as it always did.
-    //
-    // ⚠️What reads a slot's rows ([within]) bounds its recording but is not
-    // part of what it is, though a live draw past the ink grows it: a row in
-    // a slot lies inside every folder of the chain above it, and a folder's
-    // buffer cut to a row inside it is what reads the folder, grown by its
-    // spread, cut to the row — the folder's own extent, the one a live draw
-    // moves, drops out. So a slot holds while the bake's extent does (card
-    // nested-folder-buffers-read-past-the-view).
-    final slot = _composingTheBuffer ? 'd$depth@$rasterScale' : 'd$depth';
-    if (at < 0) {
-      _painter.bake!.draw(
-        canvas,
-        '$slot:all',
-        (into) => _paintBaked(into, list, rasterScale, within),
-        within: within,
-      );
-      return;
-    }
-    if (at > 0) {
-      _painter.bake!.draw(
-        canvas,
-        '$slot:before',
-        (into) => _paintBaked(into, list.sublist(0, at), rasterScale, within),
-        within: within,
-      );
-    }
-    _paintNodesWith(canvas, [list[at]], rasterScale, within, (
-      into,
-      children,
-      scale,
-      reader,
-    ) {
-      _paintSplit(into, children, depth + 1, scale, reader);
-    });
-    if (at < list.length - 1) {
-      _painter.bake!.draw(
-        canvas,
-        '$slot:after',
-        (into) => _paintBaked(into, list.sublist(at + 1), rasterScale, within),
-        within: within,
-      );
-    }
   }
 
   /// The paper, [intoTheBuffer] or straight onto the screen (the walk).
@@ -1423,86 +1144,6 @@ class _LayerStackPaintPass {
     );
   }
 
-  /// Where the live surface splits the stack (−1 when nothing encloses it),
-  /// whether the backdrop below it pays for a raster, and the rect that
-  /// raster is made over.
-  ({int at, bool rasterPays, Rect rasterRect}) _backdropPlan() {
-    final at = _rootNodes.indexWhere(
-      _LayerStackPainter._enclosesActiveSurface,
-    );
-    final below = at < 0 ? _rootNodes : _rootNodes.sublist(0, at);
-    final rasterPays =
-        _replayOpsOf(below) >= _LayerStackPainter._backdropRasterMinReplayOps;
-    // 🚨THE BAKE'S RECT, NOT THE BUFFER'S (review 2026-09-15). `drawRaster`
-    // keeps one image per slot and does not key it by the rect, which is why
-    // the extent it is declared under has to move whenever that rect does.
-    // The buffer's rect moves with every live draw past the ink and the
-    // bake's extent deliberately does not ([paint]), so the raster is made
-    // over the bake's extent on the buffer's own pixel grid and lands back
-    // on it inside whichever buffer is being composed. Handed the buffer's
-    // rect, a held raster stretched across the grown one.
-    return (
-      at: at,
-      rasterPays: rasterPays,
-      rasterRect: wholeLevelPixelsOutward(_bakeExtent, _level),
-    );
-  }
-
-  void _paintBackdropSplit(Canvas into, double rasterScale) {
-    final plan = _backdropPlan();
-    final at = plan.at;
-    final view = _visibleCanvasRect;
-    // One body, two mechanisms: the record closure is identical either
-    // way, so the fallback cannot drift from the raster — `drawRaster`
-    // records the same ops shifted into the rect and blits them back to
-    // it, which lands pixel-for-pixel where the replay would have. The one
-    // thing the raster leaves out is a replay's spread past that rect: an
-    // effect bleeding past its own row into a band only a live draw opened.
-    // The raster is made at the buffer's own scale — level pixels below
-    // 100% — so its blit back is 1:1 in the buffer whatever the level.
-    void drawBackdrop(String id, void Function(Canvas c) record) {
-      if (plan.rasterPays) {
-        _painter.bake!.drawRaster(
-          into,
-          id,
-          plan.rasterRect,
-          record,
-          rasterScale: rasterScale,
-        );
-      } else {
-        _painter.bake!.draw(into, id, record, within: view);
-      }
-    }
-
-    if (at < 0) {
-      drawBackdrop(
-        'd0:backdrop-all',
-        (c) => _paintBaked(c, _rootNodes, rasterScale, view),
-      );
-      return;
-    }
-    drawBackdrop(
-      'd0:backdrop',
-      (c) => _paintBaked(c, _rootNodes.sublist(0, at), rasterScale, view),
-    );
-    _paintNodesWith(into, [_rootNodes[at]], rasterScale, view, (
-      c,
-      children,
-      scale,
-      reader,
-    ) {
-      _paintSplit(c, children, 1, scale, reader);
-    });
-    if (at < _rootNodes.length - 1) {
-      _painter.bake!.draw(
-        into,
-        'd0:after',
-        (c) => _paintBaked(c, _rootNodes.sublist(at + 1), rasterScale, view),
-        within: view,
-      );
-    }
-  }
-
   /// What the root target holds, bottom → top: the paper, as the bottom row
   /// of the root scope ([onUnderlay]) — inside the backdrop of a blend that
   /// composes over what lies below it, which reads the paper there as a GPU
@@ -1520,42 +1161,29 @@ class _LayerStackPaintPass {
   bool _composingTheBuffer = false;
 
   /// Where the recording being made is shown — whole, once, cut by nothing
-  /// else: the display buffer's rect on the visible canvas, while a miss
-  /// composes it; null otherwise. A blend is read in the frame only inside
-  /// it ([drawBlendOverBackdrop]): the engine cuts the layer a blend reads
-  /// to the clip it is DRAWN under, and the source would then be sampled
-  /// off the backdrop — under Impeller (`--enable-impeller`), a recording
-  /// the bake replayed into a stroke's patch laid a multiply row's ink over
-  /// paper it does not cover, 261 pixels a step.
+  /// else: the display buffer's rect on the visible canvas while it is
+  /// composed, and a frame's extent while its picture is drawn; null
+  /// otherwise. A blend is read in the frame only inside it
+  /// ([drawBlendOverBackdrop]): the engine cuts the layer a blend reads to
+  /// the clip it is DRAWN under, and the source would then be sampled off
+  /// the backdrop — under Impeller (`--enable-impeller`), a recording the
+  /// bake replayed into a stroke's patch laid a multiply row's ink over
+  /// paper it does not cover, 261 pixels a step (↩️the bake went with
+  /// one-picture-per-frame ②-5a).
   Rect? _shownWithin;
 
+  /// Everything this stack is, in CANVAS space: the paper and then the
+  /// layers over it — against the screen directly (the walk) or into the
+  /// display buffer's recorder ([intoTheBuffer]). Those are the two halves
+  /// of stage 2 and they must be the same body — a second copy is how "the
+  /// buffer path draws something slightly different" starts.
   void _paintContent(
     Canvas into, {
     required bool intoTheBuffer,
     required double rasterScale,
   }) {
     _composingTheBuffer = intoTheBuffer;
-    // A recording made for the buffer draws its texel copies unfiltered and
-    // the walk's resamples them on screen, so neither may replay the other.
-    _painter.bake?.ensureIntoTheBuffer(intoTheBuffer);
-    // ⛔No bake handed down (a host that does not own one, or a tree with
-    // no live surface at all) keeps the original walk. The bake is an
-    // optimisation, never a second way to be correct.
-    //
-    // ⛔Nor while a lift holds rows beside the live one (I-37 · F-329): the
-    // bake records the rows a stroke cannot change, and a lifted row's
-    // float moves under the hand.
-    if (_painter.bake == null ||
-        _painter.activeSurfacePainter == null ||
-        _painter.liftedRows.isNotEmpty) {
-      _paintNodes(into, _rootNodes, rasterScale, _visibleCanvasRect);
-      return;
-    }
-    if (intoTheBuffer) {
-      _paintBackdropSplit(into, rasterScale);
-      return;
-    }
-    _paintSplit(into, _rootNodes, 0, rasterScale, _visibleCanvasRect);
+    _paintNodes(into, _rootNodes, rasterScale, _visibleCanvasRect);
   }
 
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
@@ -1574,7 +1202,7 @@ class _LayerStackPaintPass {
   /// deferred on the GPU. The repo already leans on that in the tile
   /// compose (`tiled_surface_compose`) and, until 2026-09-17, leaned on it
   /// in the provisional tile pictures, measured at 26-38us for a 256px tile.
-  _DisplayBuffer? _composeDisplayBuffer(Rect bounds) {
+  ({ui.Image image, Rect rect})? _composeDisplayBuffer(Rect bounds) {
     if (_painter.debugDisableSingleBuffer || bounds.isEmpty) {
       return null;
     }
@@ -1602,68 +1230,42 @@ class _LayerStackPaintPass {
       debugCappedFallbacks += 1;
       return null;
     }
-    // 🚨(v) — KEEP IT WHILE NOTHING HAS CHANGED. Every paint used to
-    // rasterise this again, including the ones where nothing had moved: a
-    // hover, a cursor blink, a neighbouring panel rebuilding.
-    //
-    // ⛔A miss costs exactly what the uncached path cost, which is the
-    // property that makes this safe. The TILED buffer failed on the other
-    // side of that line — a cold tile cache rasterised the composite once
-    // per tile, so the thing meant to make strokes cheap made panning N
-    // times dearer. One image cannot do that.
-    final cache = _painter.bufferCache;
-    final key = cache == null ? null : _painter._bufferKey();
-    final kept = _keptBuffer(cache, key, rect);
-    if (kept != null) {
-      return kept;
-    }
-    return _composeMiss(rect, cache, key);
-  }
-
-  /// The display buffer for [image] over [rect]. [owned] says whether the
-  /// caller disposes the image after drawing it (false while the cache
-  /// keeps it for the next paint).
-  ///
-  /// ⛔THE PIXEL SIZE IS THE IMAGE'S, NEVER THE RECT'S. Below 100% the two
-  /// differ — the image is the rect over 2^level a side — and that is what
-  /// the blit's source rect must say or the picture lands shrunk in the
-  /// corner. This used to be two constructors, one reading the rect for the
-  /// canvas-resolution path and one reading the image for the knee's scaled
-  /// path, and 2026-09-04 the knee path was routed through the rect one by
-  /// mistake: one wrong frame on every miss below the knee. Reading the
-  /// image answers both, because at level 0 the rect is snapped and the raster is
-  /// `toImageSync(rect.width.round(), …)` — the same number, by
-  /// construction.
-  _DisplayBuffer _bufferOf(ui.Image image, Rect rect, {required bool owned}) =>
-      _BufferImage(
-        image: image,
-        rect: rect,
-        pixelWidth: image.width.toDouble(),
-        pixelHeight: image.height.toDouble(),
-        owned: owned,
-      );
-
-  /// The buffer the cache still holds for [key] over [rect], or null.
-  _DisplayBuffer? _keptBuffer(
-    DisplayBufferCache? cache,
-    Object? key,
-    Rect rect,
-  ) {
-    if (cache != null && key != null) {
-      final kept = cache.imageFor(key, rect);
-      if (kept != null) {
-        return _bufferOf(kept, rect, owned: false);
-      }
-    }
-    return null;
+    // Composed whole at every paint: nothing is kept from one to the next.
+    // ↩️The display buffer was kept while nothing changed, patched where a
+    // stroke step moved the live row and carried by a pan
+    // (`DisplayBufferCache` — ⛔one image, never a tiled one: a cold tile
+    // cache rasterised the composite once per tile, so panning cost N times
+    // what it did), until a standing canvas showed the frame's one picture
+    // and patched its strokes into that (one-picture-per-frame ②-5a,
+    // 2026-10-25): what composes here now is a frame as it stands where a
+    // stroke's patch is still on its way, and the onion ghosts.
+    assert(() {
+      debugLastBufferLevel = _level;
+      return true;
+    }());
+    _shownWithin = rect.intersect(_visibleCanvasRect);
+    final recorder = ui.PictureRecorder();
+    labProbe(
+      'displayBuffer.recordWhole',
+      () => _paintContent(
+        _bufferCanvas(recorder, rect),
+        intoTheBuffer: true,
+        rasterScale: 1 / _levelStep,
+      ),
+    );
+    _shownWithin = null;
+    final image = labProbe(
+      'displayBuffer.raster',
+      () => rasterPicture(recorder, width, height),
+    );
+    return (image: image, rect: rect);
   }
 
   /// A canvas onto the buffer over [rect], in the buffer's own pixels:
   /// canvas pixels at level 0, 2^level canvas pixels below 100% — one
-  /// scale, then the translate, so every draw (the carried base, the paper,
-  /// the level images) lands 1:1. Bounded by those pixels, so a draw into
-  /// it can ask what it can land on (`drawPosedLayerImage`, a picture in
-  /// pieces).
+  /// scale, then the translate, so every draw (the paper, the level images)
+  /// lands 1:1. Bounded by those pixels, so a draw into it can ask what it
+  /// can land on (`drawPosedLayerImage`, a picture in pieces).
   Canvas _bufferCanvas(ui.PictureRecorder recorder, Rect rect) =>
       Canvas(
           recorder,
@@ -1676,484 +1278,4 @@ class _LayerStackPaintPass {
         )
         ..scale(1 / _levelStep)
         ..translate(-rect.left, -rect.top);
-
-  /// A miss: the buffer recomposed — patched over the carried base, scrolled
-  /// from the previous buffer, or rastered whole — and stored when the
-  /// cache can keep it.
-  _DisplayBuffer _composeMiss(
-    Rect rect,
-    DisplayBufferCache? cache,
-    Object? key,
-  ) {
-    final miss = _planMiss(rect, cache, key);
-    final base = miss.base;
-    final dirty = miss.dirty;
-    final scroll = miss.scroll;
-    final canScroll = miss.canScroll;
-    _shownWithin = rect.intersect(_visibleCanvasRect);
-    final recorder = ui.PictureRecorder();
-    final into = _bufferCanvas(recorder, rect);
-    // ⛔SET AT THE BRANCH THAT DECIDES IT. Two of these three draw a base
-    // into this recorder; when that base is the cache's deferred HEAD the
-    // new image retains it (`DisplayBufferCache._derivedDepth` says what
-    // that costs and why it is bounded), when it is the REAL base it does
-    // not, and the base itself says which. The third starts from nothing.
-    // Re-deriving the answer next to `store` is how the scrolled carry
-    // came to be counted as a fresh compose in the first place.
-    final bool derived;
-    var drawn = false;
-    if (base != null && dirty != null) {
-      _blitPatched(into, base.image, rect, dirty);
-      derived = base.deferred;
-      drawn = !derived && _pictureDrawsTheSame(dirty);
-    } else if (scroll != null && canScroll) {
-      cache!.lastComposedArea = _blitScrolled(into, scroll, rect, dirty);
-      derived = scroll.deferred;
-    } else {
-      labProbe(
-        'displayBuffer.recordWhole',
-        () => _paintContent(
-          into,
-          intoTheBuffer: true,
-          rasterScale: 1 / _levelStep,
-        ),
-      );
-      derived = false;
-    }
-    _shownWithin = null;
-    return _keepMiss(
-      recorder,
-      rect,
-      cache,
-      key,
-      patched: base != null && dirty != null,
-      derived: derived,
-      carried: canScroll,
-      tokens: miss.tokens,
-      drawn: drawn,
-    );
-  }
-
-  /// Whether a patch's picture drawn straight onto the screen lands the
-  /// bytes its rastered head, blitted there, would — so the head need not
-  /// be rastered at all: one render pass fewer a stroke step, and a
-  /// snapshot costs the same whatever its size (measured 2026-09-25 on the
-  /// real Windows app, 1.6–2.0 ms from 32×32 to a whole window).
-  ///
-  /// The picture blits the real base 1:1 and recomposes [dirty] over it;
-  /// on the screen those are the same draws under the viewport transform,
-  /// and they land the same bytes exactly when —
-  /// · the display scale is a WHOLE number and the view is not rotated:
-  ///   every canvas pixel is then a whole block of device pixels
-  ///   ([renderSnappedViewport] puts the translation on whole pixels), so
-  ///   no sample falls on a texel boundary and no tile or raster edge cuts
-  ///   a device pixel. ⛔Between whole scales a tile edge splits a pixel,
-  ///   and on a multisampled screen (Impeller Vulkan) that pixel averages
-  ///   two tiles' samples where the head had one texel;
-  /// · [dirty] lies on opaque paper: the recompose CLEARS first, which on
-  ///   the screen clears the pasteboard under it too, and only an opaque
-  ///   draw over it puts back exactly what the head was blitted over;
-  /// · every draw the recompose makes is a texel copy blended pixel by
-  ///   pixel ([_drawsTexelForTexel]). ↩️A stamp ghost was the exception —
-  ///   drawn where the pointer was, off the texel grid — until
-  ///   brush-fidelity-Q9 made it the overlay's tiles, on the grid;
-  /// · the screen is 8-bit. iOS draws to a wide-gamut surface by default,
-  ///   where blending rounds differently from the 8-bit head.
-  bool _pictureDrawsTheSame(Rect dirty) {
-    // A whole scale is never below 100%, so the buffer is at level 0.
-    if (!debugDrawBufferPictures ||
-        defaultTargetPlatform == TargetPlatform.iOS ||
-        _painter.viewport.rotationDegrees != 0 ||
-        _displayScale != _displayScale.roundToDouble()) {
-      return false;
-    }
-    final region = wholeLevelPixelsOutward(dirty, _level);
-    final onPaper =
-        _painter.paintPaper &&
-        _painter.paperBackground.paintedArgb >>> 24 == 0xFF &&
-        region.left >= _canvasRect.left &&
-        region.top >= _canvasRect.top &&
-        region.right <= _canvasRect.right &&
-        region.bottom <= _canvasRect.bottom;
-    return onPaper && _drawsTexelForTexel(_painter.nodes);
-  }
-
-  /// Whether every draw [nodes] make is a texel copy blended pixel by pixel
-  /// — then laying them down at canvas resolution and magnifying the result
-  /// by a whole number is the same as laying them down magnified. A draw
-  /// that does not qualify: a pose (it resamples), a blend that does not
-  /// work in place or an effect that spreads ([inkCropDrawsTheSame], which
-  /// has the measurements — an advanced blend rounds by the area drawn), a
-  /// layer image that is not a texel copy, and an adjustment scope — its
-  /// crossfade goes through `saveLayer`s nobody has measured this way yet.
-  /// The paper is a fill on whole canvas pixels, and qualifies.
-  ///
-  /// A row blended over its backdrop qualifies when what it composes does:
-  /// its shader runs over two rasters made as the picture is recorded, and
-  /// what the picture draws is the result's blit — 1:1, as a group's is.
-  /// ↩️It never did ("nobody has measured"), and a blend row anywhere in the
-  /// tree, baked or not, cost every stroke step a head: 🔬on the Windows app
-  /// (10-22, r10 · r11) a stroke over a multiply row went from 19.2ms input
-  /// to screen to 14.0, the 14.4 of a normal one.
-  bool _drawsTexelForTexel(List<CompositeNode<_PaintRow>> nodes) {
-    for (final node in nodes) {
-      final inPlace = switch (node) {
-        CompositeLeaf(payload: final _PaintImage row) =>
-          inkCropDrawsTheSame(
-                placement: row.placement,
-                effects: row.effects,
-              ) &&
-              row.pieces.every(
-                (piece) => drawsAsTexelCopy(piece.image, piece.worldRect),
-              ),
-        CompositeLeaf(payload: final _SurfaceRow row) => inkCropDrawsTheSame(
-          placement: row.placement,
-          effects: row.effects,
-        ),
-        CompositeLeaf(payload: _PaintPaper()) => true,
-        CompositeGroup(:final effects, :final children) =>
-          inkCropDrawsTheSame(
-                placement: null,
-                effects: effects,
-              ) &&
-              _drawsTexelForTexel(children),
-        // Not on a flipped view: read in the frame, a blend reads its
-        // backdrop in the space it is drawn in — the screen's, which a flip
-        // runs the other way from the picture's ([drawBlendOverBackdrop]).
-        CompositeBackdropBlend(:final backdrop, :final source) =>
-          !_painter.viewport.flipHorizontal &&
-              !_painter.viewport.flipVertical &&
-              _drawsTexelForTexel(backdrop) &&
-              _drawsTexelForTexel([source]),
-        // A clip is a group's image, blitted 1:1. The base made opaque
-        // fills black where the base is not, and the clip's `srcATop` cuts
-        // that away again — what the clip lays down is the base's pixels
-        // and what lies on them, cut where it was cut.
-        CompositeClip(:final children) => _drawsTexelForTexel(children),
-        CompositeOpaque(:final of) => _drawsTexelForTexel([of]),
-        CompositeAdjustment() => false,
-      };
-      if (!inPlace) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// Rasters the recorded miss and, when the cache can keep it, stores the
-  /// head and offers its snapshot as the next real base.
-  ///
-  /// 🎯THE SNAPSHOT THAT ENDS THE CHAIN: the same picture, rasterized once
-  /// more as a plain image, becomes the base the NEXT paint derives from —
-  /// so the deferred image made here is only ever drawn, never drawn from.
-  /// Asked of the cache, which knows whether one is still in flight.
-  ///
-  /// [drawn]: the picture goes to the screen as it is and no head is
-  /// rastered ([_pictureDrawsTheSame]); only the snapshot, when asked for.
-  _DisplayBuffer _keepMiss(
-    ui.PictureRecorder recorder,
-    Rect rect,
-    DisplayBufferCache? cache,
-    Object? key, {
-    required bool patched,
-    required bool derived,
-    required bool carried,
-    required LiveSurfaceTokens? tokens,
-    required bool drawn,
-  }) {
-    final width = (rect.width / _levelStep).round();
-    final height = (rect.height / _levelStep).round();
-    final snapshot =
-        cache != null &&
-        key != null &&
-        _painter._drawsLive &&
-        cache.wantsPromotionFor(patchedOverRealBase: patched && !derived);
-    if (drawn) {
-      // Only a patch over the cache's own real base is drawn, so the cache
-      // and its key are there.
-      final picture = recorder.endRecording();
-      cache!.store(
-        key!,
-        _painter.compositeKey,
-        rect,
-        null,
-        patched: true,
-        tokens: tokens,
-      );
-      if (snapshot) {
-        cache.promote(picture.toImage(width, height));
-      }
-      return _BufferPicture(picture: picture, rect: rect);
-    }
-    final made = labProbe(
-      'displayBuffer.raster',
-      () => rasterPictureAndSnapshot(
-        recorder,
-        width,
-        height,
-        snapshot: snapshot,
-      ),
-    );
-    final image = made.deferred;
-    if (cache == null || key == null) {
-      return _bufferOf(image, rect, owned: true);
-    }
-    cache.store(
-      key,
-      _painter.compositeKey,
-      rect,
-      image,
-      patched: patched,
-      derived: derived,
-      tokens: tokens,
-    );
-    cache.lastBufferLevel = _level;
-    if (carried) {
-      cache.scrolledCount += 1;
-    }
-    final real = made.real;
-    if (real != null) {
-      cache.promote(real);
-    }
-    return _bufferOf(image, rect, owned: false);
-  }
-
-  /// What a miss can start from: the carried base to patch (with the live
-  /// dirty rect), or the previous buffer to scroll; both null means a
-  /// full raster. Records the live dirty rect on the cache as it asks.
-  _MissPlan _planMiss(Rect rect, DisplayBufferCache? cache, Object? key) {
-    // 🚨★★★A MISS DOES NOT HAVE TO START FROM NOTHING. When the only thing
-    // that moved is the LIVE surface — which is every step of a stroke —
-    // the previous buffer is right everywhere the stroke did not touch, so
-    // the recomposite is confined to the dirty rect and the rest is one
-    // opaque blit.
-    //
-    // ⛔This is what replaced the TILE GRID. Tiling split the buffer for the
-    // same reason and paid for it twice: a seam at every boundary at
-    // fractional scale, and a cold cache costing N rasters instead of one.
-    // Patching keeps ONE image — there is no boundary to seam — and leaves
-    // the cold path exactly as it was.
-    final base = cache == null || key == null
-        ? null
-        : cache.patchBaseFor(_painter.compositeKey, rect);
-    // 🚨★★★A PAN CARRIES WHAT IT ALREADY HAD. A moved extent is not a wrong
-    // buffer, it is an OFFSET one: the buffer is canvas resolution, so one
-    // buffer pixel is one canvas pixel at every zoom and the overlap belongs
-    // exactly where the new rect says. What is left is the band the pan
-    // exposed — and, because the live surface is deliberately absent from
-    // [compositeKey], whatever the live layer changed since.
-    //
-    // ⛔ONE IMAGE STILL: the blit and the band land in this same recorder and
-    // come out of one `toImageSync`. A base drawn beside a patch at paint
-    // time would seam at fractional scale, which is what the tile grid was
-    // rejected for.
-    final scroll = base != null || cache == null || key == null
-        ? null
-        : cache.scrollBaseFor(_painter.compositeKey, rect);
-    // ⛔ALWAYS, even with no base to patch: this call is also what SEES
-    // what the live surface looks like now, and that goes into the store
-    // with the buffer this miss makes. Asking it only when a patch was
-    // already possible left the first buffer without a snapshot, so the
-    // first real stroke step compared against nothing and fell back to a
-    // full raster — measured, with the counter reading zero.
-    //
-    // 🚨★★★SEEN here, RECORDED only by `store` (F-68 ③). Recording on every
-    // call — including the paints a floating selection keeps uncacheable —
-    // moved the snapshot ahead of the image it described, and the patch
-    // after a confirm then carried the ring the lift had erased back from
-    // the buffer made before it.
-    //
-    // 🎯MEASURED FROM THE BASE THAT WILL BE DRAWN, not from the head: the
-    // real base is a paint or three older than the head, and a dirty rect
-    // measured from the head's tokens would miss the steps between — a
-    // stroke with holes in it, on every platform.
-    final change = cache == null
-        ? (located: false, dirty: null, now: null)
-        : _painter._liveDirtyCanvasRect(
-            since: (base ?? scroll)?.tokens ?? cache.keptTokens,
-          );
-    // ⛔TWO ANSWERS, NOT ONE. `located: false` is "cannot say where"; a null
-    // rect with `located: true` is "nothing changed", which is the BEST case
-    // for a carry and used to be indistinguishable from the worst.
-    final dirty = change.dirty;
-    cache?.lastDirtyRect = dirty;
-    // ⚠️REFUSED WHEN THE LIVE SURFACE CANNOT SAY WHERE IT CHANGED. Carrying
-    // the overlap would carry a stale live layer with it, and nothing else
-    // in the key would notice.
-    final canScroll = scroll != null && change.located;
-    return (
-      base: base,
-      dirty: dirty,
-      scroll: scroll,
-      canScroll: canScroll,
-      tokens: change.now,
-    );
-  }
-
-  /// Recomposes [region] of the buffer over pixels a carry already put in
-  /// [into] — the one step the patch and the scroll carry share.
-  ///
-  /// ⛔CLEAR first. The composite is drawn OVER the old pixels otherwise,
-  /// and ink that is not fully opaque would blend with its own previous
-  /// frame — a stroke would darken as it was redrawn.
-  ///
-  /// 🚨★★★AND WHERE THE NEW COMPOSITE DRAWS NOTHING, THE OLD PIXELS SIMPLY
-  /// STAY (F-104, 유저 2026-09-12: 「페이스트 보드에 이전 프레임의 그림이
-  /// 남아있음 … 그 위치에 선을 그리면 사라짐」). The patch cleared; the scroll
-  /// carry wrote the same steps out again without the clear, so switching to
-  /// a frame whose extent differed kept the frame before wherever the new
-  /// one had nothing. One step now, so a carry cannot be written without it.
-  ///
-  /// ⛔NO ANTIALIAS on the clip: a soft edge would blend the region into the
-  /// carried pixels and leave a seam of its own.
-  ///
-  /// 🚨★★★F-287 — THE CLIP DID NOT HOLD A BLEND THAT WAS NOT IN PLACE (유저
-  /// 2026-10-04 · 10-05 · 10-12, 실기: 「곱하기레이어가 두개이상있을때, 세번째
-  /// 일반 레이어에서 그리면 선을 긋거나 캔버스 줌인 줌아웃할때마다 그림
-  /// 이상한곳이 진해짐. 현재 레이어 바꾸거나 하면 초기화됨 … 이 문제는 고쳐도
-  /// 3번째 발생이니 다양한 각도에서 확인하고 해결」 — the family of F-172 and
-  /// F-243). 🔬Measured on the Windows app (Impeller GLES, 2026-10-08): A and
-  /// B both multiply, every stroke on B patched three times, and each patch
-  /// multiplied B's colour in once more OUTSIDE the patch — wherever B lay
-  /// (f0d060 → c87105 → a73d00 …), A alone and the paper untouched; one
-  /// blend alone changed nothing. The carried pixels already hold the
-  /// composite, so a draw that escapes the clip lays a second copy of itself
-  /// over them, on every patch and every carry until a full composite —
-  /// switching the row — draws it once again.
-  /// 🔬Again on the same app (2026-10-19), on dark paper so that any mode
-  /// could show it: a stroke on a NORMAL row above both blends or between
-  /// them laid B in three times more, and so did a notch of the wheel OUT
-  /// within a level, at levels 2, 1 and 0 alike. Every mode that shows
-  /// being laid twice did it — multiply, color burn, screen, color dodge,
-  /// overlay, soft and hard light, difference, exclusion — and never a
-  /// normal row. The same draws on the engine alone never escaped.
-  /// ↩️So while anything in the stack did not blend in place the region was
-  /// composed APART — on nothing, in an image of its own (a render pass a
-  /// step), laid onto the carried pixels by a draw that does — until every
-  /// advanced blend went over its backdrop in the shader
-  /// (a-blurred-folder-cut-by-the-view-moves-on-vulkan, 「골은 b」). Every
-  /// draw the stack makes is `srcOver` or `plus` now: a row in an advanced
-  /// blend paints normal, and its blend's node lays the composite `srcOver`
-  /// (`drawBlendOverBackdrop`).
-  /// 🔬Measured with it gone, on the same app (10-22, r13): two rows in
-  /// multiply, screen or color burn, a normal row drawn on above both or
-  /// between them, with the bottom row's fill and without it — three
-  /// strokes, two notches of the wheel out, a stroke there, two notches
-  /// back in — and after every one the canvas was the cold composite's,
-  /// pixel for pixel, in all thirty.
-  void _recomposeOverCarried(Canvas into, List<Rect> region) {
-    // ⛔NO REGION, NO RECOMPOSE: a carry into a rect inside the one it had
-    // — a zoom in on the same level — with nothing live changed has no
-    // band, a patch whose change lies wholly outside the buffer has no part
-    // in it, and the carried pixels are the whole buffer.
-    if (region.isEmpty) {
-      return;
-    }
-    final clip = Path();
-    for (final part in region) {
-      clip.addRect(part);
-    }
-    into
-      ..save()
-      ..clipPath(clip, doAntiAlias: false)
-      ..drawPaint(Paint()..blendMode = BlendMode.clear);
-    _paintContent(into, intoTheBuffer: true, rasterScale: 1 / _levelStep);
-    into.restore();
-  }
-
-  /// Recomposes only [dirty] over the carried [base]: the old pixels are
-  /// blitted 1:1, the dirty rect cleared and repainted.
-  ///
-  /// ⛔THE SOURCE RECT IS THE IMAGE'S PIXELS, never the rect's size: below
-  /// 100% the base is a level image, 2^level canvas pixels to each of its
-  /// own, and the recorder's scale maps it back onto [rect] 1:1. And the
-  /// dirty rect is grown to whole buffer pixels first — a level pixel the
-  /// stroke touched by a third would otherwise be kept as it was, its
-  /// centre outside the clip.
-  ///
-  /// ⛔HELD TO [rect], as the carry's bands are: the dirty rect is the live
-  /// tiles a step changed, and those reach past the view — by up to a tile
-  /// for a dab at its edge, by the whole canvas for a fill or an undo made
-  /// zoomed in. What lies past [rect] is no pixel of this buffer's, so a
-  /// step whose change lies wholly there recomposes nothing. (↩️And a
-  /// region composed apart, F-287, was an image of what it was given —
-  /// on a large canvas one past the side the buffer itself is capped at,
-  /// [_LayerStackPainter._maxBufferSide].)
-  void _blitPatched(Canvas into, ui.Image base, Rect rect, Rect dirty) {
-    _layLevelPixels(into, base, rect);
-    final part = wholeLevelPixelsOutward(dirty, _level).intersect(rect);
-    _recomposeOverCarried(into, [if (!part.isEmpty) part]);
-  }
-
-  /// Lays [image] — pixels made at this buffer's level, the whole of it or
-  /// its [source] — onto [target] one texel to a pixel: the patch's base
-  /// and the scroll carry's overlap are laid so (↩️and a region composed
-  /// apart, `src`, while a blend could be — F-287). A COPY, so `none` — a
-  /// filter would resample what is already aligned — and no antialias at
-  /// edges that lie on the level's grid.
-  void _layLevelPixels(
-    Canvas into,
-    ui.Image image,
-    Rect target, {
-    Rect? source,
-  }) {
-    into.drawImageRect(
-      image,
-      source ??
-          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      target,
-      Paint()
-        ..filterQuality = ui.FilterQuality.none
-        ..isAntiAlias = false,
-    );
-  }
-
-  /// Carries the overlap of the previous buffer ([scroll]) into [rect]
-  /// and repaints only the bands the pan exposed, plus [dirty]; answers
-  /// the area repainted.
-  double _blitScrolled(Canvas into, _Base scroll, Rect rect, Rect? dirty) {
-    final was = scroll.rect;
-    final overlap = was.intersect(rect);
-    _layLevelPixels(
-      into,
-      scroll.image,
-      overlap,
-      // The overlap in the OLD image's own pixels: the offset between the
-      // two rects, in buffer pixels — both rects lie on the same level's
-      // grid (the level is in the key), so it is whole.
-      source: Rect.fromLTWH(
-        (overlap.left - was.left) / _levelStep,
-        (overlap.top - was.top) / _levelStep,
-        overlap.width / _levelStep,
-        overlap.height / _levelStep,
-      ),
-    );
-    // ⛔THE BANDS, LISTED. Up to four of them — the strips of the new rect
-    // the old one did not reach — plus the live dirty rect, because the
-    // carried pixels are as old as the last composite.
-    //
-    // 🚨A LIST RATHER THAN AN EVEN-ODD PATH, and a mutation is why: with
-    // the path form, dropping the subtraction left the clip covering the
-    // whole rect — correct pixels, no saving, and every test green. The
-    // clip and the AREA now come from the same list, so a band that stops
-    // being excluded stops being counted.
-    final bands = <Rect>[
-      if (overlap.top > rect.top)
-        Rect.fromLTRB(rect.left, rect.top, rect.right, overlap.top),
-      if (overlap.bottom < rect.bottom)
-        Rect.fromLTRB(rect.left, overlap.bottom, rect.right, rect.bottom),
-      if (overlap.left > rect.left)
-        Rect.fromLTRB(rect.left, overlap.top, overlap.left, overlap.bottom),
-      if (overlap.right < rect.right)
-        Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
-      if (dirty != null && !dirty.intersect(overlap).isEmpty)
-        wholeLevelPixelsOutward(dirty, _level).intersect(overlap),
-    ];
-    var area = 0.0;
-    for (final band in bands) {
-      area += band.width * band.height;
-    }
-    _recomposeOverCarried(into, bands);
-    return area;
-  }
 }

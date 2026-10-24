@@ -30,8 +30,8 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★A FILL IS ONE STROKE OF ITS STAMP PIECES (유저 절대규칙 2026-09-17:
 /// 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The tap makes the tiles the
@@ -202,14 +202,13 @@ void main() {
     required Size logicalSize,
     required BitmapSurfacePainter live,
     required LayerFrameImageCache images,
-    DisplayBufferCache? buffers,
   }) => MaterialApp(
     home: Scaffold(
       body: Center(
         child: SizedBox(
           width: logicalSize.width,
           height: logicalSize.height,
-          child: CanvasLayerStackView(
+          child: TheFrameAsItStands(
             nodes: const [
               CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
             ],
@@ -219,7 +218,6 @@ void main() {
             activeSurfacePainter: live,
             paintPaper: true,
             paperBackground: ProjectBackground.defaultBackground,
-            debugBufferCache: buffers,
           ),
         ),
       ),
@@ -229,7 +227,7 @@ void main() {
   CustomPainter painterOf(WidgetTester tester) => tester
       .widgetList<CustomPaint>(
         find.descendant(
-          of: find.byType(CanvasLayerStackView),
+          of: find.byType(TheFrameAsItStands),
           matching: find.byType(CustomPaint),
         ),
       )
@@ -267,8 +265,6 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final buffers = DisplayBufferCache();
-    addTearDown(buffers.dispose);
     final base = columns();
     final dab = fillDab();
     final promoted = promoteFillDabs(
@@ -302,13 +298,11 @@ void main() {
           showTransparentBackground: false,
         ),
         images: images,
-        buffers: buffers,
       ),
     );
     await tester.pumpAndSettle();
     await paintBytes(tester, painterOf(tester), logicalSize);
     final shown = await paintBytes(tester, painterOf(tester), logicalSize);
-    expect(buffers.lastBufferLevel, 2);
     for (var y = 1; y < 7; y += 1) {
       for (var x = 1; x < 7; x += 1) {
         final filled = x < 4 && y < 4;
@@ -345,7 +339,6 @@ void main() {
           showTransparentBackground: false,
         ),
         images: images,
-        buffers: buffers,
       ),
     );
     await tester.pumpAndSettle();

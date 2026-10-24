@@ -29,7 +29,6 @@ import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
@@ -768,22 +767,9 @@ void main() {
           ),
         ),
       ],
-      // Rows enough beneath the row drawn on for the bake to raster them
-      // (`_backdropRasterMinReplayOps`), and one over it: each canvas the
-      // bake records into says what it sees.
-      'beneath the row drawn on and over it': [
-        multiplied(
-          row('noise'),
-          over: [
-            for (final cel in ['noise', 'sparse', 'inside']) ...[
-              row(cel, opacity: 0.6),
-              row(cel, effects: blurred),
-            ],
-          ],
-        ),
-        const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
-        row('sparse', effects: blurred),
-      ],
+      // ↩️And rows enough beneath the row drawn on for the bake to raster
+      // them, until the bake went with the live rows (one-picture-per-frame
+      // ②-5a): a canvas that stands shows the frame's one picture.
     };
 
     // The view sees across a cut at each level that has one, and less of
@@ -858,11 +844,6 @@ void main() {
         expect(warmed, isNotNull, reason: 'fixture: ${request.frameKey}');
         inPieces |= warmed!.pieces.length > 1;
       }
-      final drawnOn = nodes.any(
-        (node) =>
-            node is CompositeLeaf<CanvasStackRow> &&
-            node.payload is CanvasActiveLayerRow,
-      );
       await tester.pumpWidget(
         MaterialApp(
           key: UniqueKey(),
@@ -879,16 +860,6 @@ void main() {
                       imageCache: images,
                       canvasSize: canvasSize,
                       viewport: viewport,
-                      activeSurfacePainter: drawnOn
-                          ? BitmapSurfacePainter(
-                              surface: BitmapSurface(
-                                canvasSize: canvasSize,
-                                tileSize: tileSize,
-                              ),
-                              showTransparentBackground: false,
-                              lineage: 'past-the-side',
-                            )
-                          : null,
                       paintPaper: true,
                       paperBackground: const ProjectBackground.color(
                         0xFFF4EEE0,

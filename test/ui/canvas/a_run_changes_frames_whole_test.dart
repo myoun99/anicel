@@ -176,25 +176,36 @@ void main() {
     ),
   );
 
-  /// The canvas standing still on [cel]'s frame.
+  /// The stack standing still on [cel]'s frame — its rows' images, as it
+  /// draws the onion's ghosts.
   Future<void> pumpStill(
     WidgetTester tester,
     LayerFrameImageCache cache,
-    String cel, {
-    bool wholeFrames = false,
-  }) => pumpScreen(
+    String cel,
+  ) => pumpScreen(
     tester,
     CanvasLayerStackView(
       nodes: frameOf(cel),
       imageCache: cache,
       canvasSize: canvasSize,
       viewport: CanvasViewport(),
-      // The law is what this frame's paint draws, not what a kept
-      // composite re-serves.
-      debugDisableBake: true,
-      wholeFrames: wholeFrames,
     ),
   );
+
+  /// A view that makes [cel]'s frame itself ([FramePictureView.
+  /// laysWhatItMisses]) and changes frames whole, as a cut on the track
+  /// stack does.
+  Future<void> pumpMaking(WidgetTester tester, StackRun run, String cel) =>
+      pumpScreen(
+        tester,
+        FramePictureView(
+          run: run,
+          picture: at(cel),
+          nodes: frameOf(cel),
+          viewport: CanvasViewport(),
+          laysWhatItMisses: true,
+        ),
+      );
 
   /// The colour at the middle of what the last pump put on screen.
   Future<int> middle(WidgetTester tester) async {
@@ -383,20 +394,25 @@ void main() {
   });
 
   /// F-206 (유저 2026-09-28: 「스크럽하던 뭐던 존재하는게 보여야함」): the
-  /// track stack's cuts make their own rows and change frames whole, so a
+  /// track stack's cuts make their own frames and change them whole, so a
   /// drag that parks one frame after another shows the last whole frame
   /// instead of a cut's bare paper.
+  ///
+  /// ↩️The stack made its rows and held them (its own `wholeFrames`), until
+  /// the track stack's cuts showed their frames' one pictures
+  /// (one-picture-per-frame ②-3).
   testWidgets('🚨changing frames whole is its own question: a view that makes '
-      'its rows itself holds the last whole frame until its own make lands',
+      'its frames itself holds the last whole frame until its own make lands',
       (tester) async {
     final cache = images();
     addTearDown(cache.dispose);
-    await makeRow(tester, cache, 'blue');
+    final (:run, landings: _) = runOver(picturesOver(cache));
 
-    await pumpStill(tester, cache, 'blue', wholeFrames: true);
+    await pumpMaking(tester, run, 'blue');
+    await aWhile(tester);
     expect(await middle(tester), blue, reason: '⛔premise: blue is up');
 
-    await pumpStill(tester, cache, 'red', wholeFrames: true);
+    await pumpMaking(tester, run, 'red');
     expect(
       await middle(tester),
       blue,

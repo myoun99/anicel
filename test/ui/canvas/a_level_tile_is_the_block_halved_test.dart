@@ -348,7 +348,7 @@ void main() {
   });
 
   testWidgets('🚨past retainedScopeLimit scopes, the one PAINTED longest ago '
-      'lets its level tiles and its seed go — not one painted again since', (
+      'lets its level tiles go — not one painted again since', (
     tester,
   ) async {
     await tester.runAsync(() async {
@@ -376,17 +376,6 @@ void main() {
       ];
       scopes.take(TilePyramid.retainedScopeLimit).forEach(paint);
       paint(scopes.first);
-      pyramid.seed(scopes[1], (
-        pieces: [
-          (
-            image: picture(white),
-            worldRect: const ui.Rect.fromLTWH(0, 0, 16, 16),
-          ),
-        ],
-        level: 1,
-        worldRect: const ui.Rect.fromLTWH(0, 0, 16, 16),
-        madeFrom: const {},
-      ));
       final before = TilePyramid.liveBytes;
 
       paint(scopes.last);
@@ -401,7 +390,6 @@ void main() {
         0,
         reason: 'painted longest ago',
       );
-      expect(pyramid.debugHasSeed(scopes[1]), isFalse);
       expect(
         TilePyramid.liveBytes,
         before,

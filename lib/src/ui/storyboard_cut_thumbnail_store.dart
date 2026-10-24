@@ -197,8 +197,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   bool get pending => _rendering != null || _wanted.isNotEmpty;
 
   /// Told whenever [thumbnailBytes] changes, so an owner the memory census
-  /// CAN reach is able to report a store that lives in a widget State — the
-  /// same shape as `DisplayBufferCache.onHeldBytesChanged`.
+  /// CAN reach is able to report a store that lives in a widget State.
   final void Function(int bytes)? onHeldBytesChanged;
 
   /// One viewer's share of this device, halved by the memory warning — see

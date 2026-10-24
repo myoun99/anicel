@@ -21,6 +21,7 @@ import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★A GROUP IS AN IMAGE — AND IT IS THE SAME PIXELS `saveLayer` MADE.
 ///
@@ -558,7 +559,7 @@ void main() {
               child: SizedBox(
                 width: 200,
                 height: 150,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: [
                     // ↩️A multiply folder, until an advanced blend went
                     // over its backdrop (a-blurred-folder-cut-by-the-view-
@@ -590,7 +591,7 @@ void main() {
       final painted = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )

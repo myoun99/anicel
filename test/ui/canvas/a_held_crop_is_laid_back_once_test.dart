@@ -17,14 +17,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
-import 'package:anicel/src/ui/canvas/static_composite_bake.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/quiet_turns.dart' show QuietTurn;
 
@@ -60,7 +57,6 @@ void main() {
     'interior': [(60, 44), (72, 52)],
     'leftTop': [(4, 5), (18, 3)],
     'rightBottom': [(147, 98), (131, 90)],
-    'active': [(40, 70)],
   };
   const inkRows = ['interior', 'leftTop', 'rightBottom'];
 
@@ -100,9 +96,6 @@ void main() {
       CanvasLayerImageRequest(frameKey: key('interior'), opacity: 1),
     ),
     CompositeLeaf<CanvasStackRow>(
-      CanvasActiveLayerRow(opacity: 1, frameKey: key('active')),
-    ),
-    CompositeLeaf<CanvasStackRow>(
       CanvasLayerImageRequest(frameKey: key('leftTop'), opacity: 0.8),
     ),
     CompositeLeaf<CanvasStackRow>(
@@ -116,7 +109,6 @@ void main() {
     ({
       _OnlyTheFullLevel images,
       ValueNotifier<CanvasViewport> viewport,
-      StaticCompositeBake bake,
     })
   >
   crossedALevel(WidgetTester tester) async {
@@ -139,14 +131,6 @@ void main() {
     }
     final viewport = ValueNotifier(CanvasViewport());
     addTearDown(viewport.dispose);
-    final active = BitmapSurfacePainter(
-      surface: BrushFrameDisplayCacheService(
-        frameStore: store,
-        canvasSize: canvasSize,
-      ).prepareFramePreview(key('active')).previewSurface,
-      showTransparentBackground: false,
-      lineage: 'a-held-crop',
-    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -161,7 +145,6 @@ void main() {
                   imageCache: images,
                   canvasSize: canvasSize,
                   viewport: value,
-                  activeSurfacePainter: active,
                   paintPaper: true,
                 ),
               ),
@@ -178,11 +161,7 @@ void main() {
     );
     viewport.value = CanvasViewport(zoom: 0.45);
     await tester.pump();
-    final bake =
-        // ignore: avoid_dynamic_calls
-        (tester.state(find.byType(CanvasLayerStackView)) as dynamic).debugBake
-            as StaticCompositeBake;
-    return (images: images, viewport: viewport, bake: bake);
+    return (images: images, viewport: viewport);
   }
 
   setUp(() {
@@ -192,22 +171,26 @@ void main() {
 
   testWidgets('a crop drawn off its level is laid back once, however often '
       'the moving view records its slots again', (tester) async {
-    final (:images, :viewport, :bake) = await crossedALevel(tester);
-    final recorded = bake.recordCount;
+    final (images: _, :viewport) = await crossedALevel(tester);
     for (var step = 1; step <= 6; step += 1) {
+      debugLastBufferLevel = null;
       viewport.value = CanvasViewport(
         zoom: 0.45,
         panX: -3.0 * step,
         panY: -2.0 * step,
       );
       await tester.pump();
+      // ↩️Counted off the composite's bake (`StaticCompositeBake`), until
+      // nothing kept one (one-picture-per-frame ②-5a): every paint composes
+      // the buffer whole now.
+      expect(
+        debugLastBufferLevel,
+        1,
+        reason: 'fixture: step $step composed the buffer again at the level '
+            'below, recording the slots — a replay would lay nothing back '
+            'either way',
+      );
     }
-    expect(
-      bake.recordCount - recorded,
-      greaterThanOrEqualTo(6),
-      reason: 'fixture: every step moved the buffer and recorded the slots '
-          'again — a replay would lay nothing back either way',
-    );
     expect(
       debugWholesLaidBack,
       inkRows.length,
@@ -220,7 +203,7 @@ void main() {
 
   testWidgets('the kept whole goes when its crop does — when the level it '
       'waited for comes, and with the stack', (tester) async {
-    final (:images, :viewport, bake: _) = await crossedALevel(tester);
+    final (:images, :viewport) = await crossedALevel(tester);
     expect(
       debugKeptWholes,
       inkRows.length,

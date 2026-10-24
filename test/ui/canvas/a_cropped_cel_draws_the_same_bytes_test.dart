@@ -22,11 +22,9 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_pose.dart';
-import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
@@ -53,9 +51,11 @@ import '../../helpers/stack_as_the_plan_hands_it.dart';
 /// an edge), by the right and bottom edges of a canvas off the halving grid
 /// (150×101), on the pasteboard, scattered to both ends; through `srcOver`
 /// and `plus` and the advanced blends (stored as ink), through poses and a
-/// blur (kept whole), keyed, tinted, inside folders, around the active
-/// layer; at every level of the display, and on the direct walk, which lays
-/// the whole image back.
+/// blur (kept whole), keyed, tinted, inside folders; at every level of the
+/// display, and on the direct walk, which lays the whole image back.
+/// ↩️And around the active layer, until the rows round a live one went with
+/// the frame's one picture (one-picture-per-frame ②-5a): the stack draws
+/// images where it draws the onion's ghosts.
 ///
 /// ↩️A row in an advanced blend was kept whole, until every one went over
 /// its backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
@@ -117,7 +117,6 @@ void main() {
     'pasteboard': (0xFFA020C0, [(-9, 20), (-3, 26), (158, 60), (166, 66)]),
     'sparse': (0xFFF0C020, [(8, 9), (141, 93)]),
     'inner': (0xFF308090, [(90, 30), (100, 70)]),
-    'active': (0xFF101010, [(40, 70), (110, 20)]),
   };
 
   BrushFrameStore storeWithCels([CanvasSize size = canvasSize]) {
@@ -254,16 +253,6 @@ void main() {
       ),
       row('pasteboard'),
     ],
-    'around the active layer': [
-      row('interior'),
-      row('leftTop', blendMode: LayerBlendMode.multiply),
-      CompositeLeaf<CanvasStackRow>(
-        CanvasActiveLayerRow(opacity: 1, frameKey: key('active')),
-      ),
-      row('rightBottom', opacity: 0.8),
-      row('pasteboard', blendMode: LayerBlendMode.screen),
-      row('sparse'),
-    ],
   };
 
   Iterable<CanvasLayerImageRequest> requestsIn(
@@ -284,12 +273,6 @@ void main() {
       }
     }
   }
-
-  bool hasActiveRow(List<CompositeNode<CanvasStackRow>> nodes) => nodes.any(
-    (node) =>
-        node is CompositeLeaf<CanvasStackRow> &&
-        node.payload is CanvasActiveLayerRow,
-  );
 
   /// The stack's screen for [nodes] as the plan hands them over, the cache
   /// keeping whole images or the ink — every row warmed first, the way the
@@ -320,16 +303,6 @@ void main() {
       );
       expect(warmed, isNotNull, reason: 'fixture: ${request.frameKey}');
     }
-    final active = hasActiveRow(nodes)
-        ? BitmapSurfacePainter(
-            surface: BrushFrameDisplayCacheService(
-              frameStore: store,
-              canvasSize: canvasSize,
-            ).prepareFramePreview(key('active')).previewSurface,
-            showTransparentBackground: false,
-            lineage: 'a-cropped-cel',
-          )
-        : null;
     await tester.pumpWidget(
       MaterialApp(
         key: UniqueKey(),
@@ -346,7 +319,6 @@ void main() {
                     imageCache: images,
                     canvasSize: canvasSize,
                     viewport: viewport,
-                    activeSurfacePainter: active,
                     paintPaper: true,
                     paperBackground: const ProjectBackground.color(0xFFF4EEE0),
                     debugDisableSingleBuffer: walk,

@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/stack_as_the_plan_hands_it.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// One row's composite paint, written once for both of its shapes.
 typedef _RowPaint = ({
@@ -162,7 +163,7 @@ void main() {
             child: SizedBox(
               width: 8,
               height: 8,
-              child: CanvasLayerStackView(
+              child: TheFrameAsItStands(
                 nodes: stackAsThePlanHandsIt(nodes),
                 imageCache: LayerFrameImageCache(frameStore: BrushFrameStore()),
                 canvasSize: canvasSize,
@@ -184,7 +185,7 @@ void main() {
     return tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )
@@ -424,9 +425,10 @@ void main() {
     expect(debugLiveLayerRodeTheDraws, isTrue);
   });
 
-  testWidgets('a lifted float moving repaints — no buffer is kept under it', (
-    tester,
-  ) async {
+  // Whether the picture a canvas keeps is shown under it:
+  // `float_drag_is_never_cached_test`.
+  testWidgets('a lifted float moving tells the canvas — a drag step makes '
+      'no build', (tester) async {
     final float = floatOf(1);
     final painter = await pumpStack(
       tester,
@@ -435,11 +437,6 @@ void main() {
     );
     var repaints = 0;
     painter.addListener(() => repaints += 1);
-
-    // 🚨WARM FIRST, as the live float's own pin learned: the first paints
-    // miss on their own and would pick the move up with the guard gone.
-    await shot(tester, painter);
-    await shot(tester, painter);
     final before = await shot(tester, painter);
 
     // The drag: the float moves and nothing else does — no pump, as a drag
@@ -459,8 +456,7 @@ void main() {
     expect(
       _differing(after, before),
       greaterThan(0),
-      reason: 'the lifted float moved and the canvas did not — a kept '
-          'buffer is showing where it used to be',
+      reason: 'LIVENESS: the move shows where the canvas paints',
     );
   });
 }

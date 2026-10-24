@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -28,12 +26,10 @@ import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
 import 'tiled_surface_compose.dart';
 import '../../services/composite_effect_paint.dart';
-import 'display_buffer_cache.dart';
 import 'display_resample.dart';
 import 'image_pieces.dart';
 import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
-import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
@@ -77,15 +73,20 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   /// [CanvasLayerImageRequest.frameKey] asks the image cache with. Null
   /// when the row has nothing exposed here.
   ///
-  /// 🚨What it is for: the build in which this cel LEAVES the active slot
-  /// (a layer switch; a step to the next frame with onion skin on) it
-  /// arrives in the stack as an image request, and it was on screen a frame
-  /// ago — so the sweep composes its image inside that build instead of
-  /// letting the row go blank until an asynchronous one lands
-  /// (`_syncSweepBody`, 유저 절대규칙 「보이는 중이랑 결과랑 절대로 다르면 안
-  /// 되」). 🪦A field of this name stood here until 2026-09-17 for the
-  /// opposite direction — finding the image to hold over a cel ENTERING the
-  /// slot, the first-activation stand-in — and went with it.
+  /// 🚨What it is for: the frame's one picture — the row is drawn from its
+  /// cel's stored layer when nothing holds it live (`storedRowOf`), and the
+  /// cel the pen is on is the one a landing stroke moves the picture to
+  /// (`FramePictureView._celDrawnOn`).
+  ///
+  /// ↩️It let the stack's sweep compose a cel that LEFT the active slot
+  /// inside that build instead of letting the row go blank until an
+  /// asynchronous image landed (유저 절대규칙 「보이는 중이랑 결과랑 절대로
+  /// 다르면 안 되」) — until the frame's one picture drew the rows
+  /// (one-picture-per-frame ②-5a).
+  ///
+  /// 🪦A field of this name stood here until 2026-09-17 for the opposite
+  /// direction — finding the image to hold over a cel ENTERING the slot,
+  /// the first-activation stand-in — and went with it.
   final BrushFrameKey? frameKey;
 
   /// The active row's effective opacity (the interactive view used to
@@ -241,6 +242,31 @@ typedef LiveRows = ({
   Map<BrushFrameKey, LiftedCel> liftedRows,
 });
 
+/// What the live surface looked like, per coordinate: the overlay's tile
+/// images and the committed tiles. Identity per coordinate is what lets the
+/// next look say WHERE the surface changed ([StackedFrame.movedSince]).
+///
+/// 🚨★★★F-130: AND WHAT THE PAINTER DRAWS OVER THE SURFACE. The picture
+/// holds it, and tokens that do not know a preview cannot say where it
+/// went — ↩️the display buffer missed without saying where and fell
+/// through to a full raster of the whole canvas once per pointer move,
+/// measured on the stamp's ghost at 25 full composes for 25 moves. A
+/// preview is one of [previews]: BY VALUE (its own `==`, exactly what a
+/// move changes) beside the rect it covered, so the next look can patch
+/// where it was and where it is. A record rather than the preview's own
+/// type, so what measures a change does not import a tool's.
+///
+/// F-344: the text in hand, floated over its hole by the same painter
+/// (`BitmapSurfacePainter.landingPreview`) — the one preview there is now.
+/// ↩️The stamp's ghost was the first (F-33 drew it inside the painter),
+/// until brush-fidelity-Q9 (유저 2026-10-18 「통일하면 좋음」) moved it to the
+/// overlay's CPU pre-blended tiles, which [overlay] carries.
+typedef LiveSurfaceTokens = ({
+  Map<Object, Object> overlay,
+  Map<Object, Object> tiles,
+  List<({Object value, Rect rect})> previews,
+});
+
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
 /// frame as a screen stacks it, composed over [FrameDrawing.extent] in
@@ -286,29 +312,33 @@ final class StackedFrame {
         live?.painters._drawn(live.rows.liftedRows) ??
         const <BrushFrameKey, _LiftedRowPaint>{};
     return StackedFrame._(
-      (viewport, devicePixelRatio) => _LayerStackPainter(
-        nodes: drawn,
-        activeSurfacePainter: live?.rows.activeSurfacePainter,
-        floatOverlay: live?.rows.floatOverlay,
-        liftedRows: liftedRows,
-        canvasSize: page.canvasSize,
-        pasteboardReach: page.pasteboardReach,
-        viewport: viewport,
-        paintPaper: page.paintPaper,
-        paperBackground: page.paperBackground,
-        // Nothing is kept: no bake and no buffer for a key to name.
-        compositeKey: 0,
-        devicePixelRatio: devicePixelRatio,
-      ),
+      (viewport, devicePixelRatio, debugDisableSingleBuffer) =>
+          _LayerStackPainter(
+            nodes: drawn,
+            activeSurfacePainter: live?.rows.activeSurfacePainter,
+            floatOverlay: live?.rows.floatOverlay,
+            liftedRows: liftedRows,
+            canvasSize: page.canvasSize,
+            pasteboardReach: page.pasteboardReach,
+            viewport: viewport,
+            paintPaper: page.paintPaper,
+            paperBackground: page.paperBackground,
+            devicePixelRatio: devicePixelRatio,
+            debugDisableSingleBuffer: debugDisableSingleBuffer,
+          ),
     );
   }
 
-  StackedFrame._(this._through) : _painter = _through(CanvasViewport(), 1);
+  StackedFrame._(this._through)
+    : _painter = _through(CanvasViewport(), 1, false);
 
-  /// The body seen through a view, at a device's ratio.
+  /// The body seen through a view, at a device's ratio — and, for a parity
+  /// test, without the single buffer ([CanvasLayerStackView.
+  /// debugDisableSingleBuffer]).
   final _LayerStackPainter Function(
     CanvasViewport viewport,
     double devicePixelRatio,
+    bool debugDisableSingleBuffer,
   )
   _through;
 
@@ -327,8 +357,9 @@ final class StackedFrame {
     Size size, {
     required CanvasViewport viewport,
     required double devicePixelRatio,
+    @visibleForTesting bool debugDisableSingleBuffer = false,
   }) => _LayerStackPaintPass(
-    _through(viewport, devicePixelRatio),
+    _through(viewport, devicePixelRatio, debugDisableSingleBuffer),
   ).paint(canvas, size);
 
   /// The frame as the store lays it — its extent asked afresh each time:
@@ -349,8 +380,8 @@ final class StackedFrame {
   );
 
   /// Whether where a change of the live rows lands can be told
-  /// ([movedSince]) — as the canvas's buffer asks before it keeps one
-  /// ([_LayerStackPainter._liveCanBeTold]).
+  /// ([movedSince]) — as a canvas that stands asks before it patches its
+  /// picture ([_LayerStackPainter._liveCanBeTold]).
   bool get steady => _painter._liveCanBeTold;
 
   /// What the live row looks like now, to measure its next change from —
@@ -448,13 +479,16 @@ _PaintRow? _liveRowOf(
   _ => null,
 };
 
-/// Paints the editing canvas's whole composite tree from the layer-frame
-/// image cache, under the panel viewport transform — the ACTIVE layer
-/// included, drawn in place through [activeSurfacePainter].
+/// Paints a composite tree of cels' IMAGES from the layer-frame image cache,
+/// under the panel viewport transform — the onion ghosts over the frame's
+/// one picture, which `FramePictureView` draws with the rows a pen, a float
+/// or a lift holds live in it.
 ///
-/// This is what makes the layers visible while editing, and (since the
-/// merge) what lets a folder's group buffer wrap the layer you are drawing
-/// on: one painter opens the `saveLayer` and closes it.
+/// ↩️It painted the editing canvas's whole tree, the ACTIVE layer drawn in
+/// place through its live painter — one painter opening a folder's group
+/// buffer around the layer being drawn on and closing it — until a canvas
+/// that stands showed the frame's one picture (one-picture-per-frame ②-3)
+/// and the live rows went with it (②-5a, 2026-10-25).
 /// Paint-only: input always passes through to the canvas below.
 class CanvasLayerStackView extends StatefulWidget {
   const CanvasLayerStackView({
@@ -464,61 +498,18 @@ class CanvasLayerStackView extends StatefulWidget {
     required this.canvasSize,
     this.pasteboardReach = PasteboardReach.whole,
     required this.viewport,
-    this.activeSurfacePainter,
-    this.floatOverlay,
-    this.liftedRows = const {},
     this.paintPaper = false,
     this.paperBackground = ProjectBackground.defaultBackground,
-    this.debugDisableBake = false,
+    this.drawnLive = const {},
     this.debugDisableSingleBuffer = false,
-    this.debugBufferCache,
-    this.onBufferBytes,
-    this.alreadyShown = false,
-    this.wholeFrames = false,
   });
 
-  /// Whether this view changes frames WHOLE where it makes its rows itself:
-  /// a frame whose rows are not all there leaves the last whole one on
-  /// screen until it is. The track stack's cuts do — a drag in a gap parks
-  /// one frame after another, faster than a cold cel is made, and a cut
-  /// whose rows came as they came showed only its paper until the drag
-  /// stopped (F-206, 유저 2026-09-28: 「스크럽하던 뭐던 존재하는게
-  /// 보여야함」). False shows rows as they come — the editing canvas, where
-  /// a row being drawn on may not wait for its neighbours.
-  ///
-  /// ↩️One flag, `run`, answered both questions — who makes the rows, and
-  /// whether a frame waits to be whole — until the track stack drew its
-  /// cuts on this view (2026-10-10) and asked the second without the first.
-  /// ↩️A run is shown by its frames' pictures since (`FramePictureView`).
-  final bool wholeFrames;
-
-  /// Whether what this stack shows is on screen already, painted by
-  /// another route this view takes over from — the conte's printed
-  /// pictures, drawn live while its brush is on. Its first sweep then
-  /// composes every row whatever it takes, as it composes a cel that just
-  /// left the active slot: a picture on screen may not go blank for the
-  /// frames an asynchronous build takes (F-215, 유저 2026-09-28: 「브러시
-  /// 허용 on시 … 그림이 사라졌다가 다시 렌더되서 보이기시작. on하든off하든
-  /// 바뀌는게 없어야」).
-  ///
-  /// ⛔False is every other view's first sweep — a project opened, a cut
-  /// switched to: nothing of it was on screen, and a whole cold stack made
-  /// in one build is a stall nobody asked for
-  /// ([LayerFrameImageCache.prepareSyncOrNull]).
-  final bool alreadyShown;
-
-  /// 🚨A cache the TEST owns, so it can read how each frame was built.
-  /// An optimisation that never runs looks exactly like one that works —
-  /// this session shipped two that did not — so the counters are part of
-  /// the contract rather than a debugging aid.
-  @visibleForTesting
-  final DisplayBufferCache? debugBufferCache;
-
-  /// Told how many bytes the display buffer holds, whenever that changes
-  /// (and 0 when this view goes away). The memory census cannot reach a
-  /// widget State, so the owner that CAN be reached writes it down — the
-  /// same push the media viewers use.
-  final void Function(int bytes)? onBufferBytes;
+  /// The cels the canvas under these rows draws live — its active rows'
+  /// ([CanvasActiveLayerRow.frameKey]). A row of one of them that comes in
+  /// at the next build was on screen a frame ago, and its image is composed
+  /// on the spot: the cel you were just drawing, a ghost behind the frame
+  /// you stepped to.
+  final Set<BrushFrameKey> drawnLive;
 
   /// 🚨(v) 2단계 — turns the single composite buffer OFF, so a test can
   /// render the SAME tree both ways and compare the pixels.
@@ -532,32 +523,8 @@ class CanvasLayerStackView extends StatefulWidget {
   @visibleForTesting
   final bool debugDisableSingleBuffer;
 
-  /// 🚨(v) — turns the static bake OFF so a test can render the SAME tree
-  /// both ways and compare the pixels.
-  ///
-  /// ★That comparison is the only contract worth having here: an
-  /// optimisation is allowed to be faster, never to draw something else.
-  /// It is a field rather than a global so the two renders can sit in one
-  /// test, side by side, with nothing global to reset between them.
-  @visibleForTesting
-  final bool debugDisableBake;
-
-  /// The selection's floating pixels (TS1), drawn in the active layer's slot
-  /// so the rows above it occlude them. Null = nothing to draw there.
-  final SelectionFloatOverlay? floatOverlay;
-
-  /// The cels a folder's move session holds lifted (I-37), by the cel each
-  /// image row in [nodes] names: such a row draws its lifted surface and its
-  /// float instead of its cel's image ([LiftedCel]).
-  final Map<BrushFrameKey, LiftedCel> liftedRows;
-
   /// The composite tree, bottom → top.
   final List<CompositeNode<CanvasStackRow>> nodes;
-
-  /// Draws the ACTIVE layer's live surface wherever a
-  /// [CanvasActiveLayerRow] sits in [nodes]; null paints nothing there
-  /// (hosts that still mount their own interactive view).
-  final BitmapSurfacePainter? activeSurfacePainter;
 
   /// Every cached-image request under [nodes], depth-first bottom → top.
   Iterable<CanvasLayerImageRequest> get layers sync* {
@@ -574,20 +541,6 @@ class CanvasLayerStackView extends StatefulWidget {
         case CompositeClip():
         case CompositeOpaque():
           break;
-      }
-    }
-  }
-
-  /// The cels the ACTIVE rows under [nodes] are drawing
-  /// ([CanvasActiveLayerRow.frameKey]) — what the next build's sweep reads
-  /// off the widget it replaces, to know which cels were on screen as
-  /// tiles a frame ago.
-  Iterable<BrushFrameKey> get activeCels sync* {
-    for (final node in preorderNodes(nodes)) {
-      if (node case CompositeLeaf(
-        payload: CanvasActiveLayerRow(:final frameKey?),
-      )) {
-        yield frameKey;
       }
     }
   }
@@ -621,11 +574,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   final Map<BrushFrameKey, _HeldImage> _images = {};
   bool _preparing = false;
   bool _rerunRequested = false;
-
-  /// The tree this view PAINTS — [CanvasLayerStackView.nodes], save where a
-  /// frame not yet whole leaves the last whole one standing
-  /// ([CanvasLayerStackView.wholeFrames]): its images stay held until then.
-  late List<CompositeNode<CanvasStackRow>> _shownNodes = widget.nodes;
 
   /// The cel revision a held image was captured at.
   ///
@@ -663,17 +611,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void initState() {
     super.initState();
-    // ONE number for the census: the display buffer AND the bake beside it
-    // are both this view holding a raster of itself (2026-09-11 — the
-    // bake's visible-rect raster had been counted by nobody).
-    _bufferCache.onHeldBytesChanged = (bytes) {
-      _bufferBytes = bytes;
-      _reportHeldBytes();
-    };
-    _bake.onHeldBytesChanged = _reportHeldBytes;
     // The first sweep runs in [didChangeDependencies]: the level it asks
     // images at needs the effective ratio, which is a dependency.
-    InputInspector.visible.addListener(_rebuildForInspector);
     widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
     widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
   }
@@ -681,8 +620,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// What this view holds of a cel is held under the key a rekey moved its
   /// pixels to as well ([BrushFrameStore.addRekeyListener]) — the same
   /// picture, so the frame it lands on draws it as the frame before did: an
-  /// image row adopts it, and the row the brush is on is handed it
-  /// ([_handToTheActiveRow]).
+  /// image row adopts it.
   ///
   /// ⛔UNDER BOTH KEYS until the next sweep keeps the one its rows ask for:
   /// a paint before this view's rebuild still asks under the key the move
@@ -725,7 +663,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       _dropImage(to, there);
     }
     widget.imageCache.retainPin(to, held.quality);
-    _holdImage(to, (
+    _images[to] = (
       source: held.source,
       clone: held.clone.clones(),
       worldRect: held.worldRect,
@@ -733,9 +671,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: revision,
       quality: held.quality,
       content: held.content,
-      madeFrom: held.madeFrom,
       laidBack: LaidBackWhole(),
-    ));
+    );
   }
 
   @override
@@ -764,78 +701,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       );
       widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
     }
-    // The active row that left takes the image it was handed with it.
-    final leftLineage = oldWidget.activeSurfacePainter?.lineage;
-    if (leftLineage != widget.activeSurfacePainter?.lineage) {
-      TilePyramid.instance.dropSeed(leftLineage);
-    }
-    _syncImagesWithCache(shownAlready: oldWidget.activeCels.toSet());
+    _syncImagesWithCache(shownAlready: oldWidget.drawnLive);
     unawaited(_ensureImages());
-  }
-
-  /// 🚨(v) — the recording of everything a stroke cannot change.
-  final StaticCompositeBake _bake = StaticCompositeBake();
-
-  /// The display buffer's last reported bytes — kept so a change in the
-  /// bake can be reported in the same sum.
-  int _bufferBytes = 0;
-
-  void _reportHeldBytes() =>
-      widget.onBufferBytes?.call(_bufferBytes + _bake.heldBytes);
-  late final DisplayBufferCache _bufferCache =
-      widget.debugBufferCache ?? DisplayBufferCache();
-
-  /// The bake, for tests that pin WHICH mechanism held the backdrop —
-  /// a picture and a raster paint the same pixels by design (S7), so
-  /// only the slot counters can say the predicate chose.
-  @visibleForTesting
-  StaticCompositeBake get debugBake => _bake;
-
-  /// The bake key's own input, opened for the guard on [_holdImage].
-  ///
-  /// ⚠️A hatch rather than a bake assertion: the kept composite only records
-  /// slots under a real paint pipeline, so a test that reached for
-  /// `slotCount` would be measuring whether its own synthetic paint recorded
-  /// anything — which is the instrument, not the law.
-  @visibleForTesting
-  int get debugImagesRevision => _imagesRevision;
-
-  /// The buffer this view actually composites with — the one it made, or
-  /// the one a test handed it. F-130's benchmark reads its miss counters
-  /// off the REAL app, where nothing can pass `debugBufferCache` in: a hover
-  /// that composites the whole buffer again is invisible in every pixel and
-  /// only a counter can say it happened.
-  @visibleForTesting
-  DisplayBufferCache get debugBufferCacheInUse => _bufferCache;
-
-  /// 🚨★★★ Bumped at EVERY `_images` mutation, and read into the bake's key.
-  ///
-  /// ⛔This is not belt-and-braces on top of the tree comparison. A recorded
-  /// picture holds references to the `ui.Image` clones below, and those get
-  /// `dispose()`d right here — replaying a picture after that is a dead
-  /// handle. The tree comparison happens on the PAINTER's schedule and the
-  /// dispose happens on the STATE's, so the two run at different moments;
-  /// tying invalidation to the dispose ITSELF is what makes the window
-  /// impossible rather than merely unlikely.
-  int _imagesRevision = 0;
-
-  /// Hands [held] — the image [key]'s cel was drawn with as a row of this
-  /// stack — to the pyramid, when the cel is leaving the stack because it
-  /// is now the active row and the display is a level: the active paint
-  /// draws what still matches it from it instead of making it again
-  /// ([TilePyramid.seed]).
-  void _handToTheActiveRow(BrushFrameKey key, _HeldImage held) {
-    final active = widget.activeSurfacePainter;
-    final level = held.quality.level;
-    if (active == null || level <= 0 || !widget.activeCels.contains(key)) {
-      return;
-    }
-    TilePyramid.instance.seed(active.lineage, (
-      pieces: held.clone.clones(),
-      level: level,
-      worldRect: held.worldRect,
-      madeFrom: held.madeFrom,
-    ));
   }
 
   void _dropImage(BrushFrameKey key, _HeldImage held) {
@@ -844,57 +711,29 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     widget.imageCache.releasePin(key, held.quality);
     held.clone.disposeAll();
     held.laidBack.dispose();
-    _imagesRevision += 1;
-  }
-
-  /// The ONLY way an image enters [_images] — [_dropImage]'s twin.
-  ///
-  /// 🚨★★★The note on [_imagesRevision] says it moves at EVERY mutation, and
-  /// it did not: a COLD adopt (nothing held yet) assigned straight into the
-  /// map, so the bake's key was unchanged and the kept composite replayed
-  /// without the layer that had just arrived. A drop bumped it and an adopt
-  /// did not, which is the asymmetry that let a stale picture survive around
-  /// a live one — 유저 2026-08-27, iPhone: 「**변형툴의 외곽에만** 그림이
-  /// 남음 … 보기에만 그[렇다]」. The active layer paints live and the rest
-  /// comes from the bake, so a stale bake shows up exactly as a ring of old
-  /// drawing around a correct one.
-  ///
-  /// ⛔Assigning to `_images` anywhere else puts the hole back. Both are
-  /// methods so that the map and its revision cannot be moved apart.
-  void _holdImage(BrushFrameKey key, _HeldImage held) {
-    _images[key] = held;
-    _imagesRevision += 1;
   }
 
   /// Handles a settle replaced ([_settleHeldImage]), kept until the build
   /// that replaces the painter drawing with them ([_releaseSettled]).
   final List<ImagePiece> _superseded = <ImagePiece>[];
 
-  /// [image] takes the place of [held] for [key] WITHOUT moving
-  /// [_imagesRevision] — the third way into [_images], and the only one that
-  /// leaves the composite standing.
+  /// [image] takes the place of [held] for [key] as the same picture — the
+  /// only way into [_images] that leaves the stack on screen standing.
   ///
-  /// 🚨★★★A SETTLE IS NOT A NEW PICTURE. The row a layer select drops out of
-  /// the active slot is composed in the build as a DEFERRED image and
-  /// settles one frame later into the plain snapshot of the same picture
-  /// ([LayerFrameImage.content] is how the cache says so). Taken as a new
-  /// picture, it bumped the revision, broke the composite key, and the whole
-  /// display buffer rastered a second time for pixels it already had —
-  /// 🔬measured 2026-09-23, F-130 `solo` arm, 24 drawn rows: two full buffer
-  /// rasters per select, the second one pure repetition (229ms of 520 in the
-  /// test VM's software raster). 유저 (via the board/integration session's
-  /// measurement, board `I-19`): 「솔로 버벅임」, layer select included.
+  /// 🚨★★★A SETTLE IS NOT A NEW PICTURE. A row is composed in the build as
+  /// a DEFERRED image and settles one frame later into the plain snapshot of
+  /// the same picture ([LayerFrameImage.content] is how the cache says so).
+  /// Taken as a new picture it repaints — ↩️and, while the buffer was kept,
+  /// it broke the composite key and the whole display buffer rastered a
+  /// second time for pixels it already had: 🔬measured 2026-09-23, F-130
+  /// `solo` arm, 24 drawn rows: two full buffer rasters per select, the
+  /// second one pure repetition (229ms of 520 in the test VM's software
+  /// raster). 유저 (via the board/integration session's measurement, board
+  /// `I-19`): 「솔로 버벅임」, layer select included.
   ///
-  /// ⛔The revision's own law still holds: a recording never outlives a
-  /// clone it references. The replaced clone is not disposed here — the
-  /// painter on screen draws with it until the next build, which the
-  /// settle asks for — so it is PARKED ([_superseded]) and goes in that
-  /// build, with every bake slot that may replay it ([_releaseSettled]).
-  ///
-  /// ⚠️What stays behind is the display buffer's kept image: it drew the
-  /// deferred picture and pins it (`raster_picture.dart`) until the buffer
-  /// is next composed — one picture of the row held that much longer, in
-  /// place of a whole-buffer raster.
+  /// ⛔The replaced clone is not disposed here — the painter on screen draws
+  /// with it until the next build, which the settle asks for — so it is
+  /// PARKED ([_superseded]) and goes in that build ([_releaseSettled]).
   void _settleHeldImage(
     BrushFrameKey key,
     _HeldImage held,
@@ -909,31 +748,25 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: held.revision,
       quality: held.quality,
       content: held.content,
-      madeFrom: held.madeFrom,
       // The same pixels, so the same whole.
       laidBack: held.laidBack,
     );
   }
 
   /// Lets the handles a settle replaced go, in the build whose painter
-  /// draws with their successors — and with them the bake's slots, which
-  /// may have recorded one ([StaticCompositeBake]: a picture that outlives
-  /// a dispose replays a dead handle).
+  /// draws with their successors.
   void _releaseSettled() {
     if (_superseded.isEmpty) {
       return;
     }
     _superseded.disposeAll();
     _superseded.clear();
-    _bake.invalidate();
   }
 
   @override
   void dispose() {
-    InputInspector.visible.removeListener(_rebuildForInspector);
     widget.imageCache.frameStore.removeRekeyListener(_travelWithTheirCels);
     widget.imageCache.frameStore.removeCopyListener(_shareWithTheirCopies);
-    TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
     for (final entry in _images.entries) {
       widget.imageCache.releasePin(entry.key, entry.value.quality);
       entry.value.clone.disposeAll();
@@ -941,35 +774,17 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
     _images.clear();
     _releaseSettled();
-    // The buffer and the bake go with this view; the books must not keep
-    // charging for a canvas nobody is looking at any more. Unhooked FIRST,
-    // or disposing them would report their last bytes after this zero.
-    _bufferCache.onHeldBytesChanged = null;
-    _bake.onHeldBytesChanged = null;
-    widget.onBufferBytes?.call(0);
-    _bake.dispose();
-    _bufferCache.dispose();
     super.dispose();
   }
 
   /// Synchronous sweep BEFORE this frame's build: adopt every requested
   /// layer whose image is already valid in the cache and drop layers that
-  /// left the request set.
-  ///
-  /// This is what keeps a layer switch flicker-free — the just-deactivated
-  /// layer arrives here with a warm cache image (the prerender re-warms it
-  /// once the editor goes idle after a stroke) or, when the switch beats
-  /// the prerender, has its image composed right here ([shownAlready]);
-  /// the async pass alone would paint it one frame late at best: the
-  /// artwork visibly vanished and reappeared. The just-activated layer
-  /// leaves the same frame, so it never double-draws under the interactive
-  /// view.
+  /// left the request set — so a row whose image is warm paints THIS frame;
+  /// the async pass alone would paint it one frame late at best.
   ///
   /// [shownAlready] is the cels on screen already that this view holds no
-  /// image of: the ones the widget this build replaces was drawing as
-  /// ACTIVE rows ([CanvasLayerStackView.activeCels]), and — for the first
-  /// sweep of a view that takes over what another route showed
-  /// ([CanvasLayerStackView.alreadyShown]) — every row.
+  /// image of: the ones the canvas under the widget this build replaces
+  /// drew live ([CanvasLayerStackView.drawnLive]).
   void _syncImagesWithCache({
     Set<BrushFrameKey> shownAlready = const {},
   }) {
@@ -997,12 +812,12 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       _settleHeldImage(key, held, image);
       // Changed, so the next build hands the painter the new handle and
       // lets the old one go. It repaints nothing: the rows match by
-      // content, and the composite keeps what it drew.
+      // content.
       return true;
     }
     if (held != null) _dropImage(key, held);
     widget.imageCache.retainPin(key, quality);
-    _holdImage(key, (
+    _images[key] = (
       source: image.pieces,
       clone: image.pieces.clones(),
       worldRect: image.worldRect,
@@ -1010,9 +825,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       revision: revision,
       quality: quality,
       content: image.content,
-      madeFrom: image.madeFrom,
       laidBack: LaidBackWhole(),
-    ));
+    );
     return true;
   }
 
@@ -1031,27 +845,26 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final ratio = EffectiveDevicePixelRatio.of(context);
-    final first = !_dependenciesSeen;
-    if (!first && ratio == _devicePixelRatio) {
+    if (_dependenciesSeen && ratio == _devicePixelRatio) {
       return;
     }
     _dependenciesSeen = true;
     _devicePixelRatio = ratio;
-    _syncImagesWithCache(
-      shownAlready: first && widget.alreadyShown
-          ? {for (final layer in widget.layers) layer.frameKey}
-          : const {},
-    );
+    _syncImagesWithCache();
     unawaited(_ensureImages());
   }
 
   /// Whether [key]'s cel was on screen a frame ago and is about to be
-  /// asked for as an image it may not have: it just LEFT the active slot,
-  /// or another route showed it until this view took over
-  /// ([CanvasLayerStackView.alreadyShown]), or the image this row holds is
-  /// of the cel before an EDIT (`sourceRevision` moves on every surface
-  /// write and on nothing else). Such a row's image is composed inside the
-  /// sweep ([LayerFrameImageCache.prepareSyncOrNull]'s `makePictures`).
+  /// asked for as an image it may not have: the canvas under this stack
+  /// drew it live ([shownAlready] — the onion's ghost of the cel just drawn,
+  /// a step after), or the image this row holds is of the cel before an
+  /// EDIT (`sourceRevision` moves on every surface write and on nothing
+  /// else). Such a row's image is composed inside the sweep
+  /// ([LayerFrameImageCache.prepareSyncOrNull]'s `makePictures`).
+  ///
+  /// ↩️So was every row of a view taking over what another route showed
+  /// (`alreadyShown`, F-215), until the frame's one picture drew them
+  /// (one-picture-per-frame ②-5a).
   bool _wasOnScreen(
     BrushFrameKey key,
     int? revision,
@@ -1064,60 +877,23 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
 
   void _syncSweepBody(Set<BrushFrameKey> shownAlready) {
     _adoptWhatIsThere(shownAlready);
-    // What is shown is the frame asked for — or the last whole frame until
-    // this one is whole ([CanvasLayerStackView.wholeFrames]).
-    if (!widget.wholeFrames || _isWhole(widget.layers)) {
-      _shownNodes = widget.nodes;
-    }
-    final kept = _keptKeys();
+    final asked = {for (final layer in widget.layers) layer.frameKey};
     for (final key in _images.keys.toList()) {
-      if (!kept.contains(key)) {
-        final held = _images.remove(key)!;
-        _handToTheActiveRow(key, held);
-        _dropImage(key, held);
+      if (!asked.contains(key)) {
+        _dropImage(key, _images.remove(key)!);
       }
     }
   }
-
-  /// The cels whose images this view holds on to: the rows asked for, and
-  /// the rows of the frame it still shows in their place.
-  Set<BrushFrameKey> _keptKeys() => {
-    for (final layer in widget.layers) layer.frameKey,
-    if (!identical(_shownNodes, widget.nodes))
-      for (final layer in _layersOf(_shownNodes)) layer.frameKey,
-  };
-
-  static Iterable<CanvasLayerImageRequest> _layersOf(
-    List<CompositeNode<CanvasStackRow>> nodes,
-  ) sync* {
-    for (final node in preorderNodes(nodes)) {
-      if (node case CompositeLeaf(
-        payload: final CanvasLayerImageRequest request,
-      )) {
-        yield request;
-      }
-    }
-  }
-
-  /// Whether every one of [layers] can be drawn now — held, or with nothing
-  /// to draw, or given up on: nothing of the frame is still to come.
-  bool _isWhole(Iterable<CanvasLayerImageRequest> layers) => layers.every(
-    (layer) =>
-        _images.containsKey(layer.frameKey) ||
-        !widget.imageCache.frameStore.celHasRenderableContent(
-          layer.frameKey,
-        ) ||
-        _unreadable(layer.frameKey),
-  );
 
   /// Adopts every requested row whose image is valid in the cache now — or
   /// composes the ones that may not wait ([_wasOnScreen]).
   void _adoptWhatIsThere(Set<BrushFrameKey> shownAlready) {
     for (final layer in widget.layers) {
       // Valid cache image, or a synchronous per-tile compose — either way
-      // the artwork paints THIS frame. A cel that was on screen a frame ago
-      // is composed whatever it takes ([_wasOnScreen]); any other row only
-      // when it is free, and a true cold miss falls to the async pass.
+      // the artwork paints THIS frame. A row on screen a frame ago — drawn
+      // live under this stack, or held from before an edit — is composed
+      // whatever it takes ([_wasOnScreen]); any other row
+      // only when it is free, and a true cold miss falls to the async pass.
       // 🚨Same law as the async pass — and this walk runs FIRST, so
       // without it the guard down there never gets its turn: the throw
       // lands here instead, out of a build/layout callback, and every
@@ -1266,18 +1042,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           }
           changed = changed || refreshed;
         }
-        // The frame this pass made whole goes up — a view that changes
-        // frames whole held the last whole one until now.
-        if (!identical(_shownNodes, widget.nodes) &&
-            _isWhole(widget.layers)) {
-          _shownNodes = widget.nodes;
-          changed = true;
-        }
-        // A frame left standing while another is made whole ([_keptKeys]):
-        // what it still shows is not this pass's to let go of.
-        final kept = {...wanted, ..._keptKeys()};
         for (final key in _images.keys.toList()) {
-          if (!kept.contains(key)) {
+          if (!wanted.contains(key)) {
             _dropImage(key, _images.remove(key)!);
             changed = true;
           }
@@ -1291,16 +1057,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     }
   }
 
-  /// The painters the rows a lift holds are drawn by, kept across builds.
-  final LiftedRowPainters _liftedPainters = LiftedRowPainters();
-
-  /// What this view draws live ([LiveRows]).
-  LiveRows get _live => (
-    activeSurfacePainter: widget.activeSurfacePainter,
-    floatOverlay: widget.floatOverlay,
-    liftedRows: widget.liftedRows,
-  );
-
   /// The tree with each image request replaced by the clone we hold —
   /// requests whose image is not ready yet simply drop out, and a group
   /// left empty by that drops with them (an empty buffer is a wasted
@@ -1310,9 +1066,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   ) => mapCompositeLeaves(nodes, _paintRowFor);
 
   _PaintRow? _paintRowFor(CanvasStackRow row) {
-    if (_liveRowOf(row, _live, _liftedPainters) case final live?) {
-      return live;
-    }
     switch (row) {
       case final CanvasLayerImageRequest request:
         final held = _images[request.frameKey];
@@ -1333,133 +1086,19 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           // cache handed back.
           effects: request.paintEffects,
         );
-      // No painter to draw it: a host that mounts its own interactive view.
+      // Drawn live by the frame's picture's view (`FramePictureView`), not
+      // from an image of its cel.
       case CanvasActiveLayerRow():
         return null;
     }
   }
 
-  /// 🔬F-67 (2026-09-11): where this stack's top-left lands on the DEVICE
-  /// grid, printed to the input inspector once per change.
-  ///
-  /// 유저 F-67: 「툴을 바꾸거나 선을 그리기 시작하거나 화면을 팬으로 이동할때,
-  /// 그 때만 … 일부 정해진 픽셀이 반픽셀 움직였다가 돌아오는 현상」, at zoom
-  /// ≥ 100% on the drawing. Three mechanisms were measured and cleared in
-  /// the test shell — the route flip inside the buffer (byte-identical), the
-  /// pan snap (whole device pixels), the display filter (`none` at ≥1) — and
-  /// the one left is the one a shell cannot see: THIS widget's own device
-  /// offset, which layout owns. R11 put it on the grid at 1.25 and 1.35 in
-  /// the shell; the real app's panel set, ruler widths and UI scale are
-  /// what the shell does not have. When the fraction here is not 0 on the
-  /// frame the pixels move, #1100's mechanism (a stable picture replayed at
-  /// an integral offset, a live repaint at the fractional one) is the
-  /// cause; when it is 0, it is not, and the search moves on. Either way it
-  /// is a number rather than a guess.
-  ///
-  /// Post-frame, because layout has to have run; deduplicated, because a
-  /// probe that prints every frame is one nobody reads; behind the
-  /// inspector's visibility, because release builds are the ones that get
-  /// reported and this must cost nothing when it is off.
-  void _noteBoundaryOnGrid(BuildContext context) {
-    if (!InputInspector.visible.value) {
-      return;
-    }
-    final ratio = EffectiveDevicePixelRatio.of(context);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      final box = context.findRenderObject();
-      if (box is! RenderBox || !box.hasSize) {
-        return;
-      }
-      final device = box.localToGlobal(Offset.zero) * ratio;
-      String fraction(double v) => (v - v.floorToDouble()).toStringAsFixed(3);
-      // PINNED, not noted: a layout fact, read whenever the card is looked
-      // at — the noted line scrolled off under the paint probes before the
-      // hands-on screenshot was taken.
-      InputInspector.pin(
-        'grid',
-        'grid device=(${device.dx.toStringAsFixed(2)}, '
-        '${device.dy.toStringAsFixed(2)}) '
-        'frac=(${fraction(device.dx)}, ${fraction(device.dy)}) '
-        'ratio=${ratio.toStringAsFixed(3)}',
-      );
-    });
-  }
-
-  /// The card is opened AFTER this view settled, most of the time — and a
-  /// layout fact is only measured on a build. So a rebuild follows the
-  /// toggle, and the pin is there when the card is.
-  void _rebuildForInspector() {
-    if (InputInspector.visible.value && mounted) {
-      setState(() {});
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    _noteBoundaryOnGrid(context);
-    final nodes = _resolvedTree(_shownNodes);
+    final nodes = _resolvedTree(widget.nodes);
     // This build's painter draws with a settle's new handles, so the ones
     // they replaced can go ([_settleHeldImage]).
     _releaseSettled();
-    // 🚨(v) — the recordings survive only while everything they were
-    // recorded against holds still.
-    //
-    // ⛔The set is deliberately the SAME one `shouldRepaint` compares, plus
-    // [_imagesRevision]. Anything compared there and left out here is a slot
-    // that keeps replaying after the thing it drew has changed — a stale
-    // frame nobody can trace back to a cache, which is the failure mode
-    // [[stale-tile-flicker-program]] is a whole file about.
-    //
-    // The ACTIVE surface is absent on purpose: a stroke step changes its
-    // pixels and nothing else, and its pixels are the one thing never
-    // recorded. That absence IS the optimisation.
-    // 🚨★★★THE VIEWPORT IS NOT IN HERE, and that is not an oversight.
-    //
-    // It used to be, from the days when the buffer was `pasteboard ∩
-    // visibleRect` — an extent the viewport moved directly. #1301 made the
-    // extent CONTENT ∩ view, and the cache has compared the rect all along
-    // (`imageFor(key, rect)` needs both). So the viewport reached these
-    // pixels through the extent and nothing else, and the extent is already
-    // the guard.
-    //
-    // 🧪Verified by walking every widget the buffer composites: the zoom's
-    // `filterQuality` lands when the buffer is DRAWN, not inside it, and
-    // group rasters inside run at the buffer's own scale.
-    // `BitmapSurfacePainter` reads its viewport only in the standalone
-    // `paint()`, never in `paintContentInto`; `placementViewportWrapMatrix`
-    // belongs to the brush panel's `Transform`, not to any composite route.
-    //
-    // 🚨WHAT A RECORDING DOES CARRY OF THE ZOOM IS IN THE KEY (2026-09-16,
-    // closing defect candidate ⓐ of the tile-commit-path audit): the LEVEL
-    // the buffer composes at ([displayLevelOf] — the recordings draw level
-    // images 1:1 and the backdrop raster is made in level pixels), and the
-    // filter class the leaf draws take ([filterQualityForDisplayScale]).
-    // Both are coarse functions of the zoom — a step at 100% and at each
-    // halving — so a pan or a zoom inside a level keeps every slot, and a
-    // slot recorded at one level never replays at another.
-    //
-    // ⇒ Panning or zooming REPAINTS (shouldRepaint still compares the
-    // viewport, and the CTM did change) but no longer RE-COMPOSITES while
-    // the extent and the level hold — which is exactly the posture where
-    // the page fits the screen and the buffer is at its biggest.
-    final displayScale = displayScaleOf(
-      widget.viewport.zoom,
-      EffectiveDevicePixelRatio.of(context),
-    );
-    final compositeKey = Object.hash(
-      _imagesRevision,
-      widget.canvasSize,
-      widget.pasteboardReach,
-      widget.paintPaper,
-      widget.paperBackground,
-      _treeSignature(nodes),
-      displayLevelOf(displayScale),
-      filterQualityForDisplayScale(displayScale),
-    );
-    _bake.keepFor(compositeKey);
     return IgnorePointer(
       // ⛔**THE `willChange: true` HINT IS GONE** — from this picture and
       // from the three siblings that copied it. The history stays because
@@ -1589,17 +1228,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       child: CustomPaint(
         painter: _LayerStackPainter(
           nodes: nodes,
-          activeSurfacePainter: widget.activeSurfacePainter,
-          floatOverlay: widget.floatOverlay,
-          liftedRows: _liftedPainters._drawn(widget.liftedRows),
           canvasSize: widget.canvasSize,
           pasteboardReach: widget.pasteboardReach,
           viewport: widget.viewport,
           paintPaper: widget.paintPaper,
           paperBackground: widget.paperBackground,
-          bake: widget.debugDisableBake ? null : _bake,
-          bufferCache: widget.debugDisableBake ? null : _bufferCache,
-          compositeKey: compositeKey,
           // The display scale is zoom·DPR, and the DPR is the one the
           // ROOT MATRIX uses — the effective ratio. It still tracks
           // monitor moves (this build re-runs) and still answers per
@@ -1630,12 +1263,8 @@ typedef _HeldImage = ({
   int? revision,
   PlaybackQuality quality,
   // What the pixels ARE ([LayerFrameImage.content]) — what the paint tree
-  // and the composite key compare, so a settle changes neither.
+  // compares, so a settle changes nothing.
   Object content,
-  // What every coordinate showed when they were composed
-  // ([LayerFrameImage.madeFrom]) — what the active row checks before it
-  // draws from them ([TilePyramid.seed]).
-  Map<TileCoord, Object> madeFrom,
   // The whole these pixels stand for, once a draw has laid it back — kept
   // while they are held, disposed with the clone.
   LaidBackWhole laidBack,
@@ -1648,42 +1277,6 @@ sealed class _PaintRow {
   /// Whether [other] draws the same picture as this row — the repaint
   /// gate's question, field by field, images by IDENTITY.
   bool matches(_PaintRow other);
-
-  /// 🚨(v) — [matches] as a VALUE, for the bake's key.
-  ///
-  /// ⛔It must fold in exactly what [matches] compares, and it lives on the
-  /// same node so the two are read together: a field added to a node and
-  /// to [matches] but not to this one makes the recordings outlive the
-  /// change they should have ended. A new node type has to write both —
-  /// the sealed class demands them — which is the tripwire the comparison's
-  /// `default:` arm used to be (R6b).
-  ///
-  /// ⚠️Images fold in by IDENTITY (`identityHashCode`), matching
-  /// `identical()` in [matches] — two different decodes of the same
-  /// artwork are two different pictures to draw.
-  int get signature;
-}
-
-/// How many ops the engine replays to draw [list] — one per leaf, one
-/// more per group's `saveLayer`. This is the S7 predicate's input: it is
-/// a static fact of the node tree, so the backdrop decision needs no
-/// clock and cannot flap within a key.
-int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
-  var ops = 0;
-  for (final node in list) {
-    ops += switch (node) {
-      CompositeLeaf<_PaintRow>() => 1,
-      CompositeGroup<_PaintRow>(:final children) => 1 + _replayOpsOf(children),
-      CompositeAdjustment<_PaintRow>(:final children) =>
-        1 + _replayOpsOf(children),
-      CompositeBackdropBlend<_PaintRow>(:final children) =>
-        1 + _replayOpsOf(children),
-      // The clip's own image, and its `srcATop` layer inside.
-      CompositeClip<_PaintRow>(:final children) => 2 + _replayOpsOf(children),
-      CompositeOpaque<_PaintRow>(:final of) => 1 + _replayOpsOf([of]),
-    };
-  }
-  return ops;
 }
 
 /// The PAPER the rows are laid on, as the bottom row of the root scope
@@ -1692,17 +1285,14 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
 /// (brush-fidelity-Q4).
 ///
 /// The pass paints it ([_LayerStackPaintPass._paintPaperInto]) — it knows
-/// the level and the edge — from the painter's own fields, which the bake's
-/// key and the repaint gate already carry (`paintPaper`, `paperBackground`);
-/// so there is nothing of its own to compare.
+/// the level and the edge — from the painter's own fields, which the repaint
+/// gate already carries (`paintPaper`, `paperBackground`); so there is
+/// nothing of its own to compare.
 final class _PaintPaper extends _PaintRow {
   const _PaintPaper();
 
   @override
   bool matches(_PaintRow other) => other is _PaintPaper;
-
-  @override
-  int get signature => (_PaintPaper).hashCode;
 }
 
 final class _PaintImage extends _PaintRow {
@@ -1729,19 +1319,19 @@ final class _PaintImage extends _PaintRow {
   final Rect extent;
 
   /// Where the whole of [pieces] is kept once a draw lays it back — the held
-  /// image's own. Out of [matches] and [signature]: it is [content]'s whole,
-  /// so it changes exactly when [content] does.
+  /// image's own. Out of [matches]: it is [content]'s whole, so it changes
+  /// exactly when [content] does.
   final LaidBackWhole laidBack;
 
   /// What [pieces]' pixels ARE ([LayerFrameImage.content]) — the one thing
-  /// [matches] and [signature] compare about the picture.
+  /// [matches] compares about the picture.
   ///
-  /// ⛔Not `identical(image, …)`, which is what they compared until
+  /// ⛔Not `identical(image, …)`, which is what it compared until
   /// 2026-09-23: a settle hands over a new handle to the same pixels, and
-  /// the handle's identity is what broke the composite key and rastered the
-  /// display buffer a second time
-  /// ([_CanvasLayerStackViewState._settleHeldImage]). Every compose makes a
-  /// new token, so a new PICTURE still moves both.
+  /// the handle's identity is what repainted the stack — ↩️and, while the
+  /// buffer was kept, broke the composite key and rastered it a second
+  /// time ([_CanvasLayerStackViewState._settleHeldImage]). Every compose
+  /// makes a new token, so a new PICTURE still repaints.
   final Object content;
   final Rect worldRect;
   final double opacity;
@@ -1764,18 +1354,6 @@ final class _PaintImage extends _PaintRow {
       // it out here would repaint nothing (the whole tree still "matches")
       // and the canvas would go stale.
       listEquals(effects, other.effects);
-
-  @override
-  int get signature => Object.hash(
-    identityHashCode(content),
-    worldRect,
-    extent,
-    opacity,
-    blendMode,
-    placement,
-    tint,
-    Object.hashAll(effects),
-  );
 }
 
 /// A row drawn as a SURFACE — the live one, or one a lift holds beside it —
@@ -1851,15 +1429,6 @@ final class _PaintActiveSurface extends _SurfaceRow {
       placement == other.placement &&
       listEquals(effects, other.effects) &&
       listEquals(keys, other.keys);
-
-  @override
-  int get signature => Object.hash(
-    opacity,
-    blendMode,
-    placement,
-    Object.hashAll(effects),
-    Object.hashAll(keys),
-  );
 }
 
 /// A row a folder's move session holds lifted ([LiftedCel]): drawn by
@@ -1889,8 +1458,9 @@ final class _PaintLiftedSurface extends _SurfaceRow {
 
   // The surface and the float by IDENTITY, as an image is: the float's
   // value moves under the hand without this node changing, which is why a
-  // view holding a lifted row keeps no buffer ([_LayerStackPainter.
-  // _bufferKey]) and repaints on each float ([_LayerStackPainter.repaint]).
+  // frame holding a lifted row patches nothing ([_LayerStackPainter.
+  // _liveCanBeTold]) and repaints on each float ([_LayerStackPainter.
+  // _liveListenable]).
   @override
   bool matches(_PaintRow other) =>
       other is _PaintLiftedSurface &&
@@ -1901,17 +1471,6 @@ final class _PaintLiftedSurface extends _SurfaceRow {
       placement == other.placement &&
       listEquals(effects, other.effects) &&
       listEquals(keys, other.keys);
-
-  @override
-  int get signature => Object.hash(
-    identityHashCode(lifted.surface),
-    identityHashCode(lifted.float),
-    opacity,
-    blendMode,
-    placement,
-    Object.hashAll(effects),
-    Object.hashAll(keys),
-  );
 }
 
 /// A cel drawn from its OWN TILES, as the plan hands it
@@ -1954,15 +1513,6 @@ final class _PaintCelSurface extends _SurfaceRow {
       blendMode == other.blendMode &&
       placement == other.placement &&
       listEquals(effects, other.effects);
-
-  @override
-  int get signature => Object.hash(
-    identityHashCode(painter.surface),
-    opacity,
-    blendMode,
-    placement,
-    Object.hashAll(effects),
-  );
 }
 
 /// Whether [a] draws the same picture as [b] — the STRUCTURE compared
@@ -2015,54 +1565,6 @@ bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
         b is CompositeOpaque<_PaintRow> && _nodesMatch(of, b.of),
     };
 
-/// 🚨(v) — [_nodesMatch] as a VALUE, for the bake's key.
-///
-/// ⛔It must fold in exactly what [_nodesMatch] compares, and it sits
-/// directly beside it so the two are read together: a field compared there
-/// and left out here makes the recordings outlive the change they should
-/// have ended.
-int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
-  CompositeLeaf<_PaintRow>(:final payload) => payload.signature,
-  CompositeGroup<_PaintRow>(
-    :final children,
-    :final opacity,
-    :final blendMode,
-    :final effects,
-  ) =>
-    Object.hash(
-      opacity,
-      blendMode,
-      Object.hashAll(effects),
-      _treeSignature(children),
-    ),
-  CompositeAdjustment<_PaintRow>(
-    :final children,
-    :final effects,
-    :final mix,
-  ) =>
-    Object.hash(mix, Object.hashAll(effects), _treeSignature(children)),
-  CompositeBackdropBlend<_PaintRow>(
-    :final backdrop,
-    :final source,
-    :final blendMode,
-  ) =>
-    Object.hash(blendMode, _nodeSignature(source), _treeSignature(backdrop)),
-  CompositeClip<_PaintRow>(
-    :final base,
-    :final scope,
-    :final opacity,
-    :final blendMode,
-  ) =>
-    Object.hash(
-      opacity,
-      blendMode,
-      _nodeSignature(base),
-      _treeSignature(scope),
-    ),
-  CompositeOpaque<_PaintRow>(:final of) =>
-    Object.hash(CompositeOpaque, _nodeSignature(of)),
-};
-
 /// Whether the live layer's last paint handed its opacity/blend to the
 /// individual draws instead of opening a buffer around them.
 ///
@@ -2080,56 +1582,10 @@ bool? debugLiveLayerRodeTheDraws;
 /// comparison could not say which it had compared. The tiles are the one
 /// draw left, so there is nothing to tell apart.
 
-/// What a paint puts on the screen for the display buffer, and where it
-/// belongs: the raster ([_BufferImage]) or the picture that raster would
-/// have been made from ([_BufferPicture]).
-///
-/// [rect] is in canvas space and is whole-pixel aligned, so the src/dst pair
-/// of the final `drawImageRect` is exact: the ONE resample the display is
-/// entitled to happens in the viewport transform and nowhere else.
-sealed class _DisplayBuffer {
-  const _DisplayBuffer({required this.rect});
-
-  final Rect rect;
-}
-
-/// One composited canvas-resolution raster.
-final class _BufferImage extends _DisplayBuffer {
-  const _BufferImage({
-    required this.image,
-    required super.rect,
-    required this.pixelWidth,
-    required this.pixelHeight,
-    this.owned = true,
-  });
-
-  final ui.Image image;
-  final double pixelWidth;
-  final double pixelHeight;
-
-  /// Whether the caller disposes [image] after drawing it.
-  ///
-  /// ⛔False when the cache is holding it for the next paint — disposing
-  /// there hands the following frame a dead handle, which is the hazard
-  /// [[native-tile-pixel-lifetime]] and the bake's revision counter both
-  /// exist to make structurally impossible rather than merely unlikely.
-  final bool owned;
-}
-
-/// The picture a patch's raster would have been made from, recorded in
-/// the buffer's own pixels and drawn straight onto the screen — the same
-/// bytes wherever the paint pass says so, and one render pass fewer.
-/// Always the paint's to dispose once drawn.
-final class _BufferPicture extends _DisplayBuffer {
-  const _BufferPicture({required this.picture, required super.rect});
-
-  final ui.Picture picture;
-}
-
 /// The geometry field probe's state — the numbers every buffer decision
 /// depends on and nobody has ever measured on a device: the logical view,
 /// the device pixel ratio, the zoom actually worked at, and what the
-/// buffer costs there. The 1928×1200 that circulates is a comment in the
+/// buffer costs there. ↩️The 1928×1200 that circulated was a comment in the
 /// bake, not a measurement.
 ///
 /// Public and outside the painter because the painter class is private and
@@ -2138,11 +1594,6 @@ final class _BufferPicture extends _DisplayBuffer {
 abstract final class CanvasPaintGeometryProbe {
   /// The last emitted geometry line — the dedupe key, held across frames.
   static String? lastLine;
-
-  /// The last emitted buffer-counter cadence key (full composes, patches
-  /// in 32s, carries) — the counters line is deduped apart from the
-  /// geometry line so a stroke can be watched without touching the zoom.
-  static String? lastCounters;
 
   /// Paints per zoom bucket (percent, 10% steps), counted while the
   /// inspector is visible. Every byte figure in the composite plan hinges
@@ -2154,7 +1605,6 @@ abstract final class CanvasPaintGeometryProbe {
 
   static void reset() {
     lastLine = null;
-    lastCounters = null;
     // Every dedupe key the paint pass keeps — the T12 line's too, or a
     // test that runs after another one sees no T12 line at all: the
     // probes are static on purpose (a painter is rebuilt every frame).
@@ -2166,30 +1616,24 @@ abstract final class CanvasPaintGeometryProbe {
 class _LayerStackPainter extends CustomPainter {
   _LayerStackPainter({
     required this.nodes,
-    required this.activeSurfacePainter,
-    required this.floatOverlay,
+    this.activeSurfacePainter,
+    this.floatOverlay,
     this.liftedRows = const {},
     required this.canvasSize,
     required this.pasteboardReach,
     required this.viewport,
     required this.paintPaper,
     required this.paperBackground,
-    this.bake,
-    this.bufferCache,
-    required this.compositeKey,
     this.devicePixelRatio = 1.0,
     this.debugDisableSingleBuffer = false,
-  }) : super(
-         repaint: _liveListenable(
-           activeSurfacePainter,
-           floatOverlay,
-           liftedRows,
-         ),
-       );
+  });
 
   /// What moves the live rows' pixels: the live row's surface and stroke,
   /// the float, and each lifted row's surface and float — a drag step
-  /// reaches the canvas without a widget rebuild.
+  /// reaches the canvas without a widget rebuild ([StackedFrame.changes]).
+  ///
+  /// ↩️It was this painter's own `repaint`, while the canvas's stack drew
+  /// the live rows (until one-picture-per-frame ②-5a).
   static Listenable _liveListenable(
     BitmapSurfacePainter? activeSurfacePainter,
     SelectionFloatOverlay? floatOverlay,
@@ -2207,32 +1651,17 @@ class _LayerStackPainter extends CustomPainter {
 
   final List<CompositeNode<_PaintRow>> nodes;
 
-  /// 🚨(v) — the recording of everything a stroke cannot change.
-  ///
-  /// Owned by the STATE, not by this painter: a `CustomPainter` is a fresh
-  /// object every frame, so a cache held here would be recorded and thrown
-  /// away in the same breath. Null keeps the original walk.
-  final StaticCompositeBake? bake;
-
-  /// The kept composite buffer ([DisplayBufferCache]). Owned by the State,
-  /// because a painter is a fresh object every frame.
-  final DisplayBufferCache? bufferCache;
-
-  /// What the bake was kept for. The buffer's key builds on it and adds the
-  /// live surface, which the bake deliberately leaves out.
-  final Object compositeKey;
-
   /// Draws the ACTIVE layer's live surface in place. Its own repaint
-  /// Listenable (tile cache + stroke overlay) drives this painter too, so
-  /// a stroke step still repaints without a widget rebuild.
+  /// Listenable (tile cache + stroke overlay) is in [_liveListenable], so a
+  /// stroke step still repaints without a widget rebuild.
   final BitmapSurfacePainter? activeSurfacePainter;
 
-  /// TS1: the selection float, drawn in the active layer's slot. Merged into
-  /// the repaint above for the same reason the surface painter is — a drag
+  /// TS1: the selection float, drawn in the active layer's slot. In
+  /// [_liveListenable] for the same reason the surface painter is — a drag
   /// step has to reach the canvas without a widget rebuild.
   final SelectionFloatOverlay? floatOverlay;
 
-  /// See [CanvasLayerStackView.liftedRows], as this build draws them.
+  /// See [LiveRows], as this frame draws them.
   final Map<BrushFrameKey, _LiftedRowPaint> liftedRows;
   final CanvasSize canvasSize;
   final PasteboardReach pasteboardReach;
@@ -2256,17 +1685,6 @@ class _LayerStackPainter extends CustomPainter {
   /// 100% only on one past the cap itself. Past it the direct walk draws,
   /// which is always correct and costs only the sampling law.
   static const int _maxBufferSide = 8192;
-
-
-  /// S7 — the fewest engine ops the backdrop raster must be collapsing
-  /// before holding a visible-rect image is worth it. See
-  /// `paintBackdropSplit` for the arithmetic; the short version is that
-  /// per stroke step the raster saves (ops − 1) draws and costs one blit,
-  /// so single-digit stacks save almost nothing while still paying the
-  /// image's megabytes and a re-raster per key change. Eight is paper
-  /// plus seven draws — comfortably past "almost nothing", far below the
-  /// hundreds-of-layers case the raster exists for.
-  static const int _backdropRasterMinReplayOps = 8;
 
   @override
   void paint(Canvas canvas, Size size) => labProbe(
@@ -2307,9 +1725,13 @@ class _LayerStackPainter extends CustomPainter {
   }
 
   /// What the live surface looks like NOW, per coordinate — or null when
-  /// that cannot be said: the same three cases [_bufferKey] refuses to
-  /// cache for, plus a surface whose tiles cannot be compared to the ones
-  /// a buffer was made from.
+  /// that cannot be said: no live row, a live row whose change does not
+  /// land where its tiles are ([_liveSurfaceIsSpatiallyStable]), or one
+  /// drawn from state it does not publish
+  /// ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
+  /// comparison here can be right. That is the answer that makes a patch
+  /// honest: ask the thing you are patching where it changed, and do not
+  /// patch what cannot say.
   ///
   /// The overlay's tiles carry the stroke in flight — but they ACCUMULATE
   /// for the stroke's whole life (nothing leaves the map until pen-up), so
@@ -2358,24 +1780,18 @@ class _LayerStackPainter extends CustomPainter {
     );
   }
 
-  /// Where the LIVE surface changed since the base this paint will draw
-  /// was made, in canvas space — measured against [since], the tokens
-  /// stored WITH that base — plus what the surface looks like now, for the
-  /// buffer this paint is about to store.
+  /// Where the LIVE surface changed since [since] — what it looked like
+  /// when the picture it is patched into last took it in — in canvas space,
+  /// plus what it looks like now, for the next measure.
   ///
-  /// 🎯[since] IS THE BASE'S, NOT THE HEAD'S. The cache's real base is a
-  /// paint or three older than its head (`DisplayBufferCache._realBase`),
-  /// so a dirty rect measured from the head's tokens would leave the steps
-  /// between them out of the patch — a stroke with holes in it. The
-  /// caller asks the cache which base it will draw and passes that base's
-  /// tokens; the head's own tokens are only the fallback for a compose
-  /// that starts from nothing.
+  /// 🎯[since] IS WHAT THE PICTURE HOLDS, not what the last paint drew.
+  /// ↩️The display buffer's real base was a paint or three older than its
+  /// head, and a dirty rect measured from the head's tokens left the steps
+  /// between them out of the patch — a stroke with holes in it.
   ///
-  /// 🚨`located: false` is the safe answer and it costs only a full
-  /// re-raster, which is what every paint did before the cache existed. It
-  /// is the answer whenever the change cannot be located
-  /// ([_liveSurfaceTokens]), and whenever nothing is kept to measure from —
-  /// a cold start, or a buffer stored without a snapshot.
+  /// 🚨`located: false` is the safe answer, and it costs only drawing the
+  /// frame as it stands. It is the answer whenever the change cannot be
+  /// located ([_liveSurfaceTokens]).
   ///
   /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
   /// composite around it does not have to land on them — a posed sibling or
@@ -2390,15 +1806,6 @@ class _LayerStackPainter extends CustomPainter {
       return (located: false, dirty: null, now: null);
     }
     final kept = since;
-    // Nothing to compare against — the first paint after a cold start, or
-    // a kept image made without a snapshot. ⛔THE SENTINEL, BY IDENTITY,
-    // and not `kept.tiles.isEmpty` as it used to read: an empty cel's
-    // snapshot is empty too, and it is a perfectly good base — the stamp's
-    // usual target is an empty cel, and reading its snapshot as 「none」
-    // refused the ghost's patch on every move there (F-130, measured).
-    if (identical(kept, noLiveSurfaceTokens)) {
-      return (located: false, dirty: null, now: now);
-    }
     var dirty = tileCoordsWorldRect(
       _movedCoords(
         kept.overlay,
@@ -2422,98 +1829,21 @@ class _LayerStackPainter extends CustomPainter {
     return (located: true, dirty: dirty?.inflate(1), now: now);
   }
 
-  /// Whether this tree draws the live surface — the one thing a later paint
-  /// can patch over its buffer. (A live row with no painter to draw it never
-  /// gets here: [_CanvasLayerStackViewState._paintRowFor] drops it.)
-  ///
-  /// 🚨NO LIVE SURFACE, NO SNAPSHOT ([_LayerStackPaintPass._keepMiss]). The
-  /// real base exists so a stroke's patches stand on something whole, and a
-  /// tree that draws no live surface is never patched — a run draws every
-  /// row from its made image (`EditingCanvas.playingStack`) and composes
-  /// whole again on its next frame. A run asked a snapshot on every frame
-  /// it showed, at 1.6–2.0 ms of raster each, and threw it away unread
-  /// (2026-10-11). A pan over such a tree carries from the head, under the
-  /// cache's chain budgets.
-  bool get _drawsLive {
-    for (final node in preorderNodes(nodes)) {
-      if (node case CompositeLeaf(payload: _PaintActiveSurface())) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// Everything the composite depends on that the bake's key does not
-  /// already carry — or null when this stack must not be cached at all.
-  ///
-  /// 🚨The bake deliberately leaves the live surface out: it never records
-  /// it, so a stroke step cannot stale a recording. The BUFFER holds the
-  /// live surface, so it needs every way that surface's pixels can move:
-  ///
-  ///  * the committed tiles, by identity — `BitmapSurface` is immutable, so
-  ///    an edit is a new instance;
-  ///  * the overlay's tile images and its stamp, by identity, which is how
-  ///    an in-flight stroke reaches the canvas at all.
-  ///
-  /// 🪦Until 2026-09-17 there were two more: the tiles' DECODED images (a
-  /// decode arriving changed the screen while the tile it came from never
-  /// moved) and the stand-in and settling passes, which redrew on their own
-  /// clock. A tile's picture is made from its bytes inside the paint now, so
-  /// nothing arrives later and nothing stands in.
-  ///
-  /// ⛔And null when the painter says it draws from state it does not
-  /// publish ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
-  /// comparison here can be right, so nothing is kept. That is the same
-  /// question the tiled buffer had to ask, and the answer that makes a
-  /// cache honest: ask the thing you are caching where it changed, and do
-  /// not cache what cannot say.
-  Object? _bufferKey() {
-    // Nothing is kept while the live rows move where no key sees.
-    if (!_liveCanBeTold) {
-      return null;
-    }
-    final surfacePainter = activeSurfacePainter;
-    if (surfacePainter == null) {
-      // Nothing live: the bake's key already covers every pixel here.
-      return compositeKey;
-    }
-    // ⛔ONE int, not a walk. This used to hash every tile's decoded image:
-    // it costs a lookup per tile PER PAINT and — measured — never produced
-    // a stable key, so the buffer paid the walk and missed anyway. The
-    // surface's identity says the same thing for free: a tile's picture
-    // is made from its bytes inside the paint that needs it, so what a
-    // surface draws can change only when the surface does.
-    var live = identityHashCode(surfacePainter.surface);
-    final overlay = surfacePainter.overlayModel;
-    if (overlay != null) {
-      for (final entry in overlay.tileImages.entries) {
-        live = Object.hash(live, entry.key, identityHashCode(entry.value));
-      }
-    }
-    // ↩️F-33: the stamp ghost was part of this key — a buffer cached
-    // without it stopped following the pointer. Since brush-fidelity-Q9 it
-    // is the overlay's tiles, which the key holds already.
-    //
-    // F-344: the text in hand, floated over its hole, is part of what this
-    // buffer would hold — by its own `==`, which is what a drag changes.
-    live = Object.hash(live, surfacePainter.landingPreview?.value);
-    return Object.hash(compositeKey, live);
-  }
-
   /// Whether what the live rows draw can change only where their tokens
-  /// say ([_liveSurfaceTokens]) — what a kept buffer, and a frame's one
-  /// picture a still canvas patches (`StackedFrame.steady`), stand on.
+  /// say ([_liveSurfaceTokens]) — what a frame's one picture a still canvas
+  /// patches stands on (`StackedFrame.steady`).
   ///
-  /// ⛔A FLOATING SELECTION IS DRAWN INSIDE THIS BUFFER and moves under the
-  /// hand without touching anything else the key can see, so while one
-  /// exists nothing is kept. Caught by walking this painter's own body
-  /// asking "what else can change" — which is the discipline the two
-  /// reverts before this bought ([[cache-what-can-say-where-it-changed]]).
-  /// Shipping without it would have frozen the canvas for the whole drag.
+  /// ⛔A FLOATING SELECTION IS DRAWN IN THE LIVE ROW'S SLOT and moves under
+  /// the hand without touching anything else a token can see, so while one
+  /// exists nothing is patched: the frame is drawn as it stands. Caught by
+  /// walking this painter's own body asking "what else can change" — which
+  /// is the discipline the two reverts before this bought
+  /// ([[cache-what-can-say-where-it-changed]]). Shipping without it would
+  /// have frozen the canvas for the whole drag.
   ///
   /// Not cheap-and-narrow (hash the float's value) on purpose: the float is
-  /// a transient editing state, so declining to cache costs only what the
-  /// uncached path already cost, and it cannot go stale.
+  /// a transient editing state, so declining to patch costs only what
+  /// drawing the frame as it stands costs, and it cannot go stale.
   /// A folder's lift (I-37) floats on each of its rows — the same reason,
   /// as many times as it has rows. And a live row drawn from anything but
   /// what it published says nothing a token could.
@@ -2528,8 +1858,8 @@ class _LayerStackPainter extends CustomPainter {
   /// correct. A POSE puts its pixels somewhere else entirely, and an effect
   /// that SPREADS — on the surface itself or on any folder enclosing it,
   /// because the stroke's pixels pass through those buffers — smears a dab
-  /// past its own tile. Both are answered by re-rastering the whole buffer,
-  /// which is what every paint did before any of this existed.
+  /// past its own tile. Both are answered by drawing the frame as it stands,
+  /// whole.
   static bool _liveSurfaceIsSpatiallyStable(
     List<CompositeNode<_PaintRow>> list,
   ) {
@@ -2601,7 +1931,6 @@ class _LayerStackPainter extends CustomPainter {
         // The display scale — and the level — read this: a monitor move
         // must repaint, not stretch the old buffer.
         oldDelegate.devicePixelRatio != devicePixelRatio ||
-        !identical(oldDelegate.activeSurfacePainter, activeSurfacePainter) ||
         !_treesMatch(oldDelegate.nodes, nodes);
   }
 }
@@ -2613,16 +1942,6 @@ bool _treesMatch(
   List<CompositeNode<_PaintRow>> b,
 ) => listsMatch(a, b, _nodesMatch);
 
-/// [_treesMatch] as a VALUE, for the bake's key — the nodes' signatures
-/// folded in order ([_nodeSignature]).
-int _treeSignature(List<CompositeNode<_PaintRow>> list) {
-  var hash = list.length;
-  for (final node in list) {
-    hash = Object.hash(hash, _nodeSignature(node));
-  }
-  return hash;
-}
-
 /// How many paints have fallen to the direct walk because the buffer would
 /// have exceeded the editing stack's buffer cap — the safety net.
 ///
@@ -2633,7 +1952,13 @@ int _treeSignature(List<CompositeNode<_PaintRow>> list) {
 @visibleForTesting
 int debugCappedFallbacks = 0;
 
-/// Off, every patch rasters its head as it did before pictures were drawn
-/// — the reference a parity test compares the pictures against.
+/// The level ([displayLevelOf]) the last buffer a stack composed was
+/// composed at — 0 at canvas resolution. A level path that silently stops
+/// running looks exactly like one that works, and this is what says which
+/// level a paint actually composed at. ↩️It was the display buffer's own
+/// (`DisplayBufferCache.lastBufferLevel`), until nothing kept a buffer
+/// (one-picture-per-frame ②-5a).
+///
+/// ⚠️Written under `assert`, so a release build pays nothing.
 @visibleForTesting
-bool debugDrawBufferPictures = true;
+int? debugLastBufferLevel;

@@ -126,11 +126,6 @@ void main() {
                   imageCache: imageCache,
                   canvasSize: canvasSize,
                   viewport: CanvasViewport(),
-                  // The law under test is what the paint BODY draws this
-                  // frame. The kept composite buffer can re-serve
-                  // yesterday's whole picture between cache notifications,
-                  // which would hide the very frame this exists to pin.
-                  debugDisableBake: true,
                 ),
               ),
             ),

@@ -3,8 +3,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -19,15 +17,11 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
-import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/settle_async.dart';
@@ -93,8 +87,7 @@ void main() {
   }
 
   /// The cel's image made at [quality] BEFORE the stack mounts, so its
-  /// first paint already holds it — the way `a_pan_carries_what_it_had`
-  /// warms its cache.
+  /// first paint already holds it.
   Future<LayerFrameImageCache> warmImages(
     WidgetTester tester,
     BrushFrameStore store,
@@ -113,39 +106,10 @@ void main() {
     return images;
   }
 
-  /// An active layer with one blank tile — the carry measures where the
-  /// live surface changed, and there has to be one to measure. Its picture
-  /// is given to the cache up front: a decode landing later would bump the
-  /// cache's revision and recompose the buffer whole, which is not what
-  /// this measures.
-  BitmapSurfacePainter blankLive() {
-    final tile = BitmapTile.blank(size: 8);
-    final coord = TileCoord(x: 0, y: 0);
-    final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder);
-    final picture = recorder.endRecording();
-    final image = picture.toImageSync(8, 8);
-    picture.dispose();
-    BitmapTileImageCache.instance.adoptDecoded(
-      tile,
-      image,
-    );
-    return BitmapSurfacePainter(
-      surface: BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: 8,
-        tiles: {coord: tile},
-      ),
-      showTransparentBackground: false,
-    );
-  }
-
   Widget stackAt({
     required CanvasViewport viewport,
     required LayerFrameImageCache images,
     required Size logicalSize,
-    DisplayBufferCache? cache,
-    BitmapSurfacePainter? live,
   }) => MaterialApp(
     home: Scaffold(
       body: Center(
@@ -153,22 +117,16 @@ void main() {
           width: logicalSize.width,
           height: logicalSize.height,
           child: CanvasLayerStackView(
-            nodes: [
-              const CompositeLeaf<CanvasStackRow>(
+            nodes: const [
+              CompositeLeaf<CanvasStackRow>(
                 CanvasLayerImageRequest(frameKey: frameKey, opacity: 1),
               ),
-              if (live != null)
-                const CompositeLeaf<CanvasStackRow>(
-                  CanvasActiveLayerRow(opacity: 1),
-                ),
             ],
             imageCache: images,
             canvasSize: canvasSize,
             viewport: viewport,
-            activeSurfacePainter: live,
             paintPaper: true,
             paperBackground: ProjectBackground.defaultBackground,
-            debugBufferCache: cache,
           ),
         ),
       ),
@@ -207,9 +165,8 @@ void main() {
     return bytes!;
   }
 
-  testWidgets('at 25% the buffer is a level-2 image — the screen\'s size, '
-      'not the canvas\'s — and every pixel is the mean of its 4×4 block',
-      (tester) async {
+  testWidgets('at 25% the buffer is a level: every pixel is the mean of its '
+      '4×4 block', (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final images = await warmImages(
@@ -217,8 +174,6 @@ void main() {
       storeWithColumns(),
       PlaybackQuality.quarter,
     );
-    final cache = DisplayBufferCache();
-    addTearDown(cache.dispose);
     // Canvas x 16..48 × y 8..24 in an 8×4 logical view: one device pixel
     // per 4×4 block, and the cel's INTERIOR — inside a level buffer the
     // paper yields its outer level pixel (#15, `_paintPaperInto`), so the
@@ -229,20 +184,15 @@ void main() {
         viewport: CanvasViewport(zoom: 0.25, panX: -4, panY: -2),
         images: images,
         logicalSize: logicalSize,
-        cache: cache,
       ),
     );
     await tester.pumpAndSettle();
     final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
 
-    expect(cache.lastBufferLevel, 2, reason: '25% is level 2');
-    expect(
-      cache.heldBytes,
-      lessThanOrEqualTo(2 * 8 * 4 * 4),
-      reason: 'the buffer (and its snapshot) is 8×4 level pixels, not the '
-          '32×16 canvas pixels it shows: ${cache.heldBytes} bytes held',
-    );
-    expect(cache.fullCount, greaterThan(0));
+    // ↩️The buffer's level and the bytes it held were read off the
+    // canvas's buffer cache, until nothing kept a buffer
+    // (one-picture-per-frame ②-5a): what each pixel reads tells a level
+    // from the two ways of getting it wrong.
     for (var i = 0; i < bytes.length; i += 4) {
       expect(bytes[i + 3], 255, reason: 'pixel ${i ~/ 4} is opaque');
       expect(
@@ -316,73 +266,8 @@ void main() {
     }
   });
 
-  testWidgets('a pan by whole level pixels carries the kept level buffer '
-      'instead of composing it whole', (tester) async {
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final images = await warmImages(
-      tester,
-      storeWithColumns(),
-      PlaybackQuality.quarter,
-    );
-    final cache = DisplayBufferCache();
-    addTearDown(cache.dispose);
-    final live = blankLive();
-    // ⛔SMALL, so a pan actually moves the extent: 32×32 canvas px in an
-    // 8×8 logical view at level 2 — half the cel.
-    const logicalSize = Size(8, 8);
-    await tester.pumpWidget(
-      stackAt(
-        viewport: CanvasViewport(zoom: 0.25),
-        images: images,
-        logicalSize: logicalSize,
-        cache: cache,
-        live: live,
-      ),
-    );
-    await tester.pumpAndSettle();
-    // The snapshot the next miss measures from lands off the frame
-    // ([DisplayBufferCache.promote]).
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 100)),
-    );
-    expect(cache.lastBufferLevel, 2);
-    expect(cache.fullCount, 1, reason: 'fixture: one cold compose');
-    expect(cache.scrolledCount, 0);
-
-    // One logical pixel = one level pixel = four canvas pixels: the view
-    // now holds canvas x 4..36, overlapping the kept 0..32 by whole level
-    // pixels.
-    await tester.pumpWidget(
-      stackAt(
-        viewport: CanvasViewport(zoom: 0.25, panX: -1),
-        images: images,
-        logicalSize: logicalSize,
-        cache: cache,
-        live: live,
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      cache.scrolledCount,
-      greaterThan(0),
-      reason: 'the overlap is offset by whole level pixels and is carried',
-    );
-    // 🚨THE COUNTER SAYS THE CARRY RAN; THE AREA SAYS IT SAVED SOMETHING
-    // ([DisplayBufferCache.lastComposedArea]) — a carry that blits the
-    // overlap and composites the whole rect anyway is invisible to every
-    // counter. The view is 32×32 canvas px; the pan exposed a band four
-    // canvas px (one level pixel) wide.
-    expect(
-      cache.lastComposedArea,
-      isNotNull,
-      reason: 'the carry composited the exposed band',
-    );
-    expect(
-      cache.lastComposedArea,
-      lessThanOrEqualTo(4.0 * 32),
-      reason: 'the band, not the whole 32×32 view: '
-          '${cache.lastComposedArea} canvas px² composited',
-    );
-  });
+  // ↩️A pan by whole level pixels carried the kept level buffer and
+  // composed only the band it exposed (`DisplayBufferCache`), until the
+  // canvas that stands showed the frame's one picture and nothing kept a
+  // buffer (one-picture-per-frame ②-5a).
 }

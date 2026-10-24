@@ -120,28 +120,11 @@ class RenderCaches {
   /// gap would land in `untrackedBytes` and read as engine overhead.
   final Map<String, int> viewerRasterBytesByViewer = <String, int>{};
 
-  /// What each LAYER STACK VIEW's display buffer holds, by view — the
-  /// editing canvas's onion ghosts (a frame's own picture is the store's,
-  /// `FramePictureStore`): a canvas-resolution image or a chain of them (a
-  /// derived buffer pins the one it was drawn from), 33MB on a 4K view, kept
-  /// for as long as nothing changes — and the static-composite bake beside
-  /// it, one visible-rect raster (~9MB at 1928×1200, 2026-09-11). Each view
-  /// reports both as one number ([countStackBuffer]).
-  ///
-  /// 🚨PUSHED, for the reason above it: each buffer lives in a widget State
-  /// the session does not own. ↩️The canvas pushed a plain int of its own and
-  /// the conte's pictures a map beside it, until the track stack drew its
-  /// cuts on the same view (2026-10-10) and was about to be a third: one map.
-  final Map<Object, int> stackBufferBytes = {};
-
-  /// [view]'s display buffer holds [bytes] now — 0 when it goes away.
-  void countStackBuffer(Object view, int bytes) {
-    if (bytes == 0) {
-      stackBufferBytes.remove(view);
-    } else {
-      stackBufferBytes[view] = bytes;
-    }
-  }
+  /// 🪦`stackBufferBytes` held what each LAYER STACK VIEW's display buffer
+  /// and its static-composite bake kept, pushed by view — one map since the
+  /// track stack was about to be a third pusher (2026-10-10) — until
+  /// nothing kept either (one-picture-per-frame ②-5a, 2026-10-25): a
+  /// frame's picture is the store's (`FramePictureStore`).
 
   /// What the storyboard's and the conte's thumbnails hold — every panel
   /// picture still inside its budget (one viewer's share of this device).

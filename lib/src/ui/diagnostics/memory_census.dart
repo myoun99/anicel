@@ -305,24 +305,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
             StaticRaster.censusBytes +
             // A dock region's still image (2026-09-25) is the same kind of
             // holding: a panel region kept as a raster while nothing changes.
-            StillRaster.censusBytes +
-            // ⛔A layer stack view's display buffer belongs on the same
-            // row — the editing canvas's, a live conte picture's, a cut's on
-            // the track stack: a panel holding a raster of itself, kept for
-            // as long as nothing changes. It lives in a widget State, so it
-            // is PUSHED here — 2026-09-10.
             //
-            // ⚠️NOT one image. A derived buffer pins the one it was drawn
-            // from, so this is the whole chain, up to
-            // `DisplayBufferCache._maxChainBytes` — it read one image until
-            // 2026-09-12, and the canvases it was not counting showed up in
-            // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
-            sum(
-              (session) => session.renderCaches.stackBufferBytes.values.fold(
-                0,
-                (total, bytes) => total + bytes,
-              ),
-            ),
+            // ↩️So was a layer stack view's display buffer, PUSHED here from
+            // its widget State (2026-09-10) — the whole chain a derived
+            // buffer pinned, not one image: counting one until 2026-09-12
+            // left the canvases it missed in 「엔진·폰트·프레임워크」 as 10GB
+            // nothing would own. Nothing keeps one since a frame became one
+            // picture (one-picture-per-frame ②-5a, 2026-10-25).
+            StillRaster.censusBytes,
       ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].

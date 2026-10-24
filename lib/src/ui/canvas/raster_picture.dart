@@ -32,8 +32,8 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 ///   released only when the head is and then recursively on the raster
 ///   thread (2026-09-09: stack overflow at ~2,470 links; 2026-09-12: 17GB
 ///   in two minutes of drawing). Every such chain owes a budget in BOTH
-///   units — links for the stack, bytes for memory — and `DisplayBufferCache`
-///   is the shape to copy.
+///   units — links for the stack, bytes for memory — as the display buffer
+///   kept both (↩️`DisplayBufferCache`, until one-picture-per-frame ②-5a).
 /// · `dispose()` on an image inside such a chain releases the Dart handle
 ///   and nothing else.
 /// `Picture.toImage()` (async) is a plain snapshot and pins nothing; it is

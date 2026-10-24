@@ -18,22 +18,23 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// PROBE (not a contract): reproduce the one-frame ~1px edge jump seen on
 /// Windows at zoom >= 100% with a fractional pan, at pen-down / pen-up /
 /// layer-switch moments.
 ///
-/// The fixture walks the display-buffer compose
-/// (`canvas_layer_stack_view.dart _composeDisplayBuffer`) through every
-/// state the transition moments put it in — kept-buffer serve, patched
-/// compose, uncached full compose (settling), dirty-refused full compose
-/// (stamp), and the direct walk — while the COMMITTED PICTURE never
-/// changes. Every snapshot is byte-compared against the steady baseline;
-/// any nonzero diff is a repro of a one-frame jump, and the phase where
-/// it appears names the mechanism.
+/// The fixture walks the frame drawn as it stands
+/// (`layer_stack_paint_pass.dart _composeDisplayBuffer`) through the
+/// transition moments — pen-down, pen-up, a layer switch, and the direct
+/// walk — while the COMMITTED PICTURE never changes. Every snapshot is
+/// byte-compared against the steady baseline; any nonzero diff is a repro
+/// of a one-frame jump, and the phase where it appears names the
+/// mechanism. ↩️It walked the display buffer's states too — a kept buffer
+/// served, a patched compose, a dirty-refused one — until nothing kept a
+/// buffer (one-picture-per-frame ②-5a).
 ///
 /// Output goes through debugPrint as `PROBE ...` lines; the hard
 /// assertions are baseline stability (two steady paints byte-identical)
@@ -124,7 +125,6 @@ void main() {
     required String tag,
     required CanvasViewport viewport,
   }) async {
-    final cache = DisplayBufferCache();
     final imageCache = LayerFrameImageCache(frameStore: BrushFrameStore());
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
     addTearDown(overlay.dispose);
@@ -166,7 +166,7 @@ void main() {
               child: SizedBox(
                 width: screen.width,
                 height: screen.height,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: const [CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1))],
                   imageCache: imageCache,
                   canvasSize: canvasSize,
@@ -174,7 +174,6 @@ void main() {
                   activeSurfacePainter: surfacePainter,
                   paintPaper: true,
                   paperBackground: ProjectBackground.defaultBackground,
-                  debugBufferCache: cache,
                   debugDisableSingleBuffer: disableBuffer,
                 ),
               ),
@@ -186,7 +185,7 @@ void main() {
       return tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )
@@ -259,8 +258,6 @@ void main() {
       debugPrint(
         'PROBE[$tag] $phase: diff=$diff onLineEdge=$onLineEdge '
         'onTileBoundary=$onTileBoundary fullFlips=$fullFlips '
-        'full=${cache.fullCount} patched=${cache.patchedCount} '
-        'dirty=${cache.lastDirtyRect} '
         '${samples.isEmpty ? '' : 'samples=${samples.join(' ')}'}',
       );
       return (diff: diff, onTileBoundary: onTileBoundary);
@@ -300,8 +297,7 @@ void main() {
     );
     baseline = steadyA;
     debugPrint(
-      'PROBE[$tag] steady: baseline stable, full=${cache.fullCount} '
-      'patched=${cache.patchedCount}',
+      'PROBE[$tag] steady: baseline stable',
     );
 
     // 2. pen-down arm: what interactive_brush_edit_canvas_view.dart:735
@@ -311,8 +307,7 @@ void main() {
 
     // 3. first dab, zero ink: a transparent stroke snapshot pre-blends to
     //    exactly the committed bytes, so the overlay tile REPLACES the
-    //    committed tile with identical content. This is the pen-down
-    //    frame where the buffer key first misses and the PATCH path runs.
+    //    committed tile with identical content: the pen-down frame.
     overlay.updateRegion(
       source: _TransparentStrokeSource(canvasSize),
       region: DirtyRegion(
@@ -326,15 +321,15 @@ void main() {
     // 4. pen-up: the commit lands (tile 0,0 replaced by an identical-bytes
     //    new tile) and the overlay drops in the same turn.
     final painter2 = await pumpWith(painterFor(surface2));
-    // 5. the next paint patches the released coordinate back.
+    // 5. the next paint draws the released coordinate from the commit.
     overlay.reset();
-    report('pen-up-release(patch)', await paintBytes(tester, painter2));
+    report('pen-up-release', await paintBytes(tester, painter2));
 
     // 6. layer switch analogue: a different painter instance carrying a
     //    surface with identical bytes but all-new tile identities. Every
-    //    coordinate reads dirty, so the compose patches the whole canvas.
+    //    coordinate is a new tile.
     final painter3 = await pumpWith(painterFor(surface3));
-    report('layer-switch(all-dirty-patch)', await paintBytes(tester, painter3));
+    report('layer-switch', await paintBytes(tester, painter3));
 
     // 8. the ROUTE FLIP measured directly: the same picture through the
     //    direct walk instead of the buffer. If a transition frame ever

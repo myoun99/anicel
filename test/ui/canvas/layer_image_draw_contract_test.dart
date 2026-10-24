@@ -304,7 +304,12 @@ void main() {
 /// the levels under the patched ones are the engine's own halving — how
 /// the store keeps a patched picture's chain whole. The run they go out of
 /// the GPU in is read through it too, a row at a time.
-const int _knownRawDraws = 30;
+/// **27** on 2026-10-25 (one-picture-per-frame ②-5a): −3 — the display
+/// buffer's carried pixels (`_layLevelPixels`) and the static-composite
+/// bake's backdrop blit went with the buffer kept from paint to paint, and
+/// the level blocks drawn from a seed (`_drawSeeded`) with the seed: a
+/// canvas that stands shows the frame's one picture.
+const int _knownRawDraws = 27;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

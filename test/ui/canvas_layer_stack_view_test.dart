@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
 import '../helpers/placement_reading.dart';
+import '../helpers/the_frame_as_it_stands.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -237,7 +238,7 @@ void main() {
               child: SizedBox(
                 width: 8,
                 height: 8,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   // Bottom → top: the active row, then a row above it.
                   nodes: [
                     const CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1)),
@@ -316,7 +317,7 @@ void main() {
               child: SizedBox(
                 width: 8,
                 height: 8,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: [
                     CompositeLeaf<CanvasStackRow>(
                       CanvasActiveLayerRow(

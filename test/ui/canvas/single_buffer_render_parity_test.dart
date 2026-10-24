@@ -32,8 +32,8 @@ import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
-import '../../helpers/make_the_rows_first.dart';
 import '../../helpers/stack_as_the_plan_hands_it.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★ (v) 2단계의 계약 — **한 장으로 합치고 한 번만 리샘플한다.**
 ///
@@ -136,7 +136,12 @@ void main() {
     required bool disableBuffer,
     required CanvasViewport viewport,
   }) async {
-    final view = CanvasLayerStackView(
+    // Every row read in hand from its cel ([TheFrameAsItStands]): nothing
+    // to wait for. ↩️The rows' images were made first, under real time —
+    // a cold cache resolved some on a later pass, and the two sides drew
+    // different numbers of rows — until the live row and the rows round it
+    // went with the frame's one picture (one-picture-per-frame ②-5a).
+    final view = TheFrameAsItStands(
       nodes: stackAsThePlanHandsIt(nodes),
       imageCache: cache,
       canvasSize: canvasSize,
@@ -146,16 +151,9 @@ void main() {
       paperBackground: const ProjectBackground.color(0xFF00FF00),
       debugDisableSingleBuffer: disableBuffer,
     );
-    // 🚨WARM FIRST, THEN LOOK — a cold cache resolves some rows on a later
-    // pass, so the first pump and the second draw different numbers of rows.
-    // Stage 1 measured this failing with the feature OFF on both sides.
-    // ↩️A settle alone waited on the pumped clock, which finishes no decode:
-    // a busy machine still rastered a side with a row missing.
-    await makeTheRowsFirst(tester, view);
     await tester.pumpWidget(
       MaterialApp(
-        // A distinct key per render, so the second pump builds a FRESH state
-        // rather than reusing the first one's warm bake.
+        // A distinct key per render, so the second pump builds a FRESH state.
         key: ValueKey<String>('$disableBuffer/${viewport.zoom}'),
         home: Scaffold(
           body: Center(
@@ -168,7 +166,7 @@ void main() {
     final painted = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )

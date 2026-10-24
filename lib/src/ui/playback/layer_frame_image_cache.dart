@@ -10,7 +10,6 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
 import '../../models/layer_effect.dart';
 import '../../models/playback_quality.dart';
-import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../../services/brush_frame_store.dart';
@@ -42,7 +41,6 @@ class LayerFrameImage {
     required this.pieces,
     required this.worldRect,
     required this.extent,
-    this.madeFrom = const {},
     Object? content,
   }) : content = content ?? Object();
 
@@ -51,16 +49,6 @@ class LayerFrameImage {
   final List<ImagePiece> pieces;
   final ui.Rect worldRect;
   final ui.Rect extent;
-
-  /// What each coordinate showed when these pixels were composed — the tile
-  /// OBJECT at every coordinate the surface held (no entry: nothing there).
-  ///
-  /// It is how a painter that draws the same cel from its tiles can tell
-  /// that a part of this image is still what those tiles show: a tile is
-  /// never edited in place, a changed coordinate holds a new object. The
-  /// active row below 100% draws the level it was handed from here instead
-  /// of making it again ([TilePyramid.seed]).
-  final Map<TileCoord, Object> madeFrom;
 
   /// Whether this is the ink alone rather than the whole content image.
   bool get isInk => worldRect != extent;
@@ -518,7 +506,6 @@ class LayerFrameImageCache {
       revision: revision,
       canvasSize: canvasSize,
       sourceEffects: sourceEffects,
-      madeFrom: _tilesOf(preview),
     );
     final plan = _levelPlan(
       preview,
@@ -567,7 +554,6 @@ class LayerFrameImageCache {
       int revision,
       CanvasSize canvasSize,
       List<ResolvedLayerEffect> sourceEffects,
-      Map<TileCoord, Object> madeFrom,
     })
     source,
   ) {
@@ -576,7 +562,6 @@ class LayerFrameImageCache {
       pieces: stored.pieces,
       worldRect: stored.worldRect,
       extent: stored.extent,
-      madeFrom: source.madeFrom,
     );
     _entries[at] = _LayerFrameImageEntry(
       positioned: result,
@@ -681,7 +666,6 @@ class LayerFrameImageCache {
       revision: revision,
       canvasSize: canvasSize,
       sourceEffects: sourceEffects,
-      madeFrom: _tilesOf(preview),
     ));
     _settleWhenTheSnapshotLands(at, composed.kept);
     return banked;
@@ -718,7 +702,6 @@ class LayerFrameImageCache {
             ],
             worldRect: entry.positioned.worldRect,
             extent: entry.positioned.extent,
-            madeFrom: entry.positioned.madeFrom,
             // The same pixels, so the same content — a holder swaps its
             // handle and keeps everything it drew with the old one.
             content: entry.positioned.content,
@@ -1158,11 +1141,6 @@ Future<List<ui.Image>>? _snapshotsOf(
     halved: true,
   );
 }
-
-/// The tile object at every coordinate [surface] holds — what an image
-/// composed from it was made from ([LayerFrameImage.madeFrom]).
-Map<TileCoord, Object> _tilesOf(BitmapSurface surface) =>
-    Map<TileCoord, Object>.of(surface.tiles);
 
 /// [image] when the asking route can draw it — always for a whole image, and
 /// for the ink alone only when [inkSuffices].

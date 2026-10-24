@@ -189,6 +189,19 @@ class FramePictureStore<K extends Object> {
   /// The store widens [rect] to the picture's grid; the caller hands it as
   /// it is.
   ///
+  /// 🚨★★★IN PLACE, NEVER OVER — the display buffer's two lessons. The
+  /// patch is drawn on nothing, a picture of [rect] alone ([_recorded]),
+  /// and its texels replace the picture's. ↩️The buffer recomposed a
+  /// region OVER the pixels it carried: ink not fully opaque blended with
+  /// its own previous frame unless the region was cleared first, and where
+  /// the new frame drew nothing the old one stayed — F-104, 유저 2026-09-12
+  /// 「페이스트 보드에 이전 프레임의 그림이 남아있음」, a carry written without
+  /// the clear. And a blend that escaped the region's clip laid a second
+  /// copy of itself over the carried composite on every patch — F-287, 유저
+  /// 실기 2026-10-04 · 10-05 · 10-12: two multiply rows went darker wherever
+  /// they lay with every stroke on a row above them. A patch of its own
+  /// size has nothing under it to blend with and nowhere past it to reach.
+  ///
   /// The picture answers to [to] once the patch's texels are drawn, with
   /// them [FramePicture.landing] over it; until then [from] still shows
   /// what it was. [from] may be [to] — a stroke's next step — and a patch

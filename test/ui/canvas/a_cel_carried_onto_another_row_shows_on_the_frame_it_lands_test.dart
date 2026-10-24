@@ -16,11 +16,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -87,14 +84,13 @@ void main() {
     return store;
   }
 
-  /// [key]'s cel as an image row — or, with [active], as the row the brush
-  /// is on, painted from its tiles — over [under]'s, an image row too.
+  /// [key]'s cel as an image row — as the stack draws an onion ghost — over
+  /// [under]'s, an image row too.
   Future<void> pumpRow(
     WidgetTester tester,
     LayerFrameImageCache images,
     BrushFrameKey key, {
     required double zoom,
-    BitmapSurfacePainter? active,
     BrushFrameKey? under,
   }) => tester.pumpWidget(
     MaterialApp(
@@ -113,16 +109,12 @@ void main() {
                         CanvasLayerImageRequest(frameKey: under, opacity: 1),
                       ),
                     CompositeLeaf<CanvasStackRow>(
-                      active == null
-                          ? CanvasLayerImageRequest(frameKey: key, opacity: 1)
-                          : CanvasActiveLayerRow(opacity: 1, frameKey: key),
+                      CanvasLayerImageRequest(frameKey: key, opacity: 1),
                     ),
                   ],
                   imageCache: images,
                   canvasSize: canvasSize,
                   viewport: CanvasViewport(zoom: zoom),
-                  activeSurfacePainter: active,
-                  debugDisableBake: true,
                 ),
               ),
             ),
@@ -195,37 +187,10 @@ void main() {
     });
   }
 
-  testWidgets('🚨at 50%: a cel that lands as the row the brush is on draws its '
-      'blocks from the picture it was shown with, making none', (tester) async {
-    final (store, images) = await carryAndRelease(tester, zoom: 0.5);
-    const lineage = 'carried-into-the-slot';
-    addTearDown(() => TilePyramid.instance.drop(lineage));
-
-    await pumpRow(
-      tester,
-      images,
-      to,
-      zoom: 0.5,
-      active: BitmapSurfacePainter(
-        surface: BrushFrameDisplayCacheService(
-          frameStore: store,
-          canvasSize: canvasSize,
-        ).prepareFramePreview(to).previewSurface,
-        showTransparentBackground: false,
-        lineage: lineage,
-      ),
-    );
-
-    expect(await blueColumns(tester, 0.5), viewSize.width.toInt());
-    expect(
-      TilePyramid.instance.debugHasSeed(lineage),
-      isTrue,
-      reason: 'the picture the row was shown with is handed over as it '
-          'becomes the brush\'s, as it is when a row is stood on '
-          '(a_cel_entering_the_active_slot_draws_the_level_it_had_test)',
-    );
-    expect(TilePyramid.instance.debugTileCountOf(lineage), 0);
-  });
+  // ↩️A cel that landed as the row the brush is on drew its blocks from the
+  // picture it was shown with (`TilePyramid.seed`), until the canvas that
+  // stands showed the frame's one picture, which a rekey does not change
+  // (one-picture-per-frame ②-5a).
 
   testWidgets('a picture the view held under the key the cel lands on is let '
       'go — its pin with it — and the cel is what that key shows', (

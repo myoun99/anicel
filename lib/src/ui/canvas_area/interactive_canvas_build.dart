@@ -759,6 +759,14 @@ class _InteractiveCanvasBuild {
     }
     final rig = session.playbackRig;
     final standing = !_canvasPlays;
+    // MERGED: the whole tree, active layer included, so a folder's group
+    // buffer encloses the layer being drawn on — asked afresh at each
+    // build: a drag in flight, a run's step ([_followingDragAndRun]).
+    final nodes = _inGap
+        ? const <CompositeNode<CanvasStackRow>>[]
+        : standing
+        ? session.editingCanvas.stack.nodes
+        : session.editingCanvas.playingStack.nodes;
     // 🚨ONE VIEW, STANDING AND PLAYING (one-picture-per-frame ②-3): the
     // canvas standing on a frame and a run playing it show the frame's one
     // picture, through the same view — pressing Play changes nothing on the
@@ -777,14 +785,7 @@ class _InteractiveCanvasBuild {
         frameIndex: session.currentFrameIndex,
         paintPaper: !_inGap,
       ),
-      // MERGED: the whole tree, active layer included, so a folder's group
-      // buffer encloses the layer being drawn on — asked afresh at each
-      // build: a drag in flight, a run's step ([_followingDragAndRun]).
-      nodes: _inGap
-          ? const []
-          : standing
-          ? session.editingCanvas.stack.nodes
-          : session.editingCanvas.playingStack.nodes,
+      nodes: nodes,
       viewport: viewport,
       // Standing, the canvas draws the row a pen is on live — TS1: the
       // selection's float in that row's slot, so the rows above it occlude
@@ -808,14 +809,36 @@ class _InteractiveCanvasBuild {
     final ghosts = standing && !_inGap
         ? session.onionSkin.onionSkinCanvasRequests()
         : const <CanvasLayerImageRequest>[];
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        picture,
-        if (ghosts.isNotEmpty) _ghostsOver(session, ghosts, viewport),
-      ],
+    return DeviceGridProbe(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          picture,
+          // ⛔Standing with no ghost too: the cel the canvas drew live is read
+          // off the widget the next build replaces ([CanvasLayerStackView.
+          // drawnLive]) — mounted with the step, the ghosts' stack would
+          // show the cel you just drew a frame late.
+          _ghostsOver(
+            session,
+            ghosts,
+            viewport,
+            drawnLive: standing ? _celsDrawnLive(nodes) : const {},
+          ),
+        ],
+      ),
     );
   }
+
+  /// The cels [nodes] draw live: their active rows'.
+  static Set<BrushFrameKey> _celsDrawnLive(
+    List<CompositeNode<CanvasStackRow>> nodes,
+  ) => {
+    for (final node in preorderNodes(nodes))
+      if (node case CompositeLeaf(
+        payload: CanvasActiveLayerRow(frameKey: final cel?),
+      ))
+        cel,
+  };
 
   /// 🚨THE ONION GHOSTS LIE OVER THE FRAME'S ONE PICTURE — over its paper
   /// and every row, at their tint and opacity as before
@@ -827,19 +850,18 @@ class _InteractiveCanvasBuild {
   Widget _ghostsOver(
     EditorSessionManager session,
     List<CanvasLayerImageRequest> ghosts,
-    CanvasViewport viewport,
-  ) => CanvasLayerStackView(
+    CanvasViewport viewport, {
+    required Set<BrushFrameKey> drawnLive,
+  }) => CanvasLayerStackView(
     nodes: [for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost)],
     imageCache: session.renderCaches.layerFrameImageCache,
-    // The census cannot reach a widget State; the session can be reached.
-    onBufferBytes: (bytes) =>
-        session.renderCaches.countStackBuffer('canvas', bytes),
     canvasSize: _canvasSize,
     pasteboardReach: session.repository.requireProject().pasteboardReach,
     viewport: viewport,
     // The frame's picture under them holds its paper.
     paintPaper: false,
     paperBackground: session.projectSettings.projectBackground,
+    drawnLive: drawnLive,
   );
 
   /// What is stacked OVER the canvas inside the viewport: the guides and

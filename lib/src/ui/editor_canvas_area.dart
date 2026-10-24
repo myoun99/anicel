@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/brush_frame_key.dart';
 import '../models/layer_effect.dart';
 import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
@@ -73,6 +74,7 @@ import 'playback/playback_run_layer.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/transition_veil_paint.dart';
 import 'panels/tool_size_preset_panel.dart' show ToolSizePresetPanel;
+import 'debug/device_grid_probe.dart';
 import 'debug/input_inspector.dart';
 import 'text/app_face.dart';
 import 'text/app_strings.dart';

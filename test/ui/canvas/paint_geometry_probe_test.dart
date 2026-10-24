@@ -6,7 +6,6 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
@@ -33,7 +32,6 @@ void main() {
     WidgetTester tester, {
     double zoom = 1,
     double panX = 0,
-    DisplayBufferCache? buffers,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -48,7 +46,6 @@ void main() {
                 canvasSize: canvasSize,
                 viewport: CanvasViewport(zoom: zoom, panX: panX),
                 paintPaper: true,
-                debugBufferCache: buffers,
               ),
             ),
           ),
@@ -153,79 +150,28 @@ void main() {
     );
   });
 
-  /// 🚨THE BUFFER COUNTERS LINE MOVES ON A BUCKET, NOT ON EVERY COMPOSE.
-  /// Keyed raw it emitted a line per full compose and per carry — a pan
-  /// is one of those per paint — and a line that moves on every paint
-  /// cannot be read mid-stroke. (It also evicted the geometry line while
-  /// the inspector was a five-line ring: this file's own bucket test went
-  /// red on master, 2026-09-13. The ring holds one slot per emitter since
-  /// that day.) The counts are read off the injected cache so the
-  /// assertion sits exactly on the bucket edge instead of guessing how
-  /// many composes a pump costs.
+  /// 🚨THE SLOTS A PAN LEAVES ARE STILL THE ONES A READER USES: every
+  /// `pumpStack` here builds a fresh painter, and the T12 `stack paint`
+  /// probe used to key on the painter's identity (an interpolation without
+  /// braces — it printed the painter, not the flag), so it said nothing a
+  /// reader could use. With that fixed, eight pans leave a geometry slot
+  /// and a T12 slot that names the flag.
   ///
-  /// ⚠️PINNED ON THE CADENCE KEY FIRST, AND ON THE SLOTS SECOND. The key is
-  /// what the emitter dedupes on, and a raw count in it changes on the very
-  /// next compose. The slots are what the user reads: every `pumpStack`
-  /// here builds a fresh painter, and the T12 `stack paint` probe used to
-  /// key on the painter's identity (an interpolation without braces — it
-  /// printed the painter, not the flag), so it said nothing a reader could
-  /// use. With that fixed, eight pans leave a geometry slot, a T12 slot
-  /// that names the flag, and a counter slot that reads the eighth
-  /// compose.
-  testWidgets('the buffer counters line moves once per bucket of eight full '
-      'composes — a pan does not move it per paint', (tester) async {
-    final buffers = DisplayBufferCache();
-    addTearDown(buffers.dispose);
-
-    await pumpStack(tester, buffers: buffers);
-    paintOnce(tester);
-    expect(
-      InputInspector.notes['buf'],
-      contains('full=0'),
-      reason: 'the first paint reports, counters read before it composes',
-    );
-    final armed = CanvasPaintGeometryProbe.lastCounters;
-    expect(armed, isNotNull);
-
-    // No live surface here, so every moved rect composes whole: one full
-    // compose per pan, and the count climbs by exactly one each time.
-    var pan = 0.0;
-    while (buffers.fullCount < 7) {
-      pan += 1;
-      await pumpStack(tester, panX: pan, buffers: buffers);
+  /// ↩️And a counter slot of the display buffer's composes, moving once per
+  /// bucket of eight full composes, until nothing kept a buffer
+  /// (one-picture-per-frame ②-5a).
+  testWidgets('a pan leaves the geometry slot and a T12 slot that names '
+      'the flag', (tester) async {
+    for (var pan = 0.0; pan < 8; pan += 1) {
+      await pumpStack(tester, panX: pan);
       paintOnce(tester);
     }
-    expect(
-      CanvasPaintGeometryProbe.lastCounters,
-      armed,
-      reason: 'seven full composes are inside one bucket of eight — the key '
-          'must not have moved, or a pan is a line per paint',
-    );
 
-    while (buffers.fullCount < 8) {
-      pan += 1;
-      await pumpStack(tester, panX: pan, buffers: buffers);
-      paintOnce(tester);
-    }
-    expect(
-      CanvasPaintGeometryProbe.lastCounters,
-      isNot(armed),
-      reason: 'the eighth crosses the bucket',
-    );
-
-    // And the slots the user reads: eight rebuilds later the geometry
-    // slot is still there, the counter slot reads the crossing, and the
-    // T12 slot says what it was built to say.
     final slots = InputInspector.notes;
     expect(
       slots['geom'],
       contains('view=8x8'),
       reason: 'the geometry slot outlives a pan: $slots',
-    );
-    expect(
-      slots['buf'],
-      contains('full=8'),
-      reason: 'the bucket crossing wrote the counter slot: $slots',
     );
     expect(
       slots['stack'],

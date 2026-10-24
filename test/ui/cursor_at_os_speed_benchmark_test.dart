@@ -16,8 +16,6 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -202,32 +200,16 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      final stackState =
-          tester.state(find.byType(CanvasLayerStackView)) as dynamic;
-      // The state class is private; its testing seam is reachable this way
-      // only (the backdrop predicate test reads `debugBake` the same way).
-      // ignore: avoid_dynamic_calls
-      final buffers = stackState.debugBufferCacheInUse as DisplayBufferCache;
-      final fullBefore = buffers.fullCount;
-      final patchedBefore = buffers.patchedCount;
-      // Real time between moves, so the buffer's snapshot promotion (a
-      // `toImage`) lands the way it does in the app: without it every patch
-      // draws FROM the deferred head and re-rasters its recipe — a cost the
-      // harness makes, not the app.
+      // Real time between moves, as the app has between them: the ghost's
+      // patch lands in the frame's picture on a GPU turn of its own.
+      // ↩️It counted the display buffer's full composes and patches over
+      // the arm (F-130), until a frame became one picture its strokes are
+      // patched into (one-picture-per-frame ②-5a).
       await hoverArm(
         'stamp',
         tool: CanvasTool.cutStamp,
         cursorKey: null,
         realTimeBefore: const Duration(milliseconds: 20),
-      );
-      // ignore: avoid_print
-      print(
-        '[F130] stamp: display buffer full composes '
-        '${buffers.fullCount - fullBefore}, patches '
-        '${buffers.patchedCount - patchedBefore} over the arm (arming + 4 '
-        'warm-up + $moves measured + 4 relayout-probe moves = ${moves + 9}; '
-        'a hover that recomposites the whole buffer per move reads as that '
-        'many full composes — the cost this arm exists to show)',
       );
       await probe.armTool(brushTool, CanvasTool.brush);
     }

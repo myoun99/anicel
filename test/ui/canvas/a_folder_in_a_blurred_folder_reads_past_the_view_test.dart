@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🎯A BUFFER ON THE EDITING CANVAS IS SIZED BY WHAT READS IT (card
 /// nested-folder-buffers-read-past-the-view): the view at the top, and under
@@ -41,9 +42,10 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 ///
 /// Each case is the camera's pin (`a_folder_through_the_camera_is_buffered_
 /// at_its_shot_test`): a row in a buffer of its own inside the blurred one
-/// lays the same bytes as the row drawn straight into it. And the bake's
-/// recordings of the rows beside the pen's are bounded by what reads them
-/// too, which a picture held in pieces asks of the canvas it lands on.
+/// lays the same bytes as the row drawn straight into it. And a row's image
+/// — what the stack draws the onion's ghosts from — is bounded by what
+/// reads it too, which a picture held in pieces asks of the canvas it lands
+/// on (↩️the bake's recordings of the rows beside the pen's, until ②-5a).
 void main() {
   setUpAll(LayerBlendShader.load);
 
@@ -87,7 +89,7 @@ void main() {
   }
 
   /// A drawn cel left of the view, its ink up to the view's edge — a row
-  /// the bake records — held in pieces past a [side].
+  /// drawn from its image — held in pieces past a [side].
   Future<LayerFrameImageCache> celLeftOfTheView(
     WidgetTester tester, {
     int? side,
@@ -122,7 +124,7 @@ void main() {
     debugPictureSideLimit = side ?? engineSide;
     try {
       // Warmed before the stack mounts, so its sweep holds the image at the
-      // first build (bake_extent_test's lesson).
+      // first build.
       final made = await tester.runAsync(
         () => cache.prepare(
           key: frameKey,
@@ -174,41 +176,44 @@ void main() {
     blendMode: LayerBlendMode.multiply,
   );
 
-  /// What the stack lays over the view for [nodes], through the display
-  /// buffer — or on the [walk] that paints the screen — with the bake that
-  /// records the rows beside the pen's, or without it.
+  /// What is laid over the view for [nodes], through the display buffer —
+  /// or on the [walk] that paints the screen: the frame as it stands with
+  /// the [pen]'s row drawn live ([TheFrameAsItStands]), or without one the
+  /// stack drawing its rows' images, as it draws the onion's ghosts.
   Future<Uint8List> paint(
     WidgetTester tester,
     List<CompositeNode<CanvasStackRow>> nodes, {
-    required BitmapSurfacePainter pen,
+    BitmapSurfacePainter? pen,
     LayerFrameImageCache? cache,
     bool walk = false,
-    bool bake = true,
   }) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
+    final images =
+        cache ?? LayerFrameImageCache(frameStore: BrushFrameStore());
+    // A view of its own each time: nothing one paint kept is the other's.
+    final Widget stack = pen == null
+        ? CanvasLayerStackView(
+            key: UniqueKey(),
+            nodes: nodes,
+            imageCache: images,
+            canvasSize: canvasSize,
+            viewport: viewport,
+            debugDisableSingleBuffer: walk,
+          )
+        : TheFrameAsItStands(
+            key: UniqueKey(),
+            nodes: nodes,
+            imageCache: images,
+            canvasSize: canvasSize,
+            viewport: viewport,
+            activeSurfacePainter: pen,
+            debugDisableSingleBuffer: walk,
+          );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: Center(
-            child: SizedBox.fromSize(
-              size: view,
-              child: CanvasLayerStackView(
-                // A stack of its own each time: nothing one paint kept is
-                // the other's.
-                key: UniqueKey(),
-                nodes: nodes,
-                imageCache:
-                    cache ??
-                    LayerFrameImageCache(frameStore: BrushFrameStore()),
-                canvasSize: canvasSize,
-                viewport: viewport,
-                activeSurfacePainter: pen,
-                debugDisableSingleBuffer: walk,
-                debugDisableBake: !bake,
-              ),
-            ),
-          ),
+          body: Center(child: SizedBox.fromSize(size: view, child: stack)),
         ),
       ),
     );
@@ -216,7 +221,7 @@ void main() {
     final painter = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byWidget(stack),
             matching: find.byType(CustomPaint),
           ),
         )
@@ -249,10 +254,9 @@ void main() {
   }
 
   group('🎯in the chain the pen draws in', () {
-    for (final (says, walk, bake) in <(String, bool, bool)>[
-      ('through the display buffer', false, true),
-      ('on the walk that paints the screen', true, true),
-      ('without the bake', false, false),
+    for (final (says, walk) in <(String, bool)>[
+      ('through the display buffer', false),
+      ('on the walk that paints the screen', true),
     ]) {
       testWidgets('a folder inside a blurred folder, $says', (tester) async {
         final straight = await paint(
@@ -262,7 +266,6 @@ void main() {
           ],
           pen: pen(inked: true),
           walk: walk,
-          bake: bake,
         );
         final nested = await paint(
           tester,
@@ -273,7 +276,6 @@ void main() {
           ],
           pen: pen(inked: true),
           walk: walk,
-          bake: bake,
         );
 
         expectTheSame(nested, straight);
@@ -384,63 +386,42 @@ void main() {
     });
   });
 
-  // The rows beside the pen's are recorded once and replayed under it.
-  group('🎯beside it, where the bake records', () {
-    for (final (says, beside) in <(
-      String,
-      List<CompositeNode<CanvasStackRow>> Function(
-        CompositeNode<CanvasStackRow>,
-      ),
-    )>[
-      ('below the pen\'s row', (row) => [row, penRow]),
-      ('above the pen\'s row', (row) => [penRow, row]),
-    ]) {
-      testWidgets('a folder inside a blurred folder, $says', (tester) async {
-        final cache = await celLeftOfTheView(tester);
-        final straight = await paint(
-          tester,
-          [folder(beside(celRow), effects: blur)],
-          pen: pen(inked: false),
-          cache: cache,
-        );
-        final nested = await paint(
-          tester,
-          [
-            folder(
-              beside(
-                folder([celRow]),
-              ),
-              effects: blur,
-            ),
-          ],
-          pen: pen(inked: false),
-          cache: cache,
-        );
+  // ↩️The rows beside the pen's, recorded once and replayed under it, until
+  // the bake went with the live rows (one-picture-per-frame ②-5a).
+  group('🎯a row\'s image, as the stack draws the onion\'s ghosts', () {
+    testWidgets('a folder inside a blurred folder', (tester) async {
+      final cache = await celLeftOfTheView(tester);
+      final straight = await paint(
+        tester,
+        [
+          folder([celRow], effects: blur),
+        ],
+        cache: cache,
+      );
+      final nested = await paint(
+        tester,
+        [
+          folder([
+            folder([celRow]),
+          ], effects: blur),
+        ],
+        cache: cache,
+      );
 
-        expectTheSame(nested, straight);
-      });
+      expectTheSame(nested, straight);
+    });
 
-      // It lays the pieces the canvas it lands on can see — in a recording,
-      // the recording's bound.
-      testWidgets('a picture held in pieces, $says', (tester) async {
-        final whole = await celLeftOfTheView(tester);
-        final inPieces = await celLeftOfTheView(tester, side: 32);
-        final nodes = [folder(beside(celRow), effects: blur)];
-        final reference = await paint(
-          tester,
-          nodes,
-          pen: pen(inked: false),
-          cache: whole,
-        );
-        final held = await paint(
-          tester,
-          nodes,
-          pen: pen(inked: false),
-          cache: inPieces,
-        );
+    // It lays the pieces the canvas it lands on can see.
+    testWidgets('a picture held in pieces', (tester) async {
+      final whole = await celLeftOfTheView(tester);
+      final inPieces = await celLeftOfTheView(tester, side: 32);
+      final nodes = [
+        folder([celRow], effects: blur),
+      ];
+      final reference = await paint(tester, nodes, cache: whole);
+      final held = await paint(tester, nodes, cache: inPieces);
 
-        expectTheSame(held, reference);
-      });
-    }
+      expectTheSame(held, reference);
+    });
   });
 }

@@ -1,21 +1,29 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
-import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
+import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/settle_async.dart';
 
 /// 🚨★★★THE FRAME YOU LEFT DOES NOT STAY ON THE PASTEBOARD (F-104,
 /// 2026-09-12).
@@ -24,20 +32,40 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 /// 그리면 사라짐. 즉 디스플레이에만 남아있는듯」 · 「그렇게 사라져도
 /// 이전프레임 갔다가 다시 돌아오면 똑같이 그림이 남아있음」.
 ///
-/// 🔬Reproduced here before the fix (2026-09-15): switching the active cel is
-/// a change of the LIVE surface only, so the display buffer CARRIES the
-/// buffer it made for the frame before and recomposes where the live surface
-/// moved. The patch cleared that rect before painting it again; the scroll
-/// carry — the route a changed extent takes — painted over what it carried
-/// without clearing, so wherever the frame you went to draws nothing, the
-/// frame you came from stayed. It shows on the pasteboard because that is
-/// where two frames' extents differ: frame B's own ink stretches the buffer
-/// over the spot where frame A had ink.
+/// 🔬Reproduced before the fix (2026-09-15): switching the active cel was a
+/// change of the LIVE surface only, so the display buffer CARRIED the buffer
+/// it made for the frame before and recomposed where the live surface moved
+/// — painting over what it carried without clearing, so wherever the frame
+/// you went to draws nothing, the frame you came from stayed. It showed on
+/// the pasteboard because that is where two frames' extents differ: frame
+/// B's own ink stretched the buffer over the spot where frame A had ink.
+///
+/// Each frame is its one picture now, and the frame you go to is its own —
+/// ⛔never the picture you left moved under its key, as a stroke that lands
+/// moves one.
 void main() {
   const canvasSize = CanvasSize(width: 32, height: 32);
   const tileSize = 16;
   const view = Size(96, 96);
-  const backdrop = [128, 128, 128];
+  const backdrop = [128, 128, 128, 255];
+  final screen = GlobalKey();
+
+  BrushFrameKey keyOf(String frame) => BrushFrameKey(
+    projectId: const ProjectId('p'),
+    trackId: const TrackId('t'),
+    cutId: const CutId('c'),
+    layerId: const LayerId('l'),
+    frameId: FrameId(frame),
+  );
+  final a = keyOf('a');
+  final b = keyOf('b');
+  final cut = Cut(
+    id: a.cutId,
+    name: 'c',
+    duration: 2,
+    canvasSize: canvasSize,
+    layers: const [],
+  );
 
   Uint8List rgba(int r, int g, int b) {
     final bytes = Uint8List(tileSize * tileSize * 4);
@@ -56,9 +84,8 @@ void main() {
   for (final zoom in [1.0, 0.5]) {
     testWidgets('🚨at zoom $zoom, going A → B → A → B never shows A\'s ink '
         'where B has none', (tester) async {
-      final tiles = BitmapTileImageCache();
-      final cache = DisplayBufferCache();
-      addTearDown(cache.dispose);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
       // Frame A: red at tile (-1, 1), canvas (-16..0, 16..32).
       final frameA = surfaceWith({
         TileCoord(x: -1, y: 1): BitmapTile(
@@ -74,9 +101,23 @@ void main() {
           pixels: rgba(0, 0, 255),
         ),
       });
-      for (final entry in [...frameA.tiles.entries, ...frameB.tiles.entries]) {
-        tiles.pictureFor(entry.value);
-      }
+      final cels = BrushFrameStore();
+      keepInAFile(cels, {a: frameA, b: frameB});
+      final images = LayerFrameImageCache(frameStore: cels);
+      addTearDown(images.dispose);
+      final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+      addTearDown(store.dispose);
+      List<CompositeNode<CanvasStackRow>> stackOn(BrushFrameKey cel) => [
+        CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, frameKey: cel),
+        ),
+      ];
+      final run = runOver(
+        images,
+        store,
+        canvasSize: canvasSize,
+        stackOf: (picture) => stackOn(picture.frameIndex == 0 ? a : b),
+      );
       final viewport = CanvasViewport(zoom: zoom, panX: 32, panY: 32);
       Offset onScreen(double x, double y) =>
           Offset(32 + x * zoom, 32 + y * zoom);
@@ -84,103 +125,65 @@ void main() {
       final whereAWas = onScreen(-8, 24);
       final whereBIs = onScreen(-24, 8);
 
-      Future<CustomPainter> show(BitmapSurface surface) async {
+      /// The canvas standing on [cel]'s frame, once its picture is there.
+      Future<Shot> show(BrushFrameKey cel, BitmapSurface surface) async {
+        final picture = (
+          cut: cut,
+          frameIndex: cel == a ? 0 : 1,
+          paintPaper: true,
+        );
+        final nodes = stackOn(cel);
         await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Center(
-                child: SizedBox(
-                  width: view.width,
-                  height: view.height,
-                  child: CanvasLayerStackView(
-                    nodes: const [
-                      CompositeLeaf<CanvasStackRow>(
-                        CanvasActiveLayerRow(opacity: 1),
-                      ),
-                    ],
-                    imageCache: LayerFrameImageCache(
-                      frameStore: BrushFrameStore(),
-                    ),
-                    canvasSize: canvasSize,
-                    viewport: viewport,
-                    activeSurfacePainter: BitmapSurfacePainter(
-                      surface: surface,
-                      tileImageCache: tiles,
-                      showTransparentBackground: false,
-                    ),
-                    paintPaper: true,
-                    paperBackground: ProjectBackground.defaultBackground,
-                    debugBufferCache: cache,
-                  ),
+          onAScreen(
+            screen,
+            size: view,
+            under: const Color(0xFF808080),
+            view: standingOn(
+              run,
+              picture: picture,
+              nodes: nodes,
+              viewport: viewport,
+              live: (
+                activeSurfacePainter: BitmapSurfacePainter(
+                  surface: surface,
+                  showTransparentBackground: false,
                 ),
+                floatOverlay: null,
+                liftedRows: const {},
               ),
             ),
           ),
         );
-        await tester.pump();
-        return tester
-            .widgetList<CustomPaint>(
-              find.descendant(
-                of: find.byType(CanvasLayerStackView),
-                matching: find.byType(CustomPaint),
-              ),
-            )
-            .where((paint) => paint.painter != null)
-            .first
-            .painter!;
+        final key = run.pictures.keyOfStack(nodes, picture);
+        expect(
+          await settleAsync(tester, () => store.bytesOf(key) != null),
+          isTrue,
+          reason: 'LIVENESS: the frame\'s picture is made',
+        );
+        await lendBothClocks(tester, rounds: 2);
+        return shotOf(tester, screen);
       }
 
-      /// [stack] painted over a grey backdrop, read at [at]: grey is
-      /// "nothing drawn there" — the pasteboard is transparent in the stack.
-      Future<List<int>> colorAt(CustomPainter stack, Offset at) async {
-        final bytes = await tester.runAsync(() async {
-          final recorder = ui.PictureRecorder();
-          final canvas = Canvas(recorder);
-          canvas.drawRect(
-            Offset.zero & view,
-            Paint()..color = const Color(0xFF808080),
-          );
-          stack.paint(canvas, view);
-          final picture = recorder.endRecording();
-          final image = picture.toImageSync(
-            view.width.round(),
-            view.height.round(),
-          );
-          picture.dispose();
-          final data = await image.toByteData(
-            format: ui.ImageByteFormat.rawRgba,
-          );
-          image.dispose();
-          return data!.buffer.asUint8List();
-        });
-        final i = (at.dy.round() * view.width.round() + at.dx.round()) * 4;
-        return [bytes![i], bytes[i + 1], bytes[i + 2]];
+      List<int> colorAt(Shot shot, Offset at) {
+        final i = (at.dy.round() * shot.width + at.dx.round()) * 4;
+        return shot.rgba.sublist(i, i + 4);
       }
 
       for (final visit in [1, 2]) {
-        final a = await show(frameA);
         expect(
-          await colorAt(a, whereAWas),
-          [255, 0, 0],
+          colorAt(await show(a, frameA), whereAWas),
+          [255, 0, 0, 255],
           reason: 'control (visit $visit): frame A has its ink there',
         );
-        final carried = cache.scrolledCount;
-        final b = await show(frameB);
+        final onB = await show(b, frameB);
         expect(
-          await colorAt(b, whereBIs),
-          [0, 0, 255],
-          reason: 'control (visit $visit): the stack is showing frame B — '
+          colorAt(onB, whereBIs),
+          [0, 0, 255, 255],
+          reason: 'control (visit $visit): the canvas is showing frame B — '
               'its own ink is there',
         );
         expect(
-          cache.scrolledCount,
-          carried + 1,
-          reason: 'control (visit $visit): frame B was composed by CARRYING '
-              'frame A\'s buffer — a buffer rastered from nothing would '
-              'pass the next line without testing anything',
-        );
-        expect(
-          await colorAt(b, whereAWas),
+          colorAt(onB, whereAWas),
           backdrop,
           reason: 'visit $visit: frame B has nothing where frame A had ink, '
               'so nothing may be drawn there — A\'s ink staying is F-104',

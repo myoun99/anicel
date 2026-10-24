@@ -14,7 +14,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -28,6 +27,7 @@ import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 import '../../helpers/cels_parked_cold.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🗣️I-92 (유저 2026-10-24): a row clipped to the layer below shows only
 /// where the base's picture is — by the base's alpha, a soft edge as soft
@@ -35,8 +35,9 @@ import '../../helpers/cels_parked_cold.dart';
 /// under it, its alpha the base's to lay once ([CompositeClip],
 /// [CompositeOpaque]).
 ///
-/// Both walks, the editing stack (playback's too) and the camera (the
-/// export's), over the same shapes.
+/// Both walks, the frame as it stands ([StackedFrame] — a canvas draws it
+/// so, and its one picture is made of it) and the camera (the export's),
+/// over the same shapes.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -159,8 +160,11 @@ void main() {
       frameId: FrameId('base-1'),
     );
 
-    /// The stack of [nodes] — the base a stored cel, what clips to it the
-    /// row being drawn on, [live] — painted.
+    /// The frame of [nodes] as it stands — the base a stored cel, what
+    /// clips to it the row being drawn on, [live] — painted.
+    /// ↩️It was the editing stack's own walk, until the canvas drew the
+    /// frame's one picture and the frame as it stands (one-picture-per-frame
+    /// ②-5a).
     Future<Uint8List> render(
       WidgetTester tester,
       List<CompositeNode<CanvasStackRow>> nodes, {
@@ -169,14 +173,6 @@ void main() {
       final store = BrushFrameStore();
       parkCold(store, {key: base()});
       final cache = LayerFrameImageCache(frameStore: store);
-      await tester.runAsync(
-        () => cache.prepare(
-          key: key,
-          canvasSize: canvasSize,
-          quality: PlaybackQuality.full,
-          sourceEffects: const [],
-        ),
-      );
       await tester.pumpWidget(
         MaterialApp(
           key: UniqueKey(),
@@ -185,7 +181,7 @@ void main() {
               child: SizedBox(
                 width: 4,
                 height: 4,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: nodes,
                   imageCache: cache,
                   canvasSize: canvasSize,
@@ -194,7 +190,6 @@ void main() {
                     surface: live,
                     showTransparentBackground: false,
                   ),
-                  paintPaper: false,
                 ),
               ),
             ),
@@ -205,7 +200,7 @@ void main() {
       final painter = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )

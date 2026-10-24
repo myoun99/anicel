@@ -25,6 +25,7 @@ import 'package:anicel/src/models/composite_tree.dart';
 
 import '../../helpers/source_body.dart';
 import '../../helpers/stack_as_the_plan_hands_it.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// BEING THE ROW YOU ARE DRAWING ON IS NOT A REASON TO COMPOSITE DIFFERENTLY.
 ///
@@ -150,7 +151,7 @@ void main() {
               child: SizedBox(
                 width: 4,
                 height: 4,
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: stackAsThePlanHandsIt([
                     CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, blendMode: blend)),
                   ]),
@@ -173,7 +174,7 @@ void main() {
       final painted = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )
@@ -215,36 +216,6 @@ void main() {
             'the assembled buffer the way opacity does — a per-tile blend '
             'would seam, and no blend at all is what the user saw: a multiply '
             'row that goes back to normal the moment you stand on it.',
-      );
-    });
-
-    testWidgets('a blend change ALONE must repaint', (tester) async {
-      final surfacePainter = redSurfacePainter();
-
-      // ↩️Normal against multiply, until every advanced blend went over its
-      // backdrop in the shader (a-blurred-folder-cut-by-the-view-moves-on-
-      // vulkan): the two are trees of different shapes now, so the blend
-      // is not all that moved. Two advanced blends are one tree apart from
-      // the blend.
-      final screened = await pumpStack(
-        tester,
-        blend: LayerBlendMode.screen,
-        surfacePainter: surfacePainter,
-      );
-      final multiplied = await pumpStack(
-        tester,
-        blend: LayerBlendMode.multiply,
-        surfacePainter: surfacePainter,
-      );
-
-      expect(
-        multiplied.shouldRepaint(screened),
-        isTrue,
-        reason:
-            'Picking a blend from the row menu changes NOTHING else about '
-            'this node. A gate that does not compare it shows the new value '
-            'only when some unrelated fact happens to move — the ㉘/㉞ shape, '
-            'and the reason ㊱ had to add the alpha to this same gate.',
       );
     });
   });

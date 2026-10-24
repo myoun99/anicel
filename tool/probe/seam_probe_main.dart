@@ -750,9 +750,10 @@ class _SeamProbe {
   /// The two costs the plan has not measured, at the engine-primitive level
   /// the product would pay them at:
   ///  1. composing a level buffer of a screen's size from 128px tiles at
-  ///     1:1 (N drawImage + toImage), and PATCHING it the way
-  ///     DisplayBufferCache does (blit the old buffer + redraw the dirty
-  ///     rect's tiles + toImage of the whole buffer again);
+  ///     1:1 (N drawImage + toImage), and PATCHING it the way the display
+  ///     buffer did until one-picture-per-frame ②-5a (blit the old buffer
+  ///     + redraw the dirty rect's tiles + toImage of the whole buffer
+  ///     again);
   ///  2. refreshing the pyramid under a dirty rect: a Dart box downsample
   ///     of the dirty region through three levels (an upper bound — the
   ///     native lane would be several times faster) and the synchronous
@@ -802,7 +803,7 @@ class _SeamProbe {
           img.dispose();
         });
         // Patch: old buffer blit + the tiles under a dirty rect, then a
-        // whole new buffer — the shape of DisplayBufferCache.patchBaseFor.
+        // whole new buffer — the shape of the display buffer's patch.
         final base = await compose();
         try {
           for (final dirty in [256, 512, 1024]) {

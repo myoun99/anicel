@@ -1,12 +1,7 @@
-import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart'
-    show RenderCustomPaint, RenderRepaintBoundary;
+import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -20,8 +15,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -34,12 +27,11 @@ import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
-import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
-import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
@@ -149,24 +141,7 @@ void main() {
   StackRun runOf(
     LayerFrameImageCache images,
     FramePictureStore<FramePictureKey> store,
-  ) {
-    final landings = ValueNotifier<int>(0);
-    addTearDown(landings.dispose);
-    return (
-      landings: landings,
-      pictures: FramePictures(
-        store: store,
-        layerImages: images,
-        stackOf: (_) => nodes,
-        pageOf: (picture) => (
-          canvasSize: canvasSize,
-          pasteboardReach: PasteboardReach.whole,
-          paintPaper: picture.paintPaper,
-          paperBackground: ProjectBackground.defaultBackground,
-        ),
-      ),
-    );
-  }
+  ) => runOver(images, store, canvasSize: canvasSize, stackOf: (_) => nodes);
 
   Future<void> pump(
     WidgetTester tester,
@@ -175,66 +150,28 @@ void main() {
     required CanvasViewport view,
     required BitmapSurfacePainter live,
   }) => tester.pumpWidget(
-    MaterialApp(
-      home: Align(
-        alignment: Alignment.topLeft,
-        child: RepaintBoundary(
-          key: screen,
-          child: ClipRect(
-            child: Container(
-              width: viewSize.width,
-              height: viewSize.height,
-              color: under,
-              child: FramePictureView(
-                key: key,
-                run: run,
-                picture: frame,
-                nodes: nodes,
-                viewport: view,
-                live: (
-                  activeSurfacePainter: live,
-                  floatOverlay: null,
-                  liftedRows: const {},
-                ),
-                laysWhatItMisses: true,
-                wholeFrames: false,
-              ),
-            ),
-          ),
+    onAScreen(
+      screen,
+      size: viewSize,
+      under: under,
+      view: standingOn(
+        run,
+        key: key,
+        picture: frame,
+        nodes: nodes,
+        viewport: view,
+        live: (
+          activeSurfacePainter: live,
+          floatOverlay: null,
+          liftedRows: const {},
         ),
       ),
     ),
   );
 
   /// What [boundary] shows — [screen] where none is named.
-  Future<({Uint8List rgba, int width})> onScreen(
-    WidgetTester tester, [
-    GlobalKey? boundary,
-  ]) async {
-    final render =
-        (boundary ?? screen).currentContext!.findRenderObject()!
-            as RenderRepaintBoundary;
-    final shot = await tester.runAsync(() async {
-      final image = await render.toImage(
-        pixelRatio: tester.view.devicePixelRatio,
-      );
-      final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      final width = image.width;
-      image.dispose();
-      return (rgba: data!.buffer.asUint8List(), width: width);
-    });
-    return shot!;
-  }
-
-  List<String> differences(
-    ({Uint8List rgba, int width}) a,
-    ({Uint8List rgba, int width}) b,
-  ) => [
-    for (var at = 0; at < a.rgba.length; at += 4)
-      if (!listEquals(a.rgba.sublist(at, at + 4), b.rgba.sublist(at, at + 4)))
-        '(${at ~/ 4 % a.width}, ${at ~/ 4 ~/ a.width}): '
-            '${a.rgba.sublist(at, at + 4)} → ${b.rgba.sublist(at, at + 4)}',
-  ];
+  Future<Shot> onScreen(WidgetTester tester, [GlobalKey? boundary]) =>
+      shotOf(tester, boundary ?? screen);
 
   final views = {
     'panned': CanvasViewport(panX: 8, panY: 4),
@@ -263,7 +200,7 @@ void main() {
           showTransparentBackground: false,
           lineage: lineage,
         );
-        final gpu = _WritesNeverLand();
+        final gpu = WritesNeverLand();
         final store = FramePictureStore<FramePictureKey>(gpu: gpu);
         addTearDown(store.dispose);
         final run = runOf(images, store);
@@ -321,7 +258,7 @@ void main() {
         // A view of its own, the step in hand before it takes a picture:
         // the frame drawn as it stands.
         final standing = FramePictureStore<FramePictureKey>(
-          gpu: _WritesNeverLand(),
+          gpu: WritesNeverLand(),
         );
         addTearDown(standing.dispose);
         await pump(
@@ -378,7 +315,7 @@ void main() {
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final store = FramePictureStore<FramePictureKey>(gpu: _WritesNeverLand());
+    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
     addTearDown(store.dispose);
     final run = runOf(images, store);
     final picture = run.pictures.keyOfStack(nodes, frame);
@@ -413,7 +350,7 @@ void main() {
 
     // A view of its own, the step in hand: the frame as it stands.
     final standing = FramePictureStore<FramePictureKey>(
-      gpu: _WritesNeverLand(),
+      gpu: WritesNeverLand(),
     );
     addTearDown(standing.dispose);
     await pump(
@@ -459,7 +396,7 @@ void main() {
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final gpu = _WritesNeverLand();
+    final gpu = WritesNeverLand();
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
@@ -494,11 +431,20 @@ void main() {
     );
     await tester.pump();
 
-    // The pen lifts while the renders wait: what the lift hands on is
-    // patched in, and the picture's move to the frame's next key waits
-    // behind it.
+    // The pen lifts while the stroke's last step is on its way: the
+    // picture's move to the frame's next key waits behind it, and what the
+    // lift hands on is patched in under the key it moves to.
     gpu.holdsRenders = true;
     addTearDown(gpu.letAllThrough);
+    final last = TileCoord(x: 1, y: 0);
+    final lastStep = tileOf(last, stroke, (at) => at.dx < 24 && at.dy < 8);
+    overlay.showResultTiles([PromotedStrokeTile(last, lastStep, 1)]);
+    await tester.pump();
+    expect(
+      await settleAsync(tester, () => gpu.rendersWaiting == 1),
+      isTrue,
+      reason: '⛔premise: the last step is on its way into the picture',
+    );
     final drawn = BrushFrameDisplayCacheService(
       frameStore: cels,
       canvasSize: canvasSize,
@@ -511,6 +457,7 @@ void main() {
         tiles: {
           ...drawn.tiles,
           first: tileOf(first, stroke, (_) => true),
+          last: lastStep,
         },
       ),
     );
@@ -543,7 +490,7 @@ void main() {
     final whileItMoves = await onScreen(tester);
 
     // The move lands — what waits before it let through a render at a
-    // time — and the next stroke's patch, behind it, still waits.
+    // time — and the patches behind it, the next stroke's last, still wait.
     while (store.peek(after) == null) {
       expect(
         await settleAsync(
@@ -560,14 +507,15 @@ void main() {
     expect(
       await settleAsync(tester, () => gpu.rendersWaiting == 1),
       isTrue,
-      reason: '⛔premise: the next stroke\'s patch is still on its way',
+      reason: '⛔premise: the patches behind the move — the next stroke\'s '
+          'last — are still on their way, a render at a time',
     );
     await tester.pump();
     final onceMoved = await onScreen(tester);
 
     // A view of its own, the stroke in hand: the frame as it stands.
     final standing = FramePictureStore<FramePictureKey>(
-      gpu: _WritesNeverLand(),
+      gpu: WritesNeverLand(),
     );
     addTearDown(standing.dispose);
     await pump(
@@ -621,7 +569,7 @@ void main() {
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final gpu = _WritesNeverLand();
+    final gpu = WritesNeverLand();
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
@@ -640,8 +588,8 @@ void main() {
             children: [
               SizedBox.fromSize(
                 size: viewSize,
-                child: FramePictureView(
-                  run: run,
+                child: standingOn(
+                  run,
                   picture: frame,
                   nodes: nodes,
                   viewport: view,
@@ -650,8 +598,6 @@ void main() {
                     floatOverlay: null,
                     liftedRows: const {},
                   ),
-                  laysWhatItMisses: true,
-                  wholeFrames: false,
                 ),
               ),
               RepaintBoundary(
@@ -677,7 +623,7 @@ void main() {
 
     /// The other screen as it paints next — for its own reasons, a tick of
     /// its own.
-    Future<({Uint8List rgba, int width})> otherPaints() async {
+    Future<Shot> otherPaints() async {
       tester
           .renderObject<RenderCustomPaint>(
             find.descendant(
@@ -782,7 +728,7 @@ void main() {
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final gpu = _WritesNeverLand();
+    final gpu = WritesNeverLand();
     final store = _LaysCounted(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
@@ -895,59 +841,4 @@ class _LaysCounted extends FramePictureStore<FramePictureKey> {
     laid.add(key);
     return super.lay(key, frame, shownNow: shownNow);
   }
-}
-
-/// A GPU whose writes never come back: every patch stays drawn over its
-/// picture ([FramePicture.landing]), so what shows once it lands is the
-/// patch's own texels.
-class _WritesNeverLand implements FramePictureGpu {
-  /// Whether every render waits its turn ([letOneThrough]): a step stays on
-  /// its way into the picture, none of its texels there. ⛔Not left to the
-  /// test's raster: it renders a patch before the next paint, and the
-  /// screen while a step lands was never drawn.
-  bool holdsRenders = false;
-
-  final List<Completer<void>> _waiting = [];
-
-  /// How many renders wait their turn.
-  int get rendersWaiting => _waiting.length;
-
-  /// Lets the render that has waited longest through.
-  void letOneThrough() => _waiting.removeAt(0).complete();
-
-  /// Holds no render from here on, and lets every waiting one through.
-  void letAllThrough() {
-    holdsRenders = false;
-    for (final turn in _waiting) {
-      turn.complete();
-    }
-    _waiting.clear();
-  }
-
-  @override
-  Future<ui.Image> render(ui.Picture picture, int width, int height) async {
-    if (holdsRenders) {
-      final turn = Completer<void>();
-      _waiting.add(turn);
-      await turn.future;
-    }
-    return picture.toImage(width, height);
-  }
-
-  @override
-  Object? hold(ui.Image image) => image;
-
-  @override
-  int levelsOf(Object held) {
-    final image = held as ui.Image;
-    return math.max(image.width, image.height).bitLength;
-  }
-
-  @override
-  Future<bool> writeBase(Object held, List<BaseWrite> writes) =>
-      Completer<bool>().future;
-
-  @override
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) =>
-      Completer<bool>().future;
 }

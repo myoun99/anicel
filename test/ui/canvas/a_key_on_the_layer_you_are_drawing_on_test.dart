@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🚨★★★A COLOUR KEY ON THE LAYER YOU ARE DRAWING ON.
 ///
@@ -77,7 +78,7 @@ void main() {
             child: SizedBox(
               width: 64,
               height: 64,
-              child: CanvasLayerStackView(
+              child: TheFrameAsItStands(
                 nodes: [
                   CompositeLeaf<CanvasStackRow>(CanvasActiveLayerRow(opacity: 1, effects: effects)),
                 ],
@@ -99,7 +100,7 @@ void main() {
     final painted = tester
         .widgetList<CustomPaint>(
           find.descendant(
-            of: find.byType(CanvasLayerStackView),
+            of: find.byType(TheFrameAsItStands),
             matching: find.byType(CustomPaint),
           ),
         )
