@@ -1,13 +1,13 @@
 import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 
-import '../input/control_press_claim.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/rail_glyph_button.dart' show RailPlateButton;
 import 'axis_turn.dart' show alongBox;
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
@@ -182,6 +182,12 @@ class TimelineLayerControlsHeader extends KeptPiece {
   // R9 #22: the cell no longer carries its own width — the rail's shared
   // column skeleton sizes it, so a legend icon cannot drift off the
   // column it labels (its kind cell used to be 18 against the rows' 22).
+  //
+  // A cell is a RAIL PLATE BUTTON (I-57 ①, the rows' mark and take): the
+  // legend is a plate on the rail, opaque, so the [InkWell] each cell wore
+  // drew its ink on the Material UNDER it, unseen — and with its tooltip it
+  // was ~35 elements a cell, ten of them a legend, mounted anew whenever a
+  // frame panel is shown again (frame-panels-build-in-one-frame, 10-24).
   Widget _cell({
     required String keyValue,
     required String tooltip,
@@ -191,28 +197,22 @@ class TimelineLayerControlsHeader extends KeptPiece {
     final content = Center(child: child);
     // The key stays on the cell whether or not it can open a flyout —
     // it's the column's stable address (legend alignment tests).
+    final key = ValueKey<String>(keyValue);
     if (entriesBuilder == null) {
-      return AppTooltip(
-        key: ValueKey<String>(keyValue),
-        message: tooltip,
+      return RailPlateButton(
+        key: key,
+        name: keyValue,
+        tooltip: tooltip,
+        onPressed: null,
         child: content,
       );
     }
-    return Builder(
-      builder: (anchorContext) => AppTooltip(
-        message: tooltip,
-        child: ControlPressClaim(
-          onPressed: () =>
-              showPanelFlyout(anchorContext, entries: entriesBuilder()),
-          child: InkWell(
-            key: ValueKey<String>(keyValue),
-            onTap: silentPress(
-              () => showPanelFlyout(anchorContext, entries: entriesBuilder()),
-            ),
-            child: content,
-          ),
-        ),
-      ),
+    return RailFlyoutTrigger(
+      key: key,
+      name: keyValue,
+      tooltip: tooltip,
+      entriesBuilder: entriesBuilder,
+      child: content,
     );
   }
 
@@ -237,24 +237,20 @@ class TimelineLayerControlsHeader extends KeptPiece {
     // (R3 feedback #5). The toggle has ONE handler, named once.
     final onToggle = anyLanesExpanded ? onCollapseAllLanes : onExpandAllLanes;
     return onExpandAllLanes != null && onCollapseAllLanes != null
-        ? AppTooltip(
+        ? RailPlateButton(
+            key: const ValueKey<String>('legend-lanes-toggle'),
+            name: 'legend-lanes-toggle',
             // ↩️Written in English here, in every language, until I-40's
             // round on the legend found it (10-09).
-            message: anyLanesExpanded
+            tooltip: anyLanesExpanded
                 ? AppText.strings.tlCollapseAllLayers
                 : AppText.strings.tlExpandAllLayers,
-            child: ControlPressClaim(
-              onPressed: onToggle,
-              child: InkWell(
-                key: const ValueKey<String>('legend-lanes-toggle'),
-                onTap: silentPress(onToggle),
-                child: Center(
-                  child: Icon(
-                    anyLanesExpanded ? Icons.unfold_less : Icons.unfold_more,
-                    size: 13,
-                    color: restColor,
-                  ),
-                ),
+            onPressed: onToggle,
+            child: Center(
+              child: Icon(
+                anyLanesExpanded ? Icons.unfold_less : Icons.unfold_more,
+                size: 13,
+                color: restColor,
               ),
             ),
           )

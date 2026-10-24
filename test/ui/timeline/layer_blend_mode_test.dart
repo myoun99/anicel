@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -224,14 +225,19 @@ void main() {
     await tester.pumpAndSettle();
 
     final chip = find.named('timeline-layer-blend-a');
-    // The SHARED control, not a bespoke label: the same widget the brush
-    // panel's blend row mounts.
+    // The SHARED chip, not a bespoke label: the same picture the brush
+    // panel's blend row shows ([PanelFlyoutChip]) — pressed as the rail
+    // presses, through its plate face (I-57 ①).
     expect(
       chip,
       findsOneWidget,
       reason: 'the blend control keeps its name across the widget swap',
     );
-    expect(tester.widget(chip), isA<PanelFlyoutButton>());
+    expect(tester.widget(chip), isA<RailPlateFace>());
+    expect(
+      find.descendant(of: chip, matching: find.byType(PanelFlyoutChip)),
+      findsOneWidget,
+    );
 
     // The user asked for the caret to go — text-only button.
     expect(

@@ -15,8 +15,9 @@ import 'project_scratch_folder.dart';
 /// wall of the project they were saved in.
 ///
 /// ★Each ref is the one the open path reads off the cel's head — its size,
-/// its tiles and its photo index ([AnicelCelBlob.photoPaths]) — so a test
-/// keeps a cel the way a project keeps it, photos named and all
+/// its tiles, its photo index ([AnicelCelBlob.photoPaths]) and whether it
+/// shows anything ([AnicelCelBlob.showsSomething]) — so a test keeps a cel
+/// the way a project keeps it, photos named and all
 /// (`test/architecture/a_test_keeps_a_cel_through_one_helper_test.dart`).
 Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
   BrushFrameStore store,
@@ -37,6 +38,7 @@ Map<BrushFrameKey, AnicelCelFileRef> keepInAFile(
       canvasSize: blob.canvasSize,
       tileSize: blob.tileSize,
       photoPaths: blob.photoPaths,
+      showsSomething: blob.showsSomething,
     );
   }
   store.restoreFromFile(refs, pasteboardReach: pasteboardReach);

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../core/bounded_memo.dart';
 import '../../models/project_frame_rate.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../timeline/axis_turn.dart';
@@ -81,15 +82,11 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       return;
     }
     final mainExtent = extentAlong(axis, size);
-    final crossExtent = extentAcross(axis, size);
-    final center = crossExtent / 2;
-    final maxAmplitude = (crossExtent / 2) - 1;
-    final pixelsPerBucket =
-        pixelsPerFrame * frameRate.approximateFps / peaks.bucketsPerSecond;
+    final pixelsPerBucket = _pixelsPerBucket;
     if (pixelsPerBucket <= 0) {
       return;
     }
-    final leadingPixels = leadingFrames * pixelsPerFrame;
+    final leadingPixels = _leadingPixels;
     final startBucket = leadingPixels <= 0
         ? 0
         : (leadingPixels / pixelsPerBucket).floor();
@@ -116,6 +113,61 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       startBucket,
       ((shownFrom + leadingPixels) / pixelsPerBucket).floor() - 1,
     );
+
+    // 🚨THE BAND IS RECKONED ONCE FOR WHAT IT IS DRAWN FROM
+    // (frame-panels-build-in-one-frame, 10-24, profile, the user's project):
+    // a strip built again — a tab opened again, a panel unfolded — is a new
+    // painter over the same sound, and the storyboard's rows show their
+    // whole sound at once (their strips stand on a tick layer, so this
+    // canvas knows the strip's own clip and no window): 21,000 and 11,000
+    // buckets, the largest paint of the storyboard tab's opening (10–17% of
+    // it). 🔬Handing the vertices over in one call (`addPolygon`) moved
+    // nothing (12.4 → 12.5%) — the cost is reckoning them. So the path is
+    // kept by everything it is drawn from: the painter's [props] (the ink
+    // too — a band reckoned again when only it moves), the size, and the
+    // stretch the clip shows. The same path draws the same pixels.
+    final band = _bands
+        .resolve(
+          (props, size, firstShown, shownTo),
+          () => (band: _bandOf(size, firstShown, shownTo)),
+        )
+        .band;
+    if (band == null) {
+      return;
+    }
+    canvas.drawPath(band, Paint()..color = color);
+  }
+
+  /// The bands painted lately, by what each is drawn from ([paint]).
+  ///
+  /// Sixteen: every strip a screen shows, twice over. A row scrolled under
+  /// its window is a new stretch at every paint, and starting over costs
+  /// each kept band one reckoning — what every paint paid before.
+  static final BoundedMemo<Object, ({Path? band})> _bands = BoundedMemo(16);
+
+  /// How many bands have been reckoned — the work [_bands] saves, read by
+  /// the test that pins it.
+  @visibleForTesting
+  static int get debugBandsReckoned => _bandsReckoned;
+  static int _bandsReckoned = 0;
+
+  /// How many pixels one bucket of [peaks] spans along [axis].
+  double get _pixelsPerBucket =>
+      pixelsPerFrame * frameRate.approximateFps / peaks.bucketsPerSecond;
+
+  /// How far into the file main-axis 0 stands — the clip's trim.
+  double get _leadingPixels => leadingFrames * pixelsPerFrame;
+
+  /// The band over the buckets from [firstShown] to the first at or past
+  /// [shownTo], on a strip of [size] — null where there is none.
+  Path? _bandOf(Size size, int firstShown, double shownTo) {
+    _bandsReckoned += 1;
+    final pixelsPerBucket = _pixelsPerBucket;
+    final leadingPixels = _leadingPixels;
+    final mainExtent = extentAlong(axis, size);
+    final crossExtent = extentAcross(axis, size);
+    final center = crossExtent / 2;
+    final maxAmplitude = (crossExtent / 2) - 1;
 
     // Where the audible part ends on the main axis: the span's own end or
     // the file running out, whichever is first — the fade-out anchor.
@@ -164,7 +216,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       }
     }
     if (top.isEmpty) {
-      return;
+      return null;
     }
     path.moveTo(top.first.dx, top.first.dy);
     for (final point in top.skip(1)) {
@@ -174,8 +226,7 @@ class WaveformPainter extends CustomPainter with RepaintOnProps {
       path.lineTo(point.dx, point.dy);
     }
     path.close();
-
-    canvas.drawPath(path, Paint()..color = color);
+    return path;
   }
 
   @override

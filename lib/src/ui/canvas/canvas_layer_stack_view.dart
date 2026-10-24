@@ -7,6 +7,8 @@ import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
 import '../../core/collection_equality.dart';
+import '../../services/cut_frame_composite_plan.dart'
+    show CutFrameCompositeLayer;
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
@@ -20,6 +22,7 @@ import '../../models/project_background.dart';
 import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../../core/dev_profile.dart';
+import '../playback/frame_picture_store.dart' show FrameDrawing;
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import '../../services/layer_pose_paint.dart';
@@ -222,6 +225,62 @@ PlaybackQuality rowQualityThrough(
 ) => PlaybackQuality.forLevel(
   displayLevelOf(displayScaleOf(viewport.zoom, devicePixelRatio)),
 );
+
+/// What a frame is drawn ON — the four a [CanvasLayerStackView] draws its
+/// nodes on: the page's size, how far its pasteboard reaches, whether it
+/// paints paper and which paper. One value because a frame's one picture
+/// is KEYED by them (`FramePictureKey`): a picture drawn on one page is
+/// not the picture of another.
+typedef FramePage = ({
+  CanvasSize canvasSize,
+  PasteboardReach pasteboardReach,
+  bool paintPaper,
+  ProjectBackground paperBackground,
+});
+
+/// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
+/// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
+/// frame as the plan hands it, composed over [FrameDrawing.extent] in world
+/// coordinates as a miss composes the display buffer whole at 100% — the
+/// paper as the root's bottom row, folders, adjustments, blends over their
+/// backdrops, effects and poses — with every row drawn from its own tiles,
+/// by the body the live row is drawn with ([_PaintCelSurface]). No second
+/// compositor: a frame's picture is what the canvas would show of it.
+///
+/// The extent is what the buffer covers with the whole pasteboard in view:
+/// the page and every row's content.
+///
+/// 🚨[FrameDrawing.outside] IS NOTHING, and the picture holds what the
+/// buffer holds past the paper — what the rows lay over no paper, as they
+/// lay it. A screen lays its pasteboard under the buffer, in a colour each
+/// view sets for itself (`BrushCanvasPanel.pasteboardColor`); laid into the
+/// picture, one frame would be a picture per colour.
+FrameDrawing frameDrawingOf(
+  List<CompositeNode<CutFrameCompositeLayer>> nodes, {
+  required FramePage page,
+}) {
+  final painter = _LayerStackPainter(
+    nodes: mapCompositeLeaves<CutFrameCompositeLayer, _PaintRow>(
+      nodes,
+      _PaintCelSurface.new,
+    ),
+    activeSurfacePainter: null,
+    floatOverlay: null,
+    canvasSize: page.canvasSize,
+    pasteboardReach: page.pasteboardReach,
+    viewport: CanvasViewport(),
+    paintPaper: page.paintPaper,
+    paperBackground: page.paperBackground,
+    // Nothing is kept: no bake and no buffer for a key to name.
+    compositeKey: 0,
+  );
+  return (
+    extent: _LayerStackPaintPass(painter).frameExtent(),
+    outside: const ui.Color(0x00000000),
+    // A pass per paint, as the painter's own: its geometry is read once.
+    draw: (canvas) => _LayerStackPaintPass(painter).paintFrame(canvas),
+  );
+}
 
 /// Paints the editing canvas's whole composite tree from the layer-frame
 /// image cache, under the panel viewport transform — the ACTIVE layer
@@ -1784,6 +1843,57 @@ final class _PaintLiftedSurface extends _SurfaceRow {
   );
 }
 
+/// A cel drawn from its OWN TILES, as the plan hands it
+/// ([CutFrameCompositeLayer]: its texts laid and its leading keys run on
+/// the surface, the rest of its chain left to the paint) — every row of a
+/// frame's one picture ([frameDrawingOf]), by the body the live row is
+/// drawn with.
+final class _PaintCelSurface extends _SurfaceRow {
+  _PaintCelSurface(CutFrameCompositeLayer layer)
+    : painter = BitmapSurfacePainter(
+        surface: layer.surface,
+        // The stack lays its own paper.
+        showTransparentBackground: false,
+      ),
+      opacity = layer.opacity,
+      blendMode = layer.blendMode,
+      placement = layer.placement,
+      effects = layer.effects;
+
+  final BitmapSurfacePainter painter;
+  @override
+  final double opacity;
+  @override
+  final LayerBlendMode blendMode;
+  @override
+  final LayerPlacement? placement;
+  @override
+  final List<ResolvedLayerEffect> effects;
+
+  /// None left to show a float through: the plan ran them on the surface,
+  /// and nothing floats over a frame's picture.
+  @override
+  List<ResolvedLayerEffect> get keys => const [];
+
+  @override
+  bool matches(_PaintRow other) =>
+      other is _PaintCelSurface &&
+      identical(painter.surface, other.painter.surface) &&
+      opacity == other.opacity &&
+      blendMode == other.blendMode &&
+      placement == other.placement &&
+      listEquals(effects, other.effects);
+
+  @override
+  int get signature => Object.hash(
+    identityHashCode(painter.surface),
+    opacity,
+    blendMode,
+    placement,
+    Object.hashAll(effects),
+  );
+}
+
 /// Whether [a] draws the same picture as [b] — the STRUCTURE compared
 /// here, the painted row's own fields by [_PaintRow.matches].
 bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
@@ -2347,6 +2457,7 @@ class _LayerStackPainter extends CustomPainter {
         CompositeLeaf(payload: _PaintImage()) => false,
         // A lifted row only shows; nothing draws into it.
         CompositeLeaf(payload: _PaintLiftedSurface()) => false,
+        CompositeLeaf(payload: _PaintCelSurface()) => false,
         CompositeLeaf(payload: _PaintPaper()) => false,
       };
 

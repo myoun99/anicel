@@ -57,9 +57,8 @@ final class VideoViewerDocument implements ViewerDocument {
   /// a staged copy, opened on that span, framed or not. ⛔Never a temp copy:
   /// 유저 2026-08-27 「사본 남으면 진짜 용서안할게」.
   ///
-  /// ⚠️A span this device cannot be pointed at ([movieOpening]: a movie kept
-  /// FRAMED on Android below API 28, with no original left to read instead)
-  /// is 「unreadable」, not 「no reader」 — the decoder is right there, and
+  /// ⚠️Bytes that are not there to point at ([movieOpening]) are
+  /// 「unreadable」, not 「no reader」 — the decoder is right there, and
   /// telling the user their build has none would be the exact lie this
   /// function was just fixed for.
   static Future<VideoViewerDocument?> open(MediaByteSource source) async {
@@ -81,10 +80,10 @@ final class VideoViewerDocument implements ViewerDocument {
     // could be injected and then never consulted, because the gate in front
     // of it said no on any machine without the native library.
     final hasReader = backend.supported;
-    final at = hasReader ? movieOpening(source, backend) : null;
+    final at = hasReader ? movieOpening(source) : null;
     if (hasReader && at == null) {
       throw const ViewerDocumentException(
-        'this device cannot read that movie where the project keeps it',
+        'that movie is not where the project keeps it',
       );
     }
     final opened = at == null

@@ -59,11 +59,6 @@ abstract interface class VideoDecodeBackend {
   /// document or a worker, so nothing has to be started to answer it.
   bool get supported;
 
-  /// Whether this device's decoder can be fed a movie kept FRAMED
-  /// ([QaVideoDecoder.readsFramed]) — asked of the backend for the reason
-  /// [supported] is.
-  bool get readsFramed;
-
   /// Opens [path] (or the span inside it) and answers what it is, or null.
   Future<({int token, QaVideoInfo info})?> open(
     String path, {
@@ -109,9 +104,6 @@ final class DirectVideoDecodeBackend implements VideoDecodeBackend {
 
   @override
   bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
-
-  @override
-  bool get readsFramed => QaVideoDecoder.instance?.readsFramed ?? false;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(
@@ -182,11 +174,6 @@ final class IsolateVideoDecodeBackend implements VideoDecodeBackend {
   /// the build, and asking a worker would mean starting one to find out.
   @override
   bool get supported => QaVideoDecoder.instance?.isSupported ?? false;
-
-  /// ⚠️On THIS isolate too, for the same reason: the device does not change
-  /// between isolates.
-  @override
-  bool get readsFramed => QaVideoDecoder.instance?.readsFramed ?? false;
 
   SendPort? _worker;
   Future<SendPort>? _starting;

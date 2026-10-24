@@ -38,7 +38,12 @@ class AudioScrubber {
     this.resolveSoloedLayerIds,
     this.resolveRecordingMutedLayerIds,
     this.resolveOutputDeviceName,
+    this.resolvePlaybackLevel,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance);
+
+  /// How loud the canvas plays (I-85) — a scrub is heard at the level a
+  /// run is; null plays at full.
+  final double Function()? resolvePlaybackLevel;
 
   /// The session's solo set — a scrub monitors exactly what playback
   /// would.
@@ -170,6 +175,7 @@ class AudioScrubber {
       durationSecondsFor: conformStore.durationSecondsFor,
       soloedLayerIds: resolveSoloedLayerIds?.call(),
       mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
+      level: resolvePlaybackLevel?.call() ?? 1,
     );
     if (schedule.isEmpty) {
       // A silent stretch: do not even open a device for it.

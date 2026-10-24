@@ -10,6 +10,7 @@ import 'package:flutter/scheduler.dart';
 import '../../core/bake_once_lru.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
+import '../look_only_frames.dart';
 import '../quiet_turns.dart';
 
 /// A word's coverage as its final device pixels: [alpha] is [width] ×
@@ -672,22 +673,30 @@ final class BakedWords {
   }
 
   /// Wakes [_toWake] in one frame — as many bakes as finish before it.
+  ///
+  /// 🚨THE FRAME IS ASKED FOR ONLY TO LOOK ([askOnlyToLook]): what it draws
+  /// is what the waiters it wakes paint again, and a bake nobody waited for
+  /// paints nothing. Asked for to draw, every landing drew a frame, and a
+  /// playing cut drew them between its film frames (card
+  /// playback-draws-frames-the-film-did-not-change-in, 10-24).
   void _wakeNextFrame() {
     if (_wakeScheduled) {
       return;
     }
     _wakeScheduled = true;
-    SchedulerBinding.instance
-      ..scheduleFrameCallback((_) {
-        _wakeScheduled = false;
-        _landingFrames += 1;
-        final woken = List.of(_toWake);
-        _toWake.clear();
-        for (final waiter in woken) {
-          waiter.wordBakeLanded();
-        }
-      })
-      ..scheduleFrame();
+    askOnlyToLook(() {
+      SchedulerBinding.instance
+        ..scheduleFrameCallback((_) {
+          _wakeScheduled = false;
+          _landingFrames += 1;
+          final woken = List.of(_toWake);
+          _toWake.clear();
+          for (final waiter in woken) {
+            waiter.wordBakeLanded();
+          }
+        })
+        ..scheduleFrame();
+    });
   }
 
   /// [coverage] as white ink on clear, premultiplied — tinted where it is

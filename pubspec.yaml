@@ -36,6 +36,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # A frame's one picture patched where it stands (one-picture-per-frame,
+  # D7-2-Q3). Impeller only — the devices that render with Skia are out of
+  # the release (skia-devices-out-of-release, 유저 2026-10-24).
+  flutter_gpu:
+    sdk: flutter
 
   file_selector: ^1.1.0
   sqlite3: ^3.3.4

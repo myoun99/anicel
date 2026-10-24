@@ -15,7 +15,9 @@ import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
-    show TimelineDisplayRow;
+    show PropertyLaneRow, TimelineDisplayRow;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridSheetPainter, timelineStandingGround;
 import 'package:anicel/src/ui/timeline/timeline_grid_sheet.dart'
@@ -936,50 +938,97 @@ void main() {
       }
     });
 
-    testWidgets('the anchor row of a SELECT drag survives the same way', (
-      tester,
-    ) async {
-      final events = <String>[];
-      final spans = <int>[];
-      await tester.pumpWidget(
-        _grid(
-          layers: manyLayers(),
-          playbackFrameCount: 48,
-          rowDragHooks: hooks(
-            events: events,
-            slots: <int>[],
-            inSelection: false,
-          ),
-          onRowSelectionSpan: (_, rowDelta) => spans.add(rowDelta),
+    // 🚨FROM EVERY ROW A SELECT DRAG CAN START ON — the held row is the
+    // press's, move or select ([HeldRowPin]). 🔬The rows that cannot MOVE
+    // (a camera's, a transition's: F-16) and the lane rows that head no fx
+    // chain were built with no grip to take, so a window sliding past one
+    // let its select drag go (a-select-drag-from-an-unmovable-row-keeps-
+    // its-grip, 10-24).
+    final lane = transformGroupHeaderLane;
+    final starts =
+        <String, ({List<Layer> layers, bool lanes, String press, String held})>{
+      'a layer row': (
+        layers: manyLayers(),
+        lanes: false,
+        press: 'timeline-layer-row-layer-1',
+        held: 'timeline-rail-row-layer-1-row',
+      ),
+      for (final kind in const [LayerKind.camera, LayerKind.transition])
+        'a ${kind.name} row': (
+          layers: [
+            _layer(id: 'layer-1', name: 'Layer 1', kind: kind),
+            ...manyLayers().skip(1),
+          ],
+          lanes: false,
+          press: 'timeline-layer-row-layer-1',
+          held: 'timeline-rail-row-layer-1-row',
         ),
-      );
+      'a lane row that heads no chain': (
+        layers: manyLayers(),
+        lanes: true,
+        press: 'timeline-rail-row-layer-1-${lane.laneId}',
+        held: 'timeline-rail-row-layer-1-${lane.laneId}',
+      ),
+    };
+    for (final MapEntry(key: start, value: fixture) in starts.entries) {
+      testWidgets('the anchor row of a SELECT drag survives the same way — '
+          'from $start', (tester) async {
+        final events = <String>[];
+        final spans = <int>[];
+        await tester.pumpWidget(
+          _grid(
+            layers: fixture.layers,
+            playbackFrameCount: 48,
+            rowDragHooks: hooks(
+              events: events,
+              slots: <int>[],
+              inSelection: false,
+            ),
+            onRowSelectionSpan: (_, rowDelta) => spans.add(rowDelta),
+            expandedLaneLayerIds: fixture.lanes
+                ? {const LayerId('layer-1')}
+                : <LayerId>{},
+            lanesForLayer: fixture.lanes
+                ? (layer) => layer.id == const LayerId('layer-1')
+                      ? [lane]
+                      : const []
+                : null,
+          ),
+        );
 
-      final row = find.named('timeline-layer-row-layer-1');
-      final gesture = await tester.startGesture(
-        tester.getCenter(row),
-        kind: PointerDeviceKind.mouse,
-      );
-      await gesture.moveBy(const Offset(0, 26));
-      await tester.pump();
-      expect(events, contains('selectBegin'));
+        final held = find.named(fixture.held);
+        expect(held, findsOneWidget, reason: 'fixture: $start is drawn');
+        final gesture = await tester.startGesture(
+          tester.getCenter(find.named(fixture.press)),
+          kind: PointerDeviceKind.mouse,
+        );
+        await gesture.moveBy(const Offset(0, 26));
+        await tester.pump();
+        expect(events, contains('selectBegin'));
 
-      final position = verticalPosition(tester);
-      position.jumpTo(position.maxScrollExtent);
-      await tester.pump();
+        final position = verticalPosition(tester);
+        position.jumpTo(position.maxScrollExtent);
+        await tester.pump();
+        expect(
+          held,
+          findsOneWidget,
+          reason: 'A5: the held row is pinned into the built slice',
+        );
 
-      final spansBefore = spans.length;
-      await gesture.moveBy(const Offset(0, 52));
-      await tester.pump();
-      expect(
-        spans.length,
-        greaterThan(spansBefore),
-        reason: 'the select drag keeps growing its span across the scroll',
-      );
+        final spansBefore = spans.length;
+        await gesture.moveBy(const Offset(0, 52));
+        await tester.pump();
+        expect(
+          spans.length,
+          greaterThan(spansBefore),
+          reason: 'the select drag keeps growing its span across the scroll',
+        );
 
-      await gesture.up();
-      await tester.pump();
-      expect(events.where((event) => event == 'selectEnd'), hasLength(1));
-    });
+        await gesture.up();
+        await tester.pump();
+        expect(events.where((event) => event == 'selectEnd'), hasLength(1));
+      });
+    }
 
     testWidgets('a TRUE unmount mid-move lands the drop instead of leaking '
         'the session verb (R12-③ backstop)', (tester) async {
@@ -2429,6 +2478,8 @@ Widget _grid({
   void Function(List<TimelineDisplayRow> rows, int rowDelta)?
   onRowSelectionSpan,
   ScrollBehavior? scrollBehavior,
+  Set<LayerId> expandedLaneLayerIds = const {},
+  List<PropertyLaneRow> Function(Layer layer)? lanesForLayer,
 }) {
   return MaterialApp(
     scrollBehavior: scrollBehavior,
@@ -2453,6 +2504,8 @@ Widget _grid({
             onLayerMarkSelected: (_, _) {},
             rowDragHooks: rowDragHooks,
             onRowSelectionSpan: onRowSelectionSpan,
+            expandedLaneLayerIds: expandedLaneLayerIds,
+            lanesForLayer: lanesForLayer,
           ),
           layers: layers ?? _layers,
           metrics: metrics,

@@ -79,7 +79,7 @@ import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'session/session_row_button_presses.dart';
-import 'session/text_clipboard.dart' show TextCopy;
+import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_file_import.dart';
@@ -140,6 +140,7 @@ import 'storyboard_panel.dart'
         StoryboardTrackLabelRow,
         storyboardVideoRowName;
 import 'storyboard_playhead_mapping.dart';
+import '../models/storyboard_timeline_layout.dart' show movieEndFrames;
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
 import 'timeline/collapsed_row_overlay.dart';
@@ -890,7 +891,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // One shared zoom slider drives whichever view is shown; the values are
   // kept per view so each keeps a sensible default scale.
   final ValueNotifier<double> _timelinePixelsPerFrame = ValueNotifier(
-    TimelinePanel.defaultPixelsPerFrame,
+    TimelineZoomLimits.referencePixelsPerFrame,
   );
 
   /// The conte's zoom — the PROJECT's, held by the session and saved beside
@@ -905,7 +906,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The timeline's zoom follows the active cut: each cut shows at the zoom
   /// it was left at ([TimelineZoomMemory]), and a cut nobody zoomed at the
-  /// default — not at the zoom the last cut was left at.
+  /// zoom to work at, the one the bar reads as 100% (F-403) — not at the
+  /// zoom the last cut was left at.
   void _followTimelineZoomToCut() {
     final session = widget.session;
     final cut = session.activeCutId;
@@ -914,7 +916,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     _timelineZoomCut = cut;
     _timelinePixelsPerFrame.value =
-        session.timelineZoom.zoomOf(cut) ?? TimelinePanel.defaultPixelsPerFrame;
+        session.timelineZoom.zoomOf(cut) ??
+        TimelineZoomLimits.referencePixelsPerFrame;
   }
 
   /// The zoom slider's one writer: the timeline shows [value], and the
@@ -948,6 +951,54 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         _setStoryboardZoom(stepped(_storyboardPixelsPerFrame.value));
     }
   }
+
+  /// One press of [panel]'s zoom fit — its button's and its key's (I-111,
+  /// 유저 2026-10-19: 「타임라인/콘티패널등 줌 fit 버튼 추가. 해당 패널의
+  /// 엔드라인에 맞춰서 스크롤바 fit하는것」): the closest zoom at which the
+  /// end line the panel draws — the cut's on the timeline, the movie's on
+  /// the conte — stands inside the window its frame axis was last shown in
+  /// ([keptAxisWindows]), through the zoom's one writer; and the axis at
+  /// its start.
+  ///
+  /// ⚠️The start is written a frame later: the grid re-anchors its axis on
+  /// the playhead when the zoom it is built at changes
+  /// ([applyZoomAnchoredScroll]), which would move it off the start again.
+  void _fitZoom(WorkingPanel panel) {
+    final session = widget.session;
+    final (railId, frames, write) = switch (panel) {
+      WorkingPanel.timeline => (
+        _timelineOrientation.value == TimelineOrientation.horizontal
+            ? LayerRailId.timeline
+            : LayerRailId.xsheet,
+        session.activeCutSpan.activeCutPlaybackFrameCount,
+        _setTimelineZoom,
+      ),
+      WorkingPanel.storyboard => (
+        LayerRailId.storyboard,
+        movieEndFrames(session.repository.requireProject()),
+        _setStoryboardZoom,
+      ),
+    };
+    final kept = _frameAxisOffsets[railId];
+    final window = kept == null ? null : keptAxisWindows[kept];
+    if (kept == null || window == null) {
+      return;
+    }
+    write(
+      TimelineZoomLimits.fitting(
+        window,
+        frames: frames,
+        framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
+      ),
+    );
+    WidgetsBinding.instance
+      ..addPostFrameCallback((_) => kept.value = 0)
+      ..scheduleFrame();
+  }
+
+  void _fitTimelineZoom() => _fitZoom(WorkingPanel.timeline);
+
+  void _fitStoryboardZoom() => _fitZoom(WorkingPanel.storyboard);
 
   /// The timeline's ⇄ — its button's one writer.
   void _setTimelineOrientation(TimelineOrientation orientation) {
@@ -1260,6 +1311,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.barCommands?.bind(
       this,
       zoomStep: _stepZoom,
+      zoomFit: _fitZoom,
       toggleOrientation: _toggleOrientation,
     );
     widget.doorCommands?.bind(
@@ -1319,13 +1371,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
-    // I-101: the text this window's canvas holds — what the pill's copy
-    // takes ahead of anything selected — and the faces a pasted text
-    // brings with it, as a text the hand lands does.
-    session.textClipboard.canvasText = (
-      heldByItsBox: _textHeldByItsBox,
-      landingWith: _landingWithItsFaces,
-    );
+    session.textClipboard.canvasText = _canvasTextHand;
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
     // ⚠️Left on when the project goes behind: the clock saves a tab that is
@@ -1405,6 +1451,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ? null
         : (content: shown.content, plate: shown.plate);
   }
+
+  /// The text in hand off its cel — Delete's press on it (R9-rest).
+  void _takeTheHeldTextOff() => widget.canvasTextCommands?.deleteText();
+
+  /// I-101: the text this window's canvas holds — what the pill's copy and
+  /// cut take ahead of anything selected — the faces a pasted text brings
+  /// with it, as a text the hand lands does, and the hand's delete the cut
+  /// takes it off its cel with.
+  CanvasTextHand get _canvasTextHand => (
+    heldByItsBox: _textHeldByItsBox,
+    landingWith: _landingWithItsFaces,
+    takeOff: _takeTheHeldTextOff,
+  );
 
   /// [landing] — a text set on a cel — with the registering of the faces
   /// its letters are written in ([families]), as one step: the files each

@@ -65,6 +65,26 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v29 (2026-10-24, card `a-cooled-empty-cel-reads-drawn`): a cel's blob
+/// says in its head whether its picture shows anything (cel blob v4,
+/// `AnicelCelBlob.showsSomething`), so a cel kept in a file answers whether
+/// its block is drawn without being decoded — and answers it as its picture
+/// does, where it answered 「그려짐」 by being kept at all. A v28 build
+/// stops at such a blob with 「Unsupported cel blob version」 the first time
+/// it shows that cel; the bump turns that into the refusal of a newer
+/// Anicel's file ([decodeAnicelProjectDocument]).
+///
+/// ⛔A blob that does not say (v3) is NOT read here (the save law), and with
+/// it goes every file older than this one ([anicelOldestReadFormatVersion])
+/// — 🗣️유저 10-06 「안열려도되」 · 10-18 (F-382-Q1) 「법 그대로 — 바닥을
+/// 올린다」. What to carry when one is asked for: every `cels/*.celz` gets
+/// the version byte 4 and, right after its codec byte, one byte — 1 when
+/// the picture its stream decodes to holds a text, a photo or a tile with
+/// any ink in it, else 0 — the rest of it as it was. Nothing else: every
+/// cel of a v28 file was written since that floor (2026-10-21), so its
+/// stream is already the v5 one this build reads (cel stream v5 is
+/// 10-18's).
+///
 /// v28 (2026-10-21, anchor-walks-a-path ② — 유저 10-13 「구조는 최대한
 /// AE랑 통일하려고」): a key on a path holds a handle on each side — in one
 /// line through the key (`joined`: the way the handle ahead points and the
@@ -432,7 +452,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 28;
+const int anicelFormatVersion = 29;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -457,7 +477,9 @@ const int anicelFormatVersion = 28;
 /// 13: a key's one interpolation is no longer read (v13 above).
 /// 26: a viewer bookmark's page is no longer read (v26 above).
 /// 28: a key's one handle and its mirror are no longer read (v28 above).
-const int anicelOldestReadFormatVersion = 28;
+/// 29: a cel blob that does not say whether it shows anything is no longer
+/// read (v29 above).
+const int anicelOldestReadFormatVersion = 29;
 
 /// A project document the format numbers refuse — saved by a NEWER Anicel,
 /// or in a format older than [anicelOldestReadFormatVersion] — with the

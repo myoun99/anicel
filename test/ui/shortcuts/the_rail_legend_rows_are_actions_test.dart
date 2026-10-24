@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 const k = LogicalKeyboardKey.keyK;
 
 /// Every verb a legend can be handed, none doing anything.
@@ -354,19 +356,15 @@ void main() {
         ),
       ),
     );
-    String? tooltipOver(String key) => tester
-        .widget<Tooltip>(
-          find
-              .ancestor(
-                of: find.byKey(ValueKey<String>(key)),
-                // AppTooltip IS a Tooltip — a subclass, which `byType` would
-                // not match.
-                matching: find.byWidgetPredicate((widget) => widget is Tooltip),
-              )
-              .first,
-        )
-        .message;
-    expect(tooltipOver('legend-lanes-toggle'), '모든 레이어 펼치기');
+    // The cell is a rail plate (I-57 ①): its face summons the one tooltip
+    // window rather than holding a `Tooltip`.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('legend-lanes-toggle')),
+        matching: find.railTooltip('모든 레이어 펼치기'),
+      ),
+      findsOneWidget,
+    );
     expect(
       [
         for (final row in tester

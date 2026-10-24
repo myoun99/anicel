@@ -1,13 +1,12 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/lru.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'app_tooltip.dart';
 import 'named.dart';
+import 'press_face.dart';
 
 /// What a rail glyph draws: a glyph of an icon font ([RailIconGlyph]), or a
 /// word set in type ([RailTextGlyph] — the fx switch's `fx`).
@@ -66,8 +65,8 @@ final class RailTextGlyph extends RailGlyph {
 ///
 /// ⛔THE PRESS IS UNTOUCHED: [ControlPressClaim] fires it, as it fires an
 /// [AppIconButton]'s, and [PressFireScope] says when — the leaf only enters
-/// the do-nothing tap an [AppIconButtonFace] enters, so an ancestor's tap
-/// still loses to a press on a button.
+/// the do-nothing tap every light face enters ([PressFace]), so an
+/// ancestor's tap still loses to a press on a button.
 ///
 /// ⛔ONE INK, ONE SHAPE: [IconButtonInk] and [appIconButtonShape] are the
 /// [AppIconButton]'s own, so the rail looks exactly as it did.
@@ -214,7 +213,7 @@ class RailGlyphFace extends LeafRenderObjectWidget {
 /// Everything a [RenderRailGlyphFace] draws and says, resolved from the
 /// context by its widget. Equal while nothing it shows would change.
 @immutable
-final class RailGlyphSpec {
+final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   const RailGlyphSpec({
     required this.tooltip,
     required this.glyph,
@@ -249,7 +248,7 @@ final class RailGlyphSpec {
 
   bool get enabled => onSemanticTap != null;
 
-  /// Whether [other] lays out the same box — else only a repaint is owed.
+  @override
   bool laysOutAs(RailGlyphSpec other) =>
       other.glyph == glyph &&
       other.minWidth == minWidth &&
@@ -259,9 +258,9 @@ final class RailGlyphSpec {
       other.textStyle == textStyle &&
       other.textDirection == textDirection;
 
-  /// Whether [other] paints the same pixels in the same box — else a
-  /// repaint is owed. A host that hands down a fresh closure every build
-  /// changes what a screen reader's activation calls, never a pixel.
+  /// A host that hands down a fresh closure every build changes what a
+  /// screen reader's activation calls, never a pixel.
+  @override
   bool paintsAs(RailGlyphSpec other) =>
       laysOutAs(other) &&
       other.enabled == enabled &&
@@ -297,223 +296,9 @@ final class RailGlyphSpec {
   );
 }
 
-/// What every rail press face is besides what it shows: the hover and the
-/// press, the cursor, the do-nothing tap it enters into the arena, the
-/// tooltip it summons and the one semantics node a button is — so the
-/// glyph face ([RenderRailGlyphFace]) and the plate face
-/// ([RenderRailPlateFace]) are one press under two pictures.
-mixin RailPressFace on RenderBox
-    implements MouseTrackerAnnotation, SummonedTooltipTarget {
-  /// Whether a press does anything: a dead face shows no press, enters no
-  /// tap and wears the basic cursor.
-  @protected
-  bool get pressEnabled;
-
-  /// The ON state, as a screen reader hears it.
-  @protected
-  bool get pressSelected;
-
-  /// What a screen reader calls a face whose picture says what it is.
-  @protected
-  String? get pressSemanticLabel;
-
-  /// What a screen reader's activation calls — the REAL callback, since a
-  /// screen reader's tap never reaches the claim ([RailGlyphButton]).
-  @protected
-  VoidCallback? get pressSemanticTap;
-
-  @protected
-  TextDirection get pressTextDirection;
-
-  @protected
-  TooltipTriggerMode get pressTriggerMode;
-
-  BuildContext? _tooltipContext;
-  set tooltipContext(BuildContext value) => _tooltipContext = value;
-
-  bool _hovered = false;
-  bool _pressed = false;
-
-  @protected
-  bool get hovered => _hovered;
-
-  @protected
-  bool get pressed => _pressed;
-
-  /// What the hover and the press look like right now — for tests.
-  @visibleForTesting
-  ({bool hovered, bool pressed}) get debugState =>
-      (hovered: _hovered, pressed: _pressed);
-
-  /// The hover or the press changed — a face that shows them repaints.
-  @protected
-  void pressLookChanged() {}
-
-  /// A face that went dead mid-press must not keep looking pressed. (Hover
-  /// is kept, as M3 keeps it.)
-  @protected
-  void letGoOfThePress() => _setPressed(false);
-
-  /// The do-nothing tap entered into the arena on every enabled press —
-  /// "THE ARENA" on [AppIconButton]. ⚠️Its `onTap` is REQUIRED: a recogniser
-  /// with every callback null is never offered the pointer.
-  late final TapGestureRecognizer _arenaTap = TapGestureRecognizer(
-    debugOwner: this,
-  )..onTap = _ownsTheTap;
-  static void _ownsTheTap() {}
-
-  /// The tooltip's own trigger on a touch or a pen: Flutter's, the devices
-  /// that cannot hover.
-  late final LongPressGestureRecognizer _longPress = LongPressGestureRecognizer(
-    debugOwner: this,
-    supportedDevices: const {
-      PointerDeviceKind.invertedStylus,
-      PointerDeviceKind.stylus,
-      PointerDeviceKind.touch,
-      PointerDeviceKind.unknown,
-      PointerDeviceKind.trackpad,
-    },
-  )
-    ..onLongPress = _onLongPress
-    ..onLongPressUp = _onLongPressUp
-    ..onLongPressCancel = _onLongPressCancel;
-  int? _longPressPointer;
-
-  // ── hover and press ────────────────────────────────────────────────
-
-  @override
-  MouseCursor get cursor =>
-      pressEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
-
-  @override
-  PointerEnterEventListener? get onEnter => _onEnter;
-
-  @override
-  PointerExitEventListener? get onExit => _onExit;
-
-  @override
-  bool get validForMouseTracker => attached;
-
-  void _onEnter(PointerEnterEvent event) {
-    _setHovered(true);
-    SummonedTooltip.hover(this);
-  }
-
-  void _onExit(PointerExitEvent event) {
-    _setHovered(false);
-    SummonedTooltip.unhover(this);
-  }
-
-  void _setHovered(bool value) {
-    if (_hovered != value) {
-      _hovered = value;
-      pressLookChanged();
-    }
-  }
-
-  void _setPressed(bool value) {
-    if (_pressed != value) {
-      _pressed = value;
-      pressLookChanged();
-    }
-  }
-
-  @override
-  bool hitTestSelf(Offset position) => true;
-
-  @override
-  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
-    if (event is PointerDownEvent) {
-      if (pressEnabled) {
-        _setPressed(true);
-        _arenaTap.addPointer(event);
-      }
-      if (pressTriggerMode == TooltipTriggerMode.longPress) {
-        _longPress.addPointer(event);
-      }
-    } else if (event is PointerUpEvent || event is PointerCancelEvent) {
-      _setPressed(false);
-    }
-  }
-
-  void _onLongPress() {
-    final pointer = _longPress.primaryPointer;
-    if (pointer == null) {
-      return;
-    }
-    _longPressPointer = pointer;
-    SummonedTooltip.longPressed(this, pointer);
-  }
-
-  void _onLongPressUp() {
-    _longPressPointer = null;
-    SummonedTooltip.lifted(this);
-  }
-
-  /// A press that moved off or was taken before it was long: whatever this
-  /// face had summoned goes, as a tooltip's own cancel dismisses it.
-  void _onLongPressCancel() {
-    _longPressPointer = null;
-    SummonedTooltip.forget(this);
-  }
-
-  // ── the summoned tooltip ───────────────────────────────────────────
-
-  @override
-  Rect? get tooltipGlobalRect => attached && hasSize
-      ? MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size)
-      : null;
-
-  @override
-  BuildContext? get tooltipContext => attached ? _tooltipContext : null;
-
-  // ── semantics ──────────────────────────────────────────────────────
-
-  @override
-  void describeSemanticsConfiguration(SemanticsConfiguration config) {
-    super.describeSemanticsConfiguration(config);
-    // ONE node per button: a boundary, so a row of six does not collapse
-    // into one, with the tooltip hung on it — as an [AppIconButton]'s.
-    config
-      ..isSemanticBoundary = true
-      ..isButton = true
-      ..isEnabled = pressEnabled
-      ..isSelected = pressSelected
-      ..tooltip = tooltipMessage
-      // A node that carries text says which way it reads.
-      ..textDirection = pressTextDirection;
-    if (pressSemanticLabel case final label?) {
-      config.label = label;
-    }
-    if (pressSemanticTap case final onTap?) {
-      config.onTap = onTap;
-    }
-  }
-
-  // ── lifecycle ──────────────────────────────────────────────────────
-
-  @override
-  void detach() {
-    _hovered = false;
-    _pressed = false;
-    if (_longPressPointer != null) {
-      _longPressPointer = null;
-    }
-    SummonedTooltip.forget(this);
-    super.detach();
-  }
-
-  @override
-  void dispose() {
-    _arenaTap.dispose();
-    _longPress.dispose();
-    super.dispose();
-  }
-}
-
 /// The rail button's face: its box, its state layer and its glyph, as one
-/// render object, on the press every rail face is ([RailPressFace]).
-class RenderRailGlyphFace extends RenderBox with RailPressFace {
+/// render object, on the press every light face is ([PressFace]).
+class RenderRailGlyphFace extends RenderBox with PressFace {
   RenderRailGlyphFace({
     required RailGlyphSpec spec,
     required BuildContext tooltipContext,
@@ -524,21 +309,9 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
   RailGlyphSpec _spec;
   RailGlyphSpec get spec => _spec;
   set spec(RailGlyphSpec value) {
-    if (value == _spec) {
-      return;
-    }
-    final relayout = !value.laysOutAs(_spec);
-    final repaint = !value.paintsAs(_spec);
+    final old = _spec;
     _spec = value;
-    if (!value.enabled) {
-      letGoOfThePress();
-    }
-    if (relayout) {
-      markNeedsLayout();
-    } else if (repaint) {
-      markNeedsPaint();
-    }
-    markNeedsSemanticsUpdate();
+    respec(old, value);
   }
 
   @override
@@ -568,14 +341,7 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
   /// The colour the glyph is painted in right now — for tests.
   @visibleForTesting
   Color? get debugGlyphInk =>
-      _glyphPainter(_spec.ink.foreground(_states)).text?.style?.color;
-
-  Set<WidgetState> get _states => <WidgetState>{
-    if (!_spec.enabled) WidgetState.disabled,
-    if (_spec.isSelected) WidgetState.selected,
-    if (pressed) WidgetState.pressed,
-    if (hovered) WidgetState.hovered,
-  };
+      _glyphPainter(_spec.ink.foreground(pressStates)).text?.style?.color;
 
   // ── layout ──────────────────────────────────────────────────────────
 
@@ -586,35 +352,33 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
 
   @override
   void performLayout() {
-    // The face's `ConstrainedBox`: the slot's numbers, enforced inside what
-    // the parent allows.
-    final face = BoxConstraints(
-      minWidth: _spec.minWidth,
-      maxWidth: _spec.maxWidth,
-      minHeight: _spec.height,
-      maxHeight: _spec.height,
-    ).enforce(constraints);
-    // …then `Align(widthFactor: 1, heightFactor: 1)`: as big as its child,
-    // within that — the child laid out loose.
-    final loose = face.loosen();
-    final painter = _glyphPainter(_spec.ink.foreground(_states));
-    final Size child;
-    final Offset inChild;
-    switch (_spec.glyph) {
-      case RailIconGlyph():
-        final square = _spec.iconTheme.size!;
-        child = loose.constrain(Size(square, square));
-        // [Icon]'s `Center` inside its square.
-        inChild = Alignment.center.alongOffset(
-          child - painter.size as Offset,
-        );
-      case RailTextGlyph():
-        child = loose.constrain(painter.size);
-        inChild = Offset.zero;
-    }
-    size = face.constrain(child);
-    _glyphOffset =
-        Alignment.center.alongOffset(size - child as Offset) + inChild;
+    final painter = _glyphPainter(_spec.ink.foreground(pressStates));
+    var inGlyph = Offset.zero;
+    final box = layOutIconButtonBox(
+      constraints,
+      BoxConstraints(
+        minWidth: _spec.minWidth,
+        maxWidth: _spec.maxWidth,
+        minHeight: _spec.height,
+        maxHeight: _spec.height,
+      ),
+      (loose) {
+        switch (_spec.glyph) {
+          case RailIconGlyph():
+            final square = _spec.iconTheme.size!;
+            final glyph = loose.constrain(Size(square, square));
+            // [Icon]'s `Center` inside its square.
+            inGlyph = Alignment.center.alongOffset(
+              glyph - painter.size as Offset,
+            );
+            return glyph;
+          case RailTextGlyph():
+            return loose.constrain(painter.size);
+        }
+      },
+    );
+    size = box.size;
+    _glyphOffset = box.glyphOffset + inGlyph;
   }
 
   @override
@@ -622,25 +386,16 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
 
   // ── paint ──────────────────────────────────────────────────────────
 
-  BoxPainter? _boxPainter;
-  Color? _boxPainterColor;
+  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    final states = _states;
-    final overlay = _spec.ink.overlay(states);
-    if (_boxPainter == null || overlay != _boxPainterColor) {
-      _boxPainter?.dispose();
-      _boxPainter = ShapeDecoration(
-        shape: _spec.shape,
-        color: overlay,
-      ).createBoxPainter(markNeedsPaint);
-      _boxPainterColor = overlay;
-    }
-    _boxPainter!.paint(
+    final states = pressStates;
+    _layer.paint(
       context.canvas,
-      offset,
-      ImageConfiguration(size: size, textDirection: _spec.textDirection),
+      offset & size,
+      ShapeDecoration(shape: _spec.shape, color: _spec.ink.overlay(states)),
+      _spec.textDirection,
     );
     _glyphPainter(_spec.ink.foreground(states)).paint(
       context.canvas,
@@ -667,10 +422,9 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
     ),
   };
 
-
   @override
   void dispose() {
-    _boxPainter?.dispose();
+    _layer.dispose();
     super.dispose();
   }
 }
@@ -678,9 +432,14 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
 /// A rail PLATE that is pressed — the mark's and the take's ([RailPlateFace]).
 /// What it shows is its child's own: the plate paints itself, opaque, so no
 /// state layer would show over it — and the [InkWell] the plate used to wear
-/// drew its ink UNDER it, unseen. Everything else is the press every rail
-/// face is ([RailPressFace]).
-class RenderRailPlateFace extends RenderProxyBox with RailPressFace {
+/// drew its ink UNDER it, unseen. Everything else is the press every light
+/// face is ([PressFace]).
+///
+/// A CLEAR plate — an edge and a word, the blend chip's — let that ink show:
+/// the hover, the one ink the app keeps (its theme turns the splash and the
+/// held fill off, F-132 · F-138). Such a face paints it, UNDER the plate as
+/// the [InkWell] drew it ([RailPlateSpec.hoverShape]).
+class RenderRailPlateFace extends RenderProxyBox with PressFace {
   RenderRailPlateFace({
     required RailPlateSpec spec,
     required BuildContext tooltipContext,
@@ -691,14 +450,27 @@ class RenderRailPlateFace extends RenderProxyBox with RailPressFace {
   RailPlateSpec _spec;
   RailPlateSpec get spec => _spec;
   set spec(RailPlateSpec value) {
-    if (value == _spec) {
-      return;
-    }
+    final old = _spec;
     _spec = value;
-    if (!value.enabled) {
-      letGoOfThePress();
+    respec(old, value);
+  }
+
+  @override
+  void pressLookChanged() {
+    if (_spec.hoverShape != null) {
+      markNeedsPaint();
     }
-    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_spec.hoverShape case final shape? when hovered && _spec.enabled) {
+      context.canvas.drawPath(
+        shape.getOuterPath(offset & size, textDirection: _spec.textDirection),
+        Paint()..color = _spec.hoverInk,
+      );
+    }
+    super.paint(context, offset);
   }
 
   @override
@@ -726,13 +498,15 @@ class RenderRailPlateFace extends RenderProxyBox with RailPressFace {
 /// Everything a [RenderRailPlateFace] says, resolved from the context by
 /// its widget.
 @immutable
-final class RailPlateSpec {
+final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   const RailPlateSpec({
     required this.tooltip,
     required this.onSemanticTap,
     required this.semanticLabel,
     required this.textDirection,
     required this.triggerMode,
+    required this.hoverShape,
+    required this.hoverInk,
   });
 
   final String tooltip;
@@ -741,15 +515,35 @@ final class RailPlateSpec {
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
+  /// A clear plate's hover, in this shape — null for an opaque plate, whose
+  /// ink nobody saw ([RailPlateFace.hoverShape]).
+  final ShapeBorder? hoverShape;
+
+  /// The hover's colour: the theme's, as an [InkWell] with none of its own
+  /// takes it.
+  final Color hoverInk;
+
   bool get enabled => onSemanticTap != null;
+
+  /// The plate lays itself out — the face is its size.
+  @override
+  bool laysOutAs(RailPlateSpec other) => true;
+
+  /// Whether [other] paints the same hover.
+  @override
+  bool paintsAs(RailPlateSpec other) =>
+      other.hoverShape == hoverShape &&
+      other.hoverInk == hoverInk &&
+      other.enabled == enabled &&
+      other.textDirection == textDirection;
 
   @override
   bool operator ==(Object other) =>
       other is RailPlateSpec &&
+      paintsAs(other) &&
       other.tooltip == tooltip &&
       other.onSemanticTap == onSemanticTap &&
       other.semanticLabel == semanticLabel &&
-      other.textDirection == textDirection &&
       other.triggerMode == triggerMode;
 
   @override
@@ -759,6 +553,8 @@ final class RailPlateSpec {
     semanticLabel,
     textDirection,
     triggerMode,
+    hoverShape,
+    hoverInk,
   );
 }
 
@@ -772,6 +568,7 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
     required this.tooltip,
     required this.onSemanticTap,
     this.semanticLabel,
+    this.hoverShape,
     required super.child,
   });
 
@@ -780,6 +577,11 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
   /// What a screen reader's activation calls; null is a dead plate.
   final VoidCallback? onSemanticTap;
   final String? semanticLabel;
+
+  /// A CLEAR plate's hover, painted under it in this shape — the ink an
+  /// [InkWell] drew where the plate let it show ([RenderRailPlateFace]).
+  /// Null for an opaque plate.
+  final ShapeBorder? hoverShape;
 
   @override
   RenderRailPlateFace createRenderObject(BuildContext context) =>
@@ -802,6 +604,59 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
     textDirection: Directionality.of(context),
     triggerMode:
         TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+    hoverShape: hoverShape,
+    hoverInk: Theme.of(context).hoverColor,
+  );
+}
+
+/// THE RAIL'S PLATE BUTTON — [child] painted as it paints itself, and the
+/// claim and ONE face ([RailPlateFace]) around it: what a pressed plate of
+/// a rail is, whatever the press does. A list's door is this with the list
+/// as its press ([RailFlyoutTrigger]); the legend's headings are this, on
+/// the legend's plate (`TimelineLayerControlsHeader`). Null [onPressed] is a
+/// dead plate that still shows its tooltip, as a dead [RailGlyphButton]
+/// does.
+class RailPlateButton extends StatelessWidget {
+  const RailPlateButton({
+    super.key,
+    required this.name,
+    required this.tooltip,
+    required this.onPressed,
+    required this.child,
+    this.semanticLabel,
+    this.hoverShape,
+  });
+
+  /// What a finder calls the [RailPlateFace] — a [Named], as a
+  /// [RailGlyphButton.name] is and for its reason.
+  final String name;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  /// The plate.
+  final Widget child;
+
+  /// What a screen reader calls it.
+  final String? semanticLabel;
+
+  /// [RailPlateFace.hoverShape].
+  final ShapeBorder? hoverShape;
+
+  @override
+  Widget build(BuildContext context) => ControlPressClaim(
+    onPressed: onPressed,
+    child: Named(
+      name,
+      child: RailPlateFace(
+        tooltip: tooltip,
+        // The REAL callback, for a screen reader's activation — the claim
+        // never hears it ([RailGlyphButton]).
+        onSemanticTap: onPressed,
+        semanticLabel: semanticLabel,
+        hoverShape: hoverShape,
+        child: child,
+      ),
+    ),
   );
 }
 

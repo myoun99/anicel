@@ -55,6 +55,27 @@ void main() {
       );
     });
 
+    test('a view that IS a whole number of cells reads back as that many '
+        'frames at a zoom off the pixel — the follower guesses an unread '
+        'view so (F-403 opens a cut at 19.2)', () {
+      // 28 × 19.2 ÷ 19.2 is 28.000000000000004 in doubles.
+      const cell = 19.2;
+      expect((28 * cell / cell).ceil(), 29, reason: 'premise: the noise');
+      for (final frames in const [27, 28, 29, 30]) {
+        expect(
+          endlessTrailingFrames(
+            baseFrameCount: 24,
+            currentTrailingFrames: 0,
+            scrollOffset: 0,
+            viewportExtent: frames * cell,
+            frameCellExtent: cell,
+          ),
+          frames - 24,
+          reason: '$frames cells',
+        );
+      }
+    });
+
     test('an in-range view adds nothing (scroll gestures and the '
         'scrollbar cannot grow the axis)', () {
       // View edge frame 30 ≤ base 48 → target 0.

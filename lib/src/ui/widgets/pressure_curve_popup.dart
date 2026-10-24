@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
+import '../../core/neighbour_pairs.dart';
 
 import '../../models/brush_input_source.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -766,8 +767,8 @@ class _CurveGraphPainter extends CustomPainter {
       final polygon = Paint()
         ..color = AppColors.textDim
         ..strokeWidth = 1;
-      for (var i = 0; i + 1 < points.length; i += 1) {
-        canvas.drawLine(at(points[i]), at(points[i + 1]), polygon);
+      for (final (from, to) in neighbourPairs(points)) {
+        canvas.drawLine(at(from), at(to), polygon);
       }
     }
 

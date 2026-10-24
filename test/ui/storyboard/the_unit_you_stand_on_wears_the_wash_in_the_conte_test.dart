@@ -21,10 +21,13 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineBlockCornerRadiusAt;
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 
 import '../storyboard_cut_block_probe.dart';
 import '../../helpers/storyboard_host.dart';
@@ -144,11 +147,18 @@ void main() {
   Rect playhead(WidgetTester tester) =>
       tester.getRect(find.byKey(const ValueKey<String>('storyboard-playhead')));
 
+  /// The conte's zoom. ↩️Read off the playhead's width, which is a cell the
+  /// frame axis lays (F-220): the zoom itself while the conte opened on a
+  /// whole pixel, 7 or 8 at the 7.68 it opens at since F-403.
+  double zoom(WidgetTester tester) => tester
+      .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+      .pixelsPerFrame;
+
   /// The frames the wash covers, read against the playhead's cell at
   /// [frame], and the row it lies on.
   ({int start, int end, Rect row}) washed(WidgetTester tester, int frame) {
-    final cell = playhead(tester).width;
-    final origin = playhead(tester).left - frame * cell;
+    final cell = zoom(tester);
+    final origin = playhead(tester).left - timelineFrameEdge(frame, cell);
     final rect = tester.getRect(wash);
     return (
       start: ((rect.left - origin) / cell).round(),
@@ -157,13 +167,14 @@ void main() {
     );
   }
 
-  /// The corner the wash wears, and the one a BLOCK of its own cells wears.
+  /// The corner the wash wears, and the one a BLOCK of its own cells wears
+  /// — sized by the zoom, as the blocks are.
   BorderRadiusGeometry? corner(WidgetTester tester) =>
       (tester.widget<DecoratedBox>(wash).decoration as BoxDecoration)
           .borderRadius;
   BorderRadius blockCorner(WidgetTester tester) => BorderRadius.all(
     timelineBlockCornerRadiusAt(
-      cellExtent: playhead(tester).width,
+      cellExtent: zoom(tester),
       crossExtent: tester.getRect(wash).height,
     ),
   );

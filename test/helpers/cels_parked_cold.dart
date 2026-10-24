@@ -30,4 +30,4 @@ Map<BrushFrameKey, AnicelCelBlob> parkCold(
 /// The blob [surface] cools into as the cel [key] — what [parkCold] parks,
 /// and what a cel kept in a file holds (`keepInAFile`).
 AnicelCelBlob coldBlobOf(BrushFrameKey key, BitmapSurface surface) =>
-    AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
+    AnicelCelBlob.ofSurface(key, surface);

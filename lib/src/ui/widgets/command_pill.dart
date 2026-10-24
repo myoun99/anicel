@@ -430,7 +430,7 @@ class _ExpandButton extends StatelessWidget {
           onTap: silentPress(enabled ? () => onOpen(context) : null),
           // The pressed shade rides the POINTER for the same reason: a tap's
           // down/cancel pair went back to looking unpressed on the first
-          // wobble. [AppIconButtonFace] draws its own layer this way.
+          // wobble. Every light face (`PressFace`) draws its own layer so.
           child: Listener(
             behavior: HitTestBehavior.opaque,
             onPointerDown: enabled ? (_) => onPressedChanged(true) : null,

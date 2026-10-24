@@ -117,14 +117,15 @@ void main() {
     // ↩️It used to be silenced by tapping the BAR. F-150 ③ (유저 2026-09-16)
     // moved the switch to the NUMBER at the column's floor — 「숫자 써있는곳
     // 버튼으로만들어서 그거 누르면 on off 전환」 — so the bar could be
-    // nothing but a slider. The tooltip is still the bar's.
+    // nothing but a slider. F-461 (유저 2026-10-23) put it on the ORDER
+    // number under the bar — 「1번 2번 등 슬라이더 아래의 순서 숫자를
+    // 버튼으로서 누르면 on/off」. The tooltip is still the bar's.
     final peg1 = find.byKey(const ValueKey<String>('onion-peg-before-1'));
-    expect(tester.widget<Tooltip>(peg1).message, '1 back · 40%');
+    expect(tester.widget<Tooltip>(peg1).message, '1 back');
     await tester.tap(
       find.byKey(const ValueKey<String>('onion-peg-switch-before-1')),
     );
     await tester.pumpAndSettle();
-    expect(tester.widget<Tooltip>(peg1).message, '1 back · off');
     expect(tester.widget<Tooltip>(peg1).message, '1 back · off');
 
     // Mode switch to Images through the panel's picker.

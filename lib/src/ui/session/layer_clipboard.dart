@@ -10,6 +10,7 @@ import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/persistence/media_staging_store.dart';
 import 'independent_clip_mint.dart';
 import 'layer_stack.dart';
+import 'layer_verbs.dart';
 import 'render_caches.dart';
 import 'row_selection.dart';
 import 'session_roles.dart';
@@ -42,6 +43,7 @@ class LayerClipboard implements BringsMedia {
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
     required RowSelection rowSelection,
+    required LayerVerbs layerVerbs,
   }) : _board = board,
        _project = project,
        _selection = selection,
@@ -50,11 +52,15 @@ class LayerClipboard implements BringsMedia {
        _renderCaches = renderCaches,
        _mediaBytesOf = mediaBytesOf,
        _staging = staging,
-       _rowSelection = rowSelection;
+       _rowSelection = rowSelection,
+       _layerVerbs = layerVerbs;
 
   /// The rows a copy of the selection takes
   /// ([RowSelection.selectedLayerIds]).
   final RowSelection _rowSelection;
+
+  /// The delete a 잘라내기 lifts its rows with (I-123).
+  final LayerVerbs _layerVerbs;
 
   /// The app's layer board ([LayerBoard]) — every open project's clipboard
   /// reads and writes the same one (I-7).
@@ -102,7 +108,56 @@ class LayerClipboard implements BringsMedia {
     }
     // A selected row of the cut implies the cut.
     final cut = _project.requireActiveCut;
-    final copied = [for (final layer in rows) _copyOf(layer, cut)];
+    _bank([for (final layer in rows) _copyOf(layer, cut)]);
+  }
+
+  /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
+  /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
+  ///
+  /// The selected rows a 잘라내기 lifts: those a copy takes whose delete
+  /// takes nothing besides them ([LayerVerbs.deletesAlone]).
+  ///
+  /// 🚨결정 14 ②ⓐ, the frame cut's law (`FrameClipboard.cutAt`): a cut banks
+  /// exactly what it lifts — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지
+  /// 잘라내기가 아니다」. A base's delete takes its attach rows, which no copy
+  /// holds ([layerTakesACopy]), so a base that has them stays where it is.
+  List<Layer> get _rowsToCut => [
+    for (final layer in _rowsToCopy)
+      if (_layerVerbs.deletesAlone(layer)) layer,
+  ];
+
+  /// Whether the selected rows hold one a 잘라내기 may lift — the ROWS rung
+  /// of the shared pill's cut, which the copy's rung claims
+  /// (`toolbar_panel_context`).
+  bool get canCutSelectedRows => _rowsToCut.isNotEmpty;
+
+  /// Lifts [_rowsToCut] as ONE step and puts in hand the rows that went.
+  ///
+  /// ⚠️The board takes them AFTER the lift, of the rows it took: a delete
+  /// may still refuse one at its floor (one instruction row stays), and a
+  /// row that stayed is not in hand. What they showed is read BEFORE it,
+  /// while the cut still shows it.
+  void cutSelectedRows() {
+    final rows = _rowsToCut;
+    if (rows.isEmpty) {
+      return;
+    }
+    final cut = _project.requireActiveCut;
+    final taken = [for (final layer in rows) _copyOf(layer, cut)];
+    _layerVerbs.deleteLayers([
+      for (final row in taken) row.sourceId,
+    ], step: 'Cut rows');
+    final stayed = {
+      for (final layer in _project.requireActiveCut.layers) layer.id,
+    };
+    _bank([
+      for (final row in taken)
+        if (!stayed.contains(row.sourceId)) row,
+    ]);
+  }
+
+  /// Puts [copied] in hand, with what the rows name in this project.
+  void _bank(List<_CopiedLayer> copied) {
     _board._take(
       _CopiedRows(
         from: this,

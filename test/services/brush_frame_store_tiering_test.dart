@@ -285,6 +285,7 @@ void main() {
         canvasSize: canvasSize,
         tileSize: 8,
         photoPaths: [],
+        showsSomething: true,
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
     expect(store.dirtyCelKeysSinceSave, isEmpty);
@@ -338,6 +339,7 @@ void main() {
       canvasSize: canvasSize,
       tileSize: 8,
       photoPaths: [],
+      showsSomething: true,
     );
     store.adoptSavedFile({
       edited: ref(),
@@ -629,6 +631,7 @@ void main() {
         canvasSize: CanvasSize(width: 32, height: 32),
         tileSize: 8,
         photoPaths: [],
+        showsSomething: true,
       ),
     }, dirtyTicksAtSnapshot: store.bakedSnapshotForSave().dirtyTicks);
 

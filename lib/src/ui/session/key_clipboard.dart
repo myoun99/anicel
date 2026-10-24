@@ -77,6 +77,26 @@ class KeyClipboard {
     _changes.notifyChanged();
   }
 
+  /// 잘라내기 of keys: the copy's keys in hand, and those keys — every key
+  /// the range covers on the lanes it reaches, the very reach and the very
+  /// keys [copy] takes — off their lanes, as ONE step
+  /// ([LaneVerbs.removeLaneKeysForSelection]). Gated by [canCopy]: where a
+  /// copy takes keys, the cut lifts them.
+  ///
+  /// ⛔Not the lane's Delete ([LaneVerbs.deleteForLaneSelection]): over an
+  /// fx header that takes the EFFECT, which no copy of keys holds — and a
+  /// cut lifts only what it banked (결정 14 ②ⓐ, `FrameClipboard.cutAt`).
+  void cut() {
+    final lane = _laneVerbs.laneVerbRange;
+    final copy = _copyHere;
+    if (lane == null || copy == null) {
+      return;
+    }
+    _board._take(copy);
+    _laneVerbs.removeLaneKeysForSelection(lane);
+    _changes.notifyChanged();
+  }
+
   /// Whether the hand holds keys.
   bool get holdsKeys => _board._copy != null;
 

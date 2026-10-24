@@ -11,7 +11,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
-import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -99,8 +99,8 @@ void main() {
         .appIconButton(find.named(key))
         .tooltip;
     String chip(String key) => tester
-        .widget<PanelFlyoutButton>(find.named(key))
-        .tooltip!;
+        .widget<RailPlateFace>(find.named(key))
+        .tooltip;
     return {
       for (final key in [
         'eye-layer-shown',

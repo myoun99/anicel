@@ -373,9 +373,16 @@ void main() {
   /// them, so here it is asked what came OUT. ↩️Without the hole the cel
   /// still holds the ink and the float draws it again: the picture twice,
   /// R28 #10 「원본그림 존재하고 변형된 그림도 존재」.
+  ///
+  /// 🚨**And the box is left OPEN as the window goes**
+  /// (a-box-left-open-lands-after-its-history-is-gone): the canvas lands
+  /// it as it unmounts, a frame later, so the window's projects have to be
+  /// let go after that frame too — as a closed tab's are. This rig is the
+  /// one that leaves a real move pending, so the window goes here.
   testWidgets('🚨a pending move shows its hole: what the box took out is '
       'gone from where it was, the float is where the hand put it, and the '
-      'ink outside the box stays', (tester) async {
+      'ink outside the box stays — and as the window goes, it lands before '
+      'its history is let go', (tester) async {
     await tester.pumpWidget(
       RepaintBoundary(
         key: captureKey,
@@ -478,10 +485,22 @@ void main() {
       reason: 'the ink outside the box is as it was',
     );
 
-    // ⚠️Closed before the test ends: a box left open lands as the workspace
-    // unmounts, a frame after the history it writes to has gone
-    // (a-box-left-open-lands-after-its-history-is-gone).
-    commands.cancelTransform();
-    await pumpFrames(tester);
+    final history = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session
+        .historyManager;
+    final entries = history.undoCount;
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'the landing wrote to a history that was still there',
+    );
+    expect(
+      history.undoCount,
+      entries + 1,
+      reason: 'and the box LANDED — an unmount is not a revert',
+    );
   });
 }

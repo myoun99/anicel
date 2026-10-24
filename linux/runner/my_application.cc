@@ -72,6 +72,9 @@ static void my_application_activate(GApplication* application) {
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
+  // A frame's one picture is patched where it stands through Flutter GPU
+  // (one-picture-per-frame, D7-2-Q3 유저 2026-10-24) — off unless asked for.
+  fl_dart_project_set_enable_flutter_gpu(project, TRUE);
 
   FlView* view = fl_view_new(project);
   GdkRGBA background_color;

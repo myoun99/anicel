@@ -126,9 +126,18 @@ int endlessTrailingFrames({
   if (frameCellExtent <= 0) {
     return currentTrailingFrames;
   }
+  // 🚨An extent that IS a whole number of cells reads back as that many
+  // frames, give or take a double's error ([_wholeCellSlack]): the
+  // follower guesses a view it has not read as the frames that paper it
+  // times the cell ([TimelineFrameAxisFollower]), and 28 cells of 19.2
+  // came back 28.000000000000004 — a frame over, built until the next
+  // rebuild took it back. 🧪F-403 opens a cut at 19.2, and a notify that
+  // changed nothing then laid the timeline's scrollbar out again.
   final targetFrames = math.max(
     0,
-    ((scrollOffset + viewportExtent) / frameCellExtent).ceil() - baseFrameCount,
+    ((scrollOffset + viewportExtent) / frameCellExtent - _wholeCellSlack)
+            .ceil() -
+        baseFrameCount,
   );
   if (targetFrames >= currentTrailingFrames) {
     return targetFrames;
@@ -152,6 +161,10 @@ int endlessTrailingFrames({
       ? targetFrames
       : currentTrailingFrames;
 }
+
+/// A share of a cell far under any pixel's, far over a double's error at a
+/// timeline's extent.
+const double _wholeCellSlack = 1e-9;
 
 /// Frame cells a viewport needs to be FULLY papered (UI-R12 #16: cells in
 /// the visible region never stop mid-view). Render extents take

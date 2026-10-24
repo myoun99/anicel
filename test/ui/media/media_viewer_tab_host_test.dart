@@ -1,5 +1,4 @@
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
-import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -644,11 +643,8 @@ void main() {
   });
 }
 
-/// The tooltip an [AppIconButton] is showing — its face renders the Tooltip
-/// inside the box the key names, so the message hangs under the button's own
-/// key (it rendered through a Material `IconButton` until 2026-09-10; same place).
-String? _tooltipOf(WidgetTester tester, Finder button) => tester
-    .widget<Tooltip>(
-      find.descendant(of: button, matching: find.byType(AppTooltip)),
-    )
-    .message;
+/// The tooltip an [AppIconButton] is showing — what its face, the box the
+/// key names, holds (a `Tooltip` under the key until 2026-10-24, when the
+/// face began summoning the one window the light faces share).
+String? _tooltipOf(WidgetTester tester, Finder button) =>
+    tester.widget<AppIconButtonFace>(button).tooltip;

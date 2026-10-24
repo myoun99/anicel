@@ -1,7 +1,7 @@
 import 'widgets/empty_state_text.dart';
 import 'dart:async' show unawaited;
 
-import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart' show CameraInstructionDef;
@@ -48,6 +48,8 @@ import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
+import 'timeline/memo_token.dart'
+    show ByIdentity, BySet, Kept, keptWhileSame;
 
 /// The Timeline tab's content: the timeline panel with its transport, cell
 /// action toolbar and the layer/frame dialogs it triggers. All wiring lives
@@ -64,6 +66,7 @@ class TimelineTabHost extends StatefulWidget {
     required this.pixelsPerFrame,
     this.pixelsPerFrameListenable,
     required this.onPixelsPerFrameChanged,
+    this.onZoomFit,
     required this.showSeconds,
     required this.onShowSecondsChanged,
     this.timelineRailExtent,
@@ -112,6 +115,9 @@ class TimelineTabHost extends StatefulWidget {
   /// without the notifier.
   final ValueListenable<double>? pixelsPerFrameListenable;
   final ValueChanged<double> onPixelsPerFrameChanged;
+
+  /// The zoom fit (I-111) — the workspace's, which keeps the zoom.
+  final VoidCallback? onZoomFit;
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
 
@@ -411,6 +417,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     previewAxis: _previewAxis,
   );
 
+  /// How many steps on the playing run shows the active cut's frame
+  /// [frame] ([PlaybackRig.stepsUntilShown]) — the grids' frames are the
+  /// cut's own. A method, so the rows kept across builds ask one answer.
+  int? _stepsUntilShown(int frame) {
+    final cutId = _session.activeCutId;
+    return cutId == null
+        ? null
+        : _session.playbackRig.stepsUntilShown(cutId, frame);
+  }
+
   /// The end-line drag's session hooks (UI-R18 #14): the boundary grip
   /// end-trims the ACTIVE cut through the storyboard's trim channel.
   /// Null while no cut is active (gap parking) — the line stays static.
@@ -538,6 +554,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // law.
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
+            stepsUntilShown: _stepsUntilShown,
             readyRunsIn:
                 _session.playbackRig.playbackCache.playbackReadyRuns,
             playbackFrameCount:
@@ -849,6 +866,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onOrientationChanged: widget.onOrientationChanged,
             pixelsPerFrame: pixelsPerFrame,
             onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+            onZoomFit: widget.onZoomFit,
             showSeconds: widget.showSeconds,
             onShowSecondsChanged: widget.onShowSecondsChanged,
             timelineRailExtent: widget.timelineRailExtent,
@@ -980,319 +998,58 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     );
   }
 
-  /// Button enablement reads the playhead, and committed seeks are no
-  /// longer session notifies — the toolbar re-reads them here without
-  /// the panel (or its grids) rebuilding. TOKEN-GATED (R13-2): the
-  /// naive per-seek rebuild reconstructed the whole transport + ~25
-  /// Material buttons on every frame flip — measured on device as
-  /// the flip hitch. Seeks that land in the same enablement state
-  /// (almost all of them) now rebuild nothing.
-  Widget _buildTimelineToolbar() {
-    return _SeekGatedTimelineToolbar(
+  /// The bar, kept while it is built for the same thing: this session and
+  /// the sections its layer pill checks ([keptWhileSame] — the words too).
+  ///
+  /// ↩️(a-gate-rebuilds-the-whole-toolbar, 2026-10-24) It was cached on a
+  /// TOKEN of every value its buttons show, re-read on every seek, band and
+  /// host rebuild (`_SeekGatedTimelineToolbar`, R13-2): the naive per-seek
+  /// rebuild reconstructed the whole transport + ~25 Material buttons on
+  /// every frame flip — measured on device as the flip hitch — and a seek
+  /// that lands in the same enablement state (almost all of them) rebuilt
+  /// nothing. But a token that moved built the whole bar again, for one
+  /// gate as for all of them, and every gate was written twice — in the
+  /// token and in the group that shows it — and went stale where the two
+  /// came apart (F-75, F-338, I-77, I-123). Each group hears its own gates
+  /// now ([toolbarGateNews]): what a seek or a notify moves builds the group
+  /// that shows it, and nothing else.
+  final Map<Type, Kept<_ToolbarFacts>> _keptToolbar = {};
+
+  Widget _buildTimelineToolbar() => keptWhileSame(
+    _keptToolbar,
+    TimelineActionToolbar,
+    (ByIdentity(_session), BySet(widget.hiddenSections)),
+    // ⛔The TRANSPORT and the camera-view toggle left this bar (유저 확정,
+    // 2026-08-10). They are the 문턱's now — see [FramePanelSillControls],
+    // mounted by the workspace through `EditorPanelTab.sillTrailing` —
+    // because the sill's right edge is the one place in this region that
+    // does not move when a panel is added. What is left here is what
+    // reaches into THIS panel's own contents.
+    () => TimelineActionToolbar(
       session: _session,
+      // B8: this panel's dispatch context — the session's cut-local
+      // verbs, verbatim (the baseline the storyboard's own context
+      // diverges from).
+      panelContext: TimelineToolbarPanelContext(_session, waitIn: context),
+      onAddLayer: _session.layerStack.addLayer,
+      onRenameLayer: () =>
+          unawaited(renameActiveLayerWithDialog(context, _session)),
+      onDeleteLayer: () =>
+          unawaited(deleteActiveLayerWithDialog(context, _session)),
+      // F: the shared delete's ROW rung keeps the confirmation the loose
+      // layer button used to carry.
+      onDeleteRowSelection: () =>
+          unawaited(deleteRowSelectionWithDialog(context, _session)),
+      onEditInstance: _editActiveInstance,
+      onCreateInstance: _createActiveInstance,
       hiddenSections: widget.hiddenSections,
-      // ⛔The TRANSPORT and the camera-view toggle left this bar (유저 확정,
-      // 2026-08-10). They are the 문턱's now — see [FramePanelSillControls],
-      // mounted by the workspace through `EditorPanelTab.sillTrailing` —
-      // because the sill's right edge is the one place in this region that
-      // does not move when a panel is added. What is left here is what
-      // reaches into THIS panel's own contents.
-      actionsBuilder: (context) => TimelineActionToolbar(
-        session: _session,
-        // B8: this panel's dispatch context — the session's cut-local
-        // verbs, verbatim (the baseline the storyboard's own context
-        // diverges from).
-        panelContext: TimelineToolbarPanelContext(_session, waitIn: context),
-        onAddLayer: _session.layerStack.addLayer,
-        onRenameLayer: () =>
-            unawaited(renameActiveLayerWithDialog(context, _session)),
-        onDeleteLayer: () =>
-            unawaited(deleteActiveLayerWithDialog(context, _session)),
-        // F: the shared delete's ROW rung keeps the confirmation the loose
-        // layer button used to carry.
-        onDeleteRowSelection: () =>
-            unawaited(deleteRowSelectionWithDialog(context, _session)),
-        onEditInstance: _editActiveInstance,
-        onCreateInstance: _createActiveInstance,
-        hiddenSections: widget.hiddenSections,
-        onToggleSection: widget.onToggleSection,
-      ),
-    );
-  }
-}
-
-/// Caches the timeline's action toolbar and rebuilds it ONLY when what its
-/// buttons SHOW changes — for BOTH a committed seek AND a session notify
-/// (the host rebuild). The bar reconstructs ~20 Material buttons; the
-/// scoped-notify measurement put that at a large, row-independent share of
-/// every notify, even though a layer-select or a far-away cell edit changes
-/// nothing it renders.
-///
-/// ⛔It used to gate TWO groups on two tokens, because the playback transport
-/// lived on this bar and read disjoint state from the action buttons. The
-/// transport moved to the 문턱 (2026-08-10) and the workspace mounts it
-/// there, so the second group — and the whole reason for two tokens — went
-/// with it. The measurement that justified the split still stands; it just
-/// describes a bar this one no longer is.
-///
-/// The token holds every value the toolbar's DIRECTLY-rendered widgets read.
-/// One kind of state is deliberately absent: flyout menu contents (Cut /
-/// Layer / Frame / FX entries) are built by `entriesBuilder` at OPEN time,
-/// so they always read fresh.
-///
-/// COMPLETENESS CONTRACT: any NEW directly-rendered value (an enablement, a
-/// shown label, a lit indicator read as a plain value) MUST join
-/// [_deriveActionsToken] — otherwise a notify that changes only that value
-/// leaves a stale button. And if its source does not travel through a host
-/// rebuild or a committed seek, it needs a listener here too (as the
-/// language settings do). playhead_rebuild_guard_test.dart drives one
-/// mutation per dimension; a dimension added without a case there is
-/// unguarded.
-class _SeekGatedTimelineToolbar extends StatefulWidget {
-  const _SeekGatedTimelineToolbar({
-    required this.session,
-    required this.actionsBuilder,
-    required this.hiddenSections,
-  });
-
-  final EditorSessionManager session;
-
-  /// The action toolbar (the four command pills): gated on
-  /// [_SeekGatedTimelineToolbarState._deriveActionsToken].
-  final WidgetBuilder actionsBuilder;
-
-  /// Folds into the ACTIONS key: the Layer flyout's show/hide checkmarks read
-  /// it (lazily), so a section toggle must drop the cached action toolbar.
-  final Set<TimelineSection> hiddenSections;
-
-  @override
-  State<_SeekGatedTimelineToolbar> createState() =>
-      _SeekGatedTimelineToolbarState();
-}
-
-class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
-  // Initialized eagerly in initState — a `late … = _derive…Token()` field runs
-  // its initializer on FIRST ACCESS, and the first access is the first
-  // didUpdateWidget, which can coincide with the very notify that changed the
-  // state (warming fires no session notify, so nothing accesses it earlier).
-  // The token would then latch the NEW value and miss the change it exists to
-  // catch.
-  late Object _actionsToken;
-
-  /// The last-built toolbar. Held across BOTH seeks and host rebuilds so a
-  /// notify with an unchanged token reuses its widgets.
-  Widget? _cachedActions;
-
-  /// The shared pill's copy and its two pastes, as the PILL reads them:
-  /// this panel's own answers.
-  ///
-  /// I-77: they answer for ROWS as well as the frame axis now. The token
-  /// read the session's frame-axis getters, which a copy of rows does not
-  /// move — the two pastes stayed dark behind it.
-  ///
-  /// Measured (mutation, 2026-10-07): all three reading the frame axis is
-  /// what `home_frame_and_clipboard_test` kills. Any ONE of them doing so
-  /// survives, because a copy of rows moves the other two with it — they
-  /// are listed by the token's contract, each for the button that reads
-  /// it, not because a test tells them apart.
-  TimelineToolbarPanelContext get _pill =>
-      TimelineToolbarPanelContext(widget.session);
-
-  /// Every value the ACTION toolbar's directly-rendered widgets read. Split by
-  /// the widget that consumes each so a future button's owner is obvious.
-  ///
-  /// Flyout entries are deliberately absent (they rebuild lazily on open).
-  Object _deriveActionsToken() => (
-    _frameAxisGates(),
-    _promotedGates(),
-    // ⛔The two project-axis values LEFT this token with the dropdowns
-    // that printed them: they are entries of the settings pill on the
-    // 문턱 now, and a flyout's entries are built at open time.
-    //
-    // Button tooltips and menu labels print in the program language.
-    widget.session.languageSettings.value,
+      onToggleSection: widget.onToggleSection,
+    ),
   );
-
-  /// [_deriveActionsToken]'s frame group, comma buttons and shared pill —
-  /// the gates the playhead moves.
-  Object _frameAxisGates() {
-    final session = widget.session;
-    return (
-      // Frame-group icons + comma buttons (playhead-sensitive enablement).
-      session.selectedFrame != null,
-      session.frameVerbs.canCreateDrawingAtCurrentFrame,
-      session.frameVerbs.canRenameFrameAtCurrentFrame,
-      session.exposureVerbs.canBlankExposureAtCurrentFrame,
-      session.layerMarks.canToggleMarkAtCurrentFrame,
-      _pill.canCopyFrame,
-      _pill.canPasteLinkedFrame,
-      // The shared pill's other three gates. They used to ride that pill's
-      // own rebuild key, which re-evaluates only when the cached toolbar
-      // is dropped — so a change moving ONLY these left them stale. A
-      // BAND does exactly that: it can flip cut / edit / independent
-      // paste while every entry around them holds its value.
-      session.clipboard.canCutRunAtCurrentFrame,
-      _pill.canPasteIndependentFrame,
-      session.cellInstances.canEditCellInstanceAtCurrentFrame,
-      session.cells.canDeleteCellAtCurrentFrame,
-      session.exposureVerbs.canDecreaseSelectedExposure,
-      session.exposureVerbs.canIncreaseSelectedExposure,
-      session.storyboardCursor.canSetCommaForTimelineCursor,
-    );
-  }
-
-  /// [_deriveActionsToken]'s heads and promoted verbs — each pill's own,
-  /// each read where it comes from.
-  Object _promotedGates() {
-    final session = widget.session;
-    return (
-      // 🚨F-75 (유저 2026-09-11): 「프레임 1을 색변환의 색삭제 누르고
-      // 프레임2로 이동하면 색변환버튼이 비활성화 된 상태임. 다른 인덱스
-      // 이동했다가 돌아오면 해결되있음」. The 색 편집 head asks whether the
-      // cel under the playhead HAS A DRAWING, and two drawn cels answer every
-      // other gate here alike — so a seek from a cel emptied in place to a
-      // drawn one moved nothing this token held, and the cached bar kept
-      // the dark head. (I-55: the head's gate is every row's now.)
-      session.pixelVerbs.canOpenColourEdit,
-      // I-18: 자동 이름 지정 lights on a BLOCK under the playhead and dims on
-      // an empty cell or a ghost — a seek moves it, and a seek is no notify.
-      // The timeline context's answer, read where it comes from.
-      session.blockNaming.timelineTargets != null,
-      // The Add button's own answer, read where it comes from.
-      // 🚨F-338 (유저 2026-10-11): 「프레임 추가버튼 활성화된채로
-      // 트랜지션레이어 가면 추가버튼 다른 블록있는 OL있는곳가던 뭐하던
-      // 활성화된채」. ↩️This entry was the row's kind and whether its cell
-      // was on the axis — which the transition row's gate does not move
-      // with: a seek from a free cell onto an O.L's mark changed neither,
-      // and the cached bar kept a ＋ whose press made nothing there.
-      session.cellInstances.canCreateInstance,
-      // Edit Instance means THAT LANE'S KEY while you stand on a lane row,
-      // an enablement no layer kind can answer. The row you stand on
-      // publishes through its OWN notifier without a session notify, which
-      // is why this entry needs the listener in initState as well.
-      session.laneVerbs.canNameLaneKeys,
-      // The layer pill's promoted verb.
-      session.layerVerbs.canDeleteActiveLayer,
-      // F-455: the shared pill's 복제, read off this panel's context.
-      _pill.canDuplicate,
-      // …and the cut pill's ＋ ([CutPlacement.canCreateCut]): a band over a
-      // cut leaves it nowhere to make one, and a band is no notify.
-      // ↩️Its band's 새 컷 row read this at open time and hid that the ＋
-      // itself stayed lit; F-455 took the row away.
-      // ⛔MUTANT SURVIVES (F-455, 2026-10-23): dropping this reddens
-      // nothing — every band over a cut also moves a shared-pill gate
-      // ([_frameAxisGates]), so the bar is rebuilt anyway. It stays so the
-      // ＋ does not hang on that coincidence.
-      session.cutPlacement.canCreateCut,
-    );
-  }
-
-  /// Drops the cache iff what the toolbar shows changed. Every entry point
-  /// (a committed seek, a host rebuild, a language switch) funnels its
-  /// decision here.
-  bool _tokenOrSectionsChanged(Set<TimelineSection> oldSections) {
-    final nextActions = _deriveActionsToken();
-    if (nextActions != _actionsToken ||
-        !setEquals(oldSections, widget.hiddenSections)) {
-      _actionsToken = nextActions;
-      _cachedActions = null;
-      return true;
-    }
-    return false;
-  }
-
-  /// Re-derives after a signal that does NOT come through a host rebuild.
-  /// Both entry points compare against the current sections (neither a seek
-  /// nor a language switch can change them).
-  void _handleExternalSignal() {
-    if (_tokenOrSectionsChanged(widget.hiddenSections)) {
-      setState(() {});
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _actionsToken = _deriveActionsToken();
-    // 🚨유저 #6 (2026-08-14): 「룰러로 이동할때 … 버튼 상태 바꼈으면 좋겠는데
-    // 안바뀜. **효율좋게** 하는데 … 해당 인덱스에 **버튼이 있으면 한번,
-    // 없으면 한번** 이런식으로?」
-    //
-    // ⛔`frameSeekCommitted` alone fires on the RELEASE, so for a whole
-    // ruler drag the toolbar kept whatever enablement it had when the drag
-    // began. A scrub deliberately raises no session notify — that is what
-    // keeps the drag cheap — so nothing else was ever going to re-ask.
-    //
-    // 🚨#10 (2026-08-21): the answer to that used to be `playheadHasCel`, a
-    // BOOLEAN PROXY for the whole bar — 「거의 다 “플레이헤드 밑에 셀이
-    // 있나”로 환원된다」 was the argument, and it was wrong twice over.
-    // Measured on the default project: a scrub from a drawn frame 0 to an
-    // empty frame 6 moves NINE of the bar's twenty-five buttons, and the
-    // proxy read `false` at BOTH — it was synced only on the scrub path, so
-    // every drag started from whatever the last one left behind and the
-    // first crossing was missed by construction.
-    //
-    // [EditorSessionManager.playheadMoved] is the honest signal and the
-    // shared one: the same listenable the storyboard's bar and the shift
-    // pair take. The efficiency half of the instruction stays exactly where
-    // it belongs — in the token comparison below: a crossed frame costs one
-    // derivation (measured 15.6µs in debug for seventeen gates) and
-    // rebuilds nothing unless an ANSWER changed.
-    for (final signal in _signalsOf(widget)) {
-      signal.addListener(_handleExternalSignal);
-    }
-  }
-
-  /// Every signal that can move a gate WITHOUT a host rebuild.
-  ///
-  /// ↩️Each was hung, unhung and re-hung by hand in three places, and the
-  /// fifth was the one that was missing: the band swept on the STORYBOARD,
-  /// which the comma's gate has read all along and the clipboard's reads now
-  /// (F-281). One list, the storyboard bar's shape.
-  static List<Listenable> _signalsOf(_SeekGatedTimelineToolbar widget) => [
-    widget.session.playheadMoved,
-    // A language switch moves its own notifier and fires NO session notify,
-    // so nothing else would ever re-derive the tokens for it.
-    widget.session.languageSettings,
-    // Same story for the row you are STANDING on: it publishes on its own
-    // notifier, and Edit Instance's enablement now reads it.
-    widget.session.standing.currentRowListenable,
-    // …and for the cut-local BAND, which grows per pointer move on its own
-    // notifier. Seven gates read it now (the active-row verbs stand down
-    // when it names other rows), so without this the enforcement lands
-    // while the buttons stay lit — a dead lit control, which is the exact
-    // defect the standdowns exist to remove. The storyboard toolbar has
-    // listed it for the same reason.
-    widget.session.frameRangeSelection,
-    // …and the TRACK's band, the same selection stated on the other axis:
-    // a band is a subject claim whichever panel it was swept in.
-    widget.session.trackFrameRangeSelection,
-  ];
-
-  @override
-  void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.session, widget.session)) {
-      for (final signal in _signalsOf(oldWidget)) {
-        signal.removeListener(_handleExternalSignal);
-      }
-      for (final signal in _signalsOf(widget)) {
-        signal.addListener(_handleExternalSignal);
-      }
-      _cachedActions = null;
-    }
-    _tokenOrSectionsChanged(oldWidget.hiddenSections);
-  }
-
-  @override
-  void dispose() {
-    for (final signal in _signalsOf(widget)) {
-      signal.removeListener(_handleExternalSignal);
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      _cachedActions ??= widget.actionsBuilder(context);
 }
+
+/// What the timeline's bar is built for ([_TimelineTabHostState._keptToolbar]).
+typedef _ToolbarFacts = (
+  ByIdentity<EditorSessionManager>,
+  BySet<TimelineSection>,
+);

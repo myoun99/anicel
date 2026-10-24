@@ -235,10 +235,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void initState() {
     super.initState();
     AppInput.settings.addListener(_onInputSettings);
-    // The page turner reads the view; a caller's own view rebuilds this from
-    // above, this one from here.
-    _ownView.addListener(_onInputSettings);
     // And the reader's page, which the panel moves.
+    // ↩️The page turner read the VIEW, and this was built again at every
+    // move of it — from above for a caller's view, from here for its own.
+    // It reads the page the panel writes back as the view leaves one
+    // ([_reading], F-201), and the panel hears the view itself: built again
+    // for the view, the host was built whole at every step of a pan
+    // (tick-pins-allow-panel-hosts, 10-24).
     _reading.addListener(_onInputSettings);
   }
 

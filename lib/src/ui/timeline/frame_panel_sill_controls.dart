@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/audio_sync_settings.dart';
 import '../../models/working_panel.dart';
 import '../camera/camera_view_toggle_button.dart';
 import '../editor_session_manager.dart';
@@ -86,20 +87,26 @@ class FramePanelSillControls extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        PlaybackTransportControls(
-          controller: session.playbackRig.playback,
-          scope: scope,
-          playbackStartFrame: playbackStartFrame,
-          onSkipToStart: onSkipToStart,
-          resolveMeterPeaks: () =>
-              session.playbackRig.audioDeviceTransport.meterPeaks,
-          isVoiceRecording: session.voiceRecording.isVoiceRecording,
-          onToggleVoiceRecording: () =>
-              toggleVoiceRecordingWithFeedback(context, session),
-          voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
-          resolveStrings: () => session.uiStrings,
-          playsWithout:
-              session.playbackRig.audioDeviceTransport.playsWithout,
+        ValueListenableBuilder<AudioSyncSettings>(
+          valueListenable: session.appSettings.audioSyncSettings,
+          builder: (context, audio, _) => PlaybackTransportControls(
+            controller: session.playbackRig.playback,
+            scope: scope,
+            playbackStartFrame: playbackStartFrame,
+            onSkipToStart: onSkipToStart,
+            resolveMeterPeaks: () =>
+                session.playbackRig.audioDeviceTransport.meterPeaks,
+            isVoiceRecording: session.voiceRecording.isVoiceRecording,
+            onToggleVoiceRecording: () =>
+                toggleVoiceRecordingWithFeedback(context, session),
+            voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
+            resolveStrings: () => session.uiStrings,
+            playsWithout:
+                session.playbackRig.audioDeviceTransport.playsWithout,
+            playbackLevel: audio.playbackLevel,
+            onPlaybackLevelChanged: session.playbackRig.setPlaybackLevel,
+            onPlaybackLevelSettled: session.playbackRig.settlePlaybackLevel,
+          ),
         ),
         CameraViewToggleButton(
           view: session.cameraViewMode,

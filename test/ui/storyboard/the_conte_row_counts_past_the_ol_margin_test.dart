@@ -23,6 +23,8 @@ import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 
 import '../../helpers/storyboard_host.dart';
 import '../storyboard_conte_row_probe.dart';
@@ -164,6 +166,9 @@ void main() {
     await open(tester);
     final row = conteRowRect(tester, trackId);
     final ppf = panel(tester).pixelsPerFrame;
+    // A boundary is where the frame axis lays it (F-220) — the conte opens
+    // between whole pixels (F-403's 40%).
+    double edge(int frame) => timelineFrameEdge(frame, ppf);
     Rect band() => tester.getRect(
       find.byKey(const ValueKey<String>('storyboard-strip-range-selection')),
     );
@@ -171,16 +176,16 @@ void main() {
     // The first panel, [6, 18) of the row: BOTH its ends lie inside the
     // cut, so neither is the cut's edge standing in for it.
     await sweep(tester, 26, 28);
-    expect(band().left, moreOrLessEquals(row.left + 24 * ppf));
+    expect(band().left, moreOrLessEquals(row.left + edge(24)));
     expect(
       band().width,
-      moreOrLessEquals(12 * ppf),
+      moreOrLessEquals(edge(36) - edge(24)),
       reason: 'it ends where the second panel begins, not a のりしろ later',
     );
 
     await sweep(tester, 38, 39);
-    expect(band().left, moreOrLessEquals(row.left + 36 * ppf));
-    expect(band().width, moreOrLessEquals(12 * ppf));
+    expect(band().left, moreOrLessEquals(row.left + edge(36)));
+    expect(band().width, moreOrLessEquals(edge(48) - edge(36)));
   });
 
   // ↩️The cell that opened was the one the のりしろ before it: the

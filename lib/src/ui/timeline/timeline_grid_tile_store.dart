@@ -24,6 +24,7 @@ import 'timeline_grid_tile_ops.dart';
 import 'timeline_tile_raster_source.dart';
 import '../../core/bake_once_lru.dart';
 import '../../core/lru.dart';
+import '../../services/playback/let_go_wanted_latest.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
 ///
@@ -87,7 +88,13 @@ class TimelineGridTileStore {
   /// only rows the store asks anything for of its own accord: a warm-up,
   /// or a request its queue once turned away.
   bool _showsLive(String row, TimelineTileRasterSource painter) =>
-      _shown.containsKey(row) &&
+      _shown.containsKey(row) && _answersLive(painter);
+
+  /// Whether [painter]'s resolvers still describe its rows: always, for a
+  /// source that follows no live cut; for one that does, while its world
+  /// is the live one ([_liveGeneration]).
+  bool _answersLive(TimelineTileRasterSource painter) =>
+      !painter.followsTheLiveCut ||
       painter.substrateGeneration == _liveGeneration;
 
   /// The rows the queue turned a request of away, each with the latest one
@@ -95,9 +102,9 @@ class TimelineGridTileStore {
   final LinkedHashMap<String, _TileRequest> _starved =
       LinkedHashMap<String, _TileRequest>();
 
-  /// LRU cap. A span tile at 96px × a 28px row × DPR 2 ≈ 42KB; 768
-  /// covers dozens of rows × the whole scroll neighborhood before
-  /// eviction starts.
+  /// How many tiles it keeps. A span tile at 96px × a 28px row × DPR 2 ≈
+  /// 42KB; 768 covers dozens of rows × the whole scroll neighborhood before
+  /// it lets any go.
   static const int capacity = 768;
 
   /// How many tiles it keeps: [capacity] — lowered by a test that lands a
@@ -105,17 +112,30 @@ class TimelineGridTileStore {
   @visibleForTesting
   int debugCapacity = capacity;
 
-  /// The tiles, the least recently asked for first — bounded by how many,
-  /// and weighed for [tileImageBytes].
-  late final Lru<String, _TileEntry> _entries = Lru(
-    entryCap: () => debugCapacity,
-    costOf: (entry) =>
-        estimatedImageBytes(entry.image.width, entry.image.height),
-    letGo: (_, entry) => entry.image.dispose(),
-  );
+  /// The tiles, each with when it was last asked for — bounded by how
+  /// many ([debugCapacity]), let go by the order a playhead's caches let go
+  /// by ([_letGoWantedLatest]), and weighed for [tileImageBytes].
+  ///
+  /// 🚨A RUN READS THESE TILES IN ITS OWN ORDER, so they are let go by it
+  /// (card playback-draws-frames-the-film-did-not-change-in, 2026-10-24).
+  /// They were an `Lru`, whose own doc turns away a cache a playhead reads:
+  /// a loop shows every page again, and the page used longest ago is the
+  /// next one it shows. 🔬A cut whose lap held 793 tiles over these 768
+  /// (13 rows × 61 spans, the user's project, Windows profile): of 431 and
+  /// 508 shown landings two runs had, 309 and 182 were tiles let go and
+  /// asked for again — and every shown span left cold kept the next pages'
+  /// warm-up from starting ([_startWarming]).
+  final Map<String, _Kept> _entries = <String, _Kept>{};
+
+  /// What [_entries]' pictures weigh together.
+  int _heldBytes = 0;
+
+  /// One tick each time a tile is asked for — the recency that orders
+  /// tiles wanted alike.
+  int _clock = 0;
 
   /// What the tiles' pictures weigh resident, for the memory census.
-  int get tileImageBytes => _entries.held;
+  int get tileImageBytes => _heldBytes;
 
   /// The spans asked for and not rastered yet, the latest ask last — past
   /// 32 the oldest ask is turned away into [_starved]. The order a bounded
@@ -192,8 +212,10 @@ class TimelineGridTileStore {
 
   /// The substrate generation the LIVE paints carry — the newest
   /// [TimelineTileRasterSource.substrateGeneration] a [tileFor] call has
-  /// seen. Paints only happen for the live state, so the last generation
-  /// a paint carried IS the live one; no host wiring, no setter to race.
+  /// seen of a source that follows the live cut
+  /// ([TimelineTileRasterSource.followsTheLiveCut]). Paints only happen for
+  /// the live state, so the last generation such a paint carried IS the
+  /// live one; no host wiring, no setter to race.
   ///
   /// 🚨#29 프레임 블록 회색 깜빡임: a request captures the painter, but the
   /// painter's resolvers answer FROM THE LIVE SESSION at drain time
@@ -210,10 +232,11 @@ class TimelineGridTileStore {
   /// Test hook.
   @visibleForTesting
   void clear() {
-    for (final entry in _entries.values) {
-      entry.image.dispose();
+    for (final kept in _entries.values) {
+      kept.entry.image.dispose();
     }
     _entries.clear();
+    _heldBytes = 0;
     _pending.clear();
     _starved.clear();
     _inFlight.clear();
@@ -256,7 +279,9 @@ class TimelineGridTileStore {
     if (QaNativeEngine.instance == null) {
       return null;
     }
-    _liveGeneration = painter.substrateGeneration;
+    if (painter.followsTheLiveCut) {
+      _liveGeneration = painter.substrateGeneration;
+    }
     // 🚨The generation is IN the key, not only compared later: the key is
     // deliberately the layer's ID (an edited layer is a NEW instance that
     // must find its old tile and show it stale while re-rastering), and
@@ -355,7 +380,87 @@ class TimelineGridTileStore {
 
   /// The tile at [key], made the newest in the cache: a span asked for —
   /// shown, or warmed to be — is one about to be shown.
-  _TileEntry? _touched(String key) => _entries.use(key);
+  _TileEntry? _touched(String key) {
+    final kept = _entries[key];
+    if (kept == null) {
+      return null;
+    }
+    kept.lastUsed = ++_clock;
+    return kept.entry;
+  }
+
+  /// Keeps [landed] at [key] for [request], disposing the tile it replaces,
+  /// and lets go of the ones wanted latest while more than [debugCapacity]
+  /// are kept — the one that landed, the newest, only where it is wanted
+  /// after every other.
+  void _keep(String key, _TileRequest request, _TileEntry landed) {
+    final replaced = _entries.remove(key);
+    if (replaced != null) {
+      _heldBytes -= replaced.bytes;
+      replaced.entry.image.dispose();
+    }
+    final kept = _Kept(
+      landed,
+      row: request.row,
+      spanStartIndex: request.spanStartIndex,
+      lastUsed: ++_clock,
+    );
+    _entries[key] = kept;
+    _heldBytes += kept.bytes;
+    _letGoWantedLatest();
+  }
+
+  /// Lets go of tiles, the one wanted latest first, until [debugCapacity]
+  /// are kept: by [letGoWantedLatest], the one order playback's caches let
+  /// go by — the least recently asked for first among tiles wanted alike,
+  /// as an `Lru` would, which is every tile wherever nothing plays.
+  void _letGoWantedLatest() {
+    if (_entries.length <= debugCapacity) {
+      return;
+    }
+    final shownBy = <String, _RowShows>{};
+    letGoWantedLatest<MapEntry<String, _Kept>>(
+      entries: [..._entries.entries],
+      heldBytes: _entries.length,
+      maxBytes: debugCapacity,
+      wantedAt: (entry) => _wantedAt(entry.value, shownBy),
+      lastUsed: (entry) => entry.value.lastUsed,
+      bytesOf: (_) => 1,
+      letGo: (entry) {
+        _entries.remove(entry.key);
+        _heldBytes -= entry.value.bytes;
+        entry.value.entry.image.dispose();
+      },
+    );
+  }
+
+  /// How many steps on [kept] is next shown: none while a row on screen
+  /// shows its span ([TimelineTileRasterSource.tileSpans]), as many as the
+  /// playing run takes to show the span's first frame
+  /// ([TimelineTileRasterSource.stepsUntilShown]) — and null, wanted by no
+  /// step, for a tile of a row nothing shows, or wherever nothing plays.
+  /// [shownBy] holds each row's answers for one letting go.
+  int? _wantedAt(_Kept kept, Map<String, _RowShows> shownBy) {
+    final asked = _shown.containsKey(kept.row) ? _askedBy[kept.row] : null;
+    if (asked == null) {
+      return null;
+    }
+    final (:shown, :stepsUntilShown) = shownBy.putIfAbsent(
+      kept.row,
+      () => (
+        shown: asked.painter.tileSpans.shown,
+        stepsUntilShown: asked.painter.stepsUntilShown,
+      ),
+    );
+    final start = kept.spanStartIndex;
+    final end = kept.entry.spanEndIndexExclusive;
+    for (final (from, to) in shown) {
+      if (start < to && from < end) {
+        return 0;
+      }
+    }
+    return stepsUntilShown?.call(start);
+  }
 
   void _enqueue(String key, _TileRequest request) {
     _pending.keep(key, request);
@@ -424,7 +529,7 @@ class TimelineGridTileStore {
     // `_raster` emits the substrate and collects the glyph cells before its
     // first await — so nothing can change the session between the check and
     // the answers it guards.
-    if (request.painter.substrateGeneration != _liveGeneration) {
+    if (!_answersLive(request.painter)) {
       return true;
     }
     _inFlight.add(key);
@@ -476,7 +581,7 @@ class TimelineGridTileStore {
       image: rastered.image,
       ink: rastered.ink,
     );
-    _entries.keep(key, landed)?.image.dispose();
+    _keep(key, request, landed);
     revision.value += 1;
     if (!warm || _askedWhileWarm.remove(key)) {
       // A row whose tile lands asks again for itself when it repaints —
@@ -1198,6 +1303,31 @@ typedef _Rastered = ({
 /// the ops its marks write, and the words it sets.
 typedef _TileInk = ({Int32List ops, List<_TileGlyph> glyphs});
 
+/// What a row's latest painter answers for one letting go
+/// ([TimelineGridTileStore._wantedAt]): the spans it shows now, and how many
+/// steps on a playing run shows a frame of it.
+typedef _RowShows = ({
+  List<(int, int)> shown,
+  int? Function(int frame)? stepsUntilShown,
+});
+
+/// A tile the store keeps, with the row and the frame its span starts on —
+/// what its key names — and when a paint or a warm-up last asked for it.
+class _Kept {
+  _Kept(
+    this.entry, {
+    required this.row,
+    required this.spanStartIndex,
+    required this.lastUsed,
+  }) : bytes = estimatedImageBytes(entry.image.width, entry.image.height);
+
+  final _TileEntry entry;
+  final String row;
+  final int spanStartIndex;
+  final int bytes;
+  int lastUsed;
+}
+
 class _TileEntry {
   _TileEntry({
     required this.substrateGeneration,
@@ -1359,7 +1489,12 @@ class _TileEntry {
         coverageIdentity == painter.coverageIdentity &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
-        identical(colorScheme, painter.colorScheme) &&
+        // `==`, NOT `identical`, for R9 #16's reason below: a panel opened
+        // again reads a scheme of the same colours as a NEW instance, and
+        // 🔬every tile it had went stale — the timeline tab baked ~84 again
+        // at every opening, the storyboard ~42 (10-24,
+        // frame-panels-build-in-one-frame).
+        colorScheme == painter.colorScheme &&
         // R9 #16: `==`, NOT `identical`. A host hands these in as instance
         // method tear-offs (`_session.exposureStateForLayer`), and Dart
         // makes a FRESH closure object for each tear-off — measured:

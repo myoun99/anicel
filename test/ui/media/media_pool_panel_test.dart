@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/media/media_pool_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 class _Callbacks {
   int importRequests = 0;
   final renamed = <(String, String)>[];
@@ -216,7 +218,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('media-import-button')),
-        matching: find.byTooltip(AppText.strings.imImport),
+        matching: find.railTooltip(AppText.strings.imImport),
       ),
       findsOneWidget,
     );

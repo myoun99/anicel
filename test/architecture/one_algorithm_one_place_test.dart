@@ -522,8 +522,64 @@ import '../../tool/refactor/clone_scan.dart';
 /// graph back as well. A third switch merges the three.
 /// 🔬Measured on the lane over master (`05733d19d`, at 88): this one
 /// added, none gone.
+/// 89 → 90 (2026-10-24, D7-2-Q3=a — a frame's one picture, patched where
+/// it stands). The new pair is named:
+///
+///     77 tokens
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore.enforceBudget
+///       lib/src/ui/playback/layer_frame_image_cache.dart
+///         LayerFrameImageCache.enforceBudget
+///
+/// The reading CONFIRMS it: both hand the entries of a keyed map that no
+/// screen pins to the one order a budget lets go by (`letGoWantedLatest`,
+/// whose doc already says the pinned are not handed over), each entry's
+/// recency and bytes its own. The order is shared; what the two spell is
+/// the pin filter and the map's wiring onto it. ⛔Not merged: the SECOND
+/// cache that pins, and the rule of three holds — the export's rows and a
+/// viewer's pages take the order with no pins. 🔜The third pinned cache
+/// moves the filter into the order (its entries less the pinned keys) and
+/// lowers this back.
+/// 🔬Measured on the lane over master (`a1317441e`, at 89): this one
+/// added, none gone.
+/// 90 → 91 (2026-10-24, D7-2 — the patches waiting at the cap laid as
+/// one). The new pair is named:
+///
+///     43 tokens
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore._layAsOne
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore._landLevels
+///
+/// The reading CONFIRMS it: both take a picture's turn for its background
+/// GPU work in the quiet between held frames — gone once the picture is
+/// let go of, due once a caller waits for its levels (`settled`) — each
+/// under its own span. ⛔Not merged: two kinds of one store's work, and
+/// the rule of three holds. 🔜A third kind of the store's background work
+/// takes the turn through one helper of the entry's, and lowers this
+/// back.
+/// 🔬Measured on the lane over master (`aa7160aa1`, at 90): this one
+/// added, none gone.
+/// 91 → 92 (2026-10-24, the-pill-cut-skips-text-and-keys — the shared
+/// pill's cut takes the text, the rows, the keys or the frames its copy
+/// takes). The new pair is named:
+///
+///     66 tokens
+///       lib/src/ui/timeline/toolbar_panel_context.dart
+///         _ClipboardAtThePanelsPlace.cutRun
+///       lib/src/ui/timeline/toolbar_panel_context.dart
+///         _ClipboardAtThePanelsPlace.copyFrame
+///
+/// They ARE one algorithm — "press the board the pill takes into
+/// (`_boardTaken`) with this button's verb" — and WHICH board is already
+/// said once, for both. The reading KEEPS the dispatch a pair, by the rule
+/// of three (CLAUDE.md): merged, one press would take each board's verb as
+/// an argument, four callbacks for a shape seen twice. A third button that
+/// presses the board in hand merges the three.
+/// 🔬Measured on the lane over master (`f1e746c91`, at 91): this one
+/// added, none gone.
 void main() {
-  const ceiling = 89;
+  const ceiling = 92;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

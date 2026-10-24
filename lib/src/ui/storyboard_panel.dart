@@ -224,6 +224,10 @@ import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
+import 'timeline/timeline_grid_tile_store.dart' show TimelineGridTileStore;
+import 'timeline/timeline_tile_raster_source.dart'
+    show filmSubstrateGeneration;
+import 'effective_device_pixel_ratio.dart' show EffectiveDevicePixelRatio;
 import 'timeline/timeline_cell_exposure_state.dart'
     show timelineOwnCelNameAt, timelineOwnCelsStateAt;
 import 'timeline/timeline_frame_window.dart' show visibleFrameWindowFor;
@@ -693,6 +697,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditCutBlock,
     this.onEditConteBlock,
     this.conteCelContent,
+    this.stepsUntilShown,
     this.onCameraCutPress,
     this.onEditCameraCell,
     this.cutFrameCursor,
@@ -1486,6 +1491,11 @@ class StoryboardPanel extends StatefulWidget {
   /// timeline's unworked-block tint on the conte rows (F-357). Null = no
   /// tint.
   final ConteCelContent? conteCelContent;
+
+  /// How many steps on the playing run shows [cutId]'s frame [frameIndex]
+  /// — what the conte rows' substrate tiles are let go by
+  /// (`PlaybackRig.stepsUntilShown`). Null where no run reaches the host.
+  final int? Function(CutId cutId, int frameIndex)? stepsUntilShown;
 
   /// A press on the CAMERA row's cells that lands in a cut (I-73 ④): the
   /// cut whose own frames hold the pointer — over an O.L, the one on the

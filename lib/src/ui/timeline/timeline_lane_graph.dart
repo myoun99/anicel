@@ -2401,7 +2401,7 @@ class TimelineLaneGraphPainter extends CustomPainter {
         canvas,
         key.mark,
         center: key.at,
-        box: _keySize,
+        box: _keySizeOf(key),
         standing: axis == Axis.vertical,
         color: layerMarkColor(key.line.layer.mark),
         ring: _picks(key) ? ring : null,
@@ -2445,7 +2445,8 @@ class TimelineLaneGraphPainter extends CustomPainter {
 
   /// The box [key]'s mark is drawn in.
   Rect _markOf(LaneGraphKey key) {
-    final box = axis == Axis.vertical ? _keySize.flipped : _keySize;
+    final size = _keySizeOf(key);
+    final box = axis == Axis.vertical ? size.flipped : size;
     return Rect.fromCenter(
       center: key.at,
       width: box.width,
@@ -2499,15 +2500,20 @@ class TimelineLaneGraphPainter extends CustomPainter {
   static T? _drawnLastAt<T>(List<T> marks, bool Function(T mark) hits) =>
       marks.reversed.where(hits).firstOrNull;
 
-  /// How big a key's mark is: its member lane's — every line is one, a cell
-  /// and a lane's row wide at this zoom (🗣️F-367-Q3, 유저 2026-10-17: 「레인
-  /// 멤버 키와 같은 크기」). ↩️The mock's 11px (5판), drawn larger than a
-  /// lane's were then, and the smaller once a lane's filled its cell
-  /// (F-367).
-  Size get _keySize => timelineLaneKeyMarkerSize(
-    frameAxis.laneExtent,
-    frameCellExtent: frameAxis.geometry.value.frameCellExtent,
-  );
+  /// How big [key]'s mark is: its member lane's — every line is one, its
+  /// frame's cell as the axis lays it and a lane's row wide (🗣️F-367-Q3,
+  /// 유저 2026-10-17: 「레인 멤버 키와 같은 크기」), as the lane's band asks
+  /// it. ↩️The mock's 11px (5판), drawn larger than a lane's were then, and
+  /// the smaller once a lane's filled its cell (F-367); then the zoom's
+  /// cell, until a lane's key read the cell between its two boundaries
+  /// (F-403 opens a cut at 19.2, where a cell is 19 or 20).
+  Size _keySizeOf(LaneGraphKey key) {
+    final frames = frameAxis.geometry.value;
+    return timelineLaneKeyMarkerSize(
+      frameAxis.laneExtent,
+      frameCellExtent: frames.edgeAt(key.frame + 1) - frames.edgeAt(key.frame),
+    );
+  }
 
   /// Every handle a picture [size] big shows, in the order they are drawn.
   /// The probe surface for the handles' tests, as [visibleFrameWindow] is

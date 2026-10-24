@@ -160,8 +160,8 @@ class TimelineFrameGeometry {
 /// It has to cover everything the view can reveal while the scroll offset
 /// stays inside one window bucket, plus the painters' own overscan: a bucket
 /// spans at most 4 cells and a cell is at most
-/// [TimelineZoomLimits.maxPixelsPerFrame] (96), so 384 + 2 cells = 576px is
-/// the worst case. 1024 keeps a wide margin AND is a constant, which is the
+/// [TimelineZoomLimits.maxPixelsPerFrame] (38.4), so 153.6 + 2 cells =
+/// 230.4px is the worst case. 1024 keeps a wide margin AND is a constant, which is the
 /// whole point — a zoom-dependent margin would put the cell width back into
 /// the row's constraints.
 const double timelineFrameWindowMarginPx = 1024;

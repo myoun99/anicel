@@ -91,7 +91,11 @@ class _CelWork {
   /// on 40 whole-canvas cels: the two copies were the whole freeze, 773ms
   /// and 1,211ms of the 2,005ms the UI isolate could not answer (benchmark
   /// `a_heavy_save_holds_the_screen_benchmark_test`).
-  final TransferableTypedData? hot;
+  ///
+  /// Whether its picture shows anything rides with it: the blob's head says
+  /// it ([AnicelCelBlob.showsSomething]), and the stream cannot be asked
+  /// without decoding it.
+  final ({TransferableTypedData payload, bool showsSomething})? hot;
 
   /// 🪦A `coldBlob` rode here while the cold tier was RAM. Cooled cels are
   /// files in the run's 이사대기 room now, so they arrive as a ref like
@@ -133,8 +137,11 @@ class _CelWork {
   /// rename is, and still refused it stops the save: the old file stands
   /// with the cel in it, and the session still holds everything drawn since.
   AnicelCelBlob? resolveBlob() {
-    if (hot case final hot?) {
-      return AnicelCelBlob.ofPayload(hot.materialize().asUint8List());
+    if (hot case (:final payload, :final showsSomething)) {
+      return AnicelCelBlob.ofPayload(
+        payload.materialize().asUint8List(),
+        showsSomething: showsSomething,
+      );
     }
     final file = File(refPath!);
     for (var attempt = 0; ; attempt += 1) {
@@ -720,9 +727,12 @@ class AnicelFileService {
       final work = _CelWork(
         key: key,
         name: name,
-        hot: TransferableTypedData.fromList([
-          encodeCelEntryFromSurface(key, surface),
-        ]),
+        hot: (
+          payload: TransferableTypedData.fromList([
+            encodeCelEntryFromSurface(key, surface),
+          ]),
+          showsSomething: surface.showsSomething,
+        ),
       );
       await Future<void>.delayed(Duration.zero);
       debugAfterScreenTurn?.call();
@@ -1082,6 +1092,7 @@ class AnicelFileService {
         canvasSize: blob.canvasSize,
         tileSize: blob.tileSize,
         photoPaths: blob.photoPaths,
+        showsSomething: blob.showsSomething,
       ),
   };
 
@@ -1484,6 +1495,7 @@ class AnicelFileService {
                 int tileSize,
                 int length,
                 List<String> photoPaths,
+                bool showsSomething,
               })
             >{};
         final layout = writeAnicelArchiveFile(
@@ -1514,6 +1526,7 @@ class AnicelFileService {
                 tileSize: blob.tileSize,
                 length: blob.bytes.length,
                 photoPaths: blob.photoPaths,
+                showsSomething: blob.showsSomething,
               );
               yield (name: work.name, bytes: blob.bytes);
               progress.step();
@@ -1544,6 +1557,7 @@ class AnicelFileService {
               canvasSize: entry.value.canvasSize,
               tileSize: entry.value.tileSize,
               photoPaths: entry.value.photoPaths,
+              showsSomething: entry.value.showsSomething,
             ),
         };
       }),
@@ -1563,7 +1577,7 @@ class AnicelFileService {
     // Everything off the UI isolate; only the project + small refs come
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
-    final (:projectJsonBytes, :cels) = await Isolate.run(() {
+    final (:document, :cels) = await Isolate.run(() {
       // A save that died partway opens as the last one that finished (plus,
       // if it died committing, what it had fully written). The file stays
       // torn on disk until the next save — which the service forces down
@@ -1577,9 +1591,16 @@ class AnicelFileService {
       final raf = File(filePath).openSync();
       try {
         raf.setPositionSync(projectEntry.dataOffset);
-        final projectJsonBytes = decodeAnicelProjectEntryBytes(
-          projectEntry.name,
-          raf.readSync(projectEntry.length),
+        // 🚨The format before any cel: a cel's head is read as THIS build
+        // writes it, so a file older than the floor
+        // ([anicelOldestReadFormatVersion]) would stop at its first cel in
+        // words that name nothing — the refusal by its number comes first,
+        // as the whole-archive parse's does (`parseAnicelArchiveBytes`).
+        final document = decodeAnicelProjectDocument(
+          decodeAnicelProjectEntryBytes(
+            projectEntry.name,
+            raf.readSync(projectEntry.length),
+          ),
         );
         final cels = <BrushFrameKey, AnicelCelFileRef>{};
         for (final entry in layout.entries) {
@@ -1605,15 +1626,15 @@ class AnicelFileService {
             canvasSize: header.canvasSize,
             tileSize: header.tileSize,
             photoPaths: header.photoPaths,
+            showsSomething: header.showsSomething,
           );
         }
-        return (projectJsonBytes: projectJsonBytes, cels: cels);
+        return (document: document, cels: cels);
       } finally {
         raf.closeSync();
       }
     });
 
-    final document = decodeAnicelProjectDocument(projectJsonBytes);
     final mediaEntryNames = document.mediaEntryNames;
 
     // Media resolution, INSIDE FIRST. A copy the project carries cannot be

@@ -15,6 +15,7 @@ import '../../models/working_panel.dart';
 /// as a legend row the working panel's header does not show does nothing.
 class WorkspaceBarCommands {
   void Function(WorkingPanel panel, {required bool zoomIn})? _zoomStep;
+  void Function(WorkingPanel panel)? _zoomFit;
   void Function(WorkingPanel panel)? _toggleOrientation;
   Object? _owner;
 
@@ -24,10 +25,12 @@ class WorkspaceBarCommands {
     Object owner, {
     required void Function(WorkingPanel panel, {required bool zoomIn})
     zoomStep,
+    required void Function(WorkingPanel panel) zoomFit,
     required void Function(WorkingPanel panel) toggleOrientation,
   }) {
     _owner = owner;
     _zoomStep = zoomStep;
+    _zoomFit = zoomFit;
     _toggleOrientation = toggleOrientation;
   }
 
@@ -37,12 +40,16 @@ class WorkspaceBarCommands {
     }
     _owner = null;
     _zoomStep = null;
+    _zoomFit = null;
     _toggleOrientation = null;
   }
 
   /// One press of [panel]'s zoom − or +.
   void zoomStep(WorkingPanel panel, {required bool zoomIn}) =>
       _zoomStep?.call(panel, zoomIn: zoomIn);
+
+  /// One press of [panel]'s zoom fit (I-111).
+  void zoomFit(WorkingPanel panel) => _zoomFit?.call(panel);
 
   /// One press of [panel]'s timeline ⇄ X-sheet.
   void toggleOrientation(WorkingPanel panel) =>

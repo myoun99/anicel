@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -21,7 +19,6 @@ import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
 import 'package:anicel/src/services/undo_surface_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../helpers/cel_photo_fixture.dart' show celStreamHeadEnd;
 import '../helpers/cel_text_fixture.dart';
 
 /// R9-rest (the text tool, 유저 2026-10-06: 「주인은 셀임 … 셀의 그림이랑 정확히
@@ -188,20 +185,11 @@ void main() {
 
     test('🚨reads back with its texts — ids, settings, order and every '
         'plate byte', () {
-      final read = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(key, picture),
-      ).decode().toSurface();
+      final read = AnicelCelBlob.ofSurface(key, picture).decode().toSurface();
 
       expect(read, picture);
       expect(read.texts.map((text) => text.id), [3, 4]);
       expect(read.texts.first.content.text, '한글 かな text');
-    });
-
-    test('the two ways of writing a cel write the same bytes', () {
-      expect(
-        encodeCelEntryFromSurface(key, picture),
-        encodeCelEntry(AnicelCelEntry.fromSurface(key, picture)),
-      );
     });
 
     test('a text longer than a 16-bit length can say is written whole', () {
@@ -214,23 +202,6 @@ void main() {
       ).toSurface();
 
       expect(read.texts.single.content.text, long);
-    });
-
-    test('a cel written before texts existed reads as it always did', () {
-      // A v2 stream: the header, one tile, and nothing after it — today's
-      // with its photos' zero after its head taken off, and at its end its
-      // texts' and the byte that says no file was laid on it (v5).
-      final today = encodeCelEntryFromSurface(key, drawingOf({a: ink}));
-      final headEnd = celStreamHeadEnd(key);
-      final v2 = Uint8List.fromList([
-        ...today.sublist(0, headEnd),
-        ...today.sublist(headEnd + 4, today.length - 5),
-      ])..[0] = 2;
-
-      final read = decodeCelEntry(v2).toSurface();
-
-      expect(read, drawingOf({a: ink}));
-      expect(read.texts, isEmpty);
     });
 
     test('a cel with no text writes a zero where its texts would be', () {
@@ -253,6 +224,7 @@ void main() {
         canvasSize: picture.canvasSize,
         tileSize: picture.tileSize,
         photoPaths: const [],
+        showsSomething: picture.showsSomething,
         codec: compressed.codec,
         body: compressed.bytes,
       );

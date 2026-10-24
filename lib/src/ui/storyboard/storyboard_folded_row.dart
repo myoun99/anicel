@@ -117,6 +117,7 @@ class _StoryboardFolded {
       showSeconds: _state.widget.showSeconds,
       projectFrameRate: _state.widget.projectFrameRate,
       conteCelContent: _state.widget.conteCelContent,
+      stepsUntilShown: _state.widget.stepsUntilShown,
     ),
   );
 

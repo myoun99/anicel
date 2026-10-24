@@ -32,6 +32,7 @@ typedef TimelineViewClusterFacts = ({
   bool showSeconds,
   double pixelsPerFrame,
   ValueChanged<double>? onPixelsPerFrameChanged,
+  VoidCallback? onZoomFit,
   ValueListenable<String> cutName,
   Object? trailing,
 });
@@ -56,6 +57,7 @@ class TimelineViewCluster extends StatelessWidget {
     required this.showSeconds,
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
+    this.onZoomFit,
     this.globalFrame,
     this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.trailing = const <Widget>[],
@@ -87,6 +89,10 @@ class TimelineViewCluster extends StatelessWidget {
   final bool showSeconds;
   final double pixelsPerFrame;
   final ValueChanged<double>? onPixelsPerFrameChanged;
+
+  /// The zoom fit (I-111): the host's, which knows the end line its panel
+  /// draws and the window it shows it in. Null keeps the button dark.
+  final VoidCallback? onZoomFit;
 
   /// Host-specific controls after the zoom slider (orientation toggle).
   final List<Widget> trailing;
@@ -150,6 +156,17 @@ class TimelineViewCluster extends StatelessWidget {
           : null,
     );
   }
+
+  /// 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가.
+  /// 해당 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 — the zoom at which
+  /// the panel's end line stands in its window, the host's to work out.
+  Widget _zoomFitButton() => AppIconButton(
+    keyValue: 'timeline-zoom-fit-button',
+    tooltip: editorActionLabel(EditorActionIds.timelineZoomFit),
+    shortcuts: const [EditorActionIds.timelineZoomFit],
+    icon: const Icon(Icons.fit_screen),
+    onPressed: onZoomFit,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +276,8 @@ class TimelineViewCluster extends StatelessWidget {
                 _zoomStepButton(zoomIn: false),
                 _zoomSlider(context),
                 _zoomStepButton(zoomIn: true),
+                // 🗣️I-111: 「위치는 줌 확대버튼 오른쪽」.
+                _zoomFitButton(),
                 ...trailing,
               ],
             ),
@@ -278,9 +297,9 @@ class TimelineViewCluster extends StatelessWidget {
         _minPixelsPerFrame,
         TimelineZoomLimits.maxPixelsPerFrame,
       ),
-      // Zoom reads as percent of the default frame width.
+      // Zoom reads as percent of the frame to work at (F-403).
       unit: '%',
-      displayScale: 100 / TimelineZoomLimits.defaultPixelsPerFrame,
+      displayScale: 100 / TimelineZoomLimits.referencePixelsPerFrame,
       height: _zoomBarHeight + FieldSlider.growthIn(context),
       // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of its
       // length on 24→96px and left the whole narrow half — the half the

@@ -148,7 +148,7 @@ void main() {
         return hasContent;
       },
       cannotRead: (_, _) => false,
-      revision: revision,
+      revision: CelContentRevision.everyRow(revision),
     );
 
     final layerA = blockLayer();

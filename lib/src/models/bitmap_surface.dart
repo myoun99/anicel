@@ -238,6 +238,26 @@ class BitmapSurface {
   /// question.
   bool get holdsNothing => _tiles.isEmpty && texts.isEmpty && photos.isEmpty;
 
+  /// Whether this picture has anything to SHOW — the question a cel's block,
+  /// its row image and the pixel buttons ask of it
+  /// (`BrushFrameStore.celHasRenderableContent`), and the one its blob's
+  /// head keeps for a cel nobody decodes (`AnicelCelBlob.showsSomething`).
+  ///
+  /// ⛔It does NOT count ink (유저: 「잉크를 세는건 무거운거아니야?」).
+  /// [BitmapTile.hasInk] caches per tile and `any` stops at the first one
+  /// that has some — a drawn cel answers on its first tile, and only a cel
+  /// that is entirely clear reads to the end, once.
+  ///
+  /// ★A TEXT IS PICTURE (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a
+  /// cel that carries one has something to show whatever its tiles hold, so
+  /// every reader of this question — the row's image, the block's tint, the
+  /// pixel buttons — counts it without being told about texts. A sheet's
+  /// photo is kept with its picture the same way (I-97).
+  bool get showsSomething =>
+      texts.isNotEmpty ||
+      photos.isNotEmpty ||
+      _tiles.values.any((tile) => tile.hasInk);
+
   /// How many tiles this picture keeps in memory: the drawing's, and every
   /// text's plate.
   int get keptTileCount {

@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart'
     show SeInstanceDialog;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
@@ -30,6 +31,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart'
     show BlockEdgeGripInk, BlockEdgeGripPainter, TimelineBlockEdgeGrip;
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
@@ -43,10 +46,17 @@ import '../helpers/storyboard_host.dart';
 const _trackId = TrackId('parity-track');
 const _seLayerId = LayerId('parity-se-row');
 
-/// The storyboard's resting zoom — 8px a frame, the value the panel really
-/// draws at ([_storyboardPixelsPerFrame]'s default), which is exactly the
-/// zoom where the old cell-only grip width collapsed to ~2.7px.
-const double _ppf = 8;
+/// The storyboard's resting zoom, the value the panel really draws at
+/// ([PanelViewMemory.defaultStoryboardPixelsPerFrame]) — a third of the
+/// classic cell or so, where the old cell-only grip width collapsed to
+/// ~2.7px. ↩️8px a frame, until F-403 put it on a step of the bar (40%):
+/// 7.68, between whole pixels, so a boundary is where the frame axis lays
+/// it ([_edge]).
+const double _ppf = PanelViewMemory.defaultStoryboardPixelsPerFrame;
+
+/// Frame [frame]'s leading boundary on a row, as the frame axis lays it
+/// (F-220).
+double _edge(int frame) => timelineFrameEdge(frame, _ppf);
 
 Cut _cut(String id, int duration) => Cut(
   id: CutId(id),
@@ -148,7 +158,7 @@ void main() {
         'editor — they are two seeks', (tester) async {
       await _openStoryboard(tester);
 
-      // Frames 3 and 5 of the 2..6 span — both covered, 16px apart, well
+      // Frames 3 and 5 of the 2..6 span — both covered, two cells apart, well
       // inside the recognizer's slop. The old span-covering gate opened
       // the term dialog here.
       await _doubleTapAt(
@@ -223,12 +233,12 @@ void main() {
       expect(_track(tester).transitionLayer.instructions[2]!.length, 5);
 
       // The end grip: the triangle's box in the span's last cell (I-43) —
-      // a sixth of a cell in from the trailing edge (frame 7's leading edge,
-      // 56px) and in the row's NEAR half, so the press lands in its middle.
+      // a sixth of a cell in from the trailing edge (frame 7's leading edge)
+      // and in the row's NEAR half, so the press lands in its middle.
       final row = find.byKey(ValueKey<String>(_transitionRowKey));
       final grip =
           tester.getTopLeft(row) +
-          Offset(7 * _ppf - _ppf / 6, tester.getSize(row).height / 4);
+          Offset(_edge(7) - _ppf / 6, tester.getSize(row).height / 4);
       final gesture = await tester.startGesture(
         grip,
         kind: PointerDeviceKind.mouse,
@@ -243,7 +253,7 @@ void main() {
       expect(
         _track(tester).transitionLayer.instructions[2]!.length,
         7,
-        reason: 'a 17px pull at 8px a frame is two frames of comma',
+        reason: 'a 17px pull at the conte\'s zoom is two frames of comma',
       );
       expect(
         _panel(tester).seSelect?.selectedRange.value,
@@ -303,20 +313,20 @@ void main() {
       // I-44: the SE paper stops a seam short of the row (the grid sheet
       // draws that seam under the row), and the grips stand on the paper.
       final paper = timelineRowPaperExtent(rowHeight);
-      // I-43: 100%'s third of a cell along (8px — one frame at this zoom),
-      // half the paper across — the dense rows' one placement.
+      // I-43: the classic cell's third along (8px — a frame or so at this
+      // zoom), half the paper across — the dense rows' one placement.
       for (final grip in [startGrip, endGrip]) {
         final size = tester.getSize(grip);
         expect(size.width, 8);
         expect(size.height, moreOrLessEquals(paper / 2));
       }
       // In the corners: the start grip in the block's first cell on the
-      // FAR side (frame 1, 8px; the bottom of the paper), the end grip in
-      // its last cell on the NEAR side (frame 6's leading edge, 48px; the
+      // FAR side (frame 1's leading edge; the bottom of the paper), the end
+      // grip in its last cell on the NEAR side (frame 6's leading edge; the
       // top).
-      expect(tester.getTopLeft(startGrip).dx - rowLeft, 1 * _ppf);
+      expect(tester.getTopLeft(startGrip).dx - rowLeft, _edge(1));
       expect(tester.getBottomLeft(startGrip).dy - rowTop, paper);
-      expect(tester.getTopRight(endGrip).dx - rowLeft, 6 * _ppf);
+      expect(tester.getTopRight(endGrip).dx - rowLeft, _edge(6));
       expect(tester.getTopRight(endGrip).dy - rowTop, 0);
     });
 

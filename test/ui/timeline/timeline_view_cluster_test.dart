@@ -1,6 +1,6 @@
 // THE VIEW CLUSTER: THE COUNTER READS ONE-BASED (GLOBAL ABOVE LOCAL WHEN A
 // GLOBAL FRAME IS GIVEN, AN EMPTY TOP LINE OTHERWISE), AND THE ZOOM STEP
-// BUTTONS STEP BY ×1.25 ON THE WHOLE-PIXEL GRID, DEAD AT THE BOUNDS.
+// BUTTONS STEP BY ×1.25 ONTO THE BAR'S 0.1% STEPS, DEAD AT THE BOUNDS.
 //
 // No test named this widget (audit 2026-09-03) although both the timeline
 // and the storyboard tabs mount it. These pins drive it alone.
@@ -74,17 +74,21 @@ void main() {
     expect(textOf(tester, 'timeline-local-frame-counter'), isNot('31'));
   });
 
-  // F-220: ×1.25 exactly — ↩️it landed on a whole-pixel grid, so 12 ÷ 1.25
-  // read 10.
+  // F-220: ×1.25 — ↩️it landed on a whole-pixel grid, so 12 ÷ 1.25 read 10.
+  // F-403: onto the bar's 0.1% steps, which 125% and 80% of the 100% are.
   testWidgets('zoom steps by ×1.25', (tester) async {
-    final zooms = await pump(tester, frame: 0, pixelsPerFrame: 12);
+    final zooms = await pump(
+      tester,
+      frame: 0,
+      pixelsPerFrame: TimelineZoomLimits.referencePixelsPerFrame,
+    );
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
     );
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-zoom-out-button')),
     );
-    expect(zooms, [15, 9.6]);
+    expect(zooms, [24, 15.36]);
   });
 
   testWidgets('at the top bound zoom-in is dead', (tester) async {

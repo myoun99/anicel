@@ -413,9 +413,8 @@ void main() {
 
   // A movie kept COMPRESSED is read where the project keeps it: the decoder
   // is fed its blocks decoded (board `carried-movie-compressed-Q1`, 유저
-  // 「압축 유지 + 풀면서 디코더에 먹이는 리더를 플랫폼마다 만든다」). Only a
-  // device whose decoder cannot be fed one — Android below 9 — reads the
-  // original instead, and only while there is one: the cost 유저 accepted.
+  // 「압축 유지 + 풀면서 디코더에 먹이는 리더를 플랫폼마다 만든다」), on every
+  // device the release serves (minSdk 29 since 2026-10-24).
   group('a carried movie kept COMPRESSED', () {
     /// A session carrying a movie whose staged copy is FRAMED — the shape a
     /// 6.7%-smaller MP4 takes — with its original beside it. Null when this
@@ -480,45 +479,5 @@ void main() {
         );
       });
     }
-
-    group('on a device whose decoder cannot be fed one', () {
-      setUp(() {
-        debugVideoDecodeBackend = movies = ReadingVideoBackend(
-          readsFramed: false,
-        );
-      });
-
-      testWidgets('opens from its original while the original is there', (
-        tester,
-      ) async {
-        final carried = await tester.runAsync(framed);
-        if (carried == null) {
-          markTestSkipped('no engine on this run to frame the copy with');
-          return;
-        }
-
-        await view(tester, carried.session, carried.path, MediaAssetKind.video);
-
-        expect(page(), findsOneWidget);
-        expect(movies.openedAt.single.path, carried.path);
-      });
-
-      testWidgets('and without it says this device cannot read it', (
-        tester,
-      ) async {
-        final carried = await tester.runAsync(framed);
-        if (carried == null) {
-          markTestSkipped('no engine on this run to frame the copy with');
-          return;
-        }
-        File(carried.path).deleteSync();
-
-        await view(tester, carried.session, carried.path, MediaAssetKind.video);
-
-        expect(page(), findsNothing);
-        expect(find.textContaining('cannot read that movie'), findsOneWidget);
-        expect(movies.openedAt, isEmpty, reason: 'never handed to a decoder');
-      });
-    });
   });
 }

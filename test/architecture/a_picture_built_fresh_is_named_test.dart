@@ -135,9 +135,11 @@ void main() {
     // will not let it be left out. Where a file lies is four numbers, and
     // goes the photos' way — once more where an entry is made of a
     // picture's parts, the same parts a worker reads a hot cel's blocks by
-    // (`_partsOf`).
+    // (`_partsOf`). ↩️The texts counted one fewer until format 29: the read
+    // asked the stream's version first (`texts: version < 3 ? …`), which
+    // hid it from this count.
     'lib/src/services/persistence/brush_drawing_binary_codec.dart': (
-      texts: 3,
+      texts: 4,
       photos: 2,
       laid: 6,
     ),

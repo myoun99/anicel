@@ -585,6 +585,7 @@ class UndoSurfaceSnapshot {
       canvasSize: _canvasSize,
       tileSize: _tileSize,
       photoPaths: celPhotoPaths(picture.photos),
+      showsSomething: picture.showsSomething,
       codec: compressed.codec,
       body: compressed.bytes,
     );

@@ -1,11 +1,12 @@
 import 'app_tooltip.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../layout/device_grid.dart';
 import '../input/control_press_claim.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../theme/app_theme.dart';
+import 'press_face.dart';
 
 /// What a button's box measures — a named token, or a box its PARENT
 /// already promised.
@@ -148,6 +149,14 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 /// THIS button's ink and shape ([IconButtonInk], [appIconButtonShape]), so
 /// the two still look the same as each other.
 ///
+/// ↩️…and since 2026-10-24 THIS button wears the rail's light face too
+/// (board `frame-panels-build-in-one-frame`: a tab reopened in 40–60ms, and
+/// every icon button on it was ~35 elements). What a pointer and a screen
+/// reader meet is ONE render object around the glyph
+/// ([IconButtonPressFace]) — the press every light face is ([PressFace]);
+/// only the keyboard's focus and Enter/Space stay widgets
+/// ([AppIconButtonFace]).
+///
 /// What is KEPT, each pinned by `app_icon_button_test.dart`:
 ///  * the press law — [ControlPressClaim] still owns the firing;
 ///  * 🚨THE ARENA. The Material InkWell put a tap into the gesture arena on
@@ -157,11 +166,13 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 ///    enters only drags, so with the InkWell gone the ancestor's tap won
 ///    uncontested: 🧪deleting a guide also SELECTED its row
 ///    (`one_symmetry_acts_many_perspectives_snap_test`). The face now enters
-///    a do-nothing tap of its own, fed from the pointer listener it already
-///    has — no extra node. ⚠️Disabled buttons enter none, which is what a
+///    a do-nothing tap of its own, fed from the pointer events it already
+///    hears — no extra node. ⚠️Disabled buttons enter none, which is what a
 ///    null-callback InkWell did: a tap on a dead button reaches the row;
-///  * the `Tooltip` itself (so `find.byTooltip` and touch long-press are
-///    exactly what they were);
+///  * the tooltip — its look, its timing and the touch long-press. ↩️It is
+///    no longer a `Tooltip` of its own (2026-10-24): the face summons the
+///    one window every light face shares ([SummonedTooltip]), so a test
+///    finds it with `find.railTooltip`, not `find.byTooltip`;
 ///  * ONE semantics node: button / enabled / selected / focusable / focused
 ///    and its tap action, with the tooltip on it. The tap action FIRES —
 ///    [AppIconButtonFace.onSemanticTap] (유저 2026-09-10);
@@ -179,10 +190,10 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 ///    it: under a touch-mode highlight it reported no hover at all);
 ///  * the box: `Align(widthFactor: 1, heightFactor: 1)` inside the min/max
 ///    constraints — ⚠️NOT `Center`, which expands to the max width and would
-///    have widened every bar button by four pixels.
+///    have widened every bar button by four pixels ([layOutIconButtonBox]).
 ///
 /// What is GONE is the ink ripple's splash. ⚠️The pressed layer is now drawn
-/// from the face's own pointer listener, so it no longer vanishes when a
+/// from the face's own pointer events, so it no longer vanishes when a
 /// press wobbles (board `press-look-dies-on-a-wobble` accepted that loss;
 /// this is strictly better, and it does NOT reopen that decision's refused
 /// half — nothing is threaded through the call sites, and firing is still
@@ -387,8 +398,9 @@ ShapeBorder appIconButtonShape(
 /// non-null answer wins, as in `ButtonStyleButton`.
 ///
 /// Read once per build and asked per state: a face that tracks its own hover
-/// and press (the rail's glyph, `RailGlyphButton`) asks it again at paint
-/// without the context — the two faces cannot come to wear different ink.
+/// and press (the app's, [RenderIconButtonPressFace], and the rail's glyph,
+/// `RailGlyphButton`) asks it again at paint without the context — the two
+/// faces cannot come to wear different ink.
 final class IconButtonInk {
   IconButtonInk.of(
     BuildContext context, {
@@ -450,11 +462,73 @@ final class IconButtonInk {
   );
 }
 
-/// The part of an [AppIconButton] you can see and hear: its box, its glyph,
-/// its tooltip, its semantics node and the hover / pressed / focus layer.
-/// A pointer's press is the claim's to fire, never this; what it does fire
-/// is what no pointer carries — a key's Enter/Space ([onPressed]) and a
-/// screen reader's activation ([onSemanticTap]).
+/// THE BOX AN ICON BUTTON HUGS ITS GLYPH IN — the box's numbers enforced
+/// inside what the parent allows (the face's old `ConstrainedBox`), then
+/// `Align(widthFactor: 1, heightFactor: 1)`: the glyph laid out LOOSE in
+/// that, the box as big as the glyph within it, the glyph centred.
+/// ⚠️NOT `Center`, which expands to the max width and would widen every bar
+/// button by four pixels.
+///
+/// One rule for every face that wears an icon button's box: the app's,
+/// around a widget glyph ([RenderIconButtonPressFace]), and the rail's,
+/// around a glyph it paints itself (`RenderRailGlyphFace`).
+({Size size, Offset glyphOffset}) layOutIconButtonBox(
+  BoxConstraints parent,
+  BoxConstraints box,
+  Size Function(BoxConstraints loose) layOutGlyph,
+) {
+  final face = box.enforce(parent);
+  final glyph = layOutGlyph(face.loosen());
+  final size = face.constrain(glyph);
+  return (
+    size: size,
+    glyphOffset: Alignment.center.alongOffset(size - glyph as Offset),
+  );
+}
+
+/// THE STATE LAYER UNDER AN ICON BUTTON'S GLYPH — [IconButtonInk.overlay]
+/// for the state it is in, filling its shape — painted as the face's old
+/// `DecoratedBox` painted it, by every face that tracks its own hover and
+/// press: the app's ([RenderIconButtonPressFace]) and the rail's glyph
+/// (`RenderRailGlyphFace`). At rest the overlay is null and only an
+/// outlined shape's edge is drawn.
+final class IconButtonLayer {
+  /// [onChanged] repaints the face — what a decoration calls when an image
+  /// it waits for arrives.
+  IconButtonLayer(this._onChanged);
+
+  final VoidCallback _onChanged;
+  BoxPainter? _painter;
+  ShapeDecoration? _decoration;
+
+  /// [decoration] — the shape, filled with the overlay — over [rect].
+  void paint(
+    Canvas canvas,
+    Rect rect,
+    ShapeDecoration decoration,
+    TextDirection textDirection,
+  ) {
+    if (_painter == null || decoration != _decoration) {
+      _painter?.dispose();
+      _painter = decoration.createBoxPainter(_onChanged);
+      _decoration = decoration;
+    }
+    _painter!.paint(
+      canvas,
+      rect.topLeft,
+      ImageConfiguration(size: rect.size, textDirection: textDirection),
+    );
+  }
+
+  void dispose() => _painter?.dispose();
+}
+
+/// The part of an [AppIconButton] the keyboard reaches: its FOCUS and the
+/// Enter/Space it answers ([onPressed]) — and, under it, the press face
+/// that is everything a pointer and a screen reader meet
+/// ([IconButtonPressFace]): the box, the hover / pressed / focus layer, the
+/// cursor, the tooltip and the one semantics node. A pointer's press is the
+/// claim's to fire, never this.
 ///
 /// Public because it is what [AppIconButton.keyValue] names: a test that
 /// finds a button by its key finds THIS, exactly where the Material
@@ -521,7 +595,7 @@ class AppIconButtonFace extends StatefulWidget {
   /// built through the same `styleFrom`, so the state layer is Material's
   /// own arithmetic: 0.1 pressed, 0.08 hovered, 0.1 focused. Their selected
   /// branches are left out because [_accentInk] always answers there first.
-  /// One per colour scheme: a face rebuilds on every hover.
+  /// One per colour scheme: a face rebuilds on every focus change.
   static final Expando<ButtonStyle> _m3Defaults = Expando<ButtonStyle>(
     'M3 icon button defaults',
   );
@@ -552,39 +626,20 @@ class AppIconButtonFace extends StatefulWidget {
 }
 
 class _AppIconButtonFaceState extends State<AppIconButtonFace> {
-  bool _hovered = false;
   bool _hasFocus = false;
-  bool _pressed = false;
-
-  /// The do-nothing tap this face enters into the arena on every enabled
-  /// press — see "THE ARENA" on [AppIconButton]. ⚠️Its `onTap` is REQUIRED,
-  /// not decoration: a recogniser with every callback null answers
-  /// `isPointerAllowed` with false and is never offered the pointer (the
-  /// same trap [ControlPressClaim]'s drag recognisers document).
-  late final TapGestureRecognizer _arenaTap = TapGestureRecognizer(
-    debugOwner: this,
-  )..onTap = _ownsTheTap;
-
-  static void _ownsTheTap() {}
 
   bool get _enabled => widget.onPressed != null;
 
-  /// M3's focus layer: shown for KEYBOARD focus only, the same gate
-  /// `InkResponse.updateFocusHighlights` applies.
-  bool get _showsFocus =>
-      _hasFocus &&
-      _enabled &&
-      FocusManager.instance.highlightMode == FocusHighlightMode.traditional;
-
-  /// This face's state in Material's own vocabulary — what every colour step
-  /// resolves against.
-  Set<WidgetState> get _states => <WidgetState>{
-    if (!_enabled) WidgetState.disabled,
-    if (widget.isSelected) WidgetState.selected,
-    if (_pressed) WidgetState.pressed,
-    if (_hovered) WidgetState.hovered,
-    if (_showsFocus) WidgetState.focused,
-  };
+  /// Where the focus is, as the face shows it — M3's focus layer is for
+  /// KEYBOARD focus only, the same gate `InkResponse.updateFocusHighlights`
+  /// applies.
+  IconButtonFocus get _focus => !_hasFocus
+      ? IconButtonFocus.away
+      : _enabled &&
+            FocusManager.instance.highlightMode ==
+                FocusHighlightMode.traditional
+      ? IconButtonFocus.shown
+      : IconButtonFocus.held;
 
   @override
   void initState() {
@@ -595,7 +650,6 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
   @override
   void dispose() {
     FocusManager.instance.removeHighlightModeListener(_highlightModeChanged);
-    _arenaTap.dispose();
     super.dispose();
   }
 
@@ -605,44 +659,16 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
     }
   }
 
-  void _setHovered(bool value) {
-    if (_hovered != value) {
-      setState(() => _hovered = value);
-    }
-  }
-
   void _setHasFocus(bool value) {
     if (_hasFocus != value) {
       setState(() => _hasFocus = value);
     }
   }
 
-  void _setPressed(bool value) {
-    if (_pressed != value) {
-      setState(() => _pressed = value);
-    }
-  }
-
-  void _pointerDown(PointerDownEvent event) {
-    _setPressed(true);
-    _arenaTap.addPointer(event);
-  }
-
-  @override
-  void didUpdateWidget(AppIconButtonFace oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // A button that goes dead mid-press must not keep looking pressed.
-    // (Hover is kept, as M3 keeps it: re-enabled under a resting mouse, the
-    // button is hovered again without the mouse having to move.)
-    if (!_enabled) {
-      _pressed = false;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final enabled = _enabled;
-    final states = _states;
+    final focus = _focus;
     // 🚨DANGER OUTRANKS SELECTED — and a button that fell back to accent while
     // its own popover was open would drop the louder fact at exactly the
     // moment the popover is there to explain it ([IconButtonInk]).
@@ -651,93 +677,369 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
       isSelected: widget.isSelected,
       danger: widget.danger,
     );
-    final foreground = ink.foreground(states);
-    final overlay = ink.overlay(states);
-    // ONE node per button: container, so a row of six does not collapse into
-    // a single node, and the Tooltip below hangs its message on this one. The
-    // focus flags and the tap action are said HERE rather than by `Focus` and
-    // a gesture detector — each would add a node per button for facts this
-    // one already states.
-    return Semantics(
-      container: true,
-      button: true,
-      enabled: enabled,
-      selected: widget.isSelected,
-      focusable: enabled,
-      focused: _hasFocus,
-      onTap: widget.onSemanticTap,
-      child: AppTooltip(
-        message: widget.tooltip,
-        child: Actions(
-          actions: <Type, Action<Intent>>{
-            ActivateIntent: CallbackAction<ActivateIntent>(
-              onInvoke: (_) {
-                widget.onPressed?.call();
-                return null;
-              },
-            ),
+    // The glyph's ink, for every state this widget knows. The hover and the
+    // press live in the face's render object and are not asked: no step of
+    // [IconButtonInk.foreground] answers them — `styleFrom` builds its
+    // foreground from `ButtonStyleButton.defaultColor` (disabled, else the
+    // colour) — pinned by `app_icon_button_test`.
+    final foreground = ink.foreground(<WidgetState>{
+      if (!enabled) WidgetState.disabled,
+      if (widget.isSelected) WidgetState.selected,
+      if (focus == IconButtonFocus.shown) WidgetState.focused,
+    });
+    return Actions(
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onPressed?.call();
+            return null;
           },
-          child: Focus(
-            canRequestFocus: enabled,
-            includeSemantics: false,
-            onFocusChange: _setHasFocus,
-            child: MouseRegion(
-              cursor: enabled
-                  ? SystemMouseCursors.click
-                  : SystemMouseCursors.basic,
-              onEnter: (_) => _setHovered(true),
-              onExit: (_) => _setHovered(false),
-              // One raw listener, two jobs: it paints the pressed layer, and
-              // it enters [_arenaTap] into the arena — the same thing a
-              // `RawGestureDetector` would do, minus the node. The claim's
-              // drag recognisers still win on the first movement, exactly as
-              // they beat the Material InkWell's tap.
-              child: Listener(
-                onPointerDown: enabled ? _pointerDown : null,
-                onPointerUp: (_) => _setPressed(false),
-                onPointerCancel: (_) => _setPressed(false),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minWidth: widget.minWidth,
-                    maxWidth: widget.maxWidth,
-                    minHeight: widget.height,
-                    maxHeight: widget.height,
-                  ),
-                  child: DecoratedBox(
-                    decoration: ShapeDecoration(
-                      shape: widget.shape,
-                      color: overlay,
-                    ),
-                    child: Align(
-                      widthFactor: 1.0,
-                      heightFactor: 1.0,
-                      child: IconTheme.merge(
-                        data: IconThemeData(
-                          color: foreground,
-                          size: widget.iconSize,
-                        ),
-                        // Text glyphs take the button's colour too — the
-                        // promise [AppIconButton.icon] makes. ⚠️Material
-                        // never kept it: an IconButton has no text style,
-                        // so its Material fell back to the theme's
-                        // `bodyMedium`. No glyph on screen changed (census,
-                        // 2026-09-10): the FX mark colours itself, and the
-                        // canvas bar's 1:1 is never disabled or selected —
-                        // at rest `bodyMedium` and the theme's foreground
-                        // are the same b4b8bb.
-                        child: DefaultTextStyle.merge(
-                          style: TextStyle(color: foreground),
-                          child: widget.icon,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+        ),
+      },
+      child: Focus(
+        canRequestFocus: enabled,
+        // The face's ONE node says the focus ([RenderIconButtonPressFace]).
+        includeSemantics: false,
+        onFocusChange: _setHasFocus,
+        child: IconButtonPressFace(
+          tooltip: widget.tooltip,
+          onSemanticTap: widget.onSemanticTap,
+          isSelected: widget.isSelected,
+          focus: focus,
+          ink: ink,
+          shape: widget.shape,
+          minWidth: widget.minWidth,
+          maxWidth: widget.maxWidth,
+          height: widget.height,
+          child: IconTheme.merge(
+            data: IconThemeData(color: foreground, size: widget.iconSize),
+            // Text glyphs take the button's colour too — the promise
+            // [AppIconButton.icon] makes. ⚠️Material never kept it: an
+            // IconButton has no text style, so its Material fell back to the
+            // theme's `bodyMedium`. No glyph on screen changed (census,
+            // 2026-09-10): the FX mark colours itself, and the canvas bar's
+            // 1:1 is never disabled or selected — at rest `bodyMedium` and the
+            // theme's foreground are the same b4b8bb.
+            child: DefaultTextStyle.merge(
+              style: TextStyle(color: foreground),
+              child: widget.icon,
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Where the keyboard's focus is, as an icon button shows it: not on it;
+/// on it but unseen — the pointer is driving, and M3 shows the focus layer
+/// for KEYBOARD focus only; or on it and shown.
+enum IconButtonFocus { away, held, shown }
+
+/// What a pointer and a screen reader meet of an [AppIconButton], as ONE
+/// render object around its glyph ([RenderIconButtonPressFace]).
+///
+/// 🚨WHY (board `frame-panels-build-in-one-frame`, 2026-10-24): reopening
+/// the timeline tab mounted ~5,700 elements, and every icon button was ~35
+/// of them — a semantics node, a tooltip of nine, a mouse region, a
+/// listener and three boxes, each its own element. This is the rail's light
+/// face (I-57 ①: 「어디가 더 가벼워지는거에따라 맞추고 통일할거 알아서
+/// 통일하고」) with the icon button's glyph as its child: the press every
+/// light face is ([PressFace]), and the box and the state layer
+/// ([layOutIconButtonBox], [IconButtonLayer]) the rail's glyph wears too.
+class IconButtonPressFace extends SingleChildRenderObjectWidget {
+  const IconButtonPressFace({
+    super.key,
+    required this.tooltip,
+    required this.onSemanticTap,
+    required this.isSelected,
+    required this.focus,
+    required this.ink,
+    required this.shape,
+    required this.minWidth,
+    required this.maxWidth,
+    required this.height,
+    required super.child,
+  });
+
+  /// Empty is no tooltip at all, as an [AppTooltip]'s empty message is.
+  final String tooltip;
+
+  /// What a screen reader's activation calls; null is a dead button.
+  final VoidCallback? onSemanticTap;
+  final bool isSelected;
+  final IconButtonFocus focus;
+  final IconButtonInk ink;
+  final ShapeBorder shape;
+  final double minWidth;
+  final double maxWidth;
+  final double height;
+
+  @override
+  RenderIconButtonPressFace createRenderObject(BuildContext context) =>
+      RenderIconButtonPressFace(
+        spec: _specIn(context),
+        tooltipContext: context,
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderIconButtonPressFace renderObject,
+  ) {
+    renderObject
+      ..spec = _specIn(context)
+      ..tooltipContext = context;
+  }
+
+  IconButtonPressSpec _specIn(BuildContext context) => IconButtonPressSpec(
+    tooltip: tooltip,
+    onSemanticTap: onSemanticTap,
+    isSelected: isSelected,
+    focus: focus,
+    ink: ink,
+    shape: shape,
+    minWidth: minWidth,
+    maxWidth: maxWidth,
+    height: height,
+    textDirection: Directionality.of(context),
+    triggerMode:
+        TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+  );
+}
+
+/// Everything a [RenderIconButtonPressFace] paints and says, resolved from
+/// the context by its widget. Equal while nothing it shows would change.
+@immutable
+final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
+  const IconButtonPressSpec({
+    required this.tooltip,
+    required this.onSemanticTap,
+    required this.isSelected,
+    required this.focus,
+    required this.ink,
+    required this.shape,
+    required this.minWidth,
+    required this.maxWidth,
+    required this.height,
+    required this.textDirection,
+    required this.triggerMode,
+  });
+
+  final String tooltip;
+  final VoidCallback? onSemanticTap;
+  final bool isSelected;
+  final IconButtonFocus focus;
+  final IconButtonInk ink;
+  final ShapeBorder shape;
+  final double minWidth;
+  final double maxWidth;
+  final double height;
+  final TextDirection textDirection;
+  final TooltipTriggerMode triggerMode;
+
+  bool get enabled => onSemanticTap != null;
+
+  /// The box the face hugs its glyph in ([layOutIconButtonBox]).
+  BoxConstraints get box => BoxConstraints(
+    minWidth: minWidth,
+    maxWidth: maxWidth,
+    minHeight: height,
+    maxHeight: height,
+  );
+
+  @override
+  bool laysOutAs(IconButtonPressSpec other) =>
+      other.minWidth == minWidth &&
+      other.maxWidth == maxWidth &&
+      other.height == height;
+
+  /// A host that hands down a fresh closure every build changes what a
+  /// screen reader's activation calls, never a pixel.
+  @override
+  bool paintsAs(IconButtonPressSpec other) =>
+      laysOutAs(other) &&
+      other.enabled == enabled &&
+      other.isSelected == isSelected &&
+      (other.focus == IconButtonFocus.shown) ==
+          (focus == IconButtonFocus.shown) &&
+      other.ink == ink &&
+      other.shape == shape &&
+      other.textDirection == textDirection;
+
+  @override
+  bool operator ==(Object other) =>
+      other is IconButtonPressSpec &&
+      paintsAs(other) &&
+      other.focus == focus &&
+      other.tooltip == tooltip &&
+      other.onSemanticTap == onSemanticTap &&
+      other.triggerMode == triggerMode;
+
+  @override
+  int get hashCode => Object.hash(
+    tooltip,
+    onSemanticTap,
+    isSelected,
+    focus,
+    ink,
+    shape,
+    minWidth,
+    maxWidth,
+    height,
+    textDirection,
+    triggerMode,
+  );
+}
+
+/// The app's icon button's face: its box and its state layer around the
+/// glyph, on the press every light face is ([PressFace]).
+class RenderIconButtonPressFace extends RenderShiftedBox with PressFace {
+  RenderIconButtonPressFace({
+    required IconButtonPressSpec spec,
+    required BuildContext tooltipContext,
+  }) : _spec = spec,
+       super(null) {
+    this.tooltipContext = tooltipContext;
+  }
+
+  IconButtonPressSpec _spec;
+  IconButtonPressSpec get spec => _spec;
+  set spec(IconButtonPressSpec value) {
+    final old = _spec;
+    _spec = value;
+    respec(old, value);
+  }
+
+  @override
+  bool get pressEnabled => _spec.enabled;
+
+  @override
+  bool get pressSelected => _spec.isSelected;
+
+  @override
+  String? get pressSemanticLabel => null;
+
+  @override
+  VoidCallback? get pressSemanticTap => _spec.onSemanticTap;
+
+  @override
+  TextDirection get pressTextDirection => _spec.textDirection;
+
+  @override
+  TooltipTriggerMode get pressTriggerMode => _spec.triggerMode;
+
+  @override
+  String get tooltipMessage => _spec.tooltip;
+
+  @override
+  void pressLookChanged() => markNeedsPaint();
+
+  /// The state layer painted right now — for tests.
+  @visibleForTesting
+  Color? get debugLayerInk => _spec.ink.overlay(_states);
+
+  Set<WidgetState> get _states => <WidgetState>{
+    ...pressStates,
+    if (_spec.focus == IconButtonFocus.shown) WidgetState.focused,
+  };
+
+  // ── layout ──────────────────────────────────────────────────────────
+  //
+  // ⛔Every way a parent can ask the box's size answers what the widgets it
+  // replaced answered — the layout, the dry layout, the intrinsics and the
+  // baselines — since the icon button stands in rows, wraps and dialogs
+  // that ask each of them.
+
+  ({Size size, Offset glyphOffset}) _boxIn(
+    BoxConstraints constraints,
+    Size Function(BoxConstraints loose) layOutGlyph,
+  ) => layOutIconButtonBox(
+    constraints,
+    _spec.box,
+    (loose) => child == null ? loose.smallest : layOutGlyph(loose),
+  );
+
+  @override
+  void performLayout() {
+    final glyph = child;
+    final box = _boxIn(constraints, (loose) {
+      glyph!.layout(loose, parentUsesSize: true);
+      return glyph.size;
+    });
+    size = box.size;
+    if (glyph != null) {
+      (glyph.parentData! as BoxParentData).offset = box.glyphOffset;
+    }
+  }
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) =>
+      _boxIn(constraints, (loose) => child!.getDryLayout(loose)).size;
+
+  @override
+  double? computeDryBaseline(
+    covariant BoxConstraints constraints,
+    TextBaseline baseline,
+  ) {
+    final glyph = child;
+    if (glyph == null) {
+      return null;
+    }
+    late final BoxConstraints loose;
+    final box = _boxIn(constraints, (given) {
+      loose = given;
+      return glyph.getDryLayout(given);
+    });
+    final glyphBaseline = glyph.getDryBaseline(loose, baseline);
+    return glyphBaseline == null ? null : glyphBaseline + box.glyphOffset.dy;
+  }
+
+  /// The face's old `ConstrainedBox`'s rule: the glyph's own intrinsic
+  /// width held to the box's numbers — and the box's height, which is
+  /// fixed.
+  double _widthAround(double glyph) => _spec.box.constrainWidth(glyph);
+
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      _widthAround(super.computeMinIntrinsicWidth(height));
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _widthAround(super.computeMaxIntrinsicWidth(height));
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _spec.height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _spec.height;
+
+  late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    _layer.paint(
+      context.canvas,
+      offset & size,
+      ShapeDecoration(shape: _spec.shape, color: _spec.ink.overlay(_states)),
+      _spec.textDirection,
+    );
+    super.paint(context, offset);
+  }
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    // The focus is said HERE rather than by `Focus` — that would add a node
+    // per button for a fact this one already states. ⚠️Always a yes or a
+    // no, never "not focusable": the old `Semantics(focusable: enabled,
+    // focused: hasFocus)` set both, and the second answer won.
+    config.isFocused = _spec.focus != IconButtonFocus.away;
+  }
+
+  @override
+  void dispose() {
+    _layer.dispose();
+    super.dispose();
   }
 }

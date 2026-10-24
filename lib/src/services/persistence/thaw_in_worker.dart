@@ -253,7 +253,7 @@ cutCelInWorker(
     if (behind == null) {
       return null;
     }
-    final kept = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, behind));
+    final kept = AnicelCelBlob.ofSurface(key, behind);
     final path = ScratchFile.write(parkAt, kept.bytes);
     if (path == null) {
       throw StateError('The room would not take $parkAt.');

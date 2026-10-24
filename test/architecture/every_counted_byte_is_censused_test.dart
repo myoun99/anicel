@@ -430,6 +430,8 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/tile_pyramid.dart → tiles': 'counted:liveBytes',
   'lib/src/ui/playback/layer_frame_image_cache.dart → _entries':
       'counted:estimatedBytes',
+  'lib/src/ui/playback/frame_picture_store.dart → _entries':
+      'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
   // … or pushed to where the census reads them …
   'lib/src/ui/media/page_rasters.dart → _cache':
@@ -484,6 +486,18 @@ const _imageHolders = <String, String>{
   'lib/src/ui/playback/layer_frame_image_cache.dart → pieces':
       'one stored picture\'s pieces, the entry\'s own — of _entries '
       '(estimatedBytes sums them)',
+  'lib/src/ui/playback/frame_picture_store.dart → _landing':
+      'one picture\'s patches on their way into it, the entry\'s own — of '
+      '_entries (estimatedBytes sums them)',
+  'lib/src/ui/playback/frame_picture_store.dart → waiting':
+      'the landing patches no batch has taken yet: the very images of '
+      '_landing, counted there',
+  'lib/src/ui/playback/frame_picture_store.dart → levelsDue':
+      'the landing patches whose base is in and whose levels are not: the '
+      'very images of _landing, counted there',
+  'lib/src/ui/playback/frame_picture_store.dart → levelsDueAsOne':
+      'landing patches laid again as one at the cap: the very images of '
+      '_landing, counted there',
   'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
       'one row\'s picture carried into a paint: the clones _images holds',
 };

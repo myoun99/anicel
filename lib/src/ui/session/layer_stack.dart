@@ -16,7 +16,9 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show createFolderLayer;
@@ -31,6 +33,7 @@ import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
+import '../timeline/timeline_cel_content_source.dart' show RowNamingRevision;
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, celPixelsOf, timelineDragPreviewLayerFor;
 import '../audio/sound_cannot_play.dart';
@@ -404,19 +407,26 @@ class LayerStack {
   /// the storyboard lays over the whole film asks it of each cut it
   /// crosses (F-357).
   bool celHoldsAPicture(Cut cut, LayerId row, FrameId cel) {
-    // A LIVE stroke already counts. The store only learns about pixels at
-    // commit (`markCelEdited` on pen-up), so waiting for it left the block
-    // grey for the whole stroke — the user asked for it to go white the
-    // moment the line starts, which is also when the cel stops being
-    // "unworked" in any sense that matters.
-    if (_brushInputActive.value &&
-        cut.id == _project.activeCutOrNull?.id &&
-        _liveStrokeCel == (row, cel)) {
+    if (liveStrokeDraws(cut.id, row, cel)) {
       return true;
     }
     final pixels = _pixelsOf(row, cel);
     return _storeHoldsAPicture(cut, pixels.row, pixels.cel);
   }
+
+  /// Whether a live stroke is drawing [row]'s cel [cel] in the cut [cut] —
+  /// a cel that counts as drawn from pen-down, to the block's tint
+  /// ([celHoldsAPicture]) and to the 색 편집 head
+  /// (`PixelVerbs.canOpenColourEdit`) alike.
+  ///
+  /// The store only learns about pixels at commit (`markCelEdited` on
+  /// pen-up), so waiting for it left the block grey for the whole stroke —
+  /// the user asked for it to go white the moment the line starts, which is
+  /// also when the cel stops being "unworked" in any sense that matters.
+  bool liveStrokeDraws(CutId cut, LayerId row, FrameId cel) =>
+      _brushInputActive.value &&
+      cut == _project.activeCutOrNull?.id &&
+      _liveStrokeCel == (row, cel);
 
   /// Whether [row]'s cel [cel] in [cut] could not be read
   /// ([LayerFrameImageCache.unreadable]) — the fact of the red block, for
@@ -465,9 +475,47 @@ class LayerStack {
   /// image away — measured on the real app: a bump at pen-down painted the
   /// whole timeline again for the stroke's first five frames (16–24 ms of
   /// raster each against 6), and the pen-up bump did it again.
-  final ValueNotifier<int> celTintRevision = ValueNotifier<int>(0);
+  ///
+  /// 🚨AND ONLY FOR THE ROWS IT CAN HAVE CHANGED
+  /// (one-cel-turning-white-repaints-every-row, 2026-10-24): a bump names
+  /// the rows that show the cels it is about ([_rowsShowing]), and a row
+  /// painter hears its own row's ([RowNamingRevision.forRow]).
+  final RowNamingRevision celTintRevision = RowNamingRevision();
 
-  void _bumpCelTintRevision() => celTintRevision.value += 1;
+  void _bumpCelTintRevision() => celTintRevision.bump();
+
+  /// The rows whose answers a change to the cels of [rows] can move: those
+  /// rows and the folders that hold them ([celHasContentForLayer]) — null,
+  /// every row, while a drag hangs cels where they are not ([celPixelsOf]).
+  Set<LayerId>? _rowsShowing(Set<LayerId> rows) {
+    if (_dragPreview.value != null) {
+      return null;
+    }
+    return {
+      ...rows,
+      for (final layer in _project.layers)
+        if (layer.kind.groupsLayers &&
+            _folderBands
+                .folderBandMembersOf(layer.id)
+                .any((member) => rows.contains(member.id)))
+          layer.id,
+    };
+  }
+
+  /// The rows that show the cels [crossed] names, by the keys the store
+  /// keeps them under: a linked row windows its group's one bank.
+  Set<LayerId> _rowsOfCels(Set<BrushFrameKey> crossed) {
+    final links = _project.repository.currentProject?.linkRegistry;
+    return {
+      for (final key in crossed) ...[
+        key.layerId,
+        ...?links
+            ?.groupOf(cutId: key.cutId, layerId: key.layerId)
+            ?.members
+            .map((member) => member.layerId),
+      ],
+    };
+  }
 
   /// The pen going down or up flips an answer only where the live stroke
   /// is what makes a cel count as drawn — [_liveStrokeCel], while the store
@@ -482,8 +530,38 @@ class LayerStack {
     if (_storeHoldsAPicture(cut, layerId, frameId)) {
       return;
     }
-    _bumpCelTintRevision();
+    celTintRevision.bump(rows: _rowsShowing({layerId}));
   }
+
+  /// The store crossing a cel flips its answer — except where the live
+  /// stroke gives it already ([celHoldsAPicture]): a first stroke counts
+  /// its cel as drawn from pen-down, and its landing crosses the cel in the
+  /// store while the pen is still down. No block changes.
+  ///
+  /// 🔬pen-up-dock-tail (2026-10-24, the home page in a widget test): that
+  /// landing repainted every row of the timeline with not one of the
+  /// panel's pixels moved, and the dock drew five frames whole after every
+  /// first stroke on an empty cel, where a stroke on a drawn cel drew one.
+  void _bumpWhereTheStoreCrossed() {
+    final crossed = _renderCaches.brushFrameStore.celsLastCrossed;
+    if (crossed.isNotEmpty && crossed.every(_theLiveStrokeAnswersFor)) {
+      return;
+    }
+    celTintRevision.bump(
+      rows: crossed.isEmpty ? null : _rowsShowing(_rowsOfCels(crossed)),
+    );
+  }
+
+  /// Whether [crossed] is the live stroke's cel and no other cel shows its
+  /// pixels: a linked row windows the same bank, and a drag in flight hangs
+  /// cels where they are not ([celPixelsOf]) — the crossing is THEIR change.
+  bool _theLiveStrokeAnswersFor(BrushFrameKey crossed) =>
+      _dragPreview.value == null &&
+      liveStrokeDraws(crossed.cutId, crossed.layerId, crossed.frameId) &&
+      !_project.repository.requireProject().linkRegistry.isLinked(
+        cutId: crossed.cutId,
+        layerId: crossed.layerId,
+      );
 
   /// The two events that can flip [celHasContentForLayer]'s answer, and the
   /// two that can flip [celCannotBeReadForLayer]'s: a cel found unreadable,
@@ -501,7 +579,7 @@ class LayerStack {
   /// it replaces; that is where a new way of emptying a cel has to cross.
   void attach() {
     _renderCaches.brushFrameStore.celContentRevision.addListener(
-      _bumpCelTintRevision,
+      _bumpWhereTheStoreCrossed,
     );
     _brushInputActive.addListener(_bumpWhereTheLiveStrokeDecides);
     _renderCaches.layerFrameImageCache.unreadable.revision.addListener(
@@ -512,7 +590,7 @@ class LayerStack {
 
   void dispose() {
     _renderCaches.brushFrameStore.celContentRevision.removeListener(
-      _bumpCelTintRevision,
+      _bumpWhereTheStoreCrossed,
     );
     _brushInputActive.removeListener(_bumpWhereTheLiveStrokeDecides);
     _renderCaches.layerFrameImageCache.unreadable.revision.removeListener(

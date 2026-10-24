@@ -6,6 +6,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -28,6 +29,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show ExposureEdgeDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 
@@ -85,7 +88,7 @@ void main() {
           : TimelineCelContentSource(
               hasContent: celHasContentForLayer,
               cannotRead: celCannotBeReadForLayer,
-              revision: ValueNotifier<int>(0),
+              revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
             ),
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
@@ -524,6 +527,142 @@ void main() {
       expect(bumps, 2, reason: 'drawn → empty');
       expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
     });
+
+    // pen-up-dock-tail (2026-10-24): the stroke's landing crossed its cel
+    // in the store, and the tint moved for a block already white since
+    // pen-down — every row repainted, the timeline dock drew five frames
+    // whole, and not one of the panel's pixels changed.
+    group('the first stroke LANDING on an empty cel', () {
+      /// [linkedCut] first makes the 겸용 cut of the default one and comes
+      /// back to draw on the default cut's row: the group's canonical
+      /// member, so the store names the very key the live stroke stands on.
+      ({EditorSessionManager s, Layer layer, BrushFrameKey key}) penDown({
+        bool linkedCut = false,
+      }) {
+        final s = EditorSessionManager(initialProject: createDefaultProject());
+        addTearDown(s.dispose);
+        if (linkedCut) {
+          final cut = s.activeCutOrNull!.id;
+          final row = s.activeLayer!.id;
+          s.cutVerbs.createLinkedCutFromActiveCut();
+          s.selectCut(cut);
+          s.selectLayer(row);
+          s.selectFrameIndex(0);
+        }
+        s.createDrawingAtCurrentFrame();
+        final layer = s.activeLayer!;
+        expect(
+          s.selectedFrame?.id,
+          layer.frames.single.id,
+          reason: 'premise: the live stroke stands on the new cel',
+        );
+        final key = s.brushFrameKeyForCut(
+          s.activeCutOrNull!,
+          layer.id,
+          layer.frames.single.id,
+        );
+        s.setBrushInputActive(true);
+        return (s: s, layer: layer, key: key);
+      }
+
+      /// What a pen-up does, in its order: the commit lands with the pen
+      /// still down, then the stroke ends.
+      void lift(EditorSessionManager s, BrushFrameKey key) {
+        s.renderCaches.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
+        s.setBrushInputActive(false);
+      }
+
+      test('moves no tint — the line counted the cel from pen-down', () {
+        final (:s, :layer, :key) = penDown();
+        final down = s.layerStack.celTintRevision.value;
+        final store = s.renderCaches.brushFrameStore;
+        final crossings = store.celContentRevision.value;
+
+        lift(s, key);
+
+        expect(
+          store.celContentRevision.value,
+          greaterThan(crossings),
+          reason: 'premise: the store DID cross the cel',
+        );
+        expect(store.celsLastCrossed, {key}, reason: 'and named it');
+        expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
+        expect(
+          s.layerStack.celTintRevision.value,
+          down,
+          reason: 'white since pen-down, white now: no row may repaint',
+        );
+      });
+
+      test('🚨a linked row still hears it — it windows the same bank, and '
+          'the live stroke answered only for its own row', () {
+        final (:s, :layer, :key) = penDown(linkedCut: true);
+        expect(
+          s.repository.requireProject().linkRegistry.isLinked(
+            cutId: key.cutId,
+            layerId: layer.id,
+          ),
+          isTrue,
+          reason: 'premise: the row is linked',
+        );
+        final down = s.layerStack.celTintRevision.value;
+
+        lift(s, key);
+
+        expect(
+          s.renderCaches.brushFrameStore.celsLastCrossed,
+          {key},
+          reason: 'premise: the live row is the group\'s own key',
+        );
+        expect(s.layerStack.celTintRevision.value, greaterThan(down));
+      });
+
+      test('🚨another cel crossing WITH it still moves the tint', () {
+        final (:s, :layer, :key) = penDown();
+        final down = s.layerStack.celTintRevision.value;
+        final other = s.brushFrameKeyForCut(
+          s.activeCutOrNull!,
+          layer.id,
+          const FrameId('another-cel'),
+        );
+
+        // One announcement for both — a batch, as an undo restores a cut.
+        s.renderCaches.brushFrameStore.restoreBakedForCut(key.cutId, {
+          key: surfaceWithInk(),
+          other: surfaceWithInk(),
+        });
+
+        expect(
+          s.renderCaches.brushFrameStore.celsLastCrossed,
+          {key, other},
+          reason: 'premise: one announcement names both',
+        );
+        expect(s.layerStack.celTintRevision.value, greaterThan(down));
+      });
+
+      test('an announcement that names no cel moves the tint — nothing '
+          'says the live stroke answers for it', () {
+        final (:s, layer: _, key: _) = penDown();
+        final down = s.layerStack.celTintRevision.value;
+
+        // A bump with no names, as a test of the canvas sends one.
+        s.renderCaches.brushFrameStore.celContentRevision.value += 1;
+
+        expect(s.renderCaches.brushFrameStore.celsLastCrossed, isEmpty);
+        expect(s.layerStack.celTintRevision.value, greaterThan(down));
+      });
+
+      test('🚨a drag in flight still hears it — it can hang the cel '
+          'where it is not', () {
+        final (:s, :layer, :key) = penDown();
+        s.dragPreview.value = ExposureEdgeDragPreview(previewLayer: layer);
+        final down = s.layerStack.celTintRevision.value;
+
+        lift(s, key);
+
+        expect(s.layerStack.celTintRevision.value, greaterThan(down));
+      });
+    });
   });
 
   group('the tint follows the cel content signal', () {
@@ -541,7 +680,7 @@ void main() {
       final celContent = TimelineCelContentSource(
         hasContent: celHasContent,
         cannotRead: (_, _) => false,
-        revision: revision,
+        revision: CelContentRevision.everyRow(revision),
       );
       void onSelectLayer(LayerId id) {}
       void onSelectFrame(int index) {}

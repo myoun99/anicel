@@ -71,14 +71,25 @@ void main() {
     await document!.dispose();
   });
 
-  test('where the backend cannot be fed one, it is one this reader cannot '
-      'read — never 「no reader」, and never handed to it', () async {
-    final backend = FakeVideoBackend(readsFramed: false);
+  test('a framed copy that is not there is one this reader cannot read — '
+      'never 「no reader」, and never handed to it', () async {
+    final backend = FakeVideoBackend();
     debugVideoDecodeBackend = backend;
 
     await expectLater(
-      VideoViewerDocument.open(framed),
-      throwsA(isA<ViewerDocumentException>()),
+      VideoViewerDocument.open(
+        const MediaAppFileBytes(
+          path: 'C:/work/gone.mp4.framed',
+          framed: true,
+        ),
+      ),
+      throwsA(
+        isA<ViewerDocumentException>().having(
+          (e) => e.reason,
+          'reason',
+          'that movie is not where the project keeps it',
+        ),
+      ),
     );
     expect(backend.openedAt, isEmpty);
   });

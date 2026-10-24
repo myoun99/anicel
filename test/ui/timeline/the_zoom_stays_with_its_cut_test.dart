@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 /// F-253 (유저 2026-10-01): 「타임라인패널의 줌 상태는 컷마다 기억하도록.
 /// 지금 한번 바꾸면 컷마다 다른컷에서 바꾼 값 따라가니」.
@@ -78,20 +79,20 @@ void main() {
     }
 
     await open('cut-a');
-    expect(zoom(), TimelinePanel.defaultPixelsPerFrame);
+    expect(zoom(), TimelineZoomLimits.referencePixelsPerFrame);
     await step(zoomIn: true);
     final zoomA = zoom();
-    expect(zoomA, greaterThan(TimelinePanel.defaultPixelsPerFrame));
+    expect(zoomA, greaterThan(TimelineZoomLimits.referencePixelsPerFrame));
 
     await open('cut-b');
     expect(
       zoom(),
-      TimelinePanel.defaultPixelsPerFrame,
+      TimelineZoomLimits.referencePixelsPerFrame,
       reason: 'B was never zoomed — it must not follow the zoom A was left at',
     );
     await step(zoomIn: false);
     final zoomB = zoom();
-    expect(zoomB, lessThan(TimelinePanel.defaultPixelsPerFrame));
+    expect(zoomB, lessThan(TimelineZoomLimits.referencePixelsPerFrame));
 
     await open('cut-a');
     expect(zoom(), zoomA, reason: 'A comes back at its own zoom');

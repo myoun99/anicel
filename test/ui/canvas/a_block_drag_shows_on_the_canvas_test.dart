@@ -28,11 +28,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
-    show timelineFrameCellWidth;
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/repaint_strays.dart';
 import '../timeline/timeline_cell_probe.dart';
+
+/// One cell along the timeline, at the zoom a cut opens at (F-403).
+const _aCell = Offset(TimelineZoomLimits.referencePixelsPerFrame, 0);
 
 /// canvas-follows-block-moves — 유저 2026-09-28: 「따라가게 — 끄는 동안
 /// 캔버스도 바뀐다」.
@@ -172,7 +174,7 @@ void main() {
 
   Future<void> carry(TestGesture gesture, WidgetTester tester, int frames) async {
     for (var step = 0; step < frames; step += 1) {
-      await gesture.moveBy(const Offset(timelineFrameCellWidth, 0));
+      await gesture.moveBy(_aCell);
       await tester.pump();
     }
   }
@@ -285,7 +287,7 @@ void main() {
     try {
       final steps = <String>[];
       for (var step = 1; step <= 2; step += 1) {
-        await gesture.moveBy(const Offset(timelineFrameCellWidth, 0));
+        await gesture.moveBy(_aCell);
         // The step's frame, run to its layout and stopped before the paint.
         await tester.pump(const Duration(milliseconds: 16), EnginePhase.layout);
         final now = strays();

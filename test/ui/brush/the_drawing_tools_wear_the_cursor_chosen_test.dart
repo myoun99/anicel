@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/brush/tool_cursor_sprite.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/repaint_cause.dart';
+import 'package:anicel/src/ui/widgets/anchored_popup.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/settle_async.dart';
@@ -160,6 +162,76 @@ void main() {
     await tester.pump();
     expect(shown(), SystemMouseCursors.none);
     expect(drawn(tester, outline), isTrue);
+  });
+
+  // 🗣️F-274 (유저 2026-10-04): 「윈도우. 색 라벨 고르고 나면 커서가 사라짐」 ·
+  // 「색라벨 말고도 색편집에서도 발생하는거 보니 팝오버창 전체적으로 인듯」. A
+  // list or a popover over the resting mouse takes its hover (its barrier
+  // wears the system's arrow), and the canvas lets its aim go; closing it,
+  // the mouse has not moved, so only the mouse tracker's re-entry can hand
+  // the outline its place back — the tool's entrance aims on entering
+  // (F-377, 10-17).
+  group('🗣️F-274: a list or a popover closed over the resting mouse gives '
+      'the outline back at once — no move', () {
+    const anchor = ValueKey<String>('f274-anchor');
+
+    // Away from the resting mouse, so a click there is the barrier's.
+    Widget anchorAtTheCorner(BuildContext context, Object viewport) =>
+        const Align(
+          alignment: Alignment.bottomRight,
+          child: SizedBox(key: anchor, width: 8, height: 8),
+        );
+
+    final opens = <String, void Function(BuildContext anchor)>{
+      'the label list': (context) => showPanelFlyout(
+        context,
+        entries: [const PanelFlyoutItem(keyValue: 'f274-pick', label: 'Pick')],
+      ),
+      'the colour popover': (context) => showAnchoredPopup<void>(
+        context,
+        label: 'Colour',
+        width: 120,
+        height: 80,
+        builder: (context, close) => const SizedBox(width: 120, height: 80),
+      ),
+    };
+    for (final MapEntry(key: what, value: open) in opens.entries) {
+      for (final byClick in [false, true]) {
+        testWidgets('$what, closed by ${byClick ? 'a click beside it' : ''
+            'its pick'}', (tester) async {
+          choose(DrawingCursor.brush);
+          await pumpPanel(tester, controls: anchorAtTheCorner);
+          final mouse = await hover(tester, const Offset(40, 40));
+          expect(drawn(tester, outline), isTrue, reason: '⛔CONTROL');
+
+          final anchorContext = tester.element(find.byKey(anchor));
+          open(anchorContext);
+          await tester.pumpAndSettle();
+          expect(
+            drawn(tester, outline),
+            isFalse,
+            reason: 'premise: the open window took the hover from the canvas',
+          );
+          expect(shown(), isNot(SystemMouseCursors.none), reason: 'premise');
+
+          if (byClick) {
+            await mouse.down(canvasGlobalOffset(tester, const Offset(40, 40)));
+            await mouse.up();
+          } else {
+            Navigator.of(anchorContext).pop();
+          }
+          await tester.pumpAndSettle();
+
+          expect(shown(), SystemMouseCursors.none);
+          expect(
+            drawn(tester, outline),
+            isTrue,
+            reason: 'the system hides its cursor over the canvas again, so '
+                'the outline must stand there at once — not at the next move',
+          );
+        });
+      }
+    }
   });
 
   // 🗣️F-285 (유저 2026-10-17): 「카메라 레이어에선 그냥 기본커서로. 이런식으로

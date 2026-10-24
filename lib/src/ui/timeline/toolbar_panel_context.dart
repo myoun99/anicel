@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart' show BuildContext;
+import 'package:flutter/widgets.dart' show BuildContext, Listenable;
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
@@ -203,6 +203,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       };
 }
 
+/// The boards the shared pill's copy takes into — one copy in hand,
+/// whichever of them took it (`AppClipboard`).
+enum _Board { text, rows, keys, frames }
+
 /// The clipboard's four buttons, said ONCE for both panels: a panel answers
 /// only WHERE its press stands ([clipboardPlace]), and the board's verbs
 /// take it from there ([ClipboardPlace]).
@@ -235,18 +239,51 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// fixtures, which no board holds, so its copy stays the frame axis's.
   bool get rowsAreThisPanels;
 
+  /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
+  /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
+  ///
+  /// WHAT the cut takes is what the copy takes ([_boardTaken]): 복사 and
+  /// 잘라내기 are ONE pair (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고
+  /// 클립 저장」, `FrameClipboard.canCopyAt`) — a text in hand, the selected
+  /// rows, a lane's keys, the frame axis. Rows the copy takes claim the
+  /// press even when none of them may be lifted
+  /// ([LayerClipboard.canCutSelectedRows]) — the button dims rather than
+  /// cut the frame under them. ↩️It asked the frame board alone: under a
+  /// row selection it lifted the standing row's block while the copy beside
+  /// it took the rows, with a text in hand it lifted the block of the cel
+  /// the text stood on, and on a lane it sat dark over the keys the copy
+  /// took (the-pill-cut-skips-text-and-keys).
   @override
-  bool get canCutRun => session.clipboard.canCutAt(clipboardPlace);
+  bool get canCutRun => switch (_boardTaken) {
+    _Board.rows => session.layerClipboard.canCutSelectedRows,
+    _Board.frames => session.clipboard.canCutAt(clipboardPlace),
+    _Board.text || _Board.keys => true,
+    null => false,
+  };
 
   @override
-  void cutRun() => session.clipboard.cutAt(clipboardPlace);
+  void cutRun() {
+    switch (_boardTaken) {
+      case _Board.text:
+        session.textClipboard.cut();
+      case _Board.rows:
+        session.layerClipboard.cutSelectedRows();
+      case _Board.keys:
+        session.keyClipboard.cut();
+      case _Board.frames:
+        session.clipboard.cutAt(clipboardPlace);
+      case null:
+        break;
+    }
+  }
 
-  /// WHAT the copy takes, on the pill's one ladder ([pillSubjectOn]): the
-  /// selected rows, else the frame axis — 「선택안하면 현재프레임, 선택하면
-  /// 해당 선택한 소재가 기준임」 (I-45's answer, which every verb here
-  /// follows). On the frame axis a LANE's keys come first, as Delete's do
-  /// (F-87): standing on a lane, the frame board has no place
-  /// ([FrameClipboard.timelinePlace]) and the key board answers (F-388).
+  /// The rows-or-frames half of [_boardTaken], on the pill's one ladder
+  /// ([pillSubjectOn]): the selected rows, else the frame axis —
+  /// 「선택안하면 현재프레임, 선택하면 해당 선택한 소재가 기준임」 (I-45's
+  /// answer, which every verb here follows). On the frame axis a LANE's
+  /// keys come first, as Delete's do (F-87): standing on a lane, the frame
+  /// board has no place ([FrameClipboard.timelinePlace]) and the key board
+  /// answers (F-388).
   PillSubject get _copySubject => pillSubjectOn(
     cuts: false,
     layers: () =>
@@ -256,29 +293,40 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.clipboard.canCopyAt(clipboardPlace),
   );
 
+  /// THE BOARD the copy takes into here — and the cut lifts for — or null
+  /// where they take nothing. One answer for both buttons and their keys.
+  ///
   /// 🗣️I-101 (유저 2026-10-15): 「텍스트를 선택한 상태(변형박스로 변한
   /// 상태)에서 복사 가능」. A text held by its box is the THING IN HAND, and
-  /// is copied ahead of every rung of the ladder — Delete's order (R9-rest:
+  /// is taken ahead of every rung of the ladder — Delete's order (R9-rest:
   /// 「the thing in hand first」), which the pill's copy and its key share.
+  _Board? get _boardTaken {
+    if (session.textClipboard.canCopy) {
+      return _Board.text;
+    }
+    return switch (_copySubject) {
+      PillSubject.layers => _Board.rows,
+      PillSubject.cells when session.keyClipboard.canCopy => _Board.keys,
+      PillSubject.cells => _Board.frames,
+      PillSubject.cuts || PillSubject.nothing => null,
+    };
+  }
+
   @override
-  bool get canCopyFrame =>
-      session.textClipboard.canCopy || _copySubject != PillSubject.nothing;
+  bool get canCopyFrame => _boardTaken != null;
 
   @override
   void copyFrame() {
-    if (session.textClipboard.canCopy) {
-      session.textClipboard.copy();
-      return;
-    }
-    switch (_copySubject) {
-      case PillSubject.layers:
+    switch (_boardTaken) {
+      case _Board.text:
+        session.textClipboard.copy();
+      case _Board.rows:
         session.layerClipboard.copySelectedRows();
-      case PillSubject.cells when session.keyClipboard.canCopy:
+      case _Board.keys:
         session.keyClipboard.copy();
-      case PillSubject.cells:
+      case _Board.frames:
         session.clipboard.copyAt(clipboardPlace);
-      case PillSubject.cuts:
-      case PillSubject.nothing:
+      case null:
         break;
     }
   }
@@ -389,6 +437,75 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     );
   }
 }
+
+/// 🚨Everything a gate on the bar moves with — what each group on it hears
+/// ([TimelineActionToolbar]'s groups, the shift pair), on BOTH panels.
+///
+/// ★What a predicate READS and what its widget SUBSCRIBES to have to be the
+/// same set (T17's law). Every gate reads the session, whose notify is the
+/// first channel; the rest publish WITHOUT one, each on purpose.
+///
+/// ↩️(a-gate-rebuilds-the-whole-toolbar, 2026-10-24) This was three lists.
+/// Each host cached the whole bar on a token of every gate it showed and
+/// heard its own signals (the timeline's seek gate, R13-2; the storyboard's
+/// cursor gate, B8), and the shared pill heard a third — so a gate flipping
+/// in one group built every group again (🔬a drawing landing in an empty
+/// cel, the 색 편집 head lighting: 227 widgets of the bar built again, 65 of
+/// them outside the pill the head is on — 3 now). Each group hears this
+/// list and is built again when ITS gates move; the hosts keep the bar
+/// while it is built for the same thing.
+Listenable toolbarGateNews(EditorSessionManager session) => Listenable.merge([
+  // An edit: the arrangement (T17 — push opened a gap and pull stayed grey),
+  // the layers, the cel under the playhead.
+  session,
+  // 🚨유저 #6 (2026-08-14): 「룰러로 이동할때 … 버튼 상태 바꼈으면 좋겠는데
+  // 안바뀜. **효율좋게** 하는데 … 해당 인덱스에 **버튼이 있으면 한번, 없으면
+  // 한번** 이런식으로?」 — a seek is no notify, and the playhead moves by a
+  // committed seek, a scrub and a gap parking: one channel for all of them
+  // (#10, 2026-08-21 — ↩️the committed seek alone fires on the RELEASE, so a
+  // ruler drag held every answer at the frame it began on). The efficiency
+  // half is the groups' own: a crossed frame costs their gates' reads and
+  // builds nothing unless an ANSWER changed.
+  session.playheadMoved,
+  // A language switch fires no notify; every name cell and tooltip prints in
+  // the program language.
+  session.languageSettings,
+  // The row you STAND on publishes on its own notifier (it moves per press):
+  // Edit Instance, the shift pair's row and the storyboard's gates read it.
+  // A claim moves it on pointer-down and never notifies ([Standing]).
+  // ⛔MUTANT SURVIVES (2026-10-24): every route the suites take to a new
+  // stand notifies as well; this is the one channel a claim moves it by.
+  session.standing.currentRowListenable,
+  // ⑨'s row selection and the three bands grow PER POINTER MOVE, which a
+  // notify per move would turn into a rebuild of every panel. A band is a
+  // subject claim whichever panel it was swept in (F-281: the band swept on
+  // the STORYBOARD was the fifth signal, missing from the timeline's list).
+  session.rowSelection,
+  session.frameRangeSelection,
+  session.laneRangeSelection,
+  session.trackFrameRangeSelection,
+  // 🚨WHETHER THE CEL HAS A DRAWING, which no selection moves: 픽셀 비우기
+  // empties the cel you stand on (유저 2026-08-27: 「인덱스 이동해서 그림
+  // 사라진거 확인하더라도 버튼 여전히 활성화되있고」), and a first stroke
+  // lights the 색 편집 head at pen-down, as it turns the block white
+  // (pen-up-dock-tail-Q2). The content's own crossing is what the
+  // timeline's host was built again on (R27 #13), so its gates heard it.
+  // ⛔MUTANT SURVIVES (2026-10-24) for the content's line: every crossing
+  // that moves an answer bumps the tint's beside it ([LayerStack]). It
+  // stays as the head reads the store: what a gate reads is what it hears.
+  session.layerStack.celTintRevision,
+  session.renderCaches.brushFrameStore.celContentRevision,
+  // I-55: the pixel board — a copy fills it without moving anything above,
+  // and the two pastes open behind it: a paste lands on a blank cel too,
+  // so a board that holds a piece opens the 색 편집 head over one
+  // ([PixelVerbs.canOpenColourEdit]) — with no notify and no seek.
+  session.appClipboard.pixels,
+  // The rows the rail draws — a section toggle, a fold, a twirl, the filter
+  // — which no notify carries; the storyboard's gates ask its rows, and its
+  // host was built again on them. ⛔MUTANT SURVIVES (2026-10-24): no suite
+  // folds a row under a gate that reads it; it stays for the read.
+  session.railView.drawn,
+]);
 
 /// The cut timeline's context: the session's own verbs, verbatim. Every
 /// member is a one-line delegation on purpose — this panel's dispatch is

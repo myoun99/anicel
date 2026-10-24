@@ -6,12 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'ui/timeline/timeline_ruler_probe.dart';
 
+import 'helpers/app_icon_button_probe.dart';
 import 'helpers/home_page_probes.dart';
 import 'helpers/the_classic_rail.dart';
 
@@ -37,14 +37,14 @@ void main() {
     // An install opens on Clip Studio's layout, where Add Frame has no key:
     // TVPaint's I is the eyedropper's there (F-417-Q2). ↩️It showed
     // anicel's Shift+I until then (I-63-Q4).
-    expect(find.byTooltip('New Frame'), findsOneWidget);
+    expect(find.railTooltip('New Frame'), findsOneWidget);
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);
 
     // Cut management rides the toolbar's cut group (R-toolbar round): a
     // new-cut button plus the Cut ▾ flyout with the command set.
-    expect(find.byTooltip('New cut'), findsOneWidget);
+    expect(find.railTooltip('New cut'), findsOneWidget);
     final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
     await tester.ensureVisible(cutMenu);
     await tester.pumpAndSettle();
@@ -141,10 +141,11 @@ void main() {
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    // 24 at 100% — the slim default (R-toolbar round); the painterized
-    // ruler (UI-R13 #1) reports geometry/labels through its painter.
+    // 19.2 at 100%, where a cut opens (F-403: 「80%를 100%로」), laid on
+    // whole pixels; the painterized ruler (UI-R13 #1) reports
+    // geometry/labels through its painter. ↩️24 (R-toolbar round).
     double headerWidth() => timelineHeaderGlobalRect(tester, 0).width;
-    expect(headerWidth(), 24);
+    expect(headerWidth(), 19);
     // Wide cells label every frame in-cell.
     expect(timelineHeaderModel(tester, 0).label, '1');
 
@@ -157,11 +158,12 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await zoomTo(72);
-    expect(headerWidth(), 72);
+    // Under the bar's 200% (38.4, F-403-Q1). ↩️40, under 250%.
+    await zoomTo(36);
+    expect(headerWidth(), 36);
 
     // UI-R11 #11: the −/+ STEP buttons flanking the slider zoom without
-    // dragging — multiplicative ×1.25 steps on the whole-px grid.
+    // dragging — multiplicative ×1.25 steps on the bar's 0.1% steps.
     await zoomTo(24);
     await tapToolbarButton(
       tester,
@@ -208,15 +210,18 @@ void main() {
     // R10 R6: a frame ROW is a frame CELL turned on its side, so the sheet
     // reads the slider 1:1 instead of scaling it by an old 36/24 ratio —
     // one slider position now means one frame extent on both surfaces.
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, timelineFrameCellWidth);
+    // 19.2 at 100%, laid on whole pixels, as the timeline's header (F-403).
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, 19);
 
     tester
         .widget<FieldSlider>(
           find.byKey(const ValueKey<String>('timeline-zoom-slider')),
         )
-        .onChanged!(72);
+        .onChanged!(36);
     await tester.pumpAndSettle();
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, 72);
+    // 36 is a step of the bar (187.5%), under its 200% (F-403-Q1).
+    // ↩️40: the bar's tenth nearest it, 39.9936, laid on the pixel 40.
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, moreOrLessEquals(36));
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (

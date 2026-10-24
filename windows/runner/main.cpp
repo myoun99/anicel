@@ -93,6 +93,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // A frame's one picture is patched where it stands through Flutter GPU
+  // (one-picture-per-frame, D7-2-Q3 유저 2026-10-24) — off unless asked for.
+  project.set_enable_flutter_gpu(true);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();

@@ -70,6 +70,7 @@ class TimelineGridHooks {
     this.frameReadySignal,
     this.revealSelectionTick,
     this.playbackFrame,
+    this.stepsUntilShown,
     required this.playbackFrameCount,
     this.noriShiro,
     required this.exposureStateForLayer,
@@ -183,6 +184,17 @@ class TimelineGridHooks {
   /// would ask every surface to undo that mapping again, and would depend on
   /// two listeners on one notifier firing in the order they were added.
   final ValueListenable<int?>? playbackFrame;
+
+  /// How many steps on the playing run shows this grid's frame [frame] (its
+  /// own count — the cut's frames here as [frameCursor] counts them), or
+  /// null for a frame the run does not show and wherever nothing plays: the
+  /// run's own order (`FrameDemand.stepOf`), which the substrate tiles are
+  /// let go by ([TimelineTileRasterSource.stepsUntilShown]). Null where no
+  /// run reaches the host.
+  ///
+  /// ⛔Asked live, never read for a build: a tick rebuilds nothing, and a
+  /// run begins and ends under rows kept the whole time.
+  final int? Function(int frame)? stepsUntilShown;
 
   final int playbackFrameCount;
 

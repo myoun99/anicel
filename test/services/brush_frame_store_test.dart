@@ -14,6 +14,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 
+import '../helpers/cels_parked_cold.dart';
+
 /// R19 P3b store contract: the baked raster IS the cel; the drawing
 /// state is a mutation ledger; display caches are aliases.
 void main() {
@@ -270,6 +272,30 @@ void main() {
     expect(identical(store.bakedSurfaceOrNull(older), olderSurface), isTrue);
   });
 
+  test('a crossing NAMES its cels — one bump for a batch, every cel of it '
+      'named, a whole-store swap naming every cel it held', () {
+    final store = BrushFrameStore();
+    final a = key(layer: 'a');
+    final b = key(layer: 'b');
+    final other = key(cut: 'other');
+
+    store.storeBakedSurface(other, surfaceWithInk());
+    expect(store.celsLastCrossed, {other});
+
+    final before = store.celContentRevision.value;
+    store.restoreBakedForCut(const CutId('c'), {
+      a: surfaceWithInk(),
+      b: surfaceWithInk(),
+    });
+    expect(store.celContentRevision.value, before + 1);
+    expect(store.celsLastCrossed, {a, b});
+
+    final beforeSwap = store.celContentRevision.value;
+    parkCold(store, const {});
+    expect(store.celContentRevision.value, beforeSwap + 1);
+    expect(store.celsLastCrossed, {other, a, b});
+  });
+
   test('rekeyFrames is a content CROSSING the timeline hears: '
       'celContentRevision bumps for both ends of the move', () {
     final store = BrushFrameStore();
@@ -310,6 +336,7 @@ void main() {
       canvasSize: CanvasSize(width: 4, height: 4),
       tileSize: 4,
       photoPaths: [],
+      showsSomething: true,
     );
 
     // Everyday save: the cel is hot before and after — no crossing.

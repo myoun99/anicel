@@ -130,3 +130,16 @@ bool aClockLooksInThisFrame() {
   final binding = WidgetsBinding.instance;
   return binding is LookOnlyFrames && binding._looks;
 }
+
+/// Runs [asks]; a frame it asks the scheduler for is asked for only to LOOK
+/// ([LookOnlyFrames.askingOnlyToLook]) — drawn only if what its callbacks
+/// find makes something dirty. Where the binding draws every frame it begins
+/// (a test's own), [asks] is run as it is.
+void askOnlyToLook(VoidCallback asks) {
+  final binding = WidgetsBinding.instance;
+  if (binding is LookOnlyFrames) {
+    binding.askingOnlyToLook(asks);
+  } else {
+    asks();
+  }
+}

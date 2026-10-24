@@ -1078,10 +1078,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
                                                       viewportWidth,
                                                 ),
                                               );
+                                              // The rows' own end, through
+                                              // the axis' one law (F-220).
+                                              // ↩️Count × cell: 0.4px short
+                                              // of the rows at the 19.2 a
+                                              // cut opens at (F-403).
                                               final totalFrameContentWidth =
-                                                  _renderedFrameCount *
-                                                  _metrics
-                                                      .frameCellWidth;
+                                                  timelineFrameEdge(
+                                                    _renderedFrameCount,
+                                                    _metrics.frameCellWidth,
+                                                  );
 
                                               // PRO-TIMELINE scrolling (UI-R15):
                                               // the strip builds ONCE at full width

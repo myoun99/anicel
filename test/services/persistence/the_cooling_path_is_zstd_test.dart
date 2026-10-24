@@ -41,7 +41,7 @@ void main() {
     frameId: FrameId('f'),
   );
 
-  AnicelCelEntry entry() => AnicelCelEntry.fromSurface(
+  AnicelCelBlob cooled() => AnicelCelBlob.ofSurface(
     key,
     BitmapSurface(
       canvasSize: const CanvasSize(width: 256, height: 256),
@@ -87,9 +87,8 @@ void main() {
         markTestSkipped('no engine on this run');
         return;
       }
-      final cooled = entry();
-      // The exact call `_coolLoop` makes, in the same kind of isolate.
-      final codec = await Isolate.run(() => AnicelCelBlob.encode(cooled).codec);
+      // The blob a cel cools into, made in the same kind of isolate.
+      final codec = await Isolate.run(() => cooled().codec);
       expect(
         codec,
         anicelCodecZstd,
@@ -106,7 +105,7 @@ void main() {
       markTestSkipped('no engine on this run');
       return;
     }
-    expect(AnicelCelBlob.encode(entry()).codec, anicelCodecZstd);
+    expect(cooled().codec, anicelCodecZstd);
   });
 
   /// The other half of the contract, and the one every machine can run.
@@ -118,7 +117,7 @@ void main() {
     });
 
     test('the floor is deflate, and it still round-trips', () {
-      final blob = AnicelCelBlob.encode(entry());
+      final blob = cooled();
       expect(
         blob.codec,
         anicelCodecDeflate,

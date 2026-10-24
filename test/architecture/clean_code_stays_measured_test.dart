@@ -672,6 +672,14 @@ void main() {
   /// (`renderThroughCamera`'s `paintNodes`), and a buffer hands its
   /// children a scale of its own (`drawSubtreeAsImage`'s `paintSubtree`),
   /// so a value of the two would be built at every hand-down first.
+  /// ⚠️420 → 421 → 420 on 2026-10-24 (card one-picture-per-frame — a
+  /// frame's one picture is drawn by the canvas's own paint body):
+  /// `frameDrawingOf` came in at five — the frame's nodes and the four the
+  /// canvas draws them on, its size, how far its pasteboard reaches,
+  /// whether it paints paper and which paper — and was not bundled to fit,
+  /// the four being `CanvasLayerStackView`'s own fields. ↩️Bundled the same
+  /// day (`FramePage`) for a reason of its own: the frame's picture is
+  /// KEYED by the four (`FramePictureKey`), so they are one value already.
   const wideSignatures = 420;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
@@ -1274,7 +1282,16 @@ void main() {
   /// it. 🔬`clean_code_diff` against master (`f6c483e4d`) names this one and
   /// no other class. ⛔Not split to fit: the window is the row's own panel
   /// window, and every piece of the row is held to it in the one build.
-  const longClasses = 73;
+  ///
+  /// ⚠️73 → 74 on 2026-10-24, ONE name: `_StoryboardConteRow` crossed
+  /// (599 → 605) when its cells came to bake on the timeline's tile store
+  /// (card `the-conte-row-bakes-its-cells-into-tiles` — it painted every
+  /// cell it showed by hand at every opening, the storyboard's largest
+  /// paint): the four arguments the timeline's rows already hand the same
+  /// painter. 🔬`clean_code_diff` against master (`b0a486341`) names this
+  /// one and no other class. ⛔Not split to fit: the row's painter is built
+  /// in the one place its other arguments are.
+  const longClasses = 74;
 
   late CleanCodeScan scan;
   setUpAll(() {

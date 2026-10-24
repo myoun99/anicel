@@ -114,13 +114,6 @@ void main() {
     if (made == null) {
       return;
     }
-    expect(
-      decoder.readsFramed,
-      isTrue,
-      reason: 'every desktop decoder can be fed decoded blocks — only '
-          'Android below API 28 cannot',
-    );
-
     final plain = decoder.openDocument(made.plain)!;
     final framed = decoder.openDocument(
       made.framed,

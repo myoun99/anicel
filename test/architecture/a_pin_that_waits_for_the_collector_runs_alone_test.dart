@@ -10,13 +10,15 @@ import '../helpers/source_ledger.dart';
 
 import '../../tool/affected_tests.dart'
     show
+        BatchKind,
+        carriesTag,
         filesListed,
         gcTag,
         gcTagMarker,
         kBatchWall,
         lineFor,
         nextBatch,
-        partitionByGcTag,
+        partitionByTag,
         runInBatches;
 import '../../tool/master_check.dart' show kWideCheckStandsFirst;
 import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
@@ -41,9 +43,9 @@ import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
 /// saying so.
 void main() {
   group('the split', () {
-    ({List<String> crowd, List<String> alone}) split(
+    ({List<String> crowd, List<String> gpu, List<String> alone}) split(
       Map<String, String> tree,
-    ) => partitionByGcTag(tree.keys.toList(), (path) => tree[path]!);
+    ) => partitionByTag(tree.keys.toList(), (path) => tree[path]!);
 
     test('a file carrying the marker goes alone', () {
       final result = split({
@@ -54,7 +56,15 @@ void main() {
       expect(result.crowd, ['a_test.dart']);
     });
 
-    test('⛔and nothing else does — the marker is the whole rule', () {
+    test('so does one listing the tag beside another — a file has one '
+        '@Tags', () {
+      final result = split({
+        'a_test.dart': "@Tags(['slow', '$gcTag'])\nlibrary;",
+      });
+      expect(result.alone, ['a_test.dart']);
+    });
+
+    test('⛔and nothing else does — the annotation is the whole rule', () {
       // A file that merely TALKS about the tag (this one does, and so does
       // the tool) must not be pulled out of the crowd by the word.
       final result = split({
@@ -102,8 +112,8 @@ void main() {
           asked.add(left);
           return suites[turn++ % suites.length];
         },
-        run: (batch, suites, {required pins}) async =>
-            ran.add((batch.join(' '), suites, pins)),
+        run: (batch, suites, {required kind}) async =>
+            ran.add((batch.join(' '), suites, kind == BatchKind.collector)),
       );
       return (ran, asked);
     }
@@ -308,7 +318,7 @@ void main() {
     final tagged = <String>[];
     for (final entity in dartFilesUnder('$root/test')) {
       if (!entity.path.endsWith('_test.dart')) continue;
-      if (!entity.readAsStringSync().contains(gcTagMarker)) continue;
+      if (!carriesTag(entity.readAsStringSync(), gcTag)) continue;
       tagged.add(
         entity.path.substring(root.length + 1).replaceAll(r'\', '/'),
       );

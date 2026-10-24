@@ -105,12 +105,59 @@ runs:
         # megabytes, so elsewhere the limit is nominal.
         limit=6000
         [ "${RUNNER_OS:-}" = "Windows" ] || limit=100000
+        # The files that draw with Flutter GPU run apart, on Impeller: the
+        # two flags change the engine for every file in the command, and
+        # the rest of the suite measures what Skia draws (dart_test.yaml,
+        # the `gpu` tag; tool/affected_tests.dart splits a run the same
+        # way). In this step, not a job of their own — a job is CI usage
+        # (the 2026-08-31 suspension). The tag is read as carriesTag reads
+        # it — a file has one @Tags, which may list gc too. awk rather than
+        # grep -l: grep says 1 for 「no file here carries it」 and xargs folds
+        # that into the 123 a file it could not read gives too.
+        tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
+          | xargs -0 awk "/@Tags\\(\\[[^]]*'gpu'/ { print FILENAME; nextfile }" \
+          > "$RUNNER_TEMP/shard_gpu.txt"
+        awk 'FILENAME == ARGV[1] { gpu[$0] = 1; next } !($0 in gpu)' \
+          "$RUNNER_TEMP/shard_gpu.txt" "$RUNNER_TEMP/shard_tests.txt" \
+          > "$RUNNER_TEMP/shard_rest.txt"
         # --no-pub because ci.yml already ran `flutter pub get` as its own
         # step; without it `flutter test` resolves a second time. Worth
         # only ~0.3s measured — pub is nearly a no-op warm — but it is
         # duplicated work, and the flag says so out loud.
-        tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
-          | xargs -0 -s "$limit" flutter test --no-pub
+        if [ -s "$RUNNER_TEMP/shard_rest.txt" ]; then
+          tr '\n' '\0' < "$RUNNER_TEMP/shard_rest.txt" \
+            | xargs -0 -s "$limit" flutter test --no-pub
+        fi
+        if [ -s "$RUNNER_TEMP/shard_gpu.txt" ]; then
+          echo "shard ${{ inputs.index }}:" \
+            "$(wc -l < "$RUNNER_TEMP/shard_gpu.txt") file(s) on Impeller" \
+            "with Flutter GPU"
+          set +e
+          tr '\n' '\0' < "$RUNNER_TEMP/shard_gpu.txt" \
+            | xargs -0 -s "$limit" \
+                flutter test --no-pub --enable-impeller --enable-flutter-gpu \
+                2>&1 | tee "$RUNNER_TEMP/shard_gpu.log"
+          gpu_exit=${PIPESTATUS[1]}
+          set -e
+          # The tester draws through the SwiftShader Vulkan it links, so a
+          # runner with no GPU should still have a context. Whether it does
+          # was not known when this was written (gpu-pins-run-in-a-batch-
+          # of-their-own, 2026-10-24: 「measure it on the first bundle PR's
+          # CI」) — so a runner where the tester cannot make one says so out
+          # loud and stays green, and the local gate, on a machine that
+          # has one, is what sees these files there. Any other red is red.
+          if [ "$gpu_exit" -ne 0 ]; then
+            if grep -q 'Could not create tester context' \
+                "$RUNNER_TEMP/shard_gpu.log"; then
+              echo "::notice title=Flutter GPU files not run on $RUNNER_OS::" \
+                "The Impeller tester could not make a context on this" \
+                "runner, so the gpu-tagged files in shard" \
+                "${{ inputs.index }} did not run here — the local gate sees them."
+            else
+              exit "$gpu_exit"
+            fi
+          fi
+        fi
     # One writer per run per OS, and only from master: thirteen shards
     # racing to save the same key would leave twelve "cache already exists"
     # warnings, and a pull request has no business seeding the cache every

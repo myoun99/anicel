@@ -1367,22 +1367,31 @@ class TimelineLaneFrameRow extends StatelessWidget {
       timelineFrameEdge(frameStartIndex, _cellExtent);
 
   /// ONE metric law for every marker on this axis — see
-  /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
-  /// Build-time is correct HERE: the band rebuilds on zoom.
-  Size get _markerSize => timelineLaneKeyMarkerSizeOf(
+  /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize] — in
+  /// [frame]'s cell as the axis lays it, between its two boundaries
+  /// ([_edge]): the cell a camera row's key fills too ([timelineLaneKeySpan]
+  /// reads its laid-out box). Build-time is correct HERE: the band rebuilds
+  /// on zoom.
+  ///
+  /// ↩️It read the zoom ([_cellExtent]), which was the cell while every
+  /// zoom was a whole pixel (D39, 08-18); since F-220 a cell is its zoom
+  /// give or take a pixel, and the band's union and the camera row's stood
+  /// a fraction of one apart (F-403 opens a cut at 19.2).
+  Size _markerSizeAt(int frame) => timelineLaneKeyMarkerSizeOf(
     _crossExtent,
-    frameCellExtent: _cellExtent,
+    frameCellExtent: _edge(frame + 1) - _edge(frame),
     heads: lane.isGroupHeader,
   );
 
   /// The mark's box grown by 4px each side, either way held to the row —
   /// the floor yields to the room, as a mark's does ([_markInCell]): a lane
   /// the enlarged graph folds is thinner than it (I-89 ③D).
-  Size get _hitSize {
+  Size _hitSizeAt(int frame) {
     double grown(double side) => (side + 8)
         .clamp(math.min(14.0, _crossExtent), _crossExtent)
         .toDouble();
-    return Size(grown(_markerSize.width), grown(_markerSize.height));
+    final mark = _markerSizeAt(frame);
+    return Size(grown(mark.width), grown(mark.height));
   }
 
   bool _inWindow(int frame) =>
@@ -1480,7 +1489,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// rings lane keys. Header union diamonds ring on a whole-group selection
   /// (R26 #3).
   Widget _keyMarker(int frame, TimelineLaneSelection? selection) {
-    final hit = _hitSize;
+    final hit = _hitSizeAt(frame);
     return placedAlong(
       axis,
       along: (_edge(frame) + _edge(frame + 1)) / 2 - hit.width / 2,
@@ -1493,7 +1502,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
         ),
         mark: lane.keyMarkAt(frame),
         axis: axis,
-        markerSize: _markerSize,
+        markerSize: _markerSizeAt(frame),
         color: layerMarkColor(layer.mark),
         selected: laneSelectionPicksKey(
           selection,

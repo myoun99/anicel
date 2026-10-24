@@ -42,10 +42,15 @@ void main() {
   /// times, and why.
   const keptLedger = <String, (int, String)>{
     'test/helpers/cels_kept_in_a_file.dart': (1, 'the helper'),
+    'test/services/a_cleared_cel_reads_empty_in_every_tier_test.dart': (
+      1,
+      'opens what a real save of a cleared cel wrote',
+    ),
     'test/services/a_moved_entry_takes_its_refs_along_test.dart': (
-      3,
+      4,
       'refs at offsets it chose, in a file that is never written — what it '
-          'measures is where each stretch lies after a move',
+          'measures is where each stretch lies after a move, and what each '
+          'still says of its picture',
     ),
     'test/services/brush_frame_store_400cut_test.dart': (
       1,

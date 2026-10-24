@@ -4,9 +4,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../services/media/held_viewer_document.dart';
 import '../../services/media/image_viewer_document.dart';
 import '../../services/media/media_byte_source.dart';
-import '../../services/media/movie_bytes.dart';
 import '../../services/media/project_clock_document.dart';
-import '../../services/media/video_decode_worker.dart' show videoDecodeBackend;
 import '../../services/media/video_viewer_document.dart';
 import '../../services/media/viewer_document.dart';
 import '../../services/pdf/pdf_render_service.dart';
@@ -27,10 +25,11 @@ import 'audio_viewer_document.dart';
 /// 🚨★★★**THE CARRIED COPY WINS OVER THE ORIGINAL, FOR EVERY KIND.**
 /// Carrying means 「품은 순간 데이터를 가지고있고 불변이었으면좋겠어서」
 /// (유저 2026-08-30), so an original edited or deleted after the import
-/// changes nothing the viewer shows. One exception, the cost 유저 accepted
-/// on board `carried-movie-compressed-Q1`: a movie kept compressed, on a
-/// device whose decoder cannot be fed one (Android below 9), reads its
-/// original while there is one ([movieBytesToDecode]).
+/// changes nothing the viewer shows.
+/// 🪦A movie kept compressed, on a device whose decoder could not be fed
+/// one (Android below 9), read its original while there was one — the cost
+/// 유저 accepted on board `carried-movie-compressed-Q1`. That device class
+/// left the release on 2026-10-24 (minSdk 29) and the exception with it.
 /// 🪦Images and PDFs used to read the ORIGINAL only, so a carried one
 /// whose original was gone — or a project opened on another machine —
 /// could not be viewed at all (card `carried-image-pdf-cannot-be-viewed`).
@@ -62,9 +61,7 @@ Future<ViewerDocument?> openViewerDocument(
       return held(PdfRenderService.open);
     case MediaAssetKind.video:
       return held((source) async {
-        final movie = await VideoViewerDocument.open(
-          movieBytesToDecode(source, path, videoDecodeBackend),
-        );
+        final movie = await VideoViewerDocument.open(source);
         return movie == null || projectClock == null
             ? movie
             : ProjectClockDocument.of(movie, projectClock);

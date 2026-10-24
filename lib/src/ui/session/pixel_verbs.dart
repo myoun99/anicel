@@ -1,9 +1,14 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
+
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/cut_piece.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
+import '../../models/layer_id.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_settings.dart';
 import '../../models/pixel_verb_subject.dart';
@@ -69,13 +74,26 @@ class PixelVerbs {
     required RenderCaches renderCaches,
     required PixelBoard pixelBoard,
     required VisibilitySolo solo,
+    required ValueListenable<bool> brushInputActive,
+    required bool Function(CutId cut, LayerId row, FrameId cel)
+    liveStrokeDraws,
   }) : _project = project,
        _selection = selection,
        _controllers = controllers,
        _pixelEditing = pixelEditing,
        _renderCaches = renderCaches,
        _pixelBoard = pixelBoard,
-       _solo = solo;
+       _solo = solo,
+       _brushInputActive = brushInputActive,
+       _liveStrokeDraws = liveStrokeDraws;
+
+  /// Whether a stroke is live — the list's rows wait for it to land
+  /// ([canRunPixelVerb]).
+  final ValueListenable<bool> _brushInputActive;
+
+  /// Whether a live stroke draws a cel — which its block counts as drawn
+  /// from pen-down, and so does the list's head ([canOpenColourEdit]).
+  final bool Function(CutId cut, LayerId row, FrameId cel) _liveStrokeDraws;
 
   /// The eyes an edit asks — the user's and the screen's, not the solo's
   /// alone ([_celOf]).
@@ -103,8 +121,11 @@ class PixelVerbs {
   PixelVerbCanvas Function()? pixelVerbCanvas;
 
   /// WHICH cels the PIXEL verbs would act on — see [PixelVerbSubject].
-  PixelVerbSubject get pixelVerbSubject {
-    if (pixelVerbCellKeys().isEmpty) {
+  PixelVerbSubject get pixelVerbSubject => _subjectOn(_holdsADrawing);
+
+  /// [pixelVerbSubject], with each cel the ladder names asked [drawn].
+  PixelVerbSubject _subjectOn(bool Function(BrushFrameKey key) drawn) {
+    if (!_cellsTheLadderNames().any(drawn)) {
       return PixelVerbSubject.nothing;
     }
     return _selection.frameRangeSelection.value == null
@@ -173,14 +194,22 @@ class PixelVerbs {
   /// whole bug: 픽셀 비우기 leaves the frame and its tiles in place with
   /// every alpha at zero, so the walk kept naming a cel with nothing in
   /// it and the buttons stayed lit over an empty block. This is the same
-  /// question the block's tint asks, which is why it is that call and not
-  /// a second rule of its own.
+  /// question the block's tint asks of the store, which is why it is that
+  /// call and not a second rule of its own — the tint's other half, the live
+  /// stroke, is [_showsADrawing]'s.
   ///
   /// ⛔A PASTE does not ask it (I-55): a blank cel is exactly where a paste
   /// goes — which is why this is the verb's filter over the ladder and not
   /// a rung of the ladder itself.
   bool _holdsADrawing(BrushFrameKey key) =>
       _renderCaches.brushFrameStore.celHasRenderableContent(key);
+
+  /// Whether [key] shows a drawing as its block does: the store's, or a live
+  /// stroke's from pen-down ([_liveStrokeDraws]) — what the list's head asks
+  /// ([canOpenColourEdit]).
+  bool _showsADrawing(BrushFrameKey key) =>
+      _liveStrokeDraws(key.cutId, key.layerId, key.frameId) ||
+      _holdsADrawing(key);
 
   /// The cels the ladder names, before a verb asks what is in them.
   ///
@@ -303,9 +332,18 @@ class PixelVerbs {
 
   /// Whether a pixel verb has anything to do — the buttons' gate, and the
   /// same question the press runs (T25: one answer behind both).
+  ///
+  /// 🗣️pen-up-dock-tail-Q2 (유저 2026-10-24): 「획 도중에는 메뉴 줄을
+  /// 막는다」 — every row of the list waits while a stroke is live. A verb
+  /// works on the store's pixels, and the store takes the stroke when the
+  /// pen lifts: pressed under the pen, it would work on the cel as it was
+  /// before the line began.
   bool get canRunPixelVerb =>
-      _pixelEditing.coordinator != null &&
-      pixelVerbSubject != PixelVerbSubject.nothing;
+      !_brushInputActive.value && _anOverwriteCould(pixelVerbSubject);
+
+  /// Whether the overwrite verbs have [subject] to work on.
+  bool _anOverwriteCould(PixelVerbSubject subject) =>
+      _pixelEditing.coordinator != null && subject != PixelVerbSubject.nothing;
 
   /// Whether the 색 편집 list has a row that can run — its head's gate.
   ///
@@ -313,8 +351,18 @@ class PixelVerbs {
   /// could. Since I-55 the list holds two kinds of verb, and a head that
   /// read the overwrite verbs alone would lock the clipboard rows out
   /// of a blank cel — which is exactly where a paste goes.
+  ///
+  /// 🗣️pen-up-dock-tail-Q2 (유저 2026-10-24): 「블록과 같이 펜을 댈 때
+  /// 켜고」 — the rows are asked of a cel as its block shows it
+  /// ([_showsADrawing]), and the stroke's wait is theirs alone. ↩️The head
+  /// asked the rows' own gates, which learn of a first stroke at pen-up: the
+  /// block went white at pen-down and the head lit a stroke later, so every
+  /// first stroke on an empty cel built the bar again as the pen lifted, and
+  /// the timeline dock drew whole for four more frames.
   bool get canOpenColourEdit =>
-      canRunPixelVerb || _standingDrawing() != null || _canPastePixels;
+      _anOverwriteCould(_subjectOn(_showsADrawing)) ||
+      _standingDrawing(_showsADrawing) != null ||
+      _canPastePixels;
 
   /// A pixel verb of the colour edit list ([CelPixelVerb]) — one operation
   /// with the channel, the value and the pixels swapped, so one method.
@@ -328,7 +376,7 @@ class PixelVerbs {
   /// One undo step across every cel, however many the ladder named.
   void runPixelVerb(CelPixelVerb verb) {
     final coordinator = _pixelEditing.coordinator;
-    if (coordinator == null) {
+    if (coordinator == null || !canRunPixelVerb) {
       return;
     }
     final keys = pixelVerbCellKeys();
@@ -429,13 +477,18 @@ class PixelVerbs {
 
   /// The cel 픽셀 잘라내기 · 복사 and 전체 잘라내기 read — the one you stand
   /// on, with a drawing in it — or null.
-  BrushFrameKey? _standingDrawing() {
+  ///
+  /// [drawn] is what says the cel holds a drawing — the store's answer
+  /// ([_holdsADrawing]) unless the head asks ([canOpenColourEdit]).
+  BrushFrameKey? _standingDrawing([
+    bool Function(BrushFrameKey key)? drawn,
+  ]) {
     final cut = _project.activeCutOrNull;
     if (cut == null || _pixelEditing.coordinator == null) {
       return null;
     }
     final key = _standingCel(cut);
-    return key != null && _holdsADrawing(key) ? key : null;
+    return key != null && (drawn ?? _holdsADrawing)(key) ? key : null;
   }
 
   /// The standing cel's pixels as a piece — what 픽셀 복사 (I-55) puts on the
@@ -541,12 +594,16 @@ class PixelVerbs {
 
   /// Whether the 색 편집 list's clipboard row [verb] has anything to do —
   /// its gate, and the question its press asks (T25: one answer behind both).
-  bool canRunPixelClipboardVerb(PixelClipboardVerb verb) => switch (verb) {
-    PixelClipboardVerb.cut ||
-    PixelClipboardVerb.copy => _standingDrawing() != null,
-    PixelClipboardVerb.pasteAbove ||
-    PixelClipboardVerb.pasteBelow => _canPastePixels,
-  };
+  /// It waits for a live stroke to land, as every row of the list does
+  /// ([canRunPixelVerb]).
+  bool canRunPixelClipboardVerb(PixelClipboardVerb verb) =>
+      !_brushInputActive.value &&
+      switch (verb) {
+        PixelClipboardVerb.cut ||
+        PixelClipboardVerb.copy => _standingDrawing() != null,
+        PixelClipboardVerb.pasteAbove ||
+        PixelClipboardVerb.pasteBelow => _canPastePixels,
+      };
 
   /// Both pastes' one gate: something on the board, and a cel the ladder
   /// names — a blank one will do.
@@ -557,6 +614,9 @@ class PixelVerbs {
 
   /// The 색 편집 list's clipboard row [verb], pressed.
   void runPixelClipboardVerb(PixelClipboardVerb verb) {
+    if (!canRunPixelClipboardVerb(verb)) {
+      return;
+    }
     switch (verb) {
       case PixelClipboardVerb.cut:
         _copyPixels(takeWhatItCopies: true);

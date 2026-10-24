@@ -131,6 +131,13 @@ class _WorkspaceTabs {
   /// inside its host, through its document's memo key; the frame panels
   /// still hear it all, what they show of it being their rows' facts
   /// (F-244).
+  ///
+  /// ⛔A sheet's VIEW is not in [listenable]: its panel hears the view
+  /// itself ([BrushCanvasPanel.viewportController], 08-21) and prints the
+  /// sheet over it. 🔬Heard here as well — from when the view was handed
+  /// down as a value — the timesheet's, the conte's and the envelope's
+  /// hosts were built again, whole, at every step of a pan
+  /// (tick-pins-allow-panel-hosts, 10-24).
   Widget _panelHost({
     required Listenable listenable,
     Object? Function()? printed,
@@ -1009,6 +1016,7 @@ class _WorkspaceTabs {
               pixelsPerFrame: _state._timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
               onPixelsPerFrameChanged: _state._setTimelineZoom,
+              onZoomFit: _state._fitTimelineZoom,
               showSeconds: _state._showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _state._showSecondsDisplay.value = show;
@@ -1140,6 +1148,7 @@ class _WorkspaceTabs {
               ).laneGraphVerbs,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
+              onZoomFit: _state._fitStoryboardZoom,
               showSeconds: _state._showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _state._showSecondsDisplay.value = show;
@@ -1185,7 +1194,6 @@ class _WorkspaceTabs {
           // ink overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
-              _state._views._conteViewport,
               _state._views._conteBrushAllowed,
               _state._views._conteInk,
               // Its pictures' cels, followed through the store: an undo
@@ -1230,7 +1238,6 @@ class _WorkspaceTabs {
           // overlay consumes it, through its own boundary builder.
           builder: (context) => _panelHost(
             listenable: Listenable.merge([
-              _state._views._envelopeViewport,
               _state._views._envelopeBrushAllowed,
               _state._views._envelopeInk,
               // F-90: the envelope of the cut under the playhead, turning
@@ -1285,7 +1292,6 @@ class _WorkspaceTabs {
             // consumes the tool state, through its own boundary builder
             // inside the host.
             listenable: Listenable.merge([
-              _state._views._timesheetViewport,
               _state._views._timesheetBrushAllowed,
               _state._views._timesheetDataSheet,
               // F-90: a crossing, played or dragged over, turns the sheet

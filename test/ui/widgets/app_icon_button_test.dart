@@ -8,6 +8,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+
+import '../../helpers/app_icon_button_probe.dart';
 
 /// R26 #42: the canvas bottom bar's icon style is the app's DEFAULT icon
 /// UI now, so it lives in one widget and other surfaces mount that widget
@@ -38,18 +41,19 @@ void main() {
   ColorScheme schemeOf(WidgetTester tester, String key) =>
       Theme.of(tester.element(find.byKey(ValueKey<String>(key)))).colorScheme;
 
-  // The face's OWN state layer: the DecoratedBox wrapped around the glyph's
-  // `Align(widthFactor: 1)`. ⚠️A plain `byType(DecoratedBox)` under the key
-  // finds TWO while hovered — hovering shows the Tooltip, and an
-  // OverlayPortal's overlay child is its descendant in the element tree, so
-  // the bubble's box answers too.
-  final faceLayer = find.byWidgetPredicate(
-    (widget) =>
-        widget is DecoratedBox &&
-        widget.child is Align &&
-        (widget.child! as Align).widthFactor == 1.0,
-    description: 'the face state layer',
-  );
+  // The face's OWN render object — the box, the state layer and the press,
+  // around the glyph (2026-10-24: the rail's light face).
+  RenderIconButtonPressFace faceOf(WidgetTester tester, String key) =>
+      tester.renderObject<RenderIconButtonPressFace>(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(key)),
+          matching: find.byType(IconButtonPressFace),
+        ),
+      );
+
+  // The state layer it paints right now.
+  Color? layerOf(WidgetTester tester, String key) =>
+      faceOf(tester, key).debugLayerInk;
 
   // What `IconButton.styleFrom` makes of a colour for a state layer:
   // `withOpacity`, which rounds the alpha to 8 bits (0.08 → 20/255). The
@@ -95,16 +99,8 @@ void main() {
 
     testWidgets('an OUTLINED button draws its edge — the hairline at rest, '
         'the accent while ON — and a plain one draws none', (tester) async {
-      BorderSide edgeOf(String key) {
-        final box = tester.widget<DecoratedBox>(
-          find.descendant(
-            of: find.byKey(ValueKey<String>(key)),
-            matching: faceLayer,
-          ),
-        );
-        final shape = (box.decoration as ShapeDecoration).shape;
-        return (shape as OutlinedBorder).side;
-      }
+      BorderSide edgeOf(String key) =>
+          (faceOf(tester, key).spec.shape as OutlinedBorder).side;
 
       await pump(
         tester,
@@ -255,15 +251,7 @@ void main() {
           onPressed: () {},
         ),
       );
-      Color? layer() {
-        final box = tester.widget<DecoratedBox>(
-          find.descendant(
-            of: find.byKey(const ValueKey<String>('layer')),
-            matching: faceLayer,
-          ),
-        );
-        return (box.decoration as ShapeDecoration).color;
-      }
+      Color? layer() => layerOf(tester, 'layer');
 
       final base = schemeOf(tester, 'layer').onSurfaceVariant;
       final center = tester.getCenter(find.byKey(const ValueKey('layer')));
@@ -306,15 +294,7 @@ void main() {
           onPressed: () {},
         ),
       );
-      Color? layer() {
-        final box = tester.widget<DecoratedBox>(
-          find.descendant(
-            of: find.byKey(const ValueKey<String>('pen')),
-            matching: faceLayer,
-          ),
-        );
-        return (box.decoration as ShapeDecoration).color;
-      }
+      Color? layer() => layerOf(tester, 'pen');
 
       final base = schemeOf(tester, 'pen').onSurfaceVariant;
       final pen = await tester.createGesture(kind: PointerDeviceKind.stylus);
@@ -346,16 +326,7 @@ void main() {
       addTearDown(mouse.removePointer);
       await mouse.moveTo(tester.getCenter(find.byKey(const ValueKey('sel'))));
       await tester.pump();
-      final box = tester.widget<DecoratedBox>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('sel')),
-          matching: faceLayer,
-        ),
-      );
-      expect(
-        (box.decoration as ShapeDecoration).color,
-        stateLayer(AppColors.accent, 0.08),
-      );
+      expect(layerOf(tester, 'sel'), stateLayer(AppColors.accent, 0.08));
       await mouse.moveTo(Offset.zero);
       await tester.pump(const Duration(seconds: 2));
     });
@@ -412,16 +383,6 @@ void main() {
           .text
           .style!
           .color!;
-      Color? layerOf(String key) {
-        final box = tester.widget<DecoratedBox>(
-          find.descendant(
-            of: find.byKey(ValueKey<String>(key)),
-            matching: faceLayer,
-          ),
-        );
-        return (box.decoration as ShapeDecoration).color;
-      }
-
       expect(painted('app-rest'), AppColors.text);
       expect(painted('app-dead'), AppColors.textDim.withValues(alpha: 0.5));
       expect(painted('app-on'), AppColors.accent);
@@ -435,12 +396,16 @@ void main() {
         tester.getCenter(find.byKey(const ValueKey<String>('app-rest'))),
       );
       await tester.pump();
-      expect(layerOf('app-rest'), stateLayer(AppColors.text, 0.08));
+      expect(layerOf(tester, 'app-rest'), stateLayer(AppColors.text, 0.08));
       await mouse.moveTo(
         tester.getCenter(find.byKey(const ValueKey<String>('app-dead'))),
       );
       await tester.pump();
-      expect(layerOf('app-dead'), isNull, reason: 'dead buttons have none');
+      expect(
+        layerOf(tester, 'app-dead'),
+        isNull,
+        reason: 'dead buttons have none',
+      );
       await mouse.moveTo(Offset.zero);
       await tester.pump(const Duration(seconds: 2));
     });
@@ -462,8 +427,10 @@ void main() {
       expect(fired, 1);
     });
 
-    testWidgets('the Tooltip is still a real Tooltip — `find.byTooltip` and '
-        'touch long-press keep working', (tester) async {
+    testWidgets('the tooltip is the one summoned window — a mouse shows it, '
+        'a touch long-press shows it, and no `Tooltip` of its own is held', (
+      tester,
+    ) async {
       await pump(
         tester,
         AppIconButton(
@@ -473,7 +440,35 @@ void main() {
           onPressed: () {},
         ),
       );
-      expect(find.byTooltip('Say my name'), findsOneWidget);
+      final button = find.byKey(const ValueKey<String>('tip'));
+      expect(find.railTooltip('Say my name'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: button,
+          matching: find.byWidgetPredicate((widget) => widget is Tooltip),
+        ),
+        findsNothing,
+        reason: 'the window is shared — a tooltip each was nine elements',
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(button));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(SummonedTooltip.debugShownMessage, 'Say my name');
+      expect(find.text('Say my name'), findsOneWidget);
+      await mouse.moveTo(Offset.zero);
+      await tester.pump(const Duration(seconds: 2));
+      expect(SummonedTooltip.debugShownMessage, isNull);
+
+      await tester.longPress(button);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(SummonedTooltip.debugShownMessage, 'Say my name');
+      // The show duration, then the fade out.
+      await tester.pump(const Duration(milliseconds: 1500));
+      await tester.pumpAndSettle();
+      expect(SummonedTooltip.debugShownMessage, isNull);
     });
 
     testWidgets('a screen reader hears ONE node: the tooltip, a button, '
@@ -620,8 +615,10 @@ void main() {
       expect(rowTaps, 1);
     });
 
-    testWidgets('🚨one button is at most 20 render objects — the Material '
-        'one was 27', (tester) async {
+    testWidgets('🚨one button is at most 18 elements and 7 render objects — '
+        'the light face was 36 and 20, the Material one 27 render objects', (
+      tester,
+    ) async {
       await pump(
         tester,
         AppIconButton(
@@ -632,7 +629,9 @@ void main() {
         ),
       );
       var renderObjects = 0;
+      var elements = 0;
       void visit(Element element) {
+        elements += 1;
         if (element is RenderObjectElement) {
           renderObjects += 1;
         }
@@ -640,13 +639,17 @@ void main() {
       }
 
       visit(tester.element(find.byType(AppIconButton)));
-      // ⛔THE WHOLE POINT OF THE ROUND, as a number. 94 of these stand on the
-      // idle screen, so each one back is ~94 render objects plus their
-      // semantics mirror. Measured 2026-09-10 in the app: 27 with the
-      // Material button, and this bound is the light face's own count — a
-      // Flutter upgrade that adds a node to `Tooltip` or `Icon` fails it
-      // on purpose, so the number is read again rather than drifting.
-      expect(renderObjects, lessThanOrEqualTo(20));
+      // ⛔THE WHOLE POINT OF TWO ROUNDS, as numbers. 2026-09-10: 27 render
+      // objects with the Material button, 20 on the light face. 2026-10-24
+      // (board `frame-panels-build-in-one-frame`): every tab reopened
+      // builds its buttons anew, and the face's semantics node, tooltip,
+      // mouse region, listener and three boxes became ONE render object —
+      // 36 elements → 22, 20 render objects → 9. A Flutter upgrade that adds
+      // a node to `Focus`, `Actions` or `Icon` fails this on purpose, so
+      // the number is read again rather than drifting. 2026-10-25: the press
+      // claim became one render object too — 22 → 18, 9 → 7.
+      expect(elements, lessThanOrEqualTo(18));
+      expect(renderObjects, lessThanOrEqualTo(7));
     });
   });
 

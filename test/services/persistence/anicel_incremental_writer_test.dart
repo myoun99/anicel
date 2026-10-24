@@ -43,19 +43,17 @@ void main() {
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed + 3) & 0xFF;
     }
-    return AnicelCelBlob.encode(
-      AnicelCelEntry.fromSurface(
-        key(frame),
-        BitmapSurface(
-          canvasSize: const CanvasSize(width: 4, height: 4),
-          tileSize: 4,
-          tiles: {
-            TileCoord(x: 0, y: 0): BitmapTile(
-              size: 4,
-              pixels: pixels,
-            ),
-          },
-        ),
+    return AnicelCelBlob.ofSurface(
+      key(frame),
+      BitmapSurface(
+        canvasSize: const CanvasSize(width: 4, height: 4),
+        tileSize: 4,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            size: 4,
+            pixels: pixels,
+          ),
+        },
       ),
     );
   }

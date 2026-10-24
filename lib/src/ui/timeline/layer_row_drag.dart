@@ -485,6 +485,12 @@ class LayerRowDragTarget extends StatelessWidget {
   /// This constructor takes only what SELECTING needs: no caret, no slot,
   /// no `onCrossed`. A select-only row therefore cannot be handed a move
   /// destination by accident — the invariant is in the shape.
+  ///
+  /// 🚨The GRIP is what selecting needs too ([onGripTaken]): a select drag
+  /// is held by its row as a move is ([HeldRowPin] — 「move or select」).
+  /// 🔬This constructor took none, so a window sliding past a camera's or
+  /// a transition's row let the select drag that started there go
+  /// (a-select-drag-from-an-unmovable-row-keeps-its-grip, 10-24).
   const LayerRowDragTarget.selectOnly({
     super.key,
     required this.subject,
@@ -495,10 +501,10 @@ class LayerRowDragTarget extends StatelessWidget {
     this.selectRowDeltaAt,
     required this.child,
     this.grip,
+    this.onGripTaken,
+    this.onGripReleased,
   }) : canReorder = false,
        grabOffsetWithinRun = 0,
-       onGripTaken = null,
-       onGripReleased = null,
        slotBefore = null,
        drawsTheGapAfter = false,
        onCrossed = _neverCrosses,
@@ -1223,6 +1229,8 @@ Widget? unmovableRowSelectTarget({
   required TimelineRowDragHooks? hooks,
   required void Function(int rowDelta) onSelectCrossed,
   List<DragChipItem> Function()? grip,
+  VoidCallback? onGripTaken,
+  VoidCallback? onGripReleased,
   required Widget child,
 }) {
   if (kind.reordersInCut) {
@@ -1239,6 +1247,8 @@ Widget? unmovableRowSelectTarget({
     hooks: hooks,
     onSelectCrossed: onSelectCrossed,
     grip: grip,
+    onGripTaken: onGripTaken,
+    onGripReleased: onGripReleased,
     child: child,
   );
 }
@@ -1357,6 +1367,8 @@ Widget layerRowDragWrapper({
     hooks: hooks,
     onSelectCrossed: (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
     grip: grip,
+    onGripTaken: onGripTaken,
+    onGripReleased: onGripReleased,
     child: child,
   );
   if (unmovable != null) {
@@ -1483,6 +1495,10 @@ Widget _laneSelectOnlyDragTarget(
     double rowExtent,
     _RowReach reach,
     void Function(int rowDelta)? onSelectCrossed,
+    // The A5 grip, as the row-drag wrapper's: a select drag is held by its
+    // row as a move is ([HeldRowPin]).
+    VoidCallback? onGripTaken,
+    VoidCallback? onGripReleased,
   })
   wiring, {
   required Widget child,
@@ -1502,6 +1518,8 @@ Widget _laneSelectOnlyDragTarget(
     drawsTheGapAfter: false,
     onCrossed: (_, _, _) {},
     onSelectCrossed: onSelectCrossed,
+    onGripTaken: wiring.onGripTaken,
+    onGripReleased: wiring.onGripReleased,
     child: child,
   );
 }
@@ -1563,6 +1581,8 @@ Widget _laneRowDragTarget(
       rowExtent: wiring.rowExtent,
       reach: wiring.reach,
       onSelectCrossed: onSelectCrossed,
+      onGripTaken: wiring.onGripTaken,
+      onGripReleased: wiring.onGripReleased,
     ),
     child: child,
   );

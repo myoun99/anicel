@@ -749,7 +749,7 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/frame_clipboard.dart). Callers name it: a forwarder here
   // would be a second name for the same verb (round 8, G4).
   late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
-  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs);
+  late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs, layerVerbs: layerVerbs);
   late final KeyClipboard keyClipboard = KeyClipboard(board: _appClipboard.keys, laneVerbs: laneVerbs, changes: this);
   late final TextClipboard textClipboard = TextClipboard(
     board: _appClipboard.texts,
@@ -1257,7 +1257,7 @@ class EditorSessionManager extends ChangeNotifier
   //
   // A collaborator (session/pixel_verbs.dart), carved out of the cell verbs
   // when I-55 doubled the family. Callers name it, as they name [cells].
-  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels, solo: visibilitySolo);
+  late final PixelVerbs pixelVerbs = PixelVerbs(project: this, selection: this, controllers: activeCutControllers, pixelEditing: pixelEditing, renderCaches: renderCaches, pixelBoard: _appClipboard.pixels, solo: visibilitySolo, brushInputActive: brushInputActive, liveStrokeDraws: layerStack.liveStrokeDraws);
 
   // ── the rail legends: what each panel's header opens, for a key (I-40) ──
   final RailLegends railLegends = RailLegends();

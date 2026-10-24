@@ -45,3 +45,20 @@ tags:
   # instrument shaken harder: unbounded, it took this suite past ten
   # gigabytes and the runner's ten-minute cap.
   gc:
+  # A file that draws with FLUTTER GPU, which is Impeller's alone.
+  #
+  # NOT skipped: these run every time. The tag says ON WHAT they run. A
+  # plain `flutter test` runs the Skia tester, which has no GPU context to
+  # hand flutter_gpu, so there the pin can only skip; with
+  #   flutter test --enable-impeller --enable-flutter-gpu
+  # the tester draws through Vulkan (green on the Surface Pro 11, the day
+  # the first such pin was written — gpu-pins-run-in-a-batch-of-their-own,
+  # 2026-10-24). Those flags change the engine for every file in the
+  # command, and the rest of the suite measures what Skia draws (CI's
+  # engine; the canvas suite under Impeller once came back 174 red), so
+  # the flags cannot be put on everything.
+  #
+  # `tool/affected_tests.dart` reads this tag and runs the files carrying
+  # it in batches of their own, with those two flags. CI does the same
+  # inside each test shard (.github/actions/test-shard), adding no job.
+  gpu:

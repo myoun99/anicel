@@ -90,6 +90,20 @@ abstract interface class TimelineTileRasterSource {
   /// switch would otherwise be rastered against another cut's answers.
   String get substrateGeneration;
 
+  /// #29: whether this source's resolvers answer from the session's LIVE
+  /// cut — a timeline row's read the active cut at drain time — so that a
+  /// request of it dies once another world's rows paint
+  /// ([substrateGeneration]).
+  ///
+  /// A row whose resolvers answer from its own layer and from the cuts that
+  /// layer names answers the same whatever cut is live: the storyboard's
+  /// conte row, laid over the film ([filmSubstrateGeneration]). The store
+  /// neither takes its world for the live one nor drops its requests for
+  /// another's — ↩️it painted every cell by hand at every opening, the
+  /// storyboard's largest paint (frame-panels-build-in-one-frame, 10-24),
+  /// because one live world could not hold both panels' rows.
+  bool get followsTheLiveCut;
+
   /// The row's layer. Layers are immutable, so an edit is a NEW instance
   /// and identity IS the edit test.
   Layer get layer;
@@ -145,6 +159,14 @@ abstract interface class TimelineTileRasterSource {
   /// owner's answer, asked once for all the rows it lays
   /// ([TimelineGridTileStore.warmTheNextPage]). Null where no run turns it.
   TimelineNextPage? Function()? get nextPage;
+
+  /// How many steps on the playing run shows this row's frame [frame] — the
+  /// run's own order, the one its pictures are made and let go in
+  /// (`FrameDemand.stepOf`), asked of its owner — and null for a frame the
+  /// run does not show, or wherever nothing plays: what the store lets its
+  /// tiles go by ([TimelineGridTileStore]). Null where no run reaches the
+  /// row's owner.
+  int? Function(int frame)? get stepsUntilShown;
 
   /// The spans a paint of this row asks for once the axis stands at
   /// [page] — the window there and the span past each of its edges
@@ -214,3 +236,9 @@ String timelineSubstrateGeneration({
   required String projectId,
   required String? cutId,
 }) => '$projectId:${cutId ?? '-'}';
+
+/// The world of a row laid over the FILM from its own layer — the
+/// storyboard's conte row — which follows no live cut
+/// ([TimelineTileRasterSource.followsTheLiveCut]). One name for every
+/// project: such a row is known by its layer's id, which is its track's.
+const String filmSubstrateGeneration = 'film';

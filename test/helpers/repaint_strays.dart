@@ -60,15 +60,65 @@ Set<RenderObject> panelsTicksAndCanvas(WidgetTester tester) => {
 
 /// What a gesture repaints under [root] besides its ticks, by name — the
 /// strays ([repaintStrays]) of a region whose tick boundaries
-/// ([tickBoundariesUnder]) alone may repaint.
+/// ([tickBoundariesUnder]) and layout builders' own layers
+/// ([aloneLayersUnder]) may repaint, and what more [alsoAllowed] the
+/// caller's question lets.
 ///
 /// ONE question for the pins that ask a region (a scrub's, a sheet's pan,
 /// a carried block's): each built that allow list on its own, and each
 /// built it of every [TickLayer] — a panel's host among them (10-24).
-List<String> tickStraysUnder(RenderObject root) => [
-  for (final stray in repaintStrays(root, allowed: tickBoundariesUnder(root)))
-    nameOfBoundary(stray),
-];
+///
+/// 🚨A layout builder's own layer is let repaint ITSELF, not what it holds:
+/// everything a panel draws is under one, and a layer let repaint with
+/// everything under it let the panel repaint whole. 🪦Asked that way, the
+/// storyboard's playhead tint taken off its tick layer — repainted at every
+/// move of a scrub, on no tick — read nothing (10-24).
+List<String> tickStraysUnder(
+  RenderObject root, {
+  Set<RenderObject> alsoAllowed = const {},
+}) {
+  final alone = aloneLayersUnder(root);
+  return [
+    for (final stray in repaintStrays(
+      root,
+      allowed: {...tickBoundariesUnder(root), ...alsoAllowed},
+    ))
+      if (!alone.contains(stray)) nameOfBoundary(stray),
+  ];
+}
+
+/// Every [LaidOutAlone]'s own layer under [root] — the boundary that holds
+/// its layout builder and nothing else.
+///
+/// 🔬Repainted, it adds the same layers again: the layout builder draws
+/// nothing of its own, and what it lays out stands on a boundary of its own
+/// ([LaidOutAlone] has why), so the still region round it keeps its image.
+/// Measured 10-24: the bottom dock was drawn from its image through thirteen
+/// cut crossings of a storyboard scrub, each of which built the
+/// storyboard's host again and marked its own layer and its grid's. Marked
+/// while the region draws from its image, they WAIT — they are marked still
+/// on the moves after, which built nothing there — so a pin that named them
+/// named the image held.
+Set<RenderObject> aloneLayersUnder(RenderObject root) {
+  final found = <RenderObject>{};
+  void walk(RenderObject node) {
+    final creator = node.debugCreator;
+    if (node.isRepaintBoundary && creator is DebugCreator) {
+      Widget? above;
+      creator.element.visitAncestorElements((element) {
+        above = element.widget;
+        return false;
+      });
+      if (above is LaidOutAlone) {
+        found.add(node);
+      }
+    }
+    node.visitChildren(walk);
+  }
+
+  walk(root);
+  return found;
+}
 
 /// The boundaries a tick is laid out and painted on under [root] — every
 /// [RenderTickBoundary].

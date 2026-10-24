@@ -17,7 +17,6 @@ import 'package:anicel/src/services/media/video_decode_worker.dart';
 class FakeVideoBackend implements VideoDecodeBackend {
   FakeVideoBackend({
     this.supported = true,
-    this.readsFramed = true,
     this.frameCount = 12,
     this.fpsNumerator = 24,
     this.fpsDenominator = 1,
@@ -57,11 +56,6 @@ class FakeVideoBackend implements VideoDecodeBackend {
   /// says (measured 2026-09-08).
   @override
   final bool supported;
-
-  /// What this backend answers to 「can this device be fed a movie kept
-  /// framed」 — true, as every platform but Android below API 28 answers.
-  @override
-  final bool readsFramed;
 
   @override
   Future<({int token, QaVideoInfo info})?> open(

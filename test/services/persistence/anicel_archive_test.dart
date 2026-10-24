@@ -54,7 +54,7 @@ void main() {
       },
     );
 
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
+    final blob = AnicelCelBlob.ofSurface(key, surface);
     final bytes = buildAnicelArchiveBytes(
       project: project,
       cels: [blob],
@@ -145,7 +145,7 @@ void main() {
       },
     );
 
-    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
+    final blob = AnicelCelBlob.ofSurface(key, surface);
     final reopened = AnicelCelBlob(blob.bytes).decode().toSurface();
     expect(
       reopened.tiles[TileCoord(x: -1, y: -2)]!.pixels,
@@ -287,6 +287,21 @@ void main() {
       refusesNaming('format 27,'),
     );
     expect(anicelFormatVersion, greaterThan(27));
+  });
+
+  // a-cooled-empty-cel-reads-drawn (format 29): a cel's blob says in its
+  // head whether its picture shows anything (blob v4). A v28 file's blobs
+  // do not say, and this build reads no blob that does not — so it is
+  // refused by its number rather than at its first cel in words nobody
+  // could act on; and a file this build writes says a number a v28 build
+  // refuses as a newer Anicel's.
+  test('🚨a v28 file is refused by its number — its cels do not say whether '
+      'they show anything', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(28)),
+      refusesNaming('format 28,'),
+    );
+    expect(anicelFormatVersion, greaterThan(28));
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {

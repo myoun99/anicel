@@ -21,15 +21,20 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  AnicelCelFileRef ref(String path, int dataOffset, int length) =>
-      AnicelCelFileRef(
-        filePath: path,
-        dataOffset: dataOffset,
-        length: length,
-        canvasSize: const CanvasSize(width: 16, height: 16),
-        tileSize: 8,
-        photoPaths: const [],
-      );
+  AnicelCelFileRef ref(
+    String path,
+    int dataOffset,
+    int length, {
+    bool showsSomething = true,
+  }) => AnicelCelFileRef(
+    filePath: path,
+    dataOffset: dataOffset,
+    length: length,
+    canvasSize: const CanvasSize(width: 16, height: 16),
+    tileSize: 8,
+    photoPaths: const [],
+    showsSomething: showsSomething,
+  );
 
   test('🎯a ref at a moved offset in THIS file reads its bytes where they '
       'went — length included (a rekeyed cel lands in a re-spliced entry)',
@@ -75,6 +80,23 @@ void main() {
       reason: 'the offset matches, the file does not — those bytes did not '
           'move',
     );
+  });
+
+  test('🚨a moved ref still says whether its picture shows anything', () {
+    final store = BrushFrameStore()
+      ..restoreFromFile({
+        key('a'): ref('C:/p/project.anicel', 100, 40),
+        key('b'): ref('C:/p/project.anicel', 300, 50, showsSomething: false),
+      });
+
+    store.relocateFileRefs((path) => true, {
+      100: (dataOffset: 10, length: 40),
+      300: (dataOffset: 60, length: 50),
+    });
+
+    expect(store.bakedSnapshotForSave().fileRefs[key('b')]!.dataOffset, 60);
+    expect(store.celHasRenderableContent(key('a')), isTrue);
+    expect(store.celHasRenderableContent(key('b')), isFalse);
   });
 
   test('🚨moving a ref leaves the cel as clean or dirty as it was', () {

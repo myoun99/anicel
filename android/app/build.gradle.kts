@@ -36,7 +36,12 @@ android {
         applicationId = "com.myoun.anicel"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Android 10 (API 29) and up: below it the engine draws with Skia
+        // (`SelectedRenderingAPI`, flutter_main.cc), and the devices that
+        // render with Skia are out of the release (유저 2026-10-24,
+        // skia-devices-out-of-release: 「스키아로 도는건 그냥 릴리즈대상에서
+        // 제외하려고. 9이하를 요즘 누가써」).
+        minSdk = 29
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

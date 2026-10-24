@@ -291,6 +291,10 @@ enum AppStrings {
   String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
 
+  /// The canvas's own level, at the end of a frame panel's transport
+  /// (I-85).
+  String get playbackLevelTooltip => _s('playbackLevelTooltip');
+
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
   String get fpsAudioTitleTemplate => _s('fpsAudioTitleTemplate');
@@ -2025,6 +2029,7 @@ enum AppStrings {
     'layerAudioPanHelp':
         'Pan applies on the device mixer path (equal-power law).',
     'audioMute': 'Mute',
+    'playbackLevelTooltip': 'Playback volume',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
@@ -3273,6 +3278,7 @@ enum AppStrings {
     'audioPanLabel': 'パン',
     'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
     'audioMute': 'ミュート',
+    'playbackLevelTooltip': '再生音量',
     'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
@@ -3827,6 +3833,7 @@ enum AppStrings {
     'shortcutAction.timeline-pull-blocks': '詰め（コマを詰める）',
     'shortcutAction.timeline-zoom-in': 'タイムラインを拡大',
     'shortcutAction.timeline-zoom-out': 'タイムラインを縮小',
+    'shortcutAction.timeline-zoom-fit': 'タイムラインを全体表示',
     'shortcutAction.timeline-orientation-toggle': 'タイムライン / Xシート',
     'shortcutAction.edit-cut': '切り取り',
     'shortcutAction.edit-copy': 'コピー',
@@ -4946,6 +4953,7 @@ enum AppStrings {
     'audioPanLabel': '팬',
     'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
     'audioMute': '음소거',
+    'playbackLevelTooltip': '재생 음량',
     'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
@@ -5493,6 +5501,7 @@ enum AppStrings {
     'shortcutAction.timeline-pull-blocks': '당기기(칸 닫기)',
     'shortcutAction.timeline-zoom-in': '타임라인 확대',
     'shortcutAction.timeline-zoom-out': '타임라인 축소',
+    'shortcutAction.timeline-zoom-fit': '타임라인 줌 맞춤',
     'shortcutAction.timeline-orientation-toggle': '타임라인 / X시트',
     'shortcutAction.edit-cut': '잘라내기',
     'shortcutAction.edit-copy': '복사',
@@ -6611,6 +6620,7 @@ enum AppStrings {
     'layerAudioPanHelp':
         'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioMute': 'Muet',
+    'playbackLevelTooltip': 'Volume de lecture',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
@@ -7197,6 +7207,7 @@ enum AppStrings {
     'shortcutAction.timeline-pull-blocks': 'Tirer (fermer des images)',
     'shortcutAction.timeline-zoom-in': 'Zoom avant de la timeline',
     'shortcutAction.timeline-zoom-out': 'Zoom arrière de la timeline',
+    'shortcutAction.timeline-zoom-fit': 'Ajuster la timeline à la vue',
     'shortcutAction.timeline-orientation-toggle':
         "Timeline / feuille d'exposition",
     'shortcutAction.edit-cut': 'Couper',
@@ -8391,6 +8402,7 @@ enum AppStrings {
     'audioPanLabel': '声像',
     'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
     'audioMute': '静音',
+    'playbackLevelTooltip': '播放音量',
     'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':
@@ -8899,6 +8911,7 @@ enum AppStrings {
     'shortcutAction.timeline-pull-blocks': '拉回（收拢帧）',
     'shortcutAction.timeline-zoom-in': '放大时间轴',
     'shortcutAction.timeline-zoom-out': '缩小时间轴',
+    'shortcutAction.timeline-zoom-fit': '时间轴适合窗口',
     'shortcutAction.timeline-orientation-toggle': '时间轴 / 摄影表',
     'shortcutAction.edit-cut': '剪切',
     'shortcutAction.edit-copy': '复制',

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../timeline/layer_rail_window.dart' show LayerRailId;
+import '../timeline/timeline_zoom_limits.dart' show TimelineZoomLimits;
 
 /// WHERE THIS PROJECT'S PANELS WERE LEFT — the conte's zoom, and how far each
 /// frame panel is scrolled along both of its axes (F-267, 유저 2026-10-01:
@@ -21,7 +22,11 @@ class PanelViewMemory {
     defaultStoryboardPixelsPerFrame,
   );
 
-  static const double defaultStoryboardPixelsPerFrame = 8;
+  /// 40% on the bar — a zoom on one of its steps, so the first nudge moves
+  /// the number with the zoom (F-403, [TimelineZoomLimits.clamped]).
+  /// ↩️8 pixels a frame: 33.3% then, between two steps now.
+  static const double defaultStoryboardPixelsPerFrame =
+      400 * TimelineZoomLimits.referencePixelsPerFrame / 1000;
 
   /// The frames↔seconds DISPLAY (초+코마 표시): how a frame's place and a
   /// length are written — the rulers, the block words, and every list that

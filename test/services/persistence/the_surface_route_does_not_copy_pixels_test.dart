@@ -20,7 +20,7 @@ void main() {
     ).readAsStringSync();
 
     final start = source.indexOf('Uint8List encodeCelEntryFromSurface');
-    final end = source.indexOf('Uint8List encodeCelEntry(AnicelCelEntry');
+    final end = source.indexOf('_celStreamHeaderOf(_ByteReader');
     expect(start, greaterThan(-1), reason: 'setup: the function is there');
     expect(end, greaterThan(start), reason: 'setup: and the next one after');
 
@@ -39,16 +39,9 @@ void main() {
         'copying is the whole reason this route exists. The bytes are '
         'identical either way, so no behavioural test can see it.';
     expect(body.contains('.pixels'), isFalse, reason: copies);
-    expect(
-      body.contains('tileRecords'),
-      isFalse,
-      reason:
-          'that walk writes the isolate-boundary records, whose bytes were '
-          'copied to make them',
-    );
 
     final walkStart = source.indexOf('void tilesOf(');
-    final walkEnd = source.indexOf('void tileRecords(');
+    final walkEnd = source.indexOf('void bytes(List<int>');
     expect(walkStart, greaterThan(-1), reason: 'setup: the walk is there');
     expect(walkEnd, greaterThan(walkStart), reason: 'setup: and the next');
     final walk = source.substring(walkStart, walkEnd);

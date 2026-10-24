@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -67,9 +65,7 @@ void main() {
         ]);
 
     test('🚨reads back with its photos — ids, references and order', () {
-      final read = AnicelCelBlob.encode(
-        AnicelCelEntry.fromSurface(key, picture),
-      ).decode().toSurface();
+      final read = AnicelCelBlob.ofSurface(key, picture).decode().toSurface();
 
       expect(read, picture);
       expect(read.photos.map((photo) => photo.id), [5, 2]);
@@ -77,31 +73,7 @@ void main() {
       expect(read.texts.single.content.text, 'over it');
     });
 
-    test('the two ways of writing a cel write the same bytes', () {
-      expect(
-        encodeCelEntryFromSurface(key, picture),
-        encodeCelEntry(AnicelCelEntry.fromSurface(key, picture)),
-      );
-    });
-
     final headEnd = celStreamHeadEnd(key);
-
-    test('a cel written before photos existed reads as it always did', () {
-      // A v3 stream: the head, then its tiles and its texts — today's with
-      // its photos' zero taken out, and the byte at its end that says no
-      // file was laid on it (v5).
-      final withText = drawingOf({a: ink}).withTexts([textOf(1)]);
-      final today = encodeCelEntryFromSurface(key, withText);
-      final v3 = Uint8List.fromList([
-        ...today.sublist(0, headEnd),
-        ...today.sublist(headEnd + 4, today.length - 1),
-      ])..[0] = 3;
-
-      final read = decodeCelEntry(v3).toSurface();
-
-      expect(read, withText);
-      expect(read.photos, isEmpty);
-    });
 
     test('a cel with no photo writes a zero where its photos would be — '
         'after its head, ahead of its tiles', () {

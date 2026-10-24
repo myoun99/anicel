@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -231,6 +232,16 @@ class PlaybackRig implements PlaybackRun {
   /// so the count is of the frames the screen did not show.
   bool frameIsThere(int playlistFrame) => pictureIsThere(playlistFrame) ?? true;
 
+  /// How many steps on the playing run shows [cutId]'s frame [frameIndex] —
+  /// its own order ([FrameDemand.stepOf]), the one its pictures are made in
+  /// and let go by — or null for a frame it does not show, and while the
+  /// warmer follows no run that plays: what the timeline's substrate tiles
+  /// are let go by (`TimelineGridTileStore`).
+  int? stepsUntilShown(CutId cutId, int frameIndex) {
+    final wanted = prerenderScheduler.demand;
+    return wanted is PlayingDemand ? wanted.stepOf(cutId, frameIndex) : null;
+  }
+
   /// The question the run's clock asks of every frame it would stand on
   /// ([CanvasPlaybackController.waitsOn]).
   bool _waitsOn(int playlistFrame, {required bool placed}) {
@@ -319,6 +330,8 @@ class PlaybackRig implements PlaybackRun {
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
+    resolvePlaybackLevel: () =>
+        _appSettings.audioSyncSettings.value.playbackLevel,
   );
 
   /// Why the sound at [filePath] cannot be played — the one verdict
@@ -358,7 +371,24 @@ class PlaybackRig implements PlaybackRun {
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
+    resolvePlaybackLevel: () =>
+        _appSettings.audioSyncSettings.value.playbackLevel,
   );
+
+  /// How loud the canvas plays (I-85) — the bar at the end of a frame
+  /// panel's transport. Every step of the hand is kept: the level is the
+  /// app's, and lasts (Q4 「다시 켜도 기억」).
+  void setPlaybackLevel(double level) => _appSettings.setAudioSyncSettings(
+    _appSettings.audioSyncSettings.value.copyWith(playbackLevel: level),
+  );
+
+  /// Where the hand lets go of the level: the step a run hears. Once, not
+  /// per step — the refresh re-uploads the whole schedule, as the layer
+  /// fader's release does.
+  void settlePlaybackLevel(double level) {
+    setPlaybackLevel(level);
+    audioDeviceTransport.refreshSchedule();
+  }
 
   void attach() {
     audioDeviceTransport.attach();

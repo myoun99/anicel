@@ -132,8 +132,10 @@ class TimelineRowCellsPainter extends CustomPainter
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.nextPage,
+    this.stepsUntilShown,
     this.tileStore,
     this.substrateGeneration = '',
+    this.followsTheLiveCut = true,
     this.devicePixelRatio = 1.0,
     this.celContent,
     this.coverageIdentity,
@@ -150,7 +152,9 @@ class TimelineRowCellsPainter extends CustomPainter
              layerId: layer.id,
              axis: axis,
            ),
-           ?celContent?.revision,
+           // And its OWN row's answers — never every row's when one block
+           // turns white (one-cel-turning-white-repaints-every-row).
+           ?celContent?.revision.forRow(layer.id),
          ]),
        );
 
@@ -186,6 +190,9 @@ class TimelineRowCellsPainter extends CustomPainter
   /// chromeless workspace row) simply behave as one world.
   @override
   final String substrateGeneration;
+
+  @override
+  final bool followsTheLiveCut;
 
   /// R26 #44: the unworked-block tint's fact AND its event. Null = no tint.
   final TimelineCelContentSource? celContent;
@@ -263,6 +270,10 @@ class TimelineRowCellsPainter extends CustomPainter
   /// ⛔Not a paint input: it never repaints the row.
   @override
   final TimelineNextPage? Function()? nextPage;
+
+  /// ⛔Not a paint input either: it orders what the store lets go of.
+  @override
+  final int? Function(int frame)? stepsUntilShown;
 
   /// The substrate TILE store (UI-R18 O7 T2): with it set, span-sized
   /// pre-rastered images replace the substrate's canvas work —
@@ -1388,6 +1399,7 @@ class TimelineRowCellsPainter extends CustomPainter
     celCannotBeReadForLayer,
     celContentRevision,
     substrateGeneration,
+    followsTheLiveCut,
     ByIdentity(tileStore),
     // I-44: what the unworked paper is pre-blended onto is a painted fact
     // like any other (a theme change moves it).
@@ -1476,6 +1488,7 @@ Widget timelineRowCellsPaintArea({
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
   TimelineNextPage? Function()? nextPage,
+  int? Function(int frame)? stepsUntilShown,
   Object? coverageIdentity,
   String substrateGeneration = '',
 }) {
@@ -1592,6 +1605,7 @@ Widget timelineRowCellsPaintArea({
             windowBucket: windowBucket,
             viewportMainExtent: viewportMainExtent,
             nextPage: nextPage,
+            stepsUntilShown: stepsUntilShown,
             coverageIdentity: coverageIdentity,
             substrateGeneration: substrateGeneration,
           ),
@@ -1619,6 +1633,7 @@ class _RowCellsPicture extends StatelessWidget {
     required this.windowBucket,
     required this.viewportMainExtent,
     required this.nextPage,
+    required this.stepsUntilShown,
     required this.coverageIdentity,
     required this.substrateGeneration,
   });
@@ -1637,6 +1652,7 @@ class _RowCellsPicture extends StatelessWidget {
   final ValueListenable<int>? windowBucket;
   final double viewportMainExtent;
   final TimelineNextPage? Function()? nextPage;
+  final int? Function(int frame)? stepsUntilShown;
   final Object? coverageIdentity;
   final String substrateGeneration;
 
@@ -1662,6 +1678,7 @@ class _RowCellsPicture extends StatelessWidget {
       windowBucket: windowBucket,
       viewportMainExtent: viewportMainExtent,
       nextPage: nextPage,
+      stepsUntilShown: stepsUntilShown,
       // Substrate tiles (UI-R18 O7 T2): the app-wide store; it stands down
       // by itself when the native engine is unavailable (tests, web).
       //

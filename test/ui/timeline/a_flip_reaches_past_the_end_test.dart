@@ -93,7 +93,7 @@ void main() {
     int past = 6,
   }) async {
     final position = frameAxisOf(tester);
-    const cell = TimelineZoomLimits.defaultPixelsPerFrame;
+    const cell = TimelineZoomLimits.referencePixelsPerFrame;
     final builtFrames =
         ((position.maxScrollExtent + position.viewportDimension) / cell)
             .ceil();
@@ -110,7 +110,7 @@ void main() {
     await walkPastTheBuiltEnd(tester, session);
 
     final position = frameAxisOf(tester);
-    const cell = TimelineZoomLimits.defaultPixelsPerFrame;
+    const cell = TimelineZoomLimits.referencePixelsPerFrame;
     final frame = session.currentFrameIndex;
     expect(frame * cell, greaterThan(builtEnd), reason: 'premise: past it');
     expect(
@@ -150,7 +150,7 @@ void main() {
       findsOneWidget,
       reason: 'premise: the panel folded',
     );
-    const cell = TimelineZoomLimits.defaultPixelsPerFrame;
+    const cell = TimelineZoomLimits.referencePixelsPerFrame;
     await walkTo(tester, session, (openBuiltEnd / cell).ceil() + 6);
     final kept = tester
         .widget<CollapsedRowOverlay>(find.byType(CollapsedRowOverlay))
