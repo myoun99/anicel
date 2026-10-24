@@ -30,7 +30,7 @@ import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
 import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart'
-    show effectHeaderRowsOf, rowsWithSilhouette;
+    show LayerAreaSilhouette, effectHeaderRowsOf, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
 import 'layer_controls_row_facts.dart';
@@ -100,6 +100,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.frameAxisOffset,
     this.layerAxisOffset,
     this.metrics = defaultMetrics,
+    this.silhouette,
   });
 
   final List<Layer> layers;
@@ -126,6 +127,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
   /// as the frame ROW height here.
   final TimelineGridMetrics metrics;
+
+  /// The rail's [LayerTimelineGrid.silhouette]: the column a file held over
+  /// the header strip stands as, in its gap.
+  final LayerAreaSilhouette? silhouette;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -1124,10 +1129,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
             // ⚠️AFTER the line above: the sheet draws the silhouette column
             // the timeline draws, and the gap is counted on the list
             // without it ([rowsWithSilhouette]).
-            final drawnEntries = rowsWithSilhouette(
-              entries,
-              widget.hooks.dragPreview?.value,
-            );
+            final drawnEntries = rowsWithSilhouette(entries, widget.silhouette);
             // Over the DRAWN columns: the headers and the cells are both
             // built from them.
             _berths = _rowBerths.berthsFor(

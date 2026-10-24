@@ -10,7 +10,7 @@ import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_frame_window.dart' show TimelineNextPage;
 import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
-import 'layer_drop_policy.dart' show rowsWithSilhouette;
+import 'layer_drop_policy.dart' show LayerAreaSilhouette, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_controls_row_facts.dart';
 import 'layer_row_drag.dart';
@@ -77,6 +77,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.frameAxisOffset,
     this.layerAxisOffset,
     this.metrics = TimelineGridMetrics.defaults,
+    this.silhouette,
   });
 
   final List<Layer> layers;
@@ -109,6 +110,11 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Grid geometry; the frame-axis cell width carries the panel zoom.
   final TimelineGridMetrics metrics;
+
+  /// The row a file held over the layer area stands as, in its gap — drawn,
+  /// never counted ([rowsWithSilhouette]). Handed down by what builds this
+  /// grid again when it moves (`TimelinePanel`); null = none.
+  final LayerAreaSilhouette? silhouette;
 
   @override
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
@@ -856,7 +862,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // held over the layer area is DRAWN as a row in its gap, and the gap it
     // stands in is counted on the list that does not have it
     // ([rowsWithSilhouette] says why).
-    final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
+    final drawnRows = rowsWithSilhouette(rows, widget.silhouette);
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
     final laneRange = _rangeGestures.laneRangeFor(rows);
     // ⛔The gestures above take the REAL rows: nothing can be selected,

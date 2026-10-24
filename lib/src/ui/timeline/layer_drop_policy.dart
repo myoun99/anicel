@@ -1257,8 +1257,30 @@ int displayIndexForGap(List<TimelineDisplayRow> rows, int slot) {
   return slot < layers.length ? layers[slot].rowIndex : rows.length;
 }
 
-/// [rows] with the drop's silhouette row standing in its gap, or [rows]
-/// unchanged when nothing is being dragged over the layer area.
+/// The row a file held over the layer area would make, and the gap it
+/// stands in — what [rowsWithSilhouette] draws.
+typedef LayerAreaSilhouette = ({int slot, Layer row});
+
+/// The [LayerAreaSilhouette] [preview] stands, or null: a file over a ROW
+/// stands none, and no other drag does.
+///
+/// 🚨The grids are built again when THIS changes, and only then
+/// (`TimelinePanel`). They do not listen to the preview channel — it steps
+/// per pointer move — so a silhouette nothing rebuilt them for was never
+/// drawn: the caret stood in its gap and the row did not (10-25, found
+/// writing the test of the edges it is drawn on).
+LayerAreaSilhouette? layerAreaSilhouetteOf(TimelineDragPreview? preview) =>
+    switch (preview) {
+      MediaPlacementPreview(
+        silhouetteSlot: final slot?,
+        silhouetteRow: final row?,
+      ) =>
+        (slot: slot, row: row),
+      _ => null,
+    };
+
+/// [rows] with [silhouette] standing in its gap, or [rows] unchanged when
+/// there is none.
 ///
 /// 🚨★★★**DRAWN, NEVER COUNTED.** This runs AFTER the list the entrance
 /// measures against has been taken, so the gap under the pointer is counted
@@ -1268,20 +1290,15 @@ int displayIndexForGap(List<TimelineDisplayRow> rows, int slot) {
 /// (유저 2026-09-12, Q2: 「끄는 동안 행이 오르내린다」).
 List<TimelineDisplayRow> rowsWithSilhouette(
   List<TimelineDisplayRow> rows,
-  TimelineDragPreview? preview,
+  LayerAreaSilhouette? silhouette,
 ) {
-  if (preview is! MediaPlacementPreview) {
+  if (silhouette == null) {
     return rows;
   }
-  final row = preview.silhouetteRow;
-  final slot = preview.silhouetteSlot;
-  if (row == null || slot == null) {
-    return rows;
-  }
-  final at = displayIndexForGap(rows, slot);
+  final at = displayIndexForGap(rows, silhouette.slot);
   return [
     ...rows.take(at),
-    TimelineDisplayRow.layer(row, layerIndex: slot),
+    TimelineDisplayRow.layer(silhouette.row, layerIndex: silhouette.slot),
     ...rows.skip(at),
   ];
 }

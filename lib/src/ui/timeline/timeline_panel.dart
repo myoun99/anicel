@@ -23,6 +23,8 @@ import 'layer_rail_window.dart'
         LayerRailSplitter,
         layerRailFrameReserveExtent,
         layerRailMinimumWindowExtent;
+import 'layer_drop_policy.dart'
+    show LayerAreaSilhouette, layerAreaSilhouetteOf;
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
@@ -42,6 +44,7 @@ import 'timeline_double_tap.dart' show TimelineLabelDoubleClick;
 import 'timeline_run_end_handles.dart';
 import '../canvas/view_hand.dart';
 import '../session/rail_legends.dart';
+import '../sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'timeline_legend_menus.dart'
     show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
@@ -849,26 +852,50 @@ class _TimelinePanelState extends State<TimelinePanel> {
           Expanded(
             child: collapsed
                 ? const SizedBox.shrink()
-                : widget.orientation == TimelineOrientation.horizontal
-                ? LayerTimelineGrid(
-                    hooks: hooks,
-                    layers: horizontalLayers,
-                    railExtent: widget.timelineRailExtent,
-                    frameAxisOffset: widget.timelineFrameAxisOffset,
-                    layerAxisOffset: widget.timelineLayerAxisOffset,
-                    metrics: horizontalMetrics,
-                  )
-                : XSheetTimelineGrid(
-                    hooks: hooks,
-                    layers: xsheetLayerDisplayOrder(widget.layers),
-                    railExtent: widget.xsheetRailExtent,
-                    frameAxisOffset: widget.xsheetFrameAxisOffset,
-                    layerAxisOffset: widget.xsheetLayerAxisOffset,
-                    metrics: xsheetMetrics,
+                : _whereTheSilhouetteStands(
+                    (silhouette) =>
+                        widget.orientation == TimelineOrientation.horizontal
+                        ? LayerTimelineGrid(
+                            hooks: hooks,
+                            layers: horizontalLayers,
+                            railExtent: widget.timelineRailExtent,
+                            frameAxisOffset: widget.timelineFrameAxisOffset,
+                            layerAxisOffset: widget.timelineLayerAxisOffset,
+                            metrics: horizontalMetrics,
+                            silhouette: silhouette,
+                          )
+                        : XSheetTimelineGrid(
+                            hooks: hooks,
+                            layers: xsheetLayerDisplayOrder(widget.layers),
+                            railExtent: widget.xsheetRailExtent,
+                            frameAxisOffset: widget.xsheetFrameAxisOffset,
+                            layerAxisOffset: widget.xsheetLayerAxisOffset,
+                            metrics: xsheetMetrics,
+                            silhouette: silhouette,
+                          ),
                   ),
           ),
         ],
       ),
+    );
+  }
+
+  /// [grid], handed the silhouette a file over the layer area stands as —
+  /// and built again when it moves, and only then: the preview channel
+  /// steps per pointer move, and keeping the grids off it is what the
+  /// scoped channel is for ([TimelinePanel.dragPreview]). ONE gate for both
+  /// grids, so the rail and the sheet cannot stand it at different gaps.
+  Widget _whereTheSilhouetteStands(
+    Widget Function(LayerAreaSilhouette? silhouette) grid,
+  ) {
+    final preview = widget.dragPreview;
+    if (preview == null) {
+      return grid(null);
+    }
+    return SlicedListenableBuilder<LayerAreaSilhouette?>(
+      listenable: preview,
+      slice: () => layerAreaSilhouetteOf(preview.value),
+      builder: (context, silhouette) => grid(silhouette),
     );
   }
 }

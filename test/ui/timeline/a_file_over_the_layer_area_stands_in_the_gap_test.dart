@@ -37,9 +37,11 @@ void main() {
       TimelineDisplayRow.layer(layers[i], layerIndex: i),
   ];
 
-  MediaPlacementPreview standing(int slot) => MediaPlacementPreview(
-    silhouetteSlot: slot,
-    silhouetteRow: row('silhouette'),
+  LayerAreaSilhouette? standing(int slot) => layerAreaSilhouetteOf(
+    MediaPlacementPreview(
+      silhouetteSlot: slot,
+      silhouetteRow: row('silhouette'),
+    ),
   );
 
   group('drawn, never counted', () {
@@ -85,16 +87,16 @@ void main() {
     test('no drag, no row — and a drag that is not a placement is not this '
         'one\'s business', () {
       expect(rowsWithSilhouette(rows, null), same(rows));
+      expect(layerAreaSilhouetteOf(null), isNull);
       expect(
-        rowsWithSilhouette(
-          rows,
+        layerAreaSilhouetteOf(
           BlockMoveDragPreview(previewLayers: {const LayerId('A'): row('A')}),
         ),
-        same(rows),
+        isNull,
       );
       expect(
-        rowsWithSilhouette(rows, const MediaPlacementPreview()),
-        same(rows),
+        layerAreaSilhouetteOf(const MediaPlacementPreview()),
+        isNull,
         reason: 'a file over a ROW publishes no silhouette row',
       );
     });
