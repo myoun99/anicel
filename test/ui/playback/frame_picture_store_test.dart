@@ -480,6 +480,11 @@ void main() {
         ],
         [0, 50],
       );
+      expect(
+        gpu.rendered.where((size) => size == (8, 8)),
+        hasLength(3),
+        reason: 'the three patches, the one left not rastered again as one',
+      );
       // 64 and 64 laid as one of 864, more than the most: they land.
       await patchAt(200);
       await patchAt(300);
