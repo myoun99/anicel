@@ -76,8 +76,14 @@ jobs:
             files=$(git diff --name-only "$base" "$head" || true)
             if [ -n "$files" ]; then
               # Everything outside the board's own files makes it an app change.
-              if ! printf '%s\n' "$files" \
-                | grep -qvE '^(tool/board_[a-z_]+\.dart|test/tool/)'; then
+              # ⚠️No pipe into `grep -q`: it leaves at the first app file, the
+              # writer still writing the rest dies of SIGPIPE, and under the
+              # step's pipefail that failure read as 「nothing but board
+              # files」 — the 2026-10-24 bundle PR (#1483, 937 files) was
+              # judged app=false and its Windows shards, Windows app, Android
+              # and native C checks stood down. A here-string has no writer.
+              if ! grep -qvE '^(tool/board_[a-z_]+\.dart|test/tool/)' \
+                <<< "$files"; then
                 app=false
               fi
             fi
