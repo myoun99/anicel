@@ -15,12 +15,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_repository.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import 'flyout_test_helpers.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/timeline_host.dart';
 
 /// 🚨T25 — renaming a layer goes through the SHARED pill's Edit Instance
 /// now (유저 2026-08-14: 「인스턴스 편집 버튼도 공통버튼으로 이동 … 그러고
@@ -137,7 +137,7 @@ void main() {
 
   testWidgets('undo and redo rename from the UI', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+    await _pumpApp(tester, onRepositoryCreated: (repo) => repository = repo);
 
     await _renameLayer(tester, 'BG');
     expect(_layer(repository, _layerAId).name, 'BG');
@@ -170,7 +170,23 @@ void main() {
   });
 }
 
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it — the shared pill and its rename window are the tab's.
 Future<void> _pumpHome(
+  WidgetTester tester, {
+  Project? project,
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+}) async {
+  final session = await pumpTimelineHost(
+    tester,
+    project ?? _project(),
+    surface: const Size(640, 320),
+  );
+  onRepositoryCreated?.call(session.repository);
+}
+
+/// The app, for the app's own undo and redo buttons.
+Future<void> _pumpApp(
   WidgetTester tester, {
   Project? project,
   void Function(ProjectRepository repository)? onRepositoryCreated,
@@ -194,9 +210,7 @@ Future<void> _tapKey(WidgetTester tester, ValueKey<String> key) =>
 /// poking the notifier would skip. Lifted from `layer_delete_test`, where
 /// the same two-step flow landed one rung earlier.
 Future<void> _selectActiveRow(WidgetTester tester) async {
-  final session = tester
-      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-      .session;
+  final session = timelineSessionOf(tester);
   session.rowSelectionVerbs.beginRowSelection(LayerRowAddress(session.activeLayerId!));
   await tester.pumpAndSettle();
 }

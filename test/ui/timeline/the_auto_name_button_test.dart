@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -11,6 +12,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
 /// 지정이고, 누르면 숫자 편집하는 창 나와서 숫자만 입력가능」 — the button on
@@ -19,7 +21,18 @@ void main() {
   const button = ValueKey<String>('shared-auto-name-button');
   const notice = ValueKey<String>('frame-name-conflict-dialog');
 
-  Future<EditorSessionManager> pumpHome(WidgetTester tester) async {
+  /// The timeline tab alone ([pumpTimelineHost]) on the project the app
+  /// opens, as its window of 1600 × 1000 laid it — the pill, its window and
+  /// the link notice are the tab's.
+  Future<EditorSessionManager> pumpHome(WidgetTester tester) =>
+      pumpTimelineHost(
+        tester,
+        newUntitledProject(),
+        surface: const Size(1003, 446),
+      );
+
+  /// The app, for the storyboard's pill.
+  Future<EditorSessionManager> pumpApp(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -143,7 +156,7 @@ void main() {
 
   testWidgets('the storyboard\'s pill carries it too, and numbers the cuts '
       'from the one under the playhead', (tester) async {
-    final s = await pumpHome(tester);
+    final s = await pumpApp(tester);
     s.cutVerbs.createCut();
     s.cutVerbs.createCut();
     await showStoryboardPanel(tester);
