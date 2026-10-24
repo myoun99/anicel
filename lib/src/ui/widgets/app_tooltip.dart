@@ -937,6 +937,11 @@ abstract final class SummonedTooltip {
   static SummonedTooltipTarget? get debugTarget =>
       _window?.isPendingOrShown ?? false ? _window!.target : null;
 
+  /// How many windows are not yet closed — the open one, and any another
+  /// target's took the place of while it fades out — for tests.
+  @visibleForTesting
+  static int get debugWindowsAlive => _Window._alive;
+
   /// The message of the open window, or null — for tests.
   @visibleForTesting
   static String? get debugShownMessage =>
@@ -1044,7 +1049,11 @@ abstract final class SummonedTooltip {
 
 /// The one open window: its overlay entry, its fade and its timers.
 final class _Window implements TickerProvider {
-  _Window({required this.target, required this.overlay, required this.look});
+  _Window({required this.target, required this.overlay, required this.look}) {
+    _alive += 1;
+  }
+
+  static int _alive = 0;
 
   final SummonedTooltipTarget target;
   final OverlayState overlay;
@@ -1197,6 +1206,7 @@ final class _Window implements TickerProvider {
       return;
     }
     _closed = true;
+    _alive -= 1;
     _timer?.cancel();
     _timer = null;
     _removeEntry();

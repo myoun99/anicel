@@ -110,6 +110,23 @@ void main() {
     },
   };
 
+  testWidgets('a window another target took the place of is gone once it '
+      'has faded — it is not kept beside the open one', (tester) async {
+    final alive = SummonedTooltip.debugWindowsAlive;
+    await run(
+      tester,
+      summoned: true,
+      act: (scene) async {
+        await scene.hover('a');
+        await scene.hover('b', settle: false);
+        await scene.frames();
+        expect(SummonedTooltip.debugWindowsAlive, alive + 1);
+      },
+    );
+    await tester.pumpWidget(const SizedBox());
+    expect(SummonedTooltip.debugWindowsAlive, alive);
+  });
+
   for (final MapEntry(key: name, value: act) in cases.entries) {
     testWidgets('$name — the window reads as an AppTooltip does', (
       tester,
