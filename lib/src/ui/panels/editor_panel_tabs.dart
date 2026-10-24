@@ -459,12 +459,16 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         : Container(
             height: height,
             color: colorScheme.surfaceContainerLow,
-            // 🚨The strip is a TICK LAYER (I-22 ③): the sill carries the
+            // 🚨The strip is a TICK LAYER. ↩️(I-22 ③) The sill carried the
             // transport, whose readouts move on a tick — the level meter on
-            // every frame played, the drop count on every frame missed.
-            // Rebuilt bare, they laid out the workspace floor and repainted
-            // the PAGE on every playback frame; now a tick lays out and paints
-            // the strip.
+            // every frame played, the drop count on every frame missed —
+            // and rebuilt bare they laid out the workspace floor and
+            // repainted the PAGE on every playback frame; F-111 took the
+            // transport to its panel's bar. What keeps the layer now is the
+            // strip's own changes: a hovered tab is drawn live over the
+            // region's image ([StillRaster]) rather than taking it again —
+            // 🔬a hover in and out took the bottom region's image three
+            // times without the layer, once with it (10-24, test app).
             child: TickLayer(
               child: Stack(
                 children: [
