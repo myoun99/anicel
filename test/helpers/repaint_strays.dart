@@ -71,8 +71,8 @@ Set<RenderObject> panelsTicksAndCanvas(WidgetTester tester) => {
 /// 🚨A layout builder's own layer is let repaint ITSELF, not what it holds:
 /// everything a panel draws is under one, and a layer let repaint with
 /// everything under it let the panel repaint whole. 🪦Asked that way, the
-/// storyboard's playhead tint taken off its tick layer — the panel's grid
-/// repainted at every move — read nothing (10-24).
+/// storyboard's playhead tint taken off its tick layer — repainted at every
+/// move of a scrub, on no tick — read nothing (10-24).
 List<String> tickStraysUnder(
   RenderObject root, {
   Set<RenderObject> alsoAllowed = const {},
