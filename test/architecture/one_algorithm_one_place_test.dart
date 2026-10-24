@@ -542,8 +542,26 @@ import '../../tool/refactor/clone_scan.dart';
 /// lowers this back.
 /// 🔬Measured on the lane over master (`a1317441e`, at 89): this one
 /// added, none gone.
+/// 90 → 91 (2026-10-24, D7-2 — the patches waiting at the cap laid as
+/// one). The new pair is named:
+///
+///     43 tokens
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore._layAsOne
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore._landLevels
+///
+/// The reading CONFIRMS it: both take a picture's turn for its background
+/// GPU work in the quiet between held frames — gone once the picture is
+/// let go of, due once a caller waits for its levels (`settled`) — each
+/// under its own span. ⛔Not merged: two kinds of one store's work, and
+/// the rule of three holds. 🔜A third kind of the store's background work
+/// takes the turn through one helper of the entry's, and lowers this
+/// back.
+/// 🔬Measured on the lane over master (`c1875d6a0`, at 90): this one
+/// added, none gone.
 void main() {
-  const ceiling = 90;
+  const ceiling = 91;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

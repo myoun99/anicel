@@ -366,7 +366,7 @@ class FramePictureStore<K extends Object> {
   /// in one write — a later patch over an earlier — and leaves the levels
   /// under it to [_landLevels]: once patches stop coming for
   /// [_levelsQuietFor], or at once when as much waits as may
-  /// ([_asMuchAsMayWait]) after the ones not laid as one yet are
+  /// ([_Entry.waitsAtTheMost]) after the ones not laid as one yet are
   /// ([_layAsOne]).
   ///
   /// 🔬A batch, not a write a patch (D7-2, 2026-10-24): on the Surface Pro
@@ -408,10 +408,14 @@ class FramePictureStore<K extends Object> {
     ]);
     entry.levelsDue.addAll(batch);
     entry.quiet?.cancel();
-    if (_asMuchAsMayWait(entry) && entry.levelsDue.length > 1) {
+    bool atTheMost() => entry.waitsAtTheMost(
+      patches: _levelsWaitingAtMost,
+      texels: _levelsWaitingTexelsAtMost,
+    );
+    if (atTheMost() && entry.levelsDue.length > 1) {
       await _layAsOne(entry);
     }
-    if (_asMuchAsMayWait(entry)) {
+    if (atTheMost()) {
       await _landLevels(entry);
       return;
     }
@@ -420,41 +424,14 @@ class FramePictureStore<K extends Object> {
     });
   }
 
-  /// Whether as much is drawn over [entry]'s picture, waiting for the
-  /// levels under its base, as may be: [_levelsWaitingAtMost] patches, or
-  /// [_levelsWaitingTexelsAtMost] texels of them.
-  bool _asMuchAsMayWait(_Entry entry) {
-    final waiting = [...entry.levelsDueAsOne, ...entry.levelsDue];
-    var texels = 0.0;
-    for (final patch in waiting) {
-      texels += patch.rect.width * patch.rect.height;
-    }
-    return waiting.length >= _levelsWaitingAtMost ||
-        texels >= _levelsWaitingTexelsAtMost;
-  }
-
   /// The patches of [_Entry.levelsDue] drawn over the picture as ONE, over
   /// their bounds, read from the base they are in ([_readAt]): a raster on
   /// the GPU, no copy out of it — the levels under them wait on.
   ///
   /// Background GPU work like the levels' write — what the picture shows
   /// is the same with it or without it — so it takes its turn in the quiet
-  /// between held frames ([QuietTurns]).
-  ///
-  /// 🔬AT THE CAP, THE PATCHES AS ONE, NOT THE LEVELS (D7-2, 2026-10-24,
-  /// the Surface Pro 11, release, a 3840² frame patched every vsync with no
-  /// pause, the two taken in turn in one session): the levels' write at the
-  /// cap held one frame every 64 patches — at a 200 px brush at 25%, 2–12
-  /// frames past 16.7 ms a 1.6 s stroke, the longest 72–110 ms; laid as one,
-  /// 0–6, the longest 6–27 ms. At a 24 px brush at 100%, 4–65 a 2.6 s stroke
-  /// against 0–1 in the last three sessions (0–53 in the two before, the
-  /// machine busy). Each laid as one in 1–10 ms.
-  /// The levels are written once as much waits as may all the same
-  /// ([_asMuchAsMayWait]) — a 25 s stroke round and round at 200 px wrote
-  /// them 8 times, not 40: 51–66 frames past 16.7 ms, not 135. ⛔The ones
-  /// laid as one at a cap of their own, the patches as asked at theirs: 39
-  /// laid as one, not 101, but 88 MB drawn over the picture and held, not
-  /// 76, and 84–100 frames past 16.7 ms.
+  /// between held frames ([QuietTurns]). Why at the cap this and not the
+  /// levels: [_levelsWaitAtMost] has the measurement.
   Future<void> _layAsOne(_Entry entry) async {
     final turn = await _quietTurns.inAQuiet(
       _asOneSpan,
@@ -763,6 +740,21 @@ const Duration _levelsQuiet = Duration(milliseconds: 200);
 /// wait: at that many, the ones not laid as one yet are laid as one
 /// ([FramePictureStore._layAsOne]); when as many wait all the same, the
 /// levels are written at once ([_levelsQuiet] has the measurement).
+///
+/// 🔬AT THE CAP, THE PATCHES AS ONE, NOT THE LEVELS (D7-2, 2026-10-24,
+/// the Surface Pro 11, release, a 3840² frame patched every vsync with no
+/// pause, the two taken in turn in one session): the levels' write at the
+/// cap held one frame every 64 patches — at a 200 px brush at 25%, 2–12
+/// frames past 16.7 ms a 1.6 s stroke, the longest 72–110 ms; laid as one,
+/// 0–6, the longest 6–27 ms. At a 24 px brush at 100%, 4–65 a 2.6 s stroke
+/// against 0–1 in the last three sessions (0–53 in the two before, the
+/// machine busy). Each laid as one in 1–10 ms.
+/// The levels are written once as much waits as may all the same
+/// ([_levelsWaitTexelsAtMost] too) — a 25 s stroke round and round at
+/// 200 px wrote them 8 times, not 40: 51–66 frames past 16.7 ms, not 135.
+/// ⛔The ones laid as one at a cap of their own, the patches as asked at
+/// theirs: 39 laid as one, not 101, but 88 MB drawn over the picture and
+/// held, not 76, and 84–100 frames past 16.7 ms.
 const int _levelsWaitAtMost = 64;
 
 /// The most texels of the patches drawn over a picture while the levels
@@ -871,6 +863,17 @@ class _Entry {
   /// Patches of [levelsDue] laid again as one each, in the order they were
   /// laid ([FramePictureStore._layAsOne]); their levels are not in either.
   final List<LandingPatch> levelsDueAsOne = [];
+
+  /// Whether as much is drawn over [picture], waiting for the levels under
+  /// its base, as may be: [patches] of them, or [texels].
+  bool waitsAtTheMost({required int patches, required int texels}) {
+    final waiting = [...levelsDueAsOne, ...levelsDue];
+    var drawn = 0.0;
+    for (final patch in waiting) {
+      drawn += patch.rect.width * patch.rect.height;
+    }
+    return waiting.length >= patches || drawn >= texels;
+  }
 
   /// Runs out once patches stop coming for the pause the levels wait for.
   Timer? quiet;
