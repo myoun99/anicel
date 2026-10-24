@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
-import '../text/app_strings.dart' show AppText;
 import '../text/full_width_numerals.dart' show halfWidthDigitsOnly;
 import '../text/readout_text.dart' show ReadoutPart, readoutParts;
 import '../theme/app_theme.dart' show AppColors;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
+import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'axis_bar_gesture.dart';
 import 'field_slider.dart';
 import 'inline_numeric_field.dart';
@@ -214,11 +214,11 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// Whether the press under way has moved the value.
   bool _scrubbedThisPress = false;
 
-  /// The hands as last built, and what they were built from — kept, as a
-  /// settings bar keeps its own: a lane's boxes rebuild on every frame the
-  /// cursor moves, and the hands change with none of that.
-  Widget? _hands;
-  Object? _handsFor;
+  /// The hands as last built, and what they were built from
+  /// ([keptWhileSame]) — kept, as a settings bar keeps its own: a lane's
+  /// boxes rebuild on every frame the cursor moves, and the hands change
+  /// with none of that.
+  final Map<Type, Kept<Object?>> _hands = {};
 
   /// The readout as ONE number and its unit — null when it is not one.
   ReadoutPart? get _part => switch (readoutParts(widget.text)) {
@@ -394,17 +394,12 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// its pencil — after the host's step that stands there
   /// ([DragValueLabel.stepBeforePencil]).
   Widget _withHands(Widget face) {
-    final key = (
-      widget.enabled,
-      widget.keyValue,
-      widget._face,
-      widget.steps,
-      // Their tooltips speak the program's language.
-      AppText.language,
+    final hands = keptWhileSame(
+      _hands,
+      DragValueLabel,
+      (widget.enabled, widget.keyValue, widget._face, widget.steps),
+      _handsNow,
     );
-    final hands = _hands != null && _handsFor == key ? _hands! : _handsNow();
-    _hands = hands;
-    _handsFor = key;
     final fills = widget._face == _Face.box;
     return Row(
       mainAxisSize: fills ? MainAxisSize.max : MainAxisSize.min,

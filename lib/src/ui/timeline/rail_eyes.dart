@@ -5,6 +5,7 @@ import '../../models/layer_folder.dart' show LayerFolderIndex;
 import '../../models/layer_id.dart';
 import 'berth_row.dart';
 import 'layer_rail_columns.dart' show layerRailEyeIsOn;
+import 'memo_token.dart' show Kept, keptWhileSame;
 
 /// What a rail row's eye shows: its own switch ([on]), and whether a folder
 /// above it has hidden the row anyway ([hiddenAbove]).
@@ -105,13 +106,13 @@ class RailEyeBuilder extends StatefulWidget {
 }
 
 class _RailEyeBuilderState extends State<RailEyeBuilder> {
-  RailEye? _eye;
-  Widget? _built;
+  /// What was built, and from which eye ([keptWhileSame]).
+  final Map<Type, Kept<RailEye>> _held = {};
 
   @override
   void didUpdateWidget(RailEyeBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _built = null;
+    _held.clear();
   }
 
   /// The eye of the layer the row stands for NOW ([BerthRow]) — a kept
@@ -122,15 +123,17 @@ class _RailEyeBuilderState extends State<RailEyeBuilder> {
   /// — but it is mostly the same eye, and building it again built what it
   /// shows again: 108 of a crossing's rebuilds, six rows. What it shows is
   /// handed back while the eye is the same. It is built in a [Builder] of
-  /// its own, so what else it reads (the theme, the words) rebuilds it
-  /// there, never through this.
+  /// its own, so what else it reads (the theme) rebuilds it there, never
+  /// through this; the words are every keep's fact. ↩️They were said to
+  /// rebuild it there too, which a static read never does.
   @override
   Widget build(BuildContext context) {
     final eye = RailEyes.of(context, BerthRow.of(context) ?? widget.layer);
-    if (_built == null || eye != _eye) {
-      _eye = eye;
-      _built = Builder(builder: (context) => widget.builder(context, eye));
-    }
-    return _built!;
+    return keptWhileSame(
+      _held,
+      RailEyeBuilder,
+      eye,
+      () => Builder(builder: (context) => widget.builder(context, eye)),
+    );
   }
 }

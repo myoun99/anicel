@@ -41,6 +41,7 @@ import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../sliced_value_listenable_builder.dart';
+import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 
 /// Which row elements the brush list shows (every combination except
 /// all-hidden is allowed — the options menu disables the last visible one),
@@ -233,10 +234,8 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 
   List<BrushPreset>? _visibleKept;
   Object? _visibleKeptFor;
-  Widget? _listKept;
-  Object? _listKeptFor;
-  Widget? _railKept;
-  Object? _railKeptFor;
+  /// The list and the rail as built, and what from ([keptWhileSame]).
+  final Map<Symbol, Kept<Object?>> _kept = {};
 
   // View options are UI state, never project data. They were also kept out
   // of every file — "local to the panel" — and that half F-73 ① reversed
@@ -917,8 +916,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// panel's proportions the rail is also what scales.
   /// The rail, kept as built while nothing it is built from changes — a
   /// pick inside the open group changes none of it (see [_selection]).
-  Widget _buildRail() {
-    final key = (
+  Widget _buildRail() => keptWhileSame(
+    _kept,
+    #rail,
+    (
       widget.groups,
       widget.presets,
       _openGroupId,
@@ -928,14 +929,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       _railShowName,
       _railDragging,
       widget.tool,
-    );
-    final kept = _railKept;
-    if (kept != null && _railKeptFor == key) {
-      return kept;
-    }
-    _railKeptFor = key;
-    return _railKept = _buildRailFresh();
-  }
+    ),
+    _buildRailFresh,
+  );
 
   Widget _buildRailFresh() {
     final tabs = _tabs;
@@ -1048,23 +1044,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// The brush grid, kept as built while nothing it is built from changes.
   /// A pick changes none of it: the rows read the selection for themselves
   /// ([_selection]).
-  Widget _buildList(List<BrushPreset> visible, bool reorderable) {
-    final key = (
-      visible,
-      reorderable,
-      _showTipIcon,
-      _showStrokePreview,
-      _showName,
-      widget.onPresetApplied,
-      widget.tool,
-    );
-    final kept = _listKept;
-    if (kept != null && _listKeptFor == key) {
-      return kept;
-    }
-    _listKeptFor = key;
-    return _listKept = _buildListFresh(visible, reorderable);
-  }
+  Widget _buildList(List<BrushPreset> visible, bool reorderable) =>
+      keptWhileSame(
+        _kept,
+        #list,
+        (
+          visible,
+          reorderable,
+          _showTipIcon,
+          _showStrokePreview,
+          _showName,
+          widget.onPresetApplied,
+          widget.tool,
+        ),
+        () => _buildListFresh(visible, reorderable),
+      );
 
   Widget _buildListFresh(List<BrushPreset> visible, bool reorderable) {
     // 🚨H37 (유저 2026-09-11): 「이름이나 스트로크 프리뷰 없애고 팁 이미지?

@@ -7,7 +7,6 @@ import 'package:flutter/rendering.dart';
 import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
-import '../text/app_strings.dart';
 import '../text/readout_text.dart';
 import '../text/text_measure.dart';
 import '../text/vertical_writing_text.dart';
@@ -15,6 +14,7 @@ import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
+import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'axis_bar_gesture.dart';
 import 'ground_ink_writing.dart';
 import 'inline_numeric_field.dart';
@@ -641,15 +641,14 @@ class _FieldSliderState extends State<FieldSlider> {
   void _takeTrackExtent(double extent) => _trackExtent = extent;
 
   /// The hands — the +/− pair and the pencil — as last built, and what
-  /// they were built from.
+  /// they were built from ([keptWhileSame]).
   ///
   /// 🔬H40 (유저 2026-09-11): 「고를때 렉있어서 그부분도 효율적으로 가볍게
   /// 하고싶어」. A bar rebuilds for every value it is handed and every frame
   /// of a drag, and the pair — two buttons, their tooltips, their ink —
   /// changes with none of that: only with the bar's height and its axis,
   /// whether it takes the gesture, and the language its tooltips speak.
-  Widget? _hands;
-  Object? _handsFor;
+  final Map<Type, Kept<Object?>> _hands = {};
 
   /// Whether the bar is being typed into: its pencil opened the field
   /// ([ValuePencil]), and the bar stands as a box holding it until Enter,
@@ -1098,38 +1097,31 @@ class _FieldSliderState extends State<FieldSlider> {
     // Kept while nothing they show changes (see [_hands]). Its [_stepBy]
     // reads the bar's value at press time, so a pair built under an earlier
     // value steps from the current one.
-    final key = (
-      widget.height,
-      widget.axis,
-      _enabled,
-      AppText.strings.stepUp,
-      AppText.strings.stepDown,
-      AppText.strings.valueTypeIn,
+    final hands = keptWhileSame(
+      _hands,
+      FieldSlider,
+      (widget.height, widget.axis, _enabled),
+      () => Flex(
+        direction: widget.axis,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ValueSteps(
+            keyPrefix: 'field-slider-step',
+            height: widget.height,
+            enabled: _enabled,
+            onStep: _stepBy,
+            axis: widget.axis,
+          ),
+          ValuePencil(
+            keyValue: 'field-slider-type',
+            height: widget.height,
+            enabled: _enabled,
+            onPressed: _beginTyping,
+            axis: widget.axis,
+          ),
+        ],
+      ),
     );
-    final hands = _hands != null && _handsFor == key
-        ? _hands!
-        : Flex(
-            direction: widget.axis,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ValueSteps(
-                keyPrefix: 'field-slider-step',
-                height: widget.height,
-                enabled: _enabled,
-                onStep: _stepBy,
-                axis: widget.axis,
-              ),
-              ValuePencil(
-                keyValue: 'field-slider-type',
-                height: widget.height,
-                enabled: _enabled,
-                onPressed: _beginTyping,
-                axis: widget.axis,
-              ),
-            ],
-          );
-    _hands = hands;
-    _handsFor = key;
     return Flex(
       direction: widget.axis,
       children: [

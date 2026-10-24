@@ -10,16 +10,24 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 ///
 /// ↩️The sheet's bar and the timeline's view cluster kept their tooltips in
 /// the language they were built in — each held by a keep whose facts did
-/// not carry it — while the panels round them changed.
+/// not carry it — while the panels round them changed; so did the brush
+/// library, held by a keep of its own.
 ///
 /// ⚠️Nothing above the panels is built again here: the app's root is const,
 /// so what reaches them is what they hear themselves. The real app also
 /// rebuilds its theme for a switch, which a switch between two languages of
 /// one face never moves.
 void main() {
-  Future<void> pumpHome(WidgetTester tester) async {
+  /// The app as it opens, with the frame dock's [tab] brought up.
+  Future<void> pumpHome(WidgetTester tester, String? tab) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
+    if (tab != null) {
+      await tester.tap(
+        find.byKey(ValueKey<String>('timeline-mode-$tab-button')),
+      );
+      await tester.pumpAndSettle();
+    }
   }
 
   /// Every tooltip each open dock wears, in tree order.
@@ -29,37 +37,45 @@ void main() {
         for (final tip in find
             .descendant(
               of: find.byElementPredicate((e) => identical(e, dock)),
-              matching: find.byType(Tooltip),
+              // Every kind of tooltip — the app's own is a subclass, which
+              // a finder by type does not match.
+              matching: find.byWidgetPredicate((w) => w is Tooltip),
             )
             .evaluate())
           ?(tip.widget as Tooltip).message,
       ],
   };
 
-  testWidgets('every open dock wears the tooltips a fresh start wears', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    addTearDown(() => AppText.settings.value = const AppLanguageSettings());
-    const japanese = AppLanguageSettings(programLanguage: AppLanguage.ja);
+  for (final tab in [null, 'timeline', 'storyboard', 'conte', 'envelope']) {
+    testWidgets('every open dock wears the tooltips a fresh start wears'
+        '${tab == null ? '' : ', the $tab tab up'}', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      const japanese = AppLanguageSettings(programLanguage: AppLanguage.ja);
 
-    await pumpHome(tester);
-    AppText.settings.value = japanese;
-    await tester.pumpAndSettle();
-    final switched = tooltipsByDock();
+      await pumpHome(tester, tab);
+      AppText.settings.value = japanese;
+      await tester.pumpAndSettle();
+      final switched = tooltipsByDock();
 
-    await tester.pumpWidget(const SizedBox());
-    await pumpHome(tester);
-    final fresh = tooltipsByDock();
+      await tester.pumpWidget(const SizedBox());
+      await pumpHome(tester, tab);
+      final fresh = tooltipsByDock();
 
-    expect(switched.keys, unorderedEquals(fresh.keys));
-    for (final dock in fresh.keys) {
+      expect(switched.keys, unorderedEquals(fresh.keys));
       expect(
-        switched[dock],
-        fresh[dock],
-        reason: '$dock after a switch to Japanese',
+        fresh.values.where((tips) => tips.isNotEmpty),
+        hasLength(fresh.length),
+        reason: 'premise: every dock wears tooltips to compare',
       );
-    }
-  });
+      for (final dock in fresh.keys) {
+        expect(
+          switched[dock],
+          fresh[dock],
+          reason: '$dock after a switch to Japanese',
+        );
+      }
+    });
+  }
 }
