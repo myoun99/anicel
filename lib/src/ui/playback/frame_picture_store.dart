@@ -165,6 +165,12 @@ class FramePictureStore<K extends Object> {
   /// Answers false, and lets go of [from]'s picture, where it cannot: no
   /// picture under [from], no GPU to write with, or [rect] reaching past
   /// the picture's extent — a picture does not grow; lay [to] anew.
+  ///
+  /// [draw] is called before this answers, not when the patch's turn to
+  /// render comes: a stroke's step draws the overlay's tile pictures, which
+  /// the next step replaces and the pen's lift hands on or lets go of
+  /// (brush/rendering, 2026-10-24). A lay's drawing waits for its turn —
+  /// its key is the frame's signature, so what it draws does not change.
   bool patch({
     required K from,
     required K to,
@@ -180,7 +186,7 @@ class FramePictureStore<K extends Object> {
       _letGo(entry);
       return false;
     }
-    final asked = _Patch<K>(from, to, widened, draw);
+    final asked = _Patch<K>(from, to, widened, _recorded(widened, draw));
     _becoming[to] = (entry: entry, moved: asked.moved);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
@@ -288,7 +294,7 @@ class FramePictureStore<K extends Object> {
     if (extent.isEmpty) {
       return null;
     }
-    final image = await _gpu.render(
+    final image = await _rendered(
       _recorded(extent, lay.frame.draw),
       extent.width.toInt(),
       extent.height.toInt(),
@@ -309,8 +315,8 @@ class FramePictureStore<K extends Object> {
   }
 
   Future<void> _renderPatch(_Entry entry, _Patch<K> asked) async {
-    final image = await _gpu.render(
-      _recorded(asked.rect, asked.draw),
+    final image = await _rendered(
+      asked.recorded,
       asked.rect.width.toInt(),
       asked.rect.height.toInt(),
     );
@@ -541,7 +547,11 @@ class FramePictureStore<K extends Object> {
     for (final (:image, :from, :to) in reads) {
       canvas.drawImageRect(image, from, to, paint);
     }
-    final recorded = recorder.endRecording();
+    return _rendered(recorder.endRecording(), width, height);
+  }
+
+  /// [recorded] rastered, and let go of — rendered or not.
+  Future<ui.Image> _rendered(ui.Picture recorded, int width, int height) async {
     try {
       return await _gpu.render(recorded, width, height);
     } finally {
@@ -760,11 +770,11 @@ class _Lay<K> {
 
 /// One [FramePictureStore.patch], widened, until its picture has moved.
 class _Patch<K> {
-  _Patch(this.from, this.to, this.rect, this.draw);
+  _Patch(this.from, this.to, this.rect, this.recorded);
 
   final K from;
   final K to;
   final ui.Rect rect;
-  final void Function(ui.Canvas canvas) draw;
+  final ui.Picture recorded;
   final Completer<void> moved = Completer<void>();
 }

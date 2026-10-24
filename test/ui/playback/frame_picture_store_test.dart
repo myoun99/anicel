@@ -70,6 +70,44 @@ void main() {
       store.dispose();
     });
 
+    test('draws what is there when it is asked for, not when its turn to '
+        'render comes', () async {
+      final gpu = _RecordingGpu()..holdWrites = true;
+      final store = FramePictureStore<String>(gpu: gpu);
+      final picture = await _layed(store, 'a', 1024);
+      // A stroke's step draws tile pictures the next step replaces.
+      var ink = red;
+      store.patch(
+        from: 'a',
+        to: 'b',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: (canvas) => canvas.drawPaint(ui.Paint()..color = ink),
+      );
+      ink = white;
+      expect(await pollUntil(() => store.peek('b') != null), isTrue);
+      final texels = await picture.landing.single.image.toByteData();
+      expect(texels!.getUint32(0), 0xFF0000FF, reason: 'red, as RGBA');
+      await _landAll(gpu, store);
+      store.dispose();
+    });
+
+    test('lets go of every drawing it records once rastered', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      await store.settled();
+      // The lay, the patch, and the halvings its levels are read from.
+      expect(gpu.recorded, hasLength(greaterThan(2)));
+      expect(gpu.recorded.every((picture) => picture.debugDisposed), isTrue);
+      store.dispose();
+    });
+
     test('is widened outward to whole texels of the deepest level it '
         'writes, which it writes from its own halvings — and every deeper '
         'level whole after', () async {
@@ -727,6 +765,7 @@ class _RecordingGpu implements FramePictureGpu {
   bool holdWrites = false;
 
   final List<(int, int)> rendered = [];
+  final List<ui.Picture> recorded = [];
   final List<List<BaseWrite>> bases = [];
   final List<({(int, int) run, List<RunSpan> spans})> levelWrites = [];
   final List<void Function()> _heldRenders = [];
@@ -746,6 +785,7 @@ class _RecordingGpu implements FramePictureGpu {
 
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) {
+    recorded.add(picture);
     if (!holdRenders) {
       rendered.add((width, height));
       return picture.toImage(width, height);
