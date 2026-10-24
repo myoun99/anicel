@@ -390,8 +390,8 @@ void main() {
       store.dispose();
     });
 
-    test('of as many patches as wait at most land with the last of them, '
-        'the pause or not', () async {
+    test('of as many patches as are drawn over the picture at most are laid '
+        'as one over their bounds, read from the base — none written', () async {
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(
         gpu: gpu,
@@ -399,6 +399,7 @@ void main() {
         levelsWaitAtMost: 3,
       );
       final picture = await _layed(store, 'a', 1024);
+      final laidAsOne = <ui.Image>[];
       for (var i = 0; i < 3; i += 1) {
         store.patch(
           from: 'a',
@@ -406,23 +407,88 @@ void main() {
           rect: ui.Rect.fromLTWH(i * 100.0, 0, 8, 8),
           draw: fill,
         );
+        expect(await pollUntil(() => gpu.bases.length == i + 1), isTrue);
         if (i < 2) {
-          expect(
-            await pollUntil(() => picture.landing.length == i + 1),
-            isTrue,
-          );
-          await pumpEventQueue();
-          expect(gpu.levelWrites, isEmpty, reason: '${i + 1} wait');
+          laidAsOne.add(picture.landing.last.image);
         }
       }
+      expect(
+        await pollUntil(
+          () => picture.landing.length == 1 && laidAsOne.first.debugDisposed,
+        ),
+        isTrue,
+      );
+      expect(picture.landing.single.rect, const ui.Rect.fromLTWH(0, 0, 208, 8));
+      expect(gpu.rendered.last, (208, 8));
+      expect(laidAsOne.every((image) => image.debugDisposed), isTrue);
+      await pumpEventQueue();
+      expect(gpu.levelWrites, isEmpty);
+      // A caller that waits for the levels has them with the rest.
+      await store.settled();
+      expect(picture.landing, isEmpty);
+      expect(gpu.levelWrites.single.spans.first, (
+        start: 0,
+        width: 104,
+        height: 4,
+        x: 0,
+        y: 0,
+        level: 1,
+      ));
+      store.dispose();
+    });
+
+    test('land with the last of them once every patch drawn over the picture '
+        'at most is one laid so, the pause or not', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        levelsQuiet: never,
+        levelsWaitAtMost: 2,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      for (final (index, left) in [0.0, 100.0].indexed) {
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+          draw: fill,
+        );
+        expect(await pollUntil(() => gpu.bases.length == index + 1), isTrue);
+      }
+      expect(
+        await pollUntil(
+          () =>
+              picture.landing.length == 1 &&
+              picture.landing.single.rect.width == 108,
+        ),
+        isTrue,
+      );
+      await pumpEventQueue();
+      expect(gpu.levelWrites, isEmpty, reason: 'one is left to lay as one');
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(200, 0, 8, 8),
+        draw: fill,
+      );
       expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
       expect(
         [
           for (final span in gpu.levelWrites.single.spans)
             if (span.level == 1) span.x,
         ],
-        [0, 50, 100],
+        [0, 100],
       );
+      // The count starts again from none.
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(300, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => gpu.bases.length == 4), isTrue);
+      await pumpEventQueue();
+      expect(gpu.levelWrites, hasLength(1));
       store.dispose();
     });
 
@@ -531,7 +597,8 @@ void main() {
       await store.settled();
       expect(gpu.levelWrites, hasLength(1));
       final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
-      for (final left in [100.0, 200.0]) {
+      // Two at the most are laid as one, the third finds none left to.
+      for (final left in [100.0, 200.0, 300.0]) {
         store.patch(
           from: 'a',
           to: 'a',
@@ -539,11 +606,12 @@ void main() {
           draw: fill,
         );
       }
-      expect(await pollUntil(() => picture.landing.length == 2), isTrue);
+      expect(await pollUntil(() => picture.landing.length == 3), isTrue);
       await Future<void>.delayed(const Duration(milliseconds: 20));
       await pumpEventQueue();
-      expect(gpu.levelWrites, hasLength(1), reason: 'the two at the most '
-          'wait for the turn another job holds');
+      expect(picture.landing, hasLength(3), reason: 'the two at the most '
+          'wait for the turn another job holds to be laid as one');
+      expect(gpu.levelWrites, hasLength(1));
       await other!.landed();
       expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
       expect(gpu.levelWrites, hasLength(2));

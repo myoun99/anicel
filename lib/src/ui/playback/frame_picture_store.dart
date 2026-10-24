@@ -91,12 +91,16 @@ class FramePictureStore<K extends Object> {
   final FramePictureGpu _gpu;
 
   /// Where the levels under the base take their turn to be written
-  /// ([_landLevels]).
+  /// ([_landLevels]), and the patches waiting for them to be laid as one
+  /// ([_layAsOne]).
   final QuietTurns _quietTurns;
 
   /// How long a write of the levels under the base has taken from its turn
   /// to its landing, at the most of late.
   final QuietSpan _levelsSpan = QuietSpan();
+
+  /// How long laying patches as one has taken from its turn to its landing.
+  final QuietSpan _asOneSpan = QuietSpan();
 
   final Duration _levelsQuietFor;
   final int _levelsWaitingAtMost;
@@ -358,7 +362,8 @@ class FramePictureStore<K extends Object> {
   /// Lands every patch that has texels and is not in yet at the BASE level,
   /// in one write — a later patch over an earlier — and leaves the levels
   /// under it to [_landLevels]: once patches stop coming for
-  /// [_levelsQuietFor], or at once when [_levelsWaitingAtMost] wait.
+  /// [_levelsQuietFor], or at once when [_levelsWaitingAtMost] are drawn
+  /// over the picture and none of them is left to lay as one ([_layAsOne]).
   ///
   /// 🔬A batch, not a write a patch (D7-2, 2026-10-24): on the Surface Pro
   /// 11 a 3840² picture took about 57 ms to land one patch — five waits on
@@ -399,13 +404,76 @@ class FramePictureStore<K extends Object> {
     ]);
     entry.levelsDue.addAll(batch);
     entry.quiet?.cancel();
-    if (entry.levelsDue.length >= _levelsWaitingAtMost) {
-      await _landLevels(entry);
-      return;
+    if (entry.levelsDueAsOne.length + entry.levelsDue.length >=
+        _levelsWaitingAtMost) {
+      if (entry.levelsDue.length < 2) {
+        await _landLevels(entry);
+        return;
+      }
+      await _layAsOne(entry);
     }
     entry.quiet = Timer(_levelsQuietFor, () {
       entry.writes = entry.writes.then((_) => _landLevels(entry));
     });
+  }
+
+  /// The patches of [_Entry.levelsDue] drawn over the picture as ONE, over
+  /// their bounds, read from the base they are in ([_readAt]): a raster on
+  /// the GPU, no copy out of it — the levels under them wait on.
+  ///
+  /// Background GPU work like the levels' write — what the picture shows
+  /// is the same with it or without it — so it takes its turn in the quiet
+  /// between held frames ([QuietTurns]).
+  ///
+  /// 🔬AT THE CAP, THE PATCHES AS ONE, NOT THE LEVELS (D7-2, 2026-10-24,
+  /// the Surface Pro 11, release, a 3840² frame patched every vsync with no
+  /// pause): the levels' write at the cap held one frame every 64 patches —
+  /// 80–103 ms at a 200 px brush at 25%, 3–12 frames past 16.7 ms a 1.7 s
+  /// stroke; the 64 laid as one held none (0 past 16.7 ms, the longest
+  /// 7–10 ms), each in 1–6 ms. The levels are written once every patch
+  /// drawn over the picture is one so laid — 2,080 patches into a stroke
+  /// with no pause (64 + 63 + … + 1).
+  Future<void> _layAsOne(_Entry entry) async {
+    final turn = await _quietTurns.inAQuiet(
+      _asOneSpan,
+      gone: () => entry.gone,
+      due: () => entry.levelsWanted,
+    );
+    if (turn == null) {
+      return;
+    }
+    final picture = entry.picture;
+    final patches = List.of(entry.levelsDue);
+    var bounds = patches.first.rect;
+    for (final patch in patches) {
+      bounds = bounds.expandToInclude(patch.rect);
+    }
+    final image = await _readAt(
+      [
+        (
+          image: picture.image,
+          from: bounds.shift(-picture.extent.topLeft),
+          to: ui.Offset.zero & bounds.size,
+        ),
+      ],
+      bounds.width.toInt(),
+      bounds.height.toInt(),
+    );
+    if (entry.gone) {
+      image.dispose();
+      unawaited(turn.gaveUp());
+      return;
+    }
+    final one = (rect: bounds, image: image);
+    final landing = picture._landing;
+    landing.insert(landing.indexOf(patches.first), one);
+    for (final patch in patches) {
+      landing.remove(patch);
+      patch.image.dispose();
+    }
+    entry.levelsDue.clear();
+    entry.levelsDueAsOne.add(one);
+    unawaited(turn.landed());
   }
 
   /// Writes the levels under the base of every patch whose base is in, in
@@ -428,7 +496,7 @@ class FramePictureStore<K extends Object> {
   Future<void> _landLevels(_Entry entry) async {
     entry.quiet?.cancel();
     entry.quiet = null;
-    if (entry.levelsDue.isEmpty) {
+    if (entry.levelsDueAsOne.isEmpty && entry.levelsDue.isEmpty) {
       entry.levelsWanted = false;
       return;
     }
@@ -440,7 +508,8 @@ class FramePictureStore<K extends Object> {
     if (turn == null) {
       return;
     }
-    final due = List.of(entry.levelsDue);
+    final due = [...entry.levelsDueAsOne, ...entry.levelsDue];
+    entry.levelsDueAsOne.clear();
     entry.levelsDue.clear();
     entry.levelsWanted = false;
     final picture = entry.picture;
@@ -661,11 +730,16 @@ ui.Rect _scaled(ui.Rect rect, double scale) => ui.Rect.fromLTRB(
 /// next stroke began, even 50 ms after it. ⛔A longer pause is worse: at
 /// 1 s every gap left the levels to the cap, inside a stroke (2–3 vsyncs
 /// late, 66–76 ms).
+///
+/// Since the patches at the cap are laid as one
+/// ([FramePictureStore._layAsOne], the same day), that frame comes once in
+/// 2,080 patches of a stroke with no pause, not once in 64.
 const Duration _levelsQuiet = Duration(milliseconds: 200);
 
-/// The most patches that wait for the levels under their base: the one
-/// that makes them so many writes them all at once ([_levelsQuiet] has the
-/// measurement).
+/// The most patches drawn over a picture while the levels under their base
+/// wait: at that many, the ones not laid as one yet are laid as one
+/// ([FramePictureStore._layAsOne]); when none is left to, the levels are
+/// written at once ([_levelsQuiet] has the measurement).
 const int _levelsWaitAtMost = 64;
 
 /// The run's width ([FramePictureStore._run]): the widest texture every
@@ -754,14 +828,19 @@ class _Entry {
   final List<LandingPatch> waiting = [];
 
   /// The patches whose base is in and whose levels under it are not yet,
-  /// in the order they were made ([FramePictureStore._landLevels]).
+  /// in the order they were made ([FramePictureStore._landLevels]) — after
+  /// every one of [levelsDueAsOne].
   final List<LandingPatch> levelsDue = [];
+
+  /// Patches of [levelsDue] laid again as one each, in the order they were
+  /// laid ([FramePictureStore._layAsOne]); their levels are not in either.
+  final List<LandingPatch> levelsDueAsOne = [];
 
   /// Runs out once patches stop coming for the pause the levels wait for.
   Timer? quiet;
 
-  /// Whether a caller waits for [levelsDue] to be written
-  /// ([FramePictureStore.settled]) — which makes the write due.
+  /// Whether a caller waits for [levelsDue] and [levelsDueAsOne] to be
+  /// written ([FramePictureStore.settled]) — which makes the write due.
   bool levelsWanted = false;
 
   int get bytes {

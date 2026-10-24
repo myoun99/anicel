@@ -495,6 +495,9 @@ const _imageHolders = <String, String>{
   'lib/src/ui/playback/frame_picture_store.dart → levelsDue':
       'the landing patches whose base is in and whose levels are not: the '
       'very images of _landing, counted there',
+  'lib/src/ui/playback/frame_picture_store.dart → levelsDueAsOne':
+      'landing patches laid again as one at the cap: the very images of '
+      '_landing, counted there',
   'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
       'one row\'s picture carried into a paint: the clones _images holds',
 };
