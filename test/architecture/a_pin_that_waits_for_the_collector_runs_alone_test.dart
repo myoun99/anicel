@@ -11,6 +11,7 @@ import '../helpers/source_ledger.dart';
 import '../../tool/affected_tests.dart'
     show
         BatchKind,
+        carriesTag,
         filesListed,
         gcTag,
         gcTagMarker,
@@ -55,7 +56,15 @@ void main() {
       expect(result.crowd, ['a_test.dart']);
     });
 
-    test('⛔and nothing else does — the marker is the whole rule', () {
+    test('so does one listing the tag beside another — a file has one '
+        '@Tags', () {
+      final result = split({
+        'a_test.dart': "@Tags(['slow', '$gcTag'])\nlibrary;",
+      });
+      expect(result.alone, ['a_test.dart']);
+    });
+
+    test('⛔and nothing else does — the annotation is the whole rule', () {
       // A file that merely TALKS about the tag (this one does, and so does
       // the tool) must not be pulled out of the crowd by the word.
       final result = split({
@@ -309,7 +318,7 @@ void main() {
     final tagged = <String>[];
     for (final entity in dartFilesUnder('$root/test')) {
       if (!entity.path.endsWith('_test.dart')) continue;
-      if (!entity.readAsStringSync().contains(gcTagMarker)) continue;
+      if (!carriesTag(entity.readAsStringSync(), gcTag)) continue;
       tagged.add(
         entity.path.substring(root.length + 1).replaceAll(r'\', '/'),
       );

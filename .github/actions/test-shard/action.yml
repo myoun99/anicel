@@ -110,12 +110,12 @@ runs:
         # the rest of the suite measures what Skia draws (dart_test.yaml,
         # the `gpu` tag; tool/affected_tests.dart splits a run the same
         # way). In this step, not a job of their own — a job is CI usage
-        # (the 2026-08-31 suspension). awk rather than grep -l: grep says 1
-        # for 「no file here carries it」 and xargs folds that into the 123
-        # a file it could not read gives too.
+        # (the 2026-08-31 suspension). The tag is read as carriesTag reads
+        # it — a file has one @Tags, which may list gc too. awk rather than
+        # grep -l: grep says 1 for 「no file here carries it」 and xargs folds
+        # that into the 123 a file it could not read gives too.
         tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
-          | xargs -0 awk -v tag="@Tags(['gpu'])" \
-              'index($0, tag) { print FILENAME; nextfile }' \
+          | xargs -0 awk "/@Tags\\(\\[[^]]*'gpu'/ { print FILENAME; nextfile }" \
           > "$RUNNER_TEMP/shard_gpu.txt"
         awk 'FILENAME == ARGV[1] { gpu[$0] = 1; next } !($0 in gpu)' \
           "$RUNNER_TEMP/shard_gpu.txt" "$RUNNER_TEMP/shard_tests.txt" \

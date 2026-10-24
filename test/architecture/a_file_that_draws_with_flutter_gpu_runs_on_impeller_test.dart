@@ -9,6 +9,7 @@ import '../../tool/affected_tests.dart'
     show
         BatchKind,
         flutterTestArguments,
+        gcTag,
         gcTagMarker,
         gpuTag,
         gpuTagMarker,
@@ -39,6 +40,19 @@ void main() {
     expect(split.crowd, ['a_test.dart']);
     expect(split.gpu, ['b_test.dart']);
     expect(split.alone, ['c_test.dart']);
+  });
+
+  test('🚨a file listing both tags is a gpu file — a file has one @Tags, '
+      'and without the flags it cannot run at all', () {
+    final tree = {
+      'a_test.dart': "@Tags(['$gcTag', '$gpuTag'])\nlibrary;",
+      'b_test.dart': "@Tags(['$gpuTag', '$gcTag'])\nlibrary;",
+      'c_test.dart': "// about '$gpuTag', and @Tags(['benchmark'])",
+    };
+    final split = partitionByTag(tree.keys.toList(), (path) => tree[path]!);
+    expect(split.gpu, ['a_test.dart', 'b_test.dart']);
+    expect(split.alone, isEmpty);
+    expect(split.crowd, ['c_test.dart']);
   });
 
   group('the run', () {
@@ -138,7 +152,11 @@ void main() {
     // The suspension of 2026-08-31 came from CI usage, and a job is usage:
     // the split lives in the shard's own step.
     final shard = _shardStep();
-    expect(shard, contains('tag="$gpuTagMarker"'));
+    // carriesTag's expression, as awk writes it inside a shell string.
+    expect(
+      shard,
+      contains(r'xargs -0 awk "/@Tags\\(\\[[^]]*' "'$gpuTag'" '/ {'),
+    );
     expect(
       shard,
       contains(

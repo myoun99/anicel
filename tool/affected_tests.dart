@@ -102,6 +102,13 @@ const gpuTag = 'gpu';
 /// Impeller engine」 — see [partitionByTag].
 const gpuTagMarker = "@Tags(['$gpuTag'])";
 
+/// Whether [source]'s `@Tags` lists [tag]. A file carries ONE such
+/// annotation (test_core refuses a second), so a file with two of the tags
+/// above lists both in it — `@Tags(['gc', 'gpu'])`, which neither marker
+/// spells. CI's shard step reads the gpu tag with the same expression.
+bool carriesTag(String source, String tag) =>
+    RegExp("@Tags\\(\\[[^\\]]*'$tag'").hasMatch(source);
+
 /// The batch a test file runs in, by the tag its library carries
 /// ([partitionByTag]), and what that batch tells the engine.
 enum BatchKind {
@@ -163,9 +170,11 @@ enum BatchKind {
   final alone = <String>[];
   for (final file in files) {
     final text = read(file);
-    (text.contains(gpuTagMarker)
+    // A file carrying both is a gpu file: without the flags it cannot run
+    // at all, and its batch is one of its own too.
+    (carriesTag(text, gpuTag)
             ? gpu
-            : text.contains(gcTagMarker)
+            : carriesTag(text, gcTag)
             ? alone
             : crowd)
         .add(file);
