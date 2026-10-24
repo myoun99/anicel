@@ -999,13 +999,14 @@ abstract final class SummonedTooltip {
     }
   }
 
-  /// Closes the window, if one is open. Answers whether one was.
+  /// Lets the window go, if one is open — the fade out a dismissed
+  /// [AppTooltip] gives. Answers whether one was.
   static bool dismiss() {
     final window = _window;
     if (window == null) {
       return false;
     }
-    window.close();
+    window.dismiss();
     return true;
   }
 
@@ -1029,7 +1030,9 @@ abstract final class SummonedTooltip {
     if (overlay == null) {
       return null;
     }
-    current?.close();
+    // The window it replaces fades out as the new one fades in — Flutter's
+    // hover dismisses the other open tooltips, it does not tear them down.
+    current?.retire();
     return _window = _Window(
       target: target,
       overlay: overlay,
@@ -1130,8 +1133,45 @@ final class _Window implements TickerProvider {
 
   void _onFadeStatus(AnimationStatus status) {
     if (status.isDismissed) {
+      if (_retired) {
+        close();
+        return;
+      }
       _removeEntry();
       _holdRoute(_timer?.isActive ?? false);
+    }
+  }
+
+  /// Flutter's `_scheduleDismissTooltip()`: a step still waiting is dropped,
+  /// and a window that is showing, or on its way, fades out.
+  ///
+  /// ↩️A press elsewhere and a hover onto another target tore the window
+  /// down at once (I-57 ①, 10-09), where every [AppTooltip] fades out over
+  /// 75ms. 🧪Measured 2026-10-25 side by side — a click on the target, a
+  /// hover from one target to the next — and the rail's glyphs and, since
+  /// the day before, the icon buttons were the ones that blinked out.
+  void dismiss() {
+    if (_closed) {
+      return;
+    }
+    _timer?.cancel();
+    _timer = null;
+    if (_fade.isForwardOrCompleted) {
+      _fade.reverse();
+    } else if (_fade.isDismissed) {
+      _holdRoute(false);
+    }
+  }
+
+  bool _retired = false;
+
+  /// No longer the open window — another target's took its place. It fades
+  /// out as [dismiss] lets it go, and is gone for good once it has.
+  void retire() {
+    _retired = true;
+    dismiss();
+    if (_fade.isDismissed) {
+      close();
     }
   }
 
@@ -1184,7 +1224,7 @@ final class _Window implements TickerProvider {
     // is not handed a route list it is walking.
     scheduleMicrotask(() {
       if (identical(SummonedTooltip._window, this)) {
-        close();
+        dismiss();
       }
     });
   }
