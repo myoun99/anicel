@@ -57,7 +57,7 @@ class LookingTicker {
     _furthest = Duration.zero;
     final ticker = _ticker = vsync.createTicker(_tick);
     clockStarted(this);
-    _onlyToLook(() => unawaited(ticker.start()));
+    askOnlyToLook(() => unawaited(ticker.start()));
   }
 
   /// A clock that is not running has nothing to stop and says nothing
@@ -109,21 +109,10 @@ class LookingTicker {
   /// go of the tick it has scheduled; unmuted, it schedules one. A ticker
   /// that has a tick scheduled does not ask again.
   void _lookAgain(Ticker ticker) {
-    _onlyToLook(() {
+    askOnlyToLook(() {
       ticker
         ..muted = true
         ..muted = false;
     });
-  }
-
-  static void _onlyToLook(VoidCallback asks) {
-    final binding = SchedulerBinding.instance;
-    if (binding is LookOnlyFrames) {
-      binding.askingOnlyToLook(asks);
-    } else {
-      // A binding that draws every frame it begins (a test's own): asked
-      // the way any ticker asks.
-      asks();
-    }
   }
 }
