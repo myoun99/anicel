@@ -1642,13 +1642,13 @@ class _LabelPlate extends StatelessWidget {
 /// and the lane twirl beside it. They are worn HERE, at the rail's call
 /// site, rather than inside the buttons: the x-sheet's column header uses
 /// the same timesheet widget and has no swipe to claim for.
-class RailSwipeColumnPointer extends StatelessWidget {
-  const RailSwipeColumnPointer({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
+///
+/// ★It IS the [DragVerbClaim] rather than a widget that builds one: five
+/// columns of every rail row wear it, and a wrapper that only forwards its
+/// child is one element per column paid on every panel reopen (card
+/// frame-panels-build-in-one-frame, 2026-10-25).
+class RailSwipeColumnPointer extends DragVerbClaim {
+  RailSwipeColumnPointer({super.key, required Widget child})
     // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
     // the one widget every button in the app wears — the control inside
     // wears its own; what a swipe column adds is the STRONG claim, and that
@@ -1662,11 +1662,7 @@ class RailSwipeColumnPointer extends StatelessWidget {
     // from here paints the column」, which is exactly what mounting a swipe
     // column means, so the scope says it once for every control inside,
     // including an [AppIconButton] that carries a claim of its own.
-    return PressFireScope(
-      fireOn: PressFire.down,
-      child: DragVerbClaim(child: child),
-    );
-  }
+    : super(child: PressFireScope(fireOn: PressFire.down, child: child));
 }
 
 /// 테이크 라벨의 얼굴 — **바탕 없이 글자만**.

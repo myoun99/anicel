@@ -23,10 +23,20 @@ import '../input/hit_path.dart';
 /// slot builder marks every slot that HOLDS something, so a control added
 /// later is covered by construction and a slot left empty stays grabbable
 /// (reserved space is not a button).
-class RowControlSurface extends StatelessWidget {
-  const RowControlSurface({super.key, required this.child});
-
-  final Widget child;
+///
+/// ★It IS the [MetaData] rather than a widget that builds one: every slot
+/// of every rail row wears it, and a wrapper that only forwards its child
+/// is one element per slot paid on every panel reopen (card
+/// frame-panels-build-in-one-frame, 2026-10-25).
+class RowControlSurface extends MetaData {
+  const RowControlSurface({super.key, required Widget super.child})
+    : super(
+        metaData: marker,
+        // TRANSLUCENT: the control underneath must still receive the press.
+        // This widget adds itself to the hit path; it does not take the
+        // path away from what it wraps.
+        behavior: HitTestBehavior.translucent,
+      );
 
   /// The sentinel the hit-test looks for. Identity, not a type: any
   /// widget may carry it without inheriting anything.
@@ -54,16 +64,6 @@ class RowControlSurface extends StatelessWidget {
           target is RenderMetaData && identical(target.metaData, marker),
     );
   }
-
-  @override
-  Widget build(BuildContext context) => MetaData(
-    metaData: marker,
-    // TRANSLUCENT: the control underneath must still receive the press.
-    // This widget adds itself to the hit path; it does not take the path
-    // away from what it wraps.
-    behavior: HitTestBehavior.translucent,
-    child: child,
-  );
 }
 
 class _RowControlSurfaceMarker {
