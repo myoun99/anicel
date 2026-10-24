@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/the_classic_rail.dart';
+import '../../helpers/timeline_host.dart';
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
 
@@ -94,6 +95,18 @@ Project _project() {
   );
 }
 
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it — its command bar is the tab's.
+Future<ProjectRepository> _open(WidgetTester tester) async {
+  final session = await pumpTimelineHost(
+    tester,
+    _project(),
+    surface: const Size(640, 320),
+  );
+  return session.repository;
+}
+
+/// The app, for the app's own undo button.
 Future<ProjectRepository> _pumpHome(WidgetTester tester) async {
   late ProjectRepository repository;
   await tester.pumpWidget(
@@ -126,7 +139,7 @@ Cut _cut(ProjectRepository repository) =>
 void main() {
   testWidgets('drawing cell double-tap opens the frame-name editor; single '
       'tap still selects', (tester) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
 
     // Single tap: selection only, no dialog.
@@ -182,7 +195,7 @@ void main() {
   /// into one meaning, exactly one of these two dies.
   testWidgets('an EMPTY camera cell double-tap KEYS it, and a second '
       'double-tap opens the dialog', (tester) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
     expect(
       _cut(repository).camera.track.position.keyAt(2),
@@ -235,7 +248,7 @@ void main() {
   testWidgets('an EMPTY SE cell double-tap creates the entry, not a dialog', (
     tester,
   ) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
     Layer se() => _cut(
       repository,
@@ -263,7 +276,7 @@ void main() {
 
   testWidgets('an EMPTY drawing cell double-tap makes a cel, and does NOT '
       'rename the one next door', (tester) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
     // The fixture's drawing row is exposed over frames 0..3 only.
     expect(_cut(repository).layers.first.frames, hasLength(1));
@@ -287,7 +300,7 @@ void main() {
   ) async {
     // ⛔The control. A fork that fired on both sides would pass every
     // creation case above and quietly replace the editor everywhere.
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     final before = _cut(repository).layers.first.frames.length;
 
     await _doubleTapCell(tester, 'timeline-cell-draw-1');
@@ -416,7 +429,7 @@ void main() {
 
   testWidgets('toolbar Add on the camera layer keys the current pose at '
       'the playhead', (tester) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'cam', 4);
@@ -432,7 +445,7 @@ void main() {
   testWidgets('toolbar Add on an empty SE cell creates a DEFAULT entry '
       'directly — no dialog (UI-R25 #2); the Edit Instance dialog labels '
       'it afterwards', (tester) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
 
     await tapTimelineCell(tester, 'voice', 3);
@@ -479,7 +492,7 @@ void main() {
   /// they ever come apart again.
   testWidgets('toolbar Edit Instance on a camera KEY opens the COMMON key '
       'window — the camera row is its transform header (F-17)', (tester) async {
-    await _pumpHome(tester);
+    await _open(tester);
 
     await tapTimelineCell(tester, 'cam', 0);
     await tester.pumpAndSettle();
@@ -507,7 +520,7 @@ void main() {
   /// both stay exactly as they were.
   testWidgets('toolbar Edit Instance is DARK on an EMPTY SE cell, and a press '
       'there makes nothing (F-105)', (tester) async {
-    final repository = await _pumpHome(tester);
+    final repository = await _open(tester);
     await standTheClassicRail(tester);
     await tapTimelineCell(tester, 'voice', 3);
     await tester.pumpAndSettle();

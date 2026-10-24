@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/block_word_finder.dart';
 import '../../helpers/the_classic_rail.dart';
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 
@@ -77,7 +78,23 @@ Project _project({Map<int, InstructionEvent>? instructions}) {
   );
 }
 
-Future<void> _pumpHome(
+/// The tab as the app's window of 1600 × 900 laid it.
+const _wide = Size(1003, 396);
+
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it unless [surface] says another.
+Future<void> _open(
+  WidgetTester tester,
+  Project project, {
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+  Size surface = const Size(640, 320),
+}) async {
+  final session = await pumpTimelineHost(tester, project, surface: surface);
+  onRepositoryCreated?.call(session.repository);
+}
+
+/// The app, for the app's own undo button.
+Future<void> _pumpApp(
   WidgetTester tester,
   Project project, {
   void Function(ProjectRepository repository)? onRepositoryCreated,
@@ -124,7 +141,7 @@ Layer _camLayer(ProjectRepository repository) {
 void main() {
   testWidgets('instruction row shows the [icon+name] chip, A/B values and '
       'span overlay', (tester) async {
-    await _pumpHome(tester, _project());
+    await _open(tester, _project());
 
     expect(
       find.byKey(const ValueKey<String>('timeline-instruction-inst-cam-2')),
@@ -144,7 +161,7 @@ void main() {
   testWidgets('XSheet instruction column shows the same overlay', (
     tester,
   ) async {
-    await _pumpHome(tester, _project());
+    await _open(tester, _project());
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
@@ -165,7 +182,7 @@ void main() {
   testWidgets('double-tap on an empty instruction cell adds a ONE-frame '
       'event in one undo (the grips own the length)', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _pumpApp(
       tester,
       _project(instructions: const {}),
       onRepositoryCreated: (repo) => repository = repo,
@@ -229,7 +246,7 @@ void main() {
   testWidgets('free event text shows over the vocabulary name and edits '
       'through the dialog', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(
         instructions: {
@@ -266,7 +283,7 @@ void main() {
     tester,
   ) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(),
       onRepositoryCreated: (repo) => repository = repo,
@@ -346,9 +363,7 @@ void main() {
   // short of the row, and the edge triangles stand on it.
   testWidgets('I-44: the span\'s grips stand on the PAPER, a seam short of '
       'the row', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
+    await _open(tester, _project(), surface: _wide);
 
     final row = tester.getRect(
       find.named('timeline-row-cells-inst-cam'),
@@ -376,9 +391,7 @@ void main() {
   testWidgets('the span\'s grips listen to their ROW\'s live geometry — a '
       'zoom step moves their round end and their drag with the row, not a '
       'copy of it (the box is 100%\'s size, 유저 2026-09-26)', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await _pumpHome(tester, _project(), onRepositoryCreated: (_) {});
+    await _open(tester, _project(), surface: _wide);
 
     for (final edge in ['start', 'end']) {
       final key = find.byKey(
@@ -405,7 +418,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
-    await _pumpHome(
+    await _pumpApp(
       tester,
       _project(),
       onRepositoryCreated: (repo) => repository = repo,
@@ -440,7 +453,7 @@ void main() {
     tester,
   ) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(instructions: const {}),
       onRepositoryCreated: (repo) => repository = repo,

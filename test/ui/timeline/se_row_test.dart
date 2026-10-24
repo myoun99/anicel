@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
 import '../../helpers/the_classic_rail.dart';
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 
@@ -91,7 +92,23 @@ Project _project({
   );
 }
 
-Future<void> _pumpHome(
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
+/// 800 × 600 laid it.
+Future<void> _open(
+  WidgetTester tester,
+  Project project, {
+  void Function(ProjectRepository repository)? onRepositoryCreated,
+}) async {
+  final session = await pumpTimelineHost(
+    tester,
+    project,
+    surface: const Size(640, 320),
+  );
+  onRepositoryCreated?.call(session.repository);
+}
+
+/// The app, for the app's own undo button.
+Future<void> _pumpApp(
   WidgetTester tester,
   Project project, {
   void Function(ProjectRepository repository)? onRepositoryCreated,
@@ -165,7 +182,7 @@ void main() {
     'SE row paints paper blocks with the fitted dialogue overlay, no cell '
     'glyphs or X',
     (tester) async {
-      await _pumpHome(tester, _project());
+      await _open(tester, _project());
       await _ensureRowVisible(tester, _seLayerId);
 
       // The dialogue rides the block-span overlay as painted fitted glyphs.
@@ -203,7 +220,7 @@ void main() {
 
   testWidgets('an entry with a seName shows the accent name box at the '
       'block start', (tester) async {
-    await _pumpHome(
+    await _open(
       tester,
       _project(
         frames: [
@@ -234,7 +251,7 @@ void main() {
   testWidgets('the SE name block stands its writing up, not sideways', (
     tester,
   ) async {
-    await _pumpHome(
+    await _open(
       tester,
       _project(
         frames: [
@@ -261,7 +278,7 @@ void main() {
 
   testWidgets('the XSheet SE name box is a slim horizontal band, never a '
       'frame-cells-tall stack (R3 fix)', (tester) async {
-    await _pumpHome(
+    await _open(
       tester,
       _project(
         frames: [
@@ -293,7 +310,7 @@ void main() {
   });
 
   testWidgets('XSheet SE column shows the same label overlay', (tester) async {
-    await _pumpHome(tester, _project());
+    await _open(tester, _project());
 
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
@@ -310,7 +327,7 @@ void main() {
   testWidgets('SE empty stretches carry NO furniture on the editing grids '
       '(R5-② — dark uncovered cells already read as empty; the gray wash '
       'is print-sheet only)', (tester) async {
-    await _pumpHome(tester, _project());
+    await _open(tester, _project());
     await _ensureRowVisible(tester, _seLayerId);
 
     expect(
@@ -340,7 +357,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
-    await _pumpHome(
+    await _pumpApp(
       tester,
       _project(seTimeline: const {}, frames: const []),
       onRepositoryCreated: (repo) => repository = repo,
@@ -399,7 +416,7 @@ void main() {
   testWidgets('double-tap on an existing SE entry edits its label; duplicate '
       'dialogue is allowed', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(
         frames: [

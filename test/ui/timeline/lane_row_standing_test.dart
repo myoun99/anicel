@@ -17,7 +17,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show railSelectedRowColor;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// R10 #19's RAIL half: the row you are standing on is drawn, and a
 /// property lane's LABEL is a place you can stand.
@@ -78,9 +79,18 @@ Project _project() {
 }
 
 EditorSessionManager _sessionOf(WidgetTester tester) =>
-    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    timelineSessionOf(tester);
 
-Future<void> _pump(WidgetTester tester) async {
+/// The timeline tab alone ([pumpTimelineHost]), as [_pumpApp]'s window lays
+/// it — the lanes and where you stand on them are the panel's.
+Future<void> _pump(WidgetTester tester) => pumpTimelineHost(
+  tester,
+  _project(),
+  surface: const Size(790, 546),
+);
+
+/// The app — where a stroke lands on its canvas.
+Future<void> _pumpApp(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1280, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -176,7 +186,7 @@ void main() {
       await _pump(tester);
       await _openLanes(tester);
       final washed = railSelectedRowColor(
-        Theme.of(tester.element(find.byType(EditorWorkspace))).colorScheme,
+        Theme.of(tester.element(find.byType(TimelineTabHost))).colorScheme,
       );
 
       // Nothing stood on yet: every lane is an ordinary plate.
@@ -201,7 +211,7 @@ void main() {
       await _pump(tester);
       await _openLanes(tester);
       final washed = railSelectedRowColor(
-        Theme.of(tester.element(find.byType(EditorWorkspace))).colorScheme,
+        Theme.of(tester.element(find.byType(TimelineTabHost))).colorScheme,
       );
       expect(
         _plateOf(tester, _laneLabel('transform-group')),
@@ -476,7 +486,7 @@ void main() {
       expect(
         _plateOf(tester, _laneLabel('position', keyPrefix: 'xsheet')),
         railSelectedRowColor(
-          Theme.of(tester.element(find.byType(EditorWorkspace))).colorScheme,
+          Theme.of(tester.element(find.byType(TimelineTabHost))).colorScheme,
         ),
       );
     });
@@ -486,7 +496,7 @@ void main() {
     testWidgets('a lane takes no strokes; its layer keeps its picture', (
       tester,
     ) async {
-      await _pump(tester);
+      await _pumpApp(tester);
       final session = _sessionOf(tester);
       // A cel to draw on, so "refused" cannot pass for "nothing here".
       session.selectLayer(_drawLayerId);
