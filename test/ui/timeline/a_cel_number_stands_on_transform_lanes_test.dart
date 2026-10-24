@@ -10,9 +10,10 @@ import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/lane_row_slice.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/property_lanes_for_row.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
-    show transformPropertyLanes;
+    show transformGroupHeaderLane, transformPropertyLanes;
 
 /// I-65 (유저 Q2): 「셀번호fx 자체적으로 위치/크기값 구현. 트랜스폼에 있는거처럼
 /// 위치/비율 두개 키. 공용화된거 사용하면서」 — where a cel number stands its
@@ -121,6 +122,24 @@ void main() {
         paper: paper,
       )!;
       expect(unkeyed.single.stand.position.isEmpty, isTrue);
+    });
+
+    test('on keys, it freezes where they put it at that frame', () {
+      final keyed = effectsWithLaneKeyToggled(
+        [
+          number(
+            at: {0: CanvasPoint(x: 10, y: 10), 8: CanvasPoint(x: 50, y: 10)},
+          ),
+        ],
+        laneId: position,
+        frameIndex: 4,
+        paper: paper,
+      )!;
+
+      expect(
+        keyed.single.stand.position.keyAt(4)!.value,
+        CanvasPoint(x: 30, y: 10),
+      );
     });
 
     test('with no paper to rest on it keys nothing', () {
@@ -322,5 +341,30 @@ void main() {
     expect(kept(recoloured, position), isTrue, reason: 'a colour edit');
     expect(kept(moved, scale), isTrue, reason: 'a Position edit, on Scale');
     expect(kept(moved, position), isFalse, reason: 'a Position edit');
+  });
+
+  test('a row\'s lanes read where its number stands as its own Position '
+      'reads where it stands — at rest, the paper\'s middle', () {
+    final row = Layer(
+      id: const LayerId('a'),
+      name: 'A',
+      frames: const [],
+      effects: [number()],
+    );
+    final lanes = propertyLanesForRow(
+      layer: row,
+      rows: [row],
+      expandedGroupKeys: {
+        laneGroupKey(row.id, effectGroupLaneId(id)),
+        laneGroupKey(row.id, transformGroupHeaderLane.laneId),
+      },
+      valueSourceAt: (frame) => (layer: row, frame: frame),
+      poseCentre: paper,
+    );
+    String shown(String lane) =>
+        lanes.singleWhere((it) => it.laneId == lane).valueLabel!(0);
+
+    expect(shown(position), shown('position'));
+    expect(shown(scale), shown('scale'));
   });
 }

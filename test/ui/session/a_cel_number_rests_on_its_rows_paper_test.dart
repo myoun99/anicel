@@ -3,13 +3,15 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 
 /// I-65: an unkeyed cel number stands where its row rests — the middle of
-/// the paper the row is posed on — so the session's ◆ and group Reset on
-/// its Position lane read that paper, as they do a layer's transform.
+/// the paper the row is posed on — so the session's ◆, a range's Create and
+/// the group Reset on its Position lane read that paper, as they do a
+/// layer's transform.
 void main() {
   late EditorSessionManager s;
   late LayerId row;
@@ -58,5 +60,19 @@ void main() {
     expect(s.laneVerbs.resetLaneGroup(row, effectGroupLaneId(number)), isTrue);
 
     expect(held().stand.position.keyAt(0)!.value, middle());
+  });
+
+  test('a range\'s Create keys it there on every frame it covers', () {
+    final range = TimelineLaneSelection(
+      layerId: row,
+      laneId: effectLaneId(number, 'position'),
+      startIndex: 2,
+      endIndexExclusive: 4,
+    );
+
+    s.laneVerbs.createLaneKeysForSelection(range);
+
+    expect(held().stand.position.keys.keys, [2, 3]);
+    expect(held().stand.position.keyAt(2)!.value, middle());
   });
 }
