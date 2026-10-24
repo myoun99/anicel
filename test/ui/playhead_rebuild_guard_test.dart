@@ -304,6 +304,12 @@ void main() {
     // a language switch fires no session notify at all — the groups have
     // to be listening to it directly, the frame pill's name included.
     final cells = tester.widgetList(find.byType(PillNameCell)).toList();
+    // …and every button's tooltip, the push/pull pair's among them.
+    final onTheBar = find.descendant(
+      of: find.byType(TimelineActionToolbar),
+      matching: find.byType(AppIconButton),
+    );
+    final buttons = tester.widgetList(onTheBar).toList();
     session.setLanguageSettings(
       AppLanguageSettings(
         programLanguage:
@@ -319,6 +325,16 @@ void main() {
       [for (var i = 0; i < cells.length; i++) identical(printed[i], cells[i])],
       everyElement(isFalse),
       reason: 'a language change must reprint every name cell',
+    );
+    final reworded = tester.widgetList(onTheBar).toList();
+    expect(reworded, hasLength(buttons.length), reason: 'sanity');
+    expect(
+      [
+        for (var i = 0; i < buttons.length; i++)
+          identical(reworded[i], buttons[i]),
+      ],
+      everyElement(isFalse),
+      reason: 'and every tooltip',
     );
 
     // 7. The layer pill promoted DELETE out of its menu, so its enablement

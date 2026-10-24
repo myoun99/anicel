@@ -472,6 +472,9 @@ Listenable toolbarGateNews(EditorSessionManager session) => Listenable.merge([
   session.languageSettings,
   // The row you STAND on publishes on its own notifier (it moves per press):
   // Edit Instance, the shift pair's row and the storyboard's gates read it.
+  // A claim moves it on pointer-down and never notifies ([Standing]).
+  // ⛔MUTANT SURVIVES (2026-10-24): every route the suites take to a new
+  // stand notifies as well; this is the one channel a claim moves it by.
   session.standing.currentRowListenable,
   // ⑨'s row selection and the three bands grow PER POINTER MOVE, which a
   // notify per move would turn into a rebuild of every panel. A band is a
@@ -487,14 +490,21 @@ Listenable toolbarGateNews(EditorSessionManager session) => Listenable.merge([
   // lights the 색 편집 head at pen-down, as it turns the block white
   // (pen-up-dock-tail-Q2). The content's own crossing is what the
   // timeline's host was built again on (R27 #13), so its gates heard it.
+  // ⛔MUTANT SURVIVES (2026-10-24) for the content's line: every crossing
+  // that moves an answer bumps the tint's beside it ([LayerStack]). It
+  // stays as the head reads the store: what a gate reads is what it hears.
   session.layerStack.celTintRevision,
   session.renderCaches.brushFrameStore.celContentRevision,
   // I-55: the pixel board — a copy fills it without moving anything above,
-  // and the two pastes open behind it.
+  // and the two pastes open behind it ([PixelVerbs.canOpenColourEdit]
+  // reads it). ⛔MUTANT SURVIVES (2026-10-24): a copy reads the cel you
+  // stand on, which then already lit the head, so no route fills the board
+  // under a dim head without a seek; it stays for the read.
   session.appClipboard.pixels,
   // The rows the rail draws — a section toggle, a fold, a twirl, the filter
   // — which no notify carries; the storyboard's gates ask its rows, and its
-  // host was built again on them.
+  // host was built again on them. ⛔MUTANT SURVIVES (2026-10-24): no suite
+  // folds a row under a gate that reads it; it stays for the read.
   session.railView.drawn,
 ]);
 

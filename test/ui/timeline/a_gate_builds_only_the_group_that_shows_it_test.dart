@@ -6,6 +6,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -165,6 +166,17 @@ void main() {
     );
   }
 
+  Future<Finder> openTheStoryboard(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    );
+    await tester.pumpAndSettle();
+    return find.descendant(
+      of: find.byType(StoryboardTabHost),
+      matching: find.byType(TimelineActionToolbar),
+    );
+  }
+
   testWidgets('a drawing landing lights the 색 편집 head and builds its pill '
       'alone — on the timeline', (tester) async {
     final s = await openOnAnEmptyCel(tester);
@@ -182,17 +194,62 @@ void main() {
   testWidgets('…and on the storyboard, whose bar is the same widget over its '
       'own panel', (tester) async {
     final s = await openOnAnEmptyCel(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+    await expectTheHeadAlone(tester, s, await openTheStoryboard(tester));
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('the storyboard keeps its bar through a notify that moves '
+      'nothing on it', (tester) async {
+    final s = await openOnAnEmptyCel(tester);
+    final bar = await openTheStoryboard(tester);
+    final toolbar = tester.widget(bar);
+    final before = _controls(tester, bar);
+
+    // A full session notify — the storyboard's host is built again — that
+    // changes no value the bar shows.
+    s.layerSwitches.toggleLayerVisibility(
+      s.layers.firstWhere((layer) => layer.id != s.activeLayerId).id,
     );
+    await tester.pump();
+
+    expect(
+      identical(tester.widget(bar), toolbar),
+      isTrue,
+      reason: 'the host keeps the bar while it is built for this session',
+    );
+    expect(_builtAgain(tester, bar, before), isEmpty);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('on the storyboard the push/pull pair asks the row its rail '
+      'stands on — the answer its keys read', (tester) async {
+    final s = await openOnAnEmptyCel(tester);
+    final bar = await openTheStoryboard(tester);
+    final asked = StoryboardToolbarPanelContext(s).shiftCurrentRow;
+    expect(asked, isA<TrackRowAddress>(), reason: 'premise: the cut row');
+    // Slack in front of the cut: the cut row can pull, the drawing target —
+    // its block packed against frame 0 — cannot.
+    s.blockShift.pushBlocks(2, currentRow: asked);
     await tester.pumpAndSettle();
-    await expectTheHeadAlone(
-      tester,
-      s,
+    expect(s.blockShift.canPullBlocks(currentRow: asked), isTrue);
+    expect(
+      s.blockShift.canPullBlocks(),
+      isFalse,
+      reason: 'premise: that row and the drawing target answer apart',
+    );
+
+    final pull = tester.widget<AppIconButton>(
       find.descendant(
-        of: find.byType(StoryboardTabHost),
-        matching: find.byType(TimelineActionToolbar),
+        of: bar,
+        matching: find.byWidgetPredicate(
+          (w) => w is AppIconButton && w.keyValue == 'pull-blocks-button',
+        ),
       ),
+    );
+    expect(
+      pull.onPressed,
+      isNotNull,
+      reason: 'the pair answers as the rail it is on',
     );
     s.playbackRig.prerenderScheduler.cancel();
   });
