@@ -14,6 +14,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 
+import '../helpers/cels_parked_cold.dart';
+
 /// R19 P3b store contract: the baked raster IS the cel; the drawing
 /// state is a mutation ledger; display caches are aliases.
 void main() {
@@ -289,7 +291,7 @@ void main() {
     expect(store.celsLastCrossed, {a, b});
 
     final beforeSwap = store.celContentRevision.value;
-    store.restoreBaked(const {});
+    parkCold(store, const {});
     expect(store.celContentRevision.value, beforeSwap + 1);
     expect(store.celsLastCrossed, {other, a, b});
   });
