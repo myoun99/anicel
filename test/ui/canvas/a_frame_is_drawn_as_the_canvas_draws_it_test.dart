@@ -342,6 +342,16 @@ void main() {
         paint: paintOf(opacity: 0.7, blendMode: LayerBlendMode.multiply),
       ),
     ],
+    // The one blend a row keeps on itself: the plan lifts every other but
+    // normal over its backdrop (`composeOverTheirBackdrops`).
+    'an add row over a row and the paper': [
+      cel('under', 1, tiles: [TileCoord(x: 2, y: 0)]),
+      cel(
+        'over',
+        2,
+        paint: paintOf(opacity: 0.8, blendMode: LayerBlendMode.add),
+      ),
+    ],
     'a blurred folder of two rows at half opacity': [
       cel('floor', 3),
       CompositeGroup<_Cel>(
