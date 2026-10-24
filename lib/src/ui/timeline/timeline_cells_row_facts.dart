@@ -282,6 +282,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     windowBucket: grid.windowBucket,
     viewportMainExtent: grid.viewportMainExtent,
     nextPage: grid.nextPage,
+    stepsUntilShown: hooks.stepsUntilShown,
     substrateGeneration: world.substrateGeneration,
     unionLaneFor: hooks.unionLaneForLayer,
   );

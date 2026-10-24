@@ -66,6 +66,7 @@ class TimelinePanel extends StatefulWidget {
     this.frameReadySignal,
     this.revealSelectionTick,
     this.playbackFrame,
+    this.stepsUntilShown,
     required this.playbackFrameCount,
     this.noriShiro,
     required this.exposureStateForLayer,
@@ -216,6 +217,10 @@ class TimelinePanel extends StatefulWidget {
   /// straight to both grids, which turn their frame axis a page at a time
   /// while it is running. See [TimelineGridHooks.playbackFrame].
   final ValueListenable<int?>? playbackFrame;
+
+  /// How many steps on the playing run shows a frame of the cut — handed
+  /// to both grids. See [TimelineGridHooks.stepsUntilShown].
+  final int? Function(int frame)? stepsUntilShown;
 
   final int playbackFrameCount;
 
@@ -673,6 +678,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       frameReadySignal: widget.frameReadySignal,
       revealSelectionTick: widget.revealSelectionTick,
       playbackFrame: widget.playbackFrame,
+      stepsUntilShown: widget.stepsUntilShown,
       playbackFrameCount: widget.playbackFrameCount,
       noriShiro: widget.noriShiro,
       exposureStateForLayer: widget.exposureStateForLayer,

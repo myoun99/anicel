@@ -160,6 +160,14 @@ abstract interface class TimelineTileRasterSource {
   /// ([TimelineGridTileStore.warmTheNextPage]). Null where no run turns it.
   TimelineNextPage? Function()? get nextPage;
 
+  /// How many steps on the playing run shows this row's frame [frame] — the
+  /// run's own order, the one its pictures are made and let go in
+  /// (`FrameDemand.stepOf`), asked of its owner — and null for a frame the
+  /// run does not show, or wherever nothing plays: what the store lets its
+  /// tiles go by ([TimelineGridTileStore]). Null where no run reaches the
+  /// row's owner.
+  int? Function(int frame)? get stepsUntilShown;
+
   /// The spans a paint of this row asks for once the axis stands at
   /// [page] — the window there and the span past each of its edges
   /// ([tileSpans]), cut where the axis is built to there: what a run warms

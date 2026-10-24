@@ -415,6 +415,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     previewAxis: _previewAxis,
   );
 
+  /// How many steps on the playing run shows the active cut's frame
+  /// [frame] ([PlaybackRig.stepsUntilShown]) — the grids' frames are the
+  /// cut's own. A method, so the rows kept across builds ask one answer.
+  int? _stepsUntilShown(int frame) {
+    final cutId = _session.activeCutId;
+    return cutId == null
+        ? null
+        : _session.playbackRig.stepsUntilShown(cutId, frame);
+  }
+
   /// The end-line drag's session hooks (UI-R18 #14): the boundary grip
   /// end-trims the ACTIVE cut through the storyboard's trim channel.
   /// Null while no cut is active (gap parking) — the line stays static.
@@ -542,6 +552,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // law.
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
+            stepsUntilShown: _stepsUntilShown,
             readyRunsIn:
                 _session.playbackRig.playbackCache.playbackReadyRuns,
             playbackFrameCount:

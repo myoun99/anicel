@@ -17,6 +17,7 @@ library;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -30,6 +31,8 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_window.dart'
+    show timelineFrameWindowSpanFor;
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/census_where_textures_are_ram.dart';
@@ -69,6 +72,9 @@ void main() {
     Color? paperGround,
     bool blockFrameLines = false,
     int framesPerSecond = 0,
+    ValueListenable<int>? windowBucket,
+    double viewportMainExtent = 0,
+    int? Function(int frame)? stepsUntilShown,
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
@@ -80,6 +86,9 @@ void main() {
       exposureStateForLayer: stateFor,
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: baseTextStyle,
+      windowBucket: windowBucket,
+      viewportMainExtent: viewportMainExtent,
+      stepsUntilShown: stepsUntilShown,
       tileStore: store,
       paperGround: paperGround,
       blockFrameLines: blockFrameLines,
@@ -607,6 +616,119 @@ void main() {
       ).items.singleWhere((item) => item.id == 'timelineTiles').bytes,
       store.tileImageBytes,
     );
+  });
+
+  // 🚨playback-draws-frames-the-film-did-not-change-in (2026-10-24): a run
+  // shows its pages in its own order and round again, so the tile asked for
+  // longest ago is the next one it shows — what an LRU lets go of first.
+  group('past its capacity, a row on screen lets its tiles go by the run', () {
+    /// A row on screen ([TimelineGridTileStore.noticesFor] heard), windowed
+    /// so its first spans are shown and the three after them are not:
+    /// those three's starts, the painter, and the tile of a span.
+    ({
+      List<int> past,
+      TimelineRowCellsPainter painter,
+      ui.Image? Function(int start) tile,
+    })
+    rowOnScreen(int? Function(int frame) stepsUntilShown) {
+      final store = TimelineGridTileStore.instance..debugCapacity = 2;
+      addTearDown(() => store.debugCapacity = TimelineGridTileStore.capacity);
+      final bucket = ValueNotifier<int>(0);
+      addTearDown(bucket.dispose);
+      final painter = painterFor(
+        blockLayer(),
+        store: store,
+        windowBucket: bucket,
+        viewportMainExtent: 48,
+        stepsUntilShown: stepsUntilShown,
+      );
+      void heard() {}
+      painter.addListener(heard);
+      addTearDown(() => painter.removeListener(heard));
+      final span = timelineFrameWindowSpanFor(24);
+      final shownEnd = painter.tileSpans.shown.last.$2;
+      final past = [for (var i = 0; i < 3; i += 1) shownEnd + i * span];
+      expect(
+        past.last + span,
+        lessThanOrEqualTo(40),
+        reason: 'the window showed too much of the row to leave three spans',
+      );
+      return (
+        past: past,
+        painter: painter,
+        tile: (start) => store.tileFor(
+          painter: painter,
+          spanStartIndex: start,
+          spanEndIndexExclusive: start + span,
+          devicePixelRatio: 2.0,
+        ),
+      );
+    }
+
+    Future<ui.Image> landed(ui.Image? Function() tile) async {
+      expect(await pollUntil(() => tile() != null), isTrue);
+      return tile()!;
+    }
+
+    test('🚨while a run plays, the tile it shows LATEST goes — though a '
+        'paint asked for it since', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final steps = <int, int>{};
+      final row = rowOnScreen((frame) => steps[frame]);
+      final past = row.past;
+      steps.addAll({past[0]: 30, past[1]: 1, past[2]: 2});
+
+      final latest = await landed(() => row.tile(past[0]));
+      final soon = await landed(() => row.tile(past[1]));
+      expect(row.tile(past[0]), same(latest), reason: 'asked for again');
+      final next = await landed(() => row.tile(past[2]));
+
+      expect(latest.debugDisposed, isTrue, reason: 'shown 30 steps on');
+      expect(soon.debugDisposed, isFalse, reason: 'shown next');
+      expect(next.debugDisposed, isFalse);
+    });
+
+    test('wherever nothing plays, the tile asked for longest ago goes, as '
+        'before', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final row = rowOnScreen((_) => null);
+      final past = row.past;
+
+      final first = await landed(() => row.tile(past[0]));
+      final second = await landed(() => row.tile(past[1]));
+      expect(row.tile(past[0]), same(first));
+      final third = await landed(() => row.tile(past[2]));
+
+      expect(second.debugDisposed, isTrue, reason: 'asked for longest ago');
+      expect(first.debugDisposed, isFalse);
+      expect(third.debugDisposed, isFalse);
+    });
+
+    test('a span the row shows NOW stays, however late the run shows it '
+        'again', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final row = rowOnScreen((frame) => 1000 - frame);
+      final shown = row.painter.tileSpans.shown.first.$1;
+      final past = row.past;
+
+      final onScreen = await landed(() => row.tile(shown));
+      final farther = await landed(() => row.tile(past[0]));
+      final nearer = await landed(() => row.tile(past[1]));
+
+      expect(onScreen.debugDisposed, isFalse, reason: 'it is on screen');
+      expect(farther.debugDisposed, isTrue, reason: 'off screen, shown '
+          '${1000 - past[0]} steps on — after the other');
+      expect(nearer.debugDisposed, isFalse);
+    });
   });
 
   // The block-frame-lines switch (유저 2026-09-24) bakes into the tile, and

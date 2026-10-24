@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
 import '../../services/flutter_test_run.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
@@ -230,6 +231,16 @@ class PlaybackRig implements PlaybackRun {
   /// it leaves by ([CanvasPlaybackController.frameIsThere]) — one answer,
   /// so the count is of the frames the screen did not show.
   bool frameIsThere(int playlistFrame) => pictureIsThere(playlistFrame) ?? true;
+
+  /// How many steps on the playing run shows [cutId]'s frame [frameIndex] —
+  /// its own order ([FrameDemand.stepOf]), the one its pictures are made in
+  /// and let go by — or null for a frame it does not show, and while the
+  /// warmer follows no run that plays: what the timeline's substrate tiles
+  /// are let go by (`TimelineGridTileStore`).
+  int? stepsUntilShown(CutId cutId, int frameIndex) {
+    final wanted = prerenderScheduler.demand;
+    return wanted is PlayingDemand ? wanted.stepOf(cutId, frameIndex) : null;
+  }
 
   /// The question the run's clock asks of every frame it would stand on
   /// ([CanvasPlaybackController.waitsOn]).

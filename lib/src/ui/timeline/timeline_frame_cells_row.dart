@@ -80,6 +80,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.nextPage,
+    this.stepsUntilShown,
     this.substrateGeneration = '',
     this.unionLaneFor,
   });
@@ -145,6 +146,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// Where a playing run's next turn stands the frame axis
   /// ([TimelineCellsRowGrid.nextPage]) — the page the painter bakes ahead.
   final TimelineNextPage? Function()? nextPage;
+
+  /// How many steps on the playing run shows a frame of this row
+  /// ([TimelineGridHooks.stepsUntilShown]) — the order its tiles go by.
+  final int? Function(int frame)? stepsUntilShown;
 
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
@@ -638,6 +643,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     windowBucket: windowBucket,
     viewportMainExtent: viewportMainExtent,
     nextPage: nextPage,
+    stepsUntilShown: stepsUntilShown,
     substrateGeneration: substrateGeneration,
     foregroundPainterFor: layer.kind.hasBlocks ? _runLabelsPainter : null,
     // Instruction-carrying rows have no timeline entries — their events

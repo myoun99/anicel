@@ -697,6 +697,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditCutBlock,
     this.onEditConteBlock,
     this.conteCelContent,
+    this.stepsUntilShown,
     this.onCameraCutPress,
     this.onEditCameraCell,
     this.cutFrameCursor,
@@ -1490,6 +1491,11 @@ class StoryboardPanel extends StatefulWidget {
   /// timeline's unworked-block tint on the conte rows (F-357). Null = no
   /// tint.
   final ConteCelContent? conteCelContent;
+
+  /// How many steps on the playing run shows [cutId]'s frame [frameIndex]
+  /// — what the conte rows' substrate tiles are let go by
+  /// (`PlaybackRig.stepsUntilShown`). Null where no run reaches the host.
+  final int? Function(CutId cutId, int frameIndex)? stepsUntilShown;
 
   /// A press on the CAMERA row's cells that lands in a cut (I-73 ④): the
   /// cut whose own frames hold the pointer — over an O.L, the one on the

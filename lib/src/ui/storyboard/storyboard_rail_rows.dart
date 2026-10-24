@@ -2859,6 +2859,7 @@ class _StoryboardRailRows {
         onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
         onEditConteBlock: _state.widget.onEditConteBlock,
         conteCelContent: _state.widget.conteCelContent,
+        stepsUntilShown: _state.widget.stepsUntilShown,
       ),
       if (_conteLanesOpen(track, seat))
         _onTheReaches(

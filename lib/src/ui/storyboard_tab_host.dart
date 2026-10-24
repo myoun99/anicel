@@ -709,6 +709,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                   dragPreview: _session.dragPreview,
                   conteCelContent: _conteCelContent,
+                  stepsUntilShown: _session.playbackRig.stepsUntilShown,
                   // ↩️While playing, this named the PLAYING cut and the
                   // stop caught the active cut up; a run's crossing lands
                   // the cut it reaches since I-57 ②, so they are one.

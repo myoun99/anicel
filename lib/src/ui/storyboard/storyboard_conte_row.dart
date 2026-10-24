@@ -67,6 +67,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     this.onCreateStoryboardLayer,
     this.onEditConteBlock,
     this.conteCelContent,
+    this.stepsUntilShown,
   });
 
   /// The track whose row this is — its keys' and its verbs' word.
@@ -137,6 +138,22 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// The unworked-block tint ([StoryboardPanel.conteCelContent]). Null
   /// tints nothing.
   final ConteCelContent? conteCelContent;
+
+  /// How many steps on the playing run shows a cut's frame
+  /// ([StoryboardPanel.stepsUntilShown]) — asked of the cut under each of
+  /// this row's film frames ([_stepsUntilShownAt]).
+  final int? Function(CutId cutId, int frameIndex)? stepsUntilShown;
+
+  /// How many steps on the playing run shows film frame [frame] of this
+  /// row: the cut covering it there, at its own frame — none in a gap.
+  int? _stepsUntilShownAt(int frame) {
+    final ask = stepsUntilShown;
+    if (ask == null) {
+      return null;
+    }
+    final entry = _cutEntryAt(layoutEntries, frame);
+    return entry == null ? null : ask(entry.cutId, frame - entry.startFrame);
+  }
 
   /// The panels under [frame]: the covering cut and its layer at this row's
   /// seat — null in gaps and on cuts without one. The panels' GESTURE and
@@ -296,6 +313,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     onCreateStoryboardLayer != null,
     onEditConteBlock != null,
     conteCelContent != null,
+    stepsUntilShown != null,
   );
 
   @override
@@ -413,6 +431,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               // Baked as the timeline's rows are, in a world no live cut
               // moves (TimelineTileRasterSource.followsTheLiveCut).
               tileStore: TimelineGridTileStore.instance,
+              stepsUntilShown: _stepsUntilShownAt,
               substrateGeneration: filmSubstrateGeneration,
               followsTheLiveCut: false,
               devicePixelRatio: EffectiveDevicePixelRatio.of(context),
