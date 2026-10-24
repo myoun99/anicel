@@ -14,6 +14,8 @@ import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// PEN-2: the Input Settings dialog's tablet-service switch (Windows
 /// only — the CSP-style dual backend).
 void main() {
@@ -253,9 +255,8 @@ void main() {
     bool canPress(WidgetTester tester, Finder command) =>
         tester.widget<AppIconButtonFace>(command).onPressed != null;
 
-    Color? glyphOf(WidgetTester tester, Finder command) => tester
-        .widget<Icon>(find.descendant(of: command, matching: find.byType(Icon)))
-        .color;
+    Color? glyphOf(WidgetTester tester, Finder command) =>
+        tester.appIconButton(command).iconColor;
 
     testWidgets('the button writes the list, 800 and 1600 at its end', (
       tester,

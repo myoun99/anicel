@@ -15,6 +15,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 void main() {
   Future<void> pump(WidgetTester tester, Widget slider) => tester.pumpWidget(
     MaterialApp(
@@ -145,9 +147,7 @@ void main() {
       '「더 작게해도되니까 안에 들어가도록하자」)', (tester) async {
     await pumpStood(tester, label: 'Size');
     for (final cell in [down, up]) {
-      final glyph = tester.getRect(
-        find.descendant(of: cell, matching: find.byType(Icon)),
-      );
+      final glyph = tester.glyphRectOf(cell);
       final room = tester.getRect(cell);
       expect(glyph.width, lessThan(room.width));
       expect(room.contains(glyph.topLeft), isTrue);

@@ -370,12 +370,12 @@ void main() {
     ) async {
       var pressed = 0;
       await pump(tester, frameCount: 10, onPlayPause: () => pressed += 1);
-      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+      expect(find.railIcon(Icons.play_arrow), findsOneWidget);
       await tester.tap(find.byKey(k('play')));
       expect(pressed, 1);
 
       await pump(tester, frameCount: 10, playing: true);
-      expect(find.byIcon(Icons.pause), findsOneWidget);
+      expect(find.railIcon(Icons.pause), findsOneWidget);
     });
 
     testWidgets('with nothing to play, play stays where it is and is off', (
@@ -489,7 +489,7 @@ void main() {
         onMuteToggled: () => toggles += 1,
       );
       await pump(tester, frameCount: 10, sound: sound(muted: false));
-      expect(find.byIcon(Icons.volume_up), findsOneWidget);
+      expect(find.railIcon(Icons.volume_up), findsOneWidget);
       expect(
         tester.widget<FieldSlider>(find.byKey(k('volume'))).restingAccent,
         isNull,
@@ -498,7 +498,7 @@ void main() {
       expect(toggles, 1);
 
       await pump(tester, frameCount: 10, sound: sound(muted: true));
-      expect(find.byIcon(Icons.volume_off), findsOneWidget);
+      expect(find.railIcon(Icons.volume_off), findsOneWidget);
       final bar = tester.widget<FieldSlider>(find.byKey(k('volume')));
       expect(bar.value, 0.7, reason: 'muting keeps the level');
       expect(bar.restingAccent, AppColors.textDim, reason: 'and greys it');

@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/dock_edge_splitter.dart';
 
+import '../helpers/app_icon_button_probe.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/settings_flyout.dart';
 import '../helpers/rail_group_button.dart';
@@ -188,7 +189,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('tool-color-button')),
-          matching: find.byIcon(Icons.swap_horiz),
+          matching: find.wornIcon(Icons.swap_horiz),
         ),
         findsNothing,
       );

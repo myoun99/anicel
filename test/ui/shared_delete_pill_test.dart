@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
+import '../helpers/app_icon_button_probe.dart';
+
 /// ⑰ 유저 2026-08-12: 「딜리트버튼, 슬 통일하고싶음. **버튼 그냥 하나로.**
 /// 기본적으로 누르면 액티브레이어의 현재 프레임블록 삭제하고, 물론 선택범위로
 /// 선택하고 삭제가능. 그리고 레이어 선택하고 누르면 레이어삭제 … 컷도 마찬가지로
@@ -113,14 +115,11 @@ void main() {
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
 
-    Icon glyph() => tester.widget<Icon>(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('shared-delete-button')),
-        matching: find.byType(Icon),
-      ),
+    Color? glyph() => tester.glyphInkOf(
+      find.byKey(const ValueKey<String>('shared-delete-button')),
     );
     expect(session.deleteSubject, isNot(PillSubject.nothing));
-    expect(glyph().color, AppColors.danger);
+    expect(glyph(), AppColors.danger);
     // CONTRACT CHANGED (T16, 2026-08-13): disabled used to be `null`, which
     // handed the icon to the BUTTON's own ink — and a button has two of
     // those, so red → grey travelled through near-white, and a folded bar

@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// The face as master `25c942ee1` built it (`_AppIconButtonFaceState`),
 /// less the widgets that paint nothing — its colours read for [states] in
 /// the same order, from the same ink.
@@ -114,6 +116,12 @@ const _cases = [
   _Case('outlined-on', outlined: true, isSelected: true),
   _Case('outlined-danger', outlined: true, danger: true),
   _Case('word', icon: Text('1:1')),
+  _Case('own-ink', icon: Icon(Icons.draw, color: Color(0xFF2E7D32))),
+  _Case(
+    'dead-own-ink',
+    icon: Icon(Icons.draw, color: Color(0xFF2E7D32)),
+    enabled: false,
+  ),
   _Case('strip', size: AppIconButtonSize.strip),
   _Case('tool', size: AppIconButtonSize.tool),
   _Case(
@@ -289,10 +297,7 @@ void main() {
       final atRest = await _pixelsOf(tester, 'new-${c.name}');
       final node = Focus.of(
         tester.element(
-          find.descendant(
-            of: find.byKey(ValueKey<String>(c.name)),
-            matching: find.byType(IconButtonPressFace),
-          ),
+          find.iconButtonFace(find.byKey(ValueKey<String>(c.name))),
         ),
       );
 
@@ -491,10 +496,7 @@ void main() {
     ];
     for (final c in _cases) {
       final face = tester.renderObject<RenderBox>(
-        find.descendant(
-          of: find.byKey(ValueKey<String>(c.name)),
-          matching: find.byType(IconButtonPressFace),
-        ),
+        find.iconButtonFace(find.byKey(ValueKey<String>(c.name))),
       );
       final old = tester.renderObject<RenderBox>(
         find.descendant(

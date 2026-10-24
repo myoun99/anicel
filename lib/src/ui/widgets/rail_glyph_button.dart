@@ -3,7 +3,7 @@ import 'package:flutter/rendering.dart';
 
 import '../../core/lru.dart';
 import '../input/control_press_claim.dart';
-import 'app_icon_button.dart';
+import 'icon_button_box.dart';
 import 'app_tooltip.dart';
 import 'named.dart';
 import 'press_face.dart';
@@ -95,6 +95,8 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
     required this.size,
     this.isSelected = false,
     this.danger = false,
+    this.outlined = false,
+    this.focus,
     this.semanticLabel,
   });
 
@@ -102,8 +104,10 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
   /// the tests' handle, a name and never a key: a rail row shows one layer
   /// and then another in the same elements (I-57, 10-13), and a key spelled
   /// from the layer remade every button of every row on every cut switch.
+  /// Null where the button has a handle above it already — an
+  /// [AppIconButton]'s key.
   @override
-  final String name;
+  final String? name;
 
   /// Empty is no tooltip at all, as an [AppTooltip]'s empty message is.
   final String tooltip;
@@ -128,6 +132,15 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
   /// Something is wrong with what this button is about ([AppIconButton.
   /// danger]).
   final bool danger;
+
+  /// The box's edge is drawn ([AppIconButton.outlined]).
+  final bool outlined;
+
+  /// Where the keyboard's focus is, for a button the keyboard reaches —
+  /// an [AppIconButton]'s, whose `Focus` stands above this. Null for a rail
+  /// button, which takes no focus at all (board `F-450-Q2`): its node says
+  /// nothing about focus, where `away` says 「focusable, not focused」.
+  final IconButtonFocus? focus;
 
   bool get enabled => onPressed != null;
 
@@ -157,9 +170,10 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
       semanticLabel: semanticLabel,
       isSelected: isSelected,
       ink: IconButtonInk.of(context, isSelected: isSelected, danger: danger),
+      focus: focus,
       shape: appIconButtonShape(
         size.height,
-        outlined: false,
+        outlined: outlined,
         danger: danger,
         isSelected: isSelected,
       ),
@@ -188,6 +202,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
     required this.onPressed,
     required this.semanticLabel,
     required this.isSelected,
+    required this.focus,
     required this.ink,
     required this.shape,
     required this.minWidth,
@@ -204,6 +219,9 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   final VoidCallback? onPressed;
   final String? semanticLabel;
   final bool isSelected;
+
+  /// [RailGlyphButton.focus].
+  final IconButtonFocus? focus;
   final IconButtonInk ink;
   final ShapeBorder shape;
   final double minWidth;
@@ -233,6 +251,8 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
       laysOutAs(other) &&
       other.enabled == enabled &&
       other.isSelected == isSelected &&
+      (other.focus == IconButtonFocus.shown) ==
+          (focus == IconButtonFocus.shown) &&
       other.ink == ink &&
       other.shape == shape;
 
@@ -240,6 +260,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   bool operator ==(Object other) =>
       other is RailGlyphSpec &&
       paintsAs(other) &&
+      other.focus == focus &&
       other.tooltip == tooltip &&
       other.onPressed == onPressed &&
       other.semanticLabel == semanticLabel &&
@@ -252,6 +273,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
     onPressed,
     semanticLabel,
     isSelected,
+    focus,
     ink,
     shape,
     minWidth,
@@ -303,51 +325,120 @@ class RenderRailGlyphFace extends RenderBox with PressClaim, PressFace {
   @override
   void pressLookChanged() => markNeedsPaint();
 
+  /// What this face's ink is resolved against: the hover and the press,
+  /// and the keyboard's focus where it is shown ([IconButtonFocus]).
+  Set<WidgetState> get _states => <WidgetState>{
+    ...pressStates,
+    if (_spec.focus == IconButtonFocus.shown) WidgetState.focused,
+  };
+
   /// The colour the glyph is painted in right now — for tests.
   @visibleForTesting
   Color? get debugGlyphInk =>
-      _glyphPainter(_spec.ink.foreground(pressStates)).text?.style?.color;
+      _glyphPainter(_spec.ink.foreground(_states)).text?.style?.color;
+
+  /// The state layer painted right now — for tests.
+  @visibleForTesting
+  Color? get debugLayerInk => _spec.ink.overlay(_states);
+
+  /// Where the glyph is drawn, in the face's own space — for tests.
+  @visibleForTesting
+  Rect get debugGlyphRect =>
+      _glyphOffset & _glyphPainter(_spec.ink.foreground(_states)).size;
 
   // ── layout ──────────────────────────────────────────────────────────
+  //
+  // ⛔Every way a parent can ask the box's size answers what the widgets it
+  // stands for answered — the layout, the dry layout, the intrinsics and
+  // the baselines — since an [AppIconButton] wearing this stands in rows,
+  // wraps and dialogs that ask each of them.
 
   /// Where the glyph is painted inside the face — [Icon]'s square of its
   /// size centred and the glyph centred in it, or the word's paragraph
   /// centred — summed as the widgets summed their offsets.
   Offset _glyphOffset = Offset.zero;
 
+  BoxConstraints get _box => BoxConstraints(
+    minWidth: _spec.minWidth,
+    maxWidth: _spec.maxWidth,
+    minHeight: _spec.height,
+    maxHeight: _spec.height,
+  );
+
+  /// The face's box under [constraints] and where its glyph's paragraph
+  /// stands in it — the one answer layout, dry layout and baseline read.
+  ({Size size, Offset glyphOffset}) _layOut(BoxConstraints constraints) {
+    final painter = _glyphPainter(_spec.ink.foreground(_states));
+    var inGlyph = Offset.zero;
+    final box = layOutIconButtonBox(constraints, _box, (loose) {
+      switch (_spec.glyph) {
+        case RailIconGlyph():
+          final square = _spec.iconTheme.size!;
+          final glyph = loose.constrain(Size(square, square));
+          // [Icon]'s `Center` inside its square: its paragraph held to the
+          // square, then centred — so a glyph a squeezed square cannot hold
+          // starts at the square's corner, as the paragraph did.
+          inGlyph = Alignment.center.alongOffset(
+            glyph - BoxConstraints.loose(glyph).constrain(painter.size)
+                as Offset,
+          );
+          return glyph;
+        case RailTextGlyph():
+          return loose.constrain(painter.size);
+      }
+    });
+    return (size: box.size, glyphOffset: box.glyphOffset + inGlyph);
+  }
+
   @override
   void performLayout() {
-    final painter = _glyphPainter(_spec.ink.foreground(pressStates));
-    var inGlyph = Offset.zero;
-    final box = layOutIconButtonBox(
-      constraints,
-      BoxConstraints(
-        minWidth: _spec.minWidth,
-        maxWidth: _spec.maxWidth,
-        minHeight: _spec.height,
-        maxHeight: _spec.height,
-      ),
-      (loose) {
-        switch (_spec.glyph) {
-          case RailIconGlyph():
-            final square = _spec.iconTheme.size!;
-            final glyph = loose.constrain(Size(square, square));
-            // [Icon]'s `Center` inside its square.
-            inGlyph = Alignment.center.alongOffset(
-              glyph - painter.size as Offset,
-            );
-            return glyph;
-          case RailTextGlyph():
-            return loose.constrain(painter.size);
-        }
-      },
-    );
-    size = box.size;
-    _glyphOffset = box.glyphOffset + inGlyph;
+    final laid = _layOut(constraints);
+    size = laid.size;
+    _glyphOffset = laid.glyphOffset;
   }
 
   @override
   bool get sizedByParent => false;
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) =>
+      _layOut(constraints).size;
+
+  /// The glyph's own width: [Icon]'s square, or the word's paragraph.
+  double get _glyphWidth => switch (_spec.glyph) {
+    RailIconGlyph() => _spec.iconTheme.size!,
+    RailTextGlyph() => _glyphPainter(_spec.ink.foreground(_states)).width,
+  };
+
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      _box.constrainWidth(_glyphWidth);
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _box.constrainWidth(_glyphWidth);
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _spec.height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _spec.height;
+
+  double _baselineIn(Offset glyphOffset, TextBaseline baseline) =>
+      glyphOffset.dy +
+      _glyphPainter(
+        _spec.ink.foreground(_states),
+      ).computeDistanceToActualBaseline(baseline);
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) =>
+      _baselineIn(_glyphOffset, baseline);
+
+  @override
+  double? computeDryBaseline(
+    covariant BoxConstraints constraints,
+    TextBaseline baseline,
+  ) => _baselineIn(_layOut(constraints).glyphOffset, baseline);
 
   // ── paint ──────────────────────────────────────────────────────────
 
@@ -355,7 +446,7 @@ class RenderRailGlyphFace extends RenderBox with PressClaim, PressFace {
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    final states = pressStates;
+    final states = _states;
     _layer.paint(
       context.canvas,
       offset & size,
@@ -366,6 +457,16 @@ class RenderRailGlyphFace extends RenderBox with PressClaim, PressFace {
       context.canvas,
       offset + _glyphOffset,
     );
+  }
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    // The focus is said HERE rather than by `Focus` — that would add a node
+    // per button for a fact this one already states ([AppIconButton]).
+    if (_spec.focus case final focus?) {
+      config.isFocused = focus != IconButtonFocus.away;
+    }
   }
 
   /// The glyph laid out in [ink] — or in its own colour where it has one —

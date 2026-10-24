@@ -125,14 +125,9 @@ void main() {
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
 
-    Color? glyph() => tester
-        .widget<Icon>(
-          find.descendant(
-            of: find.byKey(const ValueKey<String>('shared-delete-button')),
-            matching: find.byType(Icon),
-          ),
-        )
-        .color;
+    Color? glyph() => tester.glyphInkOf(
+      find.byKey(const ValueKey<String>('shared-delete-button')),
+    );
 
     expect(glyph(), AppColors.danger);
 

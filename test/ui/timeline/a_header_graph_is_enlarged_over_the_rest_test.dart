@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
 import 'package:anicel/src/ui/widgets/app_icon_button.dart'
     show AppIconButtonFace;
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
 
@@ -143,7 +144,7 @@ void main() {
     expect(
       find.descendant(
         of: _enlarge('timeline', _draw),
-        matching: find.byIcon(Icons.open_in_full),
+        matching: find.railIcon(Icons.open_in_full),
       ),
       findsOneWidget,
     );
@@ -154,7 +155,7 @@ void main() {
     expect(
       find.descendant(
         of: _enlarge('timeline', _draw),
-        matching: find.byIcon(Icons.close_fullscreen),
+        matching: find.railIcon(Icons.close_fullscreen),
       ),
       findsOneWidget,
     );
