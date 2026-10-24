@@ -239,33 +239,66 @@ void main() {
         testWidgets('the keyboard\'s focus in a row builds them afresh', (
           tester,
         ) async {
+          // Room for the sheet's lane headers, under its layers' columns.
+          await tester.binding.setSurfaceSize(const Size(1400, 1200));
+          addTearDown(() => tester.binding.setSurfaceSize(null));
           final session = await _open(tester, grid);
-          final before = grid.everyRow();
-          // A focusable inside the row's controls: the nearest Focus over
-          // what an ink well in it holds.
-          final ink = find
-              .descendant(
-                of: find.named('${grid.layerRow}a2'),
-                matching: find.byType(InkWell),
-              )
-              .first;
-          final held = find.descendant(
-            of: ink,
-            matching: find.byType(GestureDetector),
+          // A number being typed in the rows: a lane's, from its pencil.
+          // ↩️It was the focus of the blend chip's ink well until that chip
+          // became a rail plate (2026-10-24), which Tab passes over as every
+          // rail button does (F-450-Q2) — a layer's own row holds nothing
+          // the keyboard takes now.
+          await tester.tap(
+            find.byKey(const ValueKey<String>('legend-lanes-toggle')),
           );
-          final node = Focus.of(tester.element(held.first));
-          node.requestFocus();
-          await tester.pump();
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.named('${grid.prefix}-lane-group-toggle-a2-transform-group'),
+          );
+          await tester.pumpAndSettle();
+          final before = grid.everyRow();
+          session.selectCut(_second);
+          await tester.pumpAndSettle();
+          session.selectCut(_first);
+          await tester.pumpAndSettle();
+          // What a switch with no hand in the rows keeps — a lane's own row
+          // is built afresh either way.
+          final kept = [
+            for (final (index, family) in grid.everyRow().indexed)
+              family.where(before[index].contains).toList(),
+          ];
+          for (final family in kept) {
+            expect(family, isNotEmpty, reason: 'LIVENESS: rows are kept');
+          }
+
+          Finder keyed(RegExp pattern) => find.byWidgetPredicate(
+            (widget) => switch (widget.key) {
+              ValueKey<String>(:final value) => pattern.hasMatch(value),
+              _ => false,
+            },
+          );
+          final pencil = keyed(RegExp(r'-lane-value-a2-position-edit$'));
+          await tester.ensureVisible(pencil);
+          await tester.pumpAndSettle();
+          await tester.tap(pencil);
+          await tester.pumpAndSettle();
+          final typed = find.descendant(
+            of: keyed(RegExp('-lane-value-field-a2-')),
+            matching: find.byType(EditableText),
+          );
           expect(
-            FocusManager.instance.primaryFocus,
-            node,
-            reason: 'LIVENESS: the focus is in the row',
+            tester.widget<EditableText>(typed).focusNode.hasPrimaryFocus,
+            isTrue,
+            reason: 'LIVENESS: the focus is in the rows',
           );
 
           session.selectCut(_second);
           await tester.pumpAndSettle();
 
-          _expectAfresh(before, grid.everyRow());
+          final after = grid.everyRow();
+          for (final (index, family) in kept.indexed) {
+            expect(after[index].where(family.contains), isEmpty);
+          }
         });
       });
 
