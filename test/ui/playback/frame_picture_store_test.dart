@@ -392,7 +392,11 @@ void main() {
         'between held frames', () async {
       final turns = _turnsInAQuiet();
       final gpu = _RecordingGpu();
-      final store = FramePictureStore<String>(gpu: gpu, quietTurns: turns);
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        quietTurns: turns,
+        levelsQuiet: Duration.zero,
+      );
       final picture = await _layed(store, 'a', 1024);
       final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
       store.patch(
@@ -401,14 +405,110 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: fill,
       );
-      final settling = store.settled();
       expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
       await pumpEventQueue();
       expect(gpu.levelWrites, isEmpty, reason: 'another job holds the turn');
       await other!.landed();
-      await settling;
+      expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
+      expect(gpu.levelWrites, hasLength(1));
+      store.dispose();
+    });
+
+    test('that a caller waits for are not background work: settled writes '
+        'them past the turn another job holds', () async {
+      final turns = _turnsInAQuiet();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        quietTurns: turns,
+        levelsQuiet: never,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      await store.settled();
       expect(gpu.levelWrites, hasLength(1));
       expect(picture.landing, isEmpty);
+      await other!.landed();
+      store.dispose();
+    });
+
+    test('go back to taking their turn once the caller is answered', () async {
+      final turns = _turnsInAQuiet();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        quietTurns: turns,
+        levelsQuiet: Duration.zero,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      // Answered with nothing to write, then with something.
+      await store.settled();
+      for (final asked in [false, true, false]) {
+        final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
+        final written = gpu.levelWrites.length;
+        final based = gpu.bases.length;
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+          draw: fill,
+        );
+        expect(await pollUntil(() => gpu.bases.length == based + 1), isTrue);
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await pumpEventQueue();
+        expect(gpu.levelWrites, hasLength(written), reason: 'asked: $asked');
+        // A job that holds the turn runs; the caller waits for it alone.
+        final answered = asked ? store.settled() : Future<void>.value();
+        await other!.landed();
+        await answered;
+        expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
+      }
+      store.dispose();
+    });
+
+    test('waiting for a quiet with room become due once a caller waits for '
+        'them', () async {
+      final moves = <Completer<void>>[];
+      final turns = QuietTurns(
+        clock: QuietClock(
+          // A run's quiet with no room at all: background work waits on.
+          quiet: () => (fromMicros: 0, untilMicros: 0),
+          now: () => 0,
+          wait: (_) async {},
+          moved: () {
+            moves.add(Completer<void>());
+            return moves.last.future;
+          },
+          held: () => true,
+          gpuDone: () async {},
+        ),
+      );
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        quietTurns: turns,
+        levelsQuiet: Duration.zero,
+      );
+      await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => moves.isNotEmpty), isTrue);
+      expect(gpu.levelWrites, isEmpty, reason: '⛔premise: it waits on');
+      final settling = store.settled();
+      moves.last.complete();
+      await settling;
+      expect(gpu.levelWrites, hasLength(1));
       store.dispose();
     });
 
@@ -416,7 +516,11 @@ void main() {
         'or written', () async {
       final turns = _turnsInAQuiet();
       final gpu = _RecordingGpu();
-      final store = FramePictureStore<String>(gpu: gpu, quietTurns: turns);
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        quietTurns: turns,
+        levelsQuiet: Duration.zero,
+      );
       await _layed(store, 'a', 1024);
       final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
       store.patch(
@@ -425,12 +529,13 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: fill,
       );
-      final settling = store.settled();
       expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
       final rendered = gpu.rendered.length;
       store.dispose();
       await other!.landed();
-      await settling;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await pumpEventQueue();
       expect(gpu.levelWrites, isEmpty);
       expect(gpu.rendered, hasLength(rendered));
     });

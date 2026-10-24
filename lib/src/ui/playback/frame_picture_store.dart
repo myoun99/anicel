@@ -193,6 +193,7 @@ class FramePictureStore<K extends Object> {
   Future<void> settled() async {
     for (final entry in _everyEntry) {
       await entry.renders;
+      entry.levelsWanted = true;
       entry.writes = entry.writes.then((_) => _landLevels(entry));
       await entry.writes;
     }
@@ -395,6 +396,12 @@ class FramePictureStore<K extends Object> {
   /// Background GPU work — the patches are drawn over the picture meanwhile
   /// — so it takes its turn in the quiet between held frames ([QuietTurns]).
   ///
+  /// 🚨LEVELS A CALLER WAITS FOR ARE NOT BACKGROUND WORK ([settled]): its
+  /// caller reads the picture's own texels now, so the write is due and
+  /// goes at once ([QuietTurns.inAQuiet]) — while a run plays, a turn
+  /// barely comes (브러시/렌더링 2026-10-24: 2 of 50 asked, the jobs'
+  /// lengths past the 16–32 ms between held frames).
+  ///
   /// 🔬One copy out a write (D7-2, 2026-10-24): the levels go out end to end
   /// in one raster ([_run]); its 1,000–28,000 rows rastered in 4–144 ms on
   /// the Surface Pro 11 and held no frame doing it — the copy out did.
@@ -402,17 +409,20 @@ class FramePictureStore<K extends Object> {
     entry.quiet?.cancel();
     entry.quiet = null;
     if (entry.levelsDue.isEmpty) {
+      entry.levelsWanted = false;
       return;
     }
     final turn = await _quietTurns.inAQuiet(
       _levelsSpan,
       gone: () => entry.gone,
+      due: () => entry.levelsWanted,
     );
     if (turn == null) {
       return;
     }
     final due = List.of(entry.levelsDue);
     entry.levelsDue.clear();
+    entry.levelsWanted = false;
     final picture = entry.picture;
     final patched = entry.patchedLevels;
     final below = entry.levels - 1 - patched;
@@ -725,6 +735,10 @@ class _Entry {
 
   /// Runs out once patches stop coming for the pause the levels wait for.
   Timer? quiet;
+
+  /// Whether a caller waits for [levelsDue] to be written
+  /// ([FramePictureStore.settled]) — which makes the write due.
+  bool levelsWanted = false;
 
   int get bytes {
     final image = picture.image;
