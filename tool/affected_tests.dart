@@ -102,33 +102,67 @@ const gpuTag = 'gpu';
 /// Impeller engine」 — see [partitionByTag].
 const gpuTagMarker = "@Tags(['$gpuTag'])";
 
+/// The tag [impellerTagMarker] writes, as `dart_test.yaml` declares it.
+const impellerTag = 'impeller';
+
+/// The marker a file writes to say 「I need the Impeller tester」 — see
+/// [partitionByTag].
+const impellerTagMarker = "@Tags(['$impellerTag'])";
+
 /// Whether [source]'s `@Tags` lists [tag]. A file carries ONE such
 /// annotation (test_core refuses a second), so a file with two of the tags
 /// above lists both in it — `@Tags(['gc', 'gpu'])`, which neither marker
-/// spells. CI's shard step reads the gpu tag with the same expression.
+/// spells.
 bool carriesTag(String source, String tag) =>
     RegExp("@Tags\\(\\[[^\\]]*'$tag'").hasMatch(source);
 
 /// The batch a test file runs in, by the tag its library carries
-/// ([partitionByTag]), and what that batch tells the engine.
+/// ([kindOf]), and what that batch tells the engine.
+///
+/// ⚠️THE ORDER IS THE ANSWER for a file listing two of these tags: it goes
+/// to the first. A file that needs an engine cannot run without its flags
+/// at all, and Flutter GPU's flags include Impeller's; a batch of its own
+/// keeps a collector pin out of the crowd as well as the pins' batch does.
 enum BatchKind {
-  /// No tag that moves it: cut into batches with the rest.
-  crowd([]),
+  /// [gpuTagMarker]: batches of their own, on Impeller with Flutter GPU.
+  gpu(gpuTag, ['--enable-impeller', '--enable-flutter-gpu']),
+
+  /// [impellerTagMarker]: batches of their own, on Impeller.
+  impeller(impellerTag, ['--enable-impeller']),
 
   /// [gcTagMarker]: one batch of their own, after every other.
-  collector([]),
+  collector(gcTag, []),
 
-  /// [gpuTagMarker]: batches of their own, on Impeller with Flutter GPU.
-  gpu(['--enable-impeller', '--enable-flutter-gpu']);
+  /// No tag that moves it: cut into batches with the rest.
+  crowd(null, []);
 
-  const BatchKind(this.engineFlags);
+  const BatchKind(this.tag, this.engineFlags);
+
+  /// The tag that puts a file here; null for the files no tag moves.
+  final String? tag;
 
   /// What `flutter test` is told about the engine for this batch.
   final List<String> engineFlags;
 }
 
-/// Splits the run into the [crowd], the files that need [gpu], and the
-/// ones that go [alone].
+/// The order a run goes in ([runInBatches]), and a list prints in: the
+/// crowd first, the files on another engine next, the collector's pins
+/// last and alone.
+const kRunOrder = [
+  BatchKind.crowd,
+  BatchKind.gpu,
+  BatchKind.impeller,
+  BatchKind.collector,
+];
+
+/// The batch a file whose source is [source] runs in: the first kind, in
+/// [BatchKind]'s order, whose tag it carries.
+BatchKind kindOf(String source) => BatchKind.values.firstWhere(
+  (kind) => kind.tag == null || carriesTag(source, kind.tag!),
+);
+
+/// Splits the run by the batch each file runs in ([kindOf]) — every kind
+/// named, each in the order [files] gave.
 ///
 /// 🚨★★★**A PIN THAT WAITS FOR THE COLLECTOR CANNOT RUN IN A CROWD.**
 /// `flutter test` runs a batch's files in concurrent isolates, and a full
@@ -157,29 +191,24 @@ enum BatchKind {
 /// the engine for EVERY file in the command, so they cannot be put on the
 /// crowd: its pins measure what Skia draws (CI's engine), and the canvas
 /// suite under Impeller once came back 174 red (impeller-sweep-canvas-reds).
+/// A pin that needs the Impeller TESTER but not Flutter GPU — a shader
+/// filter Skia does not have — carries its own tag, [impellerTag], and runs
+/// on `--enable-impeller` alone (브러시/렌더링, 10-24: one tag answering
+/// 「does it draw with Flutter GPU」 and 「does it need Impeller」 would be
+/// one flag answering two questions).
 ///
 /// ⚠️It is a whole-FILE question because the tag is a library annotation,
 /// so partitioning by file is exact — no `--exclude-tags` pass that could
 /// come back 「no tests match」 and read as a failure to start.
-({List<String> crowd, List<String> gpu, List<String> alone}) partitionByTag(
+Map<BatchKind, List<String>> partitionByTag(
   List<String> files,
   String Function(String path) read,
 ) {
-  final crowd = <String>[];
-  final gpu = <String>[];
-  final alone = <String>[];
+  final split = {for (final kind in BatchKind.values) kind: <String>[]};
   for (final file in files) {
-    final text = read(file);
-    // A file carrying both is a gpu file: without the flags it cannot run
-    // at all, and its batch is one of its own too.
-    (carriesTag(text, gpuTag)
-            ? gpu
-            : carriesTag(text, gcTag)
-            ? alone
-            : crowd)
-        .add(file);
+    split[kindOf(read(file))]!.add(file);
   }
-  return (crowd: crowd, gpu: gpu, alone: alone);
+  return split;
 }
 
 /// How many imports from a test a change may stand and still choose it
@@ -725,12 +754,12 @@ List<String> nextBatch(
   bool Function(List<String> batch) fits = _fitsTheCommandLine,
 }) => timedBatches(left, known, work: suites * kBatchWall, fits: fits).first;
 
-/// Runs [files] batch by batch ([partitionByTag]): the crowd first, then
-/// the files that need Flutter GPU, each cut as it goes to the suites each
-/// batch is given ([nextBatch]); then the pins that wait for the collector
-/// as one batch of their own. [take] stands in the line for the files still
-/// to run and says how many suites the next batch has; [run] runs the batch
-/// at them, on the engine its [BatchKind] names.
+/// Runs [files] batch by batch ([partitionByTag]), kind by kind in
+/// [kRunOrder]: each cut as it goes to the suites each batch is given
+/// ([nextBatch]), but the pins that wait for the collector as one batch of
+/// their own. [take] stands in the line for the files still to run and says
+/// how many suites the next batch has; [run] runs the batch at them, on the
+/// engine its [BatchKind] names.
 Future<void> runInBatches(
   List<String> files, {
   required Map<String, int> known,
@@ -744,11 +773,12 @@ Future<void> runInBatches(
   run,
 }) async {
   final split = partitionByTag(files, read);
-  for (final (kind, cut) in [
-    (BatchKind.crowd, split.crowd),
-    (BatchKind.gpu, split.gpu),
-  ]) {
-    var left = cut;
+  for (final kind in kRunOrder) {
+    var left = split[kind]!;
+    if (kind == BatchKind.collector) {
+      if (left.isNotEmpty) await run(left, await take(left), kind: kind);
+      continue;
+    }
     while (left.isNotEmpty) {
       final suites = await take(left);
       final batch = nextBatch(left, known, suites: suites);
@@ -756,13 +786,6 @@ Future<void> runInBatches(
       final ran = batch.toSet();
       left = [for (final file in left) if (!ran.contains(file)) file];
     }
-  }
-  if (split.alone.isNotEmpty) {
-    await run(
-      split.alone,
-      await take(split.alone),
-      kind: BatchKind.collector,
-    );
   }
 }
 
@@ -820,7 +843,9 @@ Future<int> _runTests(
   // The collector-waiting pins go last and by themselves.
   final split = partitionByTag(selected, (path) => File(path).readAsStringSync());
   if (listOnly) {
-    [...split.crowd, ...split.gpu, ...split.alone].forEach(stdout.writeln);
+    for (final kind in kRunOrder) {
+      split[kind]!.forEach(stdout.writeln);
+    }
     return 0;
   }
 
@@ -833,16 +858,24 @@ Future<int> _runTests(
   final engine = _engineCaveat();
   if (engine != null) _report(engine);
 
-  if (split.alone.isNotEmpty) {
-    _report('${split.alone.length} pin(s) wait for the garbage collector '
-        '($gcTagMarker) and run in a batch of their own — in company they '
-        'report a holder that has already let go.');
-  }
-  if (split.gpu.isNotEmpty) {
-    _report('${split.gpu.length} file(s) draw with Flutter GPU '
-        '($gpuTagMarker) and run in batches of their own, with '
-        '${BatchKind.gpu.engineFlags.join(' ')} — on Skia they can only '
-        'skip.');
+  for (final kind in kRunOrder) {
+    final those = split[kind]!;
+    final apart = switch (kind) {
+      BatchKind.crowd => null,
+      BatchKind.collector =>
+        'pin(s) wait for the garbage collector ($gcTagMarker) and run in a '
+            'batch of their own — in company they report a holder that has '
+            'already let go.',
+      BatchKind.gpu =>
+        'file(s) draw with Flutter GPU ($gpuTagMarker) and run in batches '
+            'of their own, with ${kind.engineFlags.join(' ')} — on Skia '
+            'they can only skip.',
+      BatchKind.impeller =>
+        'file(s) need the Impeller tester ($impellerTagMarker) and run in '
+            'batches of their own, with ${kind.engineFlags.join(' ')} — on '
+            'Skia they can only skip.',
+    };
+    if (apart != null && those.isNotEmpty) _report('${those.length} $apart');
   }
 
   var skipped = 0;
@@ -876,6 +909,7 @@ Future<int> _runTests(
               BatchKind.crowd => '',
               BatchKind.collector => ' — the pins',
               BatchKind.gpu => ' — on Impeller with Flutter GPU',
+              BatchKind.impeller => ' — on Impeller',
             }}');
         final report = File('${reports.path}/batch$i.json');
         try {

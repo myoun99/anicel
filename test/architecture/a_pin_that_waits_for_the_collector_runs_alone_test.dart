@@ -43,9 +43,15 @@ import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
 /// saying so.
 void main() {
   group('the split', () {
-    ({List<String> crowd, List<String> gpu, List<String> alone}) split(
+    ({List<String> crowd, List<String> alone}) split(
       Map<String, String> tree,
-    ) => partitionByTag(tree.keys.toList(), (path) => tree[path]!);
+    ) {
+      final kinds = partitionByTag(tree.keys.toList(), (path) => tree[path]!);
+      return (
+        crowd: kinds[BatchKind.crowd]!,
+        alone: kinds[BatchKind.collector]!,
+      );
+    }
 
     test('a file carrying the marker goes alone', () {
       final result = split({
