@@ -213,6 +213,24 @@ void main() {
       expect(holdsFrames(r.s) || rowsOf(r.s).hasLayerClipboard, isFalse);
     });
 
+    test('a row no delete takes — the last instruction row — leaves the cut '
+        'dark', () {
+      final r = threeRows();
+      final instruction = r.s.requireActiveCut.layers
+          .where((layer) => layer.kind == LayerKind.instruction)
+          .toList();
+      expect(instruction, hasLength(1), reason: '⛔전제: the floor is one');
+      r.s.rowSelectionVerbs.rowSelection.value = [
+        LayerRowAddress(instruction.single.id),
+      ];
+      expect(rowsOf(r.s).canCopySelectedRows, isTrue, reason: '⛔전제');
+
+      expect(pill(r.s).canCutRun, isFalse);
+      pill(r.s).cutRun();
+
+      expect(rowsOf(r.s).hasLayerClipboard, isFalse);
+    });
+
     test('a row the delete refuses at its floor is not banked', () {
       final r = threeRows();
       List<Layer> instructionRows() => [

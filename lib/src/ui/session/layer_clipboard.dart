@@ -150,13 +150,10 @@ class LayerClipboard implements BringsMedia {
     final stayed = {
       for (final layer in _project.requireActiveCut.layers) layer.id,
     };
-    final went = [
+    _bank([
       for (final row in taken)
         if (!stayed.contains(row.sourceId)) row,
-    ];
-    if (went.isNotEmpty) {
-      _bank(went);
-    }
+    ]);
   }
 
   /// Puts [copied] in hand, with what the rows name in this project.
