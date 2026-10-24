@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
+import '../input/recognizer_box.dart';
 import '../input/value_control_pointers.dart' show controlOwnsTap;
 import 'axis_turn.dart' show offsetAlong, partAcross, partAlong;
 
@@ -216,28 +217,38 @@ GestureTapDownCallback timelineLabelDoubleTapActivation(
 /// second one's record replaces it. And the record runs before the label's
 /// own pick, which listens outside it, so the host reads the selection as
 /// the press found it.
+///
+/// One render object holding the recognizer ([RecognizerBox], 2026-10-25),
+/// where a [RawGestureDetector] was three elements for every row a tab
+/// reopens.
 Widget timelineLabelDoubleTapDetector({
   required LayerId Function() layerId,
   required TimelineLabelDoubleClick doubleClick,
   required Widget child,
-}) => RawGestureDetector(
-  gestures: <Type, GestureRecognizerFactory>{
-    ControlYieldingDoubleTapGestureRecognizer:
-        GestureRecognizerFactoryWithHandlers<
-          ControlYieldingDoubleTapGestureRecognizer
-        >(ControlYieldingDoubleTapGestureRecognizer.new, (recognizer) {
-          recognizer.onDoubleTapDown = timelineLabelDoubleTapActivation(
-            layerId,
-          );
-          recognizer.onDoubleTap = () {};
-          recognizer.onPress = timelineLabelDoubleTapRecord(
-            layerId,
-            doubleClick,
-          );
-        }),
-  },
-  child: child,
-);
+}) => _LabelDoubleTap(layerId: layerId, doubleClick: doubleClick, child: child);
+
+class _LabelDoubleTap
+    extends RecognizerBox<ControlYieldingDoubleTapGestureRecognizer> {
+  const _LabelDoubleTap({
+    required this.layerId,
+    required this.doubleClick,
+    required super.child,
+  });
+
+  final LayerId Function() layerId;
+  final TimelineLabelDoubleClick doubleClick;
+
+  @override
+  ControlYieldingDoubleTapGestureRecognizer makeRecognizer() =>
+      ControlYieldingDoubleTapGestureRecognizer();
+
+  @override
+  void configure(ControlYieldingDoubleTapGestureRecognizer recognizer) {
+    recognizer.onDoubleTapDown = timelineLabelDoubleTapActivation(layerId);
+    recognizer.onDoubleTap = () {};
+    recognizer.onPress = timelineLabelDoubleTapRecord(layerId, doubleClick);
+  }
+}
 
 /// The frame block's double-tap recognizer, for a surface that holds
 /// CONTROLS — a row label and its buttons.
