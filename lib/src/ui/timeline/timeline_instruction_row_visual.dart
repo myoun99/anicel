@@ -157,12 +157,7 @@ List<Widget> timelineRowInstructionOverlays({
         ),
         child: IgnorePointer(
           key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
-          child: _InstructionSpan(
-            axis: axis,
-            event: span.event,
-            def: span.event.defIn(defById),
-            mark: span.event.markIn(defById),
-          ),
+          child: _InstructionSpan(axis, span.event, defById),
         ),
       ),
     );
@@ -260,22 +255,17 @@ List<Widget> timelineRowInstructionEdgeGrips({
 }
 
 class _InstructionSpan extends StatelessWidget {
-  const _InstructionSpan({
-    required this.axis,
-    required this.event,
-    required this.def,
-    required this.mark,
-  });
+  const _InstructionSpan(this.axis, this.event, this.defById);
 
   final Axis axis;
   final InstructionEvent event;
-  final CameraInstructionDef? def;
-
-  /// [InstructionEvent.markIn]: null draws no mark — the span with none.
-  final CameraInstructionMarkType? mark;
+  final CameraInstructionDef? Function(String instructionId) defById;
 
   @override
   Widget build(BuildContext context) {
+    final def = event.defIn(defById);
+    // [InstructionEvent.markIn]: null draws no mark — the span with none.
+    final mark = event.markIn(defById);
     final markColor = timelineInstructionInk(def);
     // The mark and the writing are independent: free per-event text wins,
     // the vocabulary name is the fallback.
