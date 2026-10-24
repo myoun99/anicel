@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
 import 'package:anicel/src/ui/timesheet/cut_sheet_document.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 /// 🗣️F-386 (유저 2026-10-17): 「se트랙은 글로벌이기에 여러 컷에 걸칠수있음.
 /// 그래서 컷마다 같은 대사를 이어가고있는데 어떤 컷에선 ON이지만 다음컷에선
@@ -105,11 +106,20 @@ Future<void> _tap(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
-String _pickerLabel(WidgetTester tester) => tester
-    .widget<PanelFlyoutButton>(
+PanelFlyoutButton _picker(WidgetTester tester) =>
+    tester.widget<PanelFlyoutButton>(
       find.byKey(const ValueKey<String>('se-type-cut-picker')),
-    )
-    .label;
+    );
+
+String _pickerLabel(WidgetTester tester) => _picker(tester).label;
+
+/// The key of the one type pill lit.
+String _pillOn(WidgetTester tester) => tester
+    .widget<PillStrip>(find.byType(PillStrip))
+    .items
+    .where((item) => item.selected)
+    .single
+    .keyValue;
 
 void main() {
   test('⛔premise: the line plays in both cuts — the window\'s list, and the '
@@ -164,9 +174,12 @@ void main() {
     expect(_onConte(a, a.second), SeLineType.mono);
   });
 
-  testWidgets('the TIMELINE door opens on the cut it stands in, and its '
-      'pills set that cut alone', (tester) async {
+  testWidgets('the TIMELINE door opens on the cut it stands in, on the '
+      'deliveries the line has, and its pills set that cut alone', (
+    tester,
+  ) async {
     final a = _aLineAcrossTwoCuts();
+    _deliver(a, SeLineTypes(own: SeLineType.off));
     a.s.selectCut(a.second.id);
     a.s.selectLayer(a.row);
     final context = await _contextFrom(tester);
@@ -179,16 +192,18 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_pickerLabel(tester), a.second.name);
+    expect(_pillOn(tester), 'se-type-off');
     await _tap(tester, 'se-type-mono');
     await _tap(tester, 'instance-edit-ok-button');
     await editing;
 
     expect(_lineOf(a).seTypes.inCut(a.second.id), SeLineType.mono);
-    expect(_lineOf(a).seTypes.inCut(a.first.id), SeLineType.on);
+    expect(_lineOf(a).seTypes.inCut(a.first.id), SeLineType.off);
   });
 
-  testWidgets('the CONTE door opens on the cut its frame stands in, and the '
-      'cut picker turns the pills to another', (tester) async {
+  testWidgets('the CONTE door opens on the cut its frame stands in; the cut '
+      'picker turns the pills to another; OK writes the head\'s cut as the '
+      'line\'s own', (tester) async {
     final a = _aLineAcrossTwoCuts();
     final context = await _contextFrom(tester);
 
@@ -196,23 +211,36 @@ void main() {
       context,
       a.s,
       layerId: a.row,
-      globalFrame: _trackFrame(a, a.first, a.first.duration - 1),
+      globalFrame: _trackFrame(a, a.second, 1),
     );
     await tester.pumpAndSettle();
-    expect(_pickerLabel(tester), a.first.name);
-    await _tap(tester, 'se-type-cut-picker');
-    await _tap(tester, 'se-type-cut-${a.second.id.value}');
     expect(_pickerLabel(tester), a.second.name);
-    await _tap(tester, 'se-type-off');
-    // The list says each cut's delivery as it now stands.
+    await _tap(tester, 'se-type-mono');
+    expect(_pillOn(tester), 'se-type-mono');
+
+    // The list says each cut's delivery as it now stands, the cut the pills
+    // set in the accent.
     await _tap(tester, 'se-type-cut-picker');
     expect(find.text('${a.first.name} · ON'), findsOneWidget);
-    expect(find.text('${a.second.name} · OFF'), findsOneWidget);
-    await _tap(tester, 'se-type-cut-${a.second.id.value}');
+    expect(find.text('${a.second.name} · MONO'), findsOneWidget);
+    expect(
+      flyoutRowsOf(_picker(tester).entriesBuilder())
+          .where((row) => row.selected)
+          .map((row) => row.keyValue),
+      ['se-type-cut-${a.second.id.value}'],
+    );
+    await _tap(tester, 'se-type-cut-${a.first.id.value}');
+    expect(_pickerLabel(tester), a.first.name);
+    expect(_pillOn(tester), 'se-type-on', reason: 'the first cut\'s own');
+    await _tap(tester, 'se-type-off');
     await _tap(tester, 'instance-edit-ok-button');
     await editing;
 
-    expect(_lineOf(a).seTypes.inCut(a.first.id), SeLineType.on);
-    expect(_lineOf(a).seTypes.inCut(a.second.id), SeLineType.off);
+    expect(
+      _lineOf(a).seTypes,
+      SeLineTypes(own: SeLineType.off, byCut: {a.second.id: SeLineType.mono}),
+      reason: 'the cut the head plays in says the line\'s own — what a cut '
+          'it reaches later carries on with',
+    );
   });
 }
