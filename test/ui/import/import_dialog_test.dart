@@ -1842,7 +1842,7 @@ void main() {
         'converted file\'s', (tester) async {
       final psd = await tester.runAsync(() async {
         final file = File(
-          '${tempDir.path}${Platform.pathSeparator}clipped.psd',
+          '${tempDir.path}${Platform.pathSeparator}locked.psd',
         );
         await file.writeAsBytes(
           buildPsd(
@@ -1857,7 +1857,7 @@ void main() {
                   right: 4,
                   bottom: 4,
                   planes: psdSolidPlanes(4, 4, [10, 20, 30]),
-                  clipping: true,
+                  protection: 0x80000000,
                 ),
             ],
             compositePlanes: [Uint8List(16), Uint8List(16), Uint8List(16)],
@@ -1871,7 +1871,7 @@ void main() {
       Finder inNotice(String text) =>
           find.descendant(of: notice, matching: find.text(text));
 
-      expect(inNotice('Clipping mask not applied. (2)'), findsOneWidget);
+      expect(inNotice('Lock not imported. (2)'), findsOneWidget);
       expect(
         [
           for (final layer in ['ink', 'shade'])
