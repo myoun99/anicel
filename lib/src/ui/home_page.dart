@@ -187,7 +187,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final Map<EditorSessionManager, _ProjectHooks> _hooks = {};
 
   /// Sessions closed while their tab was still on screen, waiting for the
-  /// frame that takes them off it ([_letGo]).
+  /// frame that takes them off it ([_letGo]) — and, as the window closes,
+  /// every one it had open.
   final Set<EditorSessionManager> _goingAway = {};
 
   /// The project the per-screen objects were last pointed at
@@ -656,8 +657,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// hooks off in that rebuild: disposing it now would have the workspace
   /// unhook from a disposed session. So it goes after the frame — and after
   /// any save the clock began before the tab closed ([ProjectFile
-  /// .saveSettled]). A window that is closing (this State's dispose, after
-  /// the workspace's own) lets every one go at once.
+  /// .saveSettled]). A window that is closing lets every one go the same
+  /// way ([dispose]).
   void _letGo(EditorSessionManager session) {
     _hooks.remove(session)?.unhang(this);
     if (!mounted) {
@@ -912,15 +913,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     GestureBinding.instance.pointerRouter.removeGlobalRoute(_noteUserActivity);
     _autosaveClock.dispose();
     _lifecycle?.dispose();
-    // Every open project goes with the window — and any closed one still
-    // waiting for its frame, which is not coming now.
+    // Every open project goes with the window — AFTER the frame, as a
+    // closed tab's does ([_letGo]): the canvas lands a box left open as it
+    // unmounts, a frame later, and that landing writes to the project's
+    // history (a-box-left-open-lands-after-its-history-is-gone).
+    // ↩️They were let go here at once, any closed one still waiting
+    // included, on the reading that no frame was coming. But a window's
+    // tree goes down INSIDE a frame, and what its widgets defer runs at
+    // that frame's end — the landing did, on a history already gone.
     _projects
       ..removeListener(_followProjectOnScreen)
       ..dispose();
-    for (final session in _goingAway) {
-      session.dispose();
-    }
-    _goingAway.clear();
     _appSettings.dispose();
     _panelsMenu.removeListener(_showPanelsToShortcuts);
     _panelsMenu.dispose();
