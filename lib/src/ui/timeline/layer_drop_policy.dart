@@ -1264,11 +1264,11 @@ typedef LayerAreaSilhouette = ({int slot, Layer row});
 /// The [LayerAreaSilhouette] [preview] stands, or null: a file over a ROW
 /// stands none, and no other drag does.
 ///
-/// 🚨The grids are built again when THIS changes, and only then
-/// (`TimelinePanel`). They do not listen to the preview channel — it steps
-/// per pointer move — so a silhouette nothing rebuilt them for was never
-/// drawn: the caret stood in its gap and the row did not (10-25, found
-/// writing the test of the edges it is drawn on).
+/// 🚨What the grids draw ([rowsWithSilhouette]) AND what they are built
+/// again for, and only then (`TimelinePanel`). They do not listen to the
+/// preview channel — it steps per pointer move — so a silhouette nothing
+/// rebuilt them for was never drawn: the caret stood in its gap and the row
+/// did not (10-25, found writing the test of the edges it is drawn on).
 LayerAreaSilhouette? layerAreaSilhouetteOf(TimelineDragPreview? preview) =>
     switch (preview) {
       MediaPlacementPreview(
@@ -1279,8 +1279,8 @@ LayerAreaSilhouette? layerAreaSilhouetteOf(TimelineDragPreview? preview) =>
       _ => null,
     };
 
-/// [rows] with [silhouette] standing in its gap, or [rows] unchanged when
-/// there is none.
+/// [rows] with the silhouette [preview] stands ([layerAreaSilhouetteOf]) in
+/// its gap, or [rows] unchanged when it stands none.
 ///
 /// 🚨★★★**DRAWN, NEVER COUNTED.** This runs AFTER the list the entrance
 /// measures against has been taken, so the gap under the pointer is counted
@@ -1290,8 +1290,9 @@ LayerAreaSilhouette? layerAreaSilhouetteOf(TimelineDragPreview? preview) =>
 /// (유저 2026-09-12, Q2: 「끄는 동안 행이 오르내린다」).
 List<TimelineDisplayRow> rowsWithSilhouette(
   List<TimelineDisplayRow> rows,
-  LayerAreaSilhouette? silhouette,
+  TimelineDragPreview? preview,
 ) {
+  final silhouette = layerAreaSilhouetteOf(preview);
   if (silhouette == null) {
     return rows;
   }

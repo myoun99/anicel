@@ -24,7 +24,7 @@ import 'layer_rail_window.dart'
         layerRailFrameReserveExtent,
         layerRailMinimumWindowExtent;
 import 'layer_drop_policy.dart'
-    show LayerAreaSilhouette, layerAreaSilhouetteOf;
+    show LayerAreaSilhouette, layerAreaSilhouetteOf, rowsWithSilhouette;
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
@@ -853,8 +853,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
             child: collapsed
                 ? const SizedBox.shrink()
                 : _whereTheSilhouetteStands(
-                    (silhouette) =>
-                        widget.orientation == TimelineOrientation.horizontal
+                    () => widget.orientation == TimelineOrientation.horizontal
                         ? LayerTimelineGrid(
                             hooks: hooks,
                             layers: horizontalLayers,
@@ -862,7 +861,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                             frameAxisOffset: widget.timelineFrameAxisOffset,
                             layerAxisOffset: widget.timelineLayerAxisOffset,
                             metrics: horizontalMetrics,
-                            silhouette: silhouette,
                           )
                         : XSheetTimelineGrid(
                             hooks: hooks,
@@ -871,7 +869,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                             frameAxisOffset: widget.xsheetFrameAxisOffset,
                             layerAxisOffset: widget.xsheetLayerAxisOffset,
                             metrics: xsheetMetrics,
-                            silhouette: silhouette,
                           ),
                   ),
           ),
@@ -880,22 +877,26 @@ class _TimelinePanelState extends State<TimelinePanel> {
     );
   }
 
-  /// [grid], handed the silhouette a file over the layer area stands as —
-  /// and built again when it moves, and only then: the preview channel
-  /// steps per pointer move, and keeping the grids off it is what the
-  /// scoped channel is for ([TimelinePanel.dragPreview]). ONE gate for both
-  /// grids, so the rail and the sheet cannot stand it at different gaps.
-  Widget _whereTheSilhouetteStands(
-    Widget Function(LayerAreaSilhouette? silhouette) grid,
-  ) {
+  /// [grid], built again when the silhouette a file over the layer area
+  /// stands as moves — and only then: the preview channel steps per pointer
+  /// move, and keeping the grids off it is what the scoped channel is for
+  /// ([TimelinePanel.dragPreview]). ONE gate for both grids, so the rail
+  /// and the sheet cannot stand it at different gaps.
+  ///
+  /// ⚠️The grids read the silhouette off the channel themselves
+  /// ([rowsWithSilhouette]) rather than being handed this slice: a value
+  /// both grids take rides their one bundle (`one_grid_hooks_test`), and
+  /// the channel is already in it. What they read there IS this slice —
+  /// the one function answers both ([layerAreaSilhouetteOf]).
+  Widget _whereTheSilhouetteStands(Widget Function() grid) {
     final preview = widget.dragPreview;
     if (preview == null) {
-      return grid(null);
+      return grid();
     }
     return SlicedListenableBuilder<LayerAreaSilhouette?>(
       listenable: preview,
       slice: () => layerAreaSilhouetteOf(preview.value),
-      builder: (context, silhouette) => grid(silhouette),
+      builder: (context, _) => grid(),
     );
   }
 }
