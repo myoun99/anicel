@@ -9,9 +9,13 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
+
+/// The tab as the app's window of 1600 × 1000 laid it.
+const _panel = Size(1003, 446);
 
 /// I-57 (유저 2026-10-01): 「현재 컷의 이름을 표기하고싶음. 위치는
 /// 타임라인/콘티패널 동일하게. 타임라인 줌의 마이너스버튼 왼쪽. 즉
@@ -42,27 +46,20 @@ void main() {
   const counter = ValueKey<String>('timeline-current-frame-counter');
   const zoomOut = ValueKey<String>('timeline-zoom-out-button');
 
+  /// The tab alone — the timeline's ([pumpTimelineHost]) or the
+  /// storyboard's ([pumpStoryboardHost]) — as the app's window of
+  /// 1600 × 1000 laid it: the cluster with the name is the panel's.
+  Future<EditorSessionManager> open(
+    WidgetTester tester, {
+    bool storyboard = false,
+  }) => storyboard
+      ? pumpStoryboardHost(tester, project(), surface: _panel)
+      : pumpTimelineHost(tester, project(), surface: _panel);
+
   for (final storyboard in [false, true]) {
     testWidgets('the ${storyboard ? 'storyboard' : 'timeline'} names the '
         'cut between its counter and its zoom', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(),
-          home: HomePage(initialProject: project()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      if (storyboard) {
-        await tester.tap(
-          find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-        );
-        await tester.pumpAndSettle();
-      }
-      final session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      final session = await open(tester, storyboard: storyboard);
       String shown() => tester.widget<Text>(find.byKey(name)).data!;
 
       session.selectCut(const CutId('cut-a'));
@@ -92,24 +89,7 @@ void main() {
     // into the cut under it, and the name turns over with that crossing.
     testWidgets('a scrub over another cut names it — once, at the crossing '
         '— on the ${storyboard ? 'storyboard' : 'timeline'}', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: buildAppTheme(),
-          home: HomePage(initialProject: project()),
-        ),
-      );
-      await tester.pumpAndSettle();
-      if (storyboard) {
-        await tester.tap(
-          find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-        );
-        await tester.pumpAndSettle();
-      }
-      final session = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
+      final session = await open(tester, storyboard: storyboard);
       String shown() => tester.widget<Text>(find.byKey(name)).data!;
       session.selectCut(const CutId('cut-a'));
       await tester.pumpAndSettle();
@@ -142,18 +122,7 @@ void main() {
   }
 
   testWidgets('a rename of the cut reaches the name', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: HomePage(initialProject: project()),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final session = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
+    final session = await open(tester);
     session.selectCut(const CutId('cut-a'));
     await tester.pumpAndSettle();
 

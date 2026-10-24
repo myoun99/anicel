@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SeSpanVisual;
 
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 
 Cut _cut(String id, int duration) {
   return Cut(
@@ -105,6 +106,13 @@ Project _project({bool named = false}) {
   );
 }
 
+/// The storyboard tab alone ([pumpStoryboardHost]), as the app's window of
+/// 800 × 600 laid it — what the conte draws and drags of a sound is the
+/// panel's. A case that walks between the two panels keeps the app.
+Future<void> _openStoryboard(WidgetTester tester, Project project) async {
+  await pumpStoryboardHost(tester, project, surface: const Size(640, 320));
+}
+
 void main() {
   testWidgets("tapping an S-row label selects that row of the STORYBOARD's "
       "rail — and leaves the CUT's row selection alone", (tester) async {
@@ -177,16 +185,7 @@ void main() {
   // there on no ground of its own (F-444, 10-23: 「배경 바탕색 삭제하고」).
   testWidgets('🚨a named sound with room before it wears its name just '
       'before it, one without on its head', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(initialProject: _project(named: true)),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
+    await _openStoryboard(tester, _project(named: true));
     final perFrame = tester
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
         .pixelsPerFrame;
@@ -235,15 +234,7 @@ void main() {
 
   testWidgets('the storyboard renders the TRACK SE row on the global axis: '
       'true lengths across cut ends with a ~ crossing mark', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _project())),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
+    await _openStoryboard(tester, _project());
 
     expect(
       find.byKey(const ValueKey<String>('storyboard-se-label-sb-se-track-1')),
@@ -333,14 +324,7 @@ void main() {
 
   testWidgets('EVERY cut\'s SE blocks carry edge grips (UI-R7 #5) and an '
       'end drag edits + previews LIVE on the strip (UI-R7 #7)', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _project())),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
-    );
-    await tester.pumpAndSettle();
+    await _openStoryboard(tester, _project());
 
     // The active cut is cut-1, yet the cut-2 block [10,12) has BOTH grips
     // (the active-cut gate is retired).
