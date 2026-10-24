@@ -3,12 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
-import '../helpers/library_source.dart';
+import '../helpers/vertical_text_finder.dart';
 
 /// The onion panel's light-table graph: every peg on screen at once, the
-/// bars that carry the opacity, zero as the only off, and the two mode
-/// pickers above the strip.
+/// bars that carry the opacity, the order numbers that switch them, zero as
+/// the only off, and the two mode pickers above the strip.
 void main() {
   Future<OnionSkinSettings Function()> pumpPanel(
     WidgetTester tester, {
@@ -39,42 +40,45 @@ void main() {
     return () => settings;
   }
 
-  /// The NUMBER at a column's floor — the switch, since F-150 ③. It is a
-  /// SIBLING of the bar layer, not a descendant, because a button cannot
-  /// live inside the slider's claim.
+  /// The NUMBER under a bar — the peg's order, and its switch since F-461.
   Finder pegSwitch(String side, int index) =>
       find.byKey(ValueKey<String>('onion-peg-switch-$side-$index'));
 
   Finder peg(String side, int index) =>
       find.byKey(ValueKey<String>('onion-peg-$side-$index'));
 
-  /// The painted bar inside a peg column (absent while the peg is at 0).
-  Finder barOf(Finder column) =>
-      find.descendant(of: column, matching: find.byType(DecoratedBox));
+  /// The bar a peg column stands — the app's one slider.
+  FieldSlider barOf(WidgetTester tester, String side, int index) =>
+      tester.widget<FieldSlider>(
+        find.descendant(
+          of: peg(side, index),
+          matching: find.byType(FieldSlider),
+        ),
+      );
 
-  testWidgets('all 8 pegs a side are on screen from the start, and the bars '
-      'occupy real pixels', (tester) async {
+  testWidgets('all 8 pegs a side are on screen from the start, each bar the '
+      'shared slider stood up across the strip', (tester) async {
     await pumpPanel(tester);
 
     for (var index = 1; index <= OnionSkinSettings.maxPegs; index += 1) {
-      expect(peg('before', index), findsOneWidget);
-      expect(peg('after', index), findsOneWidget);
+      for (final side in ['before', 'after']) {
+        expect(peg(side, index), findsOneWidget);
+        final bar = barOf(tester, side, index);
+        expect(bar.axis, Axis.vertical, reason: '$side $index');
+        expect(bar.upright, isTrue, reason: '$side $index');
+      }
     }
     expect(peg('before', OnionSkinSettings.maxPegs + 1), findsNothing);
 
-    // The column fills the strip's interior; the bar is 40% of it.
-    // (Pixels, not model values: a bar that lays out to zero is exactly
-    // how this panel shipped invisible once.)
+    // Pixels, not model values: a bar that lays out to zero is exactly how
+    // this panel shipped invisible once.
     final column = tester.getSize(peg('before', 1));
-    expect(column.height, 70);
-    // The column's own DecoratedBox (side wash) plus the bar's.
-    final bar = tester.getSize(barOf(peg('before', 1)).last);
-    expect(bar.width, greaterThan(4));
-    expect(bar.height, closeTo(0.4 * 70, 0.5));
+    expect(column.height, 72);
+    expect(column.width, greaterThan(4));
   });
 
   testWidgets('the default ghosts one drawing each way and leaves the rest '
-      'at zero — a silent peg draws no bar but still reads its 0', (
+      'at zero — every bar writes its number, the order under it', (
     tester,
   ) async {
     final read = await pumpPanel(tester);
@@ -82,30 +86,33 @@ void main() {
     expect(read().beforePegs.first.opacity, 0.4);
     expect(read().afterPegs.first.opacity, 0.3);
     expect(read().beforePegs.skip(1).every((peg) => !peg.shows), isTrue);
+    expect(barOf(tester, 'before', 1).value, 0.4);
+    expect(barOf(tester, 'before', 2).value, 0);
 
-    // Peg 2 has only its side wash — no bar box inside it.
-    expect(barOf(peg('before', 2)), findsOneWidget);
-    expect(barOf(peg('before', 1)), findsNWidgets(2));
+    // Percentages: 40, 30 and fourteen zeroes, all written standing.
+    expect(findVerticalText('40'), findsOneWidget);
+    expect(findVerticalText('30'), findsOneWidget);
+    expect(
+      findVerticalText('0'),
+      findsNWidgets(2 * OnionSkinSettings.maxPegs - 2),
+    );
 
-    // Percentages: 40, 30 and fourteen zeroes, all printed.
-    expect(find.text('40'), findsOneWidget);
-    expect(find.text('30'), findsOneWidget);
-    expect(find.text('0'), findsNWidgets(2 * OnionSkinSettings.maxPegs - 2));
-
-    // ... and the index row underneath.
+    // ... and the order row underneath.
     expect(find.text('8'), findsNWidgets(2));
     expect(find.text('●'), findsOneWidget);
   });
 
-  testWidgets('the percentage sits on the strip floor, not on top of its '
-      'bar — the readout keeps one baseline', (tester) async {
-    await pumpPanel(tester);
+  testWidgets('each side\'s bars rest in that side\'s tint', (tester) async {
+    await pumpPanel(
+      tester,
+      initial: const OnionSkinSettings(
+        tintBefore: 0xFF112233,
+        tintAfter: 0xFF445566,
+      ),
+    );
 
-    final strip = tester.getRect(peg('before', 1));
-    final tall = tester.getRect(find.text('40'));
-    final flat = tester.getRect(find.text('0').first);
-    expect(tall.bottom, closeTo(flat.bottom, 0.5));
-    expect(strip.bottom - tall.bottom, lessThan(4));
+    expect(barOf(tester, 'before', 3).restingAccent, const Color(0xFF112233));
+    expect(barOf(tester, 'after', 3).restingAccent, const Color(0xFF445566));
   });
 
   testWidgets('a vertical drag sets THAT peg\'s opacity, and dragging to '
@@ -113,10 +120,6 @@ void main() {
     final read = await pumpPanel(tester);
 
     final bar = tester.getRect(peg('before', 3));
-    // ⚠️NOT from the very floor any more: the bottom of each column is the
-    // NUMBER now (F-150 ③), and it is a button. The slider is everything
-    // above it. Starting 20px up is the same drag — the strip edits the peg
-    // the press LANDED on, wherever in the column that was.
     await tester.dragFrom(
       bar.bottomCenter - const Offset(0, 20),
       const Offset(0, -20),
@@ -134,46 +137,23 @@ void main() {
     expect(read().beforePegs[2].opacity, 0);
   });
 
-  /// 🚨★★★**F-150 ②③ — THE BAR IS A SLIDER AND THE NUMBER IS THE SWITCH.**
+  /// 🚨★★★**F-461 — THE ORDER NUMBER UNDER THE BAR IS THE SWITCH.**
   ///
-  /// > 「그래프? 바 쪽 지금 클릭하면 on off인데 **그런거 없애고, 공용슬라이더
-  /// > 사용해서 통일화**. 버튼 on off는 **숫자 써있는곳 버튼으로만들어서 그거
-  /// > 누르면 on off 전환**되도록」 (유저 2026-09-16)
+  /// > 「슬라이더쪽의 숫자 누르면 꺼지고 켜지는데, 그게 아니라 1번 2번 등
+  /// > 슬라이더 아래의 순서 숫자를 버튼으로서 누르면 on/off말한것임」
+  /// > (유저 2026-10-23)
   ///
-  /// ↩️A tap on the COLUMN used to silence the peg and a second tap brought
-  /// it back. That reading is gone: one place cannot be both a slider and a
-  /// switch, and the user said which half goes where.
-  testWidgets('a tap on the BAR changes nothing — it is a slider now', (
-    tester,
-  ) async {
-    final read = await pumpPanel(tester);
-    expect(read().beforePegs[0].opacity, 0.4, reason: 'the fixture premise');
-
-    await tester.tap(peg('before', 1));
-    await tester.pumpAndSettle();
-
-    expect(
-      read().beforePegs[0].opacity,
-      0.4,
-      reason: '유저: 「바 쪽 지금 클릭하면 on off인데 그런거 없애고」',
-    );
-  });
-
-  testWidgets('and the NUMBER is the switch: it silences the peg, and the '
+  /// ↩️F-150 ③ had put the switch on the percentage at the bar's floor.
+  testWidgets('the order NUMBER is the switch: it silences the peg, and the '
       'next press brings the same falloff back', (tester) async {
     final read = await pumpPanel(tester);
 
-    // The number written at the floor of that column — 40 for the first
-    // before-peg, which is the one the fixture ghosts.
-    await tester.tap(
-      pegSwitch('before', 1),
-    );
+    await tester.tap(pegSwitch('before', 1));
     await tester.pumpAndSettle();
     expect(read().beforePegs[0].opacity, 0);
+    expect(read().beforePegs[1].opacity, 0, reason: 'that peg, not a side');
 
-    await tester.tap(
-      pegSwitch('before', 1),
-    );
+    await tester.tap(pegSwitch('before', 1));
     await tester.pumpAndSettle();
     expect(
       read().beforePegs[0].opacity,
@@ -182,45 +162,23 @@ void main() {
     );
 
     // A peg that never had a value comes back at the house default.
-    await tester.tap(
-      pegSwitch('after', 5),
-    );
+    await tester.tap(pegSwitch('after', 5));
     await tester.pumpAndSettle();
-    expect(read().afterPegs[4].opacity, greaterThan(0));
+    expect(read().afterPegs[4].opacity, 0.3);
   });
 
-  /// ⛔**AND THE STRIP'S DRAG IS THE SLIDER'S.** 🧪The behaviour is hard to
-  /// tell apart in a test — both a plain `GestureDetector` and this pass a
-  /// simple drag — and the difference only shows on a real panel that
-  /// SCROLLS, where the ancestor takes a drag the strip waited a slop for.
-  /// So it is read from the source, the way the app reads every other
-  /// 「this press is the control's」 law.
-  test('the strip rides the shared slider\'s gesture, not its own', () {
-    final source = librarySource('lib/src/ui/panels/onion_skin_panel.dart');
-    expect(
-      source,
-      contains('OwningVerticalDragGestureRecognizer'),
-      reason:
-          '유저: 「공용슬라이더 사용해서 통일화」 — the recogniser FieldSlider '
-          'rides, which takes the arena on the first movement',
-    );
-    expect(
-      source,
-      contains('DragVerbClaim('),
-      reason:
-          '⛔the one claim the slider, the splitter and the swipe column '
-          'share. ⚠️WITH THE PAREN: the doc comment above names it too, and '
-          'a mutant that deleted the WIDGET survived a check that counted '
-          'the word',
-    );
-    expect(
-      source,
-      isNot(contains('onVerticalDragStart:')),
-      reason:
-          '⛔the plain detector waits for the device slop, and the panel it '
-          'sits in scrolls',
-    );
+  testWidgets('the switch sits under its own bar', (tester) async {
+    await pumpPanel(tester);
+
+    const columns = [('before', 8), ('before', 1), ('after', 8)];
+    for (final (side, index) in columns) {
+      final bar = tester.getRect(peg(side, index));
+      final number = tester.getRect(pegSwitch(side, index));
+      expect(number.center.dx, closeTo(bar.center.dx, 0.5), reason: side);
+      expect(number.top, greaterThanOrEqualTo(bar.bottom), reason: side);
+    }
   });
+
   testWidgets('the step picker switches between drawing blocks and raw '
       'frames without touching the falloff', (tester) async {
     final read = await pumpPanel(tester);
@@ -250,7 +208,9 @@ void main() {
   });
 
   testWidgets('at the minimum dock width the strip still lays out — the '
-      'percentages step aside, the index row stays', (tester) async {
+      'bars stand their digits one to a cell, so none step aside', (
+    tester,
+  ) async {
     await pumpPanel(
       tester,
       // EditorPanelLayoutModel clamps a dock no narrower than this.
@@ -258,8 +218,9 @@ void main() {
     );
 
     expect(peg('before', OnionSkinSettings.maxPegs), findsOneWidget);
-    expect(find.text('40'), findsNothing, reason: 'no room for two digits');
-    expect(find.text('8'), findsNWidgets(2), reason: 'the index row remains');
+    expect(findVerticalText('40'), findsOneWidget);
+    expect(pegSwitch('after', OnionSkinSettings.maxPegs), findsOneWidget);
+    expect(find.text('8'), findsNWidgets(2), reason: 'the order row remains');
     expect(tester.takeException(), isNull);
   });
 }
