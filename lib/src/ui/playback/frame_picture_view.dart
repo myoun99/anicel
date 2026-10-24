@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
 import '../../core/tree_nodes.dart';
@@ -115,6 +114,24 @@ typedef _Shown = ({FramePicture picture, ui.Image image})?;
 /// until [landed].
 typedef _Patching = ({ui.Rect rect, Future<void> landed});
 
+/// What of a frame is drawn as it stands where its picture is shown: all of
+/// it ([whole]), or the rects of the patches on their way into the picture
+/// ([patching]).
+///
+/// 🚨READ AT EACH PAINT, not handed to the painter at a build: a change of
+/// the live rows moves it with no build — a stroke's step patched in, a
+/// change no patch can follow. Handed at the build before, the step did not
+/// show until its texels were in the picture, and a frame gone to be drawn
+/// as it stands showed the picture without the change until the next build.
+final class _DrawnAsItStands {
+  /// The live rows moved where no patch can follow: the frame is drawn as
+  /// it stands until its key moves.
+  bool whole = false;
+
+  /// The patches on their way into the picture shown.
+  final List<_Patching> patching = [];
+}
+
 class _FramePictureViewState extends State<FramePictureView> {
   /// The key of the frame shown — its picture, held for this view by the
   /// store; or the frame as it stands.
@@ -127,7 +144,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   StackedFrame? _asItStands;
 
   /// The frame as it stands with its live rows ([LiveRows]) — drawn
-  /// wherever its picture is not shown or [_liveOver], and the body every
+  /// wherever its picture is not shown or [_standing], and the body every
   /// patch is drawn by. Null where this view draws nothing as it stands.
   StackedFrame? _live;
 
@@ -140,12 +157,8 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// change from — null while it cannot be told.
   LiveSurfaceTokens? _held;
 
-  /// The live rows moved where no patch can follow: the frame is drawn as
-  /// it stands until its key moves.
-  bool _liveOver = false;
-
-  /// The patches on their way into the picture shown.
-  final List<_Patching> _patching = [];
+  /// What of the frame is drawn as it stands over the picture shown.
+  final _DrawnAsItStands _standing = _DrawnAsItStands();
 
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
@@ -214,7 +227,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     _live = null;
     final live = widget.live;
     if (live == null && widget.wholeFrames) {
-      _liveOver = false;
+      _standing.whole = false;
       return;
     }
     final frame = _pictures.frameAsItStands(
@@ -291,7 +304,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       _held = held;
       return;
     }
-    _liveOver = false;
+    _standing.whole = false;
     _tell();
   }
 
@@ -382,7 +395,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     }
     // What is still out of it goes in first, as the move's own.
     _liveMoved();
-    if (_liveOver || !_store.move(from: from, to: key)) {
+    if (_standing.whole || !_store.move(from: from, to: key)) {
       return false;
     }
     _moving = key;
@@ -419,7 +432,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     final now = live.tokens;
     if (!live.steady ||
         (now != null && (now.overlay.isNotEmpty || now.previews.isNotEmpty))) {
-      _liveOver = true;
+      _standing.whole = true;
       return;
     }
     _held = now;
@@ -432,7 +445,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     final live = _live;
     final shown = _shown;
     final key = _showing;
-    if (live == null || shown == null || key == null || _liveOver) {
+    if (live == null || shown == null || key == null || _standing.whole) {
       return;
     }
     if (_moving != null) {
@@ -442,18 +455,18 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (held == null) {
       // A live row whose change cannot be told by where it lands — none
       // where nothing is drawn live at all.
-      _liveOver =
+      _standing.whole =
           !live.steady || widget.live?.activeSurfacePainter != null;
       return;
     }
     if (!live.steady) {
-      _liveOver = true;
+      _standing.whole = true;
       return;
     }
     final moved = live.movedSince(held);
     final dirty = moved.dirty;
     if (!moved.located) {
-      _liveOver = true;
+      _standing.whole = true;
       return;
     }
     _held = moved.now;
@@ -481,7 +494,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     final extent = picture.extent;
     final drawing = live.drawing;
     if (drawing.extent.intersect(extent) != drawing.extent) {
-      _liveOver = true;
+      _standing.whole = true;
       return;
     }
     final rect = dirty.intersect(extent);
@@ -489,15 +502,15 @@ class _FramePictureViewState extends State<FramePictureView> {
       return;
     }
     if (!_store.patch(from: key, to: key, rect: rect, draw: drawing.draw)) {
-      _liveOver = true;
+      _standing.whole = true;
       return;
     }
     final landed = _store.landingOf(key)!;
     final patching = (rect: rect, landed: landed);
-    _patching.add(patching);
+    _standing.patching.add(patching);
     unawaited(
       landed.then((_) {
-        if (_patching.remove(patching) && mounted) {
+        if (_standing.patching.remove(patching) && mounted) {
           _repaint.value += 1;
         }
       }),
@@ -515,21 +528,18 @@ class _FramePictureViewState extends State<FramePictureView> {
     _showing = null;
     _moving = null;
     _held = null;
-    _patching.clear();
+    _standing.patching.clear();
   }
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       painter: _FramePicturePainter(
-        shown: _liveOver ? null : _shown,
+        shown: _shown,
         // ⛔Not the stored cels where the view draws rows live: a frame of
         // no row is a page the pen may be drawing on.
         asItStands: _live ?? _asItStands,
-        patching: [
-          if (!_liveOver)
-            for (final patching in _patching) patching.rect,
-        ],
+        standing: _standing,
         patchedBy: _live,
         viewport: widget.viewport,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -544,7 +554,7 @@ class _FramePicturePainter extends CustomPainter {
   _FramePicturePainter({
     required this.shown,
     required this.asItStands,
-    required this.patching,
+    required this.standing,
     required this.patchedBy,
     required this.viewport,
     required this.devicePixelRatio,
@@ -557,9 +567,10 @@ class _FramePicturePainter extends CustomPainter {
   /// ([StackedFrame.paintOnScreen]).
   final StackedFrame? asItStands;
 
-  /// Where patches are on their way into [shown], drawn as they stand by
-  /// [patchedBy] until their texels are in.
-  final List<ui.Rect> patching;
+  /// What of the frame is drawn as it stands over [shown] — whole, or where
+  /// patches are on their way into it, by [patchedBy] until their texels
+  /// are in.
+  final _DrawnAsItStands standing;
   final StackedFrame? patchedBy;
   final CanvasViewport viewport;
   final double devicePixelRatio;
@@ -569,8 +580,13 @@ class _FramePicturePainter extends CustomPainter {
     final screen = Offset.zero & size;
     canvas.save();
     canvas.clipRect(screen);
+    final shown = standing.whole ? null : this.shown;
     if (shown case (:final picture, :final image)) {
-      final landing = patchedBy == null ? null : _onScreen(patching);
+      final landing = patchedBy == null
+          ? null
+          : _onScreen([
+              for (final patching in standing.patching) patching.rect,
+            ]);
       // 🚨A patch still landing is drawn by the walk ALONE: the picture
       // under it holds what the rows were, and translucent ink laid over
       // that again — no paper under it — is the ink twice. Both sides are
@@ -683,7 +699,6 @@ class _FramePicturePainter extends CustomPainter {
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
       !identical(oldDelegate.patchedBy, patchedBy) ||
-      !listEquals(oldDelegate.patching, patching) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }
