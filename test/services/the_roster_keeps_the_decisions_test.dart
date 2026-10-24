@@ -5,10 +5,13 @@
 // move; what must not move is the SHAPE the user decided (2026-09-09): no
 // eraser group, no pixel group, paint split by medium, and no two brushes
 // that the picker cannot tell apart.
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_preset.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
@@ -18,6 +21,8 @@ import 'package:anicel/src/models/brush_texture_mode.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_order.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/brush_dab_coverage.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
 import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
@@ -480,5 +485,36 @@ void main() {
         );
       }
     }
+  });
+
+  test('🚨a grass blade stands up on a sideways sweep — taller than wide', () {
+    // Its own comment's law ("Blades stand UP"). ↩️It landed round dots:
+    // a roundness that squeezed the leaf along its length (10-24).
+    final grass = defaultBrushPresets
+        .firstWhere((preset) => preset.id.value == 'builtin-grass')
+        .settings;
+    // A sideways sweep heads at 0°, so the tip turns by its own angle.
+    final blade = BrushDab(
+      center: CanvasPoint(x: 64, y: 64),
+      color: 0xFF000000,
+      size: grass.size,
+      opacity: 1,
+      flow: 1,
+      hardness: grass.hardness,
+      pressure: 1,
+      sequence: 0,
+      roundness: grass.roundness,
+      angleDegrees: grass.angleDegrees,
+      tipMask: grass.tipMask,
+    );
+    var (left, right, top, bottom) = (1 << 30, -1, 1 << 30, -1);
+    forEachBrushPixelCoverage(blade, (x, y, coverage) {
+      if (coverage > 0.5) {
+        (left, right) = (math.min(left, x), math.max(right, x));
+        (top, bottom) = (math.min(top, y), math.max(bottom, y));
+      }
+    });
+    final (wide, tall) = (right - left + 1, bottom - top + 1);
+    expect(tall, greaterThan(wide * 1.5), reason: '$wide wide, $tall tall');
   });
 }

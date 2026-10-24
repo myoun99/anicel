@@ -1243,11 +1243,13 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       spacing: 0.6,
       tips: [leafBrushTipMask],
       // Blades stand UP and lean a little, so the tip follows the stroke
-      // rather than the fixed angle a fallen-leaf pile wants.
+      // rather than the fixed angle a fallen-leaf pile wants. The leaf's
+      // length is its mask's height, so a sideways sweep stands it upright
+      // as it is. ↩️It wore roundness 0.35 at 90°: the squeeze takes the
+      // mask's height — the blade's length — and every blade landed a round
+      // dot (measured 10-24, the-gouache-is-a-round-with-a-weave's sweep).
       rotationMode: BrushTipRotationMode.direction,
-      angleDegrees: 90,
       angleJitter: 0.12,
-      roundness: 0.35,
       curves: _randomRows(size: 0.45),
       scatterRadiusRatio: 0.8,
       scatterCount: 5,
