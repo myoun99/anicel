@@ -74,6 +74,7 @@ void main() {
     bool effects = false,
     bool unbakedMask = false,
     bool locked = false,
+    bool clipping = false,
   }) => PsdLayer(
     name: name,
     left: 0,
@@ -82,7 +83,7 @@ void main() {
     bottom: 0,
     opacity: 255,
     visible: true,
-    clipping: false,
+    clipping: clipping,
     blendKey: blend,
     role: role,
     pixels: null,
@@ -364,13 +365,29 @@ void main() {
       );
     });
 
-    test('a clipping mask is kept as a layer but flagged', () {
-      final result = plan(document([raster('colour', clipping: true)]));
-      expect(result.layers.first.name, 'colour');
-      expect(
-        result.warnings.any((w) => w.english.contains('clipping')),
-        isTrue,
+    test('a clipping mask comes in as the row\'s clip to the layer below — '
+        'a layer\'s and a group\'s — and says nothing (I-92; ↩️it came in '
+        'unclipped, flagged)', () {
+      final result = plan(
+        document([
+          raster('base'),
+          raster('colour', clipping: true),
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'glow', clipping: true),
+        ]),
+        newCut: true,
       );
+      expect(
+        [for (final layer in result.layers) (layer.name, layer.clipsToBelow)],
+        [
+          ('base', false),
+          ('colour', true),
+          ('inside', false),
+          ('glow', true),
+        ],
+      );
+      expect(result.warnings, isEmpty);
     });
 
     test('the reader warnings ride along', () {

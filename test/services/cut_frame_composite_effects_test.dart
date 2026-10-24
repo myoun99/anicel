@@ -159,10 +159,21 @@ void main() {
   group('folders', () {
     test('an effect FORCES the buffer — a filter does not distribute', () {
       final folder = folderRow('f', effects: [blur(4)]);
-      expect(folderNeedsCompositeBuffer(folder: folder, frameIndex: 0), isTrue);
+      expect(
+        folderNeedsCompositeBuffer(
+          cut: cut([folder]),
+          folder: folder,
+          frameIndex: 0,
+        ),
+        isTrue,
+      );
       // …and a plain organizing folder still costs nothing.
       expect(
-        folderNeedsCompositeBuffer(folder: folderRow('f'), frameIndex: 0),
+        folderNeedsCompositeBuffer(
+          cut: cut([folderRow('f')]),
+          folder: folderRow('f'),
+          frameIndex: 0,
+        ),
         isFalse,
       );
     });
@@ -189,7 +200,11 @@ void main() {
     test('a folder whose effects are OFF contributes none and needs no buffer', () {
       final folder = folderRow('f', effects: allDisabled([blur(4)]));
       expect(
-        folderNeedsCompositeBuffer(folder: folder, frameIndex: 0),
+        folderNeedsCompositeBuffer(
+          cut: cut([folder]),
+          folder: folder,
+          frameIndex: 0,
+        ),
         isFalse,
       );
       final tree = resolveCutFrameCompositeTree(
@@ -205,7 +220,11 @@ void main() {
 
     test('an effect on a member does NOT make its folder buffer', () {
       expect(
-        folderNeedsCompositeBuffer(folder: folderRow('f'), frameIndex: 0),
+        folderNeedsCompositeBuffer(
+          cut: cut([folderRow('f')]),
+          folder: folderRow('f'),
+          frameIndex: 0,
+        ),
         isFalse,
       );
       final tree = resolveCutFrameCompositeTree(

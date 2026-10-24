@@ -46,6 +46,7 @@ class PsdBuilder {
     double opacity = 1,
     bool visible = true,
     LayerBlendMode blendMode = LayerBlendMode.normal,
+    bool clipped = false,
   }) {
     if (pixels.width != width || pixels.height != height) {
       throw ArgumentError(
@@ -61,6 +62,7 @@ class PsdBuilder {
         flags: visible ? 0 : _hidden,
         blendKey: psdBlendKeyOf(blendMode),
         channels: pixels._channels,
+        clipped: clipped,
       ),
     );
   }
@@ -74,6 +76,7 @@ class PsdBuilder {
     bool visible = true,
     LayerBlendMode blendMode = LayerBlendMode.passThrough,
     bool collapsed = false,
+    bool clipped = false,
   }) {
     final group = _Group(
       name: name,
@@ -81,6 +84,7 @@ class PsdBuilder {
       visible: visible,
       blendMode: blendMode,
       collapsed: collapsed,
+      clipped: clipped,
     );
     _open.add(group);
     // The hidden record Photoshop opens a group's members with — below
@@ -114,6 +118,7 @@ class PsdBuilder {
         blendKey: psdBlendKeyOf(group.blendMode),
         channels: _emptyChannels,
         section: group.collapsed ? _closedFolder : _openFolder,
+        clipped: group.clipped,
       ),
     );
   }
@@ -232,6 +237,7 @@ class _Group {
     required this.visible,
     required this.blendMode,
     required this.collapsed,
+    required this.clipped,
   });
 
   final String name;
@@ -239,6 +245,7 @@ class _Group {
   final bool visible;
   final LayerBlendMode blendMode;
   final bool collapsed;
+  final bool clipped;
 }
 
 typedef _Bounds = ({int left, int top, int right, int bottom});
@@ -253,6 +260,7 @@ class _Record {
     required this.blendKey,
     required this.channels,
     this.section,
+    this.clipped = false,
   });
 
   final String name;
@@ -269,6 +277,10 @@ class _Record {
 
   /// The `lsct` type of a folder's row, null for a picture.
   final int? section;
+
+  /// Clipped to the row below it (I-92) — Photoshop's clipping byte, 1 for
+  /// a row that is not a base.
+  final bool clipped;
 
   void writeTo(_BigEndian out) {
     final at = bounds;
@@ -287,8 +299,7 @@ class _Record {
       ..ascii('8BIM')
       ..ascii(blendKey)
       ..u8((opacity.clamp(0.0, 1.0) * 255).round())
-      // Not clipped to the row below.
-      ..u8(0)
+      ..u8(clipped ? 1 : 0)
       ..u8(flags)
       ..u8(0);
     final extra = _extraData();

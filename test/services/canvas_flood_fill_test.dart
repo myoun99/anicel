@@ -284,9 +284,16 @@ void main() {
 
       // What the fill encloses, read by the stamp's size: the blob is ONE
       // flat region (8 wide), the ink's box holds the seed in 2×2.
-      (int, int) filled(CanvasReadSource source, {required LayerId active}) {
+      (int, int) filled(
+        CanvasReadSource source, {
+        required LayerId active,
+        bool clipped = false,
+      }) {
         final dabs = buildFillDabs(
-          cut: cutWith([inkLayer(), paintLayer]),
+          cut: cutWith([
+            inkLayer(),
+            paintLayer.copyWith(clipsToBelow: clipped),
+          ]),
           frameIndex: 0,
           surfaceResolver: resolve,
           point: CanvasPoint(x: 3, y: 3),
@@ -318,6 +325,17 @@ void main() {
       // 「현재레이어」: the active layer alone.
       expect(filled(CanvasReadSource.layer, active: paint), blob);
       expect(filled(CanvasReadSource.layer, active: ink), box);
+      // I-92: clipped to the ink under it, the blob shows on the box's walls
+      // alone — what you see holds the seed in the box; read alone, it is
+      // the blob as drawn.
+      expect(
+        filled(CanvasReadSource.display, active: paint, clipped: true),
+        box,
+      );
+      expect(
+        filled(CanvasReadSource.layer, active: paint, clipped: true),
+        blob,
+      );
     });
 
     group('Fill Beyond Canvas (pasteboard)', () {

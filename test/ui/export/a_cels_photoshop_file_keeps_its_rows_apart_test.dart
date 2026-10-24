@@ -54,8 +54,8 @@ void main() {
   const blue = [10, 20, 220, 255];
 
   /// A cut of the cel 「A」 and a row riding it, 「A 影」 — multiplied over
-  /// it at half strength.
-  EditorSessionManager film() {
+  /// it at half strength, and clipped to it where [shadeClips].
+  EditorSessionManager film({bool shadeClips = false}) {
     final session = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -80,6 +80,7 @@ void main() {
                     frames: [shade1],
                     opacity: 0.5,
                     blendMode: LayerBlendMode.multiply,
+                    clipsToBelow: shadeClips,
                   ),
                   createCameraLayer(cutId: cutId),
                 ],
@@ -213,6 +214,59 @@ void main() {
           closeTo((gray[c] + gray[c] * blue[c] / 255) / 2, 2),
         );
       }
+    });
+  });
+
+  testWidgets('a member clipped to the one under it shows only where that one '
+      'is, in the cel\'s picture as on the canvas — and the file clips it '
+      '(I-92)', (tester) async {
+    await tester.runAsync(() async {
+      const gray = [128, 128, 128, 255];
+      Future<Uint8List> celOn({required bool clips}) async {
+        final session = film(shadeClips: clips);
+        paint(
+          session,
+          onA: {(1, 1): gray},
+          onShade: {(1, 1): blue, (2, 2): blue},
+        );
+        final picture = (await ExportFrameRenderer(
+          session: session,
+          background: white,
+        ).renderCelGroup(
+          celOf(session),
+          ExportSizeMode.canvas,
+          guideColor: noGuidesLaid,
+        ))!;
+        final drawn = (await picture.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        ))!.buffer.asUint8List();
+        picture.dispose();
+        return drawn;
+      }
+
+      List<int> at(Uint8List drawn, int x, int y) =>
+          drawn.sublist((y * size.width + x) * 4, (y * size.width + x) * 4 + 4);
+      final clipped = await celOn(clips: true);
+      final free = await celOn(clips: false);
+      expect(
+        at(clipped, 2, 2),
+        [255, 255, 255, 255],
+        reason: 'where 「A」 has nothing, its shade shows nowhere',
+      );
+      expect(at(free, 2, 2), isNot([255, 255, 255, 255]));
+      expect(
+        at(clipped, 1, 1),
+        at(free, 1, 1),
+        reason: 'where 「A」 is, the shade lays as it did',
+      );
+
+      final session = film(shadeClips: true);
+      draw(session);
+      expect([for (final row in rowsOf(session, white)) row.clipped], [
+        false,
+        false,
+        true,
+      ]);
     });
   });
 

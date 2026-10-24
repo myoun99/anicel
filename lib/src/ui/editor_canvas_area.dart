@@ -32,6 +32,7 @@ import 'brush/brush_tool_state.dart';
 import 'brush/temporary_tool.dart';
 import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
+import '../core/tree_nodes.dart' show preorderNodes;
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
 import 'brush/cel_text_commands.dart';
@@ -461,6 +462,40 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 blendMode: blendMode,
               ),
             );
+          case CompositeClip(
+            :final base,
+            :final scope,
+            :final opacity,
+            :final blendMode,
+          ):
+            // Under the active row wherever it stands, but never IN a base:
+            // what the base holds is what its clip cuts by, and a ghost
+            // there would widen the cut. A row drawn on in the base takes
+            // its ghosts under the whole group; one that clips, in what
+            // clips — cut by the base as the row is.
+            final inTheBase = preorderNodes([base]).any(
+              (inside) =>
+                  inside is CompositeLeaf<CanvasStackRow> &&
+                  inside.payload is CanvasActiveLayerRow,
+            );
+            if (!placed && inTheBase) {
+              out
+                ..addAll(ghostNodes)
+                ..add(node);
+              placed = true;
+            } else {
+              out.add(
+                CompositeClip<CanvasStackRow>(
+                  base: base,
+                  scope: walk(scope),
+                  opacity: opacity,
+                  blendMode: blendMode,
+                ),
+              );
+            }
+          // The base it paints again, as it stands.
+          case CompositeOpaque():
+            out.add(node);
           case CompositeLeaf(payload: CanvasLayerImageRequest()):
             out.add(node);
         }

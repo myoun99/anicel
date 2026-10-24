@@ -94,6 +94,7 @@ void main() {
     bool animation = false,
     ClipPlacement? camera,
     bool effects = false,
+    bool clipped = false,
     ClipLayerMask? mask,
     bool locked = false,
   }) {
@@ -117,6 +118,7 @@ void main() {
       originalTransform: null,
       camera: camera,
       effectsOn: effects,
+      clipped: clipped,
       mask: mask,
       locked: locked,
       children: children,
@@ -1386,10 +1388,10 @@ void main() {
   });
 
   test('what CLIP STUDIO draws over what comes in — an effect of its '
-      'properties on, or a clip to the layer under it — is said in every '
-      'decoder\'s words: a layer or folder outside the cels by its own '
-      'name, one in a cel (the cel\'s folder too) by its folder and cel, '
-      'and one left out only as left out', () {
+      'properties on, or a clip to the layer under it inside a cel — is '
+      'said in every decoder\'s words: a layer or folder outside the cels '
+      'by its own name, one in a cel (the cel\'s folder too) by its folder '
+      'and cel, and one left out only as left out', () {
     final a = animation(
       'A',
       [
@@ -1420,7 +1422,6 @@ void main() {
       [
         ('layerEffectsNotApplied', 'tinted'),
         ('layerEffectsNotApplied', 'LO'),
-        ('clippingNotApplied', 'clipped'),
         ('layerEffectsNotApplied', 'A'),
         ('layerEffectsNotApplied', 'A / 1'),
         ('layerEffectsNotApplied', 'A / 2'),
@@ -1430,7 +1431,36 @@ void main() {
       ],
     );
     expect(result.warnings.first, layerEffectsNotApplied('tinted'));
-    expect(result.warnings[2], clippingNotApplied('clipped'));
+    expect(result.warnings[5], clippingNotApplied('A / 2'));
+  });
+
+  test('a layer and a folder outside every cel come in clipped to the layer '
+      'under them as they were (I-92) — nothing to say', () {
+    final result = plan(
+      root([
+        layer('base'),
+        layer('shade', clipped: true),
+        folder('glow', [layer('inside')], clipped: true),
+        layer('free'),
+      ]),
+      [timeline(const [])],
+    );
+    final cut = result.cuts.single;
+
+    expect(
+      [
+        for (final name in ['base', 'shade', 'glow', 'inside', 'free'])
+          (name, row(cut, name).clipsToBelow),
+      ],
+      [
+        ('base', false),
+        ('shade', true),
+        ('glow', true),
+        ('inside', false),
+        ('free', false),
+      ],
+    );
+    expect(result.warnings, isEmpty);
   });
 
   group('🎯a layer mask that is on (보드 the-clip-import-leaves-masks-and-'

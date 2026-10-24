@@ -230,28 +230,63 @@ class LazyCanvasRasterRgb {
            ) {
     // Surfaces resolve ONCE (a cold resolve may replay paint commands).
     //
-    // WHICH layers is [read] — the reference source's answer, the one the
-    // eyedropper reads by too. R20-C2's flag (the CSP lighthouse: paint on a
-    // colour layer never blocks or leaks a fill traced against the line
-    // art) is one of its three answers since I-36. HOW each is read is
-    // [_carryInto]'s: in the seed's [space], through the layer's placement.
-    for (final entry in resolveCutFrameCompositeEntries(
+    // WHICH layers is [read] — the read source's answer, the one the
+    // eyedropper reads by too (I-36). HOW each is read is [_carryInto]'s:
+    // in the seed's [space], through the layer's placement.
+    final entries = resolveCutFrameCompositeEntries(
       cut: cut,
       frameIndex: frameIndex,
-    )) {
+    );
+    _ReadLayer? readOf(CutFrameCompositeEntry entry, {double strength = 1}) {
+      final carry = _carryInto(entry, space);
+      final surface = surfaceResolver(entry.layer, entry.frame);
+      if (!carry.shows || surface == null) {
+        return null;
+      }
+      return _ReadLayer(
+        // The cel as it SHOWS: a letter bounds a fill as a drawn line
+        // does (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+        surface: celSurfaceWithTextsLaid(surface),
+        opacity: entry.opacity * strength,
+        toArtwork: carry.toArtwork,
+      );
+    }
+
+    for (final entry in entries) {
       if (read != null && !read.contains(entry.layer.id)) {
         continue;
       }
-      final carry = _carryInto(entry, space);
-      final surface = surfaceResolver(entry.layer, entry.frame);
-      if (carry.shows && surface != null) {
-        _layers.add((
-          // The cel as it SHOWS: a letter bounds a fill as a drawn line
-          // does (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
-          surface: celSurfaceWithTextsLaid(surface),
-          opacity: entry.opacity,
-          toArtwork: carry.toArtwork,
-        ));
+      // A row that clips to the layer below walls the fill where it shows
+      // — where its base is (I-92) — in the whole picture; a read of one
+      // row reads it as drawn, as the eyedropper does.
+      final clip = read != null
+          ? null
+          : flatClipOf(
+              cut: cut,
+              layer: entry.layer,
+              frameIndex: frameIndex,
+              entries: entries,
+            );
+      final layer = readOf(entry, strength: clip?.strength ?? 1);
+      if (layer == null) {
+        continue;
+      }
+      if (clip == null) {
+        _layers.add(layer);
+        continue;
+      }
+      final cutBy = [
+        for (final base in clip.cutBy) ?readOf(base),
+      ];
+      if (cutBy.isNotEmpty) {
+        _layers.add(
+          _ReadLayer(
+            surface: layer.surface,
+            opacity: layer.opacity,
+            toArtwork: layer.toArtwork,
+            cutBy: cutBy,
+          ),
+        );
       }
     }
   }
@@ -524,7 +559,7 @@ class LazyCanvasRasterRgb {
       // seed MATCHING (tolerance compares), so byte-rounded source-over
       // is exact enough by construction.
       final opacityInt = (layer.opacity * 255).round();
-      if (layer.toArtwork != null) {
+      if (layer.toArtwork != null || layer.cutBy != null) {
         yield _carriedTileUnder(layer, region);
         continue;
       }
@@ -544,14 +579,60 @@ class LazyCanvasRasterRgb {
   }
 
   /// [layer] carried onto one compose rect ([world], the rect in raster
-  /// WORLD space) through its `toArtwork`: a compose-sized tile resampled by
-  /// the resampler that carries a transformed picture everywhere else, so
-  /// the three composes blend it like any stored tile.
+  /// WORLD space) as a compose-sized tile, so the three composes blend it
+  /// like any stored tile: through its `toArtwork`, and cut by its base
+  /// where it clips to the layer below ([_ReadLayer.cutBy], I-92).
+  _LayerTileUnder _carriedTileUnder(_ReadLayer layer, DirtyRegion world) {
+    final pixels = _pixelsOn(layer, world);
+    final cutBy = layer.cutBy;
+    if (cutBy != null) {
+      // What the base covers, its pixels laid together — and the row's
+      // premultiplied pixels kept that much: `srcATop`'s cut, which the
+      // clipping group's picture is.
+      final covered = Uint8List(_tileSize * _tileSize);
+      for (final base in cutBy) {
+        final basePixels = _pixelsOn(base, world);
+        for (var i = 0; i < covered.length; i += 1) {
+          final alpha = basePixels[i * 4 + 3];
+          covered[i] = alpha + (covered[i] * (255 - alpha) + 127) ~/ 255;
+        }
+      }
+      for (var i = 0; i < pixels.length; i += 1) {
+        pixels[i] = (pixels[i] * covered[i >> 2] + 127) ~/ 255;
+      }
+    }
+    return (
+      tile: BitmapTile(size: _tileSize, pixels: pixels),
+      opacityInt: (layer.opacity * 255).round(),
+      baseX: world.left - originX,
+      baseY: world.top - originY,
+      clipLeft: world.left - originX,
+      clipTop: world.top - originY,
+      clipRightExclusive: world.rightExclusive - originX,
+      clipBottomExclusive: world.bottomExclusive - originY,
+    );
+  }
+
+  /// [layer]'s pixels on the compose tile at [world]'s origin, in raster
+  /// WORLD space — straight off its tiles where it is read 1:1, resampled
+  /// by the resampler that carries a transformed picture everywhere else
+  /// where it is posed.
   ///
   /// Blend, not pick: the screen draws a posed layer filtered, and the fill
   /// reads what the screen shows.
-  _LayerTileUnder _carriedTileUnder(_ReadLayer layer, DirtyRegion world) {
-    final toArtwork = layer.toArtwork!;
+  static Uint8List _pixelsOn(_ReadLayer layer, DirtyRegion world) {
+    final toArtwork = layer.toArtwork;
+    if (toArtwork == null) {
+      return bitmapSurfaceRegionPixels(
+        layer.surface,
+        DirtyRegion(
+          left: world.left,
+          top: world.top,
+          rightExclusive: world.left + _tileSize,
+          bottomExclusive: world.top + _tileSize,
+        ),
+      );
+    }
     final source = _preimageOf(toArtwork, world);
     final pixels = Uint8List(BitmapTile.bytesFor(_tileSize));
     resampleSelectionInto(
@@ -564,16 +645,7 @@ class LazyCanvasRasterRgb {
       transform: _resampleFold(toArtwork, world, source),
       mode: ResampleMode.blend,
     );
-    return (
-      tile: BitmapTile(size: _tileSize, pixels: pixels),
-      opacityInt: (layer.opacity * 255).round(),
-      baseX: world.left - originX,
-      baseY: world.top - originY,
-      clipLeft: world.left - originX,
-      clipTop: world.top - originY,
-      clipRightExclusive: world.rightExclusive - originX,
-      clipBottomExclusive: world.bottomExclusive - originY,
-    );
+    return pixels;
   }
 
   /// What a compose tile at [world]'s origin can read of a layer carried by
@@ -613,14 +685,24 @@ class LazyCanvasRasterRgb {
   );
 }
 
-/// A layer the raster reads: its surface, its opacity, and — for a layer
-/// NOT placed as the seed's space — how raster WORLD maps into its artwork
-/// (null = read 1:1). See [_carryInto].
-typedef _ReadLayer = ({
-  BitmapSurface surface,
-  double opacity,
-  GuideTransform? toArtwork,
-});
+/// A layer the raster reads: its surface, its opacity, — for a layer NOT
+/// placed as the seed's space — how raster WORLD maps into its artwork
+/// (null = read 1:1; see [_carryInto]), and — for one that clips to the
+/// layer below — its base's layers, which cut it ([flatClipOf]; null =
+/// nothing cuts it).
+final class _ReadLayer {
+  const _ReadLayer({
+    required this.surface,
+    required this.opacity,
+    required this.toArtwork,
+    this.cutBy,
+  });
+
+  final BitmapSurface surface;
+  final double opacity;
+  final GuideTransform? toArtwork;
+  final List<_ReadLayer>? cutBy;
+}
 
 /// How [entry] is read by a raster laid in [space]: null `toArtwork` for a
 /// layer placed exactly as that space (read 1:1, byte for byte as before —

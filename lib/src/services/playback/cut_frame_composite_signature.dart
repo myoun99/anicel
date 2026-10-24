@@ -233,6 +233,66 @@ final class CompositeBackdropBlendSignature extends CompositeNodeSignature {
       'backdrop: $backdrop, source: $source)';
 }
 
+/// A clipping group's identity (I-92): the base, what its alpha cuts, and
+/// the base's strength and blend the group carries — a row switching its
+/// clip on is a different picture, as one changing its blend is.
+final class CompositeClipSignature extends CompositeNodeSignature {
+  CompositeClipSignature({
+    required this.base,
+    required List<CompositeNodeSignature> scope,
+    required this.opacity,
+    required this.blendMode,
+  }) : scope = List.unmodifiable(scope);
+
+  final CompositeNodeSignature base;
+  final List<CompositeNodeSignature> scope;
+  final double opacity;
+  final LayerBlendMode blendMode;
+
+  @override
+  List<CompositeNodeSignature> get children => [base, ...scope];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeClipSignature &&
+          other.opacity == opacity &&
+          other.blendMode == blendMode &&
+          other.base == base &&
+          listEquals(other.scope, scope);
+
+  @override
+  int get hashCode =>
+      Object.hash(opacity, blendMode, base, Object.hashAll(scope));
+
+  @override
+  String toString() =>
+      'CompositeClipSignature(opacity: $opacity, blendMode: $blendMode, '
+      'base: $base, scope: $scope)';
+}
+
+/// A clip's base made opaque, as its signature: the base it paints again.
+final class CompositeOpaqueSignature extends CompositeNodeSignature {
+  const CompositeOpaqueSignature(this.of);
+
+  final CompositeNodeSignature of;
+
+  /// Empty, as [CompositeOpaque]'s: the base stands in the tree once.
+  @override
+  List<CompositeNodeSignature> get children => const [];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeOpaqueSignature && other.of == of;
+
+  @override
+  int get hashCode => Object.hash(CompositeOpaqueSignature, of);
+
+  @override
+  String toString() => 'CompositeOpaqueSignature($of)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -279,6 +339,8 @@ class CutFrameCompositeSignature {
         case CompositeGroupSignature():
         case CompositeAdjustmentSignature():
         case CompositeBackdropBlendSignature():
+        case CompositeClipSignature():
+        case CompositeOpaqueSignature():
           break;
       }
     }
@@ -380,5 +442,20 @@ List<CompositeNodeSignature> _nodeSignaturesOf(
           source: _nodeSignaturesOf([source]).single,
           blendMode: blendMode,
         ),
+      CompositeClip(
+        :final base,
+        :final scope,
+        :final opacity,
+        :final blendMode,
+      ) =>
+        CompositeClipSignature(
+          base: _nodeSignaturesOf([base]).single,
+          scope: _nodeSignaturesOf(scope),
+          opacity: opacity,
+          blendMode: blendMode,
+        ),
+      CompositeOpaque(:final of) => CompositeOpaqueSignature(
+        _nodeSignaturesOf([of]).single,
+      ),
     },
 ];

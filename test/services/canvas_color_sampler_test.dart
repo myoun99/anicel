@@ -50,6 +50,7 @@ void main() {
     String id, {
     double opacity = 1,
     TransformTrack? transformTrack,
+    bool clips = false,
   }) => Layer(
     id: LayerId(id),
     name: id,
@@ -57,6 +58,7 @@ void main() {
     timeline: {0: TimelineExposure.drawing(FrameId('$id-frame'), length: 1)},
     opacity: opacity,
     transformTrack: transformTrack ?? TransformTrack.empty(),
+    clipsToBelow: clips,
   );
 
   Cut cut(List<Layer> layers) => Cut(
@@ -350,6 +352,34 @@ void main() {
         point: CanvasPoint(x: -2, y: 11),
       );
       expect(color, canvasPaperColor);
+    });
+
+    test('a row clipped to the layer below picks where its base is, and the '
+        'paper where it is not (I-92) — read alone, as drawn', () {
+      final red = surfaceWithPixels({
+        (3, 3): [0xFF, 0x00, 0x00, 0xFF],
+      });
+      final blue = surfaceWithPixels({
+        (3, 3): [0x00, 0x00, 0xFF, 0xFF],
+        (5, 5): [0x00, 0x00, 0xFF, 0xFF],
+      });
+      int pick(
+        int x, {
+        CanvasReadSource source = CanvasReadSource.display,
+        bool clips = true,
+      }) => sampleCompositeColor(
+        cut: cut([layer('base'), layer('over', clips: clips)]),
+        frameIndex: 0,
+        surfaceResolver: (layer, _) => layer.id.value == 'base' ? red : blue,
+        point: CanvasPoint(x: x.toDouble(), y: x.toDouble()),
+        source: source,
+        activeLayerId: const LayerId('over'),
+      );
+
+      expect(pick(3), 0xFF0000FF);
+      expect(pick(5), canvasPaperColor);
+      expect(pick(5, clips: false), 0xFF0000FF, reason: 'control');
+      expect(pick(5, source: CanvasReadSource.layer), 0xFF0000FF);
     });
   });
 

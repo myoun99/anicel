@@ -432,6 +432,7 @@ final class _FolderRow extends _Row {
     required this.opacity,
     required this.blend,
     required this.collapsed,
+    required this.clips,
     required this.move,
   });
 
@@ -441,6 +442,9 @@ final class _FolderRow extends _Row {
   final double opacity;
   final LayerBlendMode blend;
   final bool collapsed;
+
+  /// Clipped to the layer under it, as in CLIP STUDIO (I-92-Q3 a).
+  final bool clips;
 
   /// How its clips move it: as the 2D camera it is, moving what it holds,
   /// or as itself — null for a folder no clip moves.
@@ -457,6 +461,7 @@ final class _FolderRow extends _Row {
         opacity: opacity,
         blendMode: blend,
         collapsed: collapsed,
+        clipsToBelow: clips,
         transformTrack: move?.trackIn(view),
       );
 }
@@ -517,6 +522,7 @@ final class _PictureRow extends _Row {
       isVisible: source.isShown,
       opacity: source.opacity / _fullOpacity,
       blendMode: blend,
+      clipsToBelow: source.clipped,
       folderId: parent?.ids[cut],
       transformTrack: move?.trackIn(view),
     );
@@ -847,6 +853,7 @@ final class _Planner {
       opacity: folder.opacity / _fullOpacity,
       blend: _blendOf(folder, folder.name),
       collapsed: folder.isCollapsed,
+      clips: folder.clipped,
       move: _moveOf(folder),
     );
   }
@@ -1191,6 +1198,7 @@ final class _Planner {
     void visit(ClipLayer layer, List<ClipLayer> chain) {
       if (layer.isFolder) {
         _sayNotApplied(layer, where);
+        _sayClipLost(layer, where);
         for (final child in layer.children.reversed) {
           visit(child, [...chain, layer]);
         }
@@ -1201,6 +1209,7 @@ final class _Planner {
       if (!_comesIn(layer, where)) {
         return;
       }
+      _sayClipLost(layer, where);
       final own = _blendOf(layer, where);
       var blend = own;
       // An isolating folder decides how what it holds meets what lies
@@ -1263,6 +1272,15 @@ final class _Planner {
     );
   }
 
+  /// Names [layer], one inside a cel, by [name] when it is clipped to the
+  /// layer under it: a cel's layers come in as lines across the cels
+  /// ([_lined]), and a cel's clip is not carried onto them.
+  void _sayClipLost(ClipLayer layer, String name) {
+    if (layer.clipped) {
+      warnings.add(clippingNotApplied(name));
+    }
+  }
+
   /// Says [count] of something about [name] — when there is any.
   void _sayCount(String key, String template, String name, int count) {
     if (count > 0) {
@@ -1312,16 +1330,18 @@ final class _Planner {
   }
 
   /// Names [layer] by [name] where CLIP STUDIO keeps something of it that
-  /// no row here does — an effect of its properties on, clipped to the
-  /// layer under it, a mask on that its picture is not baked through
-  /// ([clipBakedMaskOf]), a lock — in every decoder's words for them: a
-  /// folder as much as a layer, since either can wear them.
+  /// no row here does — an effect of its properties on, a mask on that its
+  /// picture is not baked through ([clipBakedMaskOf]), a lock — in every
+  /// decoder's words for them: a folder as much as a layer, since either
+  /// can wear them.
+  ///
+  /// ↩️Clipped to the layer under it was one of them, until a row clipped
+  /// (I-92): a folder and a layer outside every cel come in clipped as
+  /// they were ([_FolderRow.clips], [_PictureRow]). A layer inside a cel
+  /// still says it ([_sayClipLost]).
   void _sayNotApplied(ClipLayer layer, String name) {
     if (layer.effectsOn) {
       warnings.add(layerEffectsNotApplied(name));
-    }
-    if (layer.clipped) {
-      warnings.add(clippingNotApplied(name));
     }
     if (layer.mask != null && clipBakedMaskOf(layer) == null) {
       warnings.add(layerMaskNotApplied(name));

@@ -705,6 +705,9 @@ class _LayerStackPaintPass {
         CompositeGroup(:final children) => _activeRowIn(children),
         CompositeAdjustment(:final children) => _activeRowIn(children),
         CompositeBackdropBlend(:final children) => _activeRowIn(children),
+        CompositeClip(:final children) => _activeRowIn(children),
+        // The base it paints again stands in the clip already.
+        CompositeOpaque() => null,
       };
       if (found != null) {
         return found;
@@ -843,7 +846,9 @@ class _LayerStackPaintPass {
         CompositeLeaf(payload: _PaintPaper()) ||
         CompositeGroup() ||
         CompositeAdjustment() ||
-        CompositeBackdropBlend() => null,
+        CompositeBackdropBlend() ||
+        CompositeClip() ||
+        CompositeOpaque() => null,
       };
       // The wrap straddles the live-surface node too, which HAS a placement
       // and no image — that is why the wrap and the draw are separate
@@ -876,6 +881,15 @@ class _LayerStackPaintPass {
                 rasterScale,
                 within,
                 paintChildren,
+              );
+            case final CompositeClip<_PaintRow> clip:
+              _paintClipNode(canvas, clip, rasterScale, within, paintChildren);
+            case final CompositeOpaque<_PaintRow> opaque:
+              drawOpaque(
+                canvas: canvas,
+                bounds: _bufferBoundsFor(opaque, _activeSurfaceExtent, within),
+                paintOf: (into) =>
+                    paintChildren(into, [opaque.of], rasterScale, within),
               );
             case CompositeLeaf(payload: _PaintPaper()):
               _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
@@ -1016,6 +1030,32 @@ class _LayerStackPaintPass {
       sourceAsIs: _rowAsItIs(source),
       blendMode: blendMode,
       shownWithin: _shownWithin,
+    );
+  }
+
+  /// A clipping group (I-92): the base and what clips to it as one image,
+  /// laid once with the base's strength and blend ([drawClipAsImage]) —
+  /// the camera's walk calls the same function.
+  void _paintClipNode(
+    Canvas canvas,
+    CompositeClip<_PaintRow> node,
+    double rasterScale,
+    Rect within,
+    _ChildPainter paintChildren,
+  ) {
+    final CompositeClip<_PaintRow>(:base, :scope, :opacity, :blendMode) = node;
+    final bounds = _bufferBoundsFor(node, _activeSurfaceExtent, within);
+    drawClipAsImage(
+      canvas: canvas,
+      bounds: bounds,
+      rasterScale: rasterScale,
+      paintBase: (into, scale) => paintChildren(into, [base], scale, bounds),
+      paintScope: (into, scale) => paintChildren(into, scope, scale, bounds),
+      paint: layerCompositePaint(
+        opacity: opacity,
+        blendMode: blendMode,
+        effects: CompositeEffectPaint.none,
+      ),
     );
   }
 
@@ -1802,6 +1842,12 @@ class _LayerStackPaintPass {
               !_painter.viewport.flipVertical &&
               _drawsTexelForTexel(backdrop) &&
               _drawsTexelForTexel([source]),
+        // A clip is a group's image, blitted 1:1. The base made opaque
+        // fills black where the base is not, and the clip's `srcATop` cuts
+        // that away again — what the clip lays down is the base's pixels
+        // and what lies on them, cut where it was cut.
+        CompositeClip(:final children) => _drawsTexelForTexel(children),
+        CompositeOpaque(:final of) => _drawsTexelForTexel([of]),
         CompositeAdjustment() => false,
       };
       if (!inPlace) {

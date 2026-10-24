@@ -247,7 +247,11 @@ class CameraFrameRenderService {
           case CompositeGroup(:final children):
           case CompositeAdjustment(:final children):
           case CompositeBackdropBlend(:final children):
+          case CompositeClip(:final children):
             await composeImages(children);
+          // The base it paints again is composed with its clip.
+          case CompositeOpaque():
+            break;
         }
       }
     }
@@ -388,6 +392,35 @@ class CameraFrameRenderService {
                   paintNodes(into, children, scale, bounds),
               compose: (blit) => blit(groupPaint),
               steps: groupPlan.preSteps,
+            );
+          case CompositeClip(
+            :final base,
+            :final scope,
+            :final opacity,
+            :final blendMode,
+          ):
+            // I-92: the base and what clips to it as one image, laid once
+            // with the base's strength and blend — the editing stack's own.
+            final bounds = bufferBoundsFor(node, within);
+            drawClipAsImage(
+              canvas: canvas,
+              bounds: bounds,
+              rasterScale: rasterScale,
+              paintBase: (into, scale) =>
+                  paintNodes(into, [base], scale, bounds),
+              paintScope: (into, scale) =>
+                  paintNodes(into, scope, scale, bounds),
+              paint: layerCompositePaint(
+                opacity: opacity,
+                blendMode: blendMode,
+                effects: CompositeEffectPaint.none,
+              ),
+            );
+          case CompositeOpaque(:final of):
+            drawOpaque(
+              canvas: canvas,
+              bounds: bufferBoundsFor(node, within),
+              paintOf: (into) => paintNodes(into, [of], rasterScale, within),
             );
           case CompositeAdjustment(:final children, :final effects, :final mix):
             // R6b: the scope composes into one buffer and the row's chain

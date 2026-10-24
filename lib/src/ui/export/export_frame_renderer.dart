@@ -73,12 +73,18 @@ const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 typedef _CelAt = (CutId, LayerId, FrameId);
 
 /// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
-/// row of the cut it is, its drawing there, and the effects it wears.
+/// row and the cut it is a row of, its drawing there, and the effects it
+/// wears.
 typedef _CelRow = ({
+  Cut cut,
   Layer layer,
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
 });
+
+/// A [row] of a cel as the cel lays it — or, [alone], whole and in no
+/// blend ([ExportFrameRenderer._laidInTheCel]).
+typedef _CelLaid = ({_CelRow row, bool alone});
 
 /// A label-group cel's rows, bottom-up, the view they are seen through,
 /// and the guides and the camera's work laid over them — null where the
@@ -483,6 +489,8 @@ class ExportFrameRenderer {
           ),
           blendMode: layer.blendMode,
           visible: layer.isVisible,
+          // Photoshop clips as the row does (I-92).
+          clipped: clipsToLayerBelow(layer),
           children: childrenOf.remove(layer.id) ?? const [],
         );
       } else if (layer.kind.filtersBelow) {
@@ -508,6 +516,7 @@ class ExportFrameRenderer {
             opacity: drawing.render.opacity,
             blendMode: drawing.render.blendMode,
             visible: layer.isVisible,
+            clipped: clipsToLayerBelow(layer),
             draw: () => drawn(
               _transparentRenderService,
               laid: () => _laidAlone(task.cut, layer, drawing),
@@ -1278,8 +1287,36 @@ class ExportFrameRenderer {
     if (cel == null) {
       return null;
     }
+    // The members clip as their cut clips them (I-92) — to a row of the
+    // cel's. ⚠️My call: one that clips to a row the cel does not hold
+    // shows nowhere, as over a base with no drawing here.
+    final clips = ClipPlacing<_CelLaid>(
+      blendOf: (laid) => laid.row.layer.blendMode,
+      asClipBase: (laid) => (
+        base: (row: laid.row, alone: true),
+        opacity: laid.row.layer.opacity,
+        blendMode: laid.row.layer.blendMode,
+      ),
+    );
+    final stack = <CompositeNode<_CelLaid>>[];
+    for (final row in cel.rows) {
+      clips.place(
+        row.cut,
+        row.layer,
+        CompositeLeaf((row: row, alone: false)),
+        into: stack,
+      );
+    }
+    final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
+      stack,
+      (laid) => _laidInTheCel(laid.row, alone: laid.alone),
+    );
     return renderService.renderThroughCamera(
-      layers: [for (final row in cel.rows) _laidInTheCel(row)],
+      nodes: composeOverTheirBackdrops(
+        shown,
+        blendOf: (layer) => layer.blendMode,
+        paintedNormal: (layer) => layer.paintedNormal(),
+      ),
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
       outputSize: outputSize,
@@ -1337,6 +1374,9 @@ class ExportFrameRenderer {
           name: row.layer.name,
           opacity: row.layer.opacity,
           blendMode: row.layer.blendMode,
+          // Photoshop clips as the row does (I-92) — the switch as the row
+          // holds it, as [frameRows] carries it.
+          clipped: clipsToLayerBelow(row.layer),
           draw: () => drawn(
             _transparentRenderService,
             layers: [_laidInTheCel(row, alone: true)],
@@ -1369,6 +1409,7 @@ class ExportFrameRenderer {
         return;
       }
       rows.add((
+        cut: cut,
         layer: layer,
         surface: surface,
         // R6: the members' EFFECTS ride the same fx gates every other

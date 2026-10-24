@@ -78,6 +78,32 @@ void main() {
     return builder.build(composite: picture);
   }
 
+  test('a row and a folder clipped to the one under them are written with '
+      'Photoshop\'s clipping byte, and nothing else is (I-92)', () {
+    final builder = PsdBuilder(width: width, height: height)
+      ..addLayer(name: 'Base', pixels: packPsdLayer(filled(red)))
+      ..addLayer(
+        name: 'Shade',
+        pixels: packPsdLayer(picture({(1, 1): blue})),
+        clipped: true,
+      )
+      ..openGroup(name: 'Glow', clipped: true)
+      ..addLayer(name: 'Inside', pixels: packPsdLayer(picture({(2, 2): blue})))
+      ..closeGroup();
+    final read = readPsdDocument(builder.build(composite: filled(red)));
+
+    expect(
+      [for (final layer in read.layers) (layer.name, layer.clipping)],
+      [
+        ('Base', false),
+        ('Shade', true),
+        ('</Layer group>', false),
+        ('Inside', false),
+        ('Glow', true),
+      ],
+    );
+  });
+
   test('reads back through the app\'s own reader, row for row: the folder '
       'brackets its members, and every name, mode, strength and eye is '
       'what was written', () {

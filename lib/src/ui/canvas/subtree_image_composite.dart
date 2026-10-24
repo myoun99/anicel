@@ -90,6 +90,10 @@ Rect _subtreeExtent<T>(
       return placement == null
           ? extent
           : MatrixUtils.transformRect(placementMatrix(placement), extent);
+    // What clips is cut to the base: the base's rect is all of it.
+    case CompositeClip(base: final of):
+    case CompositeOpaque(:final of):
+      return _subtreeExtent(of, extentOf, placementOf);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
     case CompositeBackdropBlend(:final children):
@@ -326,6 +330,61 @@ void drawSubtreeAsImage({
     steps: steps,
   );
 }
+
+/// 🚨★★★A CLIPPING GROUP IS ONE PICTURE ([CompositeClip], I-92) — an image,
+/// as a folder's is ([drawSubtreeAsImage]), so every walk that composites a
+/// group composites a clip the same way.
+///
+/// Into it, [paintBase], and over it [paintScope] laid by the base's alpha
+/// (`srcATop`); [paint] — the base's strength and blend — then lays the
+/// picture once. [bounds] is the base's: what lands past it is cut away.
+void drawClipAsImage({
+  required Canvas canvas,
+  required Rect bounds,
+  required double rasterScale,
+  required void Function(Canvas into, double rasterScale) paintBase,
+  required void Function(Canvas into, double rasterScale) paintScope,
+  required Paint paint,
+}) => drawSubtreeAsImage(
+  canvas: canvas,
+  bounds: bounds,
+  rasterScale: rasterScale,
+  paintSubtree: (into, scale) {
+    paintBase(into, scale);
+    into.saveLayer(bounds, Paint()..blendMode = BlendMode.srcATop);
+    paintScope(into, scale);
+    into.restore();
+  },
+  compose: (blit) => blit(paint),
+);
+
+/// A clip's base painted with its alpha made 1 ([CompositeOpaque]) — the
+/// colour a row clipped to it blends with, where the base is half there
+/// too. [bounds] holds the base; inside it, where the base is not, comes
+/// out black, which the clip's `srcATop` then cuts away with the rest.
+void drawOpaque({
+  required Canvas canvas,
+  required Rect bounds,
+  required void Function(Canvas into) paintOf,
+}) {
+  canvas.saveLayer(
+    bounds,
+    Paint()..colorFilter = const ColorFilter.matrix(_opaqueMatrix),
+  );
+  paintOf(canvas);
+  canvas.restore();
+}
+
+/// The colour as it is, the alpha 1 — the translation column is 0…255
+/// (`color_matrix.dart`).
+const List<double> _opaqueMatrix = <double>[
+  // dart format off
+  1, 0, 0, 0, 0,
+  0, 1, 0, 0, 0,
+  0, 0, 1, 0, 0,
+  0, 0, 0, 0, 255,
+  // dart format on
+];
 
 /// 🚨★★★A ROW IN AN ADVANCED BLEND IS COMPOSED OVER A PICTURE OF ITS
 /// BACKDROP ([CompositeBackdropBlend], brush-fidelity-Q4).

@@ -37,6 +37,8 @@ void main() {
         case CompositeGroup<CanvasStackRow>(:final children):
         case CompositeAdjustment<CanvasStackRow>(:final children):
         case CompositeBackdropBlend<CanvasStackRow>(:final children):
+        case CompositeClip<CanvasStackRow>(:final children):
+        case CompositeOpaque<CanvasStackRow>(:final children):
           final inner = stackEffectsOf(children);
           if (inner.isNotEmpty) {
             return inner;

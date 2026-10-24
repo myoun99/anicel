@@ -93,6 +93,8 @@ void main() {
       case CompositeGroup<CutFrameCompositeRow>(:final children):
       case CompositeAdjustment<CutFrameCompositeRow>(:final children):
       case CompositeBackdropBlend<CutFrameCompositeRow>(:final children):
+      case CompositeClip<CutFrameCompositeRow>(:final children):
+      case CompositeOpaque<CutFrameCompositeRow>(:final children):
         return [for (final child in children) ...idsUnder(child)];
     }
   }

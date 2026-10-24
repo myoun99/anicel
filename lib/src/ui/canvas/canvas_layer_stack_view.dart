@@ -414,6 +414,8 @@ class CanvasLayerStackView extends StatefulWidget {
         case CompositeGroup():
         case CompositeAdjustment():
         case CompositeBackdropBlend():
+        case CompositeClip():
+        case CompositeOpaque():
           break;
       }
     }
@@ -1610,6 +1612,9 @@ int _replayOpsOf(List<CompositeNode<_PaintRow>> list) {
         1 + _replayOpsOf(children),
       CompositeBackdropBlend<_PaintRow>(:final children) =>
         1 + _replayOpsOf(children),
+      // The clip's own image, and its `srcATop` layer inside.
+      CompositeClip<_PaintRow>(:final children) => 2 + _replayOpsOf(children),
+      CompositeOpaque<_PaintRow>(:final of) => 1 + _replayOpsOf([of]),
     };
   }
   return ops;
@@ -1929,6 +1934,19 @@ bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
             blendMode == b.blendMode &&
             _nodesMatch(source, b.source) &&
             _treesMatch(backdrop, b.backdrop),
+      CompositeClip<_PaintRow>(
+        :final base,
+        :final scope,
+        :final opacity,
+        :final blendMode,
+      ) =>
+        b is CompositeClip<_PaintRow> &&
+            opacity == b.opacity &&
+            blendMode == b.blendMode &&
+            _nodesMatch(base, b.base) &&
+            _treesMatch(scope, b.scope),
+      CompositeOpaque<_PaintRow>(:final of) =>
+        b is CompositeOpaque<_PaintRow> && _nodesMatch(of, b.of),
     };
 
 /// 🚨(v) — [_nodesMatch] as a VALUE, for the bake's key.
@@ -1963,6 +1981,20 @@ int _nodeSignature(CompositeNode<_PaintRow> node) => switch (node) {
     :final blendMode,
   ) =>
     Object.hash(blendMode, _nodeSignature(source), _treeSignature(backdrop)),
+  CompositeClip<_PaintRow>(
+    :final base,
+    :final scope,
+    :final opacity,
+    :final blendMode,
+  ) =>
+    Object.hash(
+      opacity,
+      blendMode,
+      _nodeSignature(base),
+      _treeSignature(scope),
+    ),
+  CompositeOpaque<_PaintRow>(:final of) =>
+    Object.hash(CompositeOpaque, _nodeSignature(of)),
 };
 
 /// Whether the live layer's last paint handed its opacity/blend to the
@@ -2440,6 +2472,12 @@ class _LayerStackPainter extends CustomPainter {
           node.children.any(_enclosesActiveSurface)) {
         return _liveSurfaceIsSpatiallyStable(node.children);
       }
+      // So does a clip: the base's alpha cuts pixel by pixel, and the base
+      // made opaque is the base's own pixels.
+      if (node is CompositeClip<_PaintRow> &&
+          node.children.any(_enclosesActiveSurface)) {
+        return _liveSurfaceIsSpatiallyStable(node.children);
+      }
     }
     return false;
   }
@@ -2454,6 +2492,9 @@ class _LayerStackPainter extends CustomPainter {
           children.any(_enclosesActiveSurface),
         CompositeBackdropBlend(:final children) =>
           children.any(_enclosesActiveSurface),
+        CompositeClip(:final children) => children.any(_enclosesActiveSurface),
+        // The base it paints again stands in the clip already.
+        CompositeOpaque() => false,
         CompositeLeaf(payload: _PaintImage()) => false,
         // A lifted row only shows; nothing draws into it.
         CompositeLeaf(payload: _PaintLiftedSurface()) => false,

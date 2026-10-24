@@ -190,10 +190,12 @@ void main() {
         case CompositeLeaf(payload: final CanvasLayerImageRequest request):
           yield request;
         case CompositeLeaf():
+        case CompositeOpaque():
           break;
         case CompositeGroup(:final children):
         case CompositeAdjustment(:final children):
         case CompositeBackdropBlend(:final children):
+        case CompositeClip(:final children):
           yield* requestsIn(children);
       }
     }

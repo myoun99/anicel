@@ -122,6 +122,62 @@ CanvasPoint? _artworkPointFor(
   return placement == null ? point : canvasToArtwork(placement)?.apply(point);
 }
 
+/// [entry]'s pixel under [point] as it SHOWS — through its pose, with its
+/// cel's letters laid (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」) and
+/// its colour keys run: the pixel, and its alpha byte once keyed. Null
+/// where it has none.
+///
+/// The keys go first, for the same reason they do in the composite — they
+/// are a source-pixel pass, and a pixel they erased contributes nothing at
+/// all rather than contributing a filtered colour.
+({int rgba, int alphaByte})? _shownPixelAt(
+  CutFrameCompositeEntry entry,
+  CanvasPoint point,
+  LayerFrameSurfaceResolver surfaceResolver,
+) {
+  final drawing = surfaceResolver(entry.layer, entry.frame);
+  final artworkPoint = _artworkPointFor(entry, point);
+  if (drawing == null || artworkPoint == null) {
+    return null;
+  }
+  final rgba = surfacePixelRgba(
+    celSurfaceWithTextsLaid(drawing),
+    artworkPoint.x.floor(),
+    artworkPoint.y.floor(),
+  );
+  if (rgba == null || rgba == 0) {
+    return null;
+  }
+  return (
+    rgba: rgba,
+    alphaByte: celSourceEffectAlphaFor(
+      entry.effects,
+      red: (rgba >> 24) & 0xFF,
+      green: (rgba >> 16) & 0xFF,
+      blue: (rgba >> 8) & 0xFF,
+      alpha: rgba & 0xFF,
+    ),
+  );
+}
+
+/// How much of [point] [cutBy] covers, 0…1 — their pixels' alpha laid
+/// together: where a row clipped to them shows ([flatClipOf]).
+double _coverageAt(
+  List<CutFrameCompositeEntry> cutBy,
+  CanvasPoint point,
+  LayerFrameSurfaceResolver surfaceResolver,
+) {
+  var covered = 0.0;
+  for (final entry in cutBy) {
+    final alphaByte = _shownPixelAt(entry, point, surfaceResolver)?.alphaByte;
+    if (alphaByte != null) {
+      final alpha = alphaByte / 255.0;
+      covered = alpha + covered * (1 - alpha);
+    }
+  }
+  return covered;
+}
+
 /// Samples the color at [point] (P5 eyedropper); returns opaque ARGB.
 ///
 /// [source] picks the reference (R28 #6) — the layers [layersReadBy]
@@ -161,13 +217,11 @@ int sampleCompositeColor({
   var b = 0.0;
   var coverage = 0.0;
 
-  final entryByLayerId = {
-    for (final entry in resolveCutFrameCompositeEntries(
-      cut: cut,
-      frameIndex: frameIndex,
-    ))
-      entry.layer.id: entry,
-  };
+  final entries = resolveCutFrameCompositeEntries(
+    cut: cut,
+    frameIndex: frameIndex,
+  );
+  final entryByLayerId = {for (final entry in entries) entry.layer.id: entry};
 
   // Walked in STACK order so the R6 effects land where they do on screen:
   // a row's own chain filters its pixel before it blends, and an
@@ -223,28 +277,6 @@ int sampleCompositeColor({
     if (read != null && !read.contains(entry.layer.id)) {
       continue;
     }
-    final drawing = surfaceResolver(entry.layer, entry.frame);
-    if (drawing == null) {
-      continue;
-    }
-    // The cel as it SHOWS — a letter's colour is picked as a drawn line's
-    // is (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
-    final surface = celSurfaceWithTextsLaid(drawing);
-    final artworkPoint = _artworkPointFor(entry, point);
-    if (artworkPoint == null) {
-      continue;
-    }
-    final rgba = surfacePixelRgba(
-      surface,
-      artworkPoint.x.floor(),
-      artworkPoint.y.floor(),
-    );
-    if (rgba == null || rgba == 0) {
-      continue;
-    }
-    var sourceR = ((rgba >> 24) & 0xFF).toDouble();
-    var sourceG = ((rgba >> 16) & 0xFF).toDouble();
-    var sourceB = ((rgba >> 8) & 0xFF).toDouble();
     // ★THE ROW'S OWN CHAIN APPLIES IN BOTH MODES — 유저 2026-08-27:
     // 「레이어의 완성본 픽셀을 스포이드 찍도록 하고싶어. 그러니 fx가 싫으면
     // fx끄고 스포이드 찍도록」. The layer mode used to read the ink AS DRAWN,
@@ -252,18 +284,29 @@ int sampleCompositeColor({
     // screen. What separates the two modes is WHOSE pixels are read, not
     // whether they are finished: an ADJUSTMENT row is a different row and
     // still stays out of the layer mode (above).
-    //
-    // The color keys go first, for the same reason they do in the composite
-    // — they are a source-pixel pass, and a pixel they erased contributes
-    // nothing at all rather than contributing a filtered colour.
-    final keyedAlphaByte = celSourceEffectAlphaFor(
-      entry.effects,
-      red: sourceR.round(),
-      green: sourceG.round(),
-      blue: sourceB.round(),
-      alpha: rgba & 0xFF,
-    );
-    final alpha = keyedAlphaByte / 255.0 * entry.opacity;
+    final shown = _shownPixelAt(entry, point, surfaceResolver);
+    if (shown == null) {
+      continue;
+    }
+    final (:rgba, :alphaByte) = shown;
+    var sourceR = ((rgba >> 24) & 0xFF).toDouble();
+    var sourceG = ((rgba >> 16) & 0xFF).toDouble();
+    var sourceB = ((rgba >> 8) & 0xFF).toDouble();
+    // A row that clips to the layer below shows where its base is, at the
+    // base's strength (I-92) — in the whole picture. The base is another
+    // row, so a read of one row reads it as drawn, as with an adjustment.
+    final clip = read != null
+        ? null
+        : flatClipOf(
+            cut: cut,
+            layer: layer,
+            frameIndex: frameIndex,
+            entries: entries,
+          );
+    final cutTo = clip == null
+        ? 1.0
+        : _coverageAt(clip.cutBy, point, surfaceResolver) * clip.strength;
+    final alpha = alphaByte / 255.0 * entry.opacity * cutTo;
     if (alpha <= 0) {
       continue;
     }
@@ -280,7 +323,7 @@ int sampleCompositeColor({
         sourceR,
         sourceG,
         sourceB,
-        keyedAlphaByte.toDouble(),
+        alphaByte.toDouble(),
       );
       sourceR = filtered.r;
       sourceG = filtered.g;

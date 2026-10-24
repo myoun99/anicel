@@ -4,6 +4,7 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
 import '../models/cut.dart';
+import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
@@ -163,9 +164,17 @@ sealed class CutFrameCompositeRow {
   /// The blend the row composites with against everything below it.
   LayerBlendMode get blendMode;
 
+  /// The row's strength, folded.
+  double get opacity;
+
   /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
   CutFrameCompositeRow paintedNormal();
+
+  /// The same row painting normal at full strength — what the base of a
+  /// clipping group is ([CompositeClip]), whose strength and blend are the
+  /// group's.
+  CutFrameCompositeRow paintedAsClipBase();
 }
 
 /// One resolved contributor to the cut's picture at a frame — the SHARED
@@ -185,6 +194,7 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
 
   final Layer layer;
   final Frame frame;
+  @override
   final double opacity;
 
   /// The layer's composite blend against everything below (R26 #30).
@@ -205,6 +215,15 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
     layer: layer,
     frame: frame,
     opacity: opacity,
+    placement: placement,
+    effects: effects,
+  );
+
+  @override
+  CutFrameCompositeEntry paintedAsClipBase() => CutFrameCompositeEntry(
+    layer: layer,
+    frame: frame,
+    opacity: 1,
     placement: placement,
     effects: effects,
   );
@@ -252,10 +271,24 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
   LayerBlendMode get blendMode => render.blendMode;
 
   @override
+  double get opacity => render.opacity;
+
+  @override
   CutFrameCompositeLiveRow paintedNormal() => CutFrameCompositeLiveRow(
     layer: layer,
     render: (
       opacity: render.opacity,
+      blendMode: LayerBlendMode.normal,
+      placement: render.placement,
+      effects: render.effects,
+    ),
+  );
+
+  @override
+  CutFrameCompositeLiveRow paintedAsClipBase() => CutFrameCompositeLiveRow(
+    layer: layer,
+    render: (
+      opacity: 1,
       blendMode: LayerBlendMode.normal,
       placement: render.placement,
       effects: render.effects,
@@ -279,11 +312,21 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
 /// distribute (`T(A over B) == T(A) over T(B)`), so folder FX keeps riding
 /// each member's pose and costs no buffer. A plain organizing folder
 /// therefore allocates nothing at all — the Photoshop/CSP 통과 default.
+///
+/// And a CLIP (I-92-Q3 a, 유저 2026-10-24 「클튜처럼 — 폴더도 켜고, 폴더도
+/// 바탕이 된다」): a folder that clips to the layer below, or that one
+/// clips to, is cut or cuts as ONE picture — its members as one — even a
+/// pass-through one. Asked of the rows as they stand, never of what shows
+/// at the frame: hiding a row clipped to the folder must not change how
+/// the folder's members blend.
 bool folderNeedsCompositeBuffer({
+  required Cut cut,
   required Layer folder,
   required int frameIndex,
 }) {
-  if (folder.blendMode.isolatesGroup) {
+  if (folder.blendMode.isolatesGroup ||
+      clipsToLayerBelow(folder) ||
+      _isClipBase(cut, folder)) {
     return true;
   }
   if (resolveFolderEffectsAt(
@@ -297,6 +340,152 @@ bool folderNeedsCompositeBuffer({
         frameIndex: frameIndex,
       ) <
       1.0;
+}
+
+/// Whether [layer] CLIPS TO THE LAYER BELOW (I-92): its own switch
+/// ([Layer.clipsToBelow]), on a row that can clip ([LayerKind.takesClipping]).
+bool clipsToLayerBelow(Layer layer) =>
+    layer.clipsToBelow && layer.kind.takesClipping;
+
+/// What [row] clips to when it clips to the layer below — the BASE: the
+/// first row under it in its own folder that does not clip itself
+/// (I-92-Q2 a, 유저 2026-10-24 「프로툴과 같게 — 모두 그 아래 첫 바탕에
+/// 잘린다」). Null at the bottom of its folder: there is nothing to clip to.
+///
+/// A row that takes no part in the picture — the camera, a transition
+/// ([LayerKind.composites]) — is passed over: the composite never sees it.
+Layer? clipBaseOf(Cut cut, Layer row) {
+  final layers = cut.layers;
+  for (var i = _rowIndexOf(cut, row) - 1; i >= 0; i -= 1) {
+    final below = layers[i];
+    // A folder's members are one run under it, so a row of this folder
+    // lies under [row] only inside that run — anything else is a member of
+    // a sibling folder.
+    if (below.folderId == row.folderId &&
+        below.kind.composites &&
+        !clipsToLayerBelow(below)) {
+      return below;
+    }
+  }
+  return null;
+}
+
+/// Whether a row clips to [row] ([clipBaseOf]): the nearest row of its
+/// folder above it, of those in the picture, clips to the layer below.
+bool _isClipBase(Cut cut, Layer row) {
+  if (clipsToLayerBelow(row)) {
+    return false; // It clips itself: the run's base is under it.
+  }
+  final layers = cut.layers;
+  for (var i = _rowIndexOf(cut, row) + 1; i < layers.length; i += 1) {
+    final above = layers[i];
+    if (above.id == row.folderId) {
+      return false; // The folder's own row: nothing of it lies above.
+    }
+    if (above.folderId == row.folderId && above.kind.composites) {
+      return clipsToLayerBelow(above);
+    }
+  }
+  return false;
+}
+
+/// [row]'s place in [cut]'s stack — by id, as a row's identity is.
+int _rowIndexOf(Cut cut, Layer row) =>
+    cut.layers.indexWhere((layer) => layer.id == row.id);
+
+/// Where the clip law lays a row ([clipTargetOf]).
+enum ClipPlaced {
+  /// By itself: it clips to nothing, or to a row that does not cut it.
+  alone,
+
+  /// Into the clipping group of the row it clips to.
+  clipped,
+
+  /// Nowhere: it clips to what paints nothing.
+  nowhere,
+}
+
+/// How [row] meets [cut]'s picture by the clip law (I-92), before what a
+/// frame draws is asked: [ClipPlaced.clipped] to [base] ([clipBaseOf] —
+/// null for the other two), by itself, or nowhere.
+({ClipPlaced placed, Layer? base}) clipTargetOf(Cut cut, Layer row) {
+  if (!clipsToLayerBelow(row)) {
+    return (placed: ClipPlaced.alone, base: null);
+  }
+  final base = clipBaseOf(cut, row);
+  if (base == null) {
+    // Nothing under it to clip to.
+    return (placed: ClipPlaced.nowhere, base: null);
+  }
+  if (base.kind.filtersBelow) {
+    // 🗣️I-92-Q4 a: an adjustment row has no picture of its own to cut by
+    // — what clips to it is not cut, until the row is hidden.
+    return (
+      placed: base.isVisible ? ClipPlaced.alone : ClipPlaced.nowhere,
+      base: null,
+    );
+  }
+  return (placed: ClipPlaced.clipped, base: base);
+}
+
+/// THE CLIP LAW's placing half (I-92): rows met bottom-up, each laid by
+/// itself into the list it stands in, or joined to the node of the row it
+/// clips to ([clipTargetOf], [clippedOnto]), or nowhere. The cut's tree
+/// and a cel's stack place through this one.
+final class ClipPlacing<P> {
+  ClipPlacing({required this.blendOf, required this.asClipBase});
+
+  /// The blend a route's own row composites with ([clippedOnto]).
+  final LayerBlendMode Function(P payload) blendOf;
+
+  /// The same row as a clipping group's base ([clippedOnto]).
+  final ({P base, double opacity, LayerBlendMode blendMode}) Function(
+    P payload,
+  )
+  asClipBase;
+
+  // Where each row's node stands — the list and the place in it — for the
+  // rows that clip to it to join; by its cut too, as a cel lays rows of
+  // more cuts than one.
+  final _placeOf =
+      <(CutId, LayerId), ({List<CompositeNode<P>> bucket, int at})>{};
+
+  /// Lays [node], [row]'s picture in [cut], into [into] — the list its
+  /// folder's members gather in — or onto the node of the row it clips
+  /// to, or nowhere.
+  void place(
+    Cut cut,
+    Layer row,
+    CompositeNode<P> node, {
+    required List<CompositeNode<P>> into,
+  }) {
+    final (:placed, :base) = clipTargetOf(cut, row);
+    if (base == null) {
+      if (placed == ClipPlaced.alone) {
+        _placeOf[(cut.id, row.id)] = (bucket: into, at: into.length);
+        into.add(node);
+      }
+      return;
+    }
+    final standing = _placeOf[(cut.id, base.id)];
+    if (standing == null) {
+      return; // The base paints nothing here, so neither does this.
+    }
+    // ⚠️A base's list is never taken by an adjustment before what clips to
+    // it joins: anything between the two clips too, and a folder among
+    // them buffers ([folderNeedsCompositeBuffer]) — so no adjustment's
+    // scope reaches out past it.
+    assert(
+      identical(into, standing.bucket),
+      'the list ${base.id} stands in was taken before ${row.id} joined it',
+    );
+    standing.bucket[standing.at] = clippedOnto(
+      standing.bucket[standing.at],
+      node,
+      blendOf: blendOf,
+      asClipBase: asClipBase,
+    );
+  }
 }
 
 /// A folder's own effect chain at [frameIndex].
@@ -384,6 +573,7 @@ resolveFolderChainAt({
     final buffered =
         !foldBufferedFolders &&
         folderNeedsCompositeBuffer(
+          cut: cut,
           folder: folder,
           frameIndex: frameIndex,
         );
@@ -642,6 +832,10 @@ LayerPlacement? placementUnderFolders({
 /// and its FX poses compose outside the member's. That is a flat
 /// APPROXIMATION of the group buffer R27 #29 asks for — see
 /// [resolveFolderChainAt].
+///
+/// ⚠️A row's entry is its own pixels: what a row that clips to the layer
+/// below shows of them is [flatClipOf]'s, asked by a read of the whole
+/// picture — a read of one row reads that row as drawn.
 List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
@@ -656,6 +850,53 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
         case final CutFrameCompositeEntry entry)
       entry,
 ];
+
+/// How a FLAT read ([resolveCutFrameCompositeEntries] — the eyedropper,
+/// the fill) cuts [layer]'s pixels when it clips to the layer below
+/// (I-92): null when nothing cuts it. Otherwise [cutBy] — its base's
+/// entries among [entries], whose pixels laid together are where it shows
+/// (none: nowhere) — and [strength], the base's own, which a clipping
+/// group takes on (Photoshop).
+///
+/// The tree's law ([clipTargetOf], [CompositeClip]) read by pixels: the
+/// base's pixels' alpha cuts, its strength and blend go to the group. A
+/// folder's base is every entry inside it — the folder's picture, flat.
+({List<CutFrameCompositeEntry> cutBy, double strength})? flatClipOf({
+  required Cut cut,
+  required Layer layer,
+  required int frameIndex,
+  required List<CutFrameCompositeEntry> entries,
+}) {
+  final (:placed, :base) = clipTargetOf(cut, layer);
+  if (base == null) {
+    return placed == ClipPlaced.alone ? null : (cutBy: const [], strength: 0);
+  }
+  if (base.kind.groupsLayers) {
+    return (
+      cutBy: [
+        for (final entry in entries)
+          if (cut.layers
+              .ancestryOf(entry.layer.folderId)
+              .any((folder) => folder.id == base.id))
+            entry,
+      ],
+      strength: resolveFolderOpacityAt(folder: base, frameIndex: frameIndex),
+    );
+  }
+  return (
+    cutBy: [
+      for (final entry in entries)
+        if (entry.layer.id == base.id) entry,
+    ],
+    strength:
+        layerDrawingAt(
+          cut: cut,
+          layer: base,
+          frameIndex: frameIndex,
+        )?.render.opacity ??
+        0,
+  );
+}
 
 /// The cel [layerId] exposes at [frameIndex] in [cut] — the one this plan
 /// composites for that row, asked before any gate (eye, opacity, folder), so
@@ -915,6 +1156,7 @@ _adjustmentScopeNode({
   for (final folder in cut.layers.ancestryOf(adjustment.folderId)) {
     scopeKeys.add(folder.id);
     if (folderNeedsCompositeBuffer(
+      cut: cut,
       folder: folder,
       frameIndex: frameIndex,
     )) {
@@ -948,9 +1190,10 @@ _adjustmentScopeNode({
 /// visible entry, with each BUFFERING folder's members wrapped in a
 /// [CompositeGroup] so the folder's opacity and blend apply
 /// ONCE to their composed buffer (R27 #29), each ADJUSTMENT row's
-/// scope wrapped in a [CompositeAdjustment] (R6b), and each row in an
-/// advanced blend composed over its scope ([CompositeBackdropBlend],
-/// brush-fidelity-Q4).
+/// scope wrapped in a [CompositeAdjustment] (R6b), each row that clips to
+/// the layer below gathered with what it clips to into a [CompositeClip]
+/// (I-92), and each row in an advanced blend composed over its scope
+/// ([CompositeBackdropBlend], brush-fidelity-Q4).
 ///
 /// The stack list IS the structure: a folder's members occupy a
 /// contiguous run with the folder row directly above it, so this single
@@ -972,8 +1215,21 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   void addTo(LayerId? folderId, CompositeNode<CutFrameCompositeRow> node) =>
       (childrenOf[folderId] ??= <CompositeNode<CutFrameCompositeRow>>[])
           .add(node);
+  final clips = ClipPlacing<CutFrameCompositeRow>(
+    blendOf: (row) => row.blendMode,
+    asClipBase: (row) => (
+      base: row.paintedAsClipBase(),
+      opacity: row.opacity,
+      blendMode: row.blendMode,
+    ),
+  );
+  void place(Layer row, CompositeNode<CutFrameCompositeRow> node) =>
+      clips.place(cut, row, node, into: childrenOf[row.folderId] ??= []);
 
   for (final layer in cut.layers) {
+    if (!layer.kind.composites) {
+      continue; // Not in the picture: no node, and no base for a clip.
+    }
     if (layer.kind.filtersBelow) {
       final wrapped = _adjustmentScopeNode(
         adjustment: layer,
@@ -1002,19 +1258,21 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
         continue;
       }
       if (!folderNeedsCompositeBuffer(
+        cut: cut,
         folder: layer,
         frameIndex: frameIndex,
       )) {
         // 통과, fully opaque: the folder is pure structure. Its members
         // belong to the parent exactly as if it were not there — no
-        // buffer, no node, no cost.
+        // buffer, no node, no cost. (Nothing clips to it, nor does it
+        // clip: either would have buffered it.)
         for (final child in children) {
           addTo(layer.folderId, child);
         }
         continue;
       }
-      addTo(
-        layer.folderId,
+      place(
+        layer,
         CompositeGroup<CutFrameCompositeRow>(
           children: List.unmodifiable(children),
           opacity: opacity,
@@ -1037,7 +1295,7 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       liveLayerId: liveLayerId,
     ));
     if (row != null) {
-      addTo(layer.folderId, CompositeLeaf(row));
+      place(layer, CompositeLeaf(row));
     }
   }
   // A row in an advanced blend goes over a picture of its scope — once
