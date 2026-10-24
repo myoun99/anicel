@@ -1946,11 +1946,10 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
 #elif defined(__ANDROID__)
 
 // NDK MediaCodec + MediaExtractor, resolved with dlsym rather than linked
-// (the library's one table, qa_ndk_media.h): dlsym returning NULL on an
-// older device IS the graceful capability check — no weak-symbol machinery,
-// no crash, the file just reports undecodable and rides the fallback.
+// (the library's one table, qa_ndk_media.h): a NULL there is an answer — the
+// file reports undecodable and rides the fallback — never a crash.
 //
-// 🚨★★★**THE FLOOR IS API 21 AGAIN, AND IT USED TO BE 28.**
+// 🚨★★★**A REQUIRED SYMBOL THE DEVICE LACKED ONCE COST EVERY AAC FILE.**
 // The comment here said the AMediaDataSource entry points were「API 23+」.
 // They are `__INTRODUCED_IN(28)`, they were REQUIRED symbols, and one missing
 // symbol rejects the whole library below — so on Android 5.0 through 8.1,
@@ -1959,13 +1958,16 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
 // file — every m4a, every movie's soundtrack — came back「no decoder
 // recognized this file」. Nobody saw an error; a waveform simply never drew.
 //
-// The fix is the one the video decoder already found:
-// `AMediaExtractor_setDataSourceFd(fd, offset, length)` is API 21 and takes a
-// RANGE, which is both what every supported device can open and exactly the
-// shape a container inside the project file needs. So the descriptor form is
-// now the required one, and the data-source form is OPTIONAL — kept only
-// because a framed archive entry arrives assembled in memory and has no
-// range to point at. ⛔It must never go back to being required.
+// The fix was the one the video decoder had found: a plain span opens by
+// descriptor — `AMediaExtractor_setDataSourceFd(fd, offset, length)` is API
+// 21 and takes a RANGE, exactly the shape a container inside the project
+// file needs — and the data source was made OPTIONAL. A FRAMED span opens
+// through it (qa_ndk_served_span), since its stored bytes are not the
+// container.
+// ↩️It is required again since 2026-10-24, when the app's floor rose to
+// Android 10 (minSdk 29, board skia-devices-out-of-release): every device
+// served has it, so it is part of [qa_ndk_media_decodes] and the AAC loss
+// above has no device left to happen on.
 //
 // MediaCodec hands back every frame it decoded — it takes nothing off the
 // front: the extractor's `encoder-delay` is a note for the player, not a
@@ -2138,7 +2140,7 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
     goto fail;
   }
   if (!src->framed) {
-    // The API-21 form, and the one every supported device has.
+    // The extractor's own front door for a range of a file.
     os->descriptor = open(src->path, O_RDONLY);
     if (os->descriptor < 0 ||
         ndk->extractor_set_source_fd(os->extractor, os->descriptor,
@@ -2148,9 +2150,7 @@ static int qa_os_open(qa_audio_stream* stream, qa_audio_start* start) {
     }
   } else {
     // A FRAMED span: its stored bytes are not the container, so it is served
-    // through a source of our own. ⛔Absent below API 28, and that is an
-    // ANSWER: undecodable, the same one the caller already handles, not a
-    // crash and not a required symbol.
+    // through a source of our own.
     os->served = qa_ndk_served_span_open(ndk, src->path, src->base,
                                          src->stored_length, 1);
     if (os->served == NULL ||

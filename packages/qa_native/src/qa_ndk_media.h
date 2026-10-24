@@ -22,11 +22,15 @@
 // 29's `NdkMediaCodec.h`, `NdkMediaExtractor.h`, `NdkMediaDataSource.h`,
 // `NdkMediaFormat.h` and `NdkMediaMuxer.h`.
 //
-// ⛔STILL NO NDK MEDIA HEADERS. They hide every function newer than the
-// build's minSdk (21), and a custom data source is API 28 — so the types
-// are declared here and every function arrives through dlsym, where a
-// missing one is an ANSWER (「this device cannot do that」) rather than a
-// load failure.
+// No NDK media headers: they hid every function newer than the build's
+// minSdk, which was 21 while a custom data source is API 28 — so the types
+// are declared here and every function arrives through dlsym.
+// ⚠️That premise went on 2026-10-24: the app serves Android 10 and up
+// (minSdk 29, board skia-devices-out-of-release), the headers hide nothing
+// this table uses, and no device served lacks any of it. Moving the three
+// callers onto the headers is board ndk-media-table-goes-to-the-headers —
+// it was not done with the floor because the machine that raised it had no
+// NDK to build it on.
 
 #ifndef QA_NDK_MEDIA_H
 #define QA_NDK_MEDIA_H
@@ -75,19 +79,20 @@ typedef ssize_t (*qa_ndk_read_at)(void* userdata,
 typedef ssize_t (*qa_ndk_get_size)(void* userdata);
 typedef void (*qa_ndk_close)(void* userdata);
 
-/// Every entry point any caller here uses. ⚠️Any of them may be NULL on a
-/// device whose libmediandk.so predates it — ask the capability you need
-/// ([qa_ndk_media_decodes] and its siblings), never a single field.
+/// Every entry point any caller here uses. ⚠️Each is a dlsym answer and may
+/// be NULL — ask the capability you need ([qa_ndk_media_decodes] or
+/// [qa_ndk_media_encodes]), never a single field.
 typedef struct {
   AMediaExtractor* (*extractor_new)(void);
   int32_t (*extractor_delete)(AMediaExtractor*);
   int32_t (*extractor_set_source)(AMediaExtractor*, const char*);
-  /// API 21 — the only byte-range open every supported device has.
+  /// A byte range of a file — how a plain span opens.
   int32_t (*extractor_set_source_fd)(AMediaExtractor*,
                                      int,
                                      off64_t,
                                      off64_t);
-  /// API 28 — an arbitrary source. NULL below Android 9.
+  /// A source this library serves — how a FRAMED span opens
+  /// ([qa_ndk_served_span]).
   int32_t (*extractor_set_source_custom)(AMediaExtractor*, AMediaDataSource*);
   size_t (*extractor_track_count)(AMediaExtractor*);
   AMediaFormat* (*extractor_track_format)(AMediaExtractor*, size_t);
@@ -143,7 +148,7 @@ typedef struct {
                          const uint8_t*,
                          const qa_ndk_buffer_info*);
 
-  /// API 28, all of them. NULL below Android 9.
+  /// The source a FRAMED span is served through ([qa_ndk_served_span]).
   AMediaDataSource* (*source_new)(void);
   void (*source_delete)(AMediaDataSource*);
   void (*source_set_userdata)(AMediaDataSource*, void*);
@@ -156,26 +161,23 @@ typedef struct {
 /// whichever thread asks first; safe from any thread after that.
 const qa_ndk_media_api* qa_ndk_media(void);
 
-/// Whether [api] can pull samples out of a container and decode them.
+/// Whether [api] can pull samples out of a container — a file, a span of
+/// one, or a FRAMED span served as a source of ours — and decode them.
 int qa_ndk_media_decodes(const qa_ndk_media_api* api);
 
 /// Whether [api] can encode and mux a file.
 int qa_ndk_media_encodes(const qa_ndk_media_api* api);
 
-/// Whether [api] can read a container from a source this library serves —
-/// Android 9 and later.
-int qa_ndk_media_reads_custom(const qa_ndk_media_api* api);
-
 /// A medium stored in a span of a file (qa_media_span.h), served to an
 /// extractor as a source of our own — how a FRAMED span, whose stored bytes
-/// are not the container, reaches MediaExtractor at all. Needs
-/// [qa_ndk_media_reads_custom].
+/// are not the container, reaches MediaExtractor at all. Needs an [api]
+/// that [qa_ndk_media_decodes].
 ///
 /// ⚠️ONE serving for the video decoder and the audio decoder: each needed
 /// exactly this, and the lock below is the part a second copy forgets.
 typedef struct qa_ndk_served_span qa_ndk_served_span;
 
-/// NULL when the span will not open or the device cannot serve a source.
+/// NULL when the span will not open or [api] cannot decode.
 qa_ndk_served_span* qa_ndk_served_span_open(const qa_ndk_media_api* api,
                                             const char* utf8_path,
                                             int64_t offset,

@@ -47,8 +47,7 @@ Future<ViewerDocument> openPdfThatReads(MediaByteSource source) async {
 /// ⚠️A framed stretch is read the way the real decoders read one: through
 /// the engine's span reader ([MediaFramedBytes]), decoded.
 class ReadingVideoBackend extends FakeVideoBackend {
-  ReadingVideoBackend({super.readsFramed, this.refuses})
-    : super(frameCount: 3);
+  ReadingVideoBackend({this.refuses}) : super(frameCount: 3);
 
   /// Files this decoder will not open, whatever they hold — the answer a
   /// reader cannot move to.

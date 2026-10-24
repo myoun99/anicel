@@ -4,13 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/movie_bytes.dart';
 
-import '../../helpers/fake_video_backend.dart';
 import '../../helpers/temp_dir.dart';
 
 /// Where a movie decoder is pointed, asked once for every reader
-/// ([movieOpening]), and the one place a reader still prefers an original
-/// ([movieBytesToDecode]) — a movie kept compressed on a device whose decoder
-/// cannot be fed one (board `carried-movie-compressed-Q1`).
+/// ([movieOpening]).
+///
+/// 🪦It also pinned the one place a reader preferred an original — a movie
+/// kept compressed on a device whose decoder could not be fed one (board
+/// `carried-movie-compressed-Q1`). That device class left the release on
+/// 2026-10-24 (minSdk 29) and the place with it.
 void main() {
   late Directory directory;
 
@@ -28,19 +30,13 @@ void main() {
     framed: true,
   );
 
-  /// A device like every platform but Android below 9.
-  final feeds = FakeVideoBackend();
-
-  /// Android below 9: its decoder has no custom source to be fed through.
-  final cannot = FakeVideoBackend(readsFramed: false);
-
   group('movieOpening', () {
     test('a file of its own goes by its PATH — the OS opens a file it is '
         'handed by name itself', () {
       final file = File('${directory.path}/take.mp4')
         ..writeAsBytesSync(const [1, 2, 3]);
 
-      expect(movieOpening(MediaFileBytes(file.path), feeds), (
+      expect(movieOpening(MediaFileBytes(file.path)), (
         path: file.path,
         span: null,
       ));
@@ -53,7 +49,7 @@ void main() {
         length: 512,
       );
 
-      expect(movieOpening(source, feeds), (
+      expect(movieOpening(source), (
         path: 'C:/work/project.anicel',
         span: (offset: 4096, length: 512, framed: false),
       ));
@@ -65,60 +61,23 @@ void main() {
         path: 'C:/work/project.anicel',
         span: (offset: 4096, length: 512, framed: true),
       );
-      expect(movieOpening(framedEntry, feeds), expected);
+      expect(movieOpening(framedEntry), expected);
       expect(
-        movieOpening(MediaFramedBytes(framedEntry), feeds),
+        movieOpening(MediaFramedBytes(framedEntry)),
         expected,
         reason: 'the stored entry and the reader of it name one movie',
       );
     });
 
-    test('and where the decoder cannot be fed one, it cannot be pointed at',
-        () {
-      expect(movieOpening(framedEntry, cannot), isNull);
+    test('and a framed copy that is not there cannot be pointed at', () {
       expect(
         movieOpening(
-          const MediaArchiveBytes(
-            archivePath: 'C:/work/project.anicel',
-            dataOffset: 4096,
-            length: 512,
+          MediaAppFileBytes(
+            path: '${directory.path}/gone.mp4.framed',
+            framed: true,
           ),
-          cannot,
         ),
-        isNotNull,
-        reason: 'only FRAMED is beyond that device — a plain stretch is fine',
-      );
-    });
-  });
-
-  group('movieBytesToDecode', () {
-    late File original;
-
-    setUp(() {
-      original = File('${directory.path}/take.mp4')
-        ..writeAsBytesSync(const [1]);
-    });
-
-    test('what can be read in place is read in place, original or not', () {
-      expect(
-        movieBytesToDecode(framedEntry, original.path, feeds),
-        same(framedEntry),
-        reason: '「품은 순간 … 불변」 — the project\'s own copy wins',
-      );
-    });
-
-    test('a framed movie on a device that cannot be fed one reads its '
-        'original while there is one — the cost 유저 accepted', () {
-      expect(
-        movieBytesToDecode(framedEntry, original.path, cannot),
-        MediaFileBytes(original.path),
-      );
-    });
-
-    test('and without one stays what the project carries', () {
-      expect(
-        movieBytesToDecode(framedEntry, '${directory.path}/gone.mp4', cannot),
-        same(framedEntry),
+        isNull,
       );
     });
   });

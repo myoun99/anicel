@@ -11,8 +11,14 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        // Below the app's own minimum; the C has no API dependencies.
-        minSdk = 21
+        // The app's own floor (android/app/build.gradle.kts): Android 10.
+        // The media decoders read a FRAMED span through a data source, which
+        // is API 28 — 21 here promised devices the app no longer serves
+        // (board skia-devices-out-of-release, 2026-10-24).
+        // ⚠️It is also the C's compile floor: miniaudio takes its API 28+
+        // branches from here on (an explicit thread schedule, dlclose of the
+        // backend library) — the ones it takes on every other POSIX system.
+        minSdk = 29
     }
 
     externalNativeBuild {

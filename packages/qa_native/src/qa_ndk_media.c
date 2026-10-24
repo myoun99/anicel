@@ -19,12 +19,15 @@ static int g_opened = 0;
 static pthread_once_t g_once = PTHREAD_ONCE_INIT;
 
 /// ⚠️EVERY symbol is looked up and NONE is required here. What a caller
-/// needs is a set, and the three sets differ — the encoder never asks for
-/// an extractor, a decoder never asks for a muxer — so refusing the whole
+/// needs is a set, and the sets differ — the encoder never asks for an
+/// extractor, a decoder never asks for a muxer — so refusing the whole
 /// library over one missing function is how a capability was lost that had
 /// nothing to do with it (the audio decoder once required the API 28 custom
 /// source and so decoded no AAC at all below Android 9). The capability
 /// questions below answer for each set.
+/// ↩️The custom source was a set of its own until 2026-10-24, when the app's
+/// floor rose to Android 10 (board skia-devices-out-of-release): every
+/// device served has it, so it is part of decoding.
 static void qa_ndk_media_resolve(void) {
   memset(&g_api, 0, sizeof(g_api));
   void* library = dlopen("libmediandk.so", RTLD_NOW);
@@ -116,7 +119,12 @@ int qa_ndk_media_decodes(const qa_ndk_media_api* api) {
          api->codec_release_output != NULL &&
          api->codec_output_format != NULL && api->format_delete != NULL &&
          api->format_get_int32 != NULL && api->format_get_int64 != NULL &&
-         api->format_get_string != NULL;
+         api->format_get_string != NULL &&
+         api->extractor_set_source_custom != NULL &&
+         api->source_new != NULL && api->source_delete != NULL &&
+         api->source_set_userdata != NULL &&
+         api->source_set_read_at != NULL &&
+         api->source_set_get_size != NULL;
 }
 
 int qa_ndk_media_encodes(const qa_ndk_media_api* api) {
@@ -135,14 +143,6 @@ int qa_ndk_media_encodes(const qa_ndk_media_api* api) {
          api->muxer_add_track != NULL && api->muxer_start != NULL &&
          api->muxer_stop != NULL && api->muxer_delete != NULL &&
          api->muxer_write != NULL;
-}
-
-int qa_ndk_media_reads_custom(const qa_ndk_media_api* api) {
-  return api != NULL && api->extractor_set_source_custom != NULL &&
-         api->source_new != NULL && api->source_delete != NULL &&
-         api->source_set_userdata != NULL &&
-         api->source_set_read_at != NULL &&
-         api->source_set_get_size != NULL;
 }
 
 /// ⚠️LOCKED: the extractor may ask from a thread of its own, and the span
@@ -193,7 +193,7 @@ qa_ndk_served_span* qa_ndk_served_span_open(const qa_ndk_media_api* api,
                                             int64_t offset,
                                             int64_t length,
                                             int32_t framed) {
-  if (!qa_ndk_media_reads_custom(api)) {
+  if (!qa_ndk_media_decodes(api)) {
     return NULL;
   }
   qa_ndk_served_span* served =

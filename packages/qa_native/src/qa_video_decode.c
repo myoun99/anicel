@@ -203,10 +203,6 @@ static int32_t qa_backend_open(const char* path,
                                int64_t length,
                                int32_t framed);
 
-/// Whether this backend can open a FRAMED span — every one that can serve a
-/// decoder bytes of its own can; Android can only from API 28.
-static int32_t qa_backend_reads_framed(void);
-
 /// Releases whatever [qa_backend_open] took. Called before every open and
 /// on close; must tolerate never having opened anything.
 static void qa_backend_close(void);
@@ -416,8 +412,6 @@ typedef char qa_win_state_fits[
     sizeof(qa_video_decode_state) <= sizeof(qa_backend_store) ? 1 : -1];
 
 static int32_t qa_backend_supported(void) { return 1; }
-
-static int32_t qa_backend_reads_framed(void) { return 1; }
 
 /// How far before the presentation's end the video's last samples are
 /// looked for, and how many are read at most before giving up on them.
@@ -835,8 +829,6 @@ extern void qa_video_apple_decode_select(int32_t slot);
 
 static int32_t qa_backend_supported(void) { return 1; }
 
-static int32_t qa_backend_reads_framed(void) { return 1; }
-
 /// The selected slot, as an index the other file can hold.
 static void qa_apple_select(void) {
   qa_video_apple_decode_select((int32_t)(g_slot - g_docs));
@@ -955,10 +947,6 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 static const qa_ndk_media_api* qa_droid_ndk(void) {
   const qa_ndk_media_api* api = qa_ndk_media();
   return qa_ndk_media_decodes(api) ? api : NULL;
-}
-
-static int32_t qa_backend_reads_framed(void) {
-  return qa_ndk_media_reads_custom(qa_droid_ndk());
 }
 
 /// ⚠️The PLATFORM's own state only — size, rate, length and 「where am I
@@ -1258,8 +1246,6 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 
 static int32_t qa_backend_supported(void) { return 0; }
 
-static int32_t qa_backend_reads_framed(void) { return 0; }
-
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length,
@@ -1371,12 +1357,12 @@ static int32_t qa_decode_handle_of(const qa_decode_slot* slot) {
 /// never true: nothing in the save ever did that, and the sentence was a
 /// guess written down as a fact.
 ///
-/// ⚠️Android below API 28 cannot open a framed span:
-/// `AMediaExtractor_setDataSourceFd` is `__INTRODUCED_IN(21)` and takes only
-/// the file's own bytes, while `setDataSourceCustom` is `(28)` and this
-/// app's `minSdk` is 21. Such a device reads a carried movie only while its
-/// original is there — the cost the user accepted with the answer above.
-/// [qa_video_decode_framed_supported] says which device this is.
+/// 🪦Android below API 28 could not — `setDataSourceCustom` is API 28 — and
+/// read a carried movie kept framed only while its original was there (the
+/// cost accepted on board `carried-movie-compressed-Q1`, asked through a
+/// `qa_video_decode_framed_supported` of its own). That device class left
+/// the release on 2026-10-24 (minSdk 29, board skia-devices-out-of-release)
+/// and the exception went with it.
 QA_EXPORT int32_t qa_video_decode_open_span(const char* path,
                                             int64_t offset,
                                             int64_t length,
@@ -1390,10 +1376,6 @@ QA_EXPORT int32_t qa_video_decode_open_span(const char* path,
     qa_decode_set_error("that span is not inside the file");
     return 0;
   }
-  if (framed && !qa_backend_reads_framed()) {
-    qa_decode_set_error("this device cannot read a movie kept compressed");
-    return 0;
-  }
   qa_decode_slot* slot = qa_decode_take_slot();
   if (slot == NULL) {
     return 0;
@@ -1401,11 +1383,6 @@ QA_EXPORT int32_t qa_video_decode_open_span(const char* path,
   return qa_decode_finish_open(path, offset, length, framed)
              ? qa_decode_handle_of(slot)
              : 0;
-}
-
-/// Whether [qa_video_decode_open_span] can open a FRAMED span here.
-QA_EXPORT int32_t qa_video_decode_framed_supported(void) {
-  return qa_backend_supported() && qa_backend_reads_framed();
 }
 
 QA_EXPORT int32_t qa_video_decode_open(const char* path) {

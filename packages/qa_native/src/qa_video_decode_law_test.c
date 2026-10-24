@@ -335,16 +335,14 @@ int main(void) {
              qa_video_decode_open_span("movie.anicel", 4096, 10, 0), 0);
   expect_text("and the backend's own reason is what comes back",
               qa_video_decode_last_error(), "no video decoder in this build");
-  // A FRAMED span is asked of the backend's capability first — a device
-  // that cannot serve its decoder a source (Android below 9) says THAT,
-  // rather than failing the open as if the movie were broken.
-  expect_int("this build cannot read a framed span",
-             qa_video_decode_framed_supported(), 0);
-  expect_int("so a framed span is refused at the door",
+  // A FRAMED span goes to the backend like any other: every backend that
+  // decodes reads one. 🪦It was refused at the door where the backend could
+  // not (Android below 9) until that device class left the release
+  // (2026-10-24, minSdk 29).
+  expect_int("a framed span reaches the backend too",
              qa_video_decode_open_span("movie.anicel", 4096, 10, 1), 0);
-  expect_text("with the reason that is true",
-              qa_video_decode_last_error(),
-              "this device cannot read a movie kept compressed");
+  expect_text("and is refused for the backend's own reason",
+              qa_video_decode_last_error(), "no video decoder in this build");
 
   if (g_failures == 0) {
     printf("qa_video_decode law: all checks passed\n");

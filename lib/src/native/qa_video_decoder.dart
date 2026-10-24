@@ -58,10 +58,6 @@ final class QaVideoDecoder {
         Int32 Function(Pointer<Utf8>, Int64, Int64, Int32),
         int Function(Pointer<Utf8>, int, int, int)
       >('qa_video_decode_open_span');
-  late final _framedSupported = _library
-      .lookupFunction<Int32 Function(), int Function()>(
-        'qa_video_decode_framed_supported',
-      );
   late final _info = _library
       .lookupFunction<
         Int32 Function(
@@ -103,13 +99,6 @@ final class QaVideoDecoder {
   /// shows, never a crash it recovers from.
   bool get isSupported => _supported() != 0;
 
-  /// Whether this DEVICE's decoder can be fed a movie kept FRAMED — every
-  /// platform can but Android below API 28, which has no custom source to
-  /// serve decoded blocks through (`qa_video_decode.c` says why). There a
-  /// carried movie kept framed is read from its original while one exists:
-  /// the cost 유저 accepted on board `carried-movie-compressed-Q1`.
-  bool get readsFramed => _framedSupported() != 0;
-
   /// What the last failure was, for the sentence the window shows.
   String get lastError {
     final pointer = _lastError();
@@ -134,8 +123,8 @@ final class QaVideoDecoder {
   /// [span] opens a MOVIE THAT LIVES INSIDE [path] rather than the file
   /// itself — the shape a carried video has, since its bytes are a stretch
   /// of the `.anicel` or a staged copy and no path points at the movie. The
-  /// stretch holds the movie as it is, or FRAMED (compressed in blocks) —
-  /// which a device answers for through [readsFramed].
+  /// stretch holds the movie as it is, or FRAMED (compressed in blocks),
+  /// which every decoder is fed decoded a block at a time.
   QaVideoDocument? openDocument(
     String path, {
     ({int offset, int length, bool framed})? span,
