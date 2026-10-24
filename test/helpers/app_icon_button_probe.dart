@@ -122,8 +122,13 @@ extension RailGlyphFinders on CommonFinders {
   );
 
   /// The rail faces whose tooltip is [message] — `find.byTooltip` for a
-  /// face that summons the one window instead of holding a `Tooltip`.
+  /// face that summons the one window instead of holding a `Tooltip`: a
+  /// glyph's, and a plate's ([RailPlateButton]).
   Finder railTooltip(String message) => byWidgetPredicate(
-    (widget) => widget is RailGlyphFace && widget.tooltip == message,
+    (widget) => switch (widget) {
+      RailGlyphFace(:final tooltip) || RailPlateFace(:final tooltip) =>
+        tooltip == message,
+      _ => false,
+    },
   );
 }

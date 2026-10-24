@@ -805,6 +805,52 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
   );
 }
 
+/// THE RAIL'S PLATE BUTTON — [child] painted as it paints itself, and the
+/// claim and ONE face ([RailPlateFace]) around it: what a pressed plate of
+/// a rail is, whatever the press does. A list's door is this with the list
+/// as its press ([RailFlyoutTrigger]); the legend's headings are this, on
+/// the legend's plate (`TimelineLayerControlsHeader`). Null [onPressed] is a
+/// dead plate that still shows its tooltip, as a dead [RailGlyphButton]
+/// does.
+class RailPlateButton extends StatelessWidget {
+  const RailPlateButton({
+    super.key,
+    required this.name,
+    required this.tooltip,
+    required this.onPressed,
+    required this.child,
+    this.semanticLabel,
+  });
+
+  /// What a finder calls the [RailPlateFace] — a [Named], as a
+  /// [RailGlyphButton.name] is and for its reason.
+  final String name;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  /// The plate.
+  final Widget child;
+
+  /// What a screen reader calls it.
+  final String? semanticLabel;
+
+  @override
+  Widget build(BuildContext context) => ControlPressClaim(
+    onPressed: onPressed,
+    child: Named(
+      name,
+      child: RailPlateFace(
+        tooltip: tooltip,
+        // The REAL callback, for a screen reader's activation — the claim
+        // never hears it ([RailGlyphButton]).
+        onSemanticTap: onPressed,
+        semanticLabel: semanticLabel,
+        child: child,
+      ),
+    ),
+  );
+}
+
 /// The glyphs the rail buttons draw, each laid out ONCE for the app — six
 /// rows wear one eye, and a cut switch lays out none of them again.
 abstract final class _GlyphCache {

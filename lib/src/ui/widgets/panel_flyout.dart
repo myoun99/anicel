@@ -1444,21 +1444,13 @@ class RailFlyoutTrigger extends StatelessWidget {
   final String? semanticLabel;
 
   @override
-  Widget build(BuildContext context) {
-    void open() => showPanelFlyout(context, entries: entriesBuilder());
-    return ControlPressClaim(
-      onPressed: open,
-      child: Named(
-        name,
-        child: RailPlateFace(
-          tooltip: tooltip,
-          onSemanticTap: open,
-          semanticLabel: semanticLabel,
-          child: child,
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => RailPlateButton(
+    name: name,
+    tooltip: tooltip,
+    onPressed: () => showPanelFlyout(context, entries: entriesBuilder()),
+    semanticLabel: semanticLabel,
+    child: child,
+  );
 }
 
 /// A labeled flyout trigger ('Layer', 'Frame', 'Cut'): compact bordered
