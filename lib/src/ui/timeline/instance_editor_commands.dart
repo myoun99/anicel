@@ -561,6 +561,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
     InstructionEvent covering,
     bool editsSet,
     InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
+    bool offersNoMark,
   })
   span,
 ) => showDialogVerb<InstructionEventDialogResult>(
@@ -577,6 +578,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
         : null,
     previewAxis: previewAxis,
     namedByItsCuts: span.namedByItsCuts,
+    offersNoMark: span.offersNoMark,
   ),
 );
 
@@ -601,6 +603,7 @@ typedef _SpanRow = ({
   CameraInstructionSet set,
   bool editsSet,
   InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
+  bool offersNoMark,
   void Function()? create,
   void Function() remove,
   int Function(InstructionEvent covering) length,
@@ -623,6 +626,7 @@ Future<void> _editSpanInstance(
     covering: covering.value,
     editsSet: row.editsSet,
     namedByItsCuts: row.namedByItsCuts,
+    offersNoMark: row.offersNoMark,
   ));
   if (result == null) {
     return;
@@ -632,7 +636,7 @@ Future<void> _editSpanInstance(
     return;
   }
   final instructionId = result.instructionId;
-  if (instructionId == null) {
+  if (instructionId == null && !row.offersNoMark) {
     return;
   }
   row.commit(
@@ -658,6 +662,9 @@ Future<void> _editInstructionEvent(
   editsSet: true,
   // A direction's writing is the user's: its ends are what the camera does.
   namedByItsCuts: null,
+  // A direction block stands without a mark — the span that says nothing
+  // (I-72-block-without-instruction).
+  offersNoMark: true,
   // F-105: this is the Edit button's door too — an empty direction cell is
   // created by the double tap's fork and the ＋ ([createActiveInstance]).
   create: null,
@@ -719,6 +726,9 @@ Future<void> editTransitionSpanInstance(
                 draft.copyWith(length: covering.value.length),
               )
               .copyWith(length: draft.length),
+    // A transition's mark IS the transition — no block stands beside it, so
+    // a span with none is the delete the window already offers.
+    offersNoMark: false,
     create: null,
     remove: () => session.transitions.removeTransitionSpanAt(frame),
     // LENGTH is not taken from the dialog. The grips own it, so a re-pick

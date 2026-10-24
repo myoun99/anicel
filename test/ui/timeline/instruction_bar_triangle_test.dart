@@ -31,7 +31,11 @@ void main() {
   const crossExtent = 30.0;
   const spanCells = 5;
 
-  Layer instructionLayer({String? valueA, String? valueB}) => Layer(
+  Layer instructionLayer({
+    String? valueA,
+    String? valueB,
+    String? mark = 'pan',
+  }) => Layer(
     id: const LayerId('cam-1'),
     name: 'CAM 1',
     kind: LayerKind.instruction,
@@ -39,7 +43,7 @@ void main() {
     timeline: const {},
     instructions: {
       0: InstructionEvent(
-        instructionId: 'pan',
+        instructionId: mark,
         length: spanCells,
         valueA: valueA,
         valueB: valueB,
@@ -170,12 +174,18 @@ void main() {
   test(
     'printed sheet: nameless bar endpoints get the same triangle caps',
     () async {
-      TimesheetDocument document({String? valueA, String? valueB}) =>
+      TimesheetDocument document({
+        String? valueA,
+        String? valueB,
+        String? mark = 'pan',
+      }) =>
           TimesheetDocument.fromCut(
             cut: Cut(
               id: const CutId('cut-1'),
               name: 'Cut 1',
-              layers: [instructionLayer(valueA: valueA, valueB: valueB)],
+              layers: [
+                instructionLayer(valueA: valueA, valueB: valueB, mark: mark),
+              ],
               duration: 24,
               canvasSize: const CanvasSize(width: 1280, height: 720),
             ),
@@ -249,6 +259,17 @@ void main() {
         isFalse,
         reason: 'a named first row keeps its cell bar-free below the writing',
       );
+
+      // 「(없음)」 (I-72-block-without-instruction, 유저: 「없음시에는 … bar
+      // 같은 직선이나 아무것도 없는 빈 블록이랑 마찬가지」): no caps, no line.
+      final markless = await paintSheet(document(mark: null));
+      for (final y in [
+        spanTop + 3,
+        (spanTop + spanBottom) / 2,
+        spanBottom - 3,
+      ]) {
+        expect(darkAt(markless, centerX, y), isFalse, reason: 'ink at $y');
+      }
     },
   );
 }

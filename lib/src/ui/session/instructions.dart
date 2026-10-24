@@ -11,7 +11,6 @@ import '../../models/timeline_exposure.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
-import 'camera.dart';
 
 /// The INSTRUCTIONS — the spans a direction row carries, the span at a
 /// frame, and creating, upserting and removing them — as their own object.
@@ -31,15 +30,11 @@ class Instructions {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required Camera camera,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
-       _controllers = controllers,
-       _camera = camera;
-
-  final Camera _camera;
+       _controllers = controllers;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
@@ -72,15 +67,17 @@ class Instructions {
       return false;
     }
     final frameIndex = _controllers.timelineController.currentFrameIndex;
-    return frameIndex >= 0 &&
-        instructionSpanAt(layer.id, frameIndex) == null &&
-        _camera.cameraInstructionSet.defs.isNotEmpty;
+    return frameIndex >= 0 && instructionSpanAt(layer.id, frameIndex) == null;
   }
 
   /// Dialog-free instruction creation (UI-R25 #2, 조작 통일화): an EMPTY
-  /// instruction cell gains a ONE-frame event of the vocabulary's first
-  /// entry directly — the Edit Instance dialog changes it afterwards.
-  /// Covered cells no-op (creation never edits).
+  /// instruction cell gains a ONE-frame block that says nothing — the Edit
+  /// Instance dialog tells it something afterwards, as an SE entry made here
+  /// is named afterwards. Covered cells no-op (creation never edits).
+  ///
+  /// 🗣️I-72-block-without-instruction (유저 2026-10-08): 「생성시 기본값
+  /// 없음」. ↩️The block took the vocabulary's first entry, and an emptied
+  /// vocabulary left the ＋ dark.
   void createDefaultInstructionEventAtCurrentFrame() {
     if (!canCreateDefaultInstructionEventAtCurrentFrame) {
       return;
@@ -90,10 +87,7 @@ class Instructions {
     upsertInstructionEventAt(
       layer.id,
       frameIndex,
-      InstructionEvent(
-        instructionId: _camera.cameraInstructionSet.defs.first.id,
-        length: 1,
-      ),
+      const InstructionEvent(instructionId: null, length: 1),
       createLengthFrames: 1,
     );
   }

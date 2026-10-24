@@ -620,7 +620,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
       suppressStartGripAtZero: shows.world.spillInLeadFrames != null,
       spanTakesGrips: layer.kind == LayerKind.transition
           ? (event) => transitionEditableInCut(
-              transitionMarkOf(defById?.call(event.instructionId)),
+              transitionMarkOf(event.defIn(defById)),
             )
           : null,
     );

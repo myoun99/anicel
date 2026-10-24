@@ -307,24 +307,37 @@ class InstructionEvent {
     this.valueB,
   });
 
-  /// The span [writing] makes on a block [length] frames long.
-  InstructionEvent.of(ExposureInstruction writing, {required this.length})
-    : instructionId = writing.instructionId,
-      text = writing.text,
-      valueA = writing.valueA,
-      valueB = writing.valueB;
+  /// The span [writing] makes on a block [length] frames long — a block that
+  /// says nothing is a span of nothing.
+  InstructionEvent.of(ExposureInstruction? writing, {required this.length})
+    : instructionId = writing?.instructionId,
+      text = writing?.text,
+      valueA = writing?.valueA,
+      valueB = writing?.valueB;
 
-  /// What this span says, without the length a block answers.
-  ExposureInstruction get writing => ExposureInstruction(
-    instructionId: instructionId,
-    text: text,
-    valueA: valueA,
-    valueB: valueB,
-  );
+  /// What this span says, without the length a block answers — null when it
+  /// says nothing, so a block holds no writing of nothing beside none.
+  ExposureInstruction? get writing =>
+      instructionId == null && text == null && valueA == null && valueB == null
+      ? null
+      : ExposureInstruction(
+          instructionId: instructionId,
+          text: text,
+          valueA: valueA,
+          valueB: valueB,
+        );
 
   /// References a [CameraInstructionDef.id]; a dangling reference (its def
   /// was deleted) renders with the fallback glyph and the raw id.
-  final String instructionId;
+  ///
+  /// 🗣️Null is a span with NO mark — 「(없음)」 (I-72-block-without-
+  /// instruction, 유저 2026-10-05: 「디렉션 블록 지시(기호) 없는상태
+  /// 존재가능하도록. 없으면 아무 표시도 안함. se블록에 아무것도 없는 상태랑
+  /// 똑같음」 · 10-08: 「(없음) 이런식? 그리고 생성시 기본값 없음」): no glyph,
+  /// no line, no term name; what the span still writes ([text], [valueA],
+  /// [valueB]) shows as it does beside a mark. ⛔Not a dangling id: that one
+  /// still draws the fallback ([markIn]).
+  final String? instructionId;
 
   /// Covered frames — [start, start + length).
   final int length;
@@ -338,14 +351,35 @@ class InstructionEvent {
   final String? valueA;
   final String? valueB;
 
-  /// What displays/prints for this event given its vocabulary [def].
+  /// What displays/prints for this event given its vocabulary [def] — with
+  /// no mark and no text, nothing.
   String displayLabel(CameraInstructionDef? def) {
     final text = this.text;
     if (text != null && text.isNotEmpty) {
       return text;
     }
-    return instructionTermName(instructionId, def);
+    return switch (instructionId) {
+      final id? => instructionTermName(id, def),
+      null => '',
+    };
   }
+
+  /// The vocabulary entry this span's mark names in [defById] — null with no
+  /// mark, as with a dangling one or no vocabulary at hand.
+  CameraInstructionDef? defIn(
+    CameraInstructionDef? Function(String instructionId)? defById,
+  ) => switch ((instructionId, defById)) {
+    (final id?, final find?) => find(id),
+    _ => null,
+  };
+
+  /// The mark this span draws: its entry's, the plain line for a dangling
+  /// mark, and NONE without one — the one place that tells the two apart.
+  CameraInstructionMarkType? markIn(
+    CameraInstructionDef? Function(String instructionId)? defById,
+  ) => instructionId == null
+      ? null
+      : defIn(defById)?.markType ?? CameraInstructionMarkType.bar;
 
   InstructionEvent copyWith({
     String? instructionId,
@@ -366,9 +400,9 @@ class InstructionEvent {
   /// The [writing]'s keys with the length beside them — one spelling of the
   /// keys, shared with a block's ([ExposureInstruction.toJson]).
   Map<String, dynamic> toJson() {
-    final json = writing.toJson();
+    final json = writing?.toJson() ?? {};
     return {
-      'instructionId': json.remove('instructionId'),
+      'instructionId': ?json.remove('instructionId'),
       'length': length,
       ...json,
     };

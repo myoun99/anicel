@@ -30,7 +30,7 @@ TransitionSpan transitionSpanOfEvent(
 ) => (
   start: entry.key,
   length: entry.value.length,
-  mark: transitionMarkOf(vocabulary.defById(entry.value.instructionId)),
+  mark: transitionMarkOf(entry.value.defIn(vocabulary.defById)),
 );
 
 /// [track]'s transition spans on its global axis.

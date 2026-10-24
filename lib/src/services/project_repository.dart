@@ -329,9 +329,9 @@ class ProjectRepository {
   ///    undo/redo replay, file load). A LINKED attach row's cel for a base
   ///    cel is its group's one (F-278), read off the other members.
   /// 4. SPANS ON THEIR BLOCKS (R27, [cutWithSpansOnTheirBlocks]): a block
-  ///    carries an instruction exactly when its row's spans ride its blocks
-  ///    — a direction row's bare block takes the ＋'s span, any other row's
-  ///    block puts one down.
+  ///    carries an instruction only where its row's spans ride its blocks —
+  ///    any other row's block puts one down. (A direction row's bare block
+  ///    is the span that says nothing.)
   /// 5. RUN EDGES FILLED TO THE DRAWN END ([rederiveRunBehaviors]): a run
   ///    edge property is a SPEC — *this run holds*, *this run repeats* —
   ///    carried by one of the run's blocks (`TimelineRunEdgeMark`), and the
@@ -487,7 +487,6 @@ class ProjectRepository {
           attached: attached,
         ),
       ),
-      defaultInstructionId: project.cameraInstructions.defs.firstOrNull?.id,
     );
     final layers = mappedOrSame(
       shaped.layers,

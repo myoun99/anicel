@@ -218,6 +218,60 @@ void main() {
       expect(bare.displayLabel(null), 'pan');
     });
 
+    // 🗣️I-72-block-without-instruction (유저 2026-10-05): 「디렉션 블록
+    // 지시(기호) 없는상태 존재가능하도록. 없으면 아무 표시도 안함」.
+    group('a span with no mark — 「(없음)」', () {
+      const pan = CameraInstructionDef(
+        id: 'pan',
+        name: 'PAN',
+        iconKey: 'pan',
+        markType: CameraInstructionMarkType.fi,
+      );
+      CameraInstructionDef? lookup(String id) => id == 'pan' ? pan : null;
+      const none = InstructionEvent(instructionId: null, length: 3);
+      const named = InstructionEvent(
+        instructionId: null,
+        length: 3,
+        text: 'FOLLOW',
+        valueA: 'A',
+      );
+
+      test('draws no mark, where a dangling mark draws the plain line', () {
+        expect(none.markIn(lookup), isNull);
+        expect(
+          const InstructionEvent(instructionId: 'gone', length: 3)
+              .markIn(lookup),
+          CameraInstructionMarkType.bar,
+        );
+        expect(
+          const InstructionEvent(instructionId: 'pan', length: 3)
+              .markIn(lookup),
+          CameraInstructionMarkType.fi,
+        );
+        expect(none.defIn(lookup), isNull);
+      });
+
+      test('names no term — what it writes still shows', () {
+        expect(none.displayLabel(null), '');
+        expect(named.displayLabel(null), 'FOLLOW');
+      });
+
+      test('a span saying nothing writes no writing — its block holds none, '
+          'the one way to say nothing', () {
+        expect(none.writing, isNull);
+        expect(named.writing?.instructionId, isNull);
+        expect(named.writing?.text, 'FOLLOW');
+        expect(InstructionEvent.of(null, length: 3), none);
+      });
+
+      test('round-trips through json with no instructionId key', () {
+        expect(none.toJson(), {'length': 3});
+        expect(InstructionEvent.fromJson(none.toJson()), none);
+        expect(InstructionEvent.fromJson(named.toJson()), named);
+        expect(named.writing!.toJson().containsKey('instructionId'), isFalse);
+      });
+    });
+
     test('coverage validation rejects overlap and bad spans', () {
       expect(
         () => validateInstructionCoverage(

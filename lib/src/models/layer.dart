@@ -934,13 +934,18 @@ FrameId _spanCelId(LayerId layer, int start, Set<FrameId> taken) {
   return id;
 }
 
-/// The spans a direction row's blocks carry — see [Layer.instructions].
+/// The spans a direction row's blocks carry — see [Layer.instructions]. Every
+/// authored block is one: a block that says nothing is a span of nothing
+/// (I-72-block-without-instruction — the block is the span, R27), as an SE
+/// entry with nothing written is still an entry. ↩️Only a block carrying
+/// writing was a span; a bare one was filled with the vocabulary's first
+/// entry on every write.
 SplayTreeMap<int, InstructionEvent> _spansOnBlocks(
   SplayTreeMap<int, TimelineExposure> timeline,
 ) => SplayTreeMap.of({
   for (final MapEntry(key: start, value: entry) in timeline.entries)
-    if (entry.instruction case final writing? when !entry.ghost)
-      start: InstructionEvent.of(writing, length: entry.length!),
+    if (!entry.ghost)
+      start: InstructionEvent.of(entry.instruction, length: entry.length!),
 });
 
 SplayTreeMap<int, TimelineExposure> _deriveTimeline(List<Frame> frames) {

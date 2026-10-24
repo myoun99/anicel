@@ -3797,7 +3797,7 @@ class _StoryboardTransitionRow extends KeptPiece
     ByList([
       for (final MapEntry(key: start, value: span)
           in layer.instructions.entries)
-        (defById?.call(span.instructionId), crossingTooltip?.call(start)),
+        (span.defIn(defById), crossingTooltip?.call(start)),
     ]),
     commaDrag != null,
     onRowFramePress != null,

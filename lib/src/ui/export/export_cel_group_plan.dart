@@ -638,7 +638,7 @@ List<ExportDirectionDrawing> exportDirectionDrawingsOf(
 
 /// What a direction's block says: the name of what it directs.
 String _directionWord(InstructionEvent says, CameraInstructionSet terms) =>
-    says.displayLabel(terms.defById(says.instructionId));
+    says.displayLabel(says.defIn(terms.defById));
 
 /// What a direction row's drawing is called: what its block says and the
 /// two ends it runs between — `T.U_A-B` — or nothing for a block that says

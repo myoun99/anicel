@@ -33,7 +33,7 @@ class ExposureInstruction {
   });
 
   /// See `InstructionEvent.instructionId`.
-  final String instructionId;
+  final String? instructionId;
 
   /// See `InstructionEvent.text`.
   final String? text;
@@ -47,7 +47,7 @@ class ExposureInstruction {
   /// The keys a span writes beside its length — ONE spelling of them, which
   /// `InstructionEvent.toJson` spreads too.
   Map<String, dynamic> toJson() => {
-    'instructionId': instructionId,
+    if (instructionId != null) 'instructionId': instructionId,
     if (text != null) 'text': text,
     if (valueA != null) 'valueA': valueA,
     if (valueB != null) 'valueB': valueB,
@@ -55,7 +55,7 @@ class ExposureInstruction {
 
   factory ExposureInstruction.fromJson(Map<String, dynamic> json) =>
       ExposureInstruction(
-        instructionId: json['instructionId'] as String,
+        instructionId: json['instructionId'] as String?,
         text: json['text'] as String?,
         valueA: json['valueA'] as String?,
         valueB: json['valueB'] as String?,

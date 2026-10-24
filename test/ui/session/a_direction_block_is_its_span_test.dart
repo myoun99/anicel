@@ -62,15 +62,34 @@ void main() {
       final row = direction();
       final block = row.timeline[2];
       expect(block, isNotNull, reason: 'the span is a block on the row');
-      expect(block!.instruction, isNotNull);
+      expect(
+        block!.instruction,
+        isNull,
+        reason: '「생성시 기본값 없음」 — the block says nothing yet',
+      );
       expect(row.frames.map((frame) => frame.id), contains(block.frameId));
       expect(row.instructions.keys, [2]);
+      expect(row.instructions[2]!.instructionId, isNull);
       expect(
         session.frameVerbs.selectedFrame?.id,
         block.frameId,
         reason: '「프레임이 존재하지 않습니다」 was the brush finding no cel '
             'under a span',
       );
+    });
+
+    test('＋ asks no vocabulary — an emptied one still makes the block', () {
+      session.camera.updateCameraInstructionSet(
+        CameraInstructionSet(defs: const []),
+      );
+      session.selectFrameIndex(2);
+      expect(
+        session.instructionVerbs.canCreateDefaultInstructionEventAtCurrentFrame,
+        isTrue,
+      );
+
+      plus(2);
+      expect(direction().instructions.keys, [2]);
     });
 
     test('every cell of a span shows its one drawing', () {
@@ -280,16 +299,15 @@ void main() {
   });
 
   group('the write-time law', () {
-    test('a cel made on an empty direction cell is a span — the ＋ one', () {
+    test('a cel made on an empty direction cell is a span — the ＋ one, '
+        'saying nothing', () {
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
 
       final spans = direction().instructions;
       expect(spans.keys, [5], reason: 'a block there IS a span');
-      expect(
-        spans[5]!.instructionId,
-        session.camera.cameraInstructionSet.defs.first.id,
-      );
+      expect(spans[5], const InstructionEvent(instructionId: null, length: 1));
+      expect(direction().timeline[5]!.instruction, isNull);
     });
 
     test('a direction block pasted onto a drawing row brings its picture, '

@@ -176,8 +176,10 @@ class TimesheetCell {
   /// inside the span's mark geometry.
   final int? spanOffset;
 
-  /// The span's mark shape from its def (instruction cells only); null
-  /// paints as [CameraInstructionMarkType.bar].
+  /// The span's mark shape ([InstructionEvent.markIn] — instruction cells
+  /// only); null paints no mark, the span that has none (「(없음)」).
+  /// ↩️Null painted as [CameraInstructionMarkType.bar], the dangling mark's
+  /// fallback, which `markIn` gives now.
   final CameraInstructionMarkType? markType;
 
   /// The sheet's A → B endpoint values (instruction start cells only; the
@@ -751,10 +753,10 @@ class TimesheetDocument {
       final event = entry.value;
       final endExclusive = (start + event.length).clamp(0, rowCount);
       final spanLength = endExclusive - start;
-      final markType = defById?.call(event.instructionId)?.markType;
+      final markType = event.markIn(defById);
       cells[start] = TimesheetCell(
         TimesheetCellKind.instructionStart,
-        label: event.displayLabel(defById?.call(event.instructionId)),
+        label: event.displayLabel(event.defIn(defById)),
         spanLength: spanLength,
         spanOffset: 0,
         markType: markType,

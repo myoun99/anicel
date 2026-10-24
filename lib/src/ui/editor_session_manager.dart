@@ -2390,7 +2390,6 @@ class EditorSessionManager extends ChangeNotifier
     changes: this,
     frameIds: this,
     controllers: activeCutControllers,
-    camera: camera,
   );
 
   // ---------------------------------------------------------------------

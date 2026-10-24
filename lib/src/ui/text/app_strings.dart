@@ -800,6 +800,7 @@ enum AppStrings {
   String get instructionEventEditTitle => _s('instructionEventEditTitle');
   String get instructionEventAddTitle => _s('instructionEventAddTitle');
   String get instructionMarkLabel => _s('instructionMarkLabel');
+  String get instructionMarkNone => _s('instructionMarkNone');
   String get instructionNameLabel => _s('instructionNameLabel');
   String get instructionStartLabel => _s('instructionStartLabel');
   String get instructionEndLabel => _s('instructionEndLabel');
@@ -2434,6 +2435,7 @@ enum AppStrings {
     'instructionEventEditTitle': 'Edit instruction',
     'instructionEventAddTitle': 'New instruction',
     'instructionMarkLabel': 'Instruction (mark)',
+    'instructionMarkNone': '(None)',
     'instructionNameLabel': 'Name (blank = instruction name)',
     'instructionStartLabel': 'Start name (A)',
     'instructionEndLabel': 'End name (B)',
@@ -3721,6 +3723,7 @@ enum AppStrings {
     'instructionEventEditTitle': '指示の編集',
     'instructionEventAddTitle': '新規指示',
     'instructionMarkLabel': '指示（記号）',
+    'instructionMarkNone': '（なし）',
     'instructionNameLabel': '名前（空欄なら記号名）',
     'instructionStartLabel': '始点名（A）',
     'instructionEndLabel': '終点名（B）',
@@ -5388,6 +5391,7 @@ enum AppStrings {
     'instructionEventEditTitle': '지시 편집',
     'instructionEventAddTitle': '새 지시',
     'instructionMarkLabel': '지시 (기호)',
+    'instructionMarkNone': '(없음)',
     'instructionNameLabel': '이름 (비우면 기호 이름)',
     'instructionStartLabel': '시작 이름 (A)',
     'instructionEndLabel': '끝 이름 (B)',
@@ -7089,6 +7093,7 @@ enum AppStrings {
     'instructionEventEditTitle': "Modifier l'indication",
     'instructionEventAddTitle': 'Nouvelle indication',
     'instructionMarkLabel': 'Indication (repère)',
+    'instructionMarkNone': '(Aucune)',
     'instructionNameLabel': "Nom (vide = nom de l'indication)",
     'instructionStartLabel': 'Nom de début (A)',
     'instructionEndLabel': 'Nom de fin (B)',
@@ -8797,6 +8802,7 @@ enum AppStrings {
     'instructionEventEditTitle': '编辑指示',
     'instructionEventAddTitle': '新建指示',
     'instructionMarkLabel': '指示（记号）',
+    'instructionMarkNone': '（无）',
     'instructionNameLabel': '名称（留空则用记号名）',
     'instructionStartLabel': '起点名称（A）',
     'instructionEndLabel': '终点名称（B）',

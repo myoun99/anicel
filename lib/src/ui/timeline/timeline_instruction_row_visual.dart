@@ -149,7 +149,6 @@ List<Widget> timelineRowInstructionOverlays({
   for (final span in visible) {
     final start = span.start;
     final endExclusive = span.endExclusive;
-    final def = defById(span.event.instructionId);
     overlays.add(
       TimelineFrameSpan(
         placement: TimelineFrameSpanPlacement(
@@ -158,7 +157,12 @@ List<Widget> timelineRowInstructionOverlays({
         ),
         child: IgnorePointer(
           key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
-          child: _InstructionSpan(axis: axis, event: span.event, def: def),
+          child: _InstructionSpan(
+            axis: axis,
+            event: span.event,
+            def: span.event.defIn(defById),
+            mark: span.event.markIn(defById),
+          ),
         ),
       ),
     );
@@ -260,11 +264,15 @@ class _InstructionSpan extends StatelessWidget {
     required this.axis,
     required this.event,
     required this.def,
+    required this.mark,
   });
 
   final Axis axis;
   final InstructionEvent event;
   final CameraInstructionDef? def;
+
+  /// [InstructionEvent.markIn]: null draws no mark — the span with none.
+  final CameraInstructionMarkType? mark;
 
   @override
   Widget build(BuildContext context) {
@@ -294,20 +302,21 @@ class _InstructionSpan extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Positioned.fill(
-            child: ExcludeSemantics(
-              child: CustomPaint(
-                painter: _InstructionMarkPainter(
-                  axis: axis,
-                  markType: def?.markType ?? CameraInstructionMarkType.bar,
-                  eventLength: event.length,
-                  color: markColor,
-                  hasStartName: valueA != null && valueA.isNotEmpty,
-                  hasEndName: valueB != null && valueB.isNotEmpty,
+          if (mark case final mark?)
+            Positioned.fill(
+              child: ExcludeSemantics(
+                child: CustomPaint(
+                  painter: _InstructionMarkPainter(
+                    axis: axis,
+                    markType: mark,
+                    eventLength: event.length,
+                    color: markColor,
+                    hasStartName: valueA != null && valueA.isNotEmpty,
+                    hasEndName: valueB != null && valueB.isNotEmpty,
+                  ),
                 ),
               ),
             ),
-          ),
           // The A/B values sit in the span's first and last cells, as a
           // block's name and its length do (F-96).
           if (valueA != null && valueA.isNotEmpty)

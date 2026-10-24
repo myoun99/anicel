@@ -676,6 +676,49 @@ void main() {
       expect(cells[11].kind, TimesheetCellKind.empty);
     });
 
+    // 🗣️I-72-block-without-instruction: 「없으면 아무 표시도 안함」.
+    test('a span with no mark prints none — 「(없음)」 — where a dangling '
+        'one prints the plain line; both keep what they write', () {
+      final document = TimesheetDocument.fromCut(
+        cut: _cut(
+          layers: [
+            _layer('A'),
+            Layer(
+              id: const LayerId('cam-inst'),
+              name: 'CAM 1',
+              kind: LayerKind.instruction,
+              frames: const [],
+              timeline: const {},
+              instructions: {
+                2: const InstructionEvent(
+                  instructionId: null,
+                  length: 3,
+                  valueA: 'C',
+                  valueB: 'D',
+                ),
+                8: const InstructionEvent(instructionId: 'gone', length: 2),
+              },
+            ),
+          ],
+        ),
+        projectName: 'Project',
+        fps: 24,
+        pageSeconds: 6,
+        instructionDefById: CameraInstructionSet.standard.defById,
+      );
+
+      final cells = document.columns
+          .where((column) => column.kind == TimesheetColumnKind.camera)
+          .toList()[1]
+          .cells;
+      expect(cells[2].kind, TimesheetCellKind.instructionStart);
+      expect(cells[2].markType, isNull);
+      expect(cells[2].label, '');
+      expect((cells[2].valueA, cells[4].valueB), ('C', 'D'));
+      expect(cells[8].markType, CameraInstructionMarkType.bar);
+      expect(cells[8].label, 'gone');
+    });
+
     test('D31: the transition row prints as one more CAM column through '
         'the instruction recipe, at its PROJECTED cut-local position', () {
       // The clone the session's cut-view projection hands over: an O.L

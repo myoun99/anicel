@@ -51,7 +51,7 @@ FlipHudRow flipHudLayerRow(
             // term's name, else the raw id — so a transition named by the
             // cuts it joins (F-229) reads the same here.
             label: entry.value.displayLabel(
-              spanDefById?.call(entry.value.instructionId),
+              entry.value.defIn(spanDefById),
             ),
           ),
         );

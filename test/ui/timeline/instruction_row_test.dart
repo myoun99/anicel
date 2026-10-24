@@ -172,20 +172,28 @@ void main() {
     );
     await standTheClassicRail(tester);
 
-    // Double-tap on the EMPTY cell creates a default-vocabulary event
-    // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
+    // Double-tap on the EMPTY cell creates an event that says nothing,
+    // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화; 「생성시 기본값 없음」,
+    // I-72-block-without-instruction). ↩️It took the vocabulary's first
+    // entry.
     await _doubleTapCell(tester, 'inst-cam', 4);
     expect(find.text('New instruction'), findsNothing);
     var event = _camLayer(repository).instructions[4]!;
     expect(event.length, 1, reason: 'new instances are one frame long');
+    expect(event.instructionId, isNull);
 
-    // The SECOND double-tap (covered now) opens the editor: swap it to
-    // PAN with endpoint values — editing stays the dialog's job.
+    // The SECOND double-tap (covered now) opens the editor on 「(없음)」:
+    // swap it to PAN with endpoint values — editing stays the dialog's job.
     await _doubleTapCell(tester, 'inst-cam', 4);
     expect(find.text('Edit instruction'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('instruction-def-dropdown')),
+    final picker = find.byKey(
+      const ValueKey<String>('instruction-def-dropdown'),
     );
+    expect(
+      find.descendant(of: picker, matching: find.text('(None)')),
+      findsOneWidget,
+    );
+    await tester.tap(picker);
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-option-pan')).last,
@@ -288,6 +296,50 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_camLayer(repository).instructions, isEmpty);
+  });
+
+  // 🗣️I-72-block-without-instruction (유저 2026-10-05 · 10-08): 「지시
+  // 기호 없는상태 존재하도록. (없음) 이런식?」 — 「없으면 아무 표시도 안함」.
+  testWidgets('「(없음)」: a span set to no mark draws none and names no '
+      'term — its start and end names stay', (tester) async {
+    late ProjectRepository repository;
+    await _pumpHome(
+      tester,
+      _project(),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+    await standTheClassicRail(tester);
+    Finder markOn(int start) => find.descendant(
+      of: find.byKey(ValueKey<String>('timeline-instruction-inst-cam-$start')),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_InstructionMarkPainter',
+      ),
+    );
+    expect(markOn(2), findsOneWidget, reason: 'premise: PAN draws its line');
+
+    await _doubleTapCell(tester, 'inst-cam', 2);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-def-dropdown')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instruction-option-none')).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+
+    final event = _camLayer(repository).instructions[2]!;
+    expect(event.instructionId, isNull);
+    expect((event.valueA, event.valueB, event.length), ('A', 'B', 6));
+    expect(markOn(2), findsNothing);
+    expect(findBlockText('PAN'), findsNothing);
+    expect(findBlockText('A'), findsOneWidget);
+    expect(findBlockText('B'), findsOneWidget);
   });
 
   // I-44: an instruction span's paper is a block's paper — it stops a seam
