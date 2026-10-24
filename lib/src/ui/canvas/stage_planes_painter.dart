@@ -6,7 +6,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../repaint_props.dart';
-import 'display_resample.dart' show displayEdgeAntiAliased;
+import 'display_resample.dart' show displayEdgeAntiAliased, displayEdgeRect;
 import 'paper_background.dart' show paintAbsentPlane;
 import 'viewport_canvas_transform.dart' show applyViewportTransform;
 
@@ -214,13 +214,19 @@ class StagePlanesPainter extends CustomPainter with RepaintOnProps {
       );
     }
     if (paperNone) {
+      // Cut where the paper's own edge is cut (F-67-paper-edge,
+      // [paintProjectPaper]), so turning the paper off and on moves no edge.
+      final antiAlias = displayEdgeAntiAliased(viewport, devicePixelRatio);
       paintAbsentPlane(
         canvas,
-        canvasSize.canvasRect,
+        displayEdgeRect(
+          canvas,
+          canvasSize.canvasRect,
+          antiAlias: antiAlias,
+          pixelRatio: devicePixelRatio,
+        ),
         screen: screen,
-        // Cut where the paper's own edge is cut (F-67-paper-edge), so
-        // turning the paper off and on moves no edge.
-        antiAlias: displayEdgeAntiAliased(viewport, devicePixelRatio),
+        antiAlias: antiAlias,
       );
     }
     canvas.restore();

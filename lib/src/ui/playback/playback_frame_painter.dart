@@ -175,10 +175,21 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
         paintAbsentPlane(canvas, rect, screen: screen, antiAlias: true);
         return;
       }
-      paintProjectPaper(canvas, rect, background, antiAlias: antiAlias);
+      paintProjectPaper(
+        canvas,
+        rect,
+        background,
+        antiAlias: antiAlias,
+        pixelRatio: devicePixelRatio,
+      );
     } else {
       canvas.drawRect(
-        rect,
+        displayEdgeRect(
+          canvas,
+          rect,
+          antiAlias: antiAlias,
+          pixelRatio: devicePixelRatio,
+        ),
         Paint()
           ..color = paperColor
           ..isAntiAlias = antiAlias,

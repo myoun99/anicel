@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../models/project_background.dart';
+import 'display_resample.dart';
 import 'raster_picture.dart';
 
 /// Paints the project PAPER (R10-⑥ / R3b): the paper color, alpha
@@ -21,19 +22,26 @@ import 'raster_picture.dart';
 /// edge, and how it is cut is the display law's answer
 /// (`displayEdgeAntiAliased` in `display_resample.dart` — F-67-paper-edge).
 /// A default here would let a new route inherit an edge nobody chose, the
-/// door A4 shut on `filterQuality`.
+/// door A4 shut on `filterQuality`. An edge not anti-aliased is cut on the
+/// grid of [pixelRatio] ([displayEdgeRect]).
 void paintProjectPaper(
   Canvas canvas,
   Rect rect,
   ProjectBackground background, {
   required bool antiAlias,
+  required double pixelRatio,
 }) {
   final color = Color(background.paintedArgb);
   if (color.a <= 0) {
     return;
   }
   canvas.drawRect(
-    rect,
+    displayEdgeRect(
+      canvas,
+      rect,
+      antiAlias: antiAlias,
+      pixelRatio: pixelRatio,
+    ),
     Paint()
       ..color = color
       ..isAntiAlias = antiAlias,

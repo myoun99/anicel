@@ -523,22 +523,33 @@ class _LayerStackPaintPass {
   }
 
   void _blitBuffer(Canvas canvas, _BufferImage buffer) {
+    final source = Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight);
     try {
-      canvas.drawImageRect(
-        buffer.image,
-        Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight),
-        buffer.rect,
-        Paint()
-          // The residual, not the device scale: below 100% the buffer is
-          // a level, and this blit reduces it by (0.5, 1] — `none` where
-          // the level lands 1:1 (안 1, 2026-09-16).
-          ..filterQuality = _bufferQuality
-          // The buffer's edge IS the canvas's edge on screen, cut by the
-          // same law as the paper's (F-67-paper-edge): under nearest on
-          // an axis-aligned view it is one more texel boundary, decided
-          // by pixel centres, not a blended line.
-          ..isAntiAlias = _bufferEdgeAntiAliased,
-      );
+      // The buffer's edge IS the canvas's edge on screen, cut by the same
+      // law as the paper's (F-67-paper-edge): under nearest on an
+      // axis-aligned view it is one more texel boundary, decided by pixel
+      // centres, not a blended line.
+      if (_bufferEdgeAntiAliased) {
+        canvas.drawImageRect(
+          buffer.image,
+          source,
+          buffer.rect,
+          Paint()
+            // The residual, not the device scale: below 100% the buffer is
+            // a level, and this blit reduces it by (0.5, 1] — `none` where
+            // the level lands 1:1 (안 1, 2026-09-16).
+            ..filterQuality = _bufferQuality,
+        );
+      } else {
+        drawImageRectOnThePixelGrid(
+          canvas,
+          buffer.image,
+          source,
+          buffer.rect,
+          filterQuality: _bufferQuality,
+          pixelRatio: _painter.devicePixelRatio,
+        );
+      }
     } finally {
       // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
       // this frame's display list, and the engine holds its own reference
@@ -1341,9 +1352,11 @@ class _LayerStackPaintPass {
       rect,
       _painter.paperBackground,
       // The display law's edge (F-67-paper-edge): inside the buffer, cut
-      // by the residual the buffer is blitted with; on screen — the walk —
-      // by the device scale.
+      // by the residual the buffer is blitted with, on the buffer's own
+      // pixels; on screen — the walk — by the device scale, on the
+      // screen's.
       antiAlias: intoTheBuffer ? _bufferEdgeAntiAliased : _displayEdgeAntiAliased,
+      pixelRatio: intoTheBuffer ? 1 : _painter.devicePixelRatio,
     );
   }
 

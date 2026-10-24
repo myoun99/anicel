@@ -322,9 +322,10 @@ class CameraFrameRenderService {
         paperRectAtLevel(cutTo!.canvasRect, level),
         stage,
         // The edge a level buffer gives its paper, seen through this
-        // projection.
+        // projection — on the output's own pixels.
         antiAlias:
             view == null || displayEdgeAntiAliased(view, 1, level: level),
+        pixelRatio: 1,
       );
     }
 

@@ -141,6 +141,12 @@ class StaticCompositeBake {
   /// [canvas]. It is recorded from an identity transform and replayed under
   /// whatever transform is current — which is equivalent because the paint
   /// body never reads the transform, only writes to it.
+  /// ⚠️One read: the paper cuts its edge on the grid of the space it is
+  /// drawn in (`cutOnThePixelGrid`). Here that space is the canvas's own,
+  /// where the paper's rect is whole already, so the recording draws what
+  /// the straight paint would into the display buffer; replayed on screen
+  /// — the direct walk — the edge lands off the screen's grid, which is
+  /// card the-walk-draws-off-the-grid-on-impeller.
   ///
   /// [within] is what reads the slot's rows: the view at the top, and under
   /// a folder that folder's buffer, which a blur on it reads past the view
