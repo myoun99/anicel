@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/poll_until.dart';
+
 /// The store's logic — keys, the patch grid, which levels a patch writes,
 /// the order, the budget — on a GPU that only records what it is asked.
 /// Whether the writes SHOW is `frame_picture_store_gpu_test.dart`'s, on a
@@ -257,9 +259,7 @@ void main() {
       rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
       draw: fill,
     );
-    while (picture.landing.isEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-    }
+    expect(await pollUntil(() => picture.landing.isNotEmpty), isTrue);
     expect(
       store.estimatedBytes,
       estimatedImageBytes(64, 64) + estimatedImageBytes(8, 8),
