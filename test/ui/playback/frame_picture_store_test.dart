@@ -443,7 +443,7 @@ void main() {
       final store = FramePictureStore<String>(
         gpu: gpu,
         levelsQuiet: never,
-        levelsWaitTexelsAtMost: 100,
+        levelsWaitTexelsAtMost: 128,
       );
       final picture = await _layed(store, 'a', 1024);
       Future<void> patchAt(double left) async {
@@ -457,7 +457,7 @@ void main() {
         expect(await pollUntil(() => gpu.bases.length == bases + 1), isTrue);
       }
 
-      // 64 and 64 texels lay as one of 96: under the most, it waits.
+      // 64 and 64 texels, the most, lay as one of 96: under it, it waits.
       await patchAt(0);
       await patchAt(4);
       expect(
@@ -480,7 +480,7 @@ void main() {
         ],
         [0, 50],
       );
-      // 64 and 64 laid as one of 864, as many as before: they land.
+      // 64 and 64 laid as one of 864, more than the most: they land.
       await patchAt(200);
       await patchAt(300);
       expect(await pollUntil(() => gpu.levelWrites.length == 2), isTrue);
