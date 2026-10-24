@@ -9,6 +9,7 @@ import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
 import '../models/brush_shape.dart';
+import '../models/brush_texture_mode.dart';
 import '../models/brush_tip_order.dart';
 import '../models/brush_tip_rotation_mode.dart';
 import 'brush_tip_mask_defaults.dart';
@@ -912,15 +913,30 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     id: const BrushPresetId('builtin-gouache'),
     name: 'Gouache',
     groupId: _oilGroup,
+    // 🗣️A DRY BRUSH: where it touches it covers, opaque and flat, and only
+    // where it does not is the paper bare (유저 2026-10-24, the-gouache-is-
+    // a-round-with-a-weave-Q2 → a). Pressed hard it reaches the paper's
+    // valleys; pressed lightly only its peaks take paint. ↩️It was a hard
+    // round under a canvas weave multiplied at 0.5, which a stroke piled to
+    // the ceiling — a Hard Round in every picture (유저 10-23: 「뭐가
+    // 과슈인지?」). ⛔Multiplied paper turned a light stroke translucent, a
+    // watercolour's; the weave in height read as a stamp's print.
+    // ⚠️Chosen with its cost said: a light stroke laid again leaves the same
+    // valleys bare — F-456's complaint on the pencils — and pressing harder
+    // fills them.
     settings: BrushSettings(
       size: 20,
-      hardness: 0.65,
+      hardness: 0.85,
       flow: 0.9784,
       spacing: BrushShape.minSpacing,
-      textureMaskSource: canvasWeaveTextureMask,
+      textureMaskSource: paperGrainTextureMask,
       textureScale: 1.5,
-      textureDensity: 0.5,
+      textureMode: BrushTextureMode.height,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
+      curves: {
+        (BrushPressureTarget.textureDensity, BrushInputSource.pressure):
+            BrushPressureCurve.linearFrom(0.2),
+      },
     ),
   ),
   BrushPreset(

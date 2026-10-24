@@ -275,6 +275,23 @@ void main() {
       );
     });
 
+    test('🚨the gouache is a dry brush: the paper\'s height, reached '
+        'deeper the harder it presses', () {
+      // the-gouache-is-a-round-with-a-weave (유저 2026-10-23: 「뭐가
+      // 과슈인지?」), Q2 answered a (10-24): pressed lightly only the paper's
+      // peaks take paint, pressed hard it covers flat.
+      final gouache = byId('builtin-gouache').settings;
+      expect(gouache.textureMaskSource?.id, 'builtin-paper-grain');
+      expect(gouache.textureMode, BrushTextureMode.height);
+      expect(gouache.hardness, 0.85);
+      final depth = gouache.shape.curves[(
+        BrushPressureTarget.textureDensity,
+        BrushInputSource.pressure,
+      )]!;
+      expect(depth.evaluate(0.0), closeTo(0.2, 1e-12), reason: 'touched');
+      expect(depth.evaluate(1.0), closeTo(1.0, 1e-12), reason: 'pressed');
+    });
+
     test('the five that drew another brush\'s row are gone', () {
       for (final id in [
         'builtin-rough-pencil',

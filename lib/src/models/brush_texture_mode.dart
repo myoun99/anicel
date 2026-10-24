@@ -26,7 +26,9 @@ enum BrushTextureMode {
   /// 너무 일정함(같은부분 다시 그려도 결여된 픽셀이 안채워짐)」): a valley
   /// deeper than the reach takes nothing at all, so the same pixels stay
   /// bare however often a line is laid again. Their edges break by the
-  /// faces they throw per dab instead (`BrushShape.tipsPerTurn`).
+  /// faces they throw per dab instead (`BrushShape.tipsPerTurn`). The
+  /// gouache wears it, that cost said (10-24): its dry brush is exactly a
+  /// light touch reaching only the peaks.
   ///
   /// ⚠️THE DENSITY READS DIFFERENTLY HERE, as Photoshop's depth does under
   /// its Height mode: not how much of the paper shows, but how far the dab
