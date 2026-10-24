@@ -153,21 +153,32 @@ void main() {
     );
     bool givesWay() =>
         tester.getRect(sill).width < tester.getSize(sill).width - 0.5;
-    expect(
-      givesWay(),
-      isFalse,
-      reason: '⛔premise: at the rail\'s own width the sill stands whole',
-    );
-    for (var step = 0; step < 60 && !givesWay(); step += 1) {
+    Future<void> moveGrip(double dx, String step) async {
       final at = handle();
       expect(at, isNotNull, reason: 'premise: the rail\'s grip is free');
       await tester.dragFrom(
         at!,
-        const Offset(4, 0),
+        Offset(dx, 0),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull, reason: 'at step $step');
+      expect(tester.takeException(), isNull, reason: step);
+    }
+
+    // The rail opens at a share of the window (D37), and the storyboard's
+    // sill has outgrown that share since the canvas's level bar stood at
+    // its end (I-85): the rail is widened first, so the narrowing does
+    // narrow.
+    for (var step = 0; step < 60 && givesWay(); step += 1) {
+      await moveGrip(-8, 'widening, at step $step');
+    }
+    expect(
+      givesWay(),
+      isFalse,
+      reason: '⛔premise: a rail wide enough stands the sill whole',
+    );
+    for (var step = 0; step < 60 && !givesWay(); step += 1) {
+      await moveGrip(4, 'at step $step');
     }
 
     expect(givesWay(), isTrue, reason: '⛔LIVENESS: the sill gave way');
