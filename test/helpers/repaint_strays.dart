@@ -58,6 +58,18 @@ Set<RenderObject> panelsTicksAndCanvas(WidgetTester tester) => {
   ..._canvas(tester),
 };
 
+/// What a gesture repaints under [root] besides its ticks, by name — the
+/// strays ([repaintStrays]) of a region whose tick boundaries
+/// ([tickBoundariesUnder]) alone may repaint.
+///
+/// ONE question for the pins that ask a region (a scrub's, a sheet's pan,
+/// a carried block's): each built that allow list on its own, and each
+/// built it of every [TickLayer] — a panel's host among them (10-24).
+List<String> tickStraysUnder(RenderObject root) => [
+  for (final stray in repaintStrays(root, allowed: tickBoundariesUnder(root)))
+    nameOfBoundary(stray),
+];
+
 /// The boundaries a tick is laid out and painted on under [root] — every
 /// [RenderTickBoundary].
 ///
