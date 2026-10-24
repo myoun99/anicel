@@ -1369,7 +1369,12 @@ class _TileEntry {
         coverageIdentity == painter.coverageIdentity &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
-        identical(colorScheme, painter.colorScheme) &&
+        // `==`, NOT `identical`, for R9 #16's reason below: a panel opened
+        // again reads a scheme of the same colours as a NEW instance, and
+        // 🔬every tile it had went stale — the timeline tab baked ~84 again
+        // at every opening, the storyboard ~42 (10-24,
+        // frame-panels-build-in-one-frame).
+        colorScheme == painter.colorScheme &&
         // R9 #16: `==`, NOT `identical`. A host hands these in as instance
         // method tear-offs (`_session.exposureStateForLayer`), and Dart
         // makes a FRESH closure object for each tear-off — measured:
