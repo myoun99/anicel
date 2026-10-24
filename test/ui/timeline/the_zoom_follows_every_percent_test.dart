@@ -81,10 +81,11 @@ void main() {
     });
   });
 
-  test('「200%까지만」 · 「80%를 100%로」: the closest zoom is 200% of the old '
-      '24-pixel 100% — 250% now — and 80% of it reads 100%', () {
-    expect(TimelineZoomLimits.maxPixelsPerFrame, 2 * 24);
-    expect(shown(TimelineZoomLimits.maxPixelsPerFrame), '250.0');
+  test('「200%까지만」 · 「80%를 100%로」: the closest zoom reads 200% on the bar '
+      'as it reads now (F-403-Q1), and 80% of the old 24-pixel 100% reads '
+      '100%', () {
+    expect(TimelineZoomLimits.maxPixelsPerFrame, closeTo(0.8 * 24 * 2, 1e-9));
+    expect(shown(TimelineZoomLimits.maxPixelsPerFrame), '200.0');
     expect(reference, closeTo(0.8 * 24, 1e-9));
     expect(shown(reference), '100.0');
     expect(
@@ -123,7 +124,7 @@ void main() {
   test('a −/+ step is ×1.25 to the nearest step, moves at least one, and '
       'stops only at a bound', () {
     const ceiling = TimelineZoomLimits.maxPixelsPerFrame;
-    for (final zoom in [floor, 0.3, 0.5, 0.8, 1.0, 2.0, 3.0, 24.0, 40.0]) {
+    for (final zoom in [floor, 0.3, 0.5, 0.8, 1.0, 2.0, 3.0, 24.0, 36.0]) {
       double near(double target) =>
           TimelineZoomLimits.clamped(target, framesPerSecond: fps);
       final zoomedIn = TimelineZoomLimits.stepped(

@@ -157,8 +157,9 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    await zoomTo(40);
-    expect(headerWidth(), 40);
+    // Under the bar's 200% (38.4, F-403-Q1). ↩️40, under 250%.
+    await zoomTo(36);
+    expect(headerWidth(), 36);
 
     // UI-R11 #11: the −/+ STEP buttons flanking the slider zoom without
     // dragging — multiplicative ×1.25 steps on the bar's 0.1% steps.
@@ -215,10 +216,11 @@ void main() {
         .widget<FieldSlider>(
           find.byKey(const ValueKey<String>('timeline-zoom-slider')),
         )
-        .onChanged!(40);
+        .onChanged!(36);
     await tester.pumpAndSettle();
-    // The bar's tenth nearest 40 is 39.9936, laid on the pixel 40.
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, moreOrLessEquals(40));
+    // 36 is a step of the bar (187.5%), under its 200% (F-403-Q1).
+    // ↩️40: the bar's tenth nearest it, 39.9936, laid on the pixel 40.
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, moreOrLessEquals(36));
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (

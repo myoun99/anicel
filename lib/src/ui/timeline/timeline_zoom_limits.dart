@@ -11,10 +11,11 @@ abstract final class TimelineZoomLimits {
   /// The closest zoom.
   ///
   /// 🗣️F-403 (유저 2026-10-19): 「우선 200%이상의 값은 필요없어보임. 그러니
-  /// 지금의 최소값부터 200%까지만 살리도록」 — 200% of the 24-pixel frame the
-  /// bar read as 100% then, which reads 250% now that the 100% moved under
-  /// it ([referencePixelsPerFrame]). ↩️96 — 400% then.
-  static const double maxPixelsPerFrame = 48;
+  /// 지금의 최소값부터 200%까지만 살리도록」 — 200% on the bar as it reads
+  /// now, of [referencePixelsPerFrame] (F-403-Q1, 유저 2026-10-24: 「새 눈금
+  /// 200% 에서 멈춤」). ↩️48 — 200% of the 24-pixel frame the bar read as
+  /// 100% when that was said, 250% on the bar since; and 96 — 400% — before.
+  static const double maxPixelsPerFrame = 2 * referencePixelsPerFrame;
 
   /// The zoom the bar reads as 100%, and the one a cut nobody zoomed opens
   /// at — the zoom to work at.
