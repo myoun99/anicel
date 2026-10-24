@@ -1845,12 +1845,13 @@ class _LayerStackPainter extends CustomPainter {
   /// a transient editing state, so declining to patch costs only what
   /// drawing the frame as it stands costs, and it cannot go stale.
   /// A folder's lift (I-37) floats on each of its rows — the same reason,
-  /// as many times as it has rows. And a live row drawn from anything but
-  /// what it published says nothing a token could.
-  bool get _liveCanBeTold =>
-      floatOverlay?.value == null &&
-      liftedRows.isEmpty &&
-      (activeSurfacePainter?.drawsOnlyFromPublishedState ?? true);
+  /// as many times as it has rows.
+  ///
+  /// ⛔A live row drawn from anything but what it published is not asked
+  /// here: it has no tokens at all ([_liveSurfaceTokens]), and a canvas
+  /// holding none draws its frame as it stands. Asked here too, one
+  /// question had two answers and a mutant of either survived.
+  bool get _liveCanBeTold => floatOverlay?.value == null && liftedRows.isEmpty;
 
   /// Whether a change to the live surface lands where that surface is.
   ///
