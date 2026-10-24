@@ -182,6 +182,41 @@ void main() {
       expect(shownHead.left, moreOrLessEquals(shownLead.right + 8));
     });
 
+    testWidgets('a kept end taller than the row is shown to the row\'s '
+        'height, as a scaling box shows it — the other end keeps its size', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 300,
+              height: rowHeight,
+              child: KeptTailRow(
+                lead: SizedBox(key: lead, width: leadWidth, height: 80),
+                tail: SizedBox(
+                  key: tail,
+                  width: tailWidth,
+                  height: tailHeight,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        tester.getRect(find.byKey(lead)),
+        const Rect.fromLTWH(0, 0, leadWidth * rowHeight / 80, rowHeight),
+      );
+      expect(
+        tester.getRect(find.byKey(tail)).size,
+        const Size(tailWidth, tailHeight),
+      );
+    });
+
     testWidgets('a lead shown smaller is pressed where it is shown', (
       tester,
     ) async {

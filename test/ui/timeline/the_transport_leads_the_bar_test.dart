@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -129,6 +130,71 @@ void main() {
         expect(identical(after[i], before[i]), isTrue, reason: 'control $i');
       }
       session.playbackRig.prerenderScheduler.cancel();
+    });
+  }
+
+  /// The play button in [transport], as built.
+  AppIconButton playOn(WidgetTester tester, String transport) => tester
+      .widgetList<AppIconButton>(
+        find.descendant(
+          of: byKey(transport),
+          matching: find.byType(AppIconButton),
+        ),
+      )
+      .firstWhere((button) => button.keyValue == 'playback-play-button');
+
+  for (final panel in panels) {
+    testWidgets('a language switch says the ${panel.name}\'s transport in '
+        'the new language — the bar seats the transport built for it', (
+      tester,
+    ) async {
+      await pumpApp(tester, const Size(1700, 900));
+      await tester.tap(byKey(panel.tab));
+      await tester.pumpAndSettle();
+      final session = sessionOf(tester);
+      final was = session.languageSettings.value;
+      addTearDown(() => session.setLanguageSettings(was));
+      final said = playOn(tester, panel.transport).tooltip;
+
+      session.setLanguageSettings(
+        AppLanguageSettings(
+          programLanguage: was.programLanguage == AppLanguage.ko
+              ? AppLanguage.en
+              : AppLanguage.ko,
+        ),
+      );
+      await tester.pump();
+
+      expect(playOn(tester, panel.transport).tooltip, isNot(said));
+    });
+  }
+
+  for (final (panel, seek) in [
+    (panels[0], (EditorSessionManager s) => s.selectFrameIndex(2)),
+    (panels[1], (EditorSessionManager s) => s.selectGlobalFrame(2)),
+  ]) {
+    testWidgets('the ${panel.name}\'s play button plays from where its '
+        'playhead stands', (tester) async {
+      await pumpApp(tester, const Size(1700, 900));
+      await tester.tap(byKey(panel.tab));
+      await tester.pumpAndSettle();
+      final session = sessionOf(tester);
+      seek(session);
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.descendant(
+          of: byKey(panel.transport),
+          matching: byKey('playback-play-button'),
+        ),
+      );
+      await tester.pump();
+
+      final playback = session.playbackRig.playback;
+      expect(playback.isPlaying, isTrue, reason: '⛔premise: it plays');
+      expect(playback.playlistFrame, 2);
+      playback.stop();
+      await tester.pumpAndSettle();
     });
   }
 
