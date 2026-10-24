@@ -1149,6 +1149,10 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // paste while every entry around them holds its value.
       // ↩️The cut read the frame board's gate, which the button stopped
       // reading when the cut took what the copy takes (I-123).
+      // ⛔MUTANT SURVIVES (2026-10-24): the old entry back reddens nothing —
+      // where the two differ on a seek, the copy's gate above moves too
+      // (text, keys), or the rows' cut does not move at all. It stays the
+      // button's own answer, as every entry here is.
       _pill.canCutRun,
       _pill.canPasteIndependentFrame,
       session.cellInstances.canEditCellInstanceAtCurrentFrame,
