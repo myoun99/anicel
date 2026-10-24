@@ -41,15 +41,17 @@ void main() {
     paintPaper: true,
     paperBackground: ProjectBackground.defaultBackground,
   );
-
-  /// A row under a translucent folder over another — built anew on every
-  /// call, so a key equal to another's is equal by value.
+  /// A row under a translucent folder over another, and a row composed
+  /// over the two as its backdrop — built anew on every call, so a key
+  /// equal to another's is equal by value.
   List<CompositeNode<CanvasStackRow>> stack({
     double opacity = 1.0,
     LayerBlendMode blendMode = LayerBlendMode.normal,
     LayerPlacement? placement,
     List<ResolvedLayerEffect> effects = const [],
     double folderOpacity = 0.5,
+    LayerBlendMode folderBlend = LayerBlendMode.normal,
+    LayerBlendMode overTheBackdrop = LayerBlendMode.multiply,
     bool overTurned = false,
   }) {
     final below = CompositeLeaf<CanvasStackRow>(
@@ -68,10 +70,18 @@ void main() {
         ),
       ],
       opacity: folderOpacity,
-      blendMode: LayerBlendMode.normal,
+      blendMode: folderBlend,
       effects: const [],
     );
-    return overTurned ? [folder, below] : [below, folder];
+    return [
+      CompositeBackdropBlend(
+        backdrop: overTurned ? [folder, below] : [below, folder],
+        source: CompositeLeaf(
+          CanvasLayerImageRequest(frameKey: cel('over'), opacity: 1.0),
+        ),
+        blendMode: overTheBackdrop,
+      ),
+    ];
   }
 
   FramePictureKey keyOf(
@@ -108,6 +118,10 @@ void main() {
         ),
       ),
       'a folder\'s opacity': keyOf(stack(folderOpacity: 0.7)),
+      'a folder\'s blend': keyOf(stack(folderBlend: LayerBlendMode.screen)),
+      'the blend a row composes over its backdrop in': keyOf(
+        stack(overTheBackdrop: LayerBlendMode.subtract),
+      ),
       'the rows\' order': keyOf(stack(overTurned: true)),
       'another cut\'s cels': keyOf(stack(), cutId: const CutId('copy')),
       'the page\'s size': keyOf(
