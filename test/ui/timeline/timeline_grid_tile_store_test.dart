@@ -710,6 +710,51 @@ void main() {
       expect(third.debugDisposed, isFalse);
     });
 
+    test('a tile of a row nothing shows goes first, though its own window '
+        'holds it and the run shows it soonest', () async {
+      if (!available) {
+        markTestSkipped('qa_engine.dll not built');
+        return;
+      }
+      final steps = <int, int>{};
+      final row = rowOnScreen((frame) => steps[frame]);
+      final past = row.past;
+      steps.addAll({past[0]: 1, past[1]: 2});
+      final store = TimelineGridTileStore.instance;
+      // Windowed off no bucket: every span is in its window — and no
+      // painter of it is attached, so no screen shows the row.
+      final unshown = painterFor(
+        Layer(
+          id: const LayerId('layer-b'),
+          name: 'B',
+          frames: [
+            Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('f1'), length: 2),
+          },
+        ),
+        store: store,
+        stepsUntilShown: (_) => 0,
+      );
+      final span = timelineFrameWindowSpanFor(24);
+
+      final hidden = await landed(
+        () => store.tileFor(
+          painter: unshown,
+          spanStartIndex: 0,
+          spanEndIndexExclusive: span,
+          devicePixelRatio: 2.0,
+        ),
+      );
+      final sooner = await landed(() => row.tile(past[0]));
+      final later = await landed(() => row.tile(past[1]));
+
+      expect(hidden.debugDisposed, isTrue, reason: 'no row on screen');
+      expect(sooner.debugDisposed, isFalse);
+      expect(later.debugDisposed, isFalse);
+    });
+
     test('a span the row shows NOW stays, however late the run shows it '
         'again', () async {
       if (!available) {
