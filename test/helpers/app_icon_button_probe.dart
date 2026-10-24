@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 /// What a test reads off an icon button — whichever family wears the face
@@ -160,19 +161,29 @@ extension RailGlyphFinders on CommonFinders {
     },
   );
 
-  /// The light faces whose tooltip is [message] — `find.byTooltip` for a
-  /// face that summons the one window instead of holding a `Tooltip`: the
-  /// rail's glyph, the rail's plate ([RailPlateButton]) and the app's icon
-  /// button ([AppIconButton], since 2026-10-24).
-  Finder railTooltip(String message) => byWidgetPredicate(
-    (widget) => switch (widget) {
-      RailGlyphButton(:final tooltip) ||
-      RailPlateButton(:final tooltip) ||
-      IconButtonPressFace(:final tooltip) => tooltip == message,
-      _ => false,
-    },
-  );
+  /// Whatever says [message] as its tooltip — `find.byTooltip` for this app,
+  /// whose tooltips summon the one window instead of holding a `Tooltip`:
+  /// the rail's glyph, the rail's plate ([RailPlateButton]), the app's icon
+  /// button ([AppIconButton], since 2026-10-24) and the tooltip around
+  /// anything else ([AppTooltip], since 2026-10-25). ⛔`find.byTooltip`
+  /// sees none of them.
+  Finder tooltipSaying(String message) =>
+      byWidgetPredicate((widget) => tooltipOf(widget) == message);
+
+  /// Whatever says a tooltip at all ([tooltipOf]).
+  Finder get anyTooltip =>
+      byWidgetPredicate((widget) => tooltipOf(widget) != null);
 }
+
+/// What [widget] says as its tooltip, if it is one of the boxes that summon
+/// the window (`find.tooltipSaying`).
+String? tooltipOf(Widget widget) => switch (widget) {
+  RailGlyphButton(:final tooltip) ||
+  RailPlateButton(:final tooltip) ||
+  IconButtonPressFace(:final tooltip) => tooltip,
+  AppTooltip(message: final tooltip) => tooltip,
+  _ => null,
+};
 
 /// The light face an app icon button wears inside [button] — the rail's
 /// glyph face around a plain [Icon] (2026-10-25), the shifted face around

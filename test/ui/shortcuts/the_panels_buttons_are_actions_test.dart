@@ -210,7 +210,7 @@ String tooltipOf(WidgetTester tester, String key) => tester
           )
           .first,
     )
-    .message!;
+    .message;
 
 CutPiece stampPiece() => CutPiece(
   image: BrushStampImage(

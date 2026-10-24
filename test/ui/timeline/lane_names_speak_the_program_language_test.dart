@@ -143,8 +143,8 @@ void main() {
       findsOneWidget,
       reason: 'fixture premise: the Transform header is on screen',
     );
-    expect(find.railTooltip('변형 우회'), findsOneWidget);
-    expect(find.railTooltip('Bypass Transform'), findsNothing);
+    expect(find.tooltipSaying('변형 우회'), findsOneWidget);
+    expect(find.tooltipSaying('Bypass Transform'), findsNothing);
   });
 }
 

@@ -201,8 +201,7 @@ class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
       iconTheme: ambient.copyWith(size: size.iconSize),
       textStyle: DefaultTextStyle.of(context).style,
       textDirection: Directionality.of(context),
-      triggerMode:
-          TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+      triggerMode: AppTooltipLook.triggerModeIn(context),
     );
   }
 }
@@ -303,7 +302,8 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
 
 /// The rail button's face: its box, its state layer and its glyph, as one
 /// render object, on the press every light face is ([PressFace]).
-class RenderRailGlyphFace extends RenderBox with PressClaim, PressFace {
+class RenderRailGlyphFace extends RenderBox
+    with PressClaim, SummonsTooltip, PressFace {
   RenderRailGlyphFace({
     required RailGlyphSpec spec,
     required BuildContext tooltipContext,
@@ -520,7 +520,8 @@ class RenderRailGlyphFace extends RenderBox with PressClaim, PressFace {
 /// the hover, the one ink the app keeps (its theme turns the splash and the
 /// held fill off, F-132 · F-138). Such a face paints it, UNDER the plate as
 /// the [InkWell] drew it ([RailPlateSpec.hoverShape]).
-class RenderRailPlateFace extends RenderProxyBox with PressClaim, PressFace {
+class RenderRailPlateFace extends RenderProxyBox
+    with PressClaim, SummonsTooltip, PressFace {
   RenderRailPlateFace({
     required RailPlateSpec spec,
     required BuildContext tooltipContext,
@@ -699,8 +700,7 @@ class RailPlateButton extends SingleChildRenderObjectWidget
     onPressed: onPressed,
     semanticLabel: semanticLabel,
     textDirection: Directionality.of(context),
-    triggerMode:
-        TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+    triggerMode: AppTooltipLook.triggerModeIn(context),
     hoverShape: hoverShape,
     hoverInk: Theme.of(context).hoverColor,
   );

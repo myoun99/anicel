@@ -619,11 +619,11 @@ void expectTimelineActionTooltips() {
   // An install's Clip Studio layout gives Add Frame no key (F-417-Q2).
   // 🗣️I-58 (유저 2026-10-18): each wears its action's name. ↩️They read
   // 'Add', 'Blank / X' and 'Mark ●'.
-  expect(find.railTooltip('New Frame'), findsOneWidget);
-  expect(find.railTooltip('Clear'), findsOneWidget);
-  expect(find.railTooltip('In-between Mark'), findsOneWidget);
-  expect(find.byTooltip('Decrease Exposure'), findsNothing);
-  expect(find.byTooltip('Increase Exposure'), findsNothing);
+  expect(find.tooltipSaying('New Frame'), findsOneWidget);
+  expect(find.tooltipSaying('Clear'), findsOneWidget);
+  expect(find.tooltipSaying('In-between Mark'), findsOneWidget);
+  expect(find.tooltipSaying('Decrease Exposure'), findsNothing);
+  expect(find.tooltipSaying('Increase Exposure'), findsNothing);
 }
 
 Future<void> expectTimelineActionKeys(WidgetTester tester) async {

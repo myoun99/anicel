@@ -205,7 +205,7 @@ void main() {
       findsNothing,
       reason: 'the clean take shows no red corner',
     );
-    final tooltip = tester.widget<Tooltip>(find.byType(AppTooltip));
+    final tooltip = tester.widget<AppTooltip>(find.byType(AppTooltip));
     expect(tooltip.message, 'clipped take');
   });
 }

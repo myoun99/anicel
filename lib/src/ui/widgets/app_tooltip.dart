@@ -6,83 +6,198 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
-/// THE APP'S TOOLTIP — Flutter's [Tooltip], with ONE change: the global
-/// pointer route is held only while the tooltip is showing or about to.
+/// THE APP'S TOOLTIP around anything that is not a light face — ONE box
+/// that summons the window every tooltip in the app shares
+/// ([SummonedTooltip]), as the light faces do ([SummonsTooltip]).
 ///
-/// 🚨WHY IT EXISTS (09-25, measured on the real app, the user's layout):
-/// 288 tooltips are mounted, and Flutter's `RawTooltipState.initState`
-/// registers a global pointer route for EVERY one of them. `PointerRouter`
-/// copies the whole route map and calls every route on every pointer event —
-/// each pen sample (250 Hz), each hover move — so a stroke spent about a
-/// fifth of the UI thread's time in `PointerRouter.route`, mostly in routes
-/// that answer "not mine" and return. The route has one job: dismiss the
-/// tooltip when a pointer goes down somewhere else, and its handler returns
-/// at once unless the tooltip is pending or showing. Holding it only then
-/// changes nothing but the cost.
+/// 🚨WHY ONE BOX (card frame-panels-build-in-one-frame, 2026-10-25): it was
+/// Flutter's `Tooltip` with its own state, overlay portal, exclusive mouse
+/// region, listener and two semantics nodes — nine elements apiece, 33 of
+/// them on the default screen, each made anew whenever a panel is shown
+/// again. Only one tooltip is ever open at a time.
 ///
-/// ⛔Everything else is Flutter's, line for line — the hover rules, the
-/// exclusive mouse region, the long-press and tap triggers, the fade, the
-/// position and the Material look from [TooltipTheme]. Changing any of it
-/// here is changing the app's tooltip, not fixing a cost.
+/// ↩️Before that (09-25, measured on the real app, the user's layout) it was
+/// Flutter's, holding its global pointer route only while it showed: 288
+/// tooltips mounted, and Flutter's registers a route for every one of them
+/// that `PointerRouter` calls on every pen sample. The window holds the one
+/// route only while it is pending or open.
 ///
-/// It IS a [Tooltip] (a subclass with its own state), so `find.byTooltip`
-/// and `tester.widget<Tooltip>` keep reading it.
-class AppTooltip extends Tooltip {
+/// ⛔The rules are Flutter's — the hover, the nesting (only the innermost
+/// tooltip shows), the long press, the fade, the position and the Material
+/// look from [TooltipTheme] ([AppTooltipLook]). Changing any of it here is
+/// changing the app's tooltip, not fixing a cost.
+class AppTooltip extends SingleChildRenderObjectWidget {
   const AppTooltip({
     super.key,
-    super.message,
-    super.richMessage,
-    super.constraints,
-    super.padding,
-    super.margin,
-    super.verticalOffset,
-    super.preferBelow,
-    super.excludeFromSemantics,
-    super.decoration,
-    super.textStyle,
-    super.textAlign,
-    super.waitDuration,
-    super.showDuration,
-    super.exitDuration,
-    super.enableTapToDismiss,
-    super.triggerMode,
-    super.enableFeedback,
-    super.onTriggered,
-    super.mouseCursor,
-    super.ignorePointer,
-    super.positionDelegate,
+    required this.message,
+    this.triggerMode,
     super.child,
   });
 
-  /// Dismisses every tooltip on screen — these, the summoned window
-  /// ([SummonedTooltip]) and any of Flutter's own.
+  /// What it says. Empty says nothing: the box is its child alone, as an
+  /// empty `Tooltip` is.
+  final String message;
+
+  /// How a hand that cannot hover opens it — the theme's where null
+  /// ([AppTooltipLook.triggerModeIn]). Only a long press opens it, as on
+  /// every light face; anything else leaves it to the hover.
+  final TooltipTriggerMode? triggerMode;
+
+  /// Dismisses every tooltip on screen — the window ([SummonedTooltip]) and
+  /// any of Flutter's own.
   static bool dismissAllToolTips() {
-    final ours = _HoldingRawTooltip.dismissAll();
     final summoned = SummonedTooltip.dismiss();
     final theirs = Tooltip.dismissAllToolTips();
-    return ours || summoned || theirs;
+    return summoned || theirs;
   }
 
-  /// How many of these tooltips hold a global pointer route right now.
-  @visibleForTesting
-  static int get debugRoutesHeld => _HoldingRawTooltipState._routesHeld;
+  _Saying _sayingIn(BuildContext context) => (
+    message: message,
+    triggerMode: triggerMode ?? AppTooltipLook.triggerModeIn(context),
+    // A node that carries text says which way it reads, as [Semantics]
+    // gives a tooltip the ambient direction.
+    reading: Directionality.maybeOf(context),
+  );
 
   @override
-  State<Tooltip> createState() => AppTooltipState();
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderAppTooltip(_sayingIn(context), tooltipContext: context);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) {
+    (renderObject as _RenderAppTooltip)
+      ..tooltipContext = context
+      .._wear(_sayingIn(context));
+  }
+}
+
+/// What an [AppTooltip] says, read where it stands.
+typedef _Saying = ({
+  String message,
+  TooltipTriggerMode triggerMode,
+  TextDirection? reading,
+});
+
+/// [AppTooltip]'s box: its child, the press it takes for the long press, the
+/// hover it hands the window and the tooltip a screen reader hears.
+class _RenderAppTooltip extends RenderProxyBox with SummonsTooltip {
+  _RenderAppTooltip(this._saying, {required BuildContext tooltipContext}) {
+    this.tooltipContext = tooltipContext;
+  }
+
+  _Saying _saying;
+  void _wear(_Saying value) {
+    final old = _saying;
+    // ⚠️Set before it is marked: marking reads the configuration at once.
+    _saying = value;
+    if (value.message != old.message || value.reading != old.reading) {
+      markNeedsSemanticsUpdate();
+    }
+  }
+
+  @override
+  String get tooltipMessage => _saying.message;
+
+  /// The hover's target, apart from the box: the box takes every press in
+  /// it, but only the innermost tooltip answers a hover.
+  late final _TooltipHover _hover = _TooltipHover(this);
+
+  /// Flutter's tooltip: an OPAQUE listener over its child — the whole box
+  /// takes a press, as the listener did — inside an EXCLUSIVE mouse region,
+  /// on the path only when no tooltip inside it is ([_Nesting]).
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (_saying.message.isEmpty) {
+      return super.hitTest(result, position: position);
+    }
+    final outermost = _Nesting.outermost;
+    _Nesting.outermost = false;
+    var hit = false;
+    if (size.contains(position)) {
+      hitTestChildren(result, position: position);
+      result.add(BoxHitTestEntry(this, position));
+      hit = true;
+      if (!_Nesting.innermostFound) {
+        _Nesting.innermostFound = true;
+        result.add(HitTestEntry(_hover));
+      }
+    }
+    if (outermost) {
+      _Nesting.outermost = true;
+      _Nesting.innermostFound = false;
+    }
+    return hit;
+  }
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    if (event is PointerDownEvent) {
+      summonOnLongPress(event, _saying.triggerMode);
+    }
+  }
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    if (_saying.message.isEmpty) {
+      return;
+    }
+    config.tooltip = _saying.message;
+    if (_saying.reading case final reading?) {
+      config.textDirection = reading;
+    }
+  }
+}
+
+/// What a mouse over an [AppTooltip] meets: the window opens as it enters
+/// and goes as it leaves.
+final class _TooltipHover
+    with Diagnosticable
+    implements HitTestTarget, MouseTrackerAnnotation {
+  _TooltipHover(this._box);
+
+  final _RenderAppTooltip _box;
+
+  @override
+  MouseCursor get cursor => MouseCursor.defer;
+
+  @override
+  PointerEnterEventListener? get onEnter =>
+      (_) => SummonedTooltip.hover(_box);
+
+  @override
+  PointerExitEventListener? get onExit =>
+      (_) => SummonedTooltip.unhover(_box);
+
+  @override
+  bool get validForMouseTracker => _box.attached;
+
+  @override
+  void handleEvent(PointerEvent event, HitTestEntry entry) {}
+}
+
+/// Flutter's rule for nested tooltips (its `_ExclusiveMouseRegion`): only
+/// the first tooltip hit in hit-testing order — the innermost — answers a
+/// hover. The outermost tooltip's hit test resets both.
+abstract final class _Nesting {
+  static bool outermost = true;
+  static bool innermostFound = false;
 }
 
 /// HOW THE APP'S TOOLTIPS LOOK AND TIME — [TooltipState]'s resolution,
-/// lifted out of the widget: the tooltip's own field, then the theme's
-/// ([TooltipTheme]), then Material's default.
+/// lifted out of the widget: the theme's ([TooltipTheme]), then Material's
+/// default.
 ///
-/// ONE resolution for every tooltip the app shows: [AppTooltip], which
-/// wraps its child, and the summoned window the rail's glyphs share
-/// ([SummonedTooltip]) — so the two cannot come to look or time apart.
+/// ONE resolution for the one window every tooltip in the app summons
+/// ([SummonedTooltip]), and for the trigger every summoner opens it by
+/// ([triggerModeIn]).
 final class AppTooltipLook {
   AppTooltipLook._({
     required this.box,
@@ -93,12 +208,10 @@ final class AppTooltipLook {
     required this.dismissDelay,
     required this.triggerMode,
     required this.enableFeedback,
-    required this.excludeFromSemantics,
   });
 
-  /// The look in [context], with [tooltip]'s own fields first where it has
-  /// any — a summoned window has none and takes the theme's.
-  factory AppTooltipLook.of(BuildContext context, {Tooltip? tooltip}) {
+  /// The look in [context].
+  factory AppTooltipLook.of(BuildContext context) {
     final theme = Theme.of(context);
     final tooltipTheme = TooltipTheme.of(context);
     final platform = theme.platform;
@@ -136,56 +249,40 @@ final class AppTooltipLook {
     return AppTooltipLook._(
       box: (message) => _TooltipBox(
         constraints:
-            tooltip?.constraints ??
             tooltipTheme.constraints ??
             defaultConstraints,
         textStyle:
-            tooltip?.textStyle ?? tooltipTheme.textStyle ?? defaultTextStyle,
+            tooltipTheme.textStyle ?? defaultTextStyle,
         textAlign:
-            tooltip?.textAlign ?? tooltipTheme.textAlign ?? _defaultTextAlign,
+            tooltipTheme.textAlign ?? _defaultTextAlign,
         decoration:
-            tooltip?.decoration ??
             tooltipTheme.decoration ??
             defaultDecoration,
         padding:
-            tooltip?.padding ??
             tooltipTheme.padding ??
             _defaultPadding(platform),
-        margin: tooltip?.margin ?? tooltipTheme.margin ?? _defaultMargin,
+        margin: tooltipTheme.margin ?? _defaultMargin,
         richMessage: message,
       ),
       verticalOffset:
-          tooltip?.verticalOffset ??
           tooltipTheme.verticalOffset ??
           _defaultVerticalOffset,
       preferBelow:
-          tooltip?.preferBelow ??
           tooltipTheme.preferBelow ??
           _defaultPreferBelow,
       hoverDelay:
-          tooltip?.waitDuration ??
           tooltipTheme.waitDuration ??
           _defaultWaitDuration,
       touchDelay:
-          tooltip?.showDuration ??
           tooltipTheme.showDuration ??
           _defaultShowDuration,
       dismissDelay:
-          tooltip?.exitDuration ??
           tooltipTheme.exitDuration ??
           _defaultExitDuration,
-      triggerMode:
-          tooltip?.triggerMode ??
-          tooltipTheme.triggerMode ??
-          _defaultTriggerMode,
+      triggerMode: triggerModeIn(context),
       enableFeedback:
-          tooltip?.enableFeedback ??
           tooltipTheme.enableFeedback ??
           _defaultEnableFeedback,
-      excludeFromSemantics:
-          tooltip?.excludeFromSemantics ??
-          tooltipTheme.excludeFromSemantics ??
-          _defaultExcludeFromSemantics,
     );
   }
 
@@ -195,9 +292,14 @@ final class AppTooltipLook {
   static const Duration _defaultShowDuration = Duration(milliseconds: 1500);
   static const Duration _defaultExitDuration = Duration(milliseconds: 100);
   static const Duration _defaultWaitDuration = Duration.zero;
-  static const bool _defaultExcludeFromSemantics = false;
   static const TooltipTriggerMode _defaultTriggerMode =
       TooltipTriggerMode.longPress;
+
+  /// How a hand that cannot hover opens a tooltip in [context] — the
+  /// theme's, else a long press. What every summoner reads, the light faces
+  /// and [AppTooltip] alike.
+  static TooltipTriggerMode triggerModeIn(BuildContext context) =>
+      TooltipTheme.of(context).triggerMode ?? _defaultTriggerMode;
   static const bool _defaultEnableFeedback = true;
   static const TextAlign _defaultTextAlign = TextAlign.start;
 
@@ -257,7 +359,6 @@ final class AppTooltipLook {
   final Duration dismissDelay;
   final TooltipTriggerMode triggerMode;
   final bool enableFeedback;
-  final bool excludeFromSemantics;
 
   /// Where a window of [context]'s size stands for its target —
   /// [positionDependentBox] at this look's offset and side.
@@ -268,590 +369,6 @@ final class AppTooltipLook {
     verticalOffset: verticalOffset,
     preferBelow: preferBelow,
   );
-}
-
-/// The state of an [AppTooltip] — [TooltipState]'s look ([AppTooltipLook]),
-/// built over the route-holding raw tooltip.
-class AppTooltipState extends State<AppTooltip> {
-  final GlobalKey<_HoldingRawTooltipState> _tooltipKey =
-      GlobalKey<_HoldingRawTooltipState>();
-
-  late bool _visible;
-
-  String get _tooltipMessage =>
-      widget.message ?? widget.richMessage!.toPlainText();
-
-  /// Shows the tooltip if it is not already visible — [TooltipState]'s.
-  bool ensureTooltipVisible() =>
-      _tooltipKey.currentState?.ensureTooltipVisible() ?? false;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _visible = TooltipVisibility.of(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_tooltipMessage.isEmpty) {
-      return widget.child ?? const SizedBox.shrink();
-    }
-    final look = AppTooltipLook.of(context, tooltip: widget);
-    final message = widget.richMessage ?? TextSpan(text: widget.message);
-
-    Widget effectiveChild = MouseRegion(
-      cursor: widget.mouseCursor ?? MouseCursor.defer,
-      child: widget.child ?? const SizedBox.shrink(),
-    );
-
-    if (_visible) {
-      effectiveChild = _HoldingRawTooltip(
-        key: _tooltipKey,
-        semanticsTooltip: look.excludeFromSemantics ? null : _tooltipMessage,
-        tooltipBuilder: (BuildContext context, Animation<double> animation) =>
-            look.fadingBox(message, animation),
-        touchDelay: look.touchDelay,
-        triggerMode: look.triggerMode,
-        enableFeedback: look.enableFeedback,
-        hoverDelay: look.hoverDelay,
-        enableTapToDismiss: widget.enableTapToDismiss,
-        onTriggered: widget.onTriggered,
-        dismissDelay: look.dismissDelay,
-        positionDelegate: (context) {
-          final resolved = TooltipPositionContext(
-            target: context.target,
-            targetSize: context.targetSize,
-            tooltipSize: context.tooltipSize,
-            overlaySize: context.overlaySize,
-            verticalOffset: look.verticalOffset,
-            preferBelow: look.preferBelow,
-          );
-          return widget.positionDelegate?.call(resolved) ??
-              look.positionFor(resolved);
-        },
-        ignorePointer: widget.ignorePointer ?? widget.message != null,
-        child: effectiveChild,
-      );
-    }
-
-    return effectiveChild;
-  }
-}
-
-const AnimationStyle _kDefaultAnimationStyle = AnimationStyle(
-  curve: Curves.fastOutSlowIn,
-  duration: Duration(milliseconds: 150),
-  reverseDuration: Duration(milliseconds: 75),
-);
-
-/// Flutter's `_ExclusiveMouseRegion`: when nested, only the first one hit in
-/// hit-testing order is added to the result — a chip's delete icon and the
-/// chip do not both show a tooltip.
-class _ExclusiveMouseRegion extends MouseRegion {
-  const _ExclusiveMouseRegion({super.onEnter, super.onExit, super.child});
-
-  @override
-  _RenderExclusiveMouseRegion createRenderObject(BuildContext context) {
-    return _RenderExclusiveMouseRegion(onEnter: onEnter, onExit: onExit);
-  }
-}
-
-class _RenderExclusiveMouseRegion extends RenderMouseRegion {
-  _RenderExclusiveMouseRegion({super.onEnter, super.onExit});
-
-  static bool isOutermostMouseRegion = true;
-  static bool foundInnermostMouseRegion = false;
-
-  @override
-  bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    var isHit = false;
-    final outermost = isOutermostMouseRegion;
-    isOutermostMouseRegion = false;
-    if (size.contains(position)) {
-      isHit =
-          hitTestChildren(result, position: position) || hitTestSelf(position);
-      if ((isHit || behavior == HitTestBehavior.translucent) &&
-          !foundInnermostMouseRegion) {
-        foundInnermostMouseRegion = true;
-        result.add(BoxHitTestEntry(this, position));
-      }
-    }
-
-    if (outermost) {
-      // The outermost region resets the global states.
-      isOutermostMouseRegion = true;
-      foundInnermostMouseRegion = false;
-    }
-    return isHit;
-  }
-}
-
-/// Flutter's `RawTooltip`, holding its global pointer route only while the
-/// tooltip is pending or showing ([_HoldingRawTooltipState._holdRoute]).
-///
-/// It IS a [RawTooltip] — Flutter's configuration, this file's state — so
-/// `find.byTooltip`, which reads a raw tooltip's semantics message, finds
-/// it the way it finds Flutter's.
-class _HoldingRawTooltip extends RawTooltip {
-  const _HoldingRawTooltip({
-    super.key,
-    required super.semanticsTooltip,
-    required super.tooltipBuilder,
-    super.hoverDelay,
-    super.touchDelay,
-    super.dismissDelay,
-    super.enableTapToDismiss,
-    super.triggerMode,
-    super.enableFeedback,
-    super.onTriggered,
-    super.positionDelegate,
-    super.ignorePointer,
-    required super.child,
-  });
-
-  static final List<_HoldingRawTooltipState> _openedTooltips =
-      <_HoldingRawTooltipState>[];
-
-  static bool dismissAll() {
-    if (_openedTooltips.isEmpty) {
-      return false;
-    }
-    // Avoid concurrent modification.
-    final openedTooltips = _openedTooltips.toList();
-    for (final state in openedTooltips) {
-      assert(state.mounted);
-      state._scheduleDismissTooltip();
-    }
-    return true;
-  }
-
-  @override
-  State<RawTooltip> createState() => _HoldingRawTooltipState();
-}
-
-class _HoldingRawTooltipState extends State<RawTooltip>
-    with SingleTickerProviderStateMixin {
-  final OverlayPortalController _overlayController = OverlayPortalController();
-
-  Timer? _timer;
-  AnimationController? _backingController;
-  AnimationController get _controller {
-    return _backingController ??= AnimationController(
-      duration: widget.animationStyle.duration,
-      reverseDuration: widget.animationStyle.reverseDuration,
-      vsync: this,
-    )..addStatusListener(_handleStatusChanged);
-  }
-
-  CurvedAnimation? _backingOverlayAnimation;
-  CurvedAnimation get _overlayAnimation {
-    return _backingOverlayAnimation ??= CurvedAnimation(
-      parent: _controller,
-      curve: widget.animationStyle.curve ?? _kDefaultAnimationStyle.curve!,
-    );
-  }
-
-  LongPressGestureRecognizer? _longPressRecognizer;
-  TapGestureRecognizer? _tapRecognizer;
-
-  // The ids of mouse devices that are keeping the tooltip from being
-  // dismissed.
-  final Set<int> _activeHoveringPointerDevices = <int>{};
-
-  /// 🚨THE ONE DEPARTURE FROM FLUTTER. `RawTooltipState` adds its global
-  /// route in `initState` and keeps it for its whole life; this one holds it
-  /// exactly while [_handleGlobalPointerEvent] could do anything — a timer
-  /// pending, or the controller anywhere but dismissed. Outside that window
-  /// the handler returns before it looks at the event, so an unheld route
-  /// is the same tooltip at none of the cost.
-  bool _routeHeld = false;
-  static int _routesHeld = 0;
-
-  bool get _wantsRoute =>
-      (_timer?.isActive ?? false) || !(_backingController?.isDismissed ?? true);
-
-  void _holdRoute() {
-    final wants = mounted && _wantsRoute;
-    if (wants == _routeHeld) {
-      return;
-    }
-    _routeHeld = wants;
-    if (wants) {
-      GestureBinding.instance.pointerRouter.addGlobalRoute(
-        _handleGlobalPointerEvent,
-      );
-      _routesHeld += 1;
-    } else {
-      GestureBinding.instance.pointerRouter.removeGlobalRoute(
-        _handleGlobalPointerEvent,
-      );
-      _routesHeld -= 1;
-    }
-  }
-
-  AnimationStatus _animationStatus = AnimationStatus.dismissed;
-  void _handleStatusChanged(AnimationStatus status) {
-    assert(mounted);
-    switch ((_animationStatus.isDismissed, status.isDismissed)) {
-      case (false, true):
-        _HoldingRawTooltip._openedTooltips.remove(this);
-        _overlayController.hide();
-      case (true, false):
-        _overlayController.show();
-        _HoldingRawTooltip._openedTooltips.add(this);
-        unawaited(SemanticsService.tooltip(widget.semanticsTooltip ?? ''));
-      case (true, true) || (false, false):
-        break;
-    }
-    _animationStatus = status;
-    _holdRoute();
-  }
-
-  void _scheduleShowTooltip({
-    required Duration withDelay,
-    Duration? touchDelay,
-  }) {
-    assert(mounted);
-    void show() {
-      assert(mounted);
-
-      _controller.forward();
-      _timer?.cancel();
-      _timer = touchDelay == null ? null : Timer(touchDelay, _hideAfterTouch);
-      _holdRoute();
-    }
-
-    assert(
-      !(_timer?.isActive ?? false) ||
-          _controller.status != AnimationStatus.reverse,
-      'timer must not be active when the tooltip is animating out',
-    );
-    if (_controller.isDismissed && withDelay.inMicroseconds > 0) {
-      _timer?.cancel();
-      _timer = Timer(withDelay, show);
-    } else {
-      // If the tooltip is already animating in or fully visible, skip
-      // the animation and show the tooltip immediately.
-      show();
-    }
-    _holdRoute();
-  }
-
-  // Flutter's `Timer(touchDelay, _controller.reverse)`, and the route
-  // re-asked once the timer is spent.
-  void _hideAfterTouch() {
-    _controller.reverse();
-    _holdRoute();
-  }
-
-  void _scheduleDismissTooltip({Duration withDelay = Duration.zero}) {
-    assert(mounted);
-    assert(
-      !(_timer?.isActive ?? false) ||
-          _backingController?.status != AnimationStatus.reverse,
-      'timer must not be active when the tooltip is animating out',
-    );
-
-    _timer?.cancel();
-    _timer = null;
-    // Use _backingController instead of _controller to prevent the lazy
-    // getter from instantiating an AnimationController unnecessarily.
-    if (_backingController?.isForwardOrCompleted ?? false) {
-      // Dismiss when the tooltip is animating in: if there's a dismiss delay
-      // we'll allow the animation to continue until the delay timer fires.
-      if (withDelay.inMicroseconds > 0) {
-        _timer = Timer(withDelay, _hideAfterTouch);
-      } else {
-        _controller.reverse();
-      }
-    }
-    _holdRoute();
-  }
-
-  void _handlePointerDown(PointerDownEvent event) {
-    // PointerDeviceKinds that don't support hovering.
-    const triggerModeDeviceKinds = <PointerDeviceKind>{
-      PointerDeviceKind.invertedStylus,
-      PointerDeviceKind.stylus,
-      PointerDeviceKind.touch,
-      PointerDeviceKind.unknown,
-      // MouseRegion only tracks PointerDeviceKind == mouse.
-      PointerDeviceKind.trackpad,
-    };
-    switch (widget.triggerMode) {
-      case TooltipTriggerMode.longPress:
-        final recognizer = _longPressRecognizer ??= LongPressGestureRecognizer(
-          debugOwner: this,
-          supportedDevices: triggerModeDeviceKinds,
-        );
-        recognizer
-          ..onLongPressCancel = _handleTapToDismiss
-          ..onLongPress = _handleLongPress
-          ..onLongPressUp = _handlePressUp
-          ..addPointer(event);
-      case TooltipTriggerMode.tap:
-        final recognizer = _tapRecognizer ??= TapGestureRecognizer(
-          debugOwner: this,
-          supportedDevices: triggerModeDeviceKinds,
-        );
-        recognizer
-          ..onTapCancel = _handleTapToDismiss
-          ..onTap = _handleTap
-          ..addPointer(event);
-      case TooltipTriggerMode.manual:
-        break;
-    }
-  }
-
-  // For PointerDownEvents, this method will be called after
-  // _handlePointerDown.
-  void _handleGlobalPointerEvent(PointerEvent event) {
-    assert(mounted);
-    if (_tapRecognizer?.primaryPointer == event.pointer ||
-        _longPressRecognizer?.primaryPointer == event.pointer) {
-      // This is a pointer of interest specified by the trigger mode, since
-      // it's picked up by the recognizer.
-      return;
-    }
-    if ((_timer == null && _controller.isDismissed) ||
-        event is! PointerDownEvent) {
-      return;
-    }
-    _handleTapToDismiss();
-  }
-
-  // The primary pointer is not part of a "trigger" gesture so the tooltip
-  // should be dismissed.
-  void _handleTapToDismiss() {
-    if (!widget.enableTapToDismiss) {
-      return;
-    }
-    _scheduleDismissTooltip();
-    _activeHoveringPointerDevices.clear();
-  }
-
-  void _handleTap() {
-    final tooltipCreated = _controller.isDismissed;
-    if (tooltipCreated && widget.enableFeedback) {
-      assert(widget.triggerMode == TooltipTriggerMode.tap);
-      unawaited(Feedback.forTap(context));
-    }
-    widget.onTriggered?.call();
-    _scheduleShowTooltip(
-      withDelay: Duration.zero,
-      // _activeHoveringPointerDevices keep the tooltip visible.
-      touchDelay: _activeHoveringPointerDevices.isEmpty
-          ? widget.touchDelay
-          : null,
-    );
-  }
-
-  // When a "trigger" gesture is recognized and the pointer down even is a
-  // part of it.
-  void _handleLongPress() {
-    final tooltipCreated = _controller.isDismissed;
-    if (tooltipCreated && widget.enableFeedback) {
-      assert(widget.triggerMode == TooltipTriggerMode.longPress);
-      unawaited(Feedback.forLongPress(context));
-    }
-    widget.onTriggered?.call();
-    _scheduleShowTooltip(withDelay: Duration.zero);
-  }
-
-  void _handlePressUp() {
-    if (_activeHoveringPointerDevices.isNotEmpty) {
-      return;
-    }
-    _scheduleDismissTooltip(withDelay: widget.touchDelay);
-  }
-
-  void _handleMouseEnter(PointerEnterEvent event) {
-    // Called only when the mouse starts to hover over this tooltip (including
-    // the actual tooltip it shows on the overlay), and this tooltip is the
-    // first to be hit in the widget tree's hit testing order.
-    _activeHoveringPointerDevices.add(event.device);
-    // Dismiss other open tooltips unless they're kept visible by other mice.
-    // The mouse tracker always dispatches all `onExit` events before any
-    // `onEnter` events, so `event.device` must have already been removed
-    // from the tooltips that are no longer being hovered over.
-    final tooltipsToDismiss = _HoldingRawTooltip._openedTooltips
-        .where((tooltip) => tooltip._activeHoveringPointerDevices.isEmpty)
-        .toList();
-    for (final tooltip in tooltipsToDismiss) {
-      assert(tooltip.mounted);
-      tooltip._scheduleDismissTooltip();
-    }
-    _scheduleShowTooltip(
-      withDelay: tooltipsToDismiss.isNotEmpty
-          ? Duration.zero
-          : widget.hoverDelay,
-    );
-  }
-
-  void _handleMouseExit(PointerExitEvent event) {
-    if (_activeHoveringPointerDevices.isEmpty) {
-      return;
-    }
-    _activeHoveringPointerDevices.remove(event.device);
-    if (_activeHoveringPointerDevices.isEmpty) {
-      _scheduleDismissTooltip(withDelay: widget.dismissDelay);
-    }
-  }
-
-  /// Shows the tooltip if it is not already visible.
-  bool ensureTooltipVisible() {
-    _timer?.cancel();
-    _timer = null;
-    if (_controller.isForwardOrCompleted) {
-      _holdRoute();
-      return false;
-    }
-    _scheduleShowTooltip(withDelay: Duration.zero);
-    return true;
-  }
-
-  Widget _buildTooltipOverlay(
-    BuildContext context,
-    OverlayChildLayoutInfo layoutInfo,
-  ) {
-    if (layoutInfo.childPaintTransform.determinant() == 0.0) {
-      // The child is not visible.
-      return const SizedBox.shrink();
-    }
-    final target = MatrixUtils.transformPoint(
-      layoutInfo.childPaintTransform,
-      layoutInfo.childSize.center(Offset.zero),
-    );
-
-    // Keep the tooltip visible while the overlay child is hovered.
-    final Widget tooltip = IgnorePointer(
-      ignoring: widget.ignorePointer,
-      child: _ExclusiveMouseRegion(
-        onEnter: _handleMouseEnter,
-        onExit: _handleMouseExit,
-        child: widget.tooltipBuilder(context, _overlayAnimation),
-      ),
-    );
-
-    final Widget overlayChild = Positioned.fill(
-      bottom: MediaQuery.maybeViewInsetsOf(context)?.bottom ?? 0.0,
-      child: CustomSingleChildLayout(
-        delegate: _TooltipPositionDelegate(
-          target: target,
-          targetSize: layoutInfo.childSize,
-          positionDelegate: widget.positionDelegate,
-        ),
-        child: tooltip,
-      ),
-    );
-
-    return SelectionContainer.maybeOf(context) == null
-        ? overlayChild
-        : SelectionContainer.disabled(child: overlayChild);
-  }
-
-  @override
-  void dispose() {
-    if (_routeHeld) {
-      GestureBinding.instance.pointerRouter.removeGlobalRoute(
-        _handleGlobalPointerEvent,
-      );
-      _routeHeld = false;
-      _routesHeld -= 1;
-    }
-    _HoldingRawTooltip._openedTooltips.remove(this);
-    // _longPressRecognizer.dispose() and _tapRecognizer.dispose() may call
-    // their registered onCancel callbacks if there's a gesture in progress.
-    // Remove the onCancel callbacks to prevent the registered callbacks from
-    // triggering unnecessary side effects (such as animations).
-    _longPressRecognizer?.onLongPressCancel = null;
-    _longPressRecognizer?.dispose();
-    _tapRecognizer?.onTapCancel = null;
-    _tapRecognizer?.dispose();
-    _timer?.cancel();
-    _backingController?.dispose();
-    _backingOverlayAnimation?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // If message is empty then no need to create a tooltip overlay to show
-    // the empty black container so just return the wrapped child as is or
-    // empty container if child is not specified.
-    if (widget.semanticsTooltip?.isEmpty ?? false) {
-      return widget.child;
-    }
-    assert(debugCheckHasOverlay(context));
-    final excludeFromSemantics =
-        widget.semanticsTooltip == null || widget.semanticsTooltip!.isEmpty;
-    Widget result = Semantics(
-      tooltip: excludeFromSemantics ? null : widget.semanticsTooltip,
-      child: widget.child,
-    );
-
-    // Only check for gestures if tooltip should be visible.
-    result = _ExclusiveMouseRegion(
-      onEnter: _handleMouseEnter,
-      onExit: _handleMouseExit,
-      child: Listener(
-        onPointerDown: _handlePointerDown,
-        behavior: HitTestBehavior.opaque,
-        child: result,
-      ),
-    );
-
-    return OverlayPortal.overlayChildLayoutBuilder(
-      controller: _overlayController,
-      overlayChildBuilder: _buildTooltipOverlay,
-      child: result,
-    );
-  }
-}
-
-/// Flutter's `_TooltipPositionDelegate`.
-class _TooltipPositionDelegate extends SingleChildLayoutDelegate {
-  _TooltipPositionDelegate({
-    required this.target,
-    required this.targetSize,
-    this.positionDelegate,
-  });
-
-  final Offset target;
-  final Size targetSize;
-  final TooltipPositionDelegate? positionDelegate;
-
-  @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      constraints.loosen();
-
-  @override
-  Offset getPositionForChild(Size size, Size childSize) {
-    if (positionDelegate != null) {
-      return positionDelegate!(
-        TooltipPositionContext(
-          target: target,
-          targetSize: targetSize,
-          tooltipSize: childSize,
-          overlaySize: size,
-          verticalOffset: 0.0,
-        ),
-      );
-    }
-    return positionDependentBox(
-      size: size,
-      childSize: childSize,
-      target: target,
-      preferBelow: true,
-    );
-  }
-
-  @override
-  bool shouldRelayout(_TooltipPositionDelegate oldDelegate) {
-    return target != oldDelegate.target ||
-        targetSize != oldDelegate.targetSize ||
-        positionDelegate != oldDelegate.positionDelegate;
-  }
 }
 
 /// Material's `_TooltipBox`.
@@ -914,6 +431,72 @@ abstract interface class SummonedTooltipTarget {
   BuildContext? get tooltipContext;
 }
 
+/// WHAT SUMMONS THE WINDOW ([SummonedTooltip]) — the box it stands over,
+/// the long press that opens it for a hand that cannot hover, and its going
+/// with the box. One code for every box that says something: the light
+/// faces (`PressFace`) and the tooltip around anything else ([AppTooltip]).
+mixin SummonsTooltip on RenderBox implements SummonedTooltipTarget {
+  BuildContext? _tooltipContext;
+  set tooltipContext(BuildContext value) => _tooltipContext = value;
+
+  /// The tooltip's own trigger on a touch or a pen: Flutter's, the devices
+  /// that cannot hover.
+  late final LongPressGestureRecognizer _longPress = LongPressGestureRecognizer(
+    debugOwner: this,
+    supportedDevices: const {
+      PointerDeviceKind.invertedStylus,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.touch,
+      PointerDeviceKind.unknown,
+      PointerDeviceKind.trackpad,
+    },
+  )
+    ..onLongPress = _onLongPress
+    ..onLongPressUp = _onLongPressUp
+    ..onLongPressCancel = _onLongPressCancel;
+
+  /// Enters the press [event] begins into the long press that opens the
+  /// window, where [mode] says a long press does.
+  @protected
+  void summonOnLongPress(PointerDownEvent event, TooltipTriggerMode mode) {
+    if (mode == TooltipTriggerMode.longPress) {
+      _longPress.addPointer(event);
+    }
+  }
+
+  void _onLongPress() {
+    if (_longPress.primaryPointer case final pointer?) {
+      SummonedTooltip.longPressed(this, pointer);
+    }
+  }
+
+  void _onLongPressUp() => SummonedTooltip.lifted(this);
+
+  /// A press that moved off or was taken before it was long: whatever this
+  /// box had summoned goes, as a tooltip's own cancel dismisses it.
+  void _onLongPressCancel() => SummonedTooltip.forget(this);
+
+  @override
+  Rect? get tooltipGlobalRect => attached && hasSize
+      ? MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size)
+      : null;
+
+  @override
+  BuildContext? get tooltipContext => attached ? _tooltipContext : null;
+
+  @override
+  void detach() {
+    SummonedTooltip.forget(this);
+    super.detach();
+  }
+
+  @override
+  void dispose() {
+    _longPress.dispose();
+    super.dispose();
+  }
+}
+
 /// ONE TOOLTIP WINDOW, summoned by whatever is under the pointer — for the
 /// controls that are too many to each hold a tooltip of their own.
 ///
@@ -923,12 +506,11 @@ abstract interface class SummonedTooltipTarget {
 /// which mounts every visible row anew. Only one tooltip is ever open at a
 /// time, so one window is all a crowd of them needs.
 ///
-/// ⛔The rules are [AppTooltip]'s — Flutter's — and only the HOLDER is new:
+/// ⛔The rules are Flutter's tooltip's, and only the HOLDER is new:
 /// a hovering mouse opens the window after the hover wait (zero here, 유저
 /// F-53) and lets it go after the exit delay; a long press opens it and the
 /// lift lets it go after the show duration; a press anywhere else dismisses
-/// it. It looks and times as [AppTooltipLook] says, the same resolution an
-/// [AppTooltip] wears.
+/// it. It looks and times as [AppTooltipLook] says.
 abstract final class SummonedTooltip {
   static _Window? _window;
 
@@ -988,12 +570,12 @@ abstract final class SummonedTooltip {
 
   /// A target with something to say was hit — so an [AppTooltip] around it
   /// does not answer the same hover. Flutter's rule for nested tooltips
-  /// ([_ExclusiveMouseRegion]): only the innermost one shows. 🧪Measured
+  /// ([_Nesting]): only the innermost one shows. 🧪Measured
   /// 2026-10-24: a project tab's ✕ stands inside the tab's own tooltip, and
   /// both would show over the ✕ without this.
   static void standInnermost() {
-    if (!_RenderExclusiveMouseRegion.isOutermostMouseRegion) {
-      _RenderExclusiveMouseRegion.foundInnermostMouseRegion = true;
+    if (!_Nesting.outermost) {
+      _Nesting.innermostFound = true;
     }
   }
 
@@ -1005,8 +587,8 @@ abstract final class SummonedTooltip {
     }
   }
 
-  /// Lets the window go, if one is open — the fade out a dismissed
-  /// [AppTooltip] gives. Answers whether one was.
+  /// Lets the window go, if one is open — the fade out a dismissed Flutter
+  /// tooltip gives. Answers whether one was.
   static bool dismiss() {
     final window = _window;
     if (window == null) {
@@ -1018,8 +600,8 @@ abstract final class SummonedTooltip {
 
   /// The window for [target]: the open one when it is already over
   /// [target], else a new one replacing whatever was open — or null when
-  /// [target] has nothing to say (an empty message shows nothing, as on an
-  /// [AppTooltip]) or nowhere to say it.
+  /// [target] has nothing to say (an empty message shows nothing, as on a
+  /// Flutter tooltip) or nowhere to say it.
   static _Window? _windowFor(SummonedTooltipTarget target) {
     if (target.tooltipMessage.isEmpty) {
       return null;
@@ -1082,7 +664,7 @@ final class _Window implements TickerProvider {
 
   /// Whether the window is on screen or on its way — not one let go
   /// ([dismiss]) and kept for its target's next hover, as a dismissed
-  /// [AppTooltip] keeps its state.
+  /// Flutter tooltip keeps its state.
   bool get isPendingOrShown =>
       !_closed && ((_timer?.isActive ?? false) || !_fade.isDismissed);
 
@@ -1162,7 +744,7 @@ final class _Window implements TickerProvider {
   /// and a window that is showing, or on its way, fades out.
   ///
   /// ↩️A press elsewhere and a hover onto another target tore the window
-  /// down at once (I-57 ①, 10-09), where every [AppTooltip] fades out over
+  /// down at once (I-57 ①, 10-09), where Flutter's tooltip fades out over
   /// 75ms. 🧪Measured 2026-10-25 side by side — a click on the target, a
   /// hover from one target to the next — and the rail's glyphs and, since
   /// the day before, the icon buttons were the ones that blinked out.
@@ -1209,6 +791,11 @@ final class _Window implements TickerProvider {
     _alive -= 1;
     _timer?.cancel();
     _timer = null;
+    if (_entry != null) {
+      // Gone in THIS frame, as a tooltip unmounted with its target was: an
+      // overlay lets go of an entry removed mid-frame only on the next one.
+      _fade.value = 0;
+    }
     _removeEntry();
     _holdRoute(false);
     _opacity.dispose();
@@ -1219,7 +806,8 @@ final class _Window implements TickerProvider {
   }
 
   /// The global route a press elsewhere dismisses the window by — held only
-  /// while a window is pending or open, as [AppTooltip] holds its own.
+  /// while a window is pending or open. ↩️Flutter's tooltip holds one for
+  /// as long as it is mounted — 288 of them in the user's layout (09-25).
   void _holdRoute(bool wants) {
     if (wants == _routeHeld) {
       return;

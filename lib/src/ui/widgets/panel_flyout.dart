@@ -1555,10 +1555,10 @@ class PanelFlyoutButton extends StatelessWidget {
         ),
       ),
     );
-    if (tooltip == null) {
-      return chip;
-    }
-    return AppTooltip(message: tooltip, child: chip);
+    return switch (tooltip) {
+      final tooltip? => AppTooltip(message: tooltip, child: chip),
+      null => chip,
+    };
   }
 }
 

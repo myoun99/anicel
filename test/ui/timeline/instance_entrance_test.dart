@@ -24,6 +24,7 @@ import '../../helpers/the_classic_rail.dart';
 import '../../helpers/timeline_host.dart';
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// The toolbar scrolls horizontally when squeezed (narrow surfaces), so
 /// bring Add into its viewport before tapping.
@@ -361,7 +362,7 @@ void main() {
       (strings.keyRoving, strings.keyRovingHelp),
     ]) {
       expect(
-        find.descendant(of: find.byTooltip(help), matching: find.text(cap)),
+        find.descendant(of: find.tooltipSaying(help), matching: find.text(cap)),
         findsOneWidget,
         reason: cap,
       );

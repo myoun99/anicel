@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart' show acrossBox;
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
+
 /// The rail-window model, pinned:
 ///
 /// > the rail is always laid out at its natural size; the splitter sizes a
@@ -387,9 +389,9 @@ void main() {
         ),
       );
       await tester.pumpWidget(corner(showSeconds: false));
-      expect(find.byTooltip('초+코마'), findsOneWidget);
+      expect(find.tooltipSaying('초+코마'), findsOneWidget);
       await tester.pumpWidget(corner(showSeconds: true));
-      expect(find.byTooltip('프레임'), findsOneWidget);
+      expect(find.tooltipSaying('프레임'), findsOneWidget);
     });
   });
 }

@@ -4,40 +4,42 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
-/// 🚨THE SUMMONED WINDOW KEEPS AN [AppTooltip]'S TIME — Flutter's.
+/// 🚨THE SUMMONED WINDOW KEEPS FLUTTER'S TOOLTIP'S TIME.
 ///
-/// The window the light faces summon ([SummonedTooltip]) says its rules are
-/// [AppTooltip]'s and only the holder is new. Two of them were not: a press
-/// on the target, and a hover from one target onto the next, tore the
-/// window down at once where an [AppTooltip] fades out over 75ms. 🧪Measured
-/// 2026-10-25 (board `frame-panels-build-in-one-frame`).
+/// The window every tooltip in the app summons ([SummonedTooltip]) says its
+/// rules are Flutter's and only the holder is new. Two of them were not: a
+/// press on the target, and a hover from one target onto the next, tore the
+/// window down at once where Flutter's tooltip fades out over 75ms.
+/// 🧪Measured 2026-10-25 (board `frame-panels-build-in-one-frame`).
 ///
-/// So every case below is run twice — over two [AppTooltip]s, and over two
-/// icon buttons, which summon the window — and the two must read the same
-/// opacity, frame by frame. Each case also says it measured a fade, so a
-/// pair that agrees on nothing being shown proves nothing.
+/// So every case below is run three times — over two of Flutter's own
+/// tooltips, over two [AppTooltip]s and over two icon buttons, the last two
+/// summoning the window — and all three must read the same opacity, frame by
+/// frame. ↩️The reference was [AppTooltip] while it was Flutter's line for
+/// line; it summons the window too since 2026-10-25. Each case also says it
+/// measured a fade, so runs that agree on nothing being shown prove nothing.
 void main() {
   Future<List<String>> run(
     WidgetTester tester, {
-    required bool summoned,
+    required _Holder holder,
     required Future<void> Function(_Scene scene) act,
   }) async {
-    Widget target(String name) => summoned
-        ? AppIconButton(
-            keyValue: name,
-            tooltip: name,
-            icon: const Icon(Icons.draw),
-            onPressed: () {},
-          )
-        : AppTooltip(
-            message: name,
-            child: SizedBox(
-              key: ValueKey<String>(name),
-              width: 40,
-              height: 40,
-              child: const ColoredBox(color: Colors.red),
-            ),
-          );
+    Widget box(String name) => SizedBox(
+      key: ValueKey<String>(name),
+      width: 40,
+      height: 40,
+      child: const ColoredBox(color: Colors.red),
+    );
+    Widget target(String name) => switch (holder) {
+      _Holder.flutter => Tooltip(message: name, child: box(name)),
+      _Holder.app => AppTooltip(message: name, child: box(name)),
+      _Holder.face => AppIconButton(
+        keyValue: name,
+        tooltip: name,
+        icon: const Icon(Icons.draw),
+        onPressed: () {},
+      ),
+    };
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -115,7 +117,7 @@ void main() {
     final alive = SummonedTooltip.debugWindowsAlive;
     await run(
       tester,
-      summoned: true,
+      holder: _Holder.face,
       act: (scene) async {
         await scene.hover('a');
         await scene.hover('b', settle: false);
@@ -128,12 +130,14 @@ void main() {
   });
 
   for (final MapEntry(key: name, value: act) in cases.entries) {
-    testWidgets('$name — the window reads as an AppTooltip does', (
+    testWidgets("$name — the window reads as Flutter's tooltip does", (
       tester,
     ) async {
-      final tooltip = await run(tester, summoned: false, act: act);
-      final window = await run(tester, summoned: true, act: act);
-      expect(window, tooltip);
+      final tooltip = await run(tester, holder: _Holder.flutter, act: act);
+      final app = await run(tester, holder: _Holder.app, act: act);
+      final face = await run(tester, holder: _Holder.face, act: act);
+      expect(app, tooltip, reason: 'an AppTooltip');
+      expect(face, tooltip, reason: 'an icon button');
       expect(
         tooltip.any((frame) => frame.contains(RegExp(r'0\.[0-9]*[1-9]'))),
         isTrue,
@@ -142,6 +146,9 @@ void main() {
     });
   }
 }
+
+/// What holds the two targets' tooltips.
+enum _Holder { flutter, app, face }
 
 class _Scene {
   _Scene(this.tester);

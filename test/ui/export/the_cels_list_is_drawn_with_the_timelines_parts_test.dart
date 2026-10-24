@@ -40,6 +40,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/app_icon_button_probe.dart';
 
 /// The export window's Cels list ([ExportCelsBoard], F-289) — drawn with
 /// the timeline's own parts.
@@ -563,7 +564,7 @@ void main() {
         false,
       ));
       expect(pill('direction-pan').onTap, isNull);
-      expect(find.byTooltip('T.U_A-B'), findsOneWidget);
+      expect(find.tooltipSaying('T.U_A-B'), findsOneWidget);
       await tester.tap(keyed('direction-tu'));
       await tester.pump();
       expect(pressed, ['lay tu']);
@@ -747,7 +748,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await pumpBoard(tester, width: 1000 + ExportCelsBoard.stackWidth);
       expect(caption(), strings.exLayDirection);
-      expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
+      expect(find.tooltipSaying(strings.exLayDirection), findsOneWidget);
 
       await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
       expect(tester.takeException(), isNull);
@@ -755,7 +756,7 @@ void main() {
       // ↩️The word was pinned READ at the narrowest. With 「가이드」 beside
       // CAM the narrowest band has not the room for the word and the pills
       // both, and the word gives way first (I-105 — the test below).
-      expect(find.byTooltip(strings.exLayDirection), findsOneWidget);
+      expect(find.tooltipSaying(strings.exLayDirection), findsOneWidget);
     });
 
     // ⚖️I-105 (공통 2026-10-17, the user's to overturn): a pill is what is
@@ -852,7 +853,7 @@ void main() {
     );
     await pumpBoard(tester, spec: withDirection);
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', true)]);
-    expect(find.byTooltip('_Direction_T.U_A-B.png'), findsOneWidget);
+    expect(find.tooltipSaying('_Direction_T.U_A-B.png'), findsOneWidget);
 
     // Turned off, it keeps its file's name for when it is turned back on.
     await pumpBoard(
@@ -864,7 +865,7 @@ void main() {
       ), true),
     );
     expect(tester.celsBoardBlocksOf('dir'), [('T.U', false)]);
-    expect(find.byTooltip('_Direction_T.U_A-B.png'), findsOneWidget);
+    expect(find.tooltipSaying('_Direction_T.U_A-B.png'), findsOneWidget);
   });
 
   testWidgets('a block says its file on hover — and a drawing that is no '
@@ -872,9 +873,9 @@ void main() {
     await pumpBoard(tester);
     final written = tester.celsBoardBlockOf('b', 'b-2').sheet;
     expect(written.fileName, isNotEmpty);
-    expect(find.byTooltip(written.fileName), findsOneWidget);
+    expect(find.tooltipSaying(written.fileName), findsOneWidget);
     final refused = tester.celsBoardBlockOf('n', 'n-2').sheet;
     expect(refused.planned, isFalse);
-    expect(find.byTooltip(refused.fullName), findsWidgets);
+    expect(find.tooltipSaying(refused.fullName), findsWidgets);
   });
 }

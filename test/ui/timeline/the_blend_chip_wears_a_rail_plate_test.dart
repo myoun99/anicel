@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -144,7 +145,7 @@ void main() {
     for (final heavy in [
       find.byType(InkWell),
       find.byType(Material),
-      find.byWidgetPredicate((widget) => widget is Tooltip),
+      find.byType(AppTooltip),
     ]) {
       expect(find.descendant(of: host, matching: heavy), findsNothing);
     }

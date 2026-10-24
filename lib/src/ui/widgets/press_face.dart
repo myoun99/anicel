@@ -35,8 +35,8 @@ abstract interface class FaceSpec<S> {
 /// [ControlPressClaim] stood over every face until 2026-10-25 — a second
 /// element and a second render object for every button a tab reopens
 /// (card frame-panels-build-in-one-frame).
-mixin PressFace on RenderBox, PressClaim
-    implements MouseTrackerAnnotation, SummonedTooltipTarget {
+mixin PressFace on RenderBox, PressClaim, SummonsTooltip
+    implements MouseTrackerAnnotation {
   /// Whether a press does anything: a dead face shows no press, enters no
   /// tap and wears the basic cursor.
   @protected
@@ -55,9 +55,6 @@ mixin PressFace on RenderBox, PressClaim
 
   @protected
   TooltipTriggerMode get pressTriggerMode;
-
-  BuildContext? _tooltipContext;
-  set tooltipContext(BuildContext value) => _tooltipContext = value;
 
   bool _hovered = false;
   bool _pressed = false;
@@ -116,23 +113,6 @@ mixin PressFace on RenderBox, PressClaim
     debugOwner: this,
   )..onTap = _ownsTheTap;
   static void _ownsTheTap() {}
-
-  /// The tooltip's own trigger on a touch or a pen: Flutter's, the devices
-  /// that cannot hover.
-  late final LongPressGestureRecognizer _longPress = LongPressGestureRecognizer(
-    debugOwner: this,
-    supportedDevices: const {
-      PointerDeviceKind.invertedStylus,
-      PointerDeviceKind.stylus,
-      PointerDeviceKind.touch,
-      PointerDeviceKind.unknown,
-      PointerDeviceKind.trackpad,
-    },
-  )
-    ..onLongPress = _onLongPress
-    ..onLongPressUp = _onLongPressUp
-    ..onLongPressCancel = _onLongPressCancel;
-  int? _longPressPointer;
 
   // ── hover and press ────────────────────────────────────────────────
 
@@ -194,9 +174,7 @@ mixin PressFace on RenderBox, PressClaim
         _setPressed(true);
         _arenaTap.addPointer(event);
       }
-      if (pressTriggerMode == TooltipTriggerMode.longPress) {
-        _longPress.addPointer(event);
-      }
+      summonOnLongPress(event, pressTriggerMode);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       _setPressed(false);
     }
@@ -204,37 +182,6 @@ mixin PressFace on RenderBox, PressClaim
     // the box around it.
     super.handleEvent(event, entry);
   }
-
-  void _onLongPress() {
-    final pointer = _longPress.primaryPointer;
-    if (pointer == null) {
-      return;
-    }
-    _longPressPointer = pointer;
-    SummonedTooltip.longPressed(this, pointer);
-  }
-
-  void _onLongPressUp() {
-    _longPressPointer = null;
-    SummonedTooltip.lifted(this);
-  }
-
-  /// A press that moved off or was taken before it was long: whatever this
-  /// face had summoned goes, as a tooltip's own cancel dismisses it.
-  void _onLongPressCancel() {
-    _longPressPointer = null;
-    SummonedTooltip.forget(this);
-  }
-
-  // ── the summoned tooltip ───────────────────────────────────────────
-
-  @override
-  Rect? get tooltipGlobalRect => attached && hasSize
-      ? MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size)
-      : null;
-
-  @override
-  BuildContext? get tooltipContext => attached ? _tooltipContext : null;
 
   // ── semantics ──────────────────────────────────────────────────────
 
@@ -268,17 +215,12 @@ mixin PressFace on RenderBox, PressClaim
   void detach() {
     _hovered = false;
     _pressed = false;
-    if (_longPressPointer != null) {
-      _longPressPointer = null;
-    }
-    SummonedTooltip.forget(this);
     super.detach();
   }
 
   @override
   void dispose() {
     _arenaTap.dispose();
-    _longPress.dispose();
     super.dispose();
   }
 }

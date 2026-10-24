@@ -258,7 +258,7 @@ void main() {
     );
     expect(
       tester
-          .widget<Tooltip>(
+          .widget<AppTooltip>(
             find.descendant(
               of: crossingMarker,
               matching: find.byType(AppTooltip),

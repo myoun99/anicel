@@ -119,7 +119,7 @@ void main() {
 
     // And a control that is not an AppIconButton reads the same bindings.
     String commaTooltip() => tester
-        .widget<Tooltip>(
+        .widget<AppTooltip>(
           find
               .ancestor(
                 of: _button('set-comma-1-button'),
@@ -127,7 +127,7 @@ void main() {
               )
               .first,
         )
-        .message!;
+        .message;
     expect(commaTooltip(), endsWith('(1)'));
     bindings.setActivators(EditorActionIds.timelineComma1, const [
       SingleActivator(LogicalKeyboardKey.keyQ),

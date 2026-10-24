@@ -77,7 +77,7 @@ export 'icon_button_box.dart';
 ///  * the tooltip — its look, its timing and the touch long-press. ↩️It is
 ///    no longer a `Tooltip` of its own (2026-10-24): the face summons the
 ///    one window every light face shares ([SummonedTooltip]), so a test
-///    finds it with `find.railTooltip`, not `find.byTooltip`;
+///    finds it with `find.tooltipSaying`, not `find.byTooltip`;
 ///  * ONE semantics node: button / enabled / selected / focusable / focused
 ///    and its tap action, with the tooltip on it. The tap action FIRES —
 ///    [AppIconButtonFace.onPressed] (유저 2026-09-10);
@@ -502,8 +502,7 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
     maxWidth: maxWidth,
     height: height,
     textDirection: Directionality.of(context),
-    triggerMode:
-        TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+    triggerMode: AppTooltipLook.triggerModeIn(context),
   );
 }
 
@@ -594,7 +593,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
 /// The app's icon button's face: its box and its state layer around the
 /// glyph, on the press every light face is ([PressFace]).
 class RenderIconButtonPressFace extends RenderShiftedBox
-    with PressClaim, PressFace {
+    with PressClaim, SummonsTooltip, PressFace {
   RenderIconButtonPressFace({
     required IconButtonPressSpec spec,
     required BuildContext tooltipContext,

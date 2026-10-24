@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/pill_row_clipboard.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/app_icon_button_probe.dart';
 
 /// 🗣️I-25 (유저 2026-09-14): 「링크컷/링크레이어 등 좀 더 알기쉽게. 우선
 /// 링크컷이 발생해있는 경우, 모든 컷에 적용. 내용은 컷블록에서 컷 이름 오른쪽에
@@ -124,7 +125,7 @@ void main() {
         find.byKey(const ValueKey<String>('link-window-unlink')),
       );
       expect(button.onPressed, isNull);
-      expect(find.byTooltip('why not'), findsOneWidget);
+      expect(find.tooltipSaying('why not'), findsOneWidget);
     });
   });
 
@@ -203,7 +204,7 @@ void main() {
       );
       expect(button.onPressed, isNull);
       expect(
-        find.byTooltip(AppText.strings.linkWindowUnlinkLinkedCut),
+        find.tooltipSaying(AppText.strings.linkWindowUnlinkLinkedCut),
         findsOneWidget,
       );
     });

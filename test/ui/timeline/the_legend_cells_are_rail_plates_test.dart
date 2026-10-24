@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_legend_menus.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 
@@ -106,7 +107,7 @@ void main() {
     expect(
       find.descendant(
         of: legend,
-        matching: find.byWidgetPredicate((widget) => widget is Tooltip),
+        matching: find.byType(AppTooltip),
       ),
       findsOneWidget,
       reason: 'the master opacity bar keeps its own',
@@ -127,7 +128,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('legend-eye')),
-        matching: find.railTooltip(eye.tooltip),
+        matching: find.tooltipSaying(eye.tooltip),
         matchRoot: true,
       ),
       findsOneWidget,

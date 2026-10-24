@@ -284,7 +284,7 @@ void main() {
         ),
       );
 
-      expect(find.railTooltip('Remove from timesheet'), findsOneWidget);
+      expect(find.tooltipSaying('Remove from timesheet'), findsOneWidget);
 
       await tester.tap(
         find.named('timeline-layer-timesheet-${layer.id}'),
@@ -300,8 +300,8 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer));
 
-      expect(find.railTooltip('Add to timesheet'), findsOneWidget);
-      expect(find.railTooltip('Remove from timesheet'), findsNothing);
+      expect(find.tooltipSaying('Add to timesheet'), findsOneWidget);
+      expect(find.tooltipSaying('Remove from timesheet'), findsNothing);
     });
 
     testWidgets('selecting a mark from the chip popup reports it', (

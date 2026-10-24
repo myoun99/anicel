@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 /// 유저 2026-10-17 (playback-waits-for-its-sound-Q1: 「a + 재생 중 재생 버튼
 /// 줄 맨 앞에 빨간 경고 문구」): while this scope plays, the transport's front
@@ -114,7 +115,7 @@ void main() {
     );
     expect(
       tester
-          .widget<Tooltip>(
+          .widget<AppTooltip>(
             find.ancestor(of: silentLine, matching: _aTooltip),
           )
           .message,
@@ -202,7 +203,7 @@ void main() {
     expect(meter(tester), seat);
     expect(
       tester
-          .widget<Tooltip>(
+          .widget<AppTooltip>(
             find.ancestor(of: refused, matching: _aTooltip),
           )
           .message,
@@ -240,5 +241,4 @@ void main() {
   });
 }
 
-/// `AppTooltip` is a [Tooltip] of its own type, which `find.byType` misses.
-final _aTooltip = find.byWidgetPredicate((widget) => widget is Tooltip);
+final _aTooltip = find.byType(AppTooltip);

@@ -437,11 +437,11 @@ void main() {
         ),
       );
       final button = find.byKey(const ValueKey<String>('tip'));
-      expect(find.railTooltip('Say my name'), findsOneWidget);
+      expect(find.tooltipSaying('Say my name'), findsOneWidget);
       expect(
         find.descendant(
           of: button,
-          matching: find.byWidgetPredicate((widget) => widget is Tooltip),
+          matching: find.byType(AppTooltip),
         ),
         findsNothing,
         reason: 'the window is shared — a tooltip each was nine elements',
