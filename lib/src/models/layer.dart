@@ -182,17 +182,11 @@ class Layer {
   /// they all carry this one.
   final ConteKey? conteKey;
 
-  /// CLIP TO LAYER BELOW (I-92 — Photoshop's clipping mask, Clip Studio's
-  /// 「下のレイヤーでクリッピング」): this row shows only where its BASE has
-  /// pixels — the first row below it, in its own folder, that does not clip
-  /// (I-92-Q2 a, 「프로툴과 같게」) — and takes the base's opacity and blend
-  /// (Photoshop: clipped layers assume the base's). A folder clips and is a
-  /// base too (I-92-Q3 a). What the row draws is kept: it is hidden, never
-  /// cut, so turning this off shows it again.
-  ///
-  /// ↩️It was the FILL's reference flag (R20-C2, the CSP lighthouse; I-36)
-  /// until 유저 2026-10-12, I-92: 「그런버튼 삭제하고 … 포토샵이나 클튜에서
-  /// 사용하는 마스크기능이 되면 됨」.
+  /// CLIP TO LAYER BELOW (I-92, Photoshop's clipping mask): shown only where
+  /// its base has pixels, at the base's strength and blend — the law is
+  /// `clipTargetOf`'s. ↩️It was the FILL's reference flag (R20-C2; I-36)
+  /// until I-92: 「그런버튼 삭제하고 … 포토샵이나 클튜에서 사용하는
+  /// 마스크기능이 되면 됨」.
   final bool clipsToBelow;
 
   /// Non-null makes this a REFERENCE layer showing an external media

@@ -680,7 +680,15 @@ void main() {
   /// the four being `CanvasLayerStackView`'s own fields. ↩️Bundled the same
   /// day (`FramePage`) for a reason of its own: the frame's picture is
   /// KEYED by the four (`FramePictureKey`), so they are one value already.
-  const wideSignatures = 420;
+  /// ⚠️420 → 422 on 2026-10-25, two named as the rule above asks (I-92 — a
+  /// row clipped to the layer below): `drawClipAsImage` (six) — the canvas,
+  /// the bounds, the scale, what paints the base, what paints what clips to
+  /// it and the paint the group is laid by — the shape of
+  /// `drawBlendOverBackdrop` beside it, whose two halves are the same two
+  /// walks; `LayerStackPaintPass._paintClipNode` (five) — the shape of the
+  /// three node painters the 10-23 note names. 🔬`clean_code_diff` against
+  /// master (`3354f5258`, at 420) named those two added and nothing gone.
+  const wideSignatures = 422;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -975,6 +983,17 @@ void main() {
   /// named that one added and nothing gone. ⛔Not split to fit: it is the
   /// walk's one switch over the node kinds, the shape the camera's walk
   /// keeps too.
+  ///
+  /// ⚠️412 → 415 on 2026-10-25 under the same ceiling, three named as the
+  /// rule above asks (I-92 — a row clipped to the layer below).
+  /// `clippedOnto` is the clip law's join: which rows read the base's whole
+  /// colour, then a group joined or begun — two switches over the node
+  /// kinds. `LayerStackPaintPass._paintNodesWith` crossed again with the
+  /// clip's and the opaque base's cases. `LazyCanvasRasterRgb`'s
+  /// constructor reads a clipped row cut by its base's layers.
+  /// 🔬`clean_code_diff` against master (`3354f5258`, at 412) named those
+  /// three added and nothing gone. ⛔Not split to fit: each is one walk or
+  /// one switch over the node kinds, as the notes above say of their kin.
   const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
