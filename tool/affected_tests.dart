@@ -294,6 +294,11 @@ const kNearConfigImports = 0;
 /// the gates say `--outside-the-line` — ⛔for a list run only: any other run
 /// is a session's, and stands in the line.
 ///
+/// ⚙️NOR DOES A CI SHARD (ci-shards-crowd-the-collector-pins, 10-24): its
+/// runner holds one job, so there is no line to share — and on Windows the
+/// line waits for the room `flutter_room` measures, which a small runner
+/// may never show. It runs its slice as a list, so it says the same.
+///
 /// A run that says `--first-in-line` stands at its head — the build's wide
 /// check, which `master_check` asks for (유저 10-22, tests-crowd-the-machine-
 /// Q18; `waitingInTurn` has why).
@@ -306,8 +311,8 @@ const kNearConfigImports = 0;
     return (
       inTheLine: true,
       first: first,
-      refusal: "--outside-the-line is a land's gates' own, for a "
-          '--files-from list',
+      refusal: "--outside-the-line is a land's gates' and a CI shard's, "
+          'for a --files-from list',
     );
   }
   return (inTheLine: false, first: first, refusal: null);
@@ -705,9 +710,12 @@ List<String> _wholeSuite() =>
 /// cmd.exe's ~8191-character buffer whatever launched it. A selection of
 /// 214 files is about 9,800 characters, and the failure is not subtle —
 /// "コマンド ラインが長すぎます", exit 1, no tests run. The CI shard action
-/// has carried `xargs -0 -s 6000` against this exact wall since the day it
-/// was written; this tool shipped without it and was caught the first time
-/// somebody changed a widely-imported file.
+/// carried `xargs -0 -s 6000` against this exact wall from the day it was
+/// written (measured there: 182 paths, 8284 characters, died in 598ms; 91
+/// paths, 4105 characters, fine) — a second copy of this rule until its
+/// shards ran their slices through here (ci-shards-crowd-the-collector-
+/// pins, 10-24). This tool shipped without it and was caught the first
+/// time somebody changed a widely-imported file.
 ///
 /// 6000 keeps 2k of daylight below the real ceiling. Elsewhere ARG_MAX is
 /// megabytes and one batch is always enough.
@@ -747,12 +755,23 @@ const kBatchWall = 300;
 /// pin went red in that crowd a third time (2026-09-23, 「16 tiles, 16 still
 /// alive」, green in its own batch). Since 유저 10-20 Q6 a whole suite names
 /// its files ([_wholeSuite]), and ⛔no batch is ever empty.
+///
+/// ⚙️OUTSIDE THE LINE ([inTheLine] false) a batch is all of [left] that
+/// fits: the wall is how long the line goes without deciding again, and
+/// there no line decides. A CI shard of five hundred untimed files cut to
+/// it at one suite would pay a `flutter test` start every thirty files.
 List<String> nextBatch(
   List<String> left,
   Map<String, int> known, {
   required int suites,
+  required bool inTheLine,
   bool Function(List<String> batch) fits = _fitsTheCommandLine,
-}) => timedBatches(left, known, work: suites * kBatchWall, fits: fits).first;
+}) => timedBatches(
+  left,
+  known,
+  work: inTheLine ? suites * kBatchWall : workOf(left, known) + 1,
+  fits: fits,
+).first;
 
 /// Runs [files] batch by batch ([partitionByTag]), kind by kind in
 /// [kRunOrder]: each cut as it goes to the suites each batch is given
@@ -763,6 +782,7 @@ List<String> nextBatch(
 Future<void> runInBatches(
   List<String> files, {
   required Map<String, int> known,
+  required bool inTheLine,
   required String Function(String path) read,
   required Future<int> Function(List<String> left) take,
   required Future<void> Function(
@@ -781,7 +801,12 @@ Future<void> runInBatches(
     }
     while (left.isNotEmpty) {
       final suites = await take(left);
-      final batch = nextBatch(left, known, suites: suites);
+      final batch = nextBatch(
+        left,
+        known,
+        suites: suites,
+        inTheLine: inTheLine,
+      );
       await run(batch, suites, kind: kind);
       final ran = batch.toSet();
       left = [for (final file in left) if (!ran.contains(file)) file];
@@ -883,6 +908,7 @@ Future<int> _runTests(
   final neverRan = <int>[];
   final runsOf = <int, List<SuiteRun>>{};
   final flaky = <String>{};
+  final unrun = <String>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
   // machine-Q1 · Q3 · Q6): this run keeps one place in it, and every batch
@@ -899,6 +925,7 @@ Future<int> _runTests(
     ) => runInBatches(
       files,
       known: known,
+      inTheLine: inTheLine,
       read: (path) => File(path).readAsStringSync(),
       take: (left) =>
           turn.take(files: filesNamed(left), work: workOf(left, known)),
@@ -913,16 +940,24 @@ Future<int> _runTests(
             }}');
         final report = File('${reports.path}/batch$i.json');
         try {
-          record(
-            i,
-            report,
-            await _flutterTest(
-              batch,
-              concurrency: suites,
-              report: report.path,
-              kind: kind,
-            ),
+          final result = await _flutterTest(
+            batch,
+            concurrency: suites,
+            report: report.path,
+            kind: kind,
           );
+          if (ranNowhere(
+            exitCode: result.exitCode,
+            noContext: result.noContext,
+          )) {
+            unrun.addAll(batch);
+            _report('⚠️batch ${i + 1} DID NOT RUN — this machine\'s tester '
+                'could not make the context ${kind.engineFlags.join(' ')} '
+                'asks for ($kNoTesterContext). Its files are neither red '
+                'nor green.');
+          } else {
+            record(i, report, result);
+          }
         } finally {
           turn.putDown();
         }
@@ -1054,6 +1089,12 @@ Future<int> _runTests(
         'exit $worst');
   }
   _reportSkips(skipped);
+  if (unrun.isNotEmpty) {
+    _report('⚠️${unrun.length} file(s) DID NOT RUN on this machine — its '
+        'tester made no Impeller context for them ($kNoTesterContext). Not '
+        'a pass: a machine whose tester makes one sees them. '
+        '${unrun.join(', ')}');
+  }
   if (engine != null) _report(engine);
   return worst;
 }
@@ -1170,13 +1211,52 @@ void _reportSkips(int skipped) {
 }
 
 class _BatchResult {
-  const _BatchResult(this.exitCode, this.ranTests, this.skipped);
+  const _BatchResult(
+    this.exitCode,
+    this.ranTests,
+    this.skipped, {
+    required this.noContext,
+  });
   final int exitCode;
   final bool ranTests;
 
   /// How many tests the run SKIPPED. See [lastSkipCount].
   final int skipped;
+
+  /// Whether the tester said [kNoTesterContext] — see [ranNowhere].
+  final bool noContext;
 }
+
+/// What the tester says when it cannot make the Impeller context its batch
+/// asked for (`shell/testing/tester_main.cc`, before any suite starts);
+/// `flutter test` hands it on as a `Shell:` line, then every suite of the
+/// batch fails to load.
+const kNoTesterContext = 'Could not create tester context';
+
+/// Whether [output] holds [kNoTesterContext], when [carried] is the end of
+/// what came before it — a chunk may end inside the line. Returns the end
+/// of this one to carry into the next.
+({bool said, String carry}) saysNoTesterContext(String carried, String output) {
+  final seen = carried + output;
+  const keep = kNoTesterContext.length - 1;
+  return (
+    said: seen.contains(kNoTesterContext),
+    carry: seen.length > keep ? seen.substring(seen.length - keep) : seen,
+  );
+}
+
+/// Whether a batch that exited [exitCode] having said [kNoTesterContext]
+/// ([noContext]) is one this machine could not run at all.
+///
+/// 🖥️gpu-pins-run-in-a-batch-of-their-own (관제, 10-24): 「a runner with
+/// no context says so, with a reason」 — its files are neither red nor
+/// green, and the run says so by name. The same answer on every machine:
+/// CI's runners were the ones nobody had measured (the tester links
+/// SwiftShader's Vulkan, so they may have one), and a desk machine that
+/// has none is told the same way. ⚠️If the engine ever words it otherwise
+/// the batch comes back red, never green.
+bool ranNowhere({required int exitCode, required bool noContext}) =>
+    exitCode != 0 && noContext;
 
 /// The skip count in `flutter test` output, or null if it says none.
 ///
@@ -1351,6 +1431,8 @@ Future<_BatchResult> _flutterTest(
   );
   var ranTests = false;
   var skipped = 0;
+  var noContext = false;
+  var carried = '';
   final silence = BatchSilence(DateTime.now());
   var cut = false;
   final look = Timer.periodic(kLookForSilence, (_) {
@@ -1366,6 +1448,9 @@ Future<_BatchResult> _flutterTest(
       if (!ranTests && _testOutput.hasMatch(text)) {
         ranTests = true;
       }
+      final context = saysNoTesterContext(carried, text);
+      noContext = noContext || context.said;
+      carried = context.carry;
       final skips = lastSkipCount(text);
       if (skips != null) skipped = skips;
       silence.heard(text, DateTime.now());
@@ -1387,5 +1472,10 @@ Future<_BatchResult> _flutterTest(
     _report('🚨 no test finished for ${kSilentBatch.inMinutes} min — cut the '
         'batch, red. Still running: $named');
   }
-  return _BatchResult(cut && code == 0 ? 1 : code, ranTests, skipped);
+  return _BatchResult(
+    cut && code == 0 ? 1 : code,
+    ranTests,
+    skipped,
+    noContext: noContext,
+  );
 }

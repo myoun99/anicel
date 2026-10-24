@@ -15,9 +15,13 @@ import '../../tool/affected_tests.dart'
         gpuTagMarker,
         impellerTag,
         impellerTagMarker,
+        kNoTesterContext,
         kRunOrder,
         partitionByTag,
-        runInBatches;
+        ranNowhere,
+        runInBatches,
+        saysNoTesterContext;
+import '../../tool/native_engine_provenance.dart' show engineStampPath;
 
 /// 🖥️**A FILE THAT NEEDS IMPELLER RUNS ON IT, APART.**
 ///
@@ -86,12 +90,14 @@ void main() {
       Map<String, String> tree, {
       List<int> suites = const [5],
       Map<String, int> known = const {},
+      bool inTheLine = true,
     }) async {
       final ran = <(String, BatchKind)>[];
       var turn = 0;
       await runInBatches(
         tree.keys.toList(),
         known: known,
+        inTheLine: inTheLine,
         read: (path) => tree[path]!,
         take: (left) async => suites[turn++ % suites.length],
         run: (batch, suites, {required kind}) async =>
@@ -139,6 +145,49 @@ void main() {
         );
       });
     }
+
+    test('⚙️outside the line nothing decides between batches, so a batch is '
+        'all that fits — a CI shard pays one start, not one per wall',
+        () async {
+      final plain = {
+        for (final name in ['a_test.dart', 'b_test.dart', 'c_test.dart'])
+          name: '',
+      };
+      final ran = await batchesOf(
+        plain,
+        suites: const [1],
+        known: {for (final name in plain.keys) name: 300000},
+        inTheLine: false,
+      );
+      expect(ran, [('a_test.dart b_test.dart c_test.dart', BatchKind.crowd)]);
+    });
+  });
+
+  group('a tester that cannot make the context', () {
+    // The line the engine's tester logs (shell/testing/tester_main.cc), as
+    // `flutter test` hands it on.
+    const said = 'Shell: [ERROR:flutter/shell/testing/tester_main.cc(329)] '
+        'Could not create tester context.\n';
+
+    test('is heard in the output — even when a chunk ends inside the line',
+        () {
+      expect(saysNoTesterContext('', said).said, isTrue);
+      expect(saysNoTesterContext('', '00:01 +3: All tests passed!').said,
+          isFalse);
+      final cut = said.indexOf('tester context');
+      final first = saysNoTesterContext('', said.substring(0, cut));
+      expect(first.said, isFalse);
+      expect(saysNoTesterContext(first.carry, said.substring(cut)).said,
+          isTrue);
+      expect(first.carry.length, lessThan(kNoTesterContext.length));
+    });
+
+    test('leaves its batch neither red nor green — but only a batch that '
+        'failed', () {
+      expect(ranNowhere(exitCode: 1, noContext: true), isTrue);
+      expect(ranNowhere(exitCode: 1, noContext: false), isFalse);
+      expect(ranNowhere(exitCode: 0, noContext: true), isFalse);
+    });
   });
 
   test('each engine batch tells the engine what it needs — and no other '
@@ -184,47 +233,61 @@ void main() {
     });
   }
 
-  test('🚨each CI shard splits its files the same way — the same marker, '
-      'the same flags, in the step it already has', () {
-    // The suspension of 2026-08-31 came from CI usage, and a job is usage:
-    // the split lives in the shard's own step.
-    final shard = _shardStep();
-    // carriesTag's expression, as awk writes it inside a shell string.
-    expect(
-      shard,
-      contains(r'xargs -0 awk "/@Tags\\(\\[[^]]*' "'$gpuTag'" '/ {'),
-    );
-    expect(
-      shard,
-      contains(
-        'flutter test --no-pub ${BatchKind.gpu.engineFlags.join(' ')}',
-      ),
-    );
-    expect(
-      shard,
-      contains('"\$RUNNER_TEMP/shard_rest.txt" \\\n'
-          '            | xargs -0 -s "\$limit" flutter test --no-pub\n'),
-      reason: 'the rest of the shard runs without the flags',
-    );
-    expect(
-      shard,
-      isNot(contains('"\$RUNNER_TEMP/shard_tests.txt" \\\n'
-          '            | xargs -0 -s "\$limit" flutter test')),
-      reason: 'a run of the whole slice would put the gpu files on Skia',
-    );
-  });
+  group('CI', () {
+    test('🚨each shard runs its slice by the plan, outside the line, at the '
+        'suites package:test gave it — in the step it already has', () {
+      // ci-shards-crowd-the-collector-pins (10-24): one `flutter test` for
+      // the slice put the collector's pins in the crowd and every file on
+      // Skia, under a command-line limit copied from the plan. The
+      // suspension of 2026-08-31 came from CI usage, and a job is usage.
+      final shard = _read('.github/actions/test-shard/action.yml');
+      expect(
+        shard,
+        contains('        half=\$(( cores / 2 ))\n'
+            '        [ "\$half" -ge 1 ] || half=1\n'
+            '        dart run tool/affected_tests.dart \\\n'
+            '          --files-from "\$RUNNER_TEMP/shard_tests.txt" \\\n'
+            '          --outside-the-line --concurrency "\$half"\n'),
+      );
+      expect(shard, isNot(contains('xargs -0 -s')));
+    });
 
-  test('⛔in CI, only a runner the tester cannot make a context on goes '
-      'green without them — and says so', () {
-    final shard = _shardStep();
-    expect(shard, contains("grep -q 'Could not create tester context'"));
-    expect(shard, contains('echo "::notice title=Flutter GPU files not run'));
-    expect(shard, contains('exit "\$gpu_exit"'));
+    test('⛔no step runs `flutter test` itself — every run goes by the '
+        'plan', () {
+      final runs = <String>[];
+      for (final file in Directory('.github').listSync(recursive: true)) {
+        if (file is! File) continue;
+        final lines = file.readAsStringSync().replaceAll('\r\n', '\n');
+        for (final line in lines.split('\n')) {
+          final code = line.trimLeft();
+          if (code.startsWith('#')) continue;
+          if (RegExp(r'\bflutter test\b').hasMatch(code)) {
+            runs.add('${file.path}: $code');
+          }
+        }
+      }
+      expect(runs, isEmpty);
+    });
+
+    test("the engine it builds says which C it came from — as lane.sh's "
+        'do', () {
+      // Without the stamp every run of the plan there said it could not
+      // tell, and told the reader to rebuild with lane.sh.
+      final engine = _read('.github/actions/native-engine/action.yml');
+      expect(
+        engine,
+        contains(r'named=$(dart tool/native_engine_provenance.dart check . '
+            '|| true)'),
+      );
+      expect(
+        engine,
+        contains(r'''printf '%s\n' "$id" > ''' '$engineStampPath'),
+      );
+    });
   });
 }
 
-/// The shard action as the repository holds it — a Windows checkout hands
-/// it back with CRLF.
-String _shardStep() => File(
-  '.github/actions/test-shard/action.yml',
-).readAsStringSync().replaceAll('\r\n', '\n');
+/// A file as the repository holds it — a Windows checkout hands it back
+/// with CRLF.
+String _read(String path) =>
+    File(path).readAsStringSync().replaceAll('\r\n', '\n');

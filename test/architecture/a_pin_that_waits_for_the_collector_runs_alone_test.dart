@@ -112,6 +112,7 @@ void main() {
       await runInBatches(
         files,
         known: known,
+        inTheLine: true,
         // A file the tree does not hold is a plain one.
         read: (path) => tree[path] ?? '',
         take: (left) async {
@@ -169,7 +170,13 @@ void main() {
       ]);
       expect(asked.map((left) => left.length), [3, 2]);
       expect(
-        nextBatch(known.keys.toList(), known, suites: 10, fits: (_) => true),
+        nextBatch(
+          known.keys.toList(),
+          known,
+          suites: 10,
+          inTheLine: true,
+          fits: (_) => true,
+        ),
         hasLength(3),
       );
     });
