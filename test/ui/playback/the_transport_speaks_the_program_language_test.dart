@@ -16,7 +16,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import '../../helpers/app_icon_button_probe.dart';
 
 /// 🗣️play-button-tooltip-untranslated (found 2026-10-02 while doing F-261,
-/// and by the guide session a day earlier): the sill's play button said
+/// and by the guide session a day earlier): the transport's play button said
 /// 「Play」 / 「Stop」 in every language — and, one button over, the loop
 /// toggle said `Loop (click for play once)` the same way.
 ///
