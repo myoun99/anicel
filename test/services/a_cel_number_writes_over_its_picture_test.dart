@@ -253,19 +253,18 @@ void main() {
         );
     final plain = signatureOf(drawing(effects: [number('n')]));
     expect(signatureOf(drawing(effects: [number('n')])), plain);
-    expect(
-      signatureOf(drawing(name: 'B', effects: [number('n')])),
-      isNot(plain),
-    );
-    expect(
-      signatureOf(drawing(frameName: '2', effects: [number('n')])),
-      isNot(plain),
-    );
-    expect(
-      signatureOf(drawing(effects: [number('n', rgb: (255, 0, 0))])),
-      isNot(plain),
-    );
-    expect(signatureOf(drawing()), isNot(plain));
+    for (final (says, other) in [
+      ('another row name', drawing(name: 'B', effects: [number('n')])),
+      ('another drawing', drawing(frameName: '2', effects: [number('n')])),
+      ('another colour', drawing(effects: [number('n', rgb: (255, 0, 0))])),
+      ('no number', drawing()),
+    ]) {
+      final signature = signatureOf(other);
+      expect(signature, isNot(plain), reason: says);
+      // ⚠️The nodes too, each by its own equality: the whole signature
+      // parts on its hash before it walks them.
+      expect(signature.nodes, isNot(plain.nodes), reason: says);
+    }
   });
 }
 

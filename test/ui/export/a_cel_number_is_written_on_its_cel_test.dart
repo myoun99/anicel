@@ -30,15 +30,19 @@ import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/camera_frame_corners.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
+import 'package:anicel/src/services/layer_pose_matrix.dart'
+    show LayerPlacement, placementMatrix;
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart'
+    show subtreeBufferBounds;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/text/cel_number_paint.dart' show celNumberExtent;
 
 import '../../helpers/placement_reading.dart';
 
@@ -292,6 +296,58 @@ void main() {
       ).middle;
       expect((there.x - rest.middle.x, there.y - rest.middle.y), (60, 30));
     });
+  });
+
+  // A group's buffer is what its rows stand for ([subtreeBufferBounds]) —
+  // so a blur after the number reads the letters where they stand past
+  // the paper, as they lie with the row.
+  testWidgets('a numbered row\'s buffer reaches its letters past the paper, '
+      'where the row lies', (tester) async {
+    final paper = ui.Rect.fromLTWH(
+      0,
+      0,
+      canvas.width.toDouble(),
+      canvas.height.toDouble(),
+    );
+    final letters = CelNumberLetters(
+      text: 'A1',
+      color: 0xFFFF0000,
+      center: CanvasPoint(x: 0, y: 120),
+      scale: CanvasPoint(x: 1, y: 1),
+    );
+    final standing = celNumberExtent(letters);
+    expect(standing.left, lessThan(0), reason: 'fixture: past the paper');
+    ui.Rect bufferOf(LayerPlacement? placement) {
+      final row = CompositeLeaf<LayerPlacement?>(placement);
+      return subtreeBufferBounds(
+        CompositeGroup<LayerPlacement?>(
+          children: [
+            row,
+            CompositeCelNumber(on: row, letters: letters),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: const [],
+        ),
+        within: const ui.Rect.fromLTWH(-1000, -1000, 3000, 3000),
+        extentOf: (_) => paper,
+        placementOf: (placement) => placement,
+      );
+    }
+
+    expect(bufferOf(null), paper.expandToInclude(standing));
+    final moved = placedBy(
+      TransformPose(center: CanvasPoint(x: 260, y: 120)),
+      canvas,
+    );
+    final lying = placementMatrix(moved);
+    expect(
+      bufferOf(moved),
+      MatrixUtils.transformRect(
+        lying,
+        paper,
+      ).expandToInclude(MatrixUtils.transformRect(lying, standing)),
+    );
   });
 
   group('in the delivered cel', () {
