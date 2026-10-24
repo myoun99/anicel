@@ -194,7 +194,7 @@ void main() {
     manager.selectRow(LayerRowAddress(transition));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<TimelineShiftButtons>(pair).currentRow,
+      tester.widget<TimelineShiftButtons>(pair).panel?.shiftCurrentRow,
       LayerRowAddress(transition),
     );
   });

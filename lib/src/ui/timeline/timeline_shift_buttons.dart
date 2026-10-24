@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../../models/timeline_row_address.dart';
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart';
+import '../sliced_value_listenable_builder.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
+import 'toolbar_panel_context.dart';
 
 /// THE push / pull pair (design D), shared by every rail that has rows.
 ///
@@ -15,7 +17,7 @@ import '../widgets/app_icon_button.dart';
 /// where nothing is selected at all.
 /// The pair owns its own subscriptions rather than making whatever mounts it
 /// rebuild. Two booleans re-derived per signal (measured at 3.7µs), and a
-/// `setState` only when one of them flips: the alternative was the host
+/// rebuild only when one of them flips: the alternative was the host
 /// rebuilding its whole command bar per arrow press (11ms of build).
 ///
 /// 🚨T17 — it subscribes to TWO things, and the second one was missing.
@@ -27,129 +29,70 @@ import '../widgets/app_icon_button.dart';
 /// grey, holding the answer from the last committed seek; stepping one frame
 /// away and back "fixed" it, which is how the user found it.
 ///
-/// The parent cannot cover this: the action toolbar is cached on
-/// `_deriveActionsToken`, and no push/pull dimension is in that token, so a
-/// notify that changed only the arrangement never reaches this widget as a
-/// rebuild either.
+/// The parent cannot cover this: the bar around the pair is kept while it is
+/// built for the same thing, and no push/pull answer is among those things.
 ///
 /// ★The law it broke is the one this codebase keeps re-learning: **what a
 /// predicate READS and what its widget SUBSCRIBES to have to be the same
-/// set**, or the button answers about a moment that has passed.
-class TimelineShiftButtons extends StatefulWidget {
-  const TimelineShiftButtons({
-    super.key,
-    required this.session,
-    this.currentRow,
-  });
+/// set**, or the button answers about a moment that has passed. ↩️The pair
+/// kept its own two listeners and its own flip gate; it hears the bar's one
+/// list now ([toolbarGateNews] — the bands and the stand its scope reads
+/// were heard only through the bar's host) through the one slice every
+/// group on the bar answers with (a-gate-rebuilds-the-whole-toolbar,
+/// 2026-10-24).
+class TimelineShiftButtons extends StatelessWidget {
+  const TimelineShiftButtons({super.key, required this.session, this.panel});
 
   final EditorSessionManager session;
 
-  /// The asking rail's current row — read ONLY when nothing is selected
-  /// (the timeline's "current row at the current cell" rule). The timeline
-  /// leaves it null: its current row is the active layer, which is the
-  /// session's own fallback.
-  final TimelineRowAddress? currentRow;
+  /// The asking rail, whose [ToolbarPanelContext.shiftCurrentRow] is read
+  /// ONLY when nothing is selected (the timeline's "current row at the
+  /// current cell" rule) — the row its push/pull keys aim at too. The
+  /// timeline's answers null: its current row is the active layer, which is
+  /// the session's own fallback, as it is with no panel at all.
+  final ToolbarPanelContext? panel;
 
-  @override
-  State<TimelineShiftButtons> createState() => _TimelineShiftButtonsState();
-}
-
-class _TimelineShiftButtonsState extends State<TimelineShiftButtons> {
-  late bool _canPush;
-  late bool _canPull;
-
-  bool get _derivedPush =>
-      widget.session.blockShift.canPushBlocks(currentRow: widget.currentRow);
-  bool get _derivedPull =>
-      widget.session.blockShift.canPullBlocks(currentRow: widget.currentRow);
-
-  /// Re-derives after a signal that does NOT come through a parent rebuild.
-  ///
-  /// The flip gate is what keeps the session subscription cheap: an edit that
-  /// leaves both answers alone (drawing a stroke, renaming a layer) costs the
-  /// two derivations and stops there.
-  void _reread() {
-    final canPush = _derivedPush;
-    final canPull = _derivedPull;
-    if (canPush == _canPush && canPull == _canPull) {
-      return;
-    }
-    setState(() {
-      _canPush = canPush;
-      _canPull = canPull;
-    });
-  }
-
-  void _listen(EditorSessionManager session) {
-    // The ANCHOR moving (a seek is not a session notify), in every way it
-    // can move — #10 (2026-08-21). This used to be `frameSeekCommitted`
-    // alone, which fires on the RELEASE, so a ruler drag held both answers
-    // at the frame it began on; and past the film's end the playhead moves
-    // by PARKING, which is a third channel again. One listenable answers
-    // all of them, and the flip gate in [_reread] keeps it cheap.
-    session.playheadMoved.addListener(_reread);
-    // … and the ARRANGEMENT changing (T17). An edit notifies; a seek does not.
-    // Both are needed because the two predicates read both.
-    session.addListener(_reread);
-  }
-
-  void _unlisten(EditorSessionManager session) {
-    session.playheadMoved.removeListener(_reread);
-    session.removeListener(_reread);
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _canPush = _derivedPush;
-    _canPull = _derivedPull;
-    _listen(widget.session);
-  }
-
-  @override
-  void didUpdateWidget(covariant TimelineShiftButtons oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.session, widget.session)) {
-      _unlisten(oldWidget.session);
-      _listen(widget.session);
-    }
-    // Already rebuilding — assign, never setState.
-    _canPush = _derivedPush;
-    _canPull = _derivedPull;
-  }
-
-  @override
-  void dispose() {
-    _unlisten(widget.session);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final session = widget.session;
-    final currentRow = widget.currentRow;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        AppIconButton(
-          keyValue: 'push-blocks-button',
-          tooltip: AppText.strings.tlPush,
-          shortcuts: const [EditorActionIds.timelinePushBlocks],
-          icon: const Icon(Icons.keyboard_tab),
-          onPressed: _canPush
-              ? () => session.blockShift.pushBlocks(1, currentRow: currentRow)
-              : null,
-        ),
-        AppIconButton(
-          keyValue: 'pull-blocks-button',
-          tooltip: AppText.strings.tlPull,
-          shortcuts: const [EditorActionIds.timelinePullBlocks],
-          icon: const Icon(Icons.keyboard_backspace),
-          onPressed: _canPull
-              ? () => session.blockShift.pullBlocks(1, currentRow: currentRow)
-              : null,
-        ),
-      ],
+  /// What the pair shows: both answers, the row they were asked about and
+  /// the words of the tooltips.
+  (bool, bool, TimelineRowAddress?, Object) _shown() {
+    final currentRow = panel?.shiftCurrentRow;
+    return (
+      session.blockShift.canPushBlocks(currentRow: currentRow),
+      session.blockShift.canPullBlocks(currentRow: currentRow),
+      currentRow,
+      session.languageSettings.value,
     );
   }
+
+  @override
+  Widget build(BuildContext context) => SlicedListenableBuilder(
+    listenable: toolbarGateNews(session),
+    slice: _shown,
+    builder: (context, shown) {
+      final (canPush, canPull, currentRow, _) = shown;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AppIconButton(
+            keyValue: 'push-blocks-button',
+            tooltip: AppText.strings.tlPush,
+            shortcuts: const [EditorActionIds.timelinePushBlocks],
+            icon: const Icon(Icons.keyboard_tab),
+            onPressed: canPush
+                ? () => session.blockShift.pushBlocks(1, currentRow: currentRow)
+                : null,
+          ),
+          AppIconButton(
+            keyValue: 'pull-blocks-button',
+            tooltip: AppText.strings.tlPull,
+            shortcuts: const [EditorActionIds.timelinePullBlocks],
+            icon: const Icon(Icons.keyboard_backspace),
+            onPressed: canPull
+                ? () => session.blockShift.pullBlocks(1, currentRow: currentRow)
+                : null,
+          ),
+        ],
+      );
+    },
+  );
 }

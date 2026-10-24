@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
-import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../sliced_value_listenable_builder.dart';
@@ -222,8 +221,8 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
 /// the retired toolbar buttons' key strings so tests only gain a menu-open
 /// tap. The exposure ± buttons are GONE — block edge grips replaced them
 /// outright (session APIs kept for grips).
-/// Builds its group ONCE and hands the same widget back until [rebuildKey]
-/// moves.
+/// Builds its group ONCE and hands the same widget back until its [gates]
+/// answer differently.
 ///
 /// The toolbar's layer and cut groups render nothing that changes: literal
 /// labels, fixed icons, unconditional enablement, and flyout entries built
@@ -231,29 +230,62 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
 /// FRAME group next to them makes the whole toolbar rebuild — measured at 24
 /// layers, that dragged 144 widgets through every notify that landed a cel.
 ///
+/// 🚨It HEARS its gates itself ([toolbarGateNews]) — the bar around it is
+/// not built again for them (a-gate-rebuilds-the-whole-toolbar, 2026-10-24).
+/// ↩️Its key was read only when the bar was built again, so each host
+/// cached the bar on a token of every gate on it and a flip in one group
+/// built them all; the shared pill alone heard its own, through the slice
+/// this is now for every group.
+///
 /// CONTRACT: the builder may only read values that cannot change while
-/// [rebuildKey] holds still. Lazily-read state is free (a flyout opens with
-/// fresh values through the stable session); anything RENDERED must be in the
-/// key. Inherited widgets stay live either way — dependencies are tracked per
-/// element, so a theme change still rebuilds the cached subtree.
-class _StaticCommandGroup extends StatefulWidget {
-  const _StaticCommandGroup({required this.builder, this.rebuildKey});
+/// [gates] holds still. Lazily-read state is free (a flyout opens with
+/// fresh values through the stable session); anything RENDERED must be in
+/// [gates], and its source in [toolbarGateNews]. Inherited widgets stay
+/// live either way — dependencies are tracked per element, so a theme
+/// change still rebuilds the cached subtree.
+class _StaticCommandGroup extends StatelessWidget {
+  const _StaticCommandGroup({
+    required this.news,
+    required this.gates,
+    required this.builder,
+  });
 
+  final Listenable news;
+
+  /// Every value the group shows — what it is built again for.
+  final Object? Function() gates;
   final WidgetBuilder builder;
-  final Object? rebuildKey;
 
   @override
-  State<_StaticCommandGroup> createState() => _StaticCommandGroupState();
+  Widget build(BuildContext context) => SlicedListenableBuilder<Object?>(
+    listenable: news,
+    slice: gates,
+    builder: (context, shown) => _BakedCommandGroup(
+      shown: shown,
+      builder: builder,
+    ),
+  );
 }
 
-class _StaticCommandGroupState extends State<_StaticCommandGroup> {
+/// A group's widgets as last built, and the zone they bake in.
+class _BakedCommandGroup extends StatefulWidget {
+  const _BakedCommandGroup({required this.shown, required this.builder});
+
+  final Object? shown;
+  final WidgetBuilder builder;
+
+  @override
+  State<_BakedCommandGroup> createState() => _BakedCommandGroupState();
+}
+
+class _BakedCommandGroupState extends State<_BakedCommandGroup> {
   Widget? _cached;
   TextScaler? _builtAt;
 
   @override
-  void didUpdateWidget(covariant _StaticCommandGroup oldWidget) {
+  void didUpdateWidget(covariant _BakedCommandGroup oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.rebuildKey != widget.rebuildKey) {
+    if (oldWidget.shown != widget.shown) {
       _cached = null;
     }
   }
@@ -292,7 +324,6 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onDeleteLayer,
     this.onEditInstance,
     required this.onCreateInstance,
-    this.currentRow,
     this.hiddenSections = const {},
     this.onToggleSection,
   });
@@ -340,15 +371,17 @@ class TimelineActionToolbar extends StatelessWidget {
   /// instruction event.
   final VoidCallback onCreateInstance;
 
-  /// Which rail is asking, for the ONE case the shift pair needs it: nothing
-  /// selected, so the shove aims at the row this rail is standing on.
-  ///
-  /// The timeline leaves it null — its current row IS the active layer, which
-  /// is the session's own fallback. The storyboard cannot, because its rail's
-  /// standing row is separate state from the drawing target (user 2026-07-27),
-  /// and that is the whole reason the pair used to be mounted a second time
-  /// beside this bar instead of inside it.
-  final TimelineRowAddress? currentRow;
+  // ⛔`currentRow` is GONE (a-gate-rebuilds-the-whole-toolbar, 2026-10-24).
+  // It said which rail is asking, for the ONE case the shift pair needs it:
+  // nothing selected, so the shove aims at the row this rail stands on. The
+  // timeline left it null — its current row IS the active layer, the
+  // session's own fallback; the storyboard could not, because its rail's
+  // standing row is separate state from the drawing target (user
+  // 2026-07-27), and that is the whole reason the pair used to be mounted a
+  // second time beside this bar. It was the storyboard's
+  // [ToolbarPanelContext.shiftCurrentRow] passed BY VALUE, so its host had
+  // to build the bar again for every stand; the pair asks [panelContext]
+  // now, the answer its keys read too.
 
   /// Sections hidden from the grids; the Layer menu's show/hide items and
   /// the rail's fold chevrons both flip this.
@@ -367,6 +400,9 @@ class TimelineActionToolbar extends StatelessWidget {
   /// ones a key presses a row of ([TimelineBarMenus]).
   TimelineBarMenus get _menus =>
       TimelineBarMenus(session: session, panel: panelContext);
+
+  /// What every group on this bar hears ([toolbarGateNews]).
+  Listenable get _news => toolbarGateNews(session);
 
   // ⛔The two PROJECT-axis dropdowns (fps, audio sample rate) LEFT this bar
   // (유저 확정, 2026-08-10). They print project values and nothing about the
@@ -482,7 +518,8 @@ class TimelineActionToolbar extends StatelessWidget {
   /// on the program LANGUAGE, because the name cell prints a word now, and
   /// on the one predicate a verb outside the menu reads.
   Widget _layerPill() => _StaticCommandGroup(
-    rebuildKey: Object.hash(
+    news: _news,
+    gates: () => Object.hash(
       hiddenSections.fold<int>(
         0,
         (mask, section) => mask | (1 << section.index),
@@ -555,6 +592,34 @@ class TimelineActionToolbar extends StatelessWidget {
     ),
   );
 
+  /// Every gate the shared pill shows — what it is built again for.
+  Object _sharedPillKey() => (
+    panelContext.deleteSubject,
+    AppText.settings.value.programLanguage,
+    // ㉕: the three that joined the delete read their own gates.
+    // T3 made it four — 잘라내기 asks the same question copy does.
+    // B8: every gate is the PANEL's now — the timeline context answers
+    // with the session getters this key used to name, the storyboard's
+    // with its standing row, host answer included (the side channel this
+    // key used to carry as its last entry).
+    panelContext.canCutRun,
+    panelContext.canCopyFrame,
+    panelContext.canPasteLinkedFrame,
+    panelContext.canPasteIndependentFrame,
+    // T25: and the fifth resident reads its own subject, for the same
+    // reason the delete reads `deleteSubject` — the button's enablement
+    // and what the press DOES have to come from one answer.
+    onEditInstance != null && panelContext.canEditInstance,
+    // The 색 편집 head reads the gate its rows open behind.
+    session.pixelVerbs.canOpenColourEdit,
+    // I-45: the link-independent button, from its own one answer.
+    panelContext.canUnlink,
+    // F-455: 복제, likewise.
+    panelContext.canDuplicate,
+    // I-18: 자동 이름 지정, likewise.
+    panelContext.canAutoName,
+  );
+
   /// 🚨★★★ THE SHARED PILL — verbs that belong to no noun (⑰㉕, 유저 2026-08-12:
   /// 「프레임알약 옆에 공용버튼 들어가는 알약만들고 거기」).
   ///
@@ -568,6 +633,10 @@ class TimelineActionToolbar extends StatelessWidget {
   /// noun, which is why the same word did different things depending on where
   /// you reached for it — and why nothing on the bar could delete a CUT while
   /// the cut menu was closed.
+  ///
+  /// ↩️The four ⚠️ below and the cel's line were this pill's OWN listeners;
+  /// every group hears them now ([toolbarGateNews],
+  /// a-gate-rebuilds-the-whole-toolbar), and each still says why.
   /// ⚠️Subscribed to the ROW SELECTION, and it has to be.
   ///
   /// The subject this pill asks for is mostly session state that arrives with
@@ -601,79 +670,34 @@ class TimelineActionToolbar extends StatelessWidget {
   /// move of a sweep, moves the band heard here. Built again on each, with
   /// the same key, the pill still dirtied the panel's layout scope: the
   /// panel's whole host was laid out and painted again at every step of the
-  /// drag (F-244: a drag step is a tick). Its bar answers seeks the same way
-  /// (R13-2's token).
-  Widget _sharedPill() => SlicedListenableBuilder<Object>(
-    listenable: Listenable.merge([
-      session.rowSelection,
-      session.standing.currentRowListenable,
-      session.frameRangeSelection,
-      session.laneRangeSelection,
-      session.trackFrameRangeSelection,
-      // 🚨★★★AND THE THING A SELECTION IS NOT: WHETHER THE CEL HAS A DRAWING.
-      //
-      // 「지금 무엇이 선택됐나」 is what this pill is for, but the gates in the
-      // key below do not only ask which rows and ranges are marked — they ask
-      // whether the cel you are standing on has anything in it, and that
-      // changes without any selection moving. 픽셀 비우기 empties the cel you
-      // are already standing on; nothing above fires, so the buttons stayed
-      // lit over a block the user had just cleared (유저 2026-08-27: 「인덱스
-      // 이동해서 그림 사라진거 확인하더라도 버튼 여전히 활성화되있고」).
-      //
-      // ⛔The PLAYHEAD is deliberately not here. It looked like the same
-      // hole, and it is not: removing this line reddens the test below,
-      // removing a playhead line does not — the pill already re-reads on a
-      // scrub through the rebuild the session's own notify carries. An
-      // addition whose necessity cannot be shown is the shape that put
-      // 「갱신된다」 into #1269 with no guard at all.
-      //
-      // ↩️F-75 (유저 2026-09-11): the playhead half WAS a hole — one this
-      // listener could never close. A committed seek is not a session
-      // notify, and the bar around this pill is cached on its host's token,
-      // so a seek between two drawn cels, equal on every other gate, reused
-      // the bar whole and this builder never ran. The answer travels in the
-      // hosts' tokens now (`_SeekGatedTimelineToolbar` and the storyboard's
-      // cursor gate carry `canOpenColourEdit`); this listener stays for the cel
-      // emptied in place, and the one a first stroke draws at pen-down.
-      session.layerStack.celTintRevision,
-      // I-55: and the pixel board — a copy fills it without moving anything
-      // above, and the two pastes open behind it.
-      session.appClipboard.pixels,
-    ]),
-    slice: _sharedPillKey,
-    builder: (context, key) => _sharedPillBody(key),
-  );
-
-  /// Every gate the shared pill shows — what it is built again for.
-  Object _sharedPillKey() => (
-    panelContext.deleteSubject,
-    AppText.settings.value.programLanguage,
-    // ㉕: the three that joined the delete read their own gates.
-    // T3 made it four — 잘라내기 asks the same question copy does.
-    // B8: every gate is the PANEL's now — the timeline context answers
-    // with the session getters this key used to name, the storyboard's
-    // with its standing row, host answer included (the side channel this
-    // key used to carry as its last entry).
-    panelContext.canCutRun,
-    panelContext.canCopyFrame,
-    panelContext.canPasteLinkedFrame,
-    panelContext.canPasteIndependentFrame,
-    // T25: and the fifth resident reads its own subject, for the same
-    // reason the delete reads `deleteSubject` — the button's enablement
-    // and what the press DOES have to come from one answer.
-    onEditInstance != null && panelContext.canEditInstance,
-    // The 색 편집 head reads the gate its rows open behind.
-    session.pixelVerbs.canOpenColourEdit,
-    // I-45: the link-independent button, from its own one answer.
-    panelContext.canUnlink,
-    // F-455: 복제, likewise.
-    panelContext.canDuplicate,
-    // I-18: 자동 이름 지정, likewise.
-    panelContext.canAutoName,
-  );
-
-  Widget _sharedPillBody(Object key) => _StaticCommandGroup(
-    rebuildKey: key,
+  /// drag (F-244: a drag step is a tick). Every group hears its gates this
+  /// way now.
+  /// 🚨★★★AND THE THING A SELECTION IS NOT: WHETHER THE CEL HAS A DRAWING.
+  ///
+  /// 「지금 무엇이 선택됐나」 is what this pill is for, but the gates in its
+  /// key do not only ask which rows and ranges are marked — they ask whether
+  /// the cel you are standing on has anything in it, and that changes
+  /// without any selection moving. 픽셀 비우기 empties the cel you are
+  /// already standing on; nothing else fired, so the buttons stayed lit over
+  /// a block the user had just cleared (유저 2026-08-27: 「인덱스 이동해서 그림
+  /// 사라진거 확인하더라도 버튼 여전히 활성화되있고」).
+  ///
+  /// ⛔The PLAYHEAD was deliberately not among this pill's listeners. It
+  /// looked like the same hole, and it was not: removing the cel's line
+  /// reddened its test, removing a playhead line did not — the pill re-read
+  /// on a scrub through the rebuild the session's own notify carried. An
+  /// addition whose necessity cannot be shown is the shape that put
+  /// 「갱신된다」 into #1269 with no guard at all.
+  ///
+  /// ↩️F-75 (유저 2026-09-11): the playhead half WAS a hole — one that
+  /// listener could never close. A committed seek is not a session notify,
+  /// and the bar around this pill was cached on its host's token, so a seek
+  /// between two drawn cels, equal on every other gate, reused the bar whole
+  /// and this pill never looked again. The answer travelled in the hosts'
+  /// tokens until the groups heard the seek themselves.
+  Widget _sharedPill() => _StaticCommandGroup(
+    news: _news,
+    gates: _sharedPillKey,
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
       children: [
@@ -848,20 +872,30 @@ class TimelineActionToolbar extends StatelessWidget {
   );
 
   /// The FRAME pill — the verbs a rough pass wears out, none of them folded.
+  ///
+  /// 🚨Nothing on it outside its groups shows a value, its name included:
+  /// the pill holds zones of its own (the groups below), so it cannot bake
+  /// whole as the layer pill does — a bake inside a bake freezes — and what
+  /// is not in a group is built again only with the bar.
   Widget _framePill() => CommandPill(
     key: const ValueKey<String>('timeline-toolbar-frame-group'),
-    head: PillNameCell(
-      keyValue: 'timeline-frame-menu-button',
-      label: AppText.strings.tlFrame,
-      tooltip: AppText.strings.tlFrameCommands,
-      entriesBuilder: _menus.frame,
+    head: _StaticCommandGroup(
+      news: _news,
+      gates: () => AppText.settings.value.programLanguage,
+      builder: (context) => PillNameCell(
+        keyValue: 'timeline-frame-menu-button',
+        label: AppText.strings.tlFrame,
+        tooltip: AppText.strings.tlFrameCommands,
+        entriesBuilder: _menus.frame,
+      ),
     ),
     children: [
       const PillDivider(),
       // Cached on the predicates THESE buttons read, for the reason
       // spelled out at the comma group below.
       _StaticCommandGroup(
-        rebuildKey: (
+        news: _news,
+        gates: () => (
           _canCreateInstance,
           panelContext.canBlankExposure,
           panelContext.canToggleMark,
@@ -915,7 +949,7 @@ class TimelineActionToolbar extends StatelessWidget {
             // rather than beside brush size.
             //
             // ★It listens for ITSELF. This group is memoized on
-            // [_StaticCommandGroup.rebuildKey] and baked into a
+            // [_StaticCommandGroup.gates] and baked into a
             // [StaticRaster]; the toolbar does not rebuild when
             // `AppInput.settings` moves, so a plain read here would show
             // yesterday's state for ever. A listener inside the bake is
@@ -1006,9 +1040,9 @@ class TimelineActionToolbar extends StatelessWidget {
       // Design D: the rigid shove a drag used to do, aimed. Scope = the live
       // selection's rows, or the current row at the current cell. ONE pair
       // for both axes, and now ONE pair for both panels: it is a frame-axis
-      // shove, so it belongs to the FRAME noun, and [currentRow] is how the
+      // shove, so it belongs to the FRAME noun, and [panelContext] is how the
       // asking rail names itself.
-      TimelineShiftButtons(session: session, currentRow: currentRow),
+      TimelineShiftButtons(session: session, panel: panelContext),
       const PillDivider(),
       // Comma set (UI-R17 #7, TVP-style): the current block — or the whole
       // selection, packed — takes the pressed exposure outright; N asks for
@@ -1021,7 +1055,8 @@ class TimelineActionToolbar extends StatelessWidget {
       // Measured: crossing "no cel ↔ cel" changed 5 of the toolbar's 10
       // buttons and rebuilt all 10.
       _StaticCommandGroup(
-        rebuildKey: (
+        news: _news,
+        gates: () => (
           panelContext.canSetComma,
           session.languageSettings.value,
         ),
@@ -1082,7 +1117,8 @@ class TimelineActionToolbar extends StatelessWidget {
   /// over the stable session and reads the active layer's chain when the
   /// flyout OPENS, so a reused button widget cannot show a stale list.
   Widget _fxPill() => _StaticCommandGroup(
-    rebuildKey: AppText.settings.value.programLanguage,
+    news: _news,
+    gates: () => AppText.settings.value.programLanguage,
     builder: (context) => CommandPill(
       head: PillNameCell(
         keyValue: 'timeline-effects-button',
@@ -1133,7 +1169,8 @@ class TimelineActionToolbar extends StatelessWidget {
         // nowhere to make one, and a bake keyed on the language alone kept
         // the ＋ lit through it.
         _StaticCommandGroup(
-          rebuildKey: (
+          news: _news,
+          gates: () => (
             AppText.settings.value.programLanguage,
             session.cutPlacement.canCreateCut,
           ),

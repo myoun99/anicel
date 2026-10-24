@@ -45,7 +45,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_frame_range_gesture.dart' show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
-import 'timeline/memo_token.dart' show Kept, keptWhileSame;
+import 'timeline/memo_token.dart' show ByIdentity, Kept, keptWhileSame;
 import 'timeline/timeline_view_cluster.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
@@ -212,6 +212,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// The view cluster, kept by what it shows across this host's rebuilds —
   /// the timeline panel's keep (F-244 ⑧).
   final Map<Type, Kept<TimelineViewClusterFacts>> _kept = {};
+
+  /// The action bar, kept while it is built for this session — each group
+  /// on it hears its own gates ([toolbarGateNews]).
+  final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptToolbar = {};
 
   // ⛔The storyboard's playhead channel is the SESSION's now
   // ([PlayheadCursors.trackFrame]): the row this panel folds into draws the
@@ -567,15 +571,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           // panel too.
           // B8: the bar's gates read the CURSOR now (standing row × global
           // playhead), and neither a committed seek nor a standing move is
-          // a session notify — so the toolbar re-derives through its own
-          // token gate, the timeline host's pattern said of this panel.
-          _CursorGatedStoryboardToolbar(
-            session: _session,
-            actionsBuilder: (context) => TimelineActionToolbar(
+          // a session notify. ↩️The toolbar re-derived through a token gate
+          // of this host's (`_CursorGatedStoryboardToolbar`), the timeline
+          // host's pattern said of this panel; each group on it hears its
+          // own gates now ([toolbarGateNews],
+          // a-gate-rebuilds-the-whole-toolbar), so the bar is kept while
+          // it is built for this session.
+          keptWhileSame(
+            _keptToolbar,
+            TimelineActionToolbar,
+            ByIdentity(_session),
+            () => TimelineActionToolbar(
               session: _session,
               // B8: THIS panel's dispatch context — every layer/frame/
               // shared/fx verb acts against the storyboard's standing row
-              // and global cursor, or greys out honestly.
+              // and global cursor, or greys out honestly. Which rail is
+              // asking for the push/pull pair is its answer too
+              // ([ToolbarPanelContext.shiftCurrentRow], the row its KEYS
+              // read).
               panelContext: _toolbarPanel,
               onAddLayer: _session.layerStack.addLayer,
               onRenameLayer: () =>
@@ -593,9 +606,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // This panel reads left-to-right like the horizontal timeline,
               // so its dialogs' miniatures do too.
               onEditInstance: _editInstanceHere,
-              // Which rail is asking — this panel's own answer, the one its
-              // push/pull KEYS read too ([ToolbarPanelContext.shiftCurrentRow]).
-              currentRow: _toolbarPanel.shiftCurrentRow,
             ),
           ),
           // ⛔The storyboard's own tail is GONE (B7, 유저 2026-08-17: 「완전
@@ -668,9 +678,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // No seek subscription HERE: the one control on this bar a
-            // committed seek can change is the push/pull pair, and it owns
-            // that subscription itself ([TimelineShiftButtons]).
+            // No seek subscription HERE: every group on the bar hears its
+            // own gates ([toolbarGateNews]). ↩️The push/pull pair was the
+            // one control a committed seek could change, and it owned that
+            // subscription itself ([TimelineShiftButtons]).
             _commandBar(context),
             // ★COLLAPSED = the command bar and nothing else, the same rule
             // the timeline panel follows (유저 확정, 2026-08-10) — and the
@@ -1215,160 +1226,4 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
     );
   }
-}
-
-/// B8: caches the storyboard's action toolbar and rebuilds it ONLY when
-/// what its buttons SHOW changes — the timeline host's seek-gate pattern
-/// (`_SeekGatedTimelineToolbar`), said of THIS panel's gates.
-///
-/// It has to exist here now: the bar used to render nothing a committed
-/// seek could change (the old comment on [_StoryboardTabHostState.build]),
-/// but B8 made the frame/shared gates read the CURSOR — the standing row ×
-/// the global playhead — and neither a seek, a standing move, a gap
-/// parking, nor a selection change is a session notify.
-///
-/// COMPLETENESS CONTRACT (the timeline gate's, restated): any NEW
-/// directly-rendered value the storyboard context serves MUST join
-/// [_CursorGatedStoryboardToolbarState._deriveToken], and if its source
-/// does not travel through a host rebuild it needs a listener too.
-class _CursorGatedStoryboardToolbar extends StatefulWidget {
-  const _CursorGatedStoryboardToolbar({
-    required this.session,
-    required this.actionsBuilder,
-  });
-
-  final EditorSessionManager session;
-  final WidgetBuilder actionsBuilder;
-
-  @override
-  State<_CursorGatedStoryboardToolbar> createState() =>
-      _CursorGatedStoryboardToolbarState();
-}
-
-class _CursorGatedStoryboardToolbarState
-    extends State<_CursorGatedStoryboardToolbar> {
-  // Eager for the timeline gate's reason: a `late` initializer would run on
-  // first access, which can coincide with the very signal it must catch.
-  late Object _token;
-
-  Widget? _cached;
-
-  /// Every signal that can move a gate WITHOUT a session notify. The host
-  /// rebuild (a notify) funnels through [didUpdateWidget].
-  List<Listenable> get _signals => _signalsOf(widget);
-
-  /// Every value the toolbar's directly-rendered widgets read from THIS
-  /// panel's context. ↩️The blank X, the mark, the cell clipboard four and
-  /// 링크 독립 were absent as constants — a cell band makes them the
-  /// timeline's answers now (F-186), and a band moves nothing else here.
-  Object _deriveToken() {
-    final panel = StoryboardToolbarPanelContext(widget.session);
-    return (
-      panel.canCreateInstance,
-      panel.canSetComma,
-      panel.canEditInstance,
-      panel.deleteSubject,
-      panel.canBlankExposure,
-      panel.canToggleMark,
-      panel.canCutRun,
-      panel.canCopyFrame,
-      panel.canPasteIndependentFrame,
-      panel.canPasteLinkedFrame,
-      panel.canUnlink,
-      // F-455: 복제 lights on a cut and dims in a gap, as below.
-      panel.canDuplicate,
-      // …and the cut pill's ＋, which a band over a cut dims (the timeline
-      // bar's token says why it is here).
-      widget.session.cutPlacement.canCreateCut,
-      // I-18: 자동 이름 지정 lights over a cut and dims in a gap — the
-      // playhead moves it, and a playhead move is no notify.
-      panel.canAutoName,
-      // F-75: the 색 편집 head on this bar reads the session's own answer —
-      // whether the cel under the playhead has a drawing — which none of the
-      // entries above moves with. (I-55: the head's gate is every row's now.)
-      widget.session.pixelVerbs.canOpenColourEdit,
-      // The shift pair aims at the standing row, passed by VALUE.
-      widget.session.selectedRow,
-      widget.session.languageSettings.value,
-    );
-  }
-
-  void _handleExternalSignal() {
-    final next = _deriveToken();
-    if (next != _token) {
-      setState(() {
-        _token = next;
-        _cached = null;
-      });
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _token = _deriveToken();
-    for (final signal in _signals) {
-      signal.addListener(_handleExternalSignal);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _CursorGatedStoryboardToolbar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.session, widget.session)) {
-      for (final signal in _signalsOf(oldWidget)) {
-        signal.removeListener(_handleExternalSignal);
-      }
-      for (final signal in _signals) {
-        signal.addListener(_handleExternalSignal);
-      }
-      _cached = null;
-    }
-    final next = _deriveToken();
-    if (next != _token) {
-      _token = next;
-      _cached = null;
-    }
-  }
-
-  static List<Listenable> _signalsOf(_CursorGatedStoryboardToolbar widget) => [
-    // #10 (2026-08-21): ONE channel for the playhead, shared with the
-    // timeline's bar and the shift pair. This listed the committed seek
-    // and the gap parking by hand and missed the cursor, so a ruler drag
-    // INSIDE the film left the bar answering about the frame the drag
-    // began on — a committed seek fires on the release.
-    widget.session.playheadMoved,
-    widget.session.standing.currentRowListenable,
-    widget.session.languageSettings,
-    // The selections the gates read are notifiers on purpose (they grow
-    // per pointer move): the S-row/cut range, the strip's cut-local range,
-    // and lane spans.
-    widget.session.trackFrameRangeSelection,
-    widget.session.frameRangeSelection,
-    widget.session.laneRangeSelection,
-    // F-75: the token carries `canOpenColourEdit`, and a cel emptied in place
-    // (픽셀 비우기) moves that answer with no seek and no session notify —
-    // its one signal is the tint's crossing. Unheard, the token kept the
-    // answer from before the clear, and a seek onto a drawn cel then read
-    // "unchanged" and left the head dim. ↩️The thumbnail store's landing
-    // rebuilt this whole panel and re-derived the token by accident, until
-    // the store left the panel's merge. ↩️The timeline's gate did not list
-    // it — that host rebuilds on the clear itself, measured, and its F-75
-    // pin holds without it — until the head a first stroke lights at
-    // pen-down (pen-up-dock-tail-Q2): nothing rebuilds that host under the
-    // pen, and the token it kept built its bar again at pen-up.
-    widget.session.layerStack.celTintRevision,
-  ];
-
-  @override
-  void dispose() {
-    for (final signal in _signals) {
-      signal.removeListener(_handleExternalSignal);
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      _cached ??= widget.actionsBuilder(context);
 }

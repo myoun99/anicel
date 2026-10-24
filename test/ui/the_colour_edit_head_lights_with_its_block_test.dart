@@ -36,8 +36,8 @@ final _sharedPill = find.byKey(
   const ValueKey<String>('timeline-toolbar-shared-group'),
 );
 
-/// The timeline's bar, which its host caches on a token of every gate it
-/// shows — the head's among them.
+/// The timeline's bar, which its host keeps while it is built for the same
+/// thing — its groups hear their own gates, the head's among them.
 final _bar = find.ancestor(
   of: _sharedPill,
   matching: find.byType(TimelineActionToolbar),
@@ -117,8 +117,8 @@ void main() {
     expect(
       identical(tester.widget(_bar), bar),
       isTrue,
-      reason: "the bar's token moved with the head at pen-down, so the pen "
-          'lifting finds it the same and builds no bar again',
+      reason: 'the head lit at pen-down in its own group, so the pen '
+          'lifting builds no bar again',
     );
 
     s.playbackRig.prerenderScheduler.cancel();

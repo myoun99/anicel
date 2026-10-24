@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart' show BuildContext;
+import 'package:flutter/widgets.dart' show BuildContext, Listenable;
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
@@ -437,6 +437,66 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
     );
   }
 }
+
+/// 🚨Everything a gate on the bar moves with — what each group on it hears
+/// ([TimelineActionToolbar]'s groups, the shift pair), on BOTH panels.
+///
+/// ★What a predicate READS and what its widget SUBSCRIBES to have to be the
+/// same set (T17's law). Every gate reads the session, whose notify is the
+/// first channel; the rest publish WITHOUT one, each on purpose.
+///
+/// ↩️(a-gate-rebuilds-the-whole-toolbar, 2026-10-24) This was three lists.
+/// Each host cached the whole bar on a token of every gate it showed and
+/// heard its own signals (the timeline's seek gate, R13-2; the storyboard's
+/// cursor gate, B8), and the shared pill heard a third — so a gate flipping
+/// in one group built every group again (🔬a drawing landing in an empty
+/// cel, the 색 편집 head lighting: 227 widgets of the bar built again, 65 of
+/// them outside the pill the head is on — 3 now). Each group hears this
+/// list and is built again when ITS gates move; the hosts keep the bar
+/// while it is built for the same thing.
+Listenable toolbarGateNews(EditorSessionManager session) => Listenable.merge([
+  // An edit: the arrangement (T17 — push opened a gap and pull stayed grey),
+  // the layers, the cel under the playhead.
+  session,
+  // 🚨유저 #6 (2026-08-14): 「룰러로 이동할때 … 버튼 상태 바꼈으면 좋겠는데
+  // 안바뀜. **효율좋게** 하는데 … 해당 인덱스에 **버튼이 있으면 한번, 없으면
+  // 한번** 이런식으로?」 — a seek is no notify, and the playhead moves by a
+  // committed seek, a scrub and a gap parking: one channel for all of them
+  // (#10, 2026-08-21 — ↩️the committed seek alone fires on the RELEASE, so a
+  // ruler drag held every answer at the frame it began on). The efficiency
+  // half is the groups' own: a crossed frame costs their gates' reads and
+  // builds nothing unless an ANSWER changed.
+  session.playheadMoved,
+  // A language switch fires no notify; every name cell and tooltip prints in
+  // the program language.
+  session.languageSettings,
+  // The row you STAND on publishes on its own notifier (it moves per press):
+  // Edit Instance, the shift pair's row and the storyboard's gates read it.
+  session.standing.currentRowListenable,
+  // ⑨'s row selection and the three bands grow PER POINTER MOVE, which a
+  // notify per move would turn into a rebuild of every panel. A band is a
+  // subject claim whichever panel it was swept in (F-281: the band swept on
+  // the STORYBOARD was the fifth signal, missing from the timeline's list).
+  session.rowSelection,
+  session.frameRangeSelection,
+  session.laneRangeSelection,
+  session.trackFrameRangeSelection,
+  // 🚨WHETHER THE CEL HAS A DRAWING, which no selection moves: 픽셀 비우기
+  // empties the cel you stand on (유저 2026-08-27: 「인덱스 이동해서 그림
+  // 사라진거 확인하더라도 버튼 여전히 활성화되있고」), and a first stroke
+  // lights the 색 편집 head at pen-down, as it turns the block white
+  // (pen-up-dock-tail-Q2). The content's own crossing is what the
+  // timeline's host was built again on (R27 #13), so its gates heard it.
+  session.layerStack.celTintRevision,
+  session.renderCaches.brushFrameStore.celContentRevision,
+  // I-55: the pixel board — a copy fills it without moving anything above,
+  // and the two pastes open behind it.
+  session.appClipboard.pixels,
+  // The rows the rail draws — a section toggle, a fold, a twirl, the filter
+  // — which no notify carries; the storyboard's gates ask its rows, and its
+  // host was built again on them.
+  session.railView.drawn,
+]);
 
 /// The cut timeline's context: the session's own verbs, verbatim. Every
 /// member is a one-line delegation on purpose — this panel's dispatch is

@@ -24,10 +24,13 @@ import 'package:anicel/src/ui/panels/panel_collapsed_scope.dart';
 ///
 /// 1. `EditorPanelTabs._contentCache[tab.id]`, whose own comment says 「the
 ///    cached widget instance never changes」
-/// 2. `_SeekGatedTimelineToolbar._cachedActions`, dropped only by a committed
-///    seek, a host rebuild, or a language switch
-/// 3. `_StaticCommandGroup._cached`, dropped only when `rebuildKey` differs,
-///    which is checked in `didUpdateWidget` and so needs a parent rebuild
+/// 2. the host's kept bar (`_keptToolbar`), built again only for another
+///    session or other hidden sections ↩️(`_SeekGatedTimelineToolbar`, until
+///    a-gate-rebuilds-the-whole-toolbar: dropped by a committed seek, a host
+///    rebuild, or a language switch)
+/// 3. `_BakedCommandGroup._cached`, dropped only when its group's gates
+///    answer differently — heard by the group itself (`toolbarGateNews`),
+///    ↩️no longer only on a parent rebuild
 /// 4. `StaticRaster`, the pixel bake
 ///
 /// — and the EDIT below is deliberately not a seek, because a seek is the one
