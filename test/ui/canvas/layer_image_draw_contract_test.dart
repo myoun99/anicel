@@ -296,7 +296,14 @@ void main() {
 /// to a pixel; that would have been the third draw of one copy, and the
 /// three are one now (`_layLevelPixels`), owning `FilterQuality.none` on
 /// its Paint.
-const int _knownRawDraws = 29;
+/// **30** on 2026-10-24 (board `D7-2`, D7-2-Q3=a — one picture per frame,
+/// 유저 「쓸데없는 소재를 만들고 싶지 않은 것」): +1 in
+/// playback/frame_picture_store — a picture read at its own mip levels
+/// (`_readAt`): drawn at 1/2^k a side under `FilterQuality.medium`, owned
+/// on its own Paint, the GPU samples its level k, so a patch's levels and
+/// the levels under the patched ones are the engine's own halving — how
+/// the store keeps a patched picture's chain whole.
+const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

@@ -522,8 +522,28 @@ import '../../tool/refactor/clone_scan.dart';
 /// graph back as well. A third switch merges the three.
 /// 🔬Measured on the lane over master (`05733d19d`, at 88): this one
 /// added, none gone.
+/// 89 → 90 (2026-10-24, D7-2-Q3=a — a frame's one picture, patched where
+/// it stands). The new pair is named:
+///
+///     77 tokens
+///       lib/src/ui/playback/frame_picture_store.dart
+///         FramePictureStore.enforceBudget
+///       lib/src/ui/playback/layer_frame_image_cache.dart
+///         LayerFrameImageCache.enforceBudget
+///
+/// The reading CONFIRMS it: both hand the entries of a keyed map that no
+/// screen pins to the one order a budget lets go by (`letGoWantedLatest`,
+/// whose doc already says the pinned are not handed over), each entry's
+/// recency and bytes its own. The order is shared; what the two spell is
+/// the pin filter and the map's wiring onto it. ⛔Not merged: the SECOND
+/// cache that pins, and the rule of three holds — the export's rows and a
+/// viewer's pages take the order with no pins. 🔜The third pinned cache
+/// moves the filter into the order (its entries less the pinned keys) and
+/// lowers this back.
+/// 🔬Measured on the lane against its base (`2ab8ad81a`, at 89): this one
+/// added, none gone.
 void main() {
-  const ceiling = 89;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

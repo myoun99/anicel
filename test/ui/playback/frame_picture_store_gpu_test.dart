@@ -1,0 +1,135 @@
+@Tags(['gpu'])
+library;
+
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:flutter_gpu/gpu.dart' as gpu;
+import 'package:flutter_test/flutter_test.dart';
+
+/// 🚨★★★A PATCHED PICTURE IS THE PICTURE LAID WITH THE PATCH IN IT — at
+/// every level of its mip chain, which is what a zoomed-out view draws.
+///
+/// The writes are `flutter_gpu`'s, which needs Impeller:
+/// `flutter test --enable-impeller --enable-flutter-gpu <this file>`. On a
+/// runner without it the test is skipped, and says so — not deleted, not
+/// left out (관제 10-24, gpu-pins-run-in-a-batch-of-their-own).
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  const side = 1024;
+  const patch = ui.Rect.fromLTWH(500, 500, 40, 40);
+
+  void frame(ui.Canvas canvas) {
+    canvas
+      ..drawRect(
+        const ui.Rect.fromLTWH(0, 0, side / 2, side + 0.0),
+        ui.Paint()..color = const ui.Color(0xFFCC2020),
+      )
+      ..drawRect(
+        const ui.Rect.fromLTWH(side / 2, 0, side / 2, side + 0.0),
+        ui.Paint()..color = const ui.Color(0xFF2040CC),
+      );
+  }
+
+  void yellow(ui.Canvas canvas) => canvas.drawPaint(
+    ui.Paint()..color = const ui.Color(0xFFFFEE00),
+  );
+
+  test(
+    'every level of a patched picture is the level of the picture laid '
+    'with the patch in it',
+    () async {
+      final store = FramePictureStore<String>();
+      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
+      final patched = await store.lay('before', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: frame,
+      ));
+      final untouched = await _levels(patched!.image);
+      expect(
+        store.patch(from: 'before', to: 'after', rect: patch, draw: yellow),
+        isTrue,
+      );
+      await store.settled();
+      expect(store.peek('after'), same(patched));
+      expect(patched.landing, isEmpty);
+
+      final fresh = await store.lay('fresh', (
+        extent: extent,
+        outside: const ui.Color(0xFFFFFFFF),
+        draw: (canvas) {
+          frame(canvas);
+          canvas.save();
+          canvas.clipRect(patch);
+          yellow(canvas);
+          canvas.restore();
+        },
+      ));
+      final want = await _levels(fresh!.image);
+      final got = await _levels(patched.image);
+      for (var level = 0; level < want.length; level += 1) {
+        expect(
+          _mostApart(got[level], want[level]),
+          lessThanOrEqualTo(1),
+          reason: 'level $level',
+        );
+        if (level <= 6) {
+          expect(
+            _mostApart(got[level], untouched[level]),
+            greaterThan(0),
+            reason: 'level $level shows the patch',
+          );
+        }
+      }
+      store.dispose();
+    },
+    skip: _noFlutterGpu,
+  );
+}
+
+/// Why this runner cannot write into a picture, or null when it can.
+final String? _noFlutterGpu = () {
+  try {
+    gpu.gpuContext;
+    return null;
+  } on Exception catch (error) {
+    return 'needs Impeller with Flutter GPU — run with '
+        '`flutter test --enable-impeller --enable-flutter-gpu`: $error';
+  }
+}();
+
+/// [image] at every level of its chain, as a zoomed-out view draws it:
+/// at 1/2^k under `FilterQuality.medium`.
+Future<List<Uint8List>> _levels(ui.Image image) async {
+  final levels = <Uint8List>[];
+  for (var k = 0; (image.width >> k) >= 1; k += 1) {
+    final size = image.width >> k;
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawImageRect(
+      image,
+      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      ui.Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+      ui.Paint()..filterQuality = ui.FilterQuality.medium,
+    );
+    final picture = recorder.endRecording();
+    final drawn = await picture.toImage(size, size);
+    picture.dispose();
+    levels.add((await drawn.toByteData())!.buffer.asUint8List());
+    drawn.dispose();
+  }
+  return levels;
+}
+
+int _mostApart(Uint8List a, Uint8List b) {
+  var most = 0;
+  for (var i = 0; i < a.length; i += 1) {
+    final apart = (a[i] - b[i]).abs();
+    if (apart > most) {
+      most = apart;
+    }
+  }
+  return most;
+}
