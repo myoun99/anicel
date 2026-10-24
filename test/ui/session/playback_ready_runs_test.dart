@@ -131,6 +131,7 @@ void main() {
       await s.playbackRig.canvasPictures.make((
         cut: held,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
       expect(budget.playbackReadyRuns(0, 30), [
         (startIndex: 0, endIndexExclusive: 30, unreadable: false),
@@ -170,6 +171,7 @@ void main() {
       await s.playbackRig.canvasPictures.make((
         cut: held,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
@@ -210,6 +212,7 @@ void main() {
       await s.playbackRig.canvasPictures.make((
         cut: cut,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(0, 24), [

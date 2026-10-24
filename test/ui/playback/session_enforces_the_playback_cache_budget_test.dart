@@ -132,6 +132,7 @@ void main() {
         await s.playbackRig.canvasPictures.make((
           cut: cut,
           frameIndex: 0,
+          paintPaper: true,
         ), shouldAbort: () => false);
       }
       expect(
@@ -165,6 +166,7 @@ void main() {
       Future<void> prepare(String id) => s.playbackRig.canvasPictures.make((
         cut: s.cutById(CutId(id))!,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
       for (final (id, frameId) in [
         ('cut-2', 'frame-b'),
@@ -221,6 +223,7 @@ void main() {
       await s.playbackRig.canvasPictures.make((
         cut: open,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
       expect(images.estimatedBytes, greaterThan(0), reason: 'premise');
       expect(

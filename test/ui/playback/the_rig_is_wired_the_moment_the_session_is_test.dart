@@ -128,7 +128,7 @@ void main() {
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
       .canvasPictures
-      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex));
+      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex, paintPaper: true));
 
   test('the transport is ATTACHED: the controller holds an audio clock to '
       'read, so a run can ride the samples instead of the wall clock', () {
@@ -640,7 +640,7 @@ void main() {
         final rig = playbackRigOf(s);
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
         await rig.canvasPictures.make(
-          (cut: s.requireActiveCut, frameIndex: 0),
+          (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true),
           shouldAbort: () => false,
         );
         s.renderCaches.layerFrameImageCache.retainPin(

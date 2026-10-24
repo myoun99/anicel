@@ -118,7 +118,7 @@ void main() {
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
       .canvasPictures
-      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex));
+      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex, paintPaper: true));
 
   int heldBytes(EditorSessionManager s) =>
       s.renderCaches.layerFrameImageCache.estimatedBytes;
@@ -182,7 +182,7 @@ void main() {
       // A second picture — the runway cel, made by another hand — and the
       // body cel is now the one used longest ago.
       await s.playbackRig.canvasPictures.make(
-        (cut: s.activeCutOrNull!, frameIndex: 5),
+        (cut: s.activeCutOrNull!, frameIndex: 5, paintPaper: true),
         shouldAbort: () => false,
       );
       expect([held(s, 0), held(s, 5)], [true, true], reason: '⛔premise');
@@ -236,7 +236,7 @@ void main() {
       final activeCut = s.activeCutOrNull!;
       final budget = budgetOf(s);
       bool ready(int frame) => budget
-          .playbackReadyRunsForCut(activeCut, 0, 12)
+          .playbackReadyRunsForCut(activeCut, 0, 12, paintPaper: true)
           .any(
             (run) => frame >= run.startIndex && frame < run.endIndexExclusive,
           );
@@ -259,7 +259,7 @@ void main() {
             'bake, or the bar claims readiness playback cannot deliver',
       );
       expect(
-        budget.playbackReadyRunsForCut(activeCut, 0, 12),
+        budget.playbackReadyRunsForCut(activeCut, 0, 12, paintPaper: true),
         [
           (startIndex: 2, endIndexExclusive: 5, unreadable: false),
           (startIndex: 7, endIndexExclusive: 12, unreadable: false),
@@ -269,12 +269,12 @@ void main() {
       );
 
       await s.playbackRig.canvasPictures.make(
-        (cut: activeCut, frameIndex: 5),
+        (cut: activeCut, frameIndex: 5, paintPaper: true),
         shouldAbort: () => false,
       );
       expect(ready(5), isTrue);
       expect(
-        budget.playbackReadyRunsForCut(activeCut, 0, 12),
+        budget.playbackReadyRunsForCut(activeCut, 0, 12, paintPaper: true),
         [(startIndex: 2, endIndexExclusive: 12, unreadable: false)],
         reason: 'one image answers the whole held span — frame 6 shows the '
             'same cel, so it is the same picture',

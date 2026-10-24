@@ -128,6 +128,7 @@ void main() {
       await rig.canvasPictures.make((
         cut: cuts.first,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
       final first = images.validImageOrNull(
         celOf(s, cuts.first),
@@ -139,6 +140,7 @@ void main() {
       final estimated = rig.canvasPictures.bytesToMake((
         cut: cuts[2],
         frameIndex: 0,
+        paintPaper: true,
       ));
       expect(
         made,

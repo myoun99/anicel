@@ -87,6 +87,14 @@ List<ReadyRun> storyboardReadyRuns(
     start,
     end,
     for (final entry in entries) ...[entry.startFrame, entry.endFrame],
+    // Where any track's cut begins or ends, the film's stage — its lowest
+    // track covered — may move, and with it which picture of a cut the
+    // film shows ([DemandedPicture.paintPaper]).
+    for (final entry in session.projectSettings.projectLayout())
+      if (entry.startFrame < end && entry.endFrame > start) ...[
+        entry.startFrame,
+        entry.endFrame,
+      ],
   }.where((frame) => frame >= start && frame <= end).toList()..sort();
   if (edges.length < 2) {
     return const [];
@@ -116,6 +124,12 @@ List<ReadyRun> storyboardReadyRuns(
           owner.cut,
           ownFrom,
           ownFrom + (to - from),
+          paintPaper: session.rowSpans
+              .trackStackContributionsAt(from)
+              .any(
+                (shown) =>
+                    shown.cut.id == owner.cutId && shown.isBottomTrack,
+              ),
         )) {
       _append(runs, (
         startIndex: run.startIndex + onTrack,

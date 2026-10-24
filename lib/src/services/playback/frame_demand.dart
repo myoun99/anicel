@@ -3,8 +3,16 @@ import 'dart:math' as math;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 
-/// One picture a frame shows: [cut]'s, at its own [frameIndex].
-typedef DemandedPicture = ({Cut cut, int frameIndex});
+/// One picture a frame shows: [cut]'s, at its own [frameIndex] — on its
+/// paper where the screen showing it paints the paper ([paintPaper]).
+///
+/// 🚨[paintPaper] IS PART OF WHICH PICTURE (one-picture-per-frame ②-2): the
+/// paper is the root's bottom row, read by a blend over its backdrop and by
+/// an adjustment as any row is, so it cannot be laid under a picture made
+/// without it. A cut on the canvas, and the film's stage — its lowest track
+/// covered at that frame — paint it; a track over the stage does not, and
+/// the same frame of it is another picture there.
+typedef DemandedPicture = ({Cut cut, int frameIndex, bool paintPaper});
 
 /// The order frames will be WANTED in, counted in steps on from where the
 /// playhead stands — step 0 is the frame under it.
@@ -172,6 +180,9 @@ class StandingDemand implements FrameDemand {
         frameIndex: own
             ? standingFrameAt(step, center: _center, count: _frameCount)!
             : step - _frameCount,
+        // Both cuts are the canvas's: the one it stands on, and the one it
+        // shows next.
+        paintPaper: true,
       ),
     ];
   }

@@ -146,7 +146,8 @@ class PlaybackCacheBudget implements PictureRoom {
     if (cut == null) {
       return const [];
     }
-    return playbackReadyRunsForCut(cut, start, end);
+    // The cut's own run, on the canvas: on its paper.
+    return playbackReadyRunsForCut(cut, start, end, paintPaper: true);
   }
 
   /// [playbackReadyRuns] for an arbitrary cut — the storyboard's green
@@ -180,7 +181,15 @@ class PlaybackCacheBudget implements PictureRoom {
   /// read ([CanvasPictures.cannotRead]), so it plays without that cel.
   /// ↩️The bar asked only [CanvasPictures.has], and such a span was never
   /// painted at all — the run going on past it said nothing anywhere.
-  List<ReadyRun> playbackReadyRunsForCut(Cut cut, int start, int end) {
+  ///
+  /// [paintPaper]: whether the screen its run plays on paints the cut's
+  /// paper ([DemandedPicture.paintPaper]) — which of its pictures it shows.
+  List<ReadyRun> playbackReadyRunsForCut(
+    Cut cut,
+    int start,
+    int end, {
+    required bool paintPaper,
+  }) {
     final pictures = _run.pictures;
     final runs = <ReadyRun>[];
     for (final span in compositeStructureSpansIn(
@@ -188,7 +197,11 @@ class PlaybackCacheBudget implements PictureRoom {
       start: start,
       end: end,
     )) {
-      final picture = (cut: cut, frameIndex: span.start);
+      final picture = (
+        cut: cut,
+        frameIndex: span.start,
+        paintPaper: paintPaper,
+      );
       final bool unreadable;
       if (span.signature.nodes.isEmpty || pictures.has(picture)) {
         unreadable = false;

@@ -183,6 +183,7 @@ void main() {
       await s.playbackRig.canvasPictures.make((
         cut: cut,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false);
       expect(
         s.playbackRig.playbackCache.playbackReadyRuns(0, 4),

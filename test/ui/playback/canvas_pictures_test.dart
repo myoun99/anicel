@@ -99,7 +99,7 @@ void main() {
     qualityAt: (_, _) => quality,
   );
 
-  DemandedPicture at(int frame) => (cut: cut, frameIndex: frame);
+  DemandedPicture at(int frame) => (cut: cut, frameIndex: frame, paintPaper: true);
 
   bool held(LayerFrameImageCache images, String cel, PlaybackQuality q) =>
       images.validImageOrNull(
@@ -387,7 +387,7 @@ void main() {
       totalFrames: 4,
       loops: () => true,
       playhead: () => playhead,
-      picturesOf: (frame) => [(cut: cut, frameIndex: frame)],
+      picturesOf: (frame) => [(cut: cut, frameIndex: frame, paintPaper: true)],
       playlistFrameOf: (cutId, frame) => frame,
     );
 
@@ -423,7 +423,7 @@ void main() {
       totalFrames: 4,
       loops: () => false,
       playhead: () => 0,
-      picturesOf: (frame) => [(cut: cut, frameIndex: frame)],
+      picturesOf: (frame) => [(cut: cut, frameIndex: frame, paintPaper: true)],
       playlistFrameOf: (cutId, frame) => frame,
     );
 

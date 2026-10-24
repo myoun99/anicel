@@ -669,12 +669,23 @@ class EditorSessionManager extends ChangeNotifier
                 );
                 return [
                   if (position != null)
-                    (cut: position.cut, frameIndex: position.localFrameIndex),
+                    (
+                      cut: position.cut,
+                      frameIndex: position.localFrameIndex,
+                      paintPaper: true,
+                    ),
                 ];
               }
             : (frame) => [
                 for (final shown in rowSpans.trackStackContributionsAt(frame))
-                  (cut: shown.cut, frameIndex: shown.localFrameIndex),
+                  (
+                    cut: shown.cut,
+                    frameIndex: shown.localFrameIndex,
+                    // The film's stage — its lowest track covered here —
+                    // is on its paper; a track over it is not
+                    // (`CanvasTrackStackView`).
+                    paintPaper: shown.isBottomTrack,
+                  ),
               ],
         playlistFrameOf: alone
             ? (cutId, frameIndex) =>

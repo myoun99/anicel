@@ -155,7 +155,7 @@ void main() {
 
       late Future<bool> made;
       await whileNoWorkerIsFree(() async {
-        made = pictures.make((cut: cut, frameIndex: 0), shouldAbort: () => false);
+        made = pictures.make((cut: cut, frameIndex: 0, paintPaper: true), shouldAbort: () => false);
         await pumpEventQueue();
         expect(
           store.asked.toSet(),
@@ -167,7 +167,7 @@ void main() {
       for (final cel in ['a', 'b', 'c']) {
         expect(store.hotBakedSurfaceOrNull(keyOf(cel)), isNotNull);
       }
-      expect(pictures.has((cut: cut, frameIndex: 0)), isTrue);
+      expect(pictures.has((cut: cut, frameIndex: 0, paintPaper: true)), isTrue);
     });
   });
 
@@ -183,7 +183,7 @@ void main() {
         await picturesOf(
           images,
           ['a', 'b'],
-        ).make((cut: cut, frameIndex: 0), shouldAbort: () => true),
+        ).make((cut: cut, frameIndex: 0, paintPaper: true), shouldAbort: () => true),
         isFalse,
       );
       expect(await prepare(images, 'a', shouldAbort: () => true), isNull);

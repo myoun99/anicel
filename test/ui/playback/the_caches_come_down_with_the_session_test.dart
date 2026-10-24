@@ -52,6 +52,7 @@ void main() {
       () => session.playbackRig.canvasPictures.make((
         cut: cut,
         frameIndex: 0,
+        paintPaper: true,
       ), shouldAbort: () => false),
     );
     expect(

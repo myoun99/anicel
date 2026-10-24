@@ -104,6 +104,7 @@ void main() {
     s.playbackRig.canvasPictures.make((
       cut: s.activeCutOrNull!,
       frameIndex: 0,
+      paintPaper: true,
     ), shouldAbort: () => false),
     throwsA(anything),
     reason: '⛔CONTROL: the cel\'s bytes are not there to read',
