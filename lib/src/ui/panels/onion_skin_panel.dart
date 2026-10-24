@@ -282,11 +282,13 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
     final (before, index) = target;
     final peg = _pegAt(_pegsOf(before), index);
     final side = before ? 'before' : 'after';
+    // The per cent is the bar's own to write (F-34) — the tooltip names the
+    // peg, and says `off` where the bar has nothing to show.
     return AppTooltip(
       key: ValueKey<String>('onion-peg-$side-${index + 1}'),
       message:
-          '${index + 1} ${before ? 'back' : 'ahead'} · '
-          '${peg.shows ? '${(peg.opacity * 100).round()}%' : 'off'}',
+          '${index + 1} ${before ? 'back' : 'ahead'}'
+          '${peg.shows ? '' : ' · off'}',
       child: FieldSlider.opacity(
         key: ValueKey<String>('onion-peg-bar-$side-${index + 1}'),
         value: peg.opacity,

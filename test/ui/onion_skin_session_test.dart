@@ -121,7 +121,7 @@ void main() {
     // number under the bar — 「1번 2번 등 슬라이더 아래의 순서 숫자를
     // 버튼으로서 누르면 on/off」. The tooltip is still the bar's.
     final peg1 = find.byKey(const ValueKey<String>('onion-peg-before-1'));
-    expect(tester.widget<Tooltip>(peg1).message, '1 back · 40%');
+    expect(tester.widget<Tooltip>(peg1).message, '1 back');
     await tester.tap(
       find.byKey(const ValueKey<String>('onion-peg-switch-before-1')),
     );
