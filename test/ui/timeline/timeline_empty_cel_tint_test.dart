@@ -8,19 +8,16 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
@@ -536,33 +533,29 @@ void main() {
     // pen-down — every row repainted, the timeline dock drew five frames
     // whole, and not one of the panel's pixels changed.
     group('the first stroke LANDING on an empty cel', () {
+      /// [linkedCut] first makes the 겸용 cut of the default one and comes
+      /// back to draw on the default cut's row: the group's canonical
+      /// member, so the store names the very key the live stroke stands on.
       ({EditorSessionManager s, Layer layer, BrushFrameKey key}) penDown({
-        LayerLinkRegistry Function(CutId cut, LayerId row)? links,
+        bool linkedCut = false,
       }) {
-        var project = createDefaultProject();
-        if (links != null) {
-          final probe = EditorSessionManager(initialProject: project);
-          final row = probe.activeLayer!.id;
-          final cut = probe.activeCutOrNull!.id;
-          probe.dispose();
-          // A second cut holding the same row, for the link to window.
-          final track = project.tracks.single;
-          project = project.copyWith(
-            tracks: [
-              track.copyWith(
-                cuts: [
-                  ...track.cuts,
-                  track.cuts.first.copyWith(id: const CutId('elsewhere')),
-                ],
-              ),
-            ],
-            linkRegistry: links(cut, row),
-          );
-        }
-        final s = EditorSessionManager(initialProject: project);
+        final s = EditorSessionManager(initialProject: createDefaultProject());
         addTearDown(s.dispose);
+        if (linkedCut) {
+          final cut = s.activeCutOrNull!.id;
+          final row = s.activeLayer!.id;
+          s.cutVerbs.createLinkedCutFromActiveCut();
+          s.selectCut(cut);
+          s.selectLayer(row);
+          s.selectFrameIndex(0);
+        }
         s.createDrawingAtCurrentFrame();
         final layer = s.activeLayer!;
+        expect(
+          s.selectedFrame?.id,
+          layer.frames.single.id,
+          reason: 'premise: the live stroke stands on the new cel',
+        );
         final key = s.brushFrameKeyForCut(
           s.activeCutOrNull!,
           layer.id,
@@ -603,26 +596,14 @@ void main() {
 
       test('🚨a linked row still hears it — it windows the same bank, and '
           'the live stroke answered only for its own row', () {
-        final (:s, :layer, :key) = penDown(
-          links: (cut, row) => LayerLinkRegistry(
-            groups: [
-              LayerLinkGroup(
-                id: 'shared',
-                members: [
-                  LayerLinkMember(
-                    trackId: const TrackId('default-track'),
-                    cutId: cut,
-                    layerId: row,
-                  ),
-                  LayerLinkMember(
-                    trackId: const TrackId('default-track'),
-                    cutId: const CutId('elsewhere'),
-                    layerId: row,
-                  ),
-                ],
-              ),
-            ],
+        final (:s, :layer, :key) = penDown(linkedCut: true);
+        expect(
+          s.repository.requireProject().linkRegistry.isLinked(
+            cutId: key.cutId,
+            layerId: layer.id,
           ),
+          isTrue,
+          reason: 'premise: the row is linked',
         );
         final down = s.layerStack.celTintRevision.value;
 
