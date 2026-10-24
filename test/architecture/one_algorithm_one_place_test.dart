@@ -558,7 +558,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// the rule of three holds. 🔜A third kind of the store's background work
 /// takes the turn through one helper of the entry's, and lowers this
 /// back.
-/// 🔬Measured on the lane over master (`c1875d6a0`, at 90): this one
+/// 🔬Measured on the lane over master (`aa7160aa1`, at 90): this one
 /// added, none gone.
 void main() {
   const ceiling = 91;
