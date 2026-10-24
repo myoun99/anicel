@@ -270,6 +270,30 @@ void main() {
     expect(identical(store.bakedSurfaceOrNull(older), olderSurface), isTrue);
   });
 
+  test('a crossing NAMES its cels — one bump for a batch, every cel of it '
+      'named, a whole-store swap naming every cel it held', () {
+    final store = BrushFrameStore();
+    final a = key(layer: 'a');
+    final b = key(layer: 'b');
+    final other = key(cut: 'other');
+
+    store.storeBakedSurface(other, surfaceWithInk());
+    expect(store.celsLastCrossed, {other});
+
+    final before = store.celContentRevision.value;
+    store.restoreBakedForCut(const CutId('c'), {
+      a: surfaceWithInk(),
+      b: surfaceWithInk(),
+    });
+    expect(store.celContentRevision.value, before + 1);
+    expect(store.celsLastCrossed, {a, b});
+
+    final beforeSwap = store.celContentRevision.value;
+    store.restoreBaked(const {});
+    expect(store.celContentRevision.value, beforeSwap + 1);
+    expect(store.celsLastCrossed, {other, a, b});
+  });
+
   test('rekeyFrames is a content CROSSING the timeline hears: '
       'celContentRevision bumps for both ends of the move', () {
     final store = BrushFrameStore();

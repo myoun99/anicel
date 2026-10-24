@@ -170,7 +170,6 @@ class BrushFrameStore {
     _pasteboardReach = reach;
     clearDisplayCaches();
     final cut = <BrushFrameKey, BitmapSurface>{};
-    var crossed = false;
     final hotAhead = ahead?.reach == reach ? ahead?.hot : null;
     for (final key in _bakedSurfaces.keys.toList()) {
       final surface = _bakedSurfaces[key]!;
@@ -197,7 +196,7 @@ class BrushFrameStore {
         stands: (ref) => _standsBehind[ref] = reach,
       );
       for (final key in kept.keys) {
-        crossed = _recordCelContent(key) || crossed;
+        _recordCelContent(key);
       }
       cut.addAll(kept);
     }
@@ -208,9 +207,7 @@ class BrushFrameStore {
       }
       celPixelRevision.value += 1;
     }
-    if (crossed) {
-      celContentRevision.value += 1;
-    }
+    _announceCrossings();
     _scheduleCooling();
     return cut;
   }
@@ -386,6 +383,22 @@ class BrushFrameStore {
   /// a way of emptying a cel that skips it leaves a block white over nothing.
   final ValueNotifier<int> celContentRevision = ValueNotifier<int>(0);
 
+  /// The cels the last bump of [celContentRevision] announced crossed, by
+  /// the keys this store keeps them under.
+  ///
+  /// 🚨A listener that answers for a cel by more than this store — the live
+  /// stroke counts its cel as drawn before any pixel lands here
+  /// (`LayerStack.celHoldsAPicture`) — has to know WHICH cels crossed, or
+  /// the stroke landing reads as every block changing (pen-up-dock-tail,
+  /// 2026-10-24: a first stroke's commit repainted every row of the
+  /// timeline, and not one of the panel's pixels moved).
+  Set<BrushFrameKey> get celsLastCrossed => _celsLastCrossed;
+  Set<BrushFrameKey> _celsLastCrossed = const {};
+
+  /// The cels crossed since the last bump — what [_announceCrossings]
+  /// tells.
+  final Set<BrushFrameKey> _crossing = {};
+
   /// Bumps on EVERY pixel edit ([markCelEdited]), crossing or not.
   ///
   /// Playback composites self-validate against a signature that folds in
@@ -400,28 +413,39 @@ class BrushFrameStore {
   final Set<BrushFrameKey> _celsWithContent = {};
 
   void _noteCelContent(BrushFrameKey canonicalKey) {
-    if (_recordCelContent(canonicalKey)) {
-      celContentRevision.value += 1;
-    }
+    _recordCelContent(canonicalKey);
+    _announceCrossings();
   }
 
-  /// Brings the detector's memory up to date for [canonicalKey] and says
-  /// whether it crossed — a batch records each of its cels and bumps once.
-  bool _recordCelContent(BrushFrameKey canonicalKey) {
+  /// Brings the detector's memory up to date for [canonicalKey], noting a
+  /// crossing for the next [_announceCrossings] — a batch records each of
+  /// its cels and bumps once.
+  void _recordCelContent(BrushFrameKey canonicalKey) {
     // ⛔The SAME question the block draws, not a second copy of it — a
     // detector that crossed on one rule while the paint read another is how
     // the block came to disagree with the drawing in the first place.
     final has = celHasRenderableContent(canonicalKey);
     final had = _celsWithContent.contains(canonicalKey);
     if (has == had) {
-      return false;
+      return;
     }
     if (has) {
       _celsWithContent.add(canonicalKey);
     } else {
       _celsWithContent.remove(canonicalKey);
     }
-    return true;
+    _crossing.add(canonicalKey);
+  }
+
+  /// One bump of [celContentRevision] for every cel crossed since the last
+  /// — none when nothing did — naming them in [celsLastCrossed].
+  void _announceCrossings() {
+    if (_crossing.isEmpty) {
+      return;
+    }
+    _celsLastCrossed = Set.unmodifiable(_crossing);
+    _crossing.clear();
+    celContentRevision.value += 1;
   }
 
   /// Derived preview caches. NOT byte-budgeted (R19 P3a): every donated or
@@ -1219,10 +1243,9 @@ class BrushFrameStore {
     _movedAhead = null;
     // R27 #13: a whole-store swap (project open) is one crossing for
     // every cel there was — one bump covers the lot.
-    if (_celsWithContent.isNotEmpty) {
-      _celsWithContent.clear();
-      celContentRevision.value += 1;
-    }
+    _crossing.addAll(_celsWithContent);
+    _celsWithContent.clear();
+    _announceCrossings();
   }
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
@@ -1771,7 +1794,6 @@ class BrushFrameStore {
     }
     final move = (canvasSize: canvasSize, dx: dx.round(), dy: dy.round());
     var edited = false;
-    var crossed = false;
     for (final key in _celKeysOfCut(cutId)) {
       // Cold cels of the cut materialize first (cut-scoped = bounded).
       _storeHot(key, _moved(key, bakedSurfaceOrNull(key)!, move));
@@ -1785,14 +1807,12 @@ class BrushFrameStore {
       _update(_canonicalize(key), _markCacheDirty);
       edited = true;
       // An offset can carry every line off the canvas.
-      crossed = _recordCelContent(key) || crossed;
+      _recordCelContent(key);
     }
     if (edited) {
       celPixelRevision.value += 1;
     }
-    if (crossed) {
-      celContentRevision.value += 1;
-    }
+    _announceCrossings();
     _scheduleCooling();
   }
 
@@ -2002,7 +2022,6 @@ class BrushFrameStore {
   /// size (954 of 1024 tiles of an 8K fill deleted by one visit to a
   /// default-sized cut; the user's data-loss report).
   void resizeBakedSurfaces(CanvasSize canvasSize, {required CutId cutId}) {
-    var crossed = false;
     for (final key in _bakedSurfaces.keys.toList()) {
       if (key.cutId != cutId) {
         continue;
@@ -2015,11 +2034,9 @@ class BrushFrameStore {
       _fileCels.remove(key);
       _markDirty(key);
       // A crop can take every line with it.
-      crossed = _recordCelContent(key) || crossed;
+      _recordCelContent(key);
     }
-    if (crossed) {
-      celContentRevision.value += 1;
-    }
+    _announceCrossings();
     _rewriteKeptCels(
       skips: (key, ref) => key.cutId != cutId || ref.canvasSize == canvasSize,
       rewrite: (surface) =>
@@ -2159,7 +2176,6 @@ class BrushFrameStore {
     for (final key in _celKeysOfCut(cutId)) {
       _removeBaked(key);
     }
-    var crossed = false;
     for (final entry in snapshot.entries) {
       _storeHot(entry.key, entry.value);
       _fileCels.remove(entry.key);
@@ -2168,11 +2184,9 @@ class BrushFrameStore {
       storeRebuiltDisplayCache(key: entry.key, previewSurface: entry.value);
       // The removal above crossed each drawn cel to empty; this crosses it
       // back, or the detector would remember the cut as blank.
-      crossed = _recordCelContent(entry.key) || crossed;
+      _recordCelContent(entry.key);
     }
-    if (crossed) {
-      celContentRevision.value += 1;
-    }
+    _announceCrossings();
     _scheduleCooling();
   }
 

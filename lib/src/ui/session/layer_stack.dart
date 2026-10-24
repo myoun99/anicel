@@ -16,6 +16,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -485,6 +486,43 @@ class LayerStack {
     _bumpCelTintRevision();
   }
 
+  /// The store crossing a cel flips its answer — except where the live
+  /// stroke gives it already ([celHoldsAPicture]): a first stroke counts
+  /// its cel as drawn from pen-down, and its landing crosses the cel in the
+  /// store while the pen is still down. No block changes.
+  ///
+  /// 🔬pen-up-dock-tail (2026-10-24, the home page in a widget test): that
+  /// landing repainted every row of the timeline with not one of the
+  /// panel's pixels moved, and the dock drew five frames whole after every
+  /// first stroke on an empty cel, where a stroke on a drawn cel drew one.
+  void _bumpWhereTheStoreCrossed() {
+    final crossed = _renderCaches.brushFrameStore.celsLastCrossed;
+    if (crossed.isNotEmpty && crossed.every(_theLiveStrokeAnswersFor)) {
+      return;
+    }
+    _bumpCelTintRevision();
+  }
+
+  /// Whether [crossed] is the live stroke's cel and no other cel shows its
+  /// pixels: a linked row windows the same bank, and a drag in flight hangs
+  /// cels where they are not ([celPixelsOf]) — the crossing is THEIR change.
+  bool _theLiveStrokeAnswersFor(BrushFrameKey crossed) {
+    final cut = _project.activeCutOrNull;
+    final cel = _liveStrokeCel;
+    if (!_brushInputActive.value ||
+        cut == null ||
+        cel == null ||
+        _dragPreview.value != null) {
+      return false;
+    }
+    final (layerId, frameId) = cel;
+    return crossed == _project.brushFrameKeyForCut(cut, layerId, frameId) &&
+        !_project.repository.requireProject().linkRegistry.isLinked(
+          cutId: cut.id,
+          layerId: layerId,
+        );
+  }
+
   /// The two events that can flip [celHasContentForLayer]'s answer, and the
   /// two that can flip [celCannotBeReadForLayer]'s: a cel found unreadable,
   /// and a sound's answer moving ([_soundsMoved]).
@@ -501,7 +539,7 @@ class LayerStack {
   /// it replaces; that is where a new way of emptying a cel has to cross.
   void attach() {
     _renderCaches.brushFrameStore.celContentRevision.addListener(
-      _bumpCelTintRevision,
+      _bumpWhereTheStoreCrossed,
     );
     _brushInputActive.addListener(_bumpWhereTheLiveStrokeDecides);
     _renderCaches.layerFrameImageCache.unreadable.revision.addListener(
@@ -512,7 +550,7 @@ class LayerStack {
 
   void dispose() {
     _renderCaches.brushFrameStore.celContentRevision.removeListener(
-      _bumpCelTintRevision,
+      _bumpWhereTheStoreCrossed,
     );
     _brushInputActive.removeListener(_bumpWhereTheLiveStrokeDecides);
     _renderCaches.layerFrameImageCache.unreadable.revision.removeListener(
