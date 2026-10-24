@@ -473,6 +473,45 @@ void main() {
       store.dispose();
     });
 
+    test('written for a caller leave the next ones to their turn', () async {
+      final turns = _turnsInAQuiet();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        quietTurns: turns,
+        levelsQuiet: never,
+        levelsWaitAtMost: 2,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      // Nothing else waits: the caller's own write is the one that lands.
+      await store.settled();
+      expect(gpu.levelWrites, hasLength(1));
+      final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
+      for (final left in [100.0, 200.0]) {
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+          draw: fill,
+        );
+      }
+      expect(await pollUntil(() => picture.landing.length == 2), isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await pumpEventQueue();
+      expect(gpu.levelWrites, hasLength(1), reason: 'the two at the most '
+          'wait for the turn another job holds');
+      await other!.landed();
+      expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
+      expect(gpu.levelWrites, hasLength(2));
+      store.dispose();
+    });
+
     test('waiting for a quiet with room become due once a caller waits for '
         'them', () async {
       final moves = <Completer<void>>[];
