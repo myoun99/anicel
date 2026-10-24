@@ -67,20 +67,25 @@ Set<RenderObject> panelsTicksAndCanvas(WidgetTester tester) => {
 /// ONE question for the pins that ask a region (a scrub's, a sheet's pan,
 /// a carried block's): each built that allow list on its own, and each
 /// built it of every [TickLayer] — a panel's host among them (10-24).
+///
+/// 🚨A layout builder's own layer is let repaint ITSELF, not what it holds:
+/// everything a panel draws is under one, and a layer let repaint with
+/// everything under it let the panel repaint whole. 🪦Asked that way, the
+/// storyboard's playhead tint taken off its tick layer — the panel's grid
+/// repainted at every move — read nothing (10-24).
 List<String> tickStraysUnder(
   RenderObject root, {
   Set<RenderObject> alsoAllowed = const {},
-}) => [
-  for (final stray in repaintStrays(
-    root,
-    allowed: {
-      ...tickBoundariesUnder(root),
-      ...aloneLayersUnder(root),
-      ...alsoAllowed,
-    },
-  ))
-    nameOfBoundary(stray),
-];
+}) {
+  final alone = aloneLayersUnder(root);
+  return [
+    for (final stray in repaintStrays(
+      root,
+      allowed: {...tickBoundariesUnder(root), ...alsoAllowed},
+    ))
+      if (!alone.contains(stray)) nameOfBoundary(stray),
+  ];
+}
 
 /// Every [LaidOutAlone]'s own layer under [root] — the boundary that holds
 /// its layout builder and nothing else.
