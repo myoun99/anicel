@@ -182,6 +182,19 @@ void main() {
       );
       await tester.pump();
 
+      // 🚨A pan builds none of the sheet's host: the panel hears the view
+      // itself ([BrushCanvasPanel.viewportController], 08-21) and prints
+      // the sheet over it. 🔬The host heard the view as well and was built
+      // again, whole, at every step of a pan (10-24).
+      final hostType = tester.widget(host).runtimeType;
+      var hostBuilds = 0;
+      debugOnRebuildDirtyWidget = (element, _) {
+        if (element.widget.runtimeType == hostType) {
+          hostBuilds += 1;
+        }
+      };
+      addTearDown(() => debugOnRebuildDirtyWidget = null);
+
       // A short pan all the same: a boundary disposed while still waiting to
       // repaint trips flushPaint's `layer != null` at teardown (measured
       // before the zoom above: twelve steps tripped it, three did not; and
@@ -194,8 +207,10 @@ void main() {
         const Offset(0, -9),
         steps: 4,
       );
+      debugOnRebuildDirtyWidget = null;
       expect(view(), isNot(before), reason: 'fixture: the $tab panned');
       expect(moves, isEmpty, reason: moves.join('\n\n'));
+      expect(hostBuilds, 0, reason: 'a pan built the $tab\'s host');
     });
   }
 
