@@ -59,7 +59,7 @@ void main() {
     testWidgets('the rail carries one Cut button', (tester) async {
       await tester.pumpWidget(_panel());
       expect(_button('tool-cut-button'), findsOneWidget);
-      expect(find.byTooltip('Cut Tool'), findsOneWidget);
+      expect(find.railTooltip('Cut Tool'), findsOneWidget);
     });
 
     testWidgets('it lights up for both cut verbs', (tester) async {
@@ -115,16 +115,16 @@ void main() {
 
       expect(_button('tool-brush-button'), findsOneWidget);
       expect(_button('tool-eraser-button'), findsOneWidget);
-      expect(find.byTooltip('Brush Tool'), findsOneWidget);
-      expect(find.byTooltip('Eraser Tool'), findsOneWidget);
+      expect(find.railTooltip('Brush Tool'), findsOneWidget);
+      expect(find.railTooltip('Eraser Tool'), findsOneWidget);
     });
 
     testWidgets('exposes eyedropper and fill buttons (P5/P6)', (tester) async {
       final pressed = <ToolPress>[];
       await tester.pumpWidget(_panel(onPress: pressed.add));
 
-      expect(find.byTooltip('Eyedropper Tool'), findsOneWidget);
-      expect(find.byTooltip('Fill Tool'), findsOneWidget);
+      expect(find.railTooltip('Eyedropper Tool'), findsOneWidget);
+      expect(find.railTooltip('Fill Tool'), findsOneWidget);
 
       await tester.tap(_button('tool-eyedropper-button'));
       await tester.tap(_button('tool-fill-button'));

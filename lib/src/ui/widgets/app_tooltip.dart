@@ -980,6 +980,17 @@ abstract final class SummonedTooltip {
     }
   }
 
+  /// A target with something to say was hit — so an [AppTooltip] around it
+  /// does not answer the same hover. Flutter's rule for nested tooltips
+  /// ([_ExclusiveMouseRegion]): only the innermost one shows. 🧪Measured
+  /// 2026-10-24: a project tab's ✕ stands inside the tab's own tooltip, and
+  /// both would show over the ✕ without this.
+  static void standInnermost() {
+    if (!_RenderExclusiveMouseRegion.isOutermostMouseRegion) {
+      _RenderExclusiveMouseRegion.foundInnermostMouseRegion = true;
+    }
+  }
+
   /// [target] is gone: its window goes with it, at once.
   static void forget(SummonedTooltipTarget target) {
     final window = _window;

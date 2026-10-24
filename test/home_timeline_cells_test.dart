@@ -9,6 +9,7 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import 'helpers/app_icon_button_probe.dart';
 import 'helpers/home_page_probes.dart';
 import 'helpers/named_finders.dart';
 
@@ -237,7 +238,7 @@ void main() {
         const ValueKey<String>('toggle-mark-button'),
       );
       expect(markButton, findsOneWidget);
-      expect(find.byTooltip('In-between Mark'), findsOneWidget);
+      expect(find.railTooltip('In-between Mark'), findsOneWidget);
 
       // Dots are block-owned (UI-R9 #8): an empty cell offers no toggle.
       expect(

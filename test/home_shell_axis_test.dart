@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'ui/timeline/timeline_ruler_probe.dart';
 
+import 'helpers/app_icon_button_probe.dart';
 import 'helpers/home_page_probes.dart';
 import 'helpers/the_classic_rail.dart';
 
@@ -36,14 +37,14 @@ void main() {
     // An install opens on Clip Studio's layout, where Add Frame has no key:
     // TVPaint's I is the eyedropper's there (F-417-Q2). ↩️It showed
     // anicel's Shift+I until then (I-63-Q4).
-    expect(find.byTooltip('New Frame'), findsOneWidget);
+    expect(find.railTooltip('New Frame'), findsOneWidget);
     await expectCutName(tester, 'default-cut-1', '1');
     await expectActiveCutName(tester, '1');
     expect(find.text('New Drawing'), findsNothing);
 
     // Cut management rides the toolbar's cut group (R-toolbar round): a
     // new-cut button plus the Cut ▾ flyout with the command set.
-    expect(find.byTooltip('New cut'), findsOneWidget);
+    expect(find.railTooltip('New cut'), findsOneWidget);
     final cutMenu = find.byKey(const ValueKey<String>('cut-menu-button'));
     await tester.ensureVisible(cutMenu);
     await tester.pumpAndSettle();
