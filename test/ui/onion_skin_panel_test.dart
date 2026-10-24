@@ -179,6 +179,40 @@ void main() {
     }
   });
 
+  testWidgets('before pegs stand left of the current drawing and after pegs '
+      'right, peg 1 nearest it', (tester) async {
+    await pumpPanel(tester);
+
+    double x(Finder finder) => tester.getRect(finder).center.dx;
+    final current = x(find.byKey(const ValueKey<String>('onion-peg-current')));
+    expect(x(peg('before', 8)), lessThan(x(peg('before', 1))));
+    expect(x(peg('before', 1)), lessThan(current));
+    expect(x(peg('after', 1)), greaterThan(current));
+    expect(x(peg('after', 8)), greaterThan(x(peg('after', 1))));
+  });
+
+  testWidgets('a number reads whether its peg shows by its colour alone', (
+    tester,
+  ) async {
+    await pumpPanel(tester);
+
+    Color? inkOf(String side, int index) => tester
+        .widget<Text>(
+          find.descendant(
+            of: pegSwitch(side, index),
+            matching: find.byType(Text),
+          ),
+        )
+        .style
+        ?.color;
+    expect(inkOf('before', 1), AppColors.text);
+    expect(inkOf('before', 2), AppColors.textDim);
+
+    await tester.tap(pegSwitch('before', 1));
+    await tester.pumpAndSettle();
+    expect(inkOf('before', 1), AppColors.textDim);
+  });
+
   testWidgets('the step picker switches between drawing blocks and raw '
       'frames without touching the falloff', (tester) async {
     final read = await pumpPanel(tester);
