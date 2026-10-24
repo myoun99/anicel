@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
 /// 🚨A PANEL IS BUILT ONLY WHILE IT SHOWS (유저 2026-10-14: 「한번이라도 열린
 /// 뒤? 열려있을때만 지어지는게 맞는구조 아닌가?」 · 「이건 모든 패널
@@ -148,6 +149,54 @@ void main() {
     );
     await tester.pump();
     expect(heavyBuilds, 3, reason: 'the notation reprints a sheet');
+  });
+
+  testWidgets('an open tab stands on the floor it states now, its content '
+      'handed back as built', (tester) async {
+    var builds = 0;
+    Widget floored(double minWidth) => MaterialApp(
+      home: Scaffold(
+        body: EditorPanelTabs(
+          tabs: [
+            EditorPanelTab(
+              id: 'colour',
+              label: 'Colour',
+              icon: Icons.palette,
+              // Measured in words at the OS's text size, as the colour
+              // panel's is.
+              minContentWidth: minWidth,
+              builder: (context) {
+                builds += 1;
+                return const _CounterBox(key: ValueKey('colour'));
+              },
+            ),
+          ],
+          activeTabId: 'colour',
+          onTabSelected: (_) {},
+        ),
+      ),
+    );
+    double floor() => tester
+        .widget<OverflowScrollers>(find.byType(OverflowScrollers))
+        .minWidth;
+
+    await tester.pumpWidget(floored(300));
+    await tester.tap(find.byKey(const ValueKey('colour')));
+    await tester.pump();
+    expect(floor(), 300);
+
+    await tester.pumpWidget(floored(600));
+    expect(
+      floor(),
+      600,
+      reason: '🚨the floor the tab states now — the kept one overflowed',
+    );
+    expect(builds, 1, reason: 'the content is handed back as built');
+    expect(
+      find.text('count: 1'),
+      findsOneWidget,
+      reason: 'and kept its State',
+    );
   });
 
   testWidgets('an open tab is handed back only to itself, and only while it '

@@ -345,10 +345,13 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     if (widget.collapsed && active.collapsedExtent <= 0) {
       return null;
     }
-    return OpenTabContent(
-      tabId: active.id,
-      identity: active.contentIdentity,
-      build: () => _buildTabContent(active),
+    return _onItsFloor(
+      active,
+      OpenTabContent(
+        tabId: active.id,
+        identity: active.contentIdentity,
+        build: () => _bake(active, Builder(builder: active.builder)),
+      ),
     );
   }
 
@@ -650,25 +653,20 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     );
   }
 
-  /// One tab's content; panels with a minimum content size larger than
-  /// the dock render at that size inside scrollers.
-  ///
-  /// ★THE funnel every docked panel passes through, and therefore the
-  /// only place the "a panel is light unless it says otherwise" rule can
-  /// live. See [EditorPanelTab.staticRaster].
-  Widget _buildTabContent(EditorPanelTab tab) => _buildTabInterior(tab);
-
   /// Wraps [child] in the panel bake unless the tab opted out.
   ///
-  /// ⚠️Called at each of the interior's leaves rather than once around
-  /// the outside, and that placement is not cosmetic. The overflow
-  /// branches below put the panel inside a `SingleChildScrollView`, and a
-  /// viewport IS a repaint boundary — so a bake around the outside would
-  /// find one, stand down, and the panel would silently go back to
-  /// paying full raster price. It would do that only when the dock is
-  /// narrow enough to overflow, which means the cost would appear and
-  /// disappear as the user drags a splitter, and no test that pumps a
-  /// single window size would ever see it.
+  /// ★THE funnel every docked panel passes through ([_contentOf]), and
+  /// therefore the only place the "a panel is light unless it says
+  /// otherwise" rule can live. See [EditorPanelTab.staticRaster].
+  ///
+  /// ⚠️Innermost, under the floor's scrollers ([_onItsFloor]), and that
+  /// placement is not cosmetic. The scrollers put the panel inside a
+  /// `SingleChildScrollView`, and a viewport IS a repaint boundary — so a
+  /// bake around the outside would find one, stand down, and the panel
+  /// would silently go back to paying full raster price. It would do that
+  /// only when the dock is narrow enough to overflow, which means the cost
+  /// would appear and disappear as the user drags a splitter, and no test
+  /// that pumps a single window size would ever see it.
   Widget _bake(EditorPanelTab tab, Widget child) {
     if (!tab.staticRaster) {
       return child;
@@ -676,9 +674,19 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     return StaticRaster(debugLabel: 'panel:${tab.id}', child: child);
   }
 
-  Widget _buildTabInterior(EditorPanelTab tab) {
+  /// [content] on [tab]'s floor: a panel with a minimum content size
+  /// larger than the dock renders at that size inside scrollers.
+  ///
+  /// 🚨THE FLOOR IS THE TAB'S AS IT STANDS — read here, round the open
+  /// content and never inside it, which is handed back as first built
+  /// ([OpenTabContent]). A floor is measured in words at the OS's text size,
+  /// and the timeline's in its orientation. ↩️ca4b75959 kept the scrollers
+  /// with the content: the OS text size doubled under a running app left
+  /// the colour panel on its 1× floor, and its status bar overflowed 52px
+  /// (master_check, 2026-10-24).
+  Widget _onItsFloor(EditorPanelTab tab, Widget content) {
     if (tab.minContentWidth == null && tab.minContentHeight == null) {
-      return _bake(tab, Builder(builder: tab.builder));
+      return content;
     }
     // 🚨ONE TREE SHAPE whether the dock fits the panel or not, open or folded
     // (F-103, 유저:
@@ -691,8 +699,9 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     // again. A fold did the same from its own bare branch. Both scrollers
     // are always there now ([OverflowScrollers]), and a fold only drops the
     // floor, so crossing the floor or folding changes how far they scroll,
-    // never what the panel sits in. The bake stays innermost ([_bake]).
-    final body = _bake(tab, Builder(builder: tab.builder));
+    // never what the panel sits in. Whether a tab has a floor at all is its
+    // id's, so the shape holds from build to build. The bake stays
+    // innermost ([_bake]).
     return Builder(
       builder: (context) {
         // ★A COLLAPSED panel never meets its floor. The floor is what
@@ -706,13 +715,13 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         // The fold is read HERE, through the scope, and not where the tab's
         // content is built: the open content ([OpenTabContent]) is built
         // once, so a fold decided there held whatever its first
-        // build saw (F-103). [body] is built OUTSIDE this builder, so a fold
-        // rebuilds the scrollers and not the panel.
+        // build saw (F-103). [content] is built OUTSIDE this builder, so a
+        // fold rebuilds the scrollers and not the panel.
         final folded = PanelCollapsedScope.of(context);
         return OverflowScrollers(
           minWidth: folded ? 0 : tab.minContentWidth ?? 0,
           minHeight: folded ? 0 : tab.minContentHeight ?? 0,
-          child: body,
+          child: content,
         );
       },
     );
