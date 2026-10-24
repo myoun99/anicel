@@ -328,7 +328,7 @@ class _WorkspaceCollapsedRows {
       onToggleLayerFx: (_) {},
       onToggleLayerOnionSkin: (_) {},
       onToggleLanes: (_) {},
-      onToggleLayerFillReference: (_) {},
+      onToggleLayerClip: (_) {},
       onOpenLayerMixer: (_, _) {},
       onOpenLayerReference: (_, _) async {},
       onOpenLayerLinks: (_, _) async {},

@@ -234,21 +234,21 @@ void main() {
           );
         });
 
-        testWidgets('fill-reference toggle', (tester) async {
+        testWidgets('clip toggle', (tester) async {
           final session = await pumpRail(tester, way);
           final active = session.activeLayerId;
           final other = otherAnimationRow(session);
           final before = session.layers
               .firstWhere((l) => l.id == other)
-              .isFillReference;
+              .clipsToBelow;
 
-          await tester.tap(find.named('$rail-layer-fill-reference-$other'));
+          await tester.tap(find.named('$rail-layer-clip-$other'));
           await tester.pumpAndSettle();
 
           expect(
-            session.layers.firstWhere((l) => l.id == other).isFillReference,
+            session.layers.firstWhere((l) => l.id == other).clipsToBelow,
             !before,
-            reason: 'the fill-reference toggle did not land on its own row',
+            reason: 'the clip toggle did not land on its own row',
           );
           expect(
             session.activeLayerId,

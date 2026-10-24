@@ -4,16 +4,17 @@ import '../text/app_strings.dart';
 import 'app_icon_button.dart';
 import 'rail_glyph_button.dart';
 
-/// A layer's FILL-REFERENCE flag as a button (R20-C2): the bucket on every
-/// drawing row of the rail, and — I-36, 유저 2026-09-24 「활성 레이어의 참조
-/// 버튼을 둔다」 — the same bucket for the ACTIVE layer in the fill's tool
-/// settings. One face, so the two cannot come to disagree about what "on"
-/// looks like; both press the one verb that flips the flag.
+/// A row's CLIP TO LAYER BELOW ([Layer.clipsToBelow], I-92) as the rail's
+/// button — on every row that can clip ([LayerKind.takesClipping]).
 ///
-/// The rail's face ([RailGlyphButton]) in both places: every drawing row
-/// carries one, and a cut switch mounts every visible row anew (I-57 ①).
-class FillReferenceButton extends StatelessWidget {
-  const FillReferenceButton({
+/// ↩️It was the fill-reference bucket (R20-C2), with a twin for the ACTIVE
+/// layer in the fill's tool settings (I-36); the twin went with the fill's
+/// reference answer (I-92: 「그런버튼 삭제하고」).
+///
+/// The rail's face ([RailGlyphButton]): a cut switch mounts every visible
+/// row anew (I-57 ①).
+class ClipButton extends StatelessWidget {
+  const ClipButton({
     super.key,
     required this.name,
     required this.isOn,
@@ -32,12 +33,10 @@ class FillReferenceButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return RailGlyphButton(
       name: name,
-      tooltip: isOn
-          ? AppText.strings.railFillReferenceOn
-          : AppText.strings.railFillReference,
+      tooltip: isOn ? AppText.strings.railClipOn : AppText.strings.railClip,
       size: size,
       glyph: RailIconGlyph(
-        Icons.format_color_fill,
+        Icons.vertical_align_bottom,
         color: isOn
             ? colorScheme.primary
             : colorScheme.outline.withValues(alpha: 0.45),

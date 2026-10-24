@@ -24,8 +24,9 @@ typedef LayerField<T> = ({
 /// across a link's members.
 ///
 /// ⛔SIX COMMANDS WROTE THIS WALK OUT (the audit's clone scan,
-/// 2026-09-04): the timesheet flag, the fill-reference flag, the
-/// transform track, the effects, the audio clips and the instructions.
+/// 2026-09-04): the timesheet flag, the clip flag (the fill's reference
+/// then), the transform track, the effects, the audio clips and the
+/// instructions.
 ///
 /// The pair that has to agree is execute's `??=` and undo's throw. The
 /// `??=` is what makes a RE-executed command keep its FIRST previous

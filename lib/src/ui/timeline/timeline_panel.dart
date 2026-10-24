@@ -101,7 +101,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
-    this.onToggleLayerFillReference,
+    this.onToggleLayerClip,
     required this.onLayerMarkSelected,
     this.layerFxStateOf,
     this.layerLinkPartnersOf,
@@ -336,8 +336,8 @@ class TimelinePanel extends StatefulWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
 
-  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
+  /// The clip toggle (I-92) of every row that can clip; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerClip;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
   /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
@@ -712,7 +712,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       layerSourceIsShortOf: widget.layerSourceIsShortOf,
       attachArrowPlacementOf: (layerId) => attachArrows[layerId],
       isLayerSoloed: widget.isLayerSoloed,
-      onToggleLayerFillReference: widget.onToggleLayerFillReference,
+      onToggleLayerClip: widget.onToggleLayerClip,
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,

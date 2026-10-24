@@ -17,7 +17,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
-/// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps
+/// (sheet/mark/clip) land as ONE undo entry; the view-ish sweeps
 /// (eye/mute/fx/opacity) mirror their per-row toggles.
 /// The two collaborators these bulk verbs act through — named so
 /// `tool/mutation_run.dart` has a suite to run for each of them.
@@ -126,29 +126,29 @@ void main() {
     expect(switches(s).isLayerOnTimesheet(attachId), before);
   });
 
-  test('the fill-reference flag flips per row and the sweep clears every '
+  test('the clip flag flips per row and the sweep clears every '
       'one of them in ONE undo (R20-C2)', () {
     final s = session();
     final drawing = s.requireActiveCut.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)
         .id;
     expect(
-      s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
+      s.layers.firstWhere((layer) => layer.id == drawing).clipsToBelow,
       isFalse,
-      reason: 'fixture default: nothing is a fill reference',
+      reason: 'fixture default: nothing clips',
     );
 
-    switches(s).toggleLayerFillReference(drawing);
+    switches(s).toggleLayerClip(drawing);
     expect(
-      s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
+      s.layers.firstWhere((layer) => layer.id == drawing).clipsToBelow,
       isTrue,
     );
 
-    switches(s).clearAllFillReferences();
-    expect(s.layers.every((layer) => !layer.isFillReference), isTrue);
+    switches(s).clearAllClips();
+    expect(s.layers.every((layer) => !layer.clipsToBelow), isTrue);
     s.undo();
     expect(
-      s.layers.firstWhere((layer) => layer.id == drawing).isFillReference,
+      s.layers.firstWhere((layer) => layer.id == drawing).clipsToBelow,
       isTrue,
       reason: 'the sweep is one entry',
     );

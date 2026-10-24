@@ -422,8 +422,8 @@ abstract final class RailLegendActionIds {
   static const sheetAllOff = 'rail-sheet-all-off';
   static const soloSheet = 'rail-solo-sheet';
   static const markFilterClear = 'rail-mark-filter-clear';
-  static const fillReferenceClear = 'rail-fill-reference-clear';
-  static const soloFillReference = 'rail-solo-fill-reference';
+  static const clipClear = 'rail-clip-clear';
+  static const soloClip = 'rail-solo-clip';
   static const fxEnableAll = 'rail-fx-enable-all';
   static const fxBypassAll = 'rail-fx-bypass-all';
   static const soloFx = 'rail-solo-fx';
@@ -490,12 +490,12 @@ List<EditorActionDefinition> _railLegendActions() {
       (l) => s(l).tlClearMarkFilter,
     ),
     _railLegendAction(
-      RailLegendActionIds.fillReferenceClear,
-      (l) => s(l).tlClearAllFillRefs,
+      RailLegendActionIds.clipClear,
+      (l) => s(l).tlClearAllClips,
     ),
     _railLegendAction(
-      RailLegendActionIds.soloFillReference,
-      (l) => s(l).tlSoloFillReferences,
+      RailLegendActionIds.soloClip,
+      (l) => s(l).tlSoloClips,
     ),
     _railLegendAction(
       RailLegendActionIds.fxEnableAll,

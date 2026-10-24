@@ -64,7 +64,7 @@ void main() {
           blendMode: LayerBlendMode.multiply,
           mark: const LayerMark(process: LayerProcess.layout),
           onTimesheet: false,
-          isFillReference: true,
+          clipsToBelow: true,
           transformTrack: TransformTrack.empty().copyWith(
             rotation: PropertyTrack<double>().withKey(0, 30),
           ),
@@ -74,7 +74,7 @@ void main() {
         expect(payload.blendMode, LayerBlendMode.multiply);
         expect(payload.mark, const LayerMark(process: LayerProcess.layout));
         expect(payload.onTimesheet, isFalse);
-        expect(payload.isFillReference, isTrue);
+        expect(payload.clipsToBelow, isTrue);
         expect(payload.transformTrack.rotation.keyAt(0)!.value, 30);
         expect(payload.effects.single.parameterOf('brightness').value, 25);
         expect(payload.timeline[0]!.endEdge, holdMark);

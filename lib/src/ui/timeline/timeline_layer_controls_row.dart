@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../input/arena_tap_hold.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/fill_reference_button.dart';
+import '../widgets/clip_button.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -103,7 +103,7 @@ final class ControlsRowFace {
             a.onTimesheet == b.onTimesheet &&
             a.blendMode == b.blendMode &&
             a.collapsed == b.collapsed &&
-            a.isFillReference == b.isFillReference &&
+            a.clipsToBelow == b.clipsToBelow &&
             isAttachedLayer(a) == isAttachedLayer(b) &&
             a.attachedPlacement == b.attachedPlacement &&
             _isReference(a) == _isReference(b));
@@ -126,7 +126,7 @@ final class ControlsRowFace {
     layer.onTimesheet,
     layer.blendMode,
     layer.collapsed,
-    layer.isFillReference,
+    layer.clipsToBelow,
     isAttachedLayer(layer),
     layer.attachedPlacement,
     _isReference(layer),
@@ -142,7 +142,7 @@ final class ControlsRowFace {
 /// 절대잊지말고」. The sheet used to carry a private `_LayerHeader` — this
 /// widget transposed by hand, cell by cell, which is how it lagged behind on
 /// press timing (T10), the name's second selection (F-26), the attach gate
-/// (R10 R3), the fill-reference slot (R20-C2), onion and blend (R10 R6), the
+/// (R10 R3), the clip slot (R20-C2, I-92), onion and blend (R10 R6), the
 /// nesting guides (2026-08-29)… each round found one more cell that had not
 /// been turned with the rest. The differences that remain are the ones with a
 /// decision behind them, and every one of them says which.
@@ -164,7 +164,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerOpacityChangeEnd,
     this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
-    this.onToggleLayerFillReference,
+    this.onToggleLayerClip,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
     this.onOpenLayerLinks,
@@ -248,9 +248,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId>? onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
-  /// Drawing rows' FILL-reference toggle (R20-C2, the CSP lighthouse);
-  /// null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
+  /// The clip toggle (I-92) of every row that can clip; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerClip;
 
   /// SE rows' speaker button, which opens the row's mixer (mute, solo,
   /// fader, pan) anchored under itself; null hides the speaker. It takes
@@ -940,7 +939,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       onion: onToggleLayerOnionSkin != null,
       blend: onLayerBlendModeSelected != null,
     ),
-    fillReference: _fillReferenceToggle(context),
+    clip: _clipToggle(context),
     fx: _fxSwitch(context),
     onion: _onionToggle(context, colorScheme),
     visibility: _visibilityToggle(),
@@ -948,21 +947,22 @@ class TimelineLayerControlsRow extends StatelessWidget {
     blend: _blendChip(context),
   );
 
-  /// Fill-reference toggle (R20-C2): drawing rows only — every OTHER kind
-  /// reserves the slot so the legend header's column icons line up over one
-  /// Excel-style grid (R-toolbar round).
-  Widget? _fillReferenceToggle(BuildContext context) {
-    final onToggle = onToggleLayerFillReference;
-    if (onToggle == null || !layer.kind.carriesFillReference) return null;
+  /// Clip to layer below (I-92): every row that can clip
+  /// ([LayerKind.takesClipping]) — every OTHER kind reserves the slot so the
+  /// legend header's column icons line up over one Excel-style grid
+  /// (R-toolbar round).
+  Widget? _clipToggle(BuildContext context) {
+    final onToggle = onToggleLayerClip;
+    if (onToggle == null || !layer.kind.takesClipping) return null;
     return acrossBox(
       axis,
       26,
-      child: FillReferenceButton(
-        name: '$keyPrefix-layer-fill-reference-${layer.id}',
-        isOn: layer.isFillReference,
+      child: ClipButton(
+        name: '$keyPrefix-layer-clip-${layer.id}',
+        isOn: layer.clipsToBelow,
         size: railSlotBox(
           axis,
-          slot: layerFillReferenceSlotWidth,
+          slot: layerClipSlotWidth,
           across: 26,
           iconSize: 16,
         ),

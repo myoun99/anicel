@@ -706,7 +706,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onLayerOpacityChanged: _rowPresses.previewOpacity,
             onLayerOpacityChangeEnd: _rowPresses.commitOpacity,
             onToggleLayerTimesheet: _rowPresses.toggleTimesheet,
-            onToggleLayerFillReference: _rowPresses.toggleFillReference,
+            onToggleLayerClip: _rowPresses.toggleClip,
             onLayerMarkSelected: _rowPresses.pickMark,
             // The AE-style fx MASTER over the row's per-group switches (R8:
             // model state, read straight off the layer).

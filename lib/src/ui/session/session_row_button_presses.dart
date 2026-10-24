@@ -66,16 +66,16 @@ class SessionRowButtonPresses {
         description: 'Toggle timesheet',
       );
 
-  void toggleFillReference(LayerId pressed) =>
+  void toggleClip(LayerId pressed) =>
       session.rowSelectionVerbs.pressAcross(
         pressed,
         valueOf: (id) => _ifRow(
           id,
-          (layer) => layer.kind.carriesFillReference,
-          (id) => _row(id)!.isFillReference,
+          (layer) => layer.kind.takesClipping,
+          (id) => _row(id)!.clipsToBelow,
         ),
-        flip: session.layerSwitches.toggleLayerFillReference,
-        description: 'Toggle fill reference',
+        flip: session.layerSwitches.toggleLayerClip,
+        description: 'Toggle clip to layer below',
       );
 
   /// The fx master reads as the tap flips it: a mixed row is ON — a tap

@@ -39,18 +39,6 @@ class _WorkspaceTabs {
     _state._mutatingLayout(() => _state._layout.removeTab(tabId));
   }
 
-  /// The fill settings' bucket for the ACTIVE layer (I-36) — the rail's own
-  /// verb, so one press is one undo step either way. Null while the active
-  /// row is not one the flag belongs on.
-  VoidCallback? _activeLayerFillReferenceToggle() {
-    final session = _state.widget.session;
-    final layer = session.activeLayer;
-    if (layer == null || !layer.kind.carriesFillReference) {
-      return null;
-    }
-    return () => session.layerSwitches.toggleLayerFillReference(layer.id);
-  }
-
   /// 래스터라이즈 (vanishing-point-types-Q5 · Q6): the picked guide's lines baked
   /// onto [paper] off the frame's clock, then laid on the cels through the
   /// paste's door as one undo. Null with no paper to bake onto.
@@ -102,8 +90,6 @@ class _WorkspaceTabs {
       selectedGuideId: session.cutVerbs.selectedGuideId,
       fillReads: reads(fillSource),
       eyedropperReads: reads(eyedropperSource),
-      activeLayerIsFillReference: session.activeLayer?.isFillReference ?? false,
-      canToggleFillReference: _activeLayerFillReferenceToggle() != null,
       pasteboard: session.activePasteboardOrNull,
       language: session.languageSettings.value.programLanguage,
     );
@@ -722,10 +708,6 @@ class _WorkspaceTabs {
                                                     .session
                                                     .activeLayerId,
                                               ),
-                                          activeLayerIsFillReference:
-                                              cut.activeLayerIsFillReference,
-                                          onToggleActiveLayerFillReference:
-                                              _activeLayerFillReferenceToggle(),
                                           selectionMaskOptions: maskOptions,
                                           onSelectionMaskOptionsChanged:
                                               (options) =>
@@ -1377,8 +1359,6 @@ typedef _ToolSettingsCut = ({
   GuideId? selectedGuideId,
   ByList<String>? fillReads,
   ByList<String>? eyedropperReads,
-  bool activeLayerIsFillReference,
-  bool canToggleFillReference,
   PasteboardWall? pasteboard,
   AppLanguage language,
 });

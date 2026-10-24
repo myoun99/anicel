@@ -397,9 +397,9 @@ final List<_Button> _buttons = [
     undoes: true,
   ),
   (
-    name: 'fill reference',
-    press: (p, id) => p.toggleFillReference(id),
-    read: (r, id) => r.row(id).isFillReference,
+    name: 'clip',
+    press: (p, id) => p.toggleClip(id),
+    read: (r, id) => r.row(id).clipsToBelow,
     undoes: true,
   ),
   (

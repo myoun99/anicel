@@ -87,7 +87,7 @@ const ledger = <String, Why>{
   'timeline/timeline_layer_controls_row.dart | '
           "'\$keyPrefix-layer-\$slug-\${layer.id}'":
       Why.aRow,
-  'widgets/fill_reference_button.dart | name': Why.aRow,
+  'widgets/clip_button.dart | name': Why.aRow,
   // A menu row's own trailing button.
   'widgets/panel_flyout.dart | action.keyValue': Why.aRow,
 

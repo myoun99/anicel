@@ -178,7 +178,7 @@ void main() {
       () {
         // Nine fields were being silently reset (found in the R6 audit):
         // duplicating a cut FLATTENED every folder and dropped every blend
-        // mode, the SE name tag, the fill-reference flag, run behaviours,
+        // mode, the SE name tag, the clip flag, run behaviours,
         // the twirl, the audio fader/pan and the attach mode.
         final source = Cut(
           id: const CutId('cut-source'),
@@ -207,7 +207,7 @@ void main() {
               },
               folderId: const LayerId('folder'),
               blendMode: LayerBlendMode.multiply,
-              isFillReference: true,
+              clipsToBelow: true,
               collapsed: true,
               lanesExpanded: true,
               expandedLaneGroups: const {'transform-group'},
@@ -244,7 +244,7 @@ void main() {
           reason: 'membership REMAPS onto the copied folder row',
         );
         expect(copy.blendMode, LayerBlendMode.multiply);
-        expect(copy.isFillReference, isTrue);
+        expect(copy.clipsToBelow, isTrue);
         expect(copy.collapsed, isTrue);
         expect(copy.lanesExpanded, isTrue);
         expect(copy.expandedLaneGroups, {'transform-group'});

@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/services/commands/update_layer_fill_reference_command.dart';
+import 'package:anicel/src/services/commands/update_layer_clip_command.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
@@ -24,15 +24,15 @@ void main() {
   });
 
   bool flag() =>
-      requireLayerAnywhere(repository.requireProject(), layerId).isFillReference;
+      requireLayerAnywhere(repository.requireProject(), layerId).clipsToBelow;
 
   test('execute sets the flag, undo restores it, execute re-applies', () {
     final before = flag();
-    final command = UpdateLayerFillReferenceCommand(
+    final command = UpdateLayerClipCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
-      isFillReference: !before,
+      clipsToBelow: !before,
     );
     command.execute();
     expect(flag(), !before);
@@ -44,18 +44,18 @@ void main() {
 
   test('undo restores what the first execute saw, not a later edit', () {
     final before = flag();
-    final command = UpdateLayerFillReferenceCommand(
+    final command = UpdateLayerClipCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
-      isFillReference: !before,
+      clipsToBelow: !before,
     );
     command.execute();
-    UpdateLayerFillReferenceCommand(
+    UpdateLayerClipCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
-      isFillReference: before,
+      clipsToBelow: before,
     ).execute();
     command.execute();
     command.undo();
@@ -64,11 +64,11 @@ void main() {
 
   test('undo before execute is refused', () {
     expect(
-      UpdateLayerFillReferenceCommand(
+      UpdateLayerClipCommand(
         repository: repository,
         cutId: cutId,
         layerId: layerId,
-        isFillReference: true,
+        clipsToBelow: true,
       ).undo,
       throwsStateError,
     );

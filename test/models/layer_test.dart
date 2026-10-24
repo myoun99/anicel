@@ -157,6 +157,16 @@ void main() {
     });
   });
 
+  test('Layer.clipsToBelow persists under its own key, and only when on '
+      '(I-92)', () {
+    final clipped = _layer().copyWith(clipsToBelow: true);
+
+    expect(clipped.toJson()['clipToBelow'], true);
+    expect(Layer.fromJson(clipped.toJson()).clipsToBelow, isTrue);
+    expect(_layer().toJson().containsKey('clipToBelow'), isFalse);
+    expect(Layer.fromJson(_layer().toJson()).clipsToBelow, isFalse);
+  });
+
   group('Layer.timeline', () {
     test('negative timeline indexes are rejected, in a sorted copy', () {
       // The same law PropertyTrack's keys wear (property_track_test): one

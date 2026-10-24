@@ -198,7 +198,7 @@ Widget layerControlsRowFrom(
     onionSkinEnabled: facts.onionSkinEnabled,
     onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
     onLayerMarkSelected: hooks.onLayerMarkSelected,
-    onToggleLayerFillReference: hooks.onToggleLayerFillReference,
+    onToggleLayerClip: hooks.onToggleLayerClip,
     onOpenLayerMixer: hooks.onOpenLayerMixer,
     onOpenLayerReference: hooks.onOpenLayerReference,
     onOpenLayerLinks: hooks.onOpenLayerLinks,

@@ -39,7 +39,6 @@ import '../text/model_vocabulary.dart';
 import '../text/pixel_size_label.dart';
 import '../text/readout_text.dart';
 import '../widgets/empty_state_text.dart';
-import '../widgets/fill_reference_button.dart';
 import '../listenable_rebind.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/scale_chain_button.dart';
@@ -70,8 +69,6 @@ class ToolSettingsPanel extends StatelessWidget {
     this.eyedropperSource = CanvasReadSource.display,
     this.onEyedropperSourceChanged,
     this.readLayerNames,
-    this.activeLayerIsFillReference = false,
-    this.onToggleActiveLayerFillReference,
     this.tips = const <BrushTipEntry>[],
     this.onTipImportRequested,
     this.onRenameTip,
@@ -178,12 +175,6 @@ class ToolSettingsPanel extends StatelessWidget {
   /// reads another. A host with no answer shows the line empty.
   final List<String>? Function(CanvasReadSource source)? readLayerNames;
 
-  /// The ACTIVE layer's fill-reference flag, and the rail's verb that flips
-  /// it (I-36: 「활성 레이어의 참조 버튼을 둔다」). A null handler shows the
-  /// bucket disabled — the active row is not one that carries the flag.
-  final bool activeLayerIsFillReference;
-  final VoidCallback? onToggleActiveLayerFillReference;
-
   List<String>? _namesReadBy(CanvasReadSource source) {
     final answer = readLayerNames;
     return answer == null ? const [] : answer(source);
@@ -262,8 +253,6 @@ class ToolSettingsPanel extends StatelessWidget {
       options: fillOptions,
       onChanged: onFillOptionsChanged,
       readLayerNames: _namesReadBy(fillOptions.source),
-      activeLayerIsFillReference: activeLayerIsFillReference,
-      onToggleActiveLayerFillReference: onToggleActiveLayerFillReference,
     ),
     // 유저 확정 ⑥: a panel PER TILE, showing what actually applies.
     // The bucket's knobs above are about reading the picture — where
@@ -1456,7 +1445,6 @@ class _EyedropperSettings extends StatelessWidget {
       children: [
         _ReadSourceControl(
           tool: 'eyedropper',
-          offered: const [CanvasReadSource.display, CanvasReadSource.layer],
           source: source,
           onChanged: onChanged,
           readLayerNames: readLayerNames,
@@ -1467,38 +1455,33 @@ class _EyedropperSettings extends StatelessWidget {
 }
 
 /// WHAT THE TOOL READS — the eyedropper's 참조 (R28 #6) and the fill's
-/// (I-36) as one control: the answers the tool offers, and a line naming
-/// the layers the chosen answer reads right now.
+/// (I-36) as one control: the answers, and a line naming the layers the
+/// chosen answer reads right now.
 ///
-/// 🗣️유저 2026-09-24 (I-36-Q1): 「범위를 보여주고, 활성 레이어의 참조 버튼을
-/// 둔다」. The line is a READOUT of state, not a caption — it took the place
-/// of the eyedropper's sentences about what each segment does. It is always
-/// there; only its words change.
+/// 🗣️유저 2026-09-24 (I-36-Q1): 「범위를 보여주고」. The line is a READOUT of
+/// state, not a caption — it took the place of the eyedropper's sentences
+/// about what each segment does. It is always there; only its words change.
+/// ↩️The same answer put 「활성 레이어의 참조 버튼」 beside it, and the fill
+/// offered a third answer; both went with I-92 (see [_FillSettings]), so
+/// the two tools offer the same two.
 class _ReadSourceControl extends StatelessWidget {
   const _ReadSourceControl({
     required this.tool,
-    required this.offered,
     required this.source,
     required this.onChanged,
     required this.readLayerNames,
-    this.trailing,
   });
 
   /// The section's name: `eyedropper` keys `eyedropper-source-segments`.
   final String tool;
-  final List<CanvasReadSource> offered;
   final CanvasReadSource source;
   final ValueChanged<CanvasReadSource>? onChanged;
 
   /// The layers [source] reads now; null = every visible layer.
   final List<String>? readLayerNames;
 
-  /// Beside the readout — the fill's bucket for the active layer.
-  final Widget? trailing;
-
   static String _label(CanvasReadSource source) => switch (source) {
     CanvasReadSource.display => AppText.strings.brDisplay,
-    CanvasReadSource.references => AppText.strings.toolReadReferences,
     CanvasReadSource.layer => AppText.strings.tlLayer,
   };
 
@@ -1526,7 +1509,7 @@ class _ReadSourceControl extends StatelessWidget {
           child: PillStrip.even(
             key: ValueKey<String>('$tool-source-segments'),
             items: [
-              for (final offer in offered)
+              for (final offer in CanvasReadSource.values)
                 PillItem(
                   keyValue: '$tool-source-${offer.name}',
                   label: _label(offer),
@@ -1539,25 +1522,18 @@ class _ReadSourceControl extends StatelessWidget {
         // What the answer reads right now, under the answers.
         ToolSettingRow(
           label: '',
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  names == null
-                      ? AppText.strings.toolReadsEveryVisibleLayer
-                      : names.isEmpty
-                      ? '—'
-                      : names.join(' · '),
-                  key: ValueKey<String>('$tool-reads'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
+          child: Text(
+            names == null
+                ? AppText.strings.toolReadsEveryVisibleLayer
+                : names.isEmpty
+                ? '—'
+                : names.join(' · '),
+            key: ValueKey<String>('$tool-reads'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ],
@@ -1570,15 +1546,11 @@ class _FillSettings extends StatelessWidget {
     required this.options,
     required this.onChanged,
     required this.readLayerNames,
-    required this.activeLayerIsFillReference,
-    required this.onToggleActiveLayerFillReference,
   });
 
   final FloodFillOptions options;
   final ValueChanged<FloodFillOptions> onChanged;
   final List<String>? readLayerNames;
-  final bool activeLayerIsFillReference;
-  final VoidCallback? onToggleActiveLayerFillReference;
 
   @override
   Widget build(BuildContext context) {
@@ -1586,17 +1558,17 @@ class _FillSettings extends StatelessWidget {
       tool: 'fill',
       title: AppText.strings.toolFill,
       children: [
+        // ↩️A third answer, 「References」, read the layers the rail's
+        // bucket flagged, and a bucket here flipped the active layer's flag
+        // (I-36, 유저 2026-09-24). 유저 2026-10-12 (I-92): 「채우기도구에서
+        // 채색참조 기반으로 채우기 이런식으로 구현되있는데, 그런버튼 삭제하고」
+        // — the flag is the rail's CLIPPING now, and the fill reads what you
+        // see or the layer you are on.
         _ReadSourceControl(
           tool: 'fill',
-          offered: CanvasReadSource.values,
           source: options.source,
           onChanged: (source) => onChanged(options.copyWith(source: source)),
           readLayerNames: readLayerNames,
-          trailing: FillReferenceButton(
-            name: 'fill-active-layer-reference',
-            isOn: activeLayerIsFillReference,
-            onPressed: onToggleActiveLayerFillReference,
-          ),
         ),
         ToolSettingRow.bar(
           label: AppText.strings.brTolerance,

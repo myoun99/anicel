@@ -85,7 +85,7 @@ void main() {
       find.named('timeline-layer-row-$id');
 
   /// Where a finger lands ON a row: its name. ⛔Not the row's centre — a
-  /// drawing row's centre is its fill-reference button since the opacity
+  /// drawing row's centre is its clip button since the opacity
   /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a finger
   /// on a control is the control's.
   Finder railRowGrip(String id) =>

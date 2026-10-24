@@ -564,7 +564,7 @@ void main() {
       }
 
       final row = find.named('timeline-layer-row-${target.id}');
-      // Taken by its name — a drawing row's centre is its fill-reference
+      // Taken by its name — a drawing row's centre is its clip
       // button since the opacity column widened (text-scale-rail-opac).
       final grip = find.named('timeline-layer-name-${target.id}');
       await tester.ensureVisible(row);

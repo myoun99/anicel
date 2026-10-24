@@ -9,7 +9,7 @@ import '../../models/layer_mark.dart';
 /// per-layer. Project state is never touched; export/save ignore it.
 ///
 /// All active facets combine with AND (user rule): a mark-color set, a
-/// layer-kind set and the sheet/fx/fill-reference flags must ALL pass. An
+/// layer-kind set and the sheet/fx/clip flags must ALL pass. An
 /// empty filter passes everything. The active layer is exempt (the host
 /// keeps the layer you're working on visible so a filter can't hide your
 /// own strokes).
@@ -19,7 +19,7 @@ class TimelineRowFilter {
     this.kinds = const {},
     this.onTimesheetOnly = false,
     this.fxOnly = false,
-    this.fillReferenceOnly = false,
+    this.clippedOnly = false,
   });
 
   static const TimelineRowFilter none = TimelineRowFilter();
@@ -38,15 +38,15 @@ class TimelineRowFilter {
   /// state, so the predicate takes it as a parameter.
   final bool fxOnly;
 
-  /// When true, only fill-reference layers pass.
-  final bool fillReferenceOnly;
+  /// When true, only clipped layers pass.
+  final bool clippedOnly;
 
   bool get isActive =>
       markColors.isNotEmpty ||
       kinds.isNotEmpty ||
       onTimesheetOnly ||
       fxOnly ||
-      fillReferenceOnly;
+      clippedOnly;
 
   /// Whether a ROW shows under this filter: an inactive filter shows every
   /// row, and past that the row is judged on the facets it carries
@@ -63,7 +63,7 @@ class TimelineRowFilter {
     LayerKind? kind,
     bool? onTimesheet,
     required bool fxEnabled,
-    bool? isFillReference,
+    bool? clipsToBelow,
   }) =>
       !isActive ||
       standing ||
@@ -72,7 +72,7 @@ class TimelineRowFilter {
         kind: kind,
         onTimesheet: onTimesheet,
         fxEnabled: fxEnabled,
-        isFillReference: isFillReference,
+        clipsToBelow: clipsToBelow,
       );
 
   /// [allowsRow] for a row that IS a layer, so it answers every chip.
@@ -89,7 +89,7 @@ class TimelineRowFilter {
     kind: layer.kind,
     onTimesheet: layer.onTimesheet,
     fxEnabled: fxEnabled,
-    isFillReference: layer.isFillReference,
+    clipsToBelow: layer.clipsToBelow,
   );
 
   /// Whether a row passes, judged ONLY on the facets it actually carries
@@ -113,7 +113,7 @@ class TimelineRowFilter {
     LayerKind? kind,
     bool? onTimesheet,
     required bool fxEnabled,
-    bool? isFillReference,
+    bool? clipsToBelow,
   }) {
     if (mark != null && markColors.isNotEmpty && !markColors.contains(mark)) {
       return false;
@@ -127,7 +127,7 @@ class TimelineRowFilter {
     if (fxOnly && !fxEnabled) {
       return false;
     }
-    if (isFillReference == false && fillReferenceOnly) {
+    if (clipsToBelow == false && clippedOnly) {
       return false;
     }
     return true;
@@ -138,14 +138,14 @@ class TimelineRowFilter {
     Set<LayerKind>? kinds,
     bool? onTimesheetOnly,
     bool? fxOnly,
-    bool? fillReferenceOnly,
+    bool? clippedOnly,
   }) {
     return TimelineRowFilter(
       markColors: markColors ?? this.markColors,
       kinds: kinds ?? this.kinds,
       onTimesheetOnly: onTimesheetOnly ?? this.onTimesheetOnly,
       fxOnly: fxOnly ?? this.fxOnly,
-      fillReferenceOnly: fillReferenceOnly ?? this.fillReferenceOnly,
+      clippedOnly: clippedOnly ?? this.clippedOnly,
     );
   }
 
@@ -164,7 +164,7 @@ class TimelineRowFilter {
         setEquals(other.kinds, kinds) &&
         other.onTimesheetOnly == onTimesheetOnly &&
         other.fxOnly == fxOnly &&
-        other.fillReferenceOnly == fillReferenceOnly;
+        other.clippedOnly == clippedOnly;
   }
 
   @override
@@ -173,6 +173,6 @@ class TimelineRowFilter {
     Object.hashAllUnordered(kinds),
     onTimesheetOnly,
     fxOnly,
-    fillReferenceOnly,
+    clippedOnly,
   );
 }

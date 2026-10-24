@@ -238,7 +238,7 @@ void main() {
         );
       }
       expect(named('storyboard-layer-blend-a-conte'), findsOneWidget);
-      for (final cell in const ['fill-reference', 'link-badge']) {
+      for (final cell in const ['clip', 'link-badge']) {
         expect(
           named('storyboard-layer-$cell-a-conte'),
           findsNothing,

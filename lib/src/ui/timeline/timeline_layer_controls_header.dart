@@ -311,15 +311,15 @@ class TimelineLayerControlsHeader extends KeptPiece {
     );
   }
 
-  Widget _buildFillReference(TimelineLegendMenus menus, Color restColor) {
+  Widget _buildClip(TimelineLegendMenus menus, Color restColor) {
     return _cell(
-      keyValue: 'legend-fill-ref',
-      tooltip: AppText.strings.tlColFillReference,
-      entriesBuilder: menus.fillReference,
+      keyValue: 'legend-clip',
+      tooltip: AppText.strings.tlColClip,
+      entriesBuilder: menus.clip,
       child: _legendIcon(
-        Icons.format_color_fill,
+        Icons.vertical_align_bottom,
         restColor: restColor,
-        engaged: rowFilter.fillReferenceOnly,
+        engaged: rowFilter.clippedOnly,
       ),
     );
   }
@@ -536,7 +536,7 @@ class TimelineLayerControlsHeader extends KeptPiece {
                     axis: axis,
                     columns: metrics.railColumns,
                     optionalColumns: optional,
-                    fillReference: _buildFillReference(menus, restColor),
+                    clip: _buildClip(menus, restColor),
                     fx: _buildFx(context, menus),
                     // Onion legend (UI-R17 #5): bulk apply/clear over the
                     // displayed layers + the panel reveal. A host that

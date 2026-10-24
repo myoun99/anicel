@@ -1627,7 +1627,6 @@ enum AppStrings {
   String get toolCutRegisterTip => _s('toolCutRegisterTip');
   String get toolCutDeletesSource => _s('toolCutDeletesSource');
   String get toolReadSource => _s('toolReadSource');
-  String get toolReadReferences => _s('toolReadReferences');
   String get toolReadsEveryVisibleLayer => _s('toolReadsEveryVisibleLayer');
   String get brushSettingsTitle => _s('brushSettingsTitle');
   String get toolShapeRect => _s('toolShapeRect');
@@ -1848,7 +1847,7 @@ enum AppStrings {
   String get tlHideAll => _s('tlHideAll');
   String get tlSoloKind => _s('tlSoloKind');
   String get tlSoloColor => _s('tlSoloColor');
-  String get tlSoloFillReferences => _s('tlSoloFillReferences');
+  String get tlSoloClips => _s('tlSoloClips');
   String get tlSoloFxOnRows => _s('tlSoloFxOnRows');
   String get tlSoloSheetOnRows => _s('tlSoloSheetOnRows');
   String get tlApplyAllFx => _s('tlApplyAllFx');
@@ -1856,7 +1855,7 @@ enum AppStrings {
   String get tlAllOnTimesheet => _s('tlAllOnTimesheet');
   String get tlAllOffTimesheet => _s('tlAllOffTimesheet');
   String get tlClearMarkFilter => _s('tlClearMarkFilter');
-  String get tlClearAllFillRefs => _s('tlClearAllFillRefs');
+  String get tlClearAllClips => _s('tlClearAllClips');
   String get tlColVisibility => _s('tlColVisibility');
   String get tlColLayerKind => _s('tlColLayerKind');
   String get tlColOnionSkin => _s('tlColOnionSkin');
@@ -1864,7 +1863,7 @@ enum AppStrings {
   String get tlColBlendMode => _s('tlColBlendMode');
   String get tlColFx => _s('tlColFx');
   String get tlColMark => _s('tlColMark');
-  String get tlColFillReference => _s('tlColFillReference');
+  String get tlColClip => _s('tlColClip');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlShowXSheet => _s('tlShowXSheet');
   String get tlShowTimeline => _s('tlShowTimeline');
@@ -1909,8 +1908,8 @@ enum AppStrings {
   String get laneGraphPenOn => _s('laneGraphPenOn');
   String get laneGraphTransformBox => _s('laneGraphTransformBox');
   String get laneGraphTransformBoxOn => _s('laneGraphTransformBoxOn');
-  String get railFillReferenceOn => _s('railFillReferenceOn');
-  String get railFillReference => _s('railFillReference');
+  String get railClipOn => _s('railClipOn');
+  String get railClip => _s('railClip');
   String get tlLayerMark => _s('tlLayerMark');
 
   /// 색 라벨이 안 붙은 상태. ⚠️「수정 없음」이 아니라 라벨 자체가 없는 것 —
@@ -2856,7 +2855,6 @@ enum AppStrings {
     'toolCutRegisterTip': 'Register as Tip',
     'toolCutDeletesSource': 'Delete original',
     'toolReadSource': 'Reference',
-    'toolReadReferences': 'References',
     'toolReadsEveryVisibleLayer': 'Every visible layer',
     'brushSettingsTitle': 'Brush Settings',
     'toolShapeRect': 'Rectangle',
@@ -3035,7 +3033,7 @@ enum AppStrings {
     'tlHideAll': 'Hide all',
     'tlSoloKind': 'Solo kind',
     'tlSoloColor': 'Solo color',
-    'tlSoloFillReferences': 'Solo fill references',
+    'tlSoloClips': 'Solo clipped layers',
     'tlSoloFxOnRows': 'Solo fx-on rows',
     'tlSoloSheetOnRows': 'Solo sheet-on rows',
     'tlApplyAllFx': 'Apply all fx',
@@ -3043,7 +3041,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'All on timesheet',
     'tlAllOffTimesheet': 'All off timesheet',
     'tlClearMarkFilter': 'Clear mark filter',
-    'tlClearAllFillRefs': 'Clear all fill references',
+    'tlClearAllClips': 'Release all clipping',
     'tlColVisibility': 'Visibility column',
     'tlColLayerKind': 'Layer kind column',
     'tlColOnionSkin': 'Onion skin column',
@@ -3051,7 +3049,7 @@ enum AppStrings {
     'tlColBlendMode': 'Blend mode column',
     'tlColFx': 'FX column',
     'tlColMark': 'Mark column',
-    'tlColFillReference': 'Fill reference column',
+    'tlColClip': 'Clipping column',
     'tlColTimesheet': 'Timesheet column',
     'tlShowXSheet': 'Show X-sheet',
     'tlShowTimeline': 'Show timeline',
@@ -3090,8 +3088,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Pen (on)',
     'laneGraphTransformBox': 'Transform box',
     'laneGraphTransformBoxOn': 'Transform box (on)',
-    'railFillReferenceOn': 'Fill reference layer (on)',
-    'railFillReference': 'Fill reference layer',
+    'railClipOn': 'Clip to layer below (on)',
+    'railClip': 'Clip to layer below',
     'tlLayerMark': 'Layer mark',
     'tlLayerMarkNone': 'No label',
     'tlLayerMarkSource': 'Material',
@@ -4397,7 +4395,6 @@ enum AppStrings {
     'toolCutRegisterTip': '先端として登録',
     'toolCutDeletesSource': '元画像を削除',
     'toolReadSource': '参照',
-    'toolReadReferences': '塗り参照',
     'toolReadsEveryVisibleLayer': '表示中のすべてのレイヤー',
     'brushSettingsTitle': 'ブラシ設定',
     'toolShapeRect': '矩形',
@@ -4671,7 +4668,7 @@ enum AppStrings {
     'tlHideAll': 'すべて隠す',
     'tlSoloKind': '種類をソロ',
     'tlSoloColor': '色をソロ',
-    'tlSoloFillReferences': '塗り参照をソロ',
+    'tlSoloClips': 'クリッピングをソロ',
     'tlSoloFxOnRows': 'FXオンの行をソロ',
     'tlSoloSheetOnRows': 'シートオンの行をソロ',
     'tlApplyAllFx': 'FXをすべて適用',
@@ -4679,7 +4676,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'すべてシートに載せる',
     'tlAllOffTimesheet': 'すべてシートから外す',
     'tlClearMarkFilter': 'マークフィルターを解除',
-    'tlClearAllFillRefs': '塗り参照をすべて解除',
+    'tlClearAllClips': 'クリッピングをすべて解除',
     'tlColVisibility': '表示列',
     'tlColLayerKind': 'レイヤー種類列',
     'tlColOnionSkin': 'オニオンスキン列',
@@ -4687,7 +4684,7 @@ enum AppStrings {
     'tlColBlendMode': '合成モード列',
     'tlColFx': 'FX列',
     'tlColMark': 'マーク列',
-    'tlColFillReference': '塗り参照列',
+    'tlColClip': 'クリッピング列',
     'tlColTimesheet': 'タイムシート列',
     'tlShowXSheet': 'Xシートで表示',
     'tlShowTimeline': 'タイムラインで表示',
@@ -4726,8 +4723,8 @@ enum AppStrings {
     'laneGraphPenOn': 'ペン（オン）',
     'laneGraphTransformBox': '変形ボックス',
     'laneGraphTransformBoxOn': '変形ボックス（オン）',
-    'railFillReferenceOn': '塗り参照レイヤー（オン）',
-    'railFillReference': '塗り参照レイヤー',
+    'railClipOn': '下のレイヤーでクリッピング（オン）',
+    'railClip': '下のレイヤーでクリッピング',
     'tlLayerMark': 'レイヤーマーク',
     'tlLayerMarkNone': 'ラベルなし',
     'tlLayerMarkSource': '上がり',
@@ -6058,7 +6055,6 @@ enum AppStrings {
     'toolCutRegisterTip': '팁으로 등록',
     'toolCutDeletesSource': '원본 삭제',
     'toolReadSource': '참조',
-    'toolReadReferences': '채색 참조',
     'toolReadsEveryVisibleLayer': '보이는 레이어 전부',
     'brushSettingsTitle': '브러시 설정',
     'toolShapeRect': '사각형',
@@ -6332,7 +6328,7 @@ enum AppStrings {
     'tlHideAll': '모두 숨기기',
     'tlSoloKind': '종류 솔로',
     'tlSoloColor': '색 솔로',
-    'tlSoloFillReferences': '채색 참조 솔로',
+    'tlSoloClips': '클리핑 솔로',
     'tlSoloFxOnRows': 'FX 켜진 행 솔로',
     'tlSoloSheetOnRows': '시트 켜진 행 솔로',
     'tlApplyAllFx': 'FX 모두 적용',
@@ -6340,7 +6336,7 @@ enum AppStrings {
     'tlAllOnTimesheet': '모두 시트에 올리기',
     'tlAllOffTimesheet': '모두 시트에서 내리기',
     'tlClearMarkFilter': '마크 필터 해제',
-    'tlClearAllFillRefs': '채색 참조 모두 해제',
+    'tlClearAllClips': '클리핑 모두 해제',
     'tlColVisibility': '표시 열',
     'tlColLayerKind': '레이어 종류 열',
     'tlColOnionSkin': '어니언 스킨 열',
@@ -6348,7 +6344,7 @@ enum AppStrings {
     'tlColBlendMode': '블렌드 모드 열',
     'tlColFx': 'FX 열',
     'tlColMark': '마크 열',
-    'tlColFillReference': '채색 참조 열',
+    'tlColClip': '클리핑 열',
     'tlColTimesheet': '타임시트 열',
     'tlShowXSheet': 'X시트로 보기',
     'tlShowTimeline': '타임라인으로 보기',
@@ -6387,8 +6383,8 @@ enum AppStrings {
     'laneGraphPenOn': '펜 (켜짐)',
     'laneGraphTransformBox': '변형 상자',
     'laneGraphTransformBoxOn': '변형 상자 (켜짐)',
-    'railFillReferenceOn': '채색 참조 레이어 (켜짐)',
-    'railFillReference': '채색 참조 레이어',
+    'railClipOn': '아래 레이어로 클리핑 (켜짐)',
+    'railClip': '아래 레이어로 클리핑',
     'tlLayerMark': '레이어 마크',
     'tlLayerMarkNone': '라벨 없음',
     'tlLayerMarkSource': '소재',
@@ -7856,7 +7852,6 @@ enum AppStrings {
     'toolCutRegisterTip': 'Enregistrer comme pointe',
     'toolCutDeletesSource': "Supprimer l'original",
     'toolReadSource': 'Référence',
-    'toolReadReferences': 'Références',
     'toolReadsEveryVisibleLayer': 'Tous les calques visibles',
     'brushSettingsTitle': 'Réglages de brosse',
     'toolShapeRect': 'Rectangle',
@@ -8133,7 +8128,7 @@ enum AppStrings {
     'tlHideAll': 'Tout masquer',
     'tlSoloKind': 'Solo par type',
     'tlSoloColor': 'Solo par couleur',
-    'tlSoloFillReferences': 'Solo des références de remplissage',
+    'tlSoloClips': 'Solo des calques écrêtés',
     'tlSoloFxOnRows': 'Solo des lignes avec FX',
     'tlSoloSheetOnRows': 'Solo des lignes sur la feuille',
     'tlApplyAllFx': 'Appliquer tous les FX',
@@ -8141,7 +8136,7 @@ enum AppStrings {
     'tlAllOnTimesheet': 'Tout mettre sur la feuille',
     'tlAllOffTimesheet': 'Tout retirer de la feuille',
     'tlClearMarkFilter': 'Effacer le filtre de repères',
-    'tlClearAllFillRefs': 'Effacer toutes les références de remplissage',
+    'tlClearAllClips': 'Libérer tous les masques d’écrêtage',
     'tlColVisibility': 'Colonne visibilité',
     'tlColLayerKind': 'Colonne type de calque',
     'tlColOnionSkin': "Colonne pelure d'oignon",
@@ -8149,7 +8144,7 @@ enum AppStrings {
     'tlColBlendMode': 'Colonne mode de fusion',
     'tlColFx': 'Colonne FX',
     'tlColMark': 'Colonne repère',
-    'tlColFillReference': 'Colonne référence de remplissage',
+    'tlColClip': 'Colonne masque d’écrêtage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlShowXSheet': "Afficher en feuille d'exposition",
     'tlShowTimeline': 'Afficher en timeline',
@@ -8189,8 +8184,8 @@ enum AppStrings {
     'laneGraphPenOn': 'Plume (activée)',
     'laneGraphTransformBox': 'Boîte de transformation',
     'laneGraphTransformBoxOn': 'Boîte de transformation (activée)',
-    'railFillReferenceOn': 'Calque de référence de remplissage (activé)',
-    'railFillReference': 'Calque de référence de remplissage',
+    'railClipOn': 'Masque d’écrêtage sur le calque inférieur (activé)',
+    'railClip': 'Masque d’écrêtage sur le calque inférieur',
     'tlLayerMark': 'Repère de calque',
     'tlLayerMarkNone': 'Aucune étiquette',
     'tlLayerMarkSource': 'Matériel',
@@ -9448,7 +9443,6 @@ enum AppStrings {
     'toolCutRegisterTip': '注册为笔尖',
     'toolCutDeletesSource': '删除原图',
     'toolReadSource': '参考',
-    'toolReadReferences': '填充参考',
     'toolReadsEveryVisibleLayer': '所有可见图层',
     'brushSettingsTitle': '笔刷设置',
     'toolShapeRect': '矩形',
@@ -9717,7 +9711,7 @@ enum AppStrings {
     'tlHideAll': '全部隐藏',
     'tlSoloKind': '按类型独奏',
     'tlSoloColor': '按颜色独奏',
-    'tlSoloFillReferences': '独奏填充参考',
+    'tlSoloClips': '独奏剪贴图层',
     'tlSoloFxOnRows': '独奏已开 FX 的行',
     'tlSoloSheetOnRows': '独奏已上表的行',
     'tlApplyAllFx': '应用全部 FX',
@@ -9725,7 +9719,7 @@ enum AppStrings {
     'tlAllOnTimesheet': '全部放上摄影表',
     'tlAllOffTimesheet': '全部移出摄影表',
     'tlClearMarkFilter': '清除标记筛选',
-    'tlClearAllFillRefs': '清除所有填充参考',
+    'tlClearAllClips': '释放所有剪贴',
     'tlColVisibility': '可见性列',
     'tlColLayerKind': '图层类型列',
     'tlColOnionSkin': '洋葱皮列',
@@ -9733,7 +9727,7 @@ enum AppStrings {
     'tlColBlendMode': '混合模式列',
     'tlColFx': 'FX 列',
     'tlColMark': '标记列',
-    'tlColFillReference': '填充参考列',
+    'tlColClip': '剪贴列',
     'tlColTimesheet': '摄影表列',
     'tlShowXSheet': '以摄影表显示',
     'tlShowTimeline': '以时间轴显示',
@@ -9772,8 +9766,8 @@ enum AppStrings {
     'laneGraphPenOn': '钢笔（开）',
     'laneGraphTransformBox': '变换框',
     'laneGraphTransformBoxOn': '变换框（开）',
-    'railFillReferenceOn': '填充参考图层（开）',
-    'railFillReference': '填充参考图层',
+    'railClipOn': '用下一图层剪贴（开）',
+    'railClip': '用下一图层剪贴',
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',

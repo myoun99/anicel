@@ -246,11 +246,10 @@ void main() {
       );
     });
 
-    test('the fill reads what its REFERENCE SOURCE says (I-36, 유저 '
-        '2026-09-24: 「모드 세개. 참조(보이는거 전부), 참조(참조 설정한 '
-        '레이어만, 없으면 현재), 현재레이어」)', () {
+    test('the fill reads what its READ SOURCE says (I-36 — its middle '
+        'mode, the flagged layers, went with I-92)', () {
       // A paint layer whose opaque blob covers the whole canvas — without
-      // the reference filter it becomes the seed color and the barrier
+      // a read of the ink alone it becomes the seed color and the barrier
       // box on the ink layer is invisible to the fill.
       final blobTiles = <TileCoord, BitmapTile>{};
       for (var ty = 0; ty < 2; ty += 1) {
@@ -285,16 +284,9 @@ void main() {
 
       // What the fill encloses, read by the stamp's size: the blob is ONE
       // flat region (8 wide), the ink's box holds the seed in 2×2.
-      (int, int) filled(
-        CanvasReadSource source, {
-        required bool inkFlagged,
-        required LayerId active,
-      }) {
+      (int, int) filled(CanvasReadSource source, {required LayerId active}) {
         final dabs = buildFillDabs(
-          cut: cutWith([
-            inkLayer().copyWith(isFillReference: inkFlagged),
-            paintLayer,
-          ]),
+          cut: cutWith([inkLayer(), paintLayer]),
           frameIndex: 0,
           surfaceResolver: resolve,
           point: CanvasPoint(x: 3, y: 3),
@@ -315,53 +307,17 @@ void main() {
       const blob = (8, 8);
       const box = (2, 2);
 
-      // 「보이는거 전부」: the blob hides the box, flag or no flag.
-      for (final inkFlagged in [false, true]) {
-        expect(
-          filled(
-            CanvasReadSource.display,
-            inkFlagged: inkFlagged,
-            active: ink,
-          ),
-          blob,
-          reason: 'what you see is the blob',
-        );
-      }
-      // 「참조 설정한 레이어만」: the flagged ink alone, whoever is active —
-      // paint on a colour layer never blocks a fill traced on the line art.
+      // 「보이는거 전부」: the blob hides the box, whoever is active.
       for (final active in [ink, paint]) {
         expect(
-          filled(CanvasReadSource.references, inkFlagged: true, active: active),
-          box,
-          reason: 'the reference is the ink, active $active',
+          filled(CanvasReadSource.display, active: active),
+          blob,
+          reason: 'what you see is the blob, active $active',
         );
       }
-      // 「없으면 현재」: nothing flagged, the ACTIVE layer is read.
-      expect(
-        filled(CanvasReadSource.references, inkFlagged: false, active: ink),
-        box,
-      );
-      expect(
-        filled(CanvasReadSource.references, inkFlagged: false, active: paint),
-        blob,
-        reason: 'the paint layer is current: its blob is all there is',
-      );
-      // 「현재레이어」: the active layer alone, flags or not.
-      expect(
-        filled(CanvasReadSource.layer, inkFlagged: true, active: paint),
-        blob,
-      );
-      expect(
-        filled(CanvasReadSource.layer, inkFlagged: false, active: ink),
-        box,
-      );
-
-      // The flag itself persists through the layer's JSON.
-      final reopened = Layer.fromJson(
-        inkLayer().copyWith(isFillReference: true).toJson(),
-      );
-      expect(reopened.isFillReference, isTrue);
-      expect(Layer.fromJson(inkLayer().toJson()).isFillReference, isFalse);
+      // 「현재레이어」: the active layer alone.
+      expect(filled(CanvasReadSource.layer, active: paint), blob);
+      expect(filled(CanvasReadSource.layer, active: ink), box);
     });
 
     group('Fill Beyond Canvas (pasteboard)', () {

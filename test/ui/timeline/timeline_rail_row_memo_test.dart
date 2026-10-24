@@ -52,8 +52,8 @@ void main() {
             : LayerBlendMode.normal,
       ),
       'collapsed': (layer) => layer.copyWith(collapsed: !layer.collapsed),
-      'isFillReference': (layer) =>
-          layer.copyWith(isFillReference: !layer.isFillReference),
+      'clipsToBelow': (layer) =>
+          layer.copyWith(clipsToBelow: !layer.clipsToBelow),
       'an attach': (layer) =>
           layer.copyWith(attachedToLayerId: const LayerId('other')),
       'attachedPlacement': (layer) => layer.copyWith(

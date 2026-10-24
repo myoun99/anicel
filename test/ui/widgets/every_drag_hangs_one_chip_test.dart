@@ -95,7 +95,7 @@ void main() {
   }
 
   /// A rail row where a hand takes it: its name. ⛔Not the row's centre — a
-  /// drawing row's centre is its fill-reference button since the opacity
+  /// drawing row's centre is its clip button since the opacity
   /// column widened (text-scale-rail-opac, 유저 2026-09-25), and a drag that
   /// starts on a control is the control's.
   Finder railRow(String id) =>

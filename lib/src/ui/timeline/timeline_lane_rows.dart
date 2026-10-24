@@ -790,7 +790,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       layerRailTrailingCells(
         axis: widget.axis,
         columns: widget.metrics.railColumns,
-        fillReference: _groupReset(colorScheme),
+        clip: _groupReset(colorScheme),
         fx: _groupFx(context),
         optionalColumns: widget.optionalColumns,
         trailingRegion: _groupPreview(),
@@ -813,7 +813,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   }
 
   /// R5: AE's group Reset, in the slot immediately left of fx — the one the
-  /// fill-reference toggle owns on layer rows, and the two never appear on
+  /// clip toggle owns on layer rows, and the two never appear on
   /// the same row.
   Widget? _groupReset(ColorScheme colorScheme) {
     final onReset = widget.onResetLaneGroup;

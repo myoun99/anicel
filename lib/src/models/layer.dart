@@ -53,7 +53,7 @@ class Layer {
     this.kind = LayerKind.animation,
     this.onTimesheet = true,
     this.mark = LayerMark.none,
-    this.isFillReference = false,
+    this.clipsToBelow = false,
     this.mediaReference,
     this.seNameTag,
     TransformTrack? transformTrack,
@@ -182,12 +182,18 @@ class Layer {
   /// they all carry this one.
   final ConteKey? conteKey;
 
-  /// Reference layer for the FILL tool (R20-C2, the CSP lighthouse): a
-  /// fill set to read its references reads ONLY the flagged layers — paint
-  /// on a color layer never blocks or leaks a fill traced against the line
-  /// art — and the current layer when no layer is flagged (I-36).
-  /// Display/export composite untouched.
-  final bool isFillReference;
+  /// CLIP TO LAYER BELOW (I-92 — Photoshop's clipping mask, Clip Studio's
+  /// 「下のレイヤーでクリッピング」): this row shows only where its BASE has
+  /// pixels — the first row below it, in its own folder, that does not clip
+  /// (I-92-Q2 a, 「프로툴과 같게」) — and takes the base's opacity and blend
+  /// (Photoshop: clipped layers assume the base's). A folder clips and is a
+  /// base too (I-92-Q3 a). What the row draws is kept: it is hidden, never
+  /// cut, so turning this off shows it again.
+  ///
+  /// ↩️It was the FILL's reference flag (R20-C2, the CSP lighthouse; I-36)
+  /// until 유저 2026-10-12, I-92: 「그런버튼 삭제하고 … 포토샵이나 클튜에서
+  /// 사용하는 마스크기능이 되면 됨」.
+  final bool clipsToBelow;
 
   /// Non-null makes this a REFERENCE layer showing an external media
   /// asset (§6-z23's second axis): the brush refuses
@@ -315,7 +321,7 @@ class Layer {
     LayerKind? kind,
     bool? onTimesheet,
     LayerMark? mark,
-    bool? isFillReference,
+    bool? clipsToBelow,
     TransformTrack? transformTrack,
     bool? transformEnabled,
     List<LayerEffect>? effects,
@@ -348,7 +354,7 @@ class Layer {
       kind: kind ?? this.kind,
       onTimesheet: onTimesheet ?? this.onTimesheet,
       mark: mark ?? this.mark,
-      isFillReference: isFillReference ?? this.isFillReference,
+      clipsToBelow: clipsToBelow ?? this.clipsToBelow,
       transformTrack: transformTrack ?? this.transformTrack,
       transformEnabled: transformEnabled ?? this.transformEnabled,
       effects: effects ?? this.effects,
@@ -409,7 +415,7 @@ class Layer {
     'kind': kind.toJson(),
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
-    if (isFillReference) 'fillReference': true,
+    if (clipsToBelow) 'clipToBelow': true,
     if (mediaReference != null) 'mediaReference': mediaReference!.toJson(),
     if (seNameTag != null) 'seNameTag': seNameTag!.toJson(),
     if (folderId != null) 'folderId': folderId!.toJson(),
@@ -469,7 +475,7 @@ class Layer {
       mark: json.containsKey('mark')
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
-      isFillReference: json['fillReference'] as bool? ?? false,
+      clipsToBelow: json['clipToBelow'] as bool? ?? false,
       mediaReference: json['mediaReference'] == null
           ? null
           : MediaReference.fromJson(
@@ -548,7 +554,7 @@ class Layer {
           other.kind == kind &&
           other.onTimesheet == onTimesheet &&
           other.mark == mark &&
-          other.isFillReference == isFillReference &&
+          other.clipsToBelow == clipsToBelow &&
           other.mediaReference == mediaReference &&
           other.seNameTag == seNameTag &&
           other.transformTrack == transformTrack &&
@@ -600,8 +606,8 @@ class Layer {
     kind,
     onTimesheet,
     mark,
-    // Folded with isFillReference: Object.hash caps at 20 positional args.
-    Object.hash(isFillReference, mediaReference, seNameTag),
+    // Folded with clipsToBelow: Object.hash caps at 20 positional args.
+    Object.hash(clipsToBelow, mediaReference, seNameTag),
     // Folded with transformTrack: Object.hash caps at 20 positional args.
     Object.hash(transformTrack, transformEnabled, Object.hashAll(effects)),
     attachedToLayerId,

@@ -44,10 +44,9 @@ class FloodFillOptions {
     this.source = CanvasReadSource.display,
   });
 
-  /// Which layers the flood reads (I-36) — the eyedropper's question, with
-  /// the fill's three answers. The default is the user's first mode, 「참조
-  /// (보이는거 전부)」, which is also what a fill with no reference flag has
-  /// always read.
+  /// Which layers the flood reads (I-36) — the eyedropper's question and
+  /// answers ([CanvasReadSource]). The default is the user's first mode,
+  /// 「참조(보이는거 전부)」.
   final CanvasReadSource source;
 
   /// Max per-channel distance from the seed color that still fills.
@@ -197,7 +196,7 @@ class LazyCanvasRasterRgb {
       cut: cut,
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
-      read: layersReadBy(source, cut, activeLayerId),
+      read: layersReadBy(source, activeLayerId),
       space: space,
       handles: handles,
       originX: -marginX,

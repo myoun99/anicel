@@ -266,7 +266,7 @@ AttachedMirrorGroup? attachedMirrorGroupOf(
 /// Returns the layer matching [layerId] anywhere in [project] — cut layers
 /// AND the tracks' track-owned SE rows (the same reach as the repository's
 /// updateLayerAnywhere seam). Layer ids are globally unique, so the flag
-/// commands (mark/timesheet/fill-reference) resolve through this instead of
+/// commands (mark/timesheet/clip) resolve through this instead of
 /// the cut-scoped [requireLayer], which track SE rows are not in.
 /// [requireLayerAnywhere] that answers null instead of throwing — for the
 /// read paths (the storyboard's row-addressed editors) where a stale id is

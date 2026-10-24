@@ -345,14 +345,14 @@ Widget _panel(
         onSheetAllOn: () {},
         onSheetAllOff: () {},
         onClearMarkFilter: () {},
-        onClearAllFillReferences: () {},
+        onClearAllClips: () {},
         onBypassAllFx: () {},
         onEnableAllFx: () {},
         onToggleMarkFilter: (_) {},
         onToggleKindFilter: (_) {},
         onToggleSheetOnlyFilter: () {},
         onToggleFxOnlyFilter: () {},
-        onToggleFillReferenceOnlyFilter: () {},
+        onToggleClippedOnlyFilter: () {},
         onPreviewLayersOpacity: (_, value) => values?.add(value),
         onCommitLayersOpacity: (ids, value) {
           committed.add(ids);

@@ -542,7 +542,7 @@ class _StoryboardRowsAndLabels {
   /// 어니언도 콘티행 기본적으로 버튼 글로벌이니까 넣음」): the sheet toggle,
   /// made the head's ([ConteHead.onTimesheet]), and the onion, read
   /// through the head's rows (`OnionSkin.isLayerOnionSkinEnabled`). The
-  /// fill-reference switch and the link badge are not handed here, and the
+  /// clip switch and the link badge are not handed here, and the
   /// row mounts neither. ↩️The sheet toggle and the onion stayed off it too
   /// until Q22 — the flag was each cut's own.
   ///

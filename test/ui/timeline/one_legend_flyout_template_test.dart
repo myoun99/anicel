@@ -14,7 +14,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 ///
 /// "Legend absent → no flyout; the bulk entries; then a divider and the
 /// solo entries, the divider only over a solo half that holds any"
-/// is one rule spelled at four cells (timesheet, mark, fill-ref, fx).
+/// is one rule spelled at four cells (timesheet, mark, clip, fx).
 /// These pin the rule at all four so it cannot be shared into a shape
 /// that answers differently at one of them.
 void main() {
@@ -25,14 +25,14 @@ void main() {
     onSheetAllOn: () {},
     onSheetAllOff: () {},
     onClearMarkFilter: () {},
-    onClearAllFillReferences: () {},
+    onClearAllClips: () {},
     onBypassAllFx: () {},
     onEnableAllFx: () {},
     onToggleMarkFilter: (_) {},
     onToggleKindFilter: (_) {},
     onToggleSheetOnlyFilter: () {},
     onToggleFxOnlyFilter: () {},
-    onToggleFillReferenceOnlyFilter: () {},
+    onToggleClippedOnlyFilter: () {},
     onPreviewLayersOpacity: (_, _) {},
     onCommitLayersOpacity: (_, _) {},
   );
@@ -86,7 +86,7 @@ void main() {
   /// always offer and the solo item each offers under it.
   const cells = <(String cell, String bulk, String solo)>[
     ('legend-sheet', 'legend-sheet-all-on', 'legend-filter-sheet'),
-    ('legend-fill-ref', 'legend-fill-ref-clear', 'legend-filter-fill-ref'),
+    ('legend-clip', 'legend-clip-clear', 'legend-filter-clip'),
     ('legend-fx', 'legend-fx-enable-all', 'legend-filter-fx'),
   ];
 
@@ -141,7 +141,7 @@ void main() {
             ? const TimelineRowFilter(
                 onTimesheetOnly: true,
                 fxOnly: true,
-                fillReferenceOnly: true,
+                clippedOnly: true,
               )
             : TimelineRowFilter.none,
         visibilitySoloEnabled: held,

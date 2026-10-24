@@ -832,10 +832,12 @@ enum LayerKind {
   /// apart the way these two just did.
   bool get takesAuthoredCels => holdsDrawings || isDrawingCel;
 
-  /// Whether a layer of this kind can be a FILL REFERENCE (R20-C2: the
-  /// bucket sits on drawing rows only). The rail's bucket and the fill
-  /// settings' bucket for the active layer (I-36) both ask this.
-  bool get carriesFillReference => this == LayerKind.animation;
+  /// Whether a row of this kind can CLIP TO THE LAYER BELOW
+  /// ([Layer.clipsToBelow]): every row that holds a picture, and a folder
+  /// (I-92-Q3 a). ↩️As the fill's reference flag it sat on drawing rows
+  /// only (R20-C2), and 유저 2026-10-04 (F-288): 「그림이 존재하는 레이어면
+  /// 다 가능해야하는거아닌가? 이미지레이어 불가능함」.
+  bool get takesClipping => paintsArtwork || groupsLayers;
 
   /// Whether a row of this kind carries the button that opens how the canvas
   /// shows the camera's path (I-89 ④, 유저 2026-10-12: 「카메라 경로표시

@@ -37,7 +37,7 @@ void main() {
         'legend-mark',
         'legend-kind',
         'legend-layer',
-        'legend-fill-ref',
+        'legend-clip',
         'legend-fx',
         'legend-eye',
         'legend-opacity',

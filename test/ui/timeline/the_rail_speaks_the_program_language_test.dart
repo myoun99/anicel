@@ -21,7 +21,7 @@ import '../../helpers/named_finders.dart';
 /// tooltips from it — `'$subject blend mode'`, `'Hide $subject'`, `'Bypass
 /// $subject FX'` — and F-37's scan skips every literal with a `$` in it, so
 /// no count ever saw them. The rail row beside them hardcoded four more
-/// pairs (timesheet, lanes, onion, fill reference) as ternaries, which the
+/// pairs (timesheet, lanes, onion, clip) as ternaries, which the
 /// scan reads one arm of at most.
 ///
 /// 🧪**THE TEST DOES NOT NAME THE TRANSLATIONS** (F-124's shape): the same
@@ -159,8 +159,8 @@ void main() {
     'lanes-shut': (s) => s.railExpandLanes,
     'onion-on': (s) => s.railOnionSkinOn,
     'onion-off': (s) => s.railOnionSkin,
-    'fill-on': (s) => s.railFillReferenceOn,
-    'fill-off': (s) => s.railFillReference,
+    'fill-on': (s) => s.railClipOn,
+    'fill-off': (s) => s.railClip,
   };
 
   void expectTranslated(
@@ -186,7 +186,7 @@ void main() {
     expectTranslated(ja, ko);
   });
 
-  /// The rail row's own toggles — lanes, onion, fill reference — in both
+  /// The rail row's own toggles — lanes, onion, clip — in both
   /// arms, on the real timeline over a real session.
   Future<Map<String, String>> rowToggles(
     WidgetTester tester,
@@ -202,7 +202,7 @@ void main() {
       final layer = session.activeLayer!;
       if (on) {
         session.onionSkin.toggleLayerOnionSkin(layer.id);
-        session.layerSwitches.toggleLayerFillReference(layer.id);
+        session.layerSwitches.toggleLayerClip(layer.id);
       }
       await tester.pumpWidget(
         MaterialApp(
@@ -235,7 +235,7 @@ void main() {
       );
       words[on ? 'onion-on' : 'onion-off'] = face('timeline-layer-onion-$id');
       words[on ? 'fill-on' : 'fill-off'] = face(
-        'timeline-layer-fill-reference-$id',
+        'timeline-layer-clip-$id',
       );
     }
     return words;

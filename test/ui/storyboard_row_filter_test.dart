@@ -18,7 +18,7 @@ void main() {
     LayerMark mark = LayerMark.none,
     LayerKind kind = LayerKind.animation,
     bool onTimesheet = true,
-    bool isFillReference = false,
+    bool clipsToBelow = false,
   }) => Layer(
     id: const LayerId('row'),
     name: 'A',
@@ -27,7 +27,7 @@ void main() {
     mark: mark,
     kind: kind,
     onTimesheet: onTimesheet,
-    isFillReference: isFillReference,
+    clipsToBelow: clipsToBelow,
   );
 
   group('a row that CARRIES the facet is judged by it', () {
@@ -60,7 +60,7 @@ void main() {
       expect(filter.allowsFacets(fxEnabled: true), isTrue);
     });
 
-    test('kind, sheet-only and fill-reference behave the same way', () {
+    test('kind, sheet-only and clip behave the same way', () {
       expect(
         const TimelineRowFilter(
           kinds: {LayerKind.animation},
@@ -75,7 +75,7 @@ void main() {
       );
       expect(
         const TimelineRowFilter(
-          fillReferenceOnly: true,
+          clippedOnly: true,
         ).allowsFacets(fxEnabled: true),
         isTrue,
       );
@@ -121,7 +121,7 @@ void main() {
         kind: row.kind,
         onTimesheet: row.onTimesheet,
         fxEnabled: true,
-        isFillReference: row.isFillReference,
+        clipsToBelow: row.clipsToBelow,
       ),
     );
   });

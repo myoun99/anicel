@@ -115,7 +115,7 @@ class TimelineGridHooks {
     this.onToggleLayerOnionSkin,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
-    this.onToggleLayerFillReference,
+    this.onToggleLayerClip,
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
@@ -395,8 +395,8 @@ class TimelineGridHooks {
 
   final void Function(LayerId layerId, LayerMarkEdit edit) onLayerMarkSelected;
 
-  /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerFillReference;
+  /// The clip toggle (I-92) of every row that can clip; null hides it.
+  final ValueChanged<LayerId>? onToggleLayerClip;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.

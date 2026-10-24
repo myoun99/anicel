@@ -26,7 +26,7 @@ import '../../helpers/storyboard_twirls.dart';
 /// #1349 taught `EagerPanGestureRecognizer` to decline a pointer that EITHER
 /// claim holds. That does nothing for a button which makes no claim at all,
 /// and on 2026-08-29 fifteen of them made none: the x-sheet's lane toggle,
-/// folder twirl, fill-reference and onion; the lane rows' three toggles and
+/// folder twirl, clip and onion; the lane rows' three toggles and
 /// their shared button; the legend's flyout, lanes and mute; the storyboard's
 /// two lane toggles; the top strip's blend lock; and the bar's 1·2·3·4·N.
 ///
@@ -478,7 +478,7 @@ void main() {
     // the SCAN is what covers those two. Everything nameable is driven.
     for (final id in <String>[
       'xsheet-layer-onion-$layerId',
-      'xsheet-layer-fill-reference-$layerId',
+      'xsheet-layer-clip-$layerId',
     ]) {
       final finder = find.named(id);
       expect(finder, findsOneWidget, reason: '$id is not on the sheet');

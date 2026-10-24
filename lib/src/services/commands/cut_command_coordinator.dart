@@ -88,7 +88,7 @@ import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
 import 'update_layer_effects_command.dart';
-import 'update_layer_fill_reference_command.dart';
+import 'update_layer_clip_command.dart';
 import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
@@ -976,19 +976,19 @@ class CutCommandCoordinator {
     ),
   );
 
-  void setLayerFillReference({
+  void setLayerClip({
     required CutId cutId,
     required LayerId layerId,
-    required bool isFillReference,
+    required bool clipsToBelow,
   }) => _executeIfChanged(
     subject: _requireLayerAnywhere(layerId),
-    value: isFillReference,
-    read: (layer) => layer.isFillReference,
-    command: (_) => UpdateLayerFillReferenceCommand(
+    value: clipsToBelow,
+    read: (layer) => layer.clipsToBelow,
+    command: (_) => UpdateLayerClipCommand(
       repository: repository,
       cutId: cutId,
       layerId: layerId,
-      isFillReference: isFillReference,
+      clipsToBelow: clipsToBelow,
     ),
   );
 

@@ -163,7 +163,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     effects: payload.effects,
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,
-    isFillReference: payload.isFillReference,
+    clipsToBelow: payload.clipsToBelow,
   );
 
   return PasteLayerCommandInputPlan(

@@ -429,7 +429,7 @@ List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  Widget? fillReference,
+  Widget? clip,
   Widget? fx,
   Widget? onion,
   Widget? visibility,
@@ -438,7 +438,7 @@ List<Widget> layerRailTrailingCells({
   Widget? trailingRegion,
 }) {
   return [
-    layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
+    layerRailSlot(axis, layerClipSlotWidth, clip),
     layerRailSlot(axis, layerFxSlotWidth, fx),
     // R5 #7: everything AFTER fx as ONE region instead of its columns — a
     // group header has no eye and no blend, so the space is free
@@ -486,7 +486,7 @@ Widget? _plateIn(Axis axis, Widget? plate) => plate == null
 /// them. Naming them lets a host LOCATE a column instead of re-adding the
 /// widths in a comment — see [layerRailTrailingWidth].
 enum LayerRailTrailingSlot {
-  fillReference,
+  clip,
   fx,
   onion,
   visibility,
@@ -535,7 +535,7 @@ double _trailingSlotWidth(
   LayerRailTrailingSlot slot,
   LayerRailColumnWidths columns,
 ) => switch (slot) {
-  LayerRailTrailingSlot.fillReference => layerFillReferenceSlotWidth,
+  LayerRailTrailingSlot.clip => layerClipSlotWidth,
   LayerRailTrailingSlot.fx => layerFxSlotWidth,
   LayerRailTrailingSlot.onion => layerOnionSlotWidth,
   LayerRailTrailingSlot.visibility => layerVisibilitySlotWidth,
@@ -552,7 +552,7 @@ double _trailingSlotWidth(
 double layerRailTrailingWidth({
   required LayerRailColumnWidths columns,
   required LayerRailOptionalColumns optionalColumns,
-  LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
+  LayerRailTrailingSlot from = LayerRailTrailingSlot.clip,
 }) {
   var total = 0.0;
   for (final slot in LayerRailTrailingSlot.values) {

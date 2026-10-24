@@ -696,7 +696,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     double Function(TRow row) after,
     double width,
   ) {
-    final edge = trailingEdge(LayerRailTrailingSlot.fillReference);
+    final edge = trailingEdge(LayerRailTrailingSlot.clip);
     return (row) {
       final end = edge - after(row);
       return (start: end - width, end: end);

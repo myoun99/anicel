@@ -61,7 +61,7 @@ Layer duplicateLayerAsIndependentCopy({
   // [duplicateFrameContent] documents: every field NOT listed here is
   // silently reset to its default. The R6 audit found nine already lost —
   // blendMode, folderId (so a duplicated cut FLATTENED every folder),
-  // seNameTag, isFillReference, runBehaviors, collapsed, audioGain,
+  // seNameTag, clipsToBelow, runBehaviors, collapsed, audioGain,
   // audioPan and attachedMode. Anything added to [Layer] belongs here.
   return Layer(
     id: newLayerId,
@@ -97,7 +97,7 @@ Layer duplicateLayerAsIndependentCopy({
     kind: kind ?? source.kind,
     onTimesheet: source.onTimesheet,
     mark: source.mark,
-    isFillReference: source.isFillReference,
+    clipsToBelow: source.clipsToBelow,
     // The duplicated layer shows the same library asset (§6-z23).
     mediaReference: source.mediaReference,
     seNameTag: source.seNameTag,

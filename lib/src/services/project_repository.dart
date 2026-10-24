@@ -994,14 +994,14 @@ class ProjectRepository {
     );
   }
 
-  void updateLayerFillReference({
+  void updateLayerClip({
     required CutId cutId,
     required LayerId layerId,
-    required bool isFillReference,
+    required bool clipsToBelow,
   }) {
     updateLayer(
       layerId: layerId,
-      update: (layer) => layer.copyWith(isFillReference: isFillReference),
+      update: (layer) => layer.copyWith(clipsToBelow: clipsToBelow),
     );
   }
 

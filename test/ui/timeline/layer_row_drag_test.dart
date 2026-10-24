@@ -200,7 +200,7 @@ Finder _railRow(String id) =>
 /// ever means the row. ⛔Not the row's centre: the rail's columns decide
 /// what sits there, and when the opacity column widened to hold OPAC
 /// (text-scale-rail-opac, 유저 2026-09-25) a drawing row's centre became its
-/// fill-reference button, which owns the press.
+/// clip button, which owns the press.
 Finder _railRowGrip(String id) =>
     find.named('timeline-layer-name-$id');
 

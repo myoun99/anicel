@@ -177,7 +177,7 @@ final List<(String, bool Function(EditorSessionManager s, LayerId id))>
 _switches = [
   ('visibility', (s, id) => _row(s, id).isVisible),
   ('timesheet', (s, id) => _row(s, id).onTimesheet),
-  ('fill-reference', (s, id) => _row(s, id).isFillReference),
+  ('clip', (s, id) => _row(s, id).clipsToBelow),
   ('fx', (s, id) => fxEnabledFromState(s.effectsAndFx.layerFxState(id))),
   ('onion', (s, id) => s.onionSkin.isLayerOnionSkinEnabled(id)),
 ];

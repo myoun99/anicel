@@ -146,7 +146,7 @@ int sampleCompositeColor({
   CanvasReadSource source = CanvasReadSource.display,
   LayerId? activeLayerId,
 }) {
-  final read = layersReadBy(source, cut, activeLayerId);
+  final read = layersReadBy(source, activeLayerId);
   // The LAYER STACK accumulates on its own, PREMULTIPLIED, with its own
   // coverage — the paper joins once at the end.
   //

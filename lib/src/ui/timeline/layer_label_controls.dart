@@ -265,7 +265,7 @@ const double layerTakeSlotWidth = layerMarkSlotWidth;
 /// **테이크가 없는 행도 똑같이 예약한다** — ⛔없다가 생기는 UI 금지.
 const double layerLabelSlotWidth = layerMarkSlotWidth + layerTakeSlotWidth;
 const double layerLaneToggleSlotWidth = 16;
-const double layerFillReferenceSlotWidth = 22;
+const double layerClipSlotWidth = 22;
 const double layerFxSlotWidth = 22;
 const double layerVisibilitySlotWidth = 22;
 

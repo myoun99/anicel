@@ -208,7 +208,7 @@ void main() {
     expect(rail.onToggleLayerFx, isNotNull);
     expect(rail.onToggleLayerOnionSkin, isNotNull);
     expect(rail.onToggleLanes, isNotNull);
-    expect(rail.onToggleLayerFillReference, isNotNull);
+    expect(rail.onToggleLayerClip, isNotNull);
     expect(rail.onLayerBlendModeSelected, isNotNull);
   });
 
