@@ -3,9 +3,14 @@ import 'dart:ui' as ui;
 
 import 'package:flutter_gpu/gpu.dart' as gpu;
 
-/// One write into a frame picture's texture: the [from] rect of [source]
-/// laid at ([x], [y]) of mip [level] — texel for texel, a copy, not a draw.
-typedef LevelWrite = ({ui.Image source, ui.Rect from, int x, int y, int level});
+/// One write into a frame picture's base level: [source] laid whole at
+/// ([x], [y]) — texel for texel, a copy, not a draw.
+typedef BaseWrite = ({ui.Image source, int x, int y});
+
+/// One write into a frame picture's mip [level] out of a run: the [width] x
+/// [height] texels from texel [start] of the run on, row after row, laid at
+/// ([x], [y]) of that level.
+typedef RunSpan = ({int start, int width, int height, int x, int y, int level});
 
 /// What a [FramePictureStore] asks of the GPU — the one seam between its
 /// logic and `flutter_gpu`, so the logic is proven on any runner and the
@@ -25,16 +30,21 @@ abstract interface class FramePictureGpu {
   /// to one texel.
   int levelsOf(Object held);
 
-  /// Lays [writes] into [held]'s texture, in order, and answers once the
+  /// Lays [writes] into [held]'s base level, in order, and answers once the
   /// GPU has done them — after which every draw of the image sees them.
-  Future<bool> write(Object held, List<LevelWrite> writes);
+  Future<bool> writeBase(Object held, List<BaseWrite> writes);
+
+  /// Copies [run]'s texels out of the GPU once and lays each of [spans]
+  /// from them into [held]'s levels, in order; answers once the GPU has
+  /// done them.
+  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans);
 }
 
 /// [FramePictureGpu] on `flutter_gpu`.
 ///
 /// 📐The base level takes a texture-to-texture copy. A halving level takes
-/// the same texels through a buffer: `flutter_gpu` copies a texture into a
-/// mip level only from a buffer, and renders into one not at all on GLES
+/// its texels through a buffer: `flutter_gpu` copies a texture into a mip
+/// level only from a buffer, and renders into one not at all on GLES
 /// (`doesSupportFramebufferRenderMipmap` false on the Surface Pro 11).
 /// Both kinds landed and showed under `FilterQuality.medium` at every zoom
 /// from 1/2 to 1/128 there (2026-10-24).
@@ -58,52 +68,56 @@ class FlutterGpuFramePictures implements FramePictureGpu {
   int levelsOf(Object held) => (held as gpu.Texture).mipLevelCount;
 
   @override
-  Future<bool> write(Object held, List<LevelWrite> writes) {
+  Future<bool> writeBase(Object held, List<BaseWrite> writes) {
     final target = held as gpu.Texture;
     final context = gpu.gpuContext;
     final commands = context.createCommandBuffer();
-    final sources = <ui.Image, gpu.Texture>{};
-    for (final (:source, :from, :x, :y, :level) in writes) {
-      final region = gpu.TextureRegion(
-        sources.putIfAbsent(
-          source,
-          () => gpu.Texture.fromImage(context, source),
-        ),
-        x: from.left.toInt(),
-        y: from.top.toInt(),
-        width: from.width.toInt(),
-        height: from.height.toInt(),
+    for (final (:source, :x, :y) in writes) {
+      commands.copyTextureToTexture(
+        gpu.TextureRegion(gpu.Texture.fromImage(context, source)),
+        gpu.TextureDestinationRegion(target, x: x, y: y),
       );
-      if (level == 0) {
-        commands.copyTextureToTexture(
-          region,
-          gpu.TextureDestinationRegion(target, x: x, y: y),
-        );
-        continue;
-      }
-      final texture = region.texture;
-      final perTexel = texture.getMipLevelSizeInBytes(0) ~/
-          (texture.width * texture.height);
-      final bytes = perTexel * from.width.toInt() * from.height.toInt();
-      final view = gpu.BufferView(
-        context.createDeviceBuffer(gpu.StorageMode.devicePrivate, bytes),
-        offsetInBytes: 0,
-        lengthInBytes: bytes,
-      );
-      commands
-        ..copyTextureToBuffer(region, view)
-        ..copyBufferToTexture(
-          view,
-          gpu.TextureRegion(
-            target,
-            x: x,
-            y: y,
-            width: from.width.toInt(),
-            height: from.height.toInt(),
-            mipLevel: level,
-          ),
-        );
     }
+    return _submitted(commands);
+  }
+
+  @override
+  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) {
+    final target = held as gpu.Texture;
+    final context = gpu.gpuContext;
+    final source = gpu.Texture.fromImage(context, run);
+    final bytes = source.getMipLevelSizeInBytes(0);
+    final perTexel = bytes ~/ (source.width * source.height);
+    final buffer = context.createDeviceBuffer(
+      gpu.StorageMode.devicePrivate,
+      bytes,
+    );
+    final commands = context.createCommandBuffer()
+      ..copyTextureToBuffer(
+        gpu.TextureRegion(source),
+        gpu.BufferView(buffer, offsetInBytes: 0, lengthInBytes: bytes),
+      );
+    for (final (:start, :width, :height, :x, :y, :level) in spans) {
+      commands.copyBufferToTexture(
+        gpu.BufferView(
+          buffer,
+          offsetInBytes: start * perTexel,
+          lengthInBytes: width * height * perTexel,
+        ),
+        gpu.TextureRegion(
+          target,
+          x: x,
+          y: y,
+          width: width,
+          height: height,
+          mipLevel: level,
+        ),
+      );
+    }
+    return _submitted(commands);
+  }
+
+  static Future<bool> _submitted(gpu.CommandBuffer commands) {
     final done = Completer<bool>();
     commands.submit(completionCallback: done.complete);
     return done.future;

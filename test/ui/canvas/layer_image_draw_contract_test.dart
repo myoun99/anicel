@@ -302,7 +302,8 @@ void main() {
 /// (`_readAt`): drawn at 1/2^k a side under `FilterQuality.medium`, owned
 /// on its own Paint, the GPU samples its level k, so a patch's levels and
 /// the levels under the patched ones are the engine's own halving — how
-/// the store keeps a patched picture's chain whole.
+/// the store keeps a patched picture's chain whole. The run they go out of
+/// the GPU in is read through it too, a row at a time.
 const int _knownRawDraws = 30;
 
 final RegExp _rawImageDraw = RegExp(

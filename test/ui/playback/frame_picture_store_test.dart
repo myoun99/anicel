@@ -5,14 +5,15 @@ import 'dart:ui' as ui;
 import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/quiet_turns.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/poll_until.dart';
 
 /// The store's logic — keys, the patch grid, which levels a patch writes,
-/// the order, the budget — on a GPU that only records what it is asked.
-/// Whether the writes SHOW is `frame_picture_store_gpu_test.dart`'s, on a
-/// runner with Impeller.
+/// when, the order, the budget — on a GPU that only records what it is
+/// asked. Whether the writes SHOW is `frame_picture_store_gpu_test.dart`'s,
+/// on a runner with Impeller.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -21,6 +22,8 @@ void main() {
   void fill(ui.Canvas canvas) => canvas.drawPaint(ui.Paint()..color = red);
   FrameDrawing over(ui.Rect extent) =>
       (extent: extent, outside: white, draw: fill);
+  // A pause no test sits through: the levels land at the cap or when asked.
+  const never = Duration(days: 1);
 
   test('a picture is laid over its extent widened out to the patch grid '
       'of the world', () async {
@@ -82,8 +85,8 @@ void main() {
         draw: fill,
       );
       await store.settled();
-      expect(gpu.writes.single.map(_described), [
-        (0, 8, 20, 36, 8),
+      expect(gpu.bases.single.map(_baseDescribed), [(0, 8, 20, 36, 8)]);
+      expect(gpu.levelWrites.single.spans.map(_spanDescribed), [
         (1, 4, 10, 18, 4),
         (2, 2, 5, 9, 2),
         for (var level = 3; level <= 10; level += 1)
@@ -104,14 +107,39 @@ void main() {
         draw: fill,
       );
       await store.settled();
-      expect(gpu.writes.single.map((write) => write.level), [0, 1, 2]);
+      expect(gpu.levelWrites.single.spans.map((span) => span.level), [1, 2]);
+      store.dispose();
+    });
+
+    test('lays the levels it writes end to end, row after row, in one run '
+        'the GPU copies out once', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      await _layed(store, 'a', 1024);
+      for (final left in [0.0, 100.0]) {
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+          draw: fill,
+        );
+      }
+      await store.settled();
+      final (:run, :spans) = gpu.levelWrites.single;
+      var at = 0;
+      for (final span in spans) {
+        expect(span.start, at, reason: 'level ${span.level} at ${span.x}');
+        at += span.width * span.height;
+      }
+      // The run wraps at 2048 a row: every texel, and no row more.
+      expect(run, (2048, (at + 2047) ~/ 2048));
       store.dispose();
     });
 
     test('is off the picture only once the write of every level of it is '
         'done', () async {
       final gpu = _RecordingGpu()..holdWrites = true;
-      final store = FramePictureStore<String>(gpu: gpu);
+      final store = FramePictureStore<String>(gpu: gpu, levelsQuiet: never);
       final picture = await _layed(store, 'a', 1024);
       store.patch(
         from: 'a',
@@ -119,10 +147,14 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: fill,
       );
-      expect(await pollUntil(() => gpu.writes.isNotEmpty), isTrue);
-      expect(picture.landing, hasLength(1));
+      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
       gpu.releaseWrite();
-      await store.settled();
+      final settling = store.settled();
+      expect(await pollUntil(() => gpu.levelWrites.isNotEmpty), isTrue);
+      expect(picture.landing, hasLength(1), reason: 'the base is in, the '
+          'levels under it are not');
+      gpu.releaseWrite();
+      await settling;
       expect(picture.landing, isEmpty);
       store.dispose();
     });
@@ -138,7 +170,7 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: fill,
       );
-      expect(await pollUntil(() => gpu.writes.isNotEmpty), isTrue);
+      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
       for (final left in [100.0, 200.0]) {
         store.patch(
           from: 'a',
@@ -149,14 +181,19 @@ void main() {
       }
       expect(await pollUntil(() => picture.landing.length == 3), isTrue);
       await _landAll(gpu, store);
-      expect(gpu.writes, hasLength(2));
+      expect(gpu.bases, hasLength(2));
       expect(
-        [
-          for (final write in gpu.writes.last)
-            if (write.level == 0) write.x,
-        ],
+        [for (final write in gpu.bases.last) write.x],
         [100, 200],
         reason: 'a later one after an earlier',
+      );
+      expect(
+        [
+          for (final span in gpu.levelWrites.single.spans)
+            if (span.level == 1) span.x,
+        ],
+        [0, 50, 100],
+        reason: 'the levels of all three in one write, in the order made',
       );
       store.dispose();
     });
@@ -239,6 +276,126 @@ void main() {
       expect(noGpu.peek('a'), isNull);
       store.dispose();
       noGpu.dispose();
+    });
+  });
+
+  group('the levels under the base', () {
+    test('wait for the patches to pause, and land once they do', () async {
+      final gpu = _RecordingGpu();
+      final waiting = FramePictureStore<String>(gpu: gpu, levelsQuiet: never);
+      final picture = await _layed(waiting, 'a', 1024);
+      waiting.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
+      await pumpEventQueue();
+      expect(gpu.levelWrites, isEmpty);
+      expect(picture.landing, hasLength(1), reason: 'drawn over the levels '
+          'it is not in yet');
+      waiting.dispose();
+
+      final paused = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: paused,
+        levelsQuiet: Duration.zero,
+      );
+      final laid = await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => paused.levelWrites.isNotEmpty), isTrue);
+      expect(await pollUntil(() => laid.landing.isEmpty), isTrue);
+      expect(paused.levelWrites, hasLength(1));
+      store.dispose();
+    });
+
+    test('of as many patches as wait at most land with the last of them, '
+        'the pause or not', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        levelsQuiet: never,
+        levelsWaitAtMost: 3,
+      );
+      final picture = await _layed(store, 'a', 1024);
+      for (var i = 0; i < 3; i += 1) {
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(i * 100.0, 0, 8, 8),
+          draw: fill,
+        );
+        if (i < 2) {
+          expect(
+            await pollUntil(() => picture.landing.length == i + 1),
+            isTrue,
+          );
+          await pumpEventQueue();
+          expect(gpu.levelWrites, isEmpty, reason: '${i + 1} wait');
+        }
+      }
+      expect(await pollUntil(() => picture.landing.isEmpty), isTrue);
+      expect(
+        [
+          for (final span in gpu.levelWrites.single.spans)
+            if (span.level == 1) span.x,
+        ],
+        [0, 50, 100],
+      );
+      store.dispose();
+    });
+
+    test('are background GPU work: they take their turn in the quiet '
+        'between held frames', () async {
+      final turns = _turnsInAQuiet();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu, quietTurns: turns);
+      final picture = await _layed(store, 'a', 1024);
+      final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      final settling = store.settled();
+      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
+      await pumpEventQueue();
+      expect(gpu.levelWrites, isEmpty, reason: 'another job holds the turn');
+      await other!.landed();
+      await settling;
+      expect(gpu.levelWrites, hasLength(1));
+      expect(picture.landing, isEmpty);
+      store.dispose();
+    });
+
+    test('of a picture let go while they wait their turn are never read for '
+        'or written', () async {
+      final turns = _turnsInAQuiet();
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu, quietTurns: turns);
+      await _layed(store, 'a', 1024);
+      final other = await turns.inAQuiet(QuietSpan(), gone: () => false);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      final settling = store.settled();
+      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
+      final rendered = gpu.rendered.length;
+      store.dispose();
+      await other!.landed();
+      await settling;
+      expect(gpu.levelWrites, isEmpty);
+      expect(gpu.rendered, hasLength(rendered));
     });
   });
 
@@ -338,6 +495,19 @@ Future<FramePicture> _layed(
       canvas.drawPaint(ui.Paint()..color = const ui.Color(0xFF0000FF)),
 )))!;
 
+/// Turns in a quiet that is now and long: one job at a time, none waited
+/// for longer than the one before it takes.
+QuietTurns _turnsInAQuiet() => QuietTurns(
+  clock: QuietClock(
+    quiet: () => (fromMicros: 0, untilMicros: 1000000),
+    now: () => 0,
+    wait: (_) async {},
+    moved: () => Completer<void>().future,
+    held: () => false,
+    gpuDone: () async {},
+  ),
+);
+
 /// Lets every held write go until the store has nothing left to land.
 Future<void> _landAll(
   _RecordingGpu gpu,
@@ -352,13 +522,16 @@ Future<void> _landAll(
   }
 }
 
-(int, int, int, int, int) _described(LevelWrite write) => (
-  write.level,
+(int, int, int, int, int) _baseDescribed(BaseWrite write) => (
+  0,
   write.x,
   write.y,
-  write.from.width.toInt(),
-  write.from.height.toInt(),
+  write.source.width,
+  write.source.height,
 );
+
+(int, int, int, int, int) _spanDescribed(RunSpan span) =>
+    (span.level, span.x, span.y, span.width, span.height);
 
 class _RecordingGpu implements FramePictureGpu {
   _RecordingGpu({this.gpu = true, this.levels});
@@ -373,7 +546,8 @@ class _RecordingGpu implements FramePictureGpu {
   bool holdWrites = false;
 
   final List<(int, int)> rendered = [];
-  final List<List<LevelWrite>> writes = [];
+  final List<List<BaseWrite>> bases = [];
+  final List<({(int, int) run, List<RunSpan> spans})> levelWrites = [];
   final List<void Function()> _heldRenders = [];
   final List<Completer<bool>> _heldWrites = [];
 
@@ -413,8 +587,18 @@ class _RecordingGpu implements FramePictureGpu {
   }
 
   @override
-  Future<bool> write(Object held, List<LevelWrite> writes) {
-    this.writes.add(writes);
+  Future<bool> writeBase(Object held, List<BaseWrite> writes) {
+    bases.add(writes);
+    return _written();
+  }
+
+  @override
+  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) {
+    levelWrites.add((run: (run.width, run.height), spans: spans));
+    return _written();
+  }
+
+  Future<bool> _written() {
     if (!holdWrites) {
       return Future.value(true);
     }
