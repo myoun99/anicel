@@ -2,6 +2,7 @@ import 'camera_instruction.dart';
 import 'camera_moves.dart';
 import 'camera_work_marks.dart' show cameraKeyLabel;
 import 'cut.dart';
+import 'cut_id.dart';
 import 'frame.dart'
     show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
 import 'frame_id.dart';
@@ -458,6 +459,7 @@ class TimesheetDocument {
           dataSheet,
           sources.clipToSheet,
           drawnFrameCount: drawnFrameCount,
+          sheetOf: cut.id,
         ),
       // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
       // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」 —
@@ -507,6 +509,7 @@ class TimesheetDocument {
     bool dataSheet,
     Layer Function(Layer displayClone) clipToSheet, {
     required int drawnFrameCount,
+    required CutId sheetOf,
   }) {
     return TimesheetColumn(
       kind: TimesheetColumnKind.se,
@@ -533,7 +536,7 @@ class TimesheetDocument {
               // SE columns stay blank between entries on paper — no X;
               // the speaker name rides along for the method-A name row.
               markEmptyRuns: false,
-              includeSeNames: true,
+              seWritingOf: sheetOf,
               dataSheet: dataSheet,
             )
           : _blankCells(rowCount),
@@ -546,7 +549,7 @@ class TimesheetDocument {
               rowCount: rowCount,
               playbackFrameCount: playbackFrameCount,
               markEmptyRuns: false,
-              includeSeNames: true,
+              seWritingOf: sheetOf,
               dataSheet: dataSheet,
             )
           : null,
@@ -712,13 +715,13 @@ class TimesheetDocument {
     required int rowCount,
     required int playbackFrameCount,
     bool markEmptyRuns = true,
-    bool includeSeNames = false,
+    CutId? seWritingOf,
     bool dataSheet = false,
   }) {
     final pass = _LayerCellsPass(
       layer: layer,
       rowCount: rowCount,
-      includeSeNames: includeSeNames,
+      seWritingOf: seWritingOf,
       dataSheet: dataSheet,
     );
     pass.writeBlocks();
@@ -837,7 +840,7 @@ List<TimesheetCell> timesheetLayerCells({
   required int rowCount,
   required int playbackFrameCount,
   bool markEmptyRuns = true,
-  bool includeSeNames = false,
+  CutId? seWritingOf,
   bool dataSheet = false,
 }) {
   return TimesheetDocument._layerCells(
@@ -845,7 +848,7 @@ List<TimesheetCell> timesheetLayerCells({
     rowCount: rowCount,
     playbackFrameCount: playbackFrameCount,
     markEmptyRuns: markEmptyRuns,
-    includeSeNames: includeSeNames,
+    seWritingOf: seWritingOf,
     dataSheet: dataSheet,
   );
 }
@@ -860,7 +863,7 @@ class _LayerCellsPass {
     required this.layer,
     required this.rowCount,
     required this.dataSheet,
-    required bool includeSeNames,
+    required this.seWritingOf,
   }) : cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank),
        covered = List<bool>.filled(rowCount, false),
        entries = layer.timeline.entries.toList(growable: false),
@@ -874,13 +877,18 @@ class _LayerCellsPass {
            frame.id: drawingHeadOf(frame.name, kind: layer.kind),
        },
        seEntriesByFrameId = <FrameId, SeEntryFields>{
-         if (includeSeNames)
+         if (seWritingOf != null)
            for (final frame in layer.frames)
-             frame.id: (seName: frame.seName, seType: frame.seType),
+             frame.id: (seName: frame.seName, seTypes: frame.seTypes),
        };
 
   final Layer layer;
   final int rowCount;
+
+  /// The cut whose sheet an SE column prints — its blocks' writing rides
+  /// along, each line in its delivery in that cut (F-386); null for every
+  /// other column.
+  final CutId? seWritingOf;
   final bool dataSheet;
   final List<TimesheetCell> cells;
 
@@ -913,7 +921,7 @@ class _LayerCellsPass {
       mark: head.mark,
       spanLength: spanLength,
       seName: se?.seName,
-      seType: se?.seType,
+      seType: se?.seTypes.inCut(seWritingOf),
     );
   }
 

@@ -158,7 +158,7 @@ void main() {
       b.seEntries.updateSelectedSeEntry(
         dialogue: 'from B',
         seName: 'B',
-        seType: SeLineType.on,
+        seTypes: SeLineTypes.allOn,
       );
 
       a.copyFrameAtCurrentFrame();

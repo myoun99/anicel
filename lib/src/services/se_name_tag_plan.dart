@@ -1,6 +1,7 @@
 import 'dart:ui' show Offset;
 
 import '../models/canvas_size.dart';
+import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart'
     show ResolvedLayerEffect, resolveLayerEffectsAt;
@@ -127,6 +128,10 @@ class ResolvedSeNameTag {
 List<ResolvedSeNameTag> resolveSeNameTagsAt({
   required List<Layer> trackSeLayers,
   required int globalFrame,
+
+  /// The cut whose picture the tags stand over — each line says its
+  /// delivery in it (F-386), the O.L margins' heard speaker included.
+  required CutId cutId,
   required CanvasSize cameraFrame,
 
   /// Where the shot lies on the canvas at this frame
@@ -198,7 +203,7 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
           position: anchor,
         ),
         delivery: TextCelContent(
-          text: frame.seType.label,
+          text: frame.seTypes.inCut(cutId).label,
           style: nameStyle,
           position: anchor,
         ),

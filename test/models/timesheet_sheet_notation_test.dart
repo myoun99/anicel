@@ -46,7 +46,7 @@ void main() {
               strokes: const [],
               name: '그건 아니라고 생각해',
               seName: '앨리스',
-              seType: SeLineType.off,
+              seTypes: SeLineTypes(own: SeLineType.off),
             ),
           ],
           timeline: {
@@ -91,7 +91,7 @@ void main() {
                 strokes: const [],
                 name: 'せーの',
                 seName: '앨리스',
-                seType: SeLineType.mono,
+                seTypes: SeLineTypes(own: SeLineType.mono),
               ),
             ],
             timeline: {

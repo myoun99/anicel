@@ -52,7 +52,7 @@ void main() {
               strokes: const [],
               name: 'やめて',
               seName: seName,
-              seType: type,
+              seTypes: SeLineTypes(own: type),
             ),
           ],
           timeline: {
@@ -105,6 +105,72 @@ void main() {
       );
       expect(delivery.dy, greaterThan(nameBox.top - 12), reason: 'right over');
     }
+  });
+
+  // 🗣️F-386 (유저 2026-10-17): 「어떤 컷에선 ON이지만 다음컷에선 OFF … 그게
+  // 타임시트든 화면이든 다 반영됨」 — a line that runs from cut 1 into cut 2
+  // prints, on cut 2's sheet, the delivery it has IN CUT 2.
+  const cut2 = CutId('cut-2');
+  TimesheetDocument spillSheet(SeLineTypes types) => TimesheetDocument.fromCut(
+    cut: Cut(
+      id: cut2,
+      name: '2',
+      duration: 12,
+      canvasSize: const CanvasSize(width: 1920, height: 1080),
+      layers: const [],
+    ),
+    projectName: 'P',
+    fps: 24,
+    instructionDefById: CameraInstructionSet.standard.defById,
+    // On the track: cut 1 is 0..12, cut 2 is 12..24, and the line 8..18.
+    cutStartFrame: 12,
+    trackSeLayers: [
+      Layer(
+        id: const LayerId('s'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: [
+          Frame(
+            id: const FrameId('s-f1'),
+            duration: 10,
+            strokes: const [],
+            name: 'やめて',
+            seName: 'A子',
+            seTypes: types,
+          ),
+        ],
+        timeline: {
+          8: const TimelineExposure.drawing(FrameId('s-f1'), length: 10),
+        },
+      ),
+    ],
+  );
+
+  testWidgets('F-386: a line spilling in prints its delivery in THIS cut over '
+      'the sheet\'s first row, with no name and no bar there', (tester) async {
+    final rowTop = TimesheetDocumentLayout(
+      document: spillSheet(SeLineTypes.allOn),
+    ).frameRowTop(0);
+    final on = paint(spillSheet(SeLineTypes.allOn));
+    expect(on.rects, isEmpty, reason: '⛔premise: the name is cut 1\'s');
+    for (final type in [SeLineType.off, SeLineType.mono]) {
+      final painted = paint(spillSheet(SeLineTypes(byCut: {cut2: type})));
+      expect(painted.offsets.length, on.offsets.length + 1, reason: type.name);
+      final delivery = painted.offsets
+          .where((offset) => !on.offsets.contains(offset))
+          .single;
+      expect(delivery.dy, lessThan(rowTop), reason: '${type.name}: over it');
+      expect(delivery.dy, greaterThan(rowTop - 12), reason: 'right over it');
+    }
+    expect(
+      paint(
+        spillSheet(
+          SeLineTypes(own: SeLineType.off, byCut: {cut2: SeLineType.on}),
+        ),
+      ).offsets,
+      on.offsets,
+      reason: 'OFF where its head is, ON here: this sheet prints nothing',
+    );
   });
 
   testWidgets('with no name, OFF and MONO print one line right over the red '

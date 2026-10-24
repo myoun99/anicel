@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_line_type.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
@@ -30,7 +33,7 @@ class SeInstanceDialogResult {
   const SeInstanceDialogResult({
     required this.seName,
     required this.dialogue,
-    this.seType = SeLineType.on,
+    this.seTypes = SeLineTypes.allOn,
     this.unlinkedAudioTokens = const {},
     this.audioOffsets = const {},
   });
@@ -38,8 +41,9 @@ class SeInstanceDialogResult {
   final String seName;
   final String dialogue;
 
-  /// The line's delivery (I-20) — ON / OFF / MONO.
-  final SeLineType seType;
+  /// The line's delivery in each cut it plays in (I-20, F-386) — ON / OFF /
+  /// MONO, as the window showed them ([SeLineTypes.shownIn]).
+  final SeLineTypes seTypes;
 
   /// The [SeInstanceAudioLink.token]s of the sounds unlinked in this
   /// sitting. Empty on every dialog that never showed one — unlinking is a
@@ -61,7 +65,9 @@ class SeInstanceDialog extends StatefulWidget {
     super.key,
     this.initialSeName = '',
     this.initialDialogue = '',
-    this.initialSeType = SeLineType.on,
+    this.initialSeTypes = SeLineTypes.allOn,
+    this.cuts = const [],
+    this.initialCutId,
     this.creating = false,
     this.previewAxis = Axis.horizontal,
     this.linkedAudio = const [],
@@ -70,8 +76,19 @@ class SeInstanceDialog extends StatefulWidget {
   final String initialSeName;
   final String initialDialogue;
 
-  /// The delivery the block has (I-20) — ON for one that never chose.
-  final SeLineType initialSeType;
+  /// The deliveries the block has (I-20, F-386) — ON for one that never
+  /// chose.
+  final SeLineTypes initialSeTypes;
+
+  /// The cuts the block plays in, in the track's order — the ones its
+  /// delivery is set for, picked one at a time (F-386: 「컷을 팝오버로
+  /// 골라서 컷마다 타입 다르게」). Empty for a block between cuts, whose one
+  /// delivery is its own.
+  final List<Cut> cuts;
+
+  /// The cut the window opens on — where it was opened from. One the block
+  /// does not play in opens on its first.
+  final CutId? initialCutId;
 
   /// The sounds this instance carries (R5 #19). Shown even when empty —
   /// "none" is the answer to "what is this block linked to?", and a field
@@ -114,8 +131,14 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
     super.dispose();
   }
 
-  /// The delivery picked in this sitting, applied on OK.
-  late SeLineType _seType = widget.initialSeType;
+  /// The deliveries picked in this sitting, applied on OK.
+  late SeLineTypes _seTypes = widget.initialSeTypes;
+
+  /// The cut the type pills set — null only for a block in no cut.
+  late CutId? _cutId =
+      widget.cuts.any((cut) => cut.id == widget.initialCutId)
+      ? widget.initialCutId
+      : widget.cuts.firstOrNull?.id;
 
   /// Tokens struck through in this sitting, applied on OK.
   final Set<int> _unlinked = <int>{};
@@ -128,7 +151,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
       SeInstanceDialogResult(
         seName: _seNameController.text.trim(),
         dialogue: _dialogueController.text.trim(),
-        seType: _seType,
+        seTypes: _seTypes.shownIn([for (final cut in widget.cuts) cut.id]),
         unlinkedAudioTokens: Set.unmodifiable(_unlinked),
         audioOffsets: Map.unmodifiable({
           for (final MapEntry(key: token, value: offset) in _offsets.entries)
@@ -139,24 +162,47 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
   }
 
   // 🗣️I-20 (유저 2026-09-30): 「se 블록의 타입으로서 on off mono 타입
-  // 추가」 — one of three, always; a grouped choice wears the pills.
-  Widget _typeField(AppStrings strings) => AppWindowField(
-    label: strings.seTypeLabel,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          for (final type in SeLineType.values)
-            PillItem(
-              keyValue: 'se-type-${type.name}',
-              label: type.label,
-              selected: _seType == type,
-              onTap: () => setState(() => _seType = type),
+  // 추가」 — one of three, always; a grouped choice wears the pills. F-386
+  // (유저 2026-10-17): 「타입 정하는곳에서 컷을 팝오버로 골라서 컷마다 타입
+  // 다르게」 — the pills set the cut picked before them, in the list the
+  // export's cut picker opens.
+  Widget _typeField(AppStrings strings) {
+    final picked = widget.cuts.where((cut) => cut.id == _cutId).firstOrNull;
+    return AppWindowField(
+      label: strings.seTypeLabel,
+      child: Row(
+        children: [
+          PanelFlyoutButton(
+            key: const ValueKey<String>('se-type-cut-picker'),
+            label: picked?.name ?? '—',
+            enabled: widget.cuts.isNotEmpty,
+            entriesBuilder: () => widget.cuts.asFlyoutValueChoices(
+              current: picked,
+              choiceOf: (cut) => PanelFlyoutChoice(
+                key: 'se-type-cut-${cut.id.value}',
+                label: '${cut.name} · ${_seTypes.inCut(cut.id).label}',
+              ),
+              onPicked: (cut) => setState(() => _cutId = cut.id),
             ),
+          ),
+          const SizedBox(width: 8),
+          PillStrip(
+            items: [
+              for (final type in SeLineType.values)
+                PillItem(
+                  keyValue: 'se-type-${type.name}',
+                  label: type.label,
+                  selected: _seTypes.inCut(_cutId) == type,
+                  onTap: () => setState(
+                    () => _seTypes = _seTypes.withCut(_cutId, type),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
-    ),
-  );
+    );
+  }
 
   Widget _linkedAudioField(AppStrings strings) {
     final theme = Theme.of(context);

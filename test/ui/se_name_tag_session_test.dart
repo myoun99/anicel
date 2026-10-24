@@ -109,7 +109,7 @@ void main() {
     s.seEntries.updateSelectedSeEntry(
       dialogue: 'おはよう',
       seName: 'タモツ',
-      seType: SeLineType.on,
+      seTypes: SeLineTypes.allOn,
     );
 
     final cut = s.requireActiveCut;
@@ -144,7 +144,7 @@ void main() {
     s.seEntries.updateSelectedSeEntry(
       dialogue: 'おはよう',
       seName: 'タモツ',
-      seType: SeLineType.on,
+      seTypes: SeLineTypes.allOn,
     );
 
     final cut = s.requireActiveCut;
@@ -171,7 +171,7 @@ void main() {
     s.seEntries.updateSelectedSeEntry(
       dialogue: 'おはよう',
       seName: 'タモツ',
-      seType: SeLineType.on,
+      seTypes: SeLineTypes.allOn,
     );
 
     final cut = s.requireActiveCut;

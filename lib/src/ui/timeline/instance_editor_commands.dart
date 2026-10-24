@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/audio_clip.dart' show AudioClip;
 import '../../models/camera_instruction.dart';
+import '../../models/cut.dart' show Cut;
+import '../../models/cut_id.dart';
 import '../../models/pill_subject.dart';
 import '../../models/frame.dart' show Frame;
 import '../../models/frame_id.dart';
@@ -334,7 +336,13 @@ Future<void> _editSeLabel(
     context,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
-    initialSeType: session.seEntries.selectedFrameSeType,
+    initialSeTypes: session.seEntries.selectedFrameSeTypes,
+    // The cut the timeline shows — its のりしろ too, which plays over the
+    // cut in front.
+    cuts: session.seEntries
+        .seLineCutsAt(layerId, session.editingGlobalFrame)
+        .cuts,
+    initialCutId: session.activeCutId,
     linkedAudio: [
       for (final entry in linked)
         _audioLink(session, entry.clip, entry.index, blockFrames),
@@ -343,7 +351,7 @@ Future<void> _editSeLabel(
     commit: (dialogue, fields) => session.seEntries.updateSelectedSeEntry(
       dialogue: dialogue,
       seName: fields.seName,
-      seType: fields.seType,
+      seTypes: fields.seTypes,
     ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
@@ -454,11 +462,14 @@ Future<void> editSeEntryInstance(
     return;
   }
   final entryId = entry.id;
+  final opening = session.seEntries.seLineCutsAt(layerId, globalFrame);
   await _editSeEntryWithDialog(
     context,
     initialSeName: entry.seName ?? '',
     initialDialogue: entry.name ?? '',
-    initialSeType: entry.seType,
+    initialSeTypes: entry.seTypes,
+    cuts: opening.cuts,
+    initialCutId: opening.atFrame,
     linkedAudio: [
       for (var index = 0; index < layer.audioClips.length; index += 1)
         if (layer.audioClips[index].frameId == entryId)
@@ -484,7 +495,9 @@ Future<void> _editSeEntryWithDialog(
   BuildContext context, {
   required String initialSeName,
   required String initialDialogue,
-  required SeLineType initialSeType,
+  required SeLineTypes initialSeTypes,
+  required List<Cut> cuts,
+  required CutId? initialCutId,
   required List<SeInstanceAudioLink> linkedAudio,
   required Axis previewAxis,
   required void Function(String dialogue, SeEntryFields fields) commit,
@@ -497,7 +510,9 @@ Future<void> _editSeEntryWithDialog(
       creating: false,
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
-      initialSeType: initialSeType,
+      initialSeTypes: initialSeTypes,
+      cuts: cuts,
+      initialCutId: initialCutId,
       previewAxis: previewAxis,
       linkedAudio: linkedAudio,
     ),
@@ -508,7 +523,7 @@ Future<void> _editSeEntryWithDialog(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  commit(result.dialogue, (seName: seName, seType: result.seType));
+  commit(result.dialogue, (seName: seName, seTypes: result.seTypes));
   // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
   // a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)

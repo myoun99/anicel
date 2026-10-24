@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -31,7 +32,7 @@ void main() {
           strokes: const [],
           name: 'おはよう',
           seName: seName,
-          seType: type,
+          seTypes: SeLineTypes(own: type),
         ),
       ],
       timeline: {0: const TimelineExposure.drawing(frameId, length: 12)},
@@ -39,6 +40,7 @@ void main() {
     return resolveSeNameTagsAt(
       trackSeLayers: [row],
       globalFrame: 3,
+      cutId: const CutId('cut'),
       cameraFrame: camera,
       shot: const LayerPlacement.identity(),
     ).single;

@@ -116,7 +116,7 @@ class Frame {
     required List<Stroke> strokes,
     this.name,
     this.seName,
-    this.seType = SeLineType.on,
+    this.seTypes = SeLineTypes.allOn,
     this.filePicture,
   }) : strokes = List.unmodifiable(strokes);
 
@@ -142,9 +142,11 @@ class Frame {
   /// so legacy SE labels keep reading as dialogue).
   final String? seName;
 
-  /// SE rows only: the line's delivery — ON / OFF / MONO (I-20). ON when a
-  /// block never chose, which is also what a drawing carries and ignores.
-  final SeLineType seType;
+  /// SE rows only: the line's delivery in each cut it plays in — ON / OFF /
+  /// MONO (I-20, F-386). ON when a block never chose, which is also what a
+  /// drawing carries and ignores. ⛔There is no cut-less delivery to read:
+  /// a surface says which cut it shows ([SeLineTypes.inCut]).
+  final SeLineTypes seTypes;
 
   /// REFERENCE rows only: which picture of the row's file this cel is — a
   /// still's one, a GIF's frame, a PDF's page — counted in the FILE, so the
@@ -163,7 +165,7 @@ class Frame {
     List<Stroke>? strokes,
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
-    SeLineType? seType,
+    SeLineTypes? seTypes,
     Object? filePicture = copyWithSentinel,
   }) {
     return Frame(
@@ -174,7 +176,7 @@ class Frame {
       seName: identical(seName, copyWithSentinel)
           ? this.seName
           : seName as String?,
-      seType: seType ?? this.seType,
+      seTypes: seTypes ?? this.seTypes,
       filePicture: identical(filePicture, copyWithSentinel)
           ? this.filePicture
           : filePicture as int?,
@@ -189,7 +191,7 @@ class Frame {
     if (seName != null) 'seName': seName,
     // ON is the absent field — every drawing, and every block that never
     // chose, reads back as ON.
-    if (seType != SeLineType.on) 'seType': seType.name,
+    ...seTypes.toJson(),
     if (filePicture != null) 'filePicture': filePicture,
   };
 
@@ -202,7 +204,7 @@ class Frame {
           .toList(),
       name: json['name'] as String?,
       seName: json['seName'] as String?,
-      seType: SeLineType.fromJson(json['seType']),
+      seTypes: SeLineTypes.fromJson(json),
       filePicture: json['filePicture'] as int?,
     );
   }
@@ -215,7 +217,7 @@ class Frame {
           other.duration == duration &&
           other.name == name &&
           other.seName == seName &&
-          other.seType == seType &&
+          other.seTypes == seTypes &&
           other.filePicture == filePicture &&
           listEquals(other.strokes, strokes);
 
@@ -225,7 +227,7 @@ class Frame {
     duration,
     name,
     seName,
-    seType,
+    seTypes,
     filePicture,
     Object.hashAll(strokes),
   );
@@ -233,6 +235,6 @@ class Frame {
   @override
   String toString() =>
       'Frame(id: $id, duration: $duration, name: $name, '
-      'seName: $seName, seType: ${seType.name}, '
+      'seName: $seName, seTypes: $seTypes, '
       'strokes: $strokes)';
 }
