@@ -311,7 +311,7 @@ void main() {
             return cel != const FrameId('c1') && cel != const FrameId('c4');
           },
           cannotRead: (_, _) => false,
-          revision: ValueNotifier<int>(0),
+          revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
         );
         TimelineRowCellsPainter painterFor(Layer layer) =>
             TimelineRowCellsPainter(

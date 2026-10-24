@@ -86,7 +86,7 @@ void main() {
     celContent: TimelineCelContentSource(
       hasContent: (_, _) => worked,
       cannotRead: (_, _) => false,
-      revision: ValueNotifier<int>(0),
+      revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
     ),
     paperGround: paperGround ?? host,
     blockFrameLines: lines,
@@ -201,7 +201,7 @@ void main() {
         celContent: TimelineCelContentSource(
           hasContent: (_, _) => false,
           cannotRead: (_, _) => false,
-          revision: ValueNotifier<int>(0),
+          revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
         ),
         blockFrameLines: true,
         framesPerSecond: 24,

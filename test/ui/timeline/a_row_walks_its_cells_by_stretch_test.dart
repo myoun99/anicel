@@ -221,7 +221,7 @@ void main() {
               )?.value.endsWith('+') ??
               false,
           cannotRead: (_, _) => false,
-          revision: worked,
+          revision: CelContentRevision.everyRow(worked),
         ),
         colorScheme: const ColorScheme.dark(),
         baseTextStyle: const TextStyle(fontSize: 11),

@@ -469,7 +469,9 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
           cel,
         ),
       },
-      revision: content.revision,
+      // Every move: the one row shows every cut's cels, under rows of its
+      // own (one-cel-turning-white-repaints-every-row).
+      revision: CelContentRevision.everyRow(content.revision),
     );
     _celContents[shown] = (content: content, source: source);
     return source;

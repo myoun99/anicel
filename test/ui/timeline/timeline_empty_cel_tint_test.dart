@@ -88,7 +88,7 @@ void main() {
           : TimelineCelContentSource(
               hasContent: celHasContentForLayer,
               cannotRead: celCannotBeReadForLayer,
-              revision: ValueNotifier<int>(0),
+              revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
             ),
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
@@ -680,7 +680,7 @@ void main() {
       final celContent = TimelineCelContentSource(
         hasContent: celHasContent,
         cannotRead: (_, _) => false,
-        revision: revision,
+        revision: CelContentRevision.everyRow(revision),
       );
       void onSelectLayer(LayerId id) {}
       void onSelectFrame(int index) {}

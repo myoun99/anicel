@@ -32,6 +32,7 @@ import '../../services/commands/cut_command_input_planner.dart'
     show nextFolderName;
 import '../../services/commands/track_se_layer_commands.dart';
 import '../../services/editing/default_layer_helpers.dart';
+import '../timeline/timeline_cel_content_source.dart' show RowNamingRevision;
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, celPixelsOf, timelineDragPreviewLayerFor;
 import '../audio/sound_cannot_play.dart';
@@ -466,9 +467,47 @@ class LayerStack {
   /// image away — measured on the real app: a bump at pen-down painted the
   /// whole timeline again for the stroke's first five frames (16–24 ms of
   /// raster each against 6), and the pen-up bump did it again.
-  final ValueNotifier<int> celTintRevision = ValueNotifier<int>(0);
+  ///
+  /// 🚨AND ONLY FOR THE ROWS IT CAN HAVE CHANGED
+  /// (one-cel-turning-white-repaints-every-row, 2026-10-24): a bump names
+  /// the rows that show the cels it is about ([_rowsShowing]), and a row
+  /// painter hears its own row's ([RowNamingRevision.forRow]).
+  final RowNamingRevision celTintRevision = RowNamingRevision();
 
-  void _bumpCelTintRevision() => celTintRevision.value += 1;
+  void _bumpCelTintRevision() => celTintRevision.bump();
+
+  /// The rows whose answers a change to the cels of [rows] can move: those
+  /// rows and the folders that hold them ([celHasContentForLayer]) — null,
+  /// every row, while a drag hangs cels where they are not ([celPixelsOf]).
+  Set<LayerId>? _rowsShowing(Set<LayerId> rows) {
+    if (_dragPreview.value != null) {
+      return null;
+    }
+    return {
+      ...rows,
+      for (final layer in _project.layers)
+        if (layer.kind.groupsLayers &&
+            _folderBands
+                .folderBandMembersOf(layer.id)
+                .any((member) => rows.contains(member.id)))
+          layer.id,
+    };
+  }
+
+  /// The rows that show the cels [crossed] names, by the keys the store
+  /// keeps them under: a linked row windows its group's one bank.
+  Set<LayerId> _rowsOfCels(Set<BrushFrameKey> crossed) {
+    final links = _project.repository.currentProject?.linkRegistry;
+    return {
+      for (final key in crossed) ...[
+        key.layerId,
+        ...?links
+            ?.groupOf(cutId: key.cutId, layerId: key.layerId)
+            ?.members
+            .map((member) => member.layerId),
+      ],
+    };
+  }
 
   /// The pen going down or up flips an answer only where the live stroke
   /// is what makes a cel count as drawn — [_liveStrokeCel], while the store
@@ -483,7 +522,7 @@ class LayerStack {
     if (_storeHoldsAPicture(cut, layerId, frameId)) {
       return;
     }
-    _bumpCelTintRevision();
+    celTintRevision.bump(rows: _rowsShowing({layerId}));
   }
 
   /// The store crossing a cel flips its answer — except where the live
@@ -500,7 +539,9 @@ class LayerStack {
     if (crossed.isNotEmpty && crossed.every(_theLiveStrokeAnswersFor)) {
       return;
     }
-    _bumpCelTintRevision();
+    celTintRevision.bump(
+      rows: crossed.isEmpty ? null : _rowsShowing(_rowsOfCels(crossed)),
+    );
   }
 
   /// Whether [crossed] is the live stroke's cel and no other cel shows its

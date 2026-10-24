@@ -150,7 +150,9 @@ class TimelineRowCellsPainter extends CustomPainter
              layerId: layer.id,
              axis: axis,
            ),
-           ?celContent?.revision,
+           // And its OWN row's answers — never every row's when one block
+           // turns white (one-cel-turning-white-repaints-every-row).
+           ?celContent?.revision.forRow(layer.id),
          ]),
        );
 

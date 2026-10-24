@@ -67,7 +67,7 @@ void main() {
   TimelineCelContentSource emptyCels() => TimelineCelContentSource(
     hasContent: (_, _) => false,
     cannotRead: (_, _) => false,
-    revision: ValueNotifier<int>(0),
+    revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
   );
 
   /// F-24: the labels painter takes no cel-content source any more — its

@@ -95,7 +95,7 @@ void main() {
       hasContent: (layer, frameIndex) =>
           drawn[(layer.id.value, frameIndex < 4 ? 'f1' : 'f2')] ?? true,
       cannotRead: (_, _) => false,
-      revision: revision,
+      revision: CelContentRevision.everyRow(revision),
     );
     TimelineRowCellsPainter painterFor(Layer layer) => TimelineRowCellsPainter(
       layer: layer,
