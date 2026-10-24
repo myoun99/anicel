@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -209,6 +210,36 @@ void main() {
         ),
       ]),
       keyOf([below]),
+    );
+  });
+
+  test('a cel with nothing stored draws nothing — the picture is drawn '
+      'without its row', () {
+    final drawn = CompositeLeaf<CanvasStackRow>(
+      CanvasLayerImageRequest(frameKey: cel('drawn'), opacity: 1.0),
+    );
+    final empty = CompositeLeaf<CanvasStackRow>(
+      CanvasLayerImageRequest(frameKey: cel('empty'), opacity: 1.0),
+    );
+    final surface = BitmapSurface(
+      canvasSize: page.canvasSize,
+      tileSize: 8,
+      tiles: const {},
+    );
+    final asked = <String>[];
+    final drawing = stackedFrameDrawingOf(
+      [drawn, empty],
+      page: page,
+      surfaceOf: (cel) {
+        asked.add(cel.layerId.value);
+        return cel.layerId.value == 'drawn' ? surface : null;
+      },
+    );
+    expect(asked, ['drawn', 'empty'], reason: '⛔premise: both were asked');
+    expect(
+      drawing.extent,
+      stackedFrameDrawingOf([drawn], page: page, surfaceOf: (_) => surface)
+          .extent,
     );
   });
 
