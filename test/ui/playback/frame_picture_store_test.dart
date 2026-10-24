@@ -246,6 +246,29 @@ void main() {
     store.dispose();
   });
 
+  test('a patch on its way in is billed with its picture until it lands',
+      () async {
+    final gpu = _RecordingGpu()..holdWrites = true;
+    final store = FramePictureStore<String>(gpu: gpu);
+    final picture = await _layed(store, 'a', 64);
+    store.patch(
+      from: 'a',
+      to: 'b',
+      rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+      draw: fill,
+    );
+    while (picture.landing.isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+    expect(
+      store.estimatedBytes,
+      estimatedImageBytes(64, 64) + estimatedImageBytes(8, 8),
+    );
+    await _landAll(gpu, store);
+    expect(store.estimatedBytes, estimatedImageBytes(64, 64));
+    store.dispose();
+  });
+
   test('dispose lets every picture go and answers a waiting lay with none',
       () async {
     final gpu = _RecordingGpu()..holdRenders = true;

@@ -19,7 +19,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const side = 1024;
-  const patch = ui.Rect.fromLTWH(500, 500, 40, 40);
+  // Off the store's grid (4 at 1024) on every side and across the red and
+  // blue's edge: the store widens it, and the frame's own drawing fills
+  // what it widens over.
+  const patch = ui.Rect.fromLTWH(501, 503, 37, 41);
 
   void frame(ui.Canvas canvas) {
     canvas
@@ -33,9 +36,14 @@ void main() {
       );
   }
 
-  void yellow(ui.Canvas canvas) => canvas.drawPaint(
-    ui.Paint()..color = const ui.Color(0xFFFFEE00),
-  );
+  void withPatch(ui.Canvas canvas) {
+    frame(canvas);
+    canvas
+      ..save()
+      ..clipRect(patch)
+      ..drawPaint(ui.Paint()..color = const ui.Color(0xFFFFEE00))
+      ..restore();
+  }
 
   test(
     'every level of a patched picture is the level of the picture laid '
@@ -50,7 +58,7 @@ void main() {
       ));
       final untouched = await _levels(patched!.image);
       expect(
-        store.patch(from: 'before', to: 'after', rect: patch, draw: yellow),
+        store.patch(from: 'before', to: 'after', rect: patch, draw: withPatch),
         isTrue,
       );
       await store.settled();
@@ -60,13 +68,7 @@ void main() {
       final fresh = await store.lay('fresh', (
         extent: extent,
         outside: const ui.Color(0xFFFFFFFF),
-        draw: (canvas) {
-          frame(canvas);
-          canvas.save();
-          canvas.clipRect(patch);
-          yellow(canvas);
-          canvas.restore();
-        },
+        draw: withPatch,
       ));
       final want = await _levels(fresh!.image);
       final got = await _levels(patched.image);
