@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -91,6 +92,43 @@ void main() {
         greaterThan(tester.getRect(camera).right),
         reason: 'the pills come after it',
       );
+    });
+  }
+
+  for (final panel in panels) {
+    testWidgets('a notify that moves nothing on it builds none of the '
+        '${panel.name}\'s transport again — its host keeps it', (
+      tester,
+    ) async {
+      await pumpApp(tester, const Size(1700, 900));
+      await tester.tap(byKey(panel.tab));
+      await tester.pumpAndSettle();
+      final session = sessionOf(tester);
+      List<Widget> controls() => [
+        ...tester.widgetList(
+          find.descendant(
+            of: byKey(panel.transport),
+            matching: find.byType(AppIconButton),
+          ),
+        ),
+        tester.widget(byKey(panel.camera)),
+      ];
+      final before = controls();
+      expect(before.length, greaterThan(3), reason: 'premise: the buttons');
+
+      // A full session notify — the host is built again — that changes
+      // nothing the transport shows.
+      session.layerSwitches.toggleLayerVisibility(
+        session.layers.firstWhere((layer) => layer.kind == LayerKind.se).id,
+      );
+      await tester.pump();
+
+      final after = controls();
+      expect(after.length, before.length);
+      for (var i = 0; i < after.length; i += 1) {
+        expect(identical(after[i], before[i]), isTrue, reason: 'control $i');
+      }
+      session.playbackRig.prerenderScheduler.cancel();
     });
   }
 
