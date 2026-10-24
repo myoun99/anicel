@@ -522,6 +522,43 @@ class _LayerStackPaintPass {
     canvas.restore();
   }
 
+  /// Where the frame lies in the world with no screen around it
+  /// ([frameDrawingOf]): the rect the display buffer covers, the whole
+  /// pasteboard on screen — the page and every row's content.
+  Rect frameExtent() {
+    _standInTheWorld();
+    return wholeLevelPixelsOutward(_contentExtent, 0);
+  }
+
+  /// The frame over [frameExtent], in world coordinates, as a miss composes
+  /// the display buffer whole at 100% ([_composeMiss]) — the same body
+  /// with no screen around it.
+  void paintFrame(Canvas into) {
+    final extent = frameExtent();
+    if (extent.isEmpty) {
+      return;
+    }
+    _shownWithin = extent;
+    into.save();
+    // Cut where the buffer would end: an effect's spread past every row is
+    // cut there on the screen, so it is in the frame's picture.
+    into.clipRect(extent);
+    _paintContent(into, intoTheBuffer: true, rasterScale: 1);
+    into.restore();
+    _shownWithin = null;
+  }
+
+  /// [paint]'s geometry with the whole pasteboard in view and no viewport:
+  /// the world a frame's picture holds.
+  void _standInTheWorld() {
+    _canvasRect = _painter.canvasSize.canvasRect;
+    _visibleCanvasRect = _painter.canvasSize
+        .pasteboardAt(_painter.pasteboardReach)
+        .rect;
+    _contentExtent = _compositeExtentWith(_activeSurfaceExtent);
+    _bakeExtent = _contentExtent;
+  }
+
   void _blitBuffer(Canvas canvas, _BufferImage buffer) {
     final source = Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight);
     try {
@@ -589,24 +626,34 @@ class _LayerStackPaintPass {
         }(),
       };
 
-  /// Each row a lift holds beside the live one, by its surface (I-37 ·
-  /// F-329) — read once per paint, as the live row's slot is.
-  final Map<BitmapSurfacePainter, _SurfaceSlot> _liftedSlots = Map.identity();
+  /// Each surface row's slot beside the live one — a row a lift holds (I-37
+  /// · F-329), a frame's cel ([_PaintCelSurface]) — by its painter: read
+  /// once per paint, as the live row's slot is.
+  final Map<BitmapSurfacePainter, _SurfaceSlot> _rowSlots = Map.identity();
 
-  _SurfaceSlot _liftedSlotOf(_PaintLiftedSurface row) =>
-      _liftedSlots.putIfAbsent(
-        row.lifted.surface,
-        () => _SurfaceSlot(
-          painter: row.lifted.surface,
-          float: row.lifted.float,
-          keys: row.keys,
-          placement: row.placement,
-        ),
-      );
-
-  /// What a lifted row draws: its surface and its float, as the live row's
-  /// extent is measured ([_activeSurfaceExtent]).
-  Rect _liftedExtent(_PaintLiftedSurface row) => _liftedSlotOf(row).extent;
+  /// What [row] draws, by the one body every surface row is drawn with
+  /// ([_paintSurfaceRow]): the live row's slot, or one of [_rowSlots].
+  _SurfaceSlot _slotOf(_SurfaceRow row) => switch (row) {
+    _PaintActiveSurface() => _activeSlot!,
+    _PaintLiftedSurface(:final lifted) => _rowSlots.putIfAbsent(
+      lifted.surface,
+      () => _SurfaceSlot(
+        painter: lifted.surface,
+        float: lifted.float,
+        keys: row.keys,
+        placement: row.placement,
+      ),
+    ),
+    _PaintCelSurface(:final painter) => _rowSlots.putIfAbsent(
+      painter,
+      () => _SurfaceSlot(
+        painter: painter,
+        float: null,
+        keys: row.keys,
+        placement: row.placement,
+      ),
+    ),
+  };
 
   /// What the live slot's own raster covers, in the SLOT's space: the rect
   /// the same layer drawn as an image covers, where the view can see it.
@@ -764,7 +811,10 @@ class _LayerStackPaintPass {
     extentOf: (row) => switch (row) {
       _PaintImage(:final extent) => extent,
       _PaintActiveSurface() => activeSurfaceExtent(),
-      final _PaintLiftedSurface lifted => _liftedExtent(lifted),
+      // What a row beside the live one draws — its surface, and a lift's
+      // float — as the live row's extent is measured
+      // ([_activeSurfaceExtent]).
+      final _SurfaceRow surface => _slotOf(surface).extent,
       _PaintPaper() => _canvasRect,
     },
     placementOf: (row) => switch (row) {
@@ -789,10 +839,7 @@ class _LayerStackPaintPass {
       // playback composes (route parity).
       final nodePlacement = switch (node) {
         CompositeLeaf(payload: _PaintImage(:final placement)) => placement,
-        CompositeLeaf(payload: _PaintActiveSurface(:final placement)) =>
-          placement,
-        CompositeLeaf(payload: _PaintLiftedSurface(:final placement)) =>
-          placement,
+        CompositeLeaf(payload: _SurfaceRow(:final placement)) => placement,
         CompositeLeaf(payload: _PaintPaper()) ||
         CompositeGroup() ||
         CompositeAdjustment() ||
@@ -832,15 +879,8 @@ class _LayerStackPaintPass {
               );
             case CompositeLeaf(payload: _PaintPaper()):
               _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
-            case CompositeLeaf(payload: final _PaintActiveSurface active):
-              _paintSurfaceRow(canvas, _activeSlot!, active.paint, rasterScale);
-            case CompositeLeaf(payload: final _PaintLiftedSurface lifted):
-              _paintSurfaceRow(
-                canvas,
-                _liftedSlotOf(lifted),
-                lifted.paint,
-                rasterScale,
-              );
+            case CompositeLeaf(payload: final _SurfaceRow row):
+              _paintSurfaceRow(canvas, _slotOf(row), row.paint, rasterScale);
             case CompositeLeaf(payload: final _PaintImage image):
               _paintImageNode(canvas, image, rasterScale);
           }
