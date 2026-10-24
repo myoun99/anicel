@@ -14,6 +14,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/axis_turn.dart'
+    show offsetAlong, partAcross, partAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -48,7 +50,7 @@ void main() {
       tester,
       find.named('timeline-layer-name-c'),
       _stops(unit.top, unit.bottom + 12),
-      axis: Axis.vertical,
+      axis: Axis.horizontal,
     );
 
     expect(lines['timeline-row-caret-after-a'], {unit.bottom});
@@ -81,7 +83,7 @@ void main() {
           )
           .first,
       _stops(header.top, second.bottom + 12),
-      axis: Axis.vertical,
+      axis: Axis.horizontal,
     );
 
     expect(lines['timeline-row-caret-after-${_e2.value}'], {second.bottom});
@@ -104,7 +106,7 @@ void main() {
       tester,
       find.named('xsheet-layer-name-c'),
       _stops(a.left, b.right),
-      axis: Axis.horizontal,
+      axis: Axis.vertical,
     );
 
     expect(lines['timeline-row-caret-before-b'], {b.left});
@@ -132,7 +134,7 @@ void main() {
         ValueKey<String>('xsheet-lane-label-b-${effectGroupLaneId(_e1)}'),
       ),
       _stops(second.left - 12, first.right),
-      axis: Axis.horizontal,
+      axis: Axis.vertical,
     );
 
     expect(lines['timeline-row-caret-before-${_e2.value}'], {second.left});
@@ -160,7 +162,7 @@ void main() {
       tester,
       find.named('xsheet-layer-name-a'),
       _stops(a.right + 2, b.left - 2),
-      axis: Axis.horizontal,
+      axis: Axis.vertical,
     );
 
     expect(
@@ -270,7 +272,8 @@ List<double> _stops(double from, double to) => [
 ];
 
 /// Every line a carry of [grip] draws as the pointer goes through [stops]
-/// along the rows' [axis], by its key: where along it each stood.
+/// across the grid's frame [axis] — the rows stand across it — by its
+/// key: where across it each stood.
 ///
 /// The first drag selects the row; a drag inside the selection carries it.
 Future<Map<String, Set<double>>> _linesOfACarry(
@@ -283,7 +286,7 @@ Future<Map<String, Set<double>>> _linesOfACarry(
   await tester.pumpAndSettle();
   await tester.dragFrom(
     tester.getCenter(grip),
-    axis == Axis.vertical ? const Offset(30, 0) : const Offset(0, 30),
+    offsetAlong(axis, along: 30, across: 0),
   );
   await tester.pumpAndSettle();
   final start = tester.getCenter(grip);
@@ -292,13 +295,13 @@ Future<Map<String, Set<double>>> _linesOfACarry(
   final lines = <String, Set<double>>{};
   for (final stop in stops) {
     await gesture.moveTo(
-      axis == Axis.vertical ? Offset(start.dx, stop) : Offset(stop, start.dy),
+      offsetAlong(axis, along: partAlong(axis, start), across: stop),
     );
     await tester.pump();
     for (final element in _anyLine.evaluate()) {
       final line = tester.getRect(find.byKey(element.widget.key!)).center;
       (lines[(element.widget.key! as ValueKey<String>).value] ??= {}).add(
-        axis == Axis.vertical ? line.dy : line.dx,
+        partAcross(axis, line),
       );
     }
   }
