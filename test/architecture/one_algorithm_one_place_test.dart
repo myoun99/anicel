@@ -540,7 +540,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// viewer's pages take the order with no pins. 🔜The third pinned cache
 /// moves the filter into the order (its entries less the pinned keys) and
 /// lowers this back.
-/// 🔬Measured on the lane against its base (`2ab8ad81a`, at 89): this one
+/// 🔬Measured on the lane over master (`a1317441e`, at 89): this one
 /// added, none gone.
 void main() {
   const ceiling = 90;
