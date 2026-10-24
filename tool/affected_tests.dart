@@ -786,7 +786,7 @@ List<String> flutterTestArguments(
   List<String> files, {
   int? concurrency,
   String? report,
-  BatchKind kind = BatchKind.crowd,
+  required BatchKind kind,
 }) => [
   'test',
   '--no-pub',
