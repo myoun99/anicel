@@ -37,12 +37,13 @@ final class IconButtonReading {
 /// Reads an icon button through the finder a test already holds for its
 /// KEY.
 ///
-/// The key names the FACE — [AppIconButtonFace], or [RailGlyphFace] on a
+/// The key names the FACE — [AppIconButtonFace], or [RailGlyphButton] on a
 /// rail — the box you see and press, and tests used to read `onPressed` /
 /// `isSelected` / `tooltip` off the Material `IconButton` that stood in that
 /// spot. That button is gone (2026-09-10: it was 27 render objects a button
 /// and 47% of the idle screen), so this climbs from the face to the widget
-/// whose PUBLIC API those fields are.
+/// whose PUBLIC API those fields are — or reads the rail's button, which is
+/// its own face.
 ///
 /// ⚠️`onPressed` read here is the REAL callback, where the old read got the
 /// silent one the claim hands down. Every test that reads it only asks
@@ -65,9 +66,8 @@ extension AppIconButtonProbe on WidgetTester {
         shortcuts: button.shortcuts,
       );
     }
-    final button = widget<RailGlyphButton>(
-      find.ancestor(of: face, matching: find.byType(RailGlyphButton)),
-    );
+    // A rail's button IS its face.
+    final button = widget<RailGlyphButton>(face);
     final glyph = button.glyph;
     return IconButtonReading._(
       tooltip: button.tooltip,
@@ -86,7 +86,7 @@ extension AppIconButtonProbe on WidgetTester {
     find.descendant(
       of: scope,
       matching: find.byWidgetPredicate(
-        (widget) => widget is AppIconButtonFace || widget is RailGlyphFace,
+        (widget) => widget is AppIconButtonFace || widget is RailGlyphButton,
       ),
     ),
   );
@@ -94,7 +94,7 @@ extension AppIconButtonProbe on WidgetTester {
   /// The colour [face]'s glyph is painted in right now — its ink for the
   /// state the button is in, or the glyph's own colour where it has one.
   Color? glyphInkOf(Finder face) {
-    if (widget(face) is RailGlyphFace) {
+    if (widget(face) is RailGlyphButton) {
       return renderObject<RenderRailGlyphFace>(face).debugGlyphInk;
     }
     final icon = find.descendant(of: face, matching: find.byType(Icon));
@@ -102,12 +102,12 @@ extension AppIconButtonProbe on WidgetTester {
   }
 }
 
-/// `find.byIcon` and `find.text` for the rail's buttons: a [RailGlyphFace]
+/// `find.byIcon` and `find.text` for the rail's buttons: a [RailGlyphButton]
 /// draws its glyph itself and holds no [Icon] or [Text] to find.
 extension RailGlyphFinders on CommonFinders {
   /// The rail faces wearing [icon].
   Finder railIcon(IconData icon) => byWidgetPredicate(
-    (widget) => widget is RailGlyphFace && switch (widget.glyph) {
+    (widget) => widget is RailGlyphButton && switch (widget.glyph) {
       RailIconGlyph(icon: final worn) => worn == icon,
       RailTextGlyph() => false,
     },
@@ -115,7 +115,7 @@ extension RailGlyphFinders on CommonFinders {
 
   /// The rail faces wearing the word [text].
   Finder railText(String text) => byWidgetPredicate(
-    (widget) => widget is RailGlyphFace && switch (widget.glyph) {
+    (widget) => widget is RailGlyphButton && switch (widget.glyph) {
       RailTextGlyph(text: final worn) => worn == text,
       RailIconGlyph() => false,
     },
@@ -127,8 +127,8 @@ extension RailGlyphFinders on CommonFinders {
   /// button ([AppIconButton], since 2026-10-24).
   Finder railTooltip(String message) => byWidgetPredicate(
     (widget) => switch (widget) {
-      RailGlyphFace(:final tooltip) ||
-      RailPlateFace(:final tooltip) ||
+      RailGlyphButton(:final tooltip) ||
+      RailPlateButton(:final tooltip) ||
       IconButtonPressFace(:final tooltip) => tooltip == message,
       _ => false,
     },

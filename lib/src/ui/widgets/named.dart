@@ -31,3 +31,14 @@ class Named extends StatelessWidget {
   @override
   Widget build(BuildContext context) => child;
 }
+
+/// A widget that carries its OWN name — the same handle as a [Named], on a
+/// widget that is itself the box a test holds, so no element stands over
+/// it only to say the name (card frame-panels-build-in-one-frame,
+/// 2026-10-25: the rail's buttons, seven to a row).
+///
+/// ⛔One handle, two ways to wear it: a finder reads both alike. Nothing in
+/// lib reads it either.
+abstract interface class NamesItself {
+  String? get name;
+}

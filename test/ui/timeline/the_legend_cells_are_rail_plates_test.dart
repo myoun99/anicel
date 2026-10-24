@@ -62,10 +62,12 @@ Widget _legend({
   ),
 );
 
-/// The plate face a legend cell keyed [key] is.
+/// The plate face a legend cell keyed [key] is — the keyed widget itself
+/// where the plate button is the cell.
 Finder _faceOf(String key) => find.descendant(
   of: find.byKey(ValueKey<String>(key)),
-  matching: find.byType(RailPlateFace),
+  matching: find.byType(RailPlateButton),
+  matchRoot: true,
 );
 
 void main() {
@@ -90,7 +92,7 @@ void main() {
     ]) {
       expect(_faceOf(cell), findsOneWidget, reason: '$cell is a plate');
       expect(
-        tester.widget<RailPlateFace>(_faceOf(cell)).onSemanticTap,
+        tester.widget<RailPlateButton>(_faceOf(cell)).onPressed,
         isNotNull,
         reason: '$cell presses',
       );
@@ -120,12 +122,13 @@ void main() {
       'column', (tester) async {
     await tester.pumpWidget(_legend());
 
-    final eye = tester.widget<RailPlateFace>(_faceOf('legend-eye'));
-    expect(eye.onSemanticTap, isNull);
+    final eye = tester.widget<RailPlateButton>(_faceOf('legend-eye'));
+    expect(eye.onPressed, isNull);
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('legend-eye')),
         matching: find.railTooltip(eye.tooltip),
+        matchRoot: true,
       ),
       findsOneWidget,
     );

@@ -70,9 +70,7 @@ void main() {
         reason: 'one row of all of them',
       );
       final button = find.named('$prefix-layer-camera-path-$camera');
-      RailGlyphButton railButton() => tester.widget<RailGlyphButton>(
-        find.ancestor(of: button, matching: find.byType(RailGlyphButton)),
-      );
+      RailGlyphButton railButton() => tester.widget<RailGlyphButton>(button);
       bool lit() => railButton().isSelected;
       expect(lit(), isFalse);
       expect(

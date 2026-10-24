@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
@@ -527,8 +528,8 @@ void main() {
     });
   });
 
-  testWidgets('🚨one button is the claim and ONE leaf — four render objects '
-      'where the app\'s button is twenty', (tester) async {
+  testWidgets('🚨one button is ONE leaf, the claim too — one element and one '
+      'render object', (tester) async {
     await pump(
       tester,
       RailGlyphButton(
@@ -539,19 +540,23 @@ void main() {
         size: box,
       ),
     );
-    var renderObjects = 0;
+    var elements = 0;
     void visit(Element element) {
-      if (element is RenderObjectElement) {
-        renderObjects += 1;
-      }
+      elements += 1;
       element.visitChildren(visit);
     }
 
-    visit(tester.element(find.byType(RailGlyphButton)));
-    // ⛔THE POINT OF THE ROUND, as a number: the claim's three (its gesture
-    // semantics and two listeners) and the face. A wrapper slipped around
-    // the face fails here on purpose.
-    expect(renderObjects, lessThanOrEqualTo(4));
+    final button = tester.element(find.byType(RailGlyphButton));
+    visit(button);
+    // ⛔THE POINT OF THE ROUND, as a number: the face is the claim and
+    // carries its own name (2026-10-25) — it was a claim, a name and the
+    // face. A wrapper slipped around the face fails here on purpose.
+    expect(elements, 1);
+    expect(button, isA<RenderObjectElement>());
+    expect(
+      tester.renderObject(find.byType(RailGlyphButton)),
+      isA<PressClaim>(),
+    );
   });
 
   group('the one tooltip window', () {
@@ -863,8 +868,8 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('🚨the press is the claim and ONE render object around the '
-        'plate', (tester) async {
+    testWidgets('🚨the press is ONE render object around the plate, the '
+        'claim too', (tester) async {
       await pump(tester, plate(onRow: () {}, onPick: () {}));
       var renderObjects = 0;
       void visit(Element element) {
@@ -875,9 +880,17 @@ void main() {
       }
 
       visit(tester.element(find.byType(RailFlyoutTrigger)));
-      // The claim's three and the face — and the plate's own two (a colour
-      // and a box) under it.
-      expect(renderObjects, lessThanOrEqualTo(6));
+      // The face, which is the claim (2026-10-25) — and the plate's own two
+      // (a colour and a box) under it.
+      expect(renderObjects, lessThanOrEqualTo(3));
+      final trigger = tester.element(find.byType(RailFlyoutTrigger));
+      final children = <Element>[];
+      trigger.visitChildren(children.add);
+      expect(
+        children.single.widget,
+        isA<RailPlateButton>(),
+        reason: 'nothing stands between the trigger and its plate button',
+      );
     });
   });
 

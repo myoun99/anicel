@@ -99,7 +99,7 @@ void main() {
         .appIconButton(find.named(key))
         .tooltip;
     String chip(String key) => tester
-        .widget<RailPlateFace>(find.named(key))
+        .widget<RailPlateButton>(find.named(key))
         .tooltip;
     return {
       for (final key in [

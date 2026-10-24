@@ -158,7 +158,8 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 /// ([AppIconButtonFace]).
 ///
 /// What is KEPT, each pinned by `app_icon_button_test.dart`:
-///  * the press law — [ControlPressClaim] still owns the firing;
+///  * the press law — the claim still owns the firing, the face's own since
+///    2026-10-25 ([PressClaim]);
 ///  * 🚨THE ARENA. The Material InkWell put a tap into the gesture arena on
 ///    every press, and because it was the DEEPEST tap there it WON — which
 ///    is the only thing that stopped an ancestor's `onTap` from firing when
@@ -175,7 +176,7 @@ enum AppIconButtonSize implements AppIconButtonMetrics {
 ///    finds it with `find.railTooltip`, not `find.byTooltip`;
 ///  * ONE semantics node: button / enabled / selected / focusable / focused
 ///    and its tap action, with the tooltip on it. The tap action FIRES —
-///    [AppIconButtonFace.onSemanticTap] (유저 2026-09-10);
+///    [AppIconButtonFace.onPressed] (유저 2026-09-10);
 ///  * the colours, by Material's ORDER and not only its defaults: the
 ///    button's own style (the accent, on the ON state), then the app's
 ///    `IconButtonTheme`, then M3's defaults — first non-null wins, as in
@@ -275,49 +276,47 @@ class AppIconButton extends StatelessWidget {
     // which moved the drawing target and rebuilt the row out from under the
     // press that was still running.
     //
-    // ⛔The claim is MOUNTED, not written here. It used to be three inline
+    // ⛔The claim is not WRITTEN here — it is the face's own ([PressClaim],
+    // the one code a [ControlPressClaim] is too). It used to be three inline
     // `Listener` lines that [ControlPressClaim] also had — and while the
     // law lived in two places the buttons that mounted neither (the
-    // x-sheet's toggles, the toolbar's 1·2·3·4·N) went unnoticed.
+    // x-sheet's toggles, the toolbar's 1·2·3·4·N) went unnoticed. ↩️A
+    // [ControlPressClaim] stood over the face until 2026-10-25 (card
+    // frame-panels-build-in-one-frame): an element and a render object for
+    // every icon button a tab reopens.
     // 🚨★★★WHEN it acts is not this widget's to say (유저 확정 2026-08-30):
     // a button inside a swipe column acts on the DOWN, and every other
     // button acts when it is released still inside itself. [PressFireScope]
     // holds that split in ONE place, so this hands over the callback and
     // says nothing about the moment.
-    return ControlPressClaim(
+    return AppIconButtonFace(
+      key: ValueKey<String>(keyValue),
+      tooltip: shortcutTooltip(context, tooltip, shortcuts),
+      // The ONE callback, for every way a button is pressed: the pointer's
+      // (the face's claim), a key's — Enter/Space, as on any other button
+      // (유저 2026-10-23, board `F-450-Q1`: 「통일 — 아이콘 버튼도 Enter ·
+      // Space 로 눌린다」; ↩️silent to keys from 2026-09-10 until then) —
+      // and a screen reader's, whose activation arrives as
+      // SemanticsAction.tap, which the claim never hears
+      // (「스크린리더만 있으면좋을까싶은데」).
+      // ↩️It was two until 2026-10-25: a [silentPress] for the face, so
+      // a face with a pointer path of its own could not fire a press the
+      // claim above it had fired already. The face's pointer path IS the
+      // claim now, so there is no second path left to silence.
       onPressed: onPressed,
-      child: AppIconButtonFace(
-        key: ValueKey<String>(keyValue),
-        tooltip: shortcutTooltip(context, tooltip, shortcuts),
-        // ⛔The face keeps the callback every claimed button keeps: silent to
-        // the pointer, the press of a key. It decides the enabled look, and
-        // the keyboard's Enter/Space reach it — and press, as on any other
-        // button (유저 2026-10-23, board `F-450-Q1`: 「통일 — 아이콘 버튼도
-        // Enter · Space 로 눌린다」). ↩️It fired nothing for a key from
-        // 2026-09-10 (「탭은 다른 숏컷 쓸수도있어서 굳이 필요없을거같고」)
-        // until then. ⚠️Never wire the face's POINTER path to a real
-        // callback: the claim already fires every press, and a face that
-        // fired too would fire twice.
-        onPressed: silentPress(onPressed),
-        // 🚨…but a screen reader is not a pointer: its activation arrives as
-        // SemanticsAction.tap, which the claim never hears, so the node gets
-        // the REAL callback (「스크린리더만 있으면좋을까싶은데」). Measured
-        // before: 0 fires, on master and on the light face alike.
-        onSemanticTap: onPressed,
-        isSelected: isSelected,
+      isSelected: isSelected,
+      danger: danger,
+      minWidth: box.minWidth,
+      maxWidth: box.maxWidth,
+      height: box.height,
+      iconSize: size.iconSize,
+      shape: appIconButtonShape(
+        size.height,
+        outlined: outlined,
         danger: danger,
-        minWidth: box.minWidth,
-        maxWidth: box.maxWidth,
-        height: box.height,
-        iconSize: size.iconSize,
-        shape: appIconButtonShape(
-          size.height,
-          outlined: outlined,
-          danger: danger,
-          isSelected: isSelected,
-        ),
-        icon: icon,
+        isSelected: isSelected,
       ),
+      icon: icon,
     );
   }
 }
@@ -527,8 +526,8 @@ final class IconButtonLayer {
 /// Enter/Space it answers ([onPressed]) — and, under it, the press face
 /// that is everything a pointer and a screen reader meet
 /// ([IconButtonPressFace]): the box, the hover / pressed / focus layer, the
-/// cursor, the tooltip and the one semantics node. A pointer's press is the
-/// claim's to fire, never this.
+/// cursor, the tooltip, the one semantics node and the claim that fires a
+/// pointer's press.
 ///
 /// Public because it is what [AppIconButton.keyValue] names: a test that
 /// finds a button by its key finds THIS, exactly where the Material
@@ -538,7 +537,6 @@ class AppIconButtonFace extends StatefulWidget {
     super.key,
     required this.tooltip,
     required this.onPressed,
-    required this.onSemanticTap,
     required this.isSelected,
     required this.danger,
     required this.minWidth,
@@ -551,15 +549,9 @@ class AppIconButtonFace extends StatefulWidget {
 
   final String tooltip;
 
-  /// The callback [AppIconButton] hands down — silent to the pointer, the
-  /// press of a key ([silentPress]): non-null means enabled.
+  /// What a press does — a pointer's, a key's and a screen reader's alike
+  /// ([AppIconButton.onPressed]): non-null means enabled.
   final VoidCallback? onPressed;
-
-  /// What a screen reader's activation calls: the REAL callback. Its
-  /// "double-tap to activate" arrives as `SemanticsAction.tap`, not as a
-  /// pointer, so the claim never hears it and nothing fires twice. Null
-  /// exactly when [onPressed] is.
-  final VoidCallback? onSemanticTap;
   final bool isSelected;
   final bool danger;
   final double minWidth;
@@ -703,7 +695,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
         onFocusChange: _setHasFocus,
         child: IconButtonPressFace(
           tooltip: widget.tooltip,
-          onSemanticTap: widget.onSemanticTap,
+          onPressed: widget.onPressed,
           isSelected: widget.isSelected,
           focus: focus,
           ink: ink,
@@ -751,7 +743,7 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
   const IconButtonPressFace({
     super.key,
     required this.tooltip,
-    required this.onSemanticTap,
+    required this.onPressed,
     required this.isSelected,
     required this.focus,
     required this.ink,
@@ -765,8 +757,10 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
   /// Empty is no tooltip at all, as an [AppTooltip]'s empty message is.
   final String tooltip;
 
-  /// What a screen reader's activation calls; null is a dead button.
-  final VoidCallback? onSemanticTap;
+  /// What a press does — the pointer's, through the claim this face is,
+  /// and a screen reader's activation, which the claim never hears. Null is
+  /// a dead button.
+  final VoidCallback? onPressed;
   final bool isSelected;
   final IconButtonFocus focus;
   final IconButtonInk ink;
@@ -780,7 +774,7 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
       RenderIconButtonPressFace(
         spec: _specIn(context),
         tooltipContext: context,
-      );
+      )..wearPlace(context);
 
   @override
   void updateRenderObject(
@@ -789,12 +783,13 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..spec = _specIn(context)
-      ..tooltipContext = context;
+      ..tooltipContext = context
+      ..wearPlace(context);
   }
 
   IconButtonPressSpec _specIn(BuildContext context) => IconButtonPressSpec(
     tooltip: tooltip,
-    onSemanticTap: onSemanticTap,
+    onPressed: onPressed,
     isSelected: isSelected,
     focus: focus,
     ink: ink,
@@ -814,7 +809,7 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
 final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   const IconButtonPressSpec({
     required this.tooltip,
-    required this.onSemanticTap,
+    required this.onPressed,
     required this.isSelected,
     required this.focus,
     required this.ink,
@@ -827,7 +822,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   });
 
   final String tooltip;
-  final VoidCallback? onSemanticTap;
+  final VoidCallback? onPressed;
   final bool isSelected;
   final IconButtonFocus focus;
   final IconButtonInk ink;
@@ -838,7 +833,7 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
-  bool get enabled => onSemanticTap != null;
+  bool get enabled => onPressed != null;
 
   /// The box the face hugs its glyph in ([layOutIconButtonBox]).
   BoxConstraints get box => BoxConstraints(
@@ -873,13 +868,13 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
       paintsAs(other) &&
       other.focus == focus &&
       other.tooltip == tooltip &&
-      other.onSemanticTap == onSemanticTap &&
+      other.onPressed == onPressed &&
       other.triggerMode == triggerMode;
 
   @override
   int get hashCode => Object.hash(
     tooltip,
-    onSemanticTap,
+    onPressed,
     isSelected,
     focus,
     ink,
@@ -894,7 +889,8 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
 
 /// The app's icon button's face: its box and its state layer around the
 /// glyph, on the press every light face is ([PressFace]).
-class RenderIconButtonPressFace extends RenderShiftedBox with PressFace {
+class RenderIconButtonPressFace extends RenderShiftedBox
+    with PressClaim, PressFace {
   RenderIconButtonPressFace({
     required IconButtonPressSpec spec,
     required BuildContext tooltipContext,
@@ -912,16 +908,13 @@ class RenderIconButtonPressFace extends RenderShiftedBox with PressFace {
   }
 
   @override
-  bool get pressEnabled => _spec.enabled;
+  VoidCallback? get onPress => _spec.onPressed;
 
   @override
   bool get pressSelected => _spec.isSelected;
 
   @override
   String? get pressSemanticLabel => null;
-
-  @override
-  VoidCallback? get pressSemanticTap => _spec.onSemanticTap;
 
   @override
   TextDirection get pressTextDirection => _spec.textDirection;

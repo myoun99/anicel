@@ -514,10 +514,7 @@ void main() {
   testWidgets('🚨a solo the session answers is what the S row\'s speaker '
       'shows — no part of its layer', (tester) async {
     final session = await pumpPanel(tester, film());
-    final speaker = find.ancestor(
-      of: find.named('storyboard-layer-mute-t1-s1'),
-      matching: find.byType(RailGlyphButton),
-    );
+    final speaker = find.named('storyboard-layer-mute-t1-s1');
     bool soloed() =>
         (tester.widget<RailGlyphButton>(speaker).glyph as RailIconGlyph)
             .color ==

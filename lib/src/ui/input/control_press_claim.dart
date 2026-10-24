@@ -11,9 +11,9 @@ import 'value_control_pointers.dart';
 /// predicate a click and a drag start both ask.
 ///
 /// 🚨★★★**IT IS THE SAME SENTENCE, SO IT IS THE SAME FUNCTION.** A press
-/// that comes up inside the box is a click ([_ControlPressClaimState.
-/// _releasedInside]); a press that leaves it is a drag ([OwningDraggable.
-/// stillOnTheThing], F-138). One question, two answers, no threshold —
+/// that comes up inside the box is a click ([PressClaim]); a press that
+/// leaves it is a drag ([OwningDraggable.stillOnTheThing], F-138). One
+/// question, two answers, no threshold —
 /// which is what 유저 2026-08-30 asked for when they had every px
 /// comparison taken out of this decision: 「**1px 이동했는지 같은 px 이동으로
 /// 판단하는거** 설마 아직도 남아있나? … 싹 깔끔하게 걷어내」.
@@ -25,7 +25,7 @@ bool pointerIsStillOn(BuildContext context, Offset globalPosition) =>
     pointerIsStillOnBox(context.findRenderObject() as RenderBox?, globalPosition);
 
 /// [pointerIsStillOn], asked of the box itself — for a claim that IS its
-/// box ([ControlPressClaim]) and has no context to find one by.
+/// box ([PressClaim]) and has no context to find one by.
 bool pointerIsStillOnBox(RenderBox? box, Offset globalPosition) {
   if (box == null || !box.hasSize) {
     return false;
@@ -305,19 +305,45 @@ class ControlPressClaim extends SingleChildRenderObjectWidget {
   ) => renderObject._wear(this, context);
 }
 
-/// [ControlPressClaim]'s box: the absorbing pair, and the press it fires.
-class RenderControlPressClaim extends _RenderHoldsTheDrag {
-  RenderControlPressClaim()
-    : super(_VerbKnown.byTheFirstMove, behavior: HitTestBehavior.deferToChild);
+/// [ControlPressClaim]'s box: the claim, around a control that is not a box
+/// of its own.
+class RenderControlPressClaim extends RenderProxyBoxWithHitTestBehavior
+    with PressClaim {
+  RenderControlPressClaim() : super(behavior: HitTestBehavior.deferToChild);
 
   VoidCallback? _onPressed;
+
+  @override
+  VoidCallback? get onPress => _onPressed;
+
+  void _wear(ControlPressClaim claim, BuildContext context) {
+    _onPressed = claim.onPressed;
+    wearPlace(context);
+  }
+}
+
+/// THE CLAIM, as the box a control is — [ControlPressClaim]'s whole job,
+/// for a control that draws itself and so needs no box around it: the
+/// light faces (`PressFace`) wear it, and a claim widget over one of them
+/// would be a second element and a second render object saying nothing the
+/// face could not (card frame-panels-build-in-one-frame, 2026-10-25).
+///
+/// ⛔ONE CODE. [RenderControlPressClaim] is this around a child; a face is
+/// this as itself. What a press does, when it fires and what it holds is
+/// written here once.
+mixin PressClaim on RenderBox {
+  /// What this control does — null is a dead control, and then nothing
+  /// fires, but the claim still stands ([ControlPressClaim.onPressed]).
+  VoidCallback? get onPress;
+
+  final _AbsorbingPair _pair = _AbsorbingPair(_VerbKnown.byTheFirstMove);
   PressFire _fireOn = PressFire.upInside;
   double _slop = kTouchSlop;
   VoidCallback? _beforeFire;
 
-  /// Everything the press reads, as [claim]'s place in the tree says it.
-  void _wear(ControlPressClaim claim, BuildContext context) {
-    _onPressed = claim.onPressed;
+  /// Everything the press reads, as [context]'s place in the tree says it
+  /// — called by the widget as it builds this box and as it rebuilds it.
+  void wearPlace(BuildContext context) {
     _fireOn = PressFireScope.of(context);
     _slop = MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
     // Read as the claim is built, not as a press lands: the watch is a
@@ -370,6 +396,7 @@ class RenderControlPressClaim extends _RenderHoldsTheDrag {
     }
     // The pair is offered the pointer AFTER the claim has spoken, as the
     // detector that held it sat outside the listener that spoke.
+    _pair.offer(event);
     super.handleEvent(event, entry);
   }
 
@@ -382,7 +409,7 @@ class RenderControlPressClaim extends _RenderHoldsTheDrag {
     _mine[event.pointer] = event.position;
     if (_fireOn == PressFire.down) {
       _beforeFire?.call();
-      _onPressed?.call();
+      onPress?.call();
     }
   }
 
@@ -419,8 +446,14 @@ class RenderControlPressClaim extends _RenderHoldsTheDrag {
     if (_fireOn != PressFire.down &&
         _releasedInside(event.position) &&
         !valueControlOwnsPointer(event.pointer)) {
-      _onPressed?.call();
+      onPress?.call();
     }
+  }
+
+  @override
+  void dispose() {
+    _pair.dispose();
+    super.dispose();
   }
 }
 
@@ -461,8 +494,8 @@ class RenderControlPressClaim extends _RenderHoldsTheDrag {
 ///
 /// A trackpad's two-finger pan is offered to them too, as a gesture
 /// detector offers it to the recognisers it holds.
-class _RenderHoldsTheDrag extends RenderProxyBoxWithHitTestBehavior {
-  _RenderHoldsTheDrag(_VerbKnown known, {required super.behavior})
+class _AbsorbingPair {
+  _AbsorbingPair(_VerbKnown known)
     : _horizontal = _AbsorbsHorizontalDrag(known)..onStart = _holdOnly,
       _vertical = _AbsorbsVerticalDrag(known)..onStart = _holdOnly;
 
@@ -476,8 +509,7 @@ class _RenderHoldsTheDrag extends RenderProxyBoxWithHitTestBehavior {
   // nothing and the list scrolled from a button exactly as before.
   static void _holdOnly(DragStartDetails details) {}
 
-  @override
-  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+  void offer(PointerEvent event) {
     if (event is PointerDownEvent) {
       _horizontal.addPointer(event);
       _vertical.addPointer(event);
@@ -487,11 +519,9 @@ class _RenderHoldsTheDrag extends RenderProxyBoxWithHitTestBehavior {
     }
   }
 
-  @override
   void dispose() {
     _horizontal.dispose();
     _vertical.dispose();
-    super.dispose();
   }
 }
 
@@ -674,12 +704,26 @@ class RenderDragVerbClaim extends RenderProxyBoxWithHitTestBehavior {
 class SurfaceDragClaim extends SingleChildRenderObjectWidget {
   const SurfaceDragClaim({super.key, required Widget super.child});
 
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSurfaceDragClaim();
+}
+
+class _RenderSurfaceDragClaim extends RenderProxyBoxWithHitTestBehavior {
   // Translucent, as the canvas layer around it is: a blank canvas paints
   // nothing hit-testable, and a drag that starts there is still the
   // canvas's.
+  _RenderSurfaceDragClaim() : super(behavior: HitTestBehavior.translucent);
+
+  final _AbsorbingPair _pair = _AbsorbingPair(_VerbKnown.atTheDown);
+
   @override
-  RenderObject createRenderObject(BuildContext context) => _RenderHoldsTheDrag(
-    _VerbKnown.atTheDown,
-    behavior: HitTestBehavior.translucent,
-  );
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) =>
+      _pair.offer(event);
+
+  @override
+  void dispose() {
+    _pair.dispose();
+    super.dispose();
+  }
 }

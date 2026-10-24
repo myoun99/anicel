@@ -134,9 +134,9 @@ void main() {
     );
 
     final chip = find.named('blend-probe');
-    expect(tester.widget(chip), isA<RailPlateFace>());
+    expect(tester.widget(chip), isA<RailPlateButton>());
     expect(
-      tester.widget<RailPlateFace>(chip).hoverShape,
+      tester.widget<RailPlateButton>(chip).hoverShape,
       PanelFlyoutChip.shape,
       reason: 'a clear chip shows its hover',
     );

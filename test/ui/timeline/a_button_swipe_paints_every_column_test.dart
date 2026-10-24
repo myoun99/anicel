@@ -508,7 +508,7 @@ void main() {
         expect(finder, findsOneWidget, reason: 'fixture premise: $name exists');
         expect(
           tester.widget(finder),
-          isA<RailGlyphFace>(),
+          isA<RailGlyphButton>(),
           reason:
               '$name must be the rail\'s button face. A bare InkWell hovers '
               'as a different shape from its neighbours — that is the '

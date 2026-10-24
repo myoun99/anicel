@@ -11,7 +11,6 @@ import '../theme/disabled_ink.dart';
 import '../input/control_press_claim.dart';
 import 'app_icon_button.dart';
 import 'boolean_dot.dart';
-import 'named.dart';
 import 'rail_glyph_button.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -1412,7 +1411,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
 }
 
 /// [PanelFlyoutTrigger] for a rail's PLATE — the layer row's mark and take
-/// ([RailPlateFace]): the claim and ONE render object around the plate,
+/// ([RailPlateButton]): ONE render object around the plate, the claim too,
 /// instead of a tooltip, a portal, a [Material], a physical model and an
 /// [InkWell] of their own — ~45 elements a plate, mounted anew for every
 /// row on every cut switch (I-57 ①, measured on the user's project).
@@ -1434,8 +1433,8 @@ class RailFlyoutTrigger extends StatelessWidget {
     this.hoverShape,
   });
 
-  /// What a finder calls the [RailPlateFace], the box the user sees and
-  /// presses — a [Named], as a [RailGlyphButton.name] is and for its
+  /// What a finder calls the [RailPlateButton], the box the user sees and
+  /// presses — a name, as a [RailGlyphButton.name] is and for its
   /// reason.
   final String name;
   final String tooltip;
@@ -1447,7 +1446,7 @@ class RailFlyoutTrigger extends StatelessWidget {
   /// What a screen reader calls it.
   final String? semanticLabel;
 
-  /// [RailPlateFace.hoverShape].
+  /// [RailPlateButton.hoverShape].
   final ShapeBorder? hoverShape;
 
   @override

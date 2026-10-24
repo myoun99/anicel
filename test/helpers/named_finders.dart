@@ -33,7 +33,8 @@ extension NamedFinders on CommonFinders {
   );
 }
 
-/// The name a [Named] directly over [element] gives it, or null.
+/// The name [element]'s widget carries itself ([NamesItself]), else the
+/// name a [Named] directly over it gives it, or null.
 ///
 /// A KEPT row's names are spelled with the layer it was BUILT for — a
 /// controls row's ([BerthRow], I-57 ㉣) and a cells row's (kept by its
@@ -43,6 +44,9 @@ extension NamedFinders on CommonFinders {
 /// carries its layer ENDS with the layer's id
 /// (`a_kept_row_acts_on_the_layer_it_stands_for_test.dart` holds that).
 String? nameOf(Element element) {
+  if (element.widget case NamesItself(name: final given?)) {
+    return _asTheRowStands(element, given);
+  }
   String? name;
   element.visitAncestorElements((parent) {
     if (parent.widget case Named(name: final given?)) {

@@ -38,7 +38,7 @@ void main() {
         onTap: () => pressed += 1,
       ),
     );
-    expect(tester.widget(cell), isA<RailGlyphFace>());
+    expect(tester.widget(cell), isA<RailGlyphButton>());
     expect(
       tester.appIconButton(cell).icon,
       layerKindIcon(LayerKind.animation),
@@ -105,7 +105,7 @@ void main() {
         kind: LayerKind.animation,
       ),
     );
-    expect(find.byType(RailGlyphFace), findsNothing);
+    expect(find.byType(RailGlyphButton), findsNothing);
     final glyph = find.descendant(of: cell, matching: find.byType(Icon));
     expect(
       tester.widget<Icon>(glyph).icon,

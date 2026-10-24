@@ -510,7 +510,7 @@ Future<bool> isActionButtonEnabled(
   return switch (widget) {
     TextButton(:final onPressed) => onPressed != null,
     AppIconButtonFace(:final onPressed) => onPressed != null,
-    RailGlyphFace(:final enabled) => enabled,
+    RailGlyphButton(:final enabled) => enabled,
     _ => isDescendantIconButtonEnabled(tester, button),
   };
 }

@@ -362,6 +362,7 @@ void main() {
       find.descendant(
         of: find.byKey(const ValueKey<String>('legend-lanes-toggle')),
         matching: find.railTooltip('모든 레이어 펼치기'),
+        matchRoot: true,
       ),
       findsOneWidget,
     );

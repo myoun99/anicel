@@ -58,15 +58,22 @@ final class RailTextGlyph extends RailGlyph {
 /// tooltip of nine, focus, actions, a mouse region, a listener, three boxes,
 /// two builders and an [Icon] of six). Measured in a profile build on the
 /// user's project: the frame after a cut switch spent ~45% of its time on
-/// the rail. This is the claim and ONE leaf: the leaf paints the box, the
-/// state layer and the glyph (laid out once for the whole app), says the
-/// semantics, shows the cursor, and summons the one tooltip window the
-/// rail's buttons share ([SummonedTooltip]).
+/// the rail. This is ONE leaf: it paints the box, the state layer and the
+/// glyph (laid out once for the whole app), says the semantics, shows the
+/// cursor, summons the one tooltip window the rail's buttons share
+/// ([SummonedTooltip]) — and is the claim.
 ///
-/// ⛔THE PRESS IS UNTOUCHED: [ControlPressClaim] fires it, as it fires an
+/// ⛔THE PRESS IS UNTOUCHED: the claim every control wears fires it
+/// ([PressClaim], the code a [ControlPressClaim] is), as it fires an
 /// [AppIconButton]'s, and [PressFireScope] says when — the leaf only enters
 /// the do-nothing tap every light face enters ([PressFace]), so an
 /// ancestor's tap still loses to a press on a button.
+///
+/// 🪶ONE ELEMENT (card frame-panels-build-in-one-frame, 2026-10-25): it was
+/// a widget that built a [ControlPressClaim], a [Named] and the face —
+/// four elements and two render objects for each of the seven buttons a
+/// rail row holds, built again on every panel reopen. The face is the
+/// claim now, and it carries its own name ([NamesItself]).
 ///
 /// ⛔ONE INK, ONE SHAPE: [IconButtonInk] and [appIconButtonShape] are the
 /// [AppIconButton]'s own, so the rail looks exactly as it did.
@@ -78,7 +85,7 @@ final class RailTextGlyph extends RailGlyph {
 /// ⚠️That premise fell on 2026-10-23 (board `F-450-Q1`: every other icon
 /// button now answers Enter/Space); whether the rail takes its focus back,
 /// at the cost the leaf was built to shed, is board `F-450-Q2`.
-class RailGlyphButton extends StatelessWidget {
+class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
   const RailGlyphButton({
     super.key,
     required this.name,
@@ -91,16 +98,20 @@ class RailGlyphButton extends StatelessWidget {
     this.semanticLabel,
   });
 
-  /// What a finder calls the [RailGlyphFace], the box the user sees and
-  /// presses — the tests' handle, a [Named] and never a key: a rail row
-  /// shows one layer and then another in the same elements (I-57, 10-13),
-  /// and a key spelled from the layer remade every button of every row on
-  /// every cut switch.
+  /// What a finder calls this button, the box the user sees and presses —
+  /// the tests' handle, a name and never a key: a rail row shows one layer
+  /// and then another in the same elements (I-57, 10-13), and a key spelled
+  /// from the layer remade every button of every row on every cut switch.
+  @override
   final String name;
 
   /// Empty is no tooltip at all, as an [AppTooltip]'s empty message is.
   final String tooltip;
   final RailGlyph glyph;
+
+  /// What a press does — the pointer's, through the claim, and a screen
+  /// reader's activation, which the claim never hears. Null is a dead
+  /// button.
   final VoidCallback? onPressed;
 
   /// What a screen reader calls a button whose glyph says what it is and
@@ -118,56 +129,12 @@ class RailGlyphButton extends StatelessWidget {
   /// danger]).
   final bool danger;
 
-  @override
-  Widget build(BuildContext context) => ControlPressClaim(
-    onPressed: onPressed,
-    child: Named(
-      name,
-      child: RailGlyphFace(
-        tooltip: tooltip,
-        glyph: glyph,
-        // 🚨A screen reader is not a pointer: its activation arrives as
-        // SemanticsAction.tap, which the claim never hears, so the node
-        // gets the REAL callback — as an [AppIconButton]'s does.
-        onSemanticTap: onPressed,
-        semanticLabel: semanticLabel,
-        isSelected: isSelected,
-        danger: danger,
-        size: size,
-      ),
-    ),
-  );
-}
-
-/// The part of a [RailGlyphButton] you can see and hear, as one render
-/// object. Public because it is what [RailGlyphButton.name] names.
-class RailGlyphFace extends LeafRenderObjectWidget {
-  const RailGlyphFace({
-    super.key,
-    required this.tooltip,
-    required this.glyph,
-    required this.onSemanticTap,
-    required this.isSelected,
-    required this.danger,
-    required this.size,
-    this.semanticLabel,
-  });
-
-  final String tooltip;
-  final RailGlyph glyph;
-
-  /// What a screen reader's activation calls; null is a dead button.
-  final VoidCallback? onSemanticTap;
-  final String? semanticLabel;
-  final bool isSelected;
-  final bool danger;
-  final AppIconButtonMetrics size;
-
-  bool get enabled => onSemanticTap != null;
+  bool get enabled => onPressed != null;
 
   @override
   RenderRailGlyphFace createRenderObject(BuildContext context) =>
-      RenderRailGlyphFace(spec: _specIn(context), tooltipContext: context);
+      RenderRailGlyphFace(spec: _specIn(context), tooltipContext: context)
+        ..wearPlace(context);
 
   @override
   void updateRenderObject(
@@ -176,7 +143,8 @@ class RailGlyphFace extends LeafRenderObjectWidget {
   ) {
     renderObject
       ..spec = _specIn(context)
-      ..tooltipContext = context;
+      ..tooltipContext = context
+      ..wearPlace(context);
   }
 
   RailGlyphSpec _specIn(BuildContext context) {
@@ -185,7 +153,7 @@ class RailGlyphFace extends LeafRenderObjectWidget {
     return RailGlyphSpec(
       tooltip: tooltip,
       glyph: glyph,
-      onSemanticTap: onSemanticTap,
+      onPressed: onPressed,
       semanticLabel: semanticLabel,
       isSelected: isSelected,
       ink: IconButtonInk.of(context, isSelected: isSelected, danger: danger),
@@ -217,7 +185,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   const RailGlyphSpec({
     required this.tooltip,
     required this.glyph,
-    required this.onSemanticTap,
+    required this.onPressed,
     required this.semanticLabel,
     required this.isSelected,
     required this.ink,
@@ -233,7 +201,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
 
   final String tooltip;
   final RailGlyph glyph;
-  final VoidCallback? onSemanticTap;
+  final VoidCallback? onPressed;
   final String? semanticLabel;
   final bool isSelected;
   final IconButtonInk ink;
@@ -246,7 +214,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
-  bool get enabled => onSemanticTap != null;
+  bool get enabled => onPressed != null;
 
   @override
   bool laysOutAs(RailGlyphSpec other) =>
@@ -273,7 +241,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
       other is RailGlyphSpec &&
       paintsAs(other) &&
       other.tooltip == tooltip &&
-      other.onSemanticTap == onSemanticTap &&
+      other.onPressed == onPressed &&
       other.semanticLabel == semanticLabel &&
       other.triggerMode == triggerMode;
 
@@ -281,7 +249,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
   int get hashCode => Object.hash(
     tooltip,
     glyph,
-    onSemanticTap,
+    onPressed,
     semanticLabel,
     isSelected,
     ink,
@@ -298,7 +266,7 @@ final class RailGlyphSpec implements FaceSpec<RailGlyphSpec> {
 
 /// The rail button's face: its box, its state layer and its glyph, as one
 /// render object, on the press every light face is ([PressFace]).
-class RenderRailGlyphFace extends RenderBox with PressFace {
+class RenderRailGlyphFace extends RenderBox with PressClaim, PressFace {
   RenderRailGlyphFace({
     required RailGlyphSpec spec,
     required BuildContext tooltipContext,
@@ -315,16 +283,13 @@ class RenderRailGlyphFace extends RenderBox with PressFace {
   }
 
   @override
-  bool get pressEnabled => _spec.enabled;
+  VoidCallback? get onPress => _spec.onPressed;
 
   @override
   bool get pressSelected => _spec.isSelected;
 
   @override
   String? get pressSemanticLabel => _spec.semanticLabel;
-
-  @override
-  VoidCallback? get pressSemanticTap => _spec.onSemanticTap;
 
   @override
   TextDirection get pressTextDirection => _spec.textDirection;
@@ -429,7 +394,7 @@ class RenderRailGlyphFace extends RenderBox with PressFace {
   }
 }
 
-/// A rail PLATE that is pressed — the mark's and the take's ([RailPlateFace]).
+/// A rail PLATE that is pressed — the mark's and the take's ([RailPlateButton]).
 /// What it shows is its child's own: the plate paints itself, opaque, so no
 /// state layer would show over it — and the [InkWell] the plate used to wear
 /// drew its ink UNDER it, unseen. Everything else is the press every light
@@ -439,7 +404,7 @@ class RenderRailGlyphFace extends RenderBox with PressFace {
 /// the hover, the one ink the app keeps (its theme turns the splash and the
 /// held fill off, F-132 · F-138). Such a face paints it, UNDER the plate as
 /// the [InkWell] drew it ([RailPlateSpec.hoverShape]).
-class RenderRailPlateFace extends RenderProxyBox with PressFace {
+class RenderRailPlateFace extends RenderProxyBox with PressClaim, PressFace {
   RenderRailPlateFace({
     required RailPlateSpec spec,
     required BuildContext tooltipContext,
@@ -474,16 +439,13 @@ class RenderRailPlateFace extends RenderProxyBox with PressFace {
   }
 
   @override
-  bool get pressEnabled => _spec.enabled;
+  VoidCallback? get onPress => _spec.onPressed;
 
   @override
   bool get pressSelected => false;
 
   @override
   String? get pressSemanticLabel => _spec.semanticLabel;
-
-  @override
-  VoidCallback? get pressSemanticTap => _spec.onSemanticTap;
 
   @override
   TextDirection get pressTextDirection => _spec.textDirection;
@@ -501,7 +463,7 @@ class RenderRailPlateFace extends RenderProxyBox with PressFace {
 final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   const RailPlateSpec({
     required this.tooltip,
-    required this.onSemanticTap,
+    required this.onPressed,
     required this.semanticLabel,
     required this.textDirection,
     required this.triggerMode,
@@ -510,20 +472,20 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   });
 
   final String tooltip;
-  final VoidCallback? onSemanticTap;
+  final VoidCallback? onPressed;
   final String? semanticLabel;
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
   /// A clear plate's hover, in this shape — null for an opaque plate, whose
-  /// ink nobody saw ([RailPlateFace.hoverShape]).
+  /// ink nobody saw ([RailPlateButton.hoverShape]).
   final ShapeBorder? hoverShape;
 
   /// The hover's colour: the theme's, as an [InkWell] with none of its own
   /// takes it.
   final Color hoverInk;
 
-  bool get enabled => onSemanticTap != null;
+  bool get enabled => onPressed != null;
 
   /// The plate lays itself out — the face is its size.
   @override
@@ -542,14 +504,14 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
       other is RailPlateSpec &&
       paintsAs(other) &&
       other.tooltip == tooltip &&
-      other.onSemanticTap == onSemanticTap &&
+      other.onPressed == onPressed &&
       other.semanticLabel == semanticLabel &&
       other.triggerMode == triggerMode;
 
   @override
   int get hashCode => Object.hash(
     tooltip,
-    onSemanticTap,
+    onPressed,
     semanticLabel,
     textDirection,
     triggerMode,
@@ -558,24 +520,41 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   );
 }
 
-/// The face of a pressed rail plate: [child] is the plate, and this one
-/// render object around it is the button — cursor, tooltip, semantics and
-/// the arena's tap. The press itself is its [ControlPressClaim]'s, as a
-/// [RailGlyphButton]'s is ([RailFlyoutTrigger]).
-class RailPlateFace extends SingleChildRenderObjectWidget {
-  const RailPlateFace({
+/// THE RAIL'S PLATE BUTTON — [child] painted as it paints itself, and this
+/// one render object around it is the button: the claim, the cursor, the
+/// tooltip, the semantics and the arena's tap. What a pressed plate of a
+/// rail is, whatever the press does. A list's door is this with the list
+/// as its press ([RailFlyoutTrigger]); the legend's headings are this, on
+/// the legend's plate (`TimelineLayerControlsHeader`). Null [onPressed] is a
+/// dead plate that still shows its tooltip, as a dead [RailGlyphButton]
+/// does.
+///
+/// 🪶ONE ELEMENT around the plate, for the reason a [RailGlyphButton] is
+/// one (card frame-panels-build-in-one-frame, 2026-10-25).
+class RailPlateButton extends SingleChildRenderObjectWidget
+    implements NamesItself {
+  const RailPlateButton({
     super.key,
+    required this.name,
     required this.tooltip,
-    required this.onSemanticTap,
+    required this.onPressed,
+    required Widget super.child,
     this.semanticLabel,
     this.hoverShape,
-    required super.child,
   });
 
+  /// What a finder calls this plate — a name, as a [RailGlyphButton.name]
+  /// is and for its reason.
+  @override
+  final String name;
   final String tooltip;
 
-  /// What a screen reader's activation calls; null is a dead plate.
-  final VoidCallback? onSemanticTap;
+  /// What a press does — the pointer's, through the claim, and a screen
+  /// reader's activation, which the claim never hears. Null is a dead
+  /// plate.
+  final VoidCallback? onPressed;
+
+  /// What a screen reader calls it.
   final String? semanticLabel;
 
   /// A CLEAR plate's hover, painted under it in this shape — the ink an
@@ -585,7 +564,8 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
 
   @override
   RenderRailPlateFace createRenderObject(BuildContext context) =>
-      RenderRailPlateFace(spec: _specIn(context), tooltipContext: context);
+      RenderRailPlateFace(spec: _specIn(context), tooltipContext: context)
+        ..wearPlace(context);
 
   @override
   void updateRenderObject(
@@ -594,69 +574,19 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
   ) {
     renderObject
       ..spec = _specIn(context)
-      ..tooltipContext = context;
+      ..tooltipContext = context
+      ..wearPlace(context);
   }
 
   RailPlateSpec _specIn(BuildContext context) => RailPlateSpec(
     tooltip: tooltip,
-    onSemanticTap: onSemanticTap,
+    onPressed: onPressed,
     semanticLabel: semanticLabel,
     textDirection: Directionality.of(context),
     triggerMode:
         TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
     hoverShape: hoverShape,
     hoverInk: Theme.of(context).hoverColor,
-  );
-}
-
-/// THE RAIL'S PLATE BUTTON — [child] painted as it paints itself, and the
-/// claim and ONE face ([RailPlateFace]) around it: what a pressed plate of
-/// a rail is, whatever the press does. A list's door is this with the list
-/// as its press ([RailFlyoutTrigger]); the legend's headings are this, on
-/// the legend's plate (`TimelineLayerControlsHeader`). Null [onPressed] is a
-/// dead plate that still shows its tooltip, as a dead [RailGlyphButton]
-/// does.
-class RailPlateButton extends StatelessWidget {
-  const RailPlateButton({
-    super.key,
-    required this.name,
-    required this.tooltip,
-    required this.onPressed,
-    required this.child,
-    this.semanticLabel,
-    this.hoverShape,
-  });
-
-  /// What a finder calls the [RailPlateFace] — a [Named], as a
-  /// [RailGlyphButton.name] is and for its reason.
-  final String name;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  /// The plate.
-  final Widget child;
-
-  /// What a screen reader calls it.
-  final String? semanticLabel;
-
-  /// [RailPlateFace.hoverShape].
-  final ShapeBorder? hoverShape;
-
-  @override
-  Widget build(BuildContext context) => ControlPressClaim(
-    onPressed: onPressed,
-    child: Named(
-      name,
-      child: RailPlateFace(
-        tooltip: tooltip,
-        // The REAL callback, for a screen reader's activation — the claim
-        // never hears it ([RailGlyphButton]).
-        onSemanticTap: onPressed,
-        semanticLabel: semanticLabel,
-        hoverShape: hoverShape,
-        child: child,
-      ),
-    ),
   );
 }
 

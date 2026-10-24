@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../input/control_press_claim.dart';
 import 'app_tooltip.dart';
 
 /// What a light face's spec says of the one it replaces ([PressFace.respec]).
@@ -27,15 +28,19 @@ abstract interface class FaceSpec<S> {
 /// node, a tooltip of nine elements, a mouse region, a listener — were most
 /// of every panel a tab switch builds anew.
 ///
-/// ⛔THE PRESS IS NOT FIRED HERE: a `ControlPressClaim` above the face fires
-/// it, and `PressFireScope` says when. The face only enters the do-nothing
-/// tap, so an ancestor's tap still loses to a press on a button.
-mixin PressFace on RenderBox
+/// ⛔THE PRESS IS FIRED BY THE CLAIM, NOT HERE: the face IS its claim
+/// ([PressClaim] — the one code a [ControlPressClaim] is too), and
+/// [PressFireScope] says when. The face only enters the do-nothing tap, so
+/// an ancestor's tap still loses to a press on a button. ↩️A
+/// [ControlPressClaim] stood over every face until 2026-10-25 — a second
+/// element and a second render object for every button a tab reopens
+/// (card frame-panels-build-in-one-frame).
+mixin PressFace on RenderBox, PressClaim
     implements MouseTrackerAnnotation, SummonedTooltipTarget {
   /// Whether a press does anything: a dead face shows no press, enters no
   /// tap and wears the basic cursor.
   @protected
-  bool get pressEnabled;
+  bool get pressEnabled => onPress != null;
 
   /// The ON state, as a screen reader hears it.
   @protected
@@ -44,11 +49,6 @@ mixin PressFace on RenderBox
   /// What a screen reader calls a face whose picture says what it is.
   @protected
   String? get pressSemanticLabel;
-
-  /// What a screen reader's activation calls — the REAL callback, since a
-  /// screen reader's tap never reaches the claim.
-  @protected
-  VoidCallback? get pressSemanticTap;
 
   @protected
   TextDirection get pressTextDirection;
@@ -200,6 +200,9 @@ mixin PressFace on RenderBox
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       _setPressed(false);
     }
+    // The claim hears the pointer AFTER the face, as it did while it was
+    // the box around it.
+    super.handleEvent(event, entry);
   }
 
   void _onLongPress() {
@@ -251,7 +254,10 @@ mixin PressFace on RenderBox
     if (pressSemanticLabel case final label?) {
       config.label = label;
     }
-    if (pressSemanticTap case final onTap?) {
+    // 🚨A screen reader is not a pointer: its activation arrives as
+    // SemanticsAction.tap, which the claim never hears, so the node gets the
+    // press itself.
+    if (onPress case final onTap?) {
       config.onTap = onTap;
     }
   }

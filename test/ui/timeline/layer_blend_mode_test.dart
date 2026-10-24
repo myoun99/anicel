@@ -233,7 +233,7 @@ void main() {
       findsOneWidget,
       reason: 'the blend control keeps its name across the widget swap',
     );
-    expect(tester.widget(chip), isA<RailPlateFace>());
+    expect(tester.widget(chip), isA<RailPlateButton>());
     expect(
       find.descendant(of: chip, matching: find.byType(PanelFlyoutChip)),
       findsOneWidget,
