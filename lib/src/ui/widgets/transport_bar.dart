@@ -11,6 +11,7 @@ import 'app_icon_button.dart';
 import 'drag_value_label.dart';
 import 'field_slider.dart';
 import 'owning_axis_grip.dart';
+import 'sound_level_bar.dart';
 import 'value_hands.dart' show valueHandsReach;
 
 /// The span a surface that TRIMS keeps of its source — the transport's third
@@ -141,13 +142,13 @@ class TransportBar extends StatelessWidget {
   static double heightIn(BuildContext context, {required bool range}) =>
       _seekRowHeight +
       buttonRowHeightIn(context) +
-      (range ? _rangeRowHeight + _lineGrowthIn(context) : 0);
+      (range ? _rangeRowHeight + FieldSlider.growthIn(context) : 0);
 
   /// The player's buttons' row where it is shown — and the band a book
   /// wears in the transport's place, which is that row alone
   /// (`PageTurnBar`, F-383).
   static double buttonRowHeightIn(BuildContext context) =>
-      _playRowHeight + _lineGrowthIn(context);
+      _playRowHeight + FieldSlider.growthIn(context);
 
   static const double _inset = 8;
   static const double _gap = 8;
@@ -173,13 +174,6 @@ class TransportBar extends StatelessWidget {
       valueHandsReach;
   static const double _wordGap = 4;
   static const double _rangeValueWidth = 44;
-  static const double _volumeWidth = 64;
-  static const double _volumeHeight = 18;
-
-  static double _lineGrowthIn(BuildContext context) => TextMeasure(
-    context,
-    Theme.of(context).textTheme.labelSmall ?? const TextStyle(),
-  ).lineGrowthOf(TextMeasure.everyScript);
 
   int get _lastFrame => frameCount <= 1 ? 0 : frameCount - 1;
 
@@ -196,7 +190,7 @@ class TransportBar extends StatelessWidget {
     // A span that can act: it is washed on the seek track, and the end
     // buttons stop at it.
     final kept = range != null && range.onChanged != null ? range : null;
-    final growth = _lineGrowthIn(context);
+    final growth = FieldSlider.growthIn(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -242,7 +236,7 @@ class TransportBar extends StatelessWidget {
                   id: _PlaySlot.sound,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: _soundCell(context, growth),
+                    child: _soundCell(),
                   ),
                 ),
               ],
@@ -318,12 +312,10 @@ class TransportBar extends StatelessWidget {
     );
   }
 
-  /// The speaker and the level beside it.
-  ///
-  /// The bar is the app's one value bar, in its micro form — the number
-  /// alone, as the rail's opacity bars write theirs. Muted, it stands grey
-  /// and is still the level a press of the speaker comes back to.
-  Widget _soundCell(BuildContext context, double growth) {
+  /// The speaker and the level beside it ([SoundLevelBar]). Muted, the bar
+  /// stands grey and is still the level a press of the speaker comes back
+  /// to.
+  Widget _soundCell() {
     final sound = this.sound;
     final muted = sound?.muted ?? false;
     return Row(
@@ -337,20 +329,12 @@ class TransportBar extends StatelessWidget {
           onPressed: sound?.onMuteToggled,
         ),
         const SizedBox(width: 4),
-        SizedBox(
-          width: _volumeWidth,
-          child: FieldSlider(
-            key: ValueKey<String>(_key('volume')),
-            value: (sound?.level ?? 1).clamp(0.0, 1.0).toDouble(),
-            min: 0,
-            max: 1,
-            divisions: 100,
-            displayScale: 100,
-            height: _volumeHeight + growth,
-            restingAccent: muted ? AppColors.textDim : null,
-            onChanged: sound?.onLevelChanged,
-            onChangeEnd: sound?.onLevelSettled,
-          ),
+        SoundLevelBar(
+          keyValue: _key('volume'),
+          level: sound?.level ?? 1,
+          muted: muted,
+          onChanged: sound?.onLevelChanged,
+          onChangeEnd: sound?.onLevelSettled,
         ),
       ],
     );

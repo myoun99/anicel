@@ -42,6 +42,7 @@ class AudioSyncSettings {
     this.cueBeeps = true,
     this.streamerEnabled = true,
     this.denoiseVoice = false,
+    this.playbackLevel = 1,
   });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
@@ -95,6 +96,16 @@ class AudioSyncSettings {
   /// take conforms once through the normal pipeline on placement.
   final bool denoiseVoice;
 
+  /// How loud the canvas plays, 0..1 — every sound the timeline and the
+  /// storyboard make: a run, a scrub and the count-in's beeps (I-85, 유저
+  /// 2026-10-24: Q3 「캔버스 소리 전부」 · Q4 「다시 켜도 기억」). A
+  /// MONITORING level, like solo: the export mixes without it, and the
+  /// viewer panel keeps a level of its own.
+  final double playbackLevel;
+
+  static double clampPlaybackLevel(double value) =>
+      value.clamp(0.0, 1.0).toDouble();
+
   static const int maxCountInSeconds = 10;
 
   static int clampCountInSeconds(int value) =>
@@ -121,6 +132,7 @@ class AudioSyncSettings {
     bool? cueBeeps,
     bool? streamerEnabled,
     bool? denoiseVoice,
+    double? playbackLevel,
   }) => AudioSyncSettings(
     offset: offset ?? this.offset,
     unit: unit ?? this.unit,
@@ -137,6 +149,7 @@ class AudioSyncSettings {
     cueBeeps: cueBeeps ?? this.cueBeeps,
     streamerEnabled: streamerEnabled ?? this.streamerEnabled,
     denoiseVoice: denoiseVoice ?? this.denoiseVoice,
+    playbackLevel: playbackLevel ?? this.playbackLevel,
   );
 
   static int clampMicGainDb(int value) =>
@@ -208,6 +221,7 @@ class AudioSyncSettings {
     if (!cueBeeps) 'cueBeeps': false,
     if (!streamerEnabled) 'streamerEnabled': false,
     if (denoiseVoice) 'denoiseVoice': true,
+    if (playbackLevel != 1) 'playbackLevel': playbackLevel,
   };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
@@ -232,6 +246,9 @@ class AudioSyncSettings {
       cueBeeps: json['cueBeeps'] as bool? ?? true,
       streamerEnabled: json['streamerEnabled'] as bool? ?? true,
       denoiseVoice: json['denoiseVoice'] as bool? ?? false,
+      playbackLevel: clampPlaybackLevel(
+        (json['playbackLevel'] as num?)?.toDouble() ?? 1,
+      ),
     );
   }
 
@@ -249,7 +266,8 @@ class AudioSyncSettings {
           other.countInSeconds == countInSeconds &&
           other.cueBeeps == cueBeeps &&
           other.streamerEnabled == streamerEnabled &&
-          other.denoiseVoice == denoiseVoice;
+          other.denoiseVoice == denoiseVoice &&
+          other.playbackLevel == playbackLevel;
 
   @override
   int get hashCode => Object.hash(
@@ -264,6 +282,7 @@ class AudioSyncSettings {
     cueBeeps,
     streamerEnabled,
     denoiseVoice,
+    playbackLevel,
   );
 
   @override

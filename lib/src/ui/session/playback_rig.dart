@@ -330,6 +330,8 @@ class PlaybackRig implements PlaybackRun {
     resolveCueClips: () => _voiceRecording.voiceRecordCueClips,
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
+    resolvePlaybackLevel: () =>
+        _appSettings.audioSyncSettings.value.playbackLevel,
   );
 
   /// Why the sound at [filePath] cannot be played — the one verdict
@@ -369,7 +371,24 @@ class PlaybackRig implements PlaybackRun {
     resolveRecordingMutedLayerIds: () => _voiceRecording.recordingMutedLayerIds,
     resolveOutputDeviceName: () =>
         _appSettings.audioSyncSettings.value.outputDeviceName,
+    resolvePlaybackLevel: () =>
+        _appSettings.audioSyncSettings.value.playbackLevel,
   );
+
+  /// How loud the canvas plays (I-85) — the bar at the end of a frame
+  /// panel's transport. Every step of the hand is kept: the level is the
+  /// app's, and lasts (Q4 「다시 켜도 기억」).
+  void setPlaybackLevel(double level) => _appSettings.setAudioSyncSettings(
+    _appSettings.audioSyncSettings.value.copyWith(playbackLevel: level),
+  );
+
+  /// Where the hand lets go of the level: the step a run hears. Once, not
+  /// per step — the refresh re-uploads the whole schedule, as the layer
+  /// fader's release does.
+  void settlePlaybackLevel(double level) {
+    setPlaybackLevel(level);
+    audioDeviceTransport.refreshSchedule();
+  }
 
   void attach() {
     audioDeviceTransport.attach();

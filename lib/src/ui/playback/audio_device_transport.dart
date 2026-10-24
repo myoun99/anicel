@@ -57,8 +57,14 @@ class AudioDeviceTransport {
     this.resolveRecordingMutedLayerIds,
     this.resolveCueClips,
     this.resolveOutputDeviceName,
+    this.resolvePlaybackLevel,
   }) : _resolveDevice = resolveDevice ?? (() => QaAudioDevice.instance),
        _resolveUserOffsetSamples = resolveUserOffsetSamples ?? ((_) => 0);
+
+  /// How loud the canvas plays (I-85, [AudioSyncSettings.playbackLevel]);
+  /// null plays at full. Read where the schedule is built, so a changed
+  /// level is heard at the next [refreshSchedule].
+  final double Function()? resolvePlaybackLevel;
 
   /// The session's solo set (monitoring state, AUDIO-PRO R1).
   final Set<LayerId> Function()? resolveSoloedLayerIds;
@@ -293,6 +299,7 @@ class AudioDeviceTransport {
     soloedLayerIds: resolveSoloedLayerIds?.call(),
     mutedLayerIds: resolveRecordingMutedLayerIds?.call(),
     extraClips: resolveCueClips?.call(),
+    level: resolvePlaybackLevel?.call() ?? 1,
   );
 
   /// Moves the streaming window to [centerSample]. Anything but
