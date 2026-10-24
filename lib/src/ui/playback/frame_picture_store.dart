@@ -14,8 +14,16 @@ import 'frame_picture_gpu.dart';
 typedef LandingPatch = ({ui.Rect rect, ui.Image image});
 
 /// A frame as its compositor gives it to [FramePictureStore.lay]: [draw]
-/// draws it in world coordinates, opaque over all of [extent], and the
-/// world outside [extent] is [outside].
+/// draws it in world coordinates over all of [extent] as the canvas's
+/// display buffer holds it — the paper and every row, and clear wherever
+/// neither lays anything — and the world outside [extent] is [outside].
+///
+/// 🚨Not opaque past the paper (one-picture-per-frame, 2026-10-24): the
+/// pasteboard's colour is laid under a frame by whoever shows it — a track
+/// stack lays it under its stage track alone and lets the tracks over that
+/// one show through — so a picture holding it would be one view's. The
+/// compositor's [outside] is clear for the same reason
+/// (`frameDrawingOf`).
 typedef FrameDrawing = ({
   ui.Rect extent,
   ui.Color outside,
@@ -24,12 +32,16 @@ typedef FrameDrawing = ({
 
 /// 🚨★★★A FRAME'S ONE PICTURE (one-picture-per-frame; D7-2-Q3=a, 유저
 /// 2026-10-24 — 「쓸데없는 소재를 만들고 싶지 않은 것 … 극한으로 성능
-/// 개선 + 법 통일까지가 목표」): the frame composited, opaque, kept where it
-/// stands — an edit is written INTO it, never a new picture beside it.
+/// 개선 + 법 통일까지가 목표」): the frame composited, kept where it stands
+/// — an edit is written INTO it, never a new picture beside it.
 ///
 /// The consumer draws [image] where [extent] lies in the world, paints the
 /// world outside [extent] [outside], and draws every [landing] patch over
-/// it with `BlendMode.src`.
+/// it with `BlendMode.src` — a patch holds the picture's texels where it
+/// lies, alpha and all, so wherever one is landing the image and its
+/// patches are drawn in a layer of their own and that layer over what lies
+/// under the frame: drawn straight over it, a patch's clear texels would
+/// cut through that too.
 ///
 /// 🔁ZOOMED OUT IT IS DRAWN WITH ITS OWN MIP CHAIN — `FilterQuality.medium`
 /// at or under 50%. The engine gives every picture it rasters a whole chain
@@ -154,8 +166,10 @@ class FramePictureStore<K extends Object> {
   }
 
   /// Moves the picture of [from] to [to], [rect] drawn anew by [draw] — in
-  /// world coordinates, opaque over all of it, as a lay's is. The store
-  /// widens [rect] to the picture's grid; the caller hands it as it is.
+  /// world coordinates over all of it, as a lay's is ([FrameDrawing]): the
+  /// patch's texels, clear ones too, take the place of the picture's there.
+  /// The store widens [rect] to the picture's grid; the caller hands it as
+  /// it is.
   ///
   /// The picture answers to [to] once the patch's texels are drawn, with
   /// them [FramePicture.landing] over it; until then [from] still shows
