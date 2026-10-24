@@ -73,10 +73,11 @@ void main() {
           'inside the box, whose ends ARE the law\'s',
     ),
     'lib/src/ui/timeline/timeline_zoom_limits.dart': (
-      3,
-      'the ×1.25 zoom step — a zoom times a factor, no frame count — and a '
-          'zoom read to and from its count of 0.1% steps (F-403): a zoom, '
-          'not a boundary',
+      4,
+      'the ×1.25 zoom step — a zoom times a factor, no frame count — a '
+          'zoom read to and from its count of 0.1% steps (F-403), and the '
+          'ceiling as twice the 100% (F-403-Q1: 「새 눈금 200% 에서 멈춤」): '
+          'a zoom, not a boundary',
     ),
     'lib/src/ui/timeline/timeline_frame_axis_follower.dart': (
       1,
