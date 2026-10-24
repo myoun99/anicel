@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/brush_frame_key.dart';
 import '../../models/cut.dart';
+import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart' show createFolderLayer;
@@ -406,19 +407,26 @@ class LayerStack {
   /// the storyboard lays over the whole film asks it of each cut it
   /// crosses (F-357).
   bool celHoldsAPicture(Cut cut, LayerId row, FrameId cel) {
-    // A LIVE stroke already counts. The store only learns about pixels at
-    // commit (`markCelEdited` on pen-up), so waiting for it left the block
-    // grey for the whole stroke — the user asked for it to go white the
-    // moment the line starts, which is also when the cel stops being
-    // "unworked" in any sense that matters.
-    if (_brushInputActive.value &&
-        cut.id == _project.activeCutOrNull?.id &&
-        _liveStrokeCel == (row, cel)) {
+    if (liveStrokeDraws(cut.id, row, cel)) {
       return true;
     }
     final pixels = _pixelsOf(row, cel);
     return _storeHoldsAPicture(cut, pixels.row, pixels.cel);
   }
+
+  /// Whether a live stroke is drawing [row]'s cel [cel] in the cut [cut] —
+  /// a cel that counts as drawn from pen-down, to the block's tint
+  /// ([celHoldsAPicture]) and to the 색 편집 head
+  /// (`PixelVerbs.canOpenColourEdit`) alike.
+  ///
+  /// The store only learns about pixels at commit (`markCelEdited` on
+  /// pen-up), so waiting for it left the block grey for the whole stroke —
+  /// the user asked for it to go white the moment the line starts, which is
+  /// also when the cel stops being "unworked" in any sense that matters.
+  bool liveStrokeDraws(CutId cut, LayerId row, FrameId cel) =>
+      _brushInputActive.value &&
+      cut == _project.activeCutOrNull?.id &&
+      _liveStrokeCel == (row, cel);
 
   /// Whether [row]'s cel [cel] in [cut] could not be read
   /// ([LayerFrameImageCache.unreadable]) — the fact of the red block, for
@@ -547,22 +555,13 @@ class LayerStack {
   /// Whether [crossed] is the live stroke's cel and no other cel shows its
   /// pixels: a linked row windows the same bank, and a drag in flight hangs
   /// cels where they are not ([celPixelsOf]) — the crossing is THEIR change.
-  bool _theLiveStrokeAnswersFor(BrushFrameKey crossed) {
-    final cut = _project.activeCutOrNull;
-    final cel = _liveStrokeCel;
-    if (!_brushInputActive.value ||
-        cut == null ||
-        cel == null ||
-        _dragPreview.value != null) {
-      return false;
-    }
-    final (layerId, frameId) = cel;
-    return crossed == _project.brushFrameKeyForCut(cut, layerId, frameId) &&
-        !_project.repository.requireProject().linkRegistry.isLinked(
-          cutId: cut.id,
-          layerId: layerId,
-        );
-  }
+  bool _theLiveStrokeAnswersFor(BrushFrameKey crossed) =>
+      _dragPreview.value == null &&
+      liveStrokeDraws(crossed.cutId, crossed.layerId, crossed.frameId) &&
+      !_project.repository.requireProject().linkRegistry.isLinked(
+        cutId: crossed.cutId,
+        layerId: crossed.layerId,
+      );
 
   /// The two events that can flip [celHasContentForLayer]'s answer, and the
   /// two that can flip [celCannotBeReadForLayer]'s: a cel found unreadable,

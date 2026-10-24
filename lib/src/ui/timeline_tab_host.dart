@@ -1272,6 +1272,11 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     // …and the TRACK's band, the same selection stated on the other axis:
     // a band is a subject claim whichever panel it was swept in.
     widget.session.trackFrameRangeSelection,
+    // …and the tint's, which the 색 편집 head moves with: a first stroke on
+    // an empty cel lights it at pen-down, as it turns the block white
+    // (pen-up-dock-tail-Q2). Unheard, the token learned of it at pen-up,
+    // and the bar was built again as the pen lifted.
+    widget.session.layerStack.celTintRevision,
   ];
 
   @override

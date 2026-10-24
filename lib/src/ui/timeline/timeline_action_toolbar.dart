@@ -633,8 +633,8 @@ class TimelineActionToolbar extends StatelessWidget {
       // so a seek between two drawn cels, equal on every other gate, reused
       // the bar whole and this builder never ran. The answer travels in the
       // hosts' tokens now (`_SeekGatedTimelineToolbar` and the storyboard's
-      // cursor gate carry `canRunPixelVerb`); this listener stays for the cel
-      // emptied in place.
+      // cursor gate carry `canOpenColourEdit`); this listener stays for the cel
+      // emptied in place, and the one a first stroke draws at pen-down.
       session.layerStack.celTintRevision,
       // I-55: and the pixel board — a copy fills it without moving anything
       // above, and the two pastes open behind it.
