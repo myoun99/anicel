@@ -210,7 +210,8 @@ void main() {
       'builtin-blender': 0.7,
       'builtin-water-blend': 0.3,
       'builtin-blending-stump': 0.4,
-      'builtin-hatching': 0.9,
+      // ↩️The hatching left this table (the-gouache-is-a-round-with-a-weave-
+      // Q4, 10-24): its marks part at half its size, so it lays them whole.
       'builtin-concrete': 0.85,
       // F-433 (10-22): the pencil laid on its lead's side, made since — what
       // it lays at its own size, not what it laid before. ↩️F-456 (10-24):
