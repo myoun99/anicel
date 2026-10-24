@@ -10,13 +10,14 @@ import '../helpers/source_ledger.dart';
 
 import '../../tool/affected_tests.dart'
     show
+        BatchKind,
         filesListed,
         gcTag,
         gcTagMarker,
         kBatchWall,
         lineFor,
         nextBatch,
-        partitionByGcTag,
+        partitionByTag,
         runInBatches;
 import '../../tool/master_check.dart' show kWideCheckStandsFirst;
 import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
@@ -41,9 +42,9 @@ import '../../tool/test_queue.dart' show kMachineSuites, outsideTheLine;
 /// saying so.
 void main() {
   group('the split', () {
-    ({List<String> crowd, List<String> alone}) split(
+    ({List<String> crowd, List<String> gpu, List<String> alone}) split(
       Map<String, String> tree,
-    ) => partitionByGcTag(tree.keys.toList(), (path) => tree[path]!);
+    ) => partitionByTag(tree.keys.toList(), (path) => tree[path]!);
 
     test('a file carrying the marker goes alone', () {
       final result = split({
@@ -102,8 +103,8 @@ void main() {
           asked.add(left);
           return suites[turn++ % suites.length];
         },
-        run: (batch, suites, {required pins}) async =>
-            ran.add((batch.join(' '), suites, pins)),
+        run: (batch, suites, {required kind}) async =>
+            ran.add((batch.join(' '), suites, kind == BatchKind.collector)),
       );
       return (ran, asked);
     }
