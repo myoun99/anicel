@@ -16,7 +16,9 @@ import 'package:anicel/src/ui/widgets/tick_layer.dart';
 /// and pressed through its presses, the grid turned by its own ⇄ from
 /// [orientation], at the zoom the workspace opens at, its axes where the
 /// project keeps them, a Scale lane linked by the transform tool as the app
-/// opens it.
+/// opens it. The session goes with the tab, as the app's goes with its
+/// page — so what it left running is stopped before the test's end looks
+/// for it.
 ///
 /// The workspace's own verbs are not here — a section's button, the row
 /// filter, a per-cut zoom, the onion panel's reveal: a contract the APP
@@ -34,7 +36,6 @@ Future<EditorSessionManager> pumpTimelineHost(
   await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final session = EditorSessionManager(initialProject: project);
-  addTearDown(session.dispose);
   final turned = ValueNotifier(orientation);
   addTearDown(turned.dispose);
   final zoom = ValueNotifier(TimelineZoomLimits.referencePixelsPerFrame);
@@ -52,44 +53,44 @@ Future<EditorSessionManager> pumpTimelineHost(
   final rail = session.railView;
   final views = session.panelViews;
   final presses = SessionRowButtonPresses(session);
+  Widget tab(BuildContext context, Widget? _) => TimelineTabHost(
+    session: session,
+    orientation: turned.value,
+    onOrientationChanged: (next) => turned.value = next,
+    pixelsPerFrame: zoom.value,
+    pixelsPerFrameListenable: zoom,
+    onPixelsPerFrameChanged: (next) => zoom.value = next,
+    showSeconds: false,
+    onShowSecondsChanged: (_) {},
+    timelineRailExtent: railExtents[LayerRailId.timeline],
+    xsheetRailExtent: railExtents[LayerRailId.xsheet],
+    timelineFrameAxisOffset: views.frameAxisOffsets[LayerRailId.timeline],
+    xsheetFrameAxisOffset: views.frameAxisOffsets[LayerRailId.xsheet],
+    timelineLayerAxisOffset: views.layerAxisOffsets[LayerRailId.timeline],
+    xsheetLayerAxisOffset: views.layerAxisOffsets[LayerRailId.xsheet],
+    expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
+    onToggleLayerLanes: presses.toggleLanes,
+    expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
+    onToggleLaneGroupKey: presses.toggleLaneGroup,
+    laneGraphs: rail.laneGraphs.value,
+    laneGraphVerbs: presses.laneGraphVerbs,
+    hiddenSections: rail.hiddenSections.value,
+    rowFilter: rail.rowFilter.value,
+    collapsedAttachBaseIds: rail.collapsedAttachBaseIds.value,
+    onToggleAttachGroup: presses.toggleGroupFold,
+    transformOptions: transformTool,
+  );
   await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        // Laid out tight, as a dock lays its panel — the tick host asks it.
-        body: SizedBox.expand(
-          child: TickLayer.host(
-            child: ListenableBuilder(
-              listenable: Listenable.merge([session, turned, rail.drawn]),
-              builder: (context, _) => TimelineTabHost(
-                session: session,
-                orientation: turned.value,
-                onOrientationChanged: (next) => turned.value = next,
-                pixelsPerFrame: zoom.value,
-                pixelsPerFrameListenable: zoom,
-                onPixelsPerFrameChanged: (next) => zoom.value = next,
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                timelineRailExtent: railExtents[LayerRailId.timeline],
-                xsheetRailExtent: railExtents[LayerRailId.xsheet],
-                timelineFrameAxisOffset:
-                    views.frameAxisOffsets[LayerRailId.timeline],
-                xsheetFrameAxisOffset:
-                    views.frameAxisOffsets[LayerRailId.xsheet],
-                timelineLayerAxisOffset:
-                    views.layerAxisOffsets[LayerRailId.timeline],
-                xsheetLayerAxisOffset:
-                    views.layerAxisOffsets[LayerRailId.xsheet],
-                expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
-                onToggleLayerLanes: presses.toggleLanes,
-                expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
-                onToggleLaneGroupKey: presses.toggleLaneGroup,
-                laneGraphs: rail.laneGraphs.value,
-                laneGraphVerbs: presses.laneGraphVerbs,
-                hiddenSections: rail.hiddenSections.value,
-                rowFilter: rail.rowFilter.value,
-                collapsedAttachBaseIds: rail.collapsedAttachBaseIds.value,
-                onToggleAttachGroup: presses.toggleGroupFold,
-                transformOptions: transformTool,
+    _SessionOwner(
+      session: session,
+      child: MaterialApp(
+        home: Scaffold(
+          // Laid out tight, as a dock lays its panel — the tick host asks it.
+          body: SizedBox.expand(
+            child: TickLayer.host(
+              child: ListenableBuilder(
+                listenable: Listenable.merge([session, turned, rail.drawn]),
+                builder: tab,
               ),
             ),
           ),
@@ -99,4 +100,31 @@ Future<EditorSessionManager> pumpTimelineHost(
   );
   await tester.pumpAndSettle();
   return session;
+}
+
+/// The session the timeline tab up shows — the app's or [pumpTimelineHost]'s,
+/// asked the same way.
+EditorSessionManager timelineSessionOf(WidgetTester tester) =>
+    tester.widget<TimelineTabHost>(find.byType(TimelineTabHost)).session;
+
+/// Disposes [session] when the tree it was pumped in goes.
+class _SessionOwner extends StatefulWidget {
+  const _SessionOwner({required this.session, required this.child});
+
+  final EditorSessionManager session;
+  final Widget child;
+
+  @override
+  State<_SessionOwner> createState() => _SessionOwnerState();
+}
+
+class _SessionOwnerState extends State<_SessionOwner> {
+  @override
+  void dispose() {
+    widget.session.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

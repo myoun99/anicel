@@ -20,8 +20,8 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edges.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 import '../../helpers/row_folds.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
@@ -167,7 +168,7 @@ Project _facingGroupsProject() {
 }
 
 EditorSessionManager _sessionOf(WidgetTester tester) =>
-    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    timelineSessionOf(tester);
 
 Layer _layerOf(EditorSessionManager session, String id) => session
     .requireActiveCut
@@ -179,7 +180,17 @@ List<String> _order(EditorSessionManager session) => [
     if (layer.kind == LayerKind.animation) layer.id.value,
 ];
 
-Future<void> _pump(WidgetTester tester, {Project? project}) async {
+/// The timeline tab alone ([pumpTimelineHost]), as [_pumpApp]'s window lays
+/// it — the rows and their drag are the panel's.
+Future<void> _pump(WidgetTester tester, {Project? project}) =>
+    pumpTimelineHost(
+      tester,
+      project ?? _project(),
+      surface: const Size(790, 446),
+    );
+
+/// The app — where the workspace asks what a drop would cost.
+Future<void> _pumpApp(WidgetTester tester, {Project? project}) async {
   await tester.binding.setSurfaceSize(const Size(1280, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -444,7 +455,7 @@ void main() {
     // Back to where it started: no move, so no caret and no command.
     await gesture.moveBy(const Offset(0, 42));
     await tester.pump();
-    expect(find.byType(EditorWorkspace), findsOneWidget);
+    expect(find.byType(TimelineTabHost), findsOneWidget);
     await gesture.up();
     await tester.pumpAndSettle();
 
@@ -770,7 +781,7 @@ void main() {
     // authors no fx, so mounting one that has them throws them away. The
     // drag's end asks through the confirm it is handed (ARCH, the eleventh
     // family), and holds the drop while the question is on screen.
-    await _pump(tester);
+    await _pumpApp(tester);
     final session = _sessionOf(tester);
     session.laneVerbs.updateLayerTransformTrack(
       const LayerId('a'),

@@ -30,14 +30,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 void main() {
   // The claim set is global: a sweep that ends without its release leaves
@@ -355,47 +354,36 @@ Future<void> _sweep(
   await tester.pumpAndSettle();
 }
 
-/// The app's own workspace over five plain rows, the timeline dock opened.
-Future<EditorSessionManager> _timeline(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(
-      home: HomePage(
-        initialProject: Project(
-          id: const ProjectId('sweep'),
-          name: 'Sweep',
-          createdAt: DateTime.utc(2026, 9, 25),
-          tracks: [
-            Track(
-              id: const TrackId('t'),
-              name: 'V',
-              cuts: [
-                Cut(
-                  id: const CutId('c'),
-                  name: 'C',
-                  duration: 12,
-                  canvasSize: const CanvasSize(width: 640, height: 360),
-                  layers: [
-                    for (var i = 0; i < 5; i += 1)
-                      Layer(id: LayerId('l$i'), name: 'L$i', frames: const []),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
+/// The timeline tab alone ([pumpTimelineHost]) over five plain rows, as the
+/// app's window of 1400 × 1000 laid it — the rail's sweep is the panel's.
+Future<EditorSessionManager> _timeline(WidgetTester tester) =>
+    pumpTimelineHost(
+      tester,
+      Project(
+        id: const ProjectId('sweep'),
+        name: 'Sweep',
+        createdAt: DateTime.utc(2026, 9, 25),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [
+              Cut(
+                id: const CutId('c'),
+                name: 'C',
+                duration: 12,
+                canvasSize: const CanvasSize(width: 640, height: 360),
+                layers: [
+                  for (var i = 0; i < 5; i += 1)
+                    Layer(id: LayerId('l$i'), name: 'L$i', frames: const []),
+                ],
+              ),
+            ],
+          ),
+        ],
       ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -320),
-  );
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
+      surface: const Size(870, 446),
+    );
 
 /// The storyboard tab over three tracks, each with one S row.
 Future<EditorSessionManager> _storyboard(WidgetTester tester) async {

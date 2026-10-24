@@ -16,8 +16,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show timelineLayerRowLeadingBorder;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -27,6 +25,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// **I-1 — a row button's swipe is about the COLUMN, not about the eye.**
 ///
@@ -70,23 +69,10 @@ void main() {
     ],
   );
 
-  EditorSessionManager sessionOf(WidgetTester tester) =>
-      tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-
-  Future<EditorSessionManager> pump(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: project())),
-    );
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -320),
-    );
-    await tester.pumpAndSettle();
-    return sessionOf(tester);
-  }
+  // The timeline tab alone ([pumpTimelineHost]), as the app's window of
+  // 1400 × 1000 laid it — the rail's buttons are the panel's.
+  Future<EditorSessionManager> pump(WidgetTester tester) =>
+      pumpTimelineHost(tester, project(), surface: const Size(870, 446));
 
   /// Presses the button on [fromName] and drags DOWN across [rows] rows —
   /// with [oneFrame], its down and its first move in one frame, as a fast
@@ -329,20 +315,8 @@ void main() {
       ],
     );
 
-    Future<EditorSessionManager> pumpNested(WidgetTester tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: nested())),
-      );
-      await tester.pumpAndSettle();
-      await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-bottom')),
-        const Offset(0, -320),
-      );
-      await tester.pumpAndSettle();
-      return sessionOf(tester);
-    }
+    Future<EditorSessionManager> pumpNested(WidgetTester tester) =>
+        pumpTimelineHost(tester, nested(), surface: const Size(870, 446));
 
     List<String> offSheet(EditorSessionManager s) => [
       for (final layer in s.requireActiveCut.layers)

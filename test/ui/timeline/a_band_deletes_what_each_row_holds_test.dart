@@ -23,8 +23,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross, partAlong;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
@@ -37,6 +35,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨F-87, reopened (유저 2026-10-18): 「이미지든 애니메이션레이어든 fx 무언가
 /// 하나 추가하고, 그 fx행 선택범위로 선택하고, 삭제버튼누르면 레이어의
@@ -496,26 +495,17 @@ void main() {
     });
   });
 
-  /// The app with its bottom dock pulled up — far enough that the X-sheet,
-  /// whose rail stands over its frames, still shows a dozen frames: a sweep
-  /// ending near the frames' edge pans the sheet under the finger, and the
-  /// band reaches a frame further than the finger was put (measured 10-18).
-  Future<EditorSessionManager> openTheSheet(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 2000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
-    );
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -1200),
-    );
-    await tester.pumpAndSettle();
-    return tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
-  }
+  /// The timeline tab alone ([pumpTimelineHost]), as tall as the app's
+  /// window of 1400 × 2000 laid it — far enough that the X-sheet, whose rail
+  /// stands over its frames, still shows a dozen frames: a sweep ending near
+  /// the frames' edge pans the sheet under the finger, and the band reaches
+  /// a frame further than the finger was put (measured 10-18).
+  Future<EditorSessionManager> openTheSheet(WidgetTester tester) =>
+      pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(870, 610),
+      );
 
   // The cell a cut opens at (F-403).
   const cell = TimelineZoomLimits.referencePixelsPerFrame;

@@ -19,8 +19,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
@@ -33,6 +31,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/the_classic_rail.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨C6 (2026-08-17): STANDING on an fx header/member row is the CELLS'
 /// press law — 「일반 행은 해당 인덱스에 서고 → 범위」, and the fx rows do
@@ -78,20 +77,17 @@ void main() {
     ],
   );
 
+  // The timeline tab alone ([pumpTimelineHost]), as the app's window of
+  // 1280 × 1200 laid it — the lanes and the windows they open are the
+  // panel's.
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: project())),
+    final session = await pumpTimelineHost(
+      tester,
+      project(),
+      surface: const Size(790, 546),
     );
-    await tester.pumpAndSettle();
     await standTheClassicRail(tester);
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -520),
-    );
-    await tester.pumpAndSettle();
-    return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+    return session;
   }
 
   Future<void> openTransformLanes(WidgetTester tester) async {

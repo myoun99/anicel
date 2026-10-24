@@ -7,9 +7,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 
 /// 🚨F-263 (유저 2026-10-02): 「프레임 여러행,여러프레임 복수선택하고
@@ -39,20 +38,11 @@ void main() {
     })
   >
   twoBlocksUnderEmptyRows(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    final s = await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(790, 446),
     );
-    await tester.pumpAndSettle();
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, -400),
-    );
-    await tester.pumpAndSettle();
-    final s = tester
-        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-        .session;
     LayerId added() {
       s.layerStack.addLayerOfKind(LayerKind.animation);
       return s.activeLayer!.id;
@@ -164,24 +154,16 @@ void main() {
   // 행 칸에서 시작한 드래그는 이동도 새 선택도 만들지 않습니다. 선택은 그대로
   // 남고, 옮기려면 선택 안의 다른 행을 잡습니다」.
   group('F-263-Q1: an image row of the selection is no grip', () {
-    /// The workspace with a cel row holding a block at 3 and, above it,
-    /// [images] image rows (each born with its one picture over the cut).
+    /// The timeline tab ([pumpTimelineHost]) with a cel row holding a block
+    /// at 3 and, above it, [images] image rows (each born with its one
+    /// picture over the cut).
     Future<({EditorSessionManager s, LayerId cel, List<LayerId> images})>
     aCelRowUnderImageRows(WidgetTester tester, {int images = 1}) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      final s = await pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(790, 446),
       );
-      await tester.pumpAndSettle();
-      await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-bottom')),
-        const Offset(0, -400),
-      );
-      await tester.pumpAndSettle();
-      final s = tester
-          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
-          .session;
       final cel = s.activeLayer!.id;
       s.selectFrameIndex(3);
       s.createDrawingAtCurrentFrame();
