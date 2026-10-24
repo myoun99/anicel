@@ -5,7 +5,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter/rendering.dart'
+    show RenderCustomPaint, RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -57,7 +58,9 @@ import '../../helpers/settle_async.dart';
 /// picture (a picture does not grow).
 ///
 /// A stroke that lands moves the picture to the frame's next key where it
-/// stands, and the next stroke is written into it there.
+/// stands, and the next stroke is written into it there — its steps shown
+/// while the picture is still on its way. Another screen showing the frame
+/// sees nothing change as the stroke lands.
 void main() {
   const tileSize = 16;
   const canvasSize = CanvasSize(width: 32, height: 32);
@@ -203,9 +206,14 @@ void main() {
     ),
   );
 
-  Future<({Uint8List rgba, int width})> onScreen(WidgetTester tester) async {
+  /// What [boundary] shows — [screen] where none is named.
+  Future<({Uint8List rgba, int width})> onScreen(
+    WidgetTester tester, [
+    GlobalKey? boundary,
+  ]) async {
     final render =
-        screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        (boundary ?? screen).currentContext!.findRenderObject()!
+            as RenderRepaintBoundary;
     final shot = await tester.runAsync(() async {
       final image = await render.toImage(
         pixelRatio: tester.view.devicePixelRatio,
@@ -270,12 +278,8 @@ void main() {
         await lendBothClocks(tester, rounds: 2);
         final before = await onScreen(tester);
 
-        final renders = gpu.rendersWait = Completer<void>();
-        addTearDown(() {
-          if (!renders.isCompleted) {
-            renders.complete();
-          }
-        });
+        gpu.holdsRenders = true;
+        addTearDown(gpu.letAllThrough);
         overlay.showResultTiles([
           PromotedStrokeTile(
             TileCoord(x: 0, y: 0),
@@ -283,6 +287,7 @@ void main() {
             1,
           ),
         ]);
+        await tester.pump();
         final step = store.landingOf(picture);
         expect(
           step,
@@ -290,7 +295,6 @@ void main() {
           reason: 'LIVENESS: the step is on its way into the picture, not '
               'the frame drawn as it stands',
         );
-        await tester.pump();
         final landing = await onScreen(tester);
         expect(
           store.peek(picture)!.landing,
@@ -304,7 +308,7 @@ void main() {
               'texels are in',
         );
 
-        renders.complete();
+        gpu.letAllThrough();
         await tester.runAsync(() => step!);
         await tester.pump();
         expect(
@@ -394,12 +398,12 @@ void main() {
     overlay.showResultTiles([
       PromotedStrokeTile(past, tileOf(past, stroke, (_) => true), 1),
     ]);
+    await tester.pump();
     expect(
       store.landingOf(picture),
       isNull,
       reason: '⛔premise: a picture does not grow — no patch goes past it',
     );
-    await tester.pump();
     final stepped = await onScreen(tester);
     expect(
       differences(before, stepped),
@@ -435,12 +439,12 @@ void main() {
     overlay.dispose();
   });
 
-  testWidgets('🚨a stroke that lands moves the picture it was written into to '
-      'the frame\'s next key — not laid anew — and the next stroke is written '
-      'into it there', (tester) async {
+  testWidgets('🚨the next stroke\'s step while the picture moves to the '
+      'frame\'s next key shows at the paint after it, and still as the move '
+      'lands — not once its texels are in', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
-    const lineage = 'a-stroke-lands';
+    const lineage = 'a-step-while-it-moves';
     addTearDown(() => TilePyramid.instance.drop(lineage));
     final cels = storeWithTheCel();
     final images = LayerFrameImageCache(frameStore: cels);
@@ -455,7 +459,8 @@ void main() {
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final store = _LaysCounted(gpu: _WritesNeverLand());
+    final gpu = _WritesNeverLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
     final view = CanvasViewport(panX: 8, panY: 4);
@@ -478,13 +483,338 @@ void main() {
     overlay.showResultTiles([
       PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
     ]);
-    final step = store.landingOf(before);
+    await tester.pump();
     expect(
-      step,
-      isNotNull,
+      await settleAsync(
+        tester,
+        () => store.peek(before)!.landing.isNotEmpty,
+      ),
+      isTrue,
       reason: '⛔premise: the stroke is written into the picture',
     );
-    await tester.runAsync(() => step!);
+    await tester.pump();
+
+    // The pen lifts while the renders wait: what the lift hands on is
+    // patched in, and the picture's move to the frame's next key waits
+    // behind it.
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    final drawn = BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    cels.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          ...drawn.tiles,
+          first: tileOf(first, stroke, (_) => true),
+        },
+      ),
+    );
+    cels.markCelEdited(key);
+    overlay.reset();
+    final after = run.pictures.keyOfStack(nodes, frame);
+    expect(after, isNot(before), reason: '⛔premise: the frame\'s key moved');
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+    );
+    expect(
+      store.peek(after),
+      isNull,
+      reason: 'LIVENESS: the picture is still on its way to its next key',
+    );
+
+    final second = TileCoord(x: 1, y: 1);
+    overlay.showResultTiles([
+      PromotedStrokeTile(
+        second,
+        tileOf(second, stroke, (at) => at.dx < 24 && at.dy < 24),
+        2,
+      ),
+    ]);
+    await tester.pump();
+    final whileItMoves = await onScreen(tester);
+
+    // The move lands — what waits before it let through a render at a
+    // time — and the next stroke's patch, behind it, still waits.
+    while (store.peek(after) == null) {
+      expect(
+        await settleAsync(
+          tester,
+          () => gpu.rendersWaiting > 0 || store.peek(after) != null,
+        ),
+        isTrue,
+        reason: 'LIVENESS: the picture answers to the frame\'s next key',
+      );
+      if (store.peek(after) == null) {
+        gpu.letOneThrough();
+      }
+    }
+    expect(
+      await settleAsync(tester, () => gpu.rendersWaiting == 1),
+      isTrue,
+      reason: '⛔premise: the next stroke\'s patch is still on its way',
+    );
+    await tester.pump();
+    final onceMoved = await onScreen(tester);
+
+    // A view of its own, the stroke in hand: the frame as it stands.
+    final standing = FramePictureStore<FramePictureKey>(
+      gpu: _WritesNeverLand(),
+    );
+    addTearDown(standing.dispose);
+    await pump(
+      tester,
+      runOf(images, standing),
+      key: const ValueKey(1),
+      view: view,
+      live: painterOfTheCel(),
+    );
+    expect(
+      await settleAsync(tester, () => standing.bytesOf(after) != null),
+      isTrue,
+      reason: 'LIVENESS: its picture is made too',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final asItStands = await onScreen(tester);
+    expect(
+      differences(asItStands, whileItMoves),
+      isEmpty,
+      reason: 'the step shows while the picture moves',
+    );
+    expect(
+      differences(asItStands, onceMoved),
+      isEmpty,
+      reason: 'and still once it has moved, its texels not yet in',
+    );
+
+    gpu.letAllThrough();
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  });
+
+  testWidgets('🚨a stroke that lands changes nothing on another screen '
+      'showing its frame — not the frame without the stroke for a moment', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-stroke-lands-under-another-screen';
+    addTearDown(() => TilePyramid.instance.drop(lineage));
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    BitmapSurfacePainter painterOfTheCel() => BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = _WritesNeverLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final view = CanvasViewport(panX: 8, panY: 4);
+    final before = run.pictures.keyOfStack(nodes, frame);
+    final other = GlobalKey();
+
+    // The canvas, and beside it another screen showing the frame's one
+    // picture as it stands in the store — a conte's, a parked cut's.
+    Future<void> pumpBoth(BitmapSurfacePainter live) => tester.pumpWidget(
+      MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox.fromSize(
+                size: viewSize,
+                child: FramePictureView(
+                  run: run,
+                  picture: frame,
+                  nodes: nodes,
+                  viewport: view,
+                  live: (
+                    activeSurfacePainter: live,
+                    floatOverlay: null,
+                    liftedRows: const {},
+                  ),
+                  laysWhatItMisses: true,
+                  wholeFrames: false,
+                ),
+              ),
+              RepaintBoundary(
+                key: other,
+                child: Container(
+                  width: viewSize.width,
+                  height: viewSize.height,
+                  color: under,
+                  child: FramePictureView(
+                    key: const ValueKey('other'),
+                    run: run,
+                    picture: frame,
+                    nodes: nodes,
+                    viewport: view,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    /// The other screen as it paints next — for its own reasons, a tick of
+    /// its own.
+    Future<({Uint8List rgba, int width})> otherPaints() async {
+      tester
+          .renderObject<RenderCustomPaint>(
+            find.descendant(
+              of: find.byKey(const ValueKey('other')),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .markNeedsPaint();
+      await tester.pump();
+      return onScreen(tester, other);
+    }
+
+    await pumpBoth(painterOfTheCel());
+    expect(
+      await settleAsync(tester, () => store.bytesOf(before) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final blank = await otherPaints();
+    // The picture landed, as a maker would say — the other screen takes it.
+    (run.landings as ValueNotifier<int>).value += 1;
+    await tester.pump();
+    final shown = await otherPaints();
+    expect(
+      differences(blank, shown),
+      isNotEmpty,
+      reason: 'LIVENESS: the other screen shows the frame\'s picture',
+    );
+    final first = TileCoord(x: 0, y: 0);
+    final drawnTile = tileOf(first, stroke, strokeAt.contains);
+    overlay.showResultTiles([PromotedStrokeTile(first, drawnTile, 1)]);
+    await tester.pump();
+    expect(
+      await settleAsync(
+        tester,
+        () => store.peek(before)!.landing.isNotEmpty,
+      ),
+      isTrue,
+      reason: '⛔premise: the stroke is written into the picture',
+    );
+    final drawn = await otherPaints();
+    expect(
+      differences(shown, drawn),
+      isNotEmpty,
+      reason: 'LIVENESS: the stroke is in the picture the other screen shows',
+    );
+
+    // The pen lifts: the cel takes the very tile the overlay showed, and
+    // lets the overlay go in the same call; the painter of the cel as it
+    // is now comes with the next build.
+    final committed = BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    cels.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {...committed.tiles, first: drawnTile},
+      ),
+    );
+    cels.markCelEdited(key);
+    overlay.reset();
+    final letGo = store.landingOf(before);
+    if (letGo != null) {
+      await tester.runAsync(() => letGo);
+    }
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    await pumpBoth(painterOfTheCel());
+
+    expect(
+      differences(drawn, await otherPaints()),
+      isEmpty,
+      reason: 'the frame did not change, so the other screen does not',
+    );
+
+    gpu.letAllThrough();
+    await tester.pumpWidget(const SizedBox());
+    overlay.dispose();
+  });
+
+  testWidgets('🚨a stroke that lands moves the picture it was written into to '
+      'the frame\'s next key — not laid anew — and the next stroke is written '
+      'into it there', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const lineage = 'a-stroke-lands';
+    addTearDown(() => TilePyramid.instance.drop(lineage));
+    final cels = storeWithTheCel();
+    final images = LayerFrameImageCache(frameStore: cels);
+    addTearDown(images.dispose);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    BitmapSurfacePainter painterOfTheCel() => BitmapSurfacePainter(
+      surface: BrushFrameDisplayCacheService(
+        frameStore: cels,
+        canvasSize: canvasSize,
+      ).prepareFramePreview(key).previewSurface,
+      overlayModel: overlay,
+      showTransparentBackground: false,
+      lineage: lineage,
+    );
+    final gpu = _WritesNeverLand();
+    final store = _LaysCounted(gpu: gpu);
+    addTearDown(store.dispose);
+    final run = runOf(images, store);
+    final view = CanvasViewport(panX: 8, panY: 4);
+    final before = run.pictures.keyOfStack(nodes, frame);
+
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+    );
+    expect(
+      await settleAsync(tester, () => store.bytesOf(before) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    final first = TileCoord(x: 0, y: 0);
+    overlay.showResultTiles([
+      PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
+    ]);
+    await tester.pump();
+    expect(
+      await settleAsync(
+        tester,
+        () => store.peek(before)!.landing.isNotEmpty,
+      ),
+      isTrue,
+      reason: '⛔premise: the stroke is written into the picture',
+    );
     await tester.pump();
 
     // The pen lifts: the stroke is the cel's, and the pen's row is drawn
@@ -526,6 +856,9 @@ void main() {
       reason: 'moved where it stands, not laid anew',
     );
 
+    // Its patch stays on its way, to be seen going in.
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
     final second = TileCoord(x: 1, y: 1);
     overlay.showResultTiles([
       PromotedStrokeTile(
@@ -534,6 +867,7 @@ void main() {
         2,
       ),
     ]);
+    await tester.pump();
     expect(
       store.landingOf(after),
       isNotNull,
@@ -567,15 +901,36 @@ class _LaysCounted extends FramePictureStore<FramePictureKey> {
 /// picture ([FramePicture.landing]), so what shows once it lands is the
 /// patch's own texels.
 class _WritesNeverLand implements FramePictureGpu {
-  /// Where set, every render waits for it: a step stays on its way into the
-  /// picture, none of its texels there. ⛔Not left to the test's raster: it
-  /// renders a patch before the next paint, and the screen while a step
-  /// lands was never drawn.
-  Completer<void>? rendersWait;
+  /// Whether every render waits its turn ([letOneThrough]): a step stays on
+  /// its way into the picture, none of its texels there. ⛔Not left to the
+  /// test's raster: it renders a patch before the next paint, and the
+  /// screen while a step lands was never drawn.
+  bool holdsRenders = false;
+
+  final List<Completer<void>> _waiting = [];
+
+  /// How many renders wait their turn.
+  int get rendersWaiting => _waiting.length;
+
+  /// Lets the render that has waited longest through.
+  void letOneThrough() => _waiting.removeAt(0).complete();
+
+  /// Holds no render from here on, and lets every waiting one through.
+  void letAllThrough() {
+    holdsRenders = false;
+    for (final turn in _waiting) {
+      turn.complete();
+    }
+    _waiting.clear();
+  }
 
   @override
   Future<ui.Image> render(ui.Picture picture, int width, int height) async {
-    await rendersWait?.future;
+    if (holdsRenders) {
+      final turn = Completer<void>();
+      _waiting.add(turn);
+      await turn.future;
+    }
     return picture.toImage(width, height);
   }
 

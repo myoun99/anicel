@@ -205,7 +205,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   @override
   void dispose() {
     widget.run.landings.removeListener(_landed);
-    _liveChanges?.removeListener(_liveMoved);
     _letGo(_store);
     _repaint.dispose();
     super.dispose();
@@ -222,7 +221,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// again for each tree it is handed, from the cels in hand; the rest are
   /// read and it is built again once they are.
   void _standLive() {
-    _liveChanges?.removeListener(_liveMoved);
     _liveChanges = null;
     _live = null;
     final live = widget.live;
@@ -237,7 +235,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     );
     _live = frame;
     if (live != null) {
-      _liveChanges = frame.changes..addListener(_liveMoved);
+      _liveChanges = frame.changes;
       _liveRowsHandedAnew();
     }
     final nodes = widget.nodes;
@@ -289,6 +287,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _take(FramePictureKey key, FramePicture there) {
     final moved = identical(there, _shown?.picture);
     final held = _held;
+    final patching = [..._standing.patching];
     final image = there.image.clone();
     _letGo(_store);
     _store.retainPin(key);
@@ -300,8 +299,11 @@ class _FramePictureViewState extends State<FramePictureView> {
       // ⛔Not let go with the key it left: what the picture holds of the
       // live rows it holds under this one, and the next stroke patches in
       // from there — let go, every stroke after the first would be drawn
-      // as it stands whole, a step at a time.
+      // as it stands whole, a step at a time. Nor the patches the next
+      // stroke sent after it while it moved: their rects are drawn as
+      // they stand until their texels are in.
       _held = held;
+      _standing.patching.addAll(patching);
       return;
     }
     _standing.whole = false;
@@ -393,8 +395,10 @@ class _FramePictureViewState extends State<FramePictureView> {
         from) {
       return false;
     }
-    // What is still out of it goes in first, as the move's own.
-    _liveMoved();
+    // What is still out of it goes in first, as the move's own — and is
+    // drawn at the paint after this build, whatever its painter compares.
+    _catchUp();
+    _repaint.value += 1;
     if (_standing.whole || !_store.move(from: from, to: key)) {
       return false;
     }
@@ -411,13 +415,13 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// The live rows were handed anew — a lift taken up or put down, the
   /// pen's row's painter once its stroke landed: a change of the live rows
-  /// like any other ([_liveMoved]).
+  /// like any other ([_catchUp]).
   ///
   /// ⛔Not left unasked: a box's lift would come with the picture standing,
   /// the float drawn nowhere until the box landed.
   void _liveRowsHandedAnew() {
     if (_shown != null) {
-      _liveMoved();
+      _catchUp();
     }
   }
 
@@ -438,17 +442,28 @@ class _FramePictureViewState extends State<FramePictureView> {
     _held = now;
   }
 
-  /// The live rows moved: what moved is patched into the picture shown, or
-  /// the frame is drawn as it stands from here on.
-  void _liveMoved() {
-    _repaint.value += 1;
+  /// What the live rows moved since the picture shown last held them goes
+  /// into it, patched in where it lands — or the frame is drawn as it stands
+  /// from here on.
+  ///
+  /// 🚨ASKED AT EACH PAINT ([_FramePicturePainter.paint]) and where a build
+  /// hands the live rows anew — not at each change of theirs, where a change
+  /// and what goes with it come apart: a stroke that lands lets go of its
+  /// overlay in the call that commits it, and the painter of the cel as
+  /// committed comes with the next build. Measured at the change, the
+  /// overlay letting go was patched in with the stroke gone — into the
+  /// frame's one picture, which every screen showing that frame draws — and
+  /// the build patched it back. ↩️The display buffer measured at its paint
+  /// too (`_planMiss`).
+  void _catchUp() {
     final live = _live;
     final shown = _shown;
-    final key = _showing;
+    // A picture a stroke's landing is moving takes the change under the key
+    // it is moving to ([_moves]) — the store patches a picture a move is
+    // still moving. ⛔Not left out until the move lands: the next stroke's
+    // first steps were drawn nowhere.
+    final key = _moving ?? _showing;
     if (live == null || shown == null || key == null || _standing.whole) {
-      return;
-    }
-    if (_moving != null) {
       return;
     }
     final held = _held;
@@ -540,6 +555,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         // no row is a page the pen may be drawing on.
         asItStands: _live ?? _asItStands,
         standing: _standing,
+        catchUp: _catchUp,
         patchedBy: _live,
         viewport: widget.viewport,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
@@ -555,6 +571,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.shown,
     required this.asItStands,
     required this.standing,
+    required this.catchUp,
     required this.patchedBy,
     required this.viewport,
     required this.devicePixelRatio,
@@ -571,12 +588,17 @@ class _FramePicturePainter extends CustomPainter {
   /// patches are on their way into it, by [patchedBy] until their texels
   /// are in.
   final _DrawnAsItStands standing;
+
+  /// Puts what the live rows moved into [standing] before it is read
+  /// ([_FramePictureViewState._catchUp]).
+  final VoidCallback catchUp;
   final StackedFrame? patchedBy;
   final CanvasViewport viewport;
   final double devicePixelRatio;
 
   @override
   void paint(Canvas canvas, Size size) {
+    catchUp();
     final screen = Offset.zero & size;
     canvas.save();
     canvas.clipRect(screen);
