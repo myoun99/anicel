@@ -110,6 +110,12 @@ class LayerVerbs {
     ];
   }
 
+  /// Whether a delete of [layer] takes it ALONE: it may go, and nothing goes
+  /// with it ([rowsHeldBy]) — what a 잘라내기 may lift, its board holding the
+  /// row and nothing besides (I-123: a base's attach rows are no copy's).
+  bool deletesAlone(Layer layer) =>
+      canDeleteLayer(layer) && rowsHeldBy([layer.id]).isEmpty;
+
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
   /// The stand-downs are [duplicateActiveLayer]'s, read off the same
@@ -565,13 +571,19 @@ class LayerVerbs {
 
   /// ⑨: deletes every selected row that names a deletable layer, as ONE
   /// undo step — the gesture selected them together, so it undoes together.
+  void deleteSelectedLayers() =>
+      deleteLayers(deletableSelectedLayerIds(), step: 'Delete rows');
+
+  /// Deletes the rows [ids] name as ONE undo step called [step], and stands
+  /// on the row the lowest of them hands off to — the selection's delete,
+  /// and the 잘라내기 that lifts the rows its copy took (I-123,
+  /// `LayerClipboard.cutSelectedRows`).
   ///
   /// Deleting from the TOP down keeps each removal's own bookkeeping (the
   /// stable next-active pick, an attach cascade) reading the stack it was
   /// written against: taking a lower row out first would shift the ones
   /// above it under the loop's feet.
-  void deleteSelectedLayers() {
-    final ids = deletableSelectedLayerIds();
+  void deleteLayers(List<LayerId> ids, {required String step}) {
     if (ids.isEmpty) {
       return;
     }
@@ -586,7 +598,7 @@ class LayerVerbs {
     final ordered = [...ids]
       ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
     final nextActiveLayerId = _standAfterDeleting(ordered);
-    _project.historyManager.runAsOneStep('Delete rows', () {
+    _project.historyManager.runAsOneStep(step, () {
       for (final layerId in ordered) {
         _deleteRow(cut.id, layerId);
       }

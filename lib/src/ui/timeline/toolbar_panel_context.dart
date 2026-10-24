@@ -235,11 +235,36 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// fixtures, which no board holds, so its copy stays the frame axis's.
   bool get rowsAreThisPanels;
 
+  /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
+  /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
+  ///
+  /// WHAT the cut takes is what the copy takes ([_copySubject]): 복사 and
+  /// 잘라내기 are ONE pair (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고
+  /// 클립 저장」, `FrameClipboard.canCopyAt`). Rows the copy takes claim the
+  /// press even when none of them may be lifted
+  /// ([LayerClipboard.canCutSelectedRows]) — the button dims rather than
+  /// cut the frame under them. ↩️It asked the frame board alone, and under
+  /// a row selection it lifted the standing row's block while the copy beside
+  /// it took the rows.
   @override
-  bool get canCutRun => session.clipboard.canCutAt(clipboardPlace);
+  bool get canCutRun => switch (_copySubject) {
+    PillSubject.layers => session.layerClipboard.canCutSelectedRows,
+    PillSubject.cells => session.clipboard.canCutAt(clipboardPlace),
+    PillSubject.cuts || PillSubject.nothing => false,
+  };
 
   @override
-  void cutRun() => session.clipboard.cutAt(clipboardPlace);
+  void cutRun() {
+    switch (_copySubject) {
+      case PillSubject.layers:
+        session.layerClipboard.cutSelectedRows();
+      case PillSubject.cells:
+        session.clipboard.cutAt(clipboardPlace);
+      case PillSubject.cuts:
+      case PillSubject.nothing:
+        break;
+    }
+  }
 
   /// WHAT the copy takes, on the pill's one ladder ([pillSubjectOn]): the
   /// selected rows, else the frame axis — 「선택안하면 현재프레임, 선택하면
