@@ -27,6 +27,7 @@ import '../canvas/paper_background.dart' show paintProjectPaper;
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../playback/camera_shot.dart' show outlineAtLevel, shotClipOnScreen;
+import '../text/cel_number_paint.dart';
 
 /// Test hatch: every row composed whole — what the byte-for-byte pins
 /// render the ink against (`a_row_drawn_from_its_ink_is_the_same_bytes_test`).
@@ -251,6 +252,9 @@ class CameraFrameRenderService {
             await composeImages(children);
           // The base it paints again is composed with its clip.
           case CompositeOpaque():
+          // Letters, not a picture: the row they are written on is composed
+          // as its own leaf.
+          case CompositeCelNumber():
             break;
         }
       }
@@ -421,6 +425,18 @@ class CameraFrameRenderService {
               canvas: canvas,
               bounds: bufferBoundsFor(node, within),
               paintOf: (into) => paintNodes(into, [of], rasterScale, within),
+            );
+          case CompositeCelNumber(
+            on: CompositeLeaf(:final payload),
+            :final letters,
+          ):
+            withLayerPlacement(
+              canvas,
+              placement: switch (payload) {
+                _CameraLayer(:final layer) => layer.placement,
+                _CameraGround() => null,
+              },
+              body: () => paintCelNumber(canvas, letters),
             );
           case CompositeAdjustment(:final children, :final effects, :final mix):
             // R6b: the scope composes into one buffer and the row's chain

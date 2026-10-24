@@ -804,6 +804,7 @@ void main() {
             yield request;
           case CompositeLeaf():
           case CompositeOpaque():
+          case CompositeCelNumber():
             break;
           case CompositeGroup(:final children):
           case CompositeAdjustment(:final children):

@@ -78,7 +78,10 @@ void main() {
   test('an S row is shown on its track, where its twirls live', () {
     final se = s.layers.firstWhere((layer) => layer.kind == LayerKind.se).id;
     s.selectLayer(se);
-    expect(s.effectsAndFx.canAddEffectToActiveLayer, isTrue, reason: '⛔전제');
+    expect(s.effectsAndFx.canAddEffectToActiveLayer(EffectKind.blur),
+      isTrue,
+      reason: '⛔전제',
+    );
 
     s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 

@@ -38,7 +38,10 @@ void main() {
       session.activeTrack.seLayers.firstWhere((layer) => layer.id == se);
 
   test('an S row takes an effect, and the TRACK\'s row holds it', () {
-    expect(session.effectsAndFx.canAddEffectToActiveLayer, isTrue);
+    expect(
+      session.effectsAndFx.canAddEffectToActiveLayer(EffectKind.blur),
+      isTrue,
+    );
 
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
 

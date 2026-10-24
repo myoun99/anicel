@@ -537,8 +537,9 @@ class _LayerStackPaintPass {
         CompositeAdjustment(:final children) => _activeRowIn(children),
         CompositeBackdropBlend(:final children) => _activeRowIn(children),
         CompositeClip(:final children) => _activeRowIn(children),
-        // The base it paints again stands in the clip already.
-        CompositeOpaque() => null,
+        // The base it paints again stands in the clip already, and the row
+        // a cel number is written on as its own leaf.
+        CompositeOpaque() || CompositeCelNumber() => null,
       };
       if (found != null) {
         return found;
@@ -654,7 +655,17 @@ class _LayerStackPaintPass {
       final nodePlacement = switch (node) {
         CompositeLeaf(payload: _PaintImage(:final placement)) => placement,
         CompositeLeaf(payload: _SurfaceRow(:final placement)) => placement,
+        // A row's letters lie where the row does (I-65).
+        CompositeCelNumber(
+          on: CompositeLeaf(payload: _PaintImage(:final placement)),
+        ) =>
+          placement,
+        CompositeCelNumber(
+          on: CompositeLeaf(payload: _SurfaceRow(:final placement)),
+        ) =>
+          placement,
         CompositeLeaf(payload: _PaintPaper()) ||
+        CompositeCelNumber() ||
         CompositeGroup() ||
         CompositeAdjustment() ||
         CompositeBackdropBlend() ||
@@ -684,6 +695,8 @@ class _LayerStackPaintPass {
                 paintOf: (into) =>
                     _paintNodes(into, [opaque.of], rasterScale, within),
               );
+            case CompositeCelNumber(:final letters):
+              paintCelNumber(canvas, letters);
             case CompositeLeaf(payload: _PaintPaper()):
               _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
             case CompositeLeaf(payload: final _SurfaceRow row):

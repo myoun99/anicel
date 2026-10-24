@@ -59,6 +59,7 @@ void main() {
             walk(children);
           case CompositeLeaf():
           case CompositeOpaque():
+          case CompositeCelNumber():
             break;
         }
       }

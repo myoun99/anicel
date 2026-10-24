@@ -39,6 +39,7 @@ void main() {
         case CompositeBackdropBlend<CanvasStackRow>(:final children):
         case CompositeClip<CanvasStackRow>(:final children):
         case CompositeOpaque<CanvasStackRow>(:final children):
+        case CompositeCelNumber<CanvasStackRow>(:final children):
           final inner = stackEffectsOf(children);
           if (inner.isNotEmpty) {
             return inner;
@@ -50,7 +51,10 @@ void main() {
 
   test('adding an effect is one undo step and changes no pixel yet', () {
     final layerId = session.activeLayer!.id;
-    expect(effectsOf(session).canAddEffectToActiveLayer, isTrue);
+    expect(
+      effectsOf(session).canAddEffectToActiveLayer(EffectKind.blur),
+      isTrue,
+    );
 
     effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final effect = session.activeLayer!.effects.single;
@@ -220,12 +224,51 @@ void main() {
       (layer) => layer.kind == LayerKind.camera,
     );
     session.selectLayer(camera.id);
-    expect(effectsOf(session).canAddEffectToActiveLayer, isFalse);
+    expect(
+      effectsOf(session).canAddEffectToActiveLayer(EffectKind.blur),
+      isFalse,
+    );
     effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     expect(
       session.requireActiveCut.layers
           .firstWhere((layer) => layer.id == camera.id)
           .effects,
+      isEmpty,
+    );
+  });
+
+  // I-65: the letters print the row's drawing's number, so only a row whose
+  // drawings carry one takes a cel number — a folder takes a blur, not a
+  // number.
+  test('a CEL NUMBER goes on a row whose drawings are numbered, and on no '
+      'other', () {
+    final drawing = session.activeLayer!;
+    expect(drawing.kind.numbersItsDrawings, isTrue, reason: 'fixture');
+    expect(
+      effectsOf(session).canAddEffectToActiveLayer(EffectKind.celNumber),
+      isTrue,
+    );
+    effectsOf(session).addEffectToActiveLayer(EffectKind.celNumber);
+    expect(
+      session.activeLayer!.effects.map((effect) => effect.kind),
+      [EffectKind.celNumber],
+    );
+
+    session.folders.groupActiveLayerIntoFolder();
+    final folder = session.requireActiveCut.layers.folderLayers.single;
+    session.selectLayer(folder.id);
+    expect(
+      effectsOf(session).canAddEffectToActiveLayer(EffectKind.blur),
+      isTrue,
+      reason: 'fixture: the folder takes a chain',
+    );
+    expect(
+      effectsOf(session).canAddEffectToActiveLayer(EffectKind.celNumber),
+      isFalse,
+    );
+    effectsOf(session).addEffectToActiveLayer(EffectKind.celNumber);
+    expect(
+      session.requireActiveCut.layers.folderLayers.single.effects,
       isEmpty,
     );
   });
@@ -306,7 +349,10 @@ void main() {
     test('it takes effects but no transform lanes', () {
       session.layerStack.addLayerOfKind(LayerKind.adjustment);
       final row = session.activeLayer!;
-      expect(effectsOf(session).canAddEffectToActiveLayer, isTrue);
+      expect(
+        effectsOf(session).canAddEffectToActiveLayer(EffectKind.blur),
+        isTrue,
+      );
       expect(row.kind.hasLayerTransform, isFalse);
       // …and the coordinator refuses a transform outright — writing one is
       // a programming error, not a silently ignored edit.

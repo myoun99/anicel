@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_number_letters.dart' show celNumberText;
 import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
@@ -25,6 +26,7 @@ import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../models/composite_tree.dart';
+import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
@@ -73,18 +75,19 @@ const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 typedef _CelAt = (CutId, LayerId, FrameId);
 
 /// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
-/// row and the cut it is a row of, its drawing there, and the effects it
-/// wears.
+/// row and the cut it is a row of, its drawing there and that drawing's
+/// picture, and the effects it wears.
 typedef _CelRow = ({
   Cut cut,
   Layer layer,
+  Frame frame,
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
 });
 
-/// A [row] of a cel as the cel lays it — or, [alone], whole and in no
-/// blend ([ExportFrameRenderer._laidInTheCel]).
-typedef _CelLaid = ({_CelRow row, bool alone});
+/// A [row] of a cel and how the cel lays it — [paint]
+/// ([ExportFrameRenderer._laidInTheCel]).
+typedef _CelLaid = ({_CelRow row, RowPaint paint});
 
 /// A label-group cel's rows, bottom-up, the view they are seen through,
 /// and the guides and the camera's work laid over them — null where the
@@ -462,13 +465,13 @@ class ExportFrameRenderer {
     // the frame is ([_composite]).
     Future<ui.Image> drawn(
       CameraFrameRenderService service, {
-      CutFrameCompositeLayer? Function()? laid,
+      CompositeNode<CutFrameCompositeLayer>? Function()? laid,
       ProjectBackground? paper,
     }) async {
       await _hydrate(task.cut, frameIndex);
-      final layer = laid?.call();
+      final row = laid?.call();
       return service.renderThroughCamera(
-        layers: [?layer],
+        nodes: [?row],
         pose: view.pose,
         cameraFrameSize: view.frameSize,
         cutTo: task.cut.canvasSize,
@@ -539,24 +542,36 @@ class ExportFrameRenderer {
   }
 
   /// [layer]'s [drawing] by itself — whole, in no blend, its pose and its
-  /// effects on it: the picture a layered file lays by the row's own
-  /// strength and blend ([frameRows]). None where it exposes no cel here,
-  /// or one with nothing on it.
-  CutFrameCompositeLayer? _laidAlone(
+  /// effects on it, its cel number with them ([celNumberedRow]): the
+  /// picture a layered file lays by the row's own strength and blend
+  /// ([frameRows]). None where it exposes no cel here, or one with nothing
+  /// on it.
+  CompositeNode<CutFrameCompositeLayer>? _laidAlone(
     Cut cut,
     Layer layer,
     ({Frame? frame, ResolvedRowRender render}) drawing,
   ) {
     final frame = drawing.frame;
     final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
-    return surface == null
-        ? null
-        : CutFrameCompositeLayer(
-            surface: surface,
-            opacity: 1,
-            placement: drawing.render.placement,
-            effects: drawing.render.effects,
-          );
+    if (frame == null || surface == null) {
+      return null;
+    }
+    return celNumberedRow(
+      paint: _alone(drawing.render.effects),
+      rowOf: (paint) => CutFrameCompositeLayer(
+        surface: surface,
+        opacity: paint.opacity,
+        blendMode: paint.blendMode,
+        placement: drawing.render.placement,
+        effects: paint.effects,
+      ),
+      text: celNumberText(
+        rowName: layer.name,
+        drawingName: frame.name,
+        kind: layer.kind,
+      ),
+      paper: cut.canvasSize,
+    );
   }
 
   /// What a file that keeps [task]'s rows apart leaves out of them
@@ -1291,11 +1306,11 @@ class ExportFrameRenderer {
     // cel's. ⚠️My call: one that clips to a row the cel does not hold
     // shows nowhere, as over a base with no drawing here.
     final clips = ClipPlacing<_CelLaid>(
-      blendOf: (laid) => laid.row.layer.blendMode,
+      blendOf: (laid) => laid.paint.blendMode,
       asClipBase: (laid) => (
-        base: (row: laid.row, alone: true),
-        opacity: laid.row.layer.opacity,
-        blendMode: laid.row.layer.blendMode,
+        base: (row: laid.row, paint: _alone(laid.paint.effects)),
+        opacity: laid.paint.opacity,
+        blendMode: laid.paint.blendMode,
       ),
     );
     final stack = <CompositeNode<_CelLaid>>[];
@@ -1303,13 +1318,19 @@ class ExportFrameRenderer {
       clips.place(
         row.cut,
         row.layer,
-        CompositeLeaf((row: row, alone: false)),
+        // R26 #30: the delivery cel is the stack as composited — the
+        // members' strengths and blends apply.
+        _celNumbered(row, (
+          opacity: row.layer.opacity,
+          blendMode: row.layer.blendMode,
+          effects: row.effects,
+        )),
         into: stack,
       );
     }
     final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
       stack,
-      (laid) => _laidInTheCel(laid.row, alone: laid.alone),
+      _laidInTheCel,
     );
     return renderService.renderThroughCamera(
       nodes: composeOverTheirBackdrops(
@@ -1349,10 +1370,10 @@ class ExportFrameRenderer {
     }
     Future<ui.Image> drawn(
       CameraFrameRenderService service, {
-      List<CutFrameCompositeLayer> layers = const [],
+      List<CompositeNode<CutFrameCompositeLayer>> nodes = const [],
       CameraOverlayPass? overlayPass,
     }) => service.renderThroughCamera(
-      layers: layers,
+      nodes: nodes,
       pose: cel.view.pose,
       cameraFrameSize: cel.view.frameSize,
       overlayPass: overlayPass,
@@ -1379,7 +1400,9 @@ class ExportFrameRenderer {
           clipped: clipsToLayerBelow(row.layer),
           draw: () => drawn(
             _transparentRenderService,
-            layers: [_laidInTheCel(row, alone: true)],
+            nodes: mapCompositeLeaves([
+              _celNumbered(row, _alone(row.effects)),
+            ], _laidInTheCel),
           ),
         ),
       if (cel.guides case final guides?) laidOver(strings.exLayGuides, guides),
@@ -1404,13 +1427,17 @@ class ExportFrameRenderer {
     final rows = <_CelRow>[];
     // One picture of the stack: [layer]'s [frame] as [cut] holds it.
     void lay(Cut cut, Layer layer, Frame? frame) {
-      final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
+      if (frame == null) {
+        return;
+      }
+      final surface = _surfaceFor(cut, layer, frame);
       if (surface == null) {
         return;
       }
       rows.add((
         cut: cut,
         layer: layer,
+        frame: frame,
         surface: surface,
         // R6: the members' EFFECTS ride the same fx gates every other
         // route uses — the dialog's master toggle and the row's own fx
@@ -1422,13 +1449,12 @@ class ExportFrameRenderer {
         // wants raw line art back turns it off, which is what the other
         // tabs always allowed. Blend and static opacity are display
         // properties and stay either way.
-        effects: applyLayerFx
-            ? resolveLayerEffectsAt(
-                // Each effect's own switch (R8) gates it from here.
-                effects: layer.effects,
-                frameIndex: firstExposure,
-              )
-            : const [],
+        effects: resolveLayerEffectsAt(
+          // Each effect's own switch (R8) gates it from here — but for a
+          // cel number's.
+          effects: _deliveredChainOf(layer.effects),
+          frameIndex: firstExposure,
+        ),
       ));
     }
 
@@ -1452,17 +1478,51 @@ class ExportFrameRenderer {
     );
   }
 
-  /// [row] as the cel lays it — R26 #30: the delivery cel is the stack as
-  /// composited, the members' blends apply — or, [alone], whole and in no
-  /// blend: the picture a layered file keeps and lays by the row's own
-  /// strength and blend ([celGroupRows]).
-  CutFrameCompositeLayer _laidInTheCel(_CelRow row, {bool alone = false}) =>
-      CutFrameCompositeLayer(
-        surface: row.surface,
-        opacity: alone ? 1 : row.layer.opacity,
-        blendMode: alone ? LayerBlendMode.normal : row.layer.blendMode,
-        effects: row.effects,
+  /// The chain a delivered cel's row wears of [effects]: the whole chain
+  /// where the tab's FX is on, none of it where it is off — and a cel
+  /// number's link either way, on or off.
+  ///
+  /// 🗣️I-65-Q2 메모 (유저 2026-10-24): 「이 셀번호 fx는 다른 곳에서도 fx
+  /// 관계없이 내보내는 fx있던거같은데, 그런거처럼 fx체크해제해도 셀출력시
+  /// 내보냄」 — the reference fx is that other one (I-68-Q1: 「출력시에도 fx
+  /// 적용 해제되있어도 유지됨」). ⚠️Both switches — the tab's FX and the
+  /// link's own — are my reading of 「fx 체크」, asked as [[I-65-Q3]]
+  /// (recommended a).
+  List<LayerEffect> _deliveredChainOf(List<LayerEffect> effects) => [
+    for (final effect in effects)
+      if (effect.kind.drawsItsOwnPicture)
+        effect.copyWith(enabled: true)
+      else if (applyLayerFx)
+        effect,
+  ];
+
+  /// [row] — a row of its cel — as the tree of a cel lays it with [paint]:
+  /// its leaf, or the group its cel number makes of it ([celNumberedRow]).
+  CompositeNode<_CelLaid> _celNumbered(_CelRow row, RowPaint paint) =>
+      celNumberedRow(
+        paint: paint,
+        rowOf: (paint) => (row: row, paint: paint),
+        text: celNumberText(
+          rowName: row.layer.name,
+          drawingName: row.frame.name,
+          kind: row.layer.kind,
+        ),
+        paper: row.cut.canvasSize,
       );
+
+  /// [effects] whole and in no blend: the picture a layered file keeps and
+  /// lays by the row's own strength and blend ([celGroupRows]), or a clip's
+  /// base, whose strength and blend are its group's.
+  static RowPaint _alone(List<ResolvedLayerEffect> effects) =>
+      (opacity: 1, blendMode: LayerBlendMode.normal, effects: effects);
+
+  /// [laid]'s row as the cel lays it, by its paint.
+  CutFrameCompositeLayer _laidInTheCel(_CelLaid laid) => CutFrameCompositeLayer(
+    surface: laid.row.surface,
+    opacity: laid.paint.opacity,
+    blendMode: laid.paint.blendMode,
+    effects: laid.paint.effects,
+  );
 
   /// What the hand laid over a cel, one pass over another in [passes]'
   /// order — the guides under the camera's work. Null where nothing is.

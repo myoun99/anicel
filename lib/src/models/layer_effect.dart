@@ -1,7 +1,9 @@
 import '../core/collection_equality.dart';
+import 'canvas_point.dart';
 import 'property_track.dart';
 import 'string_id.dart';
-import 'transform_track.dart' show doubleKeySpace;
+import 'transform_track.dart'
+    show TransformTrack, doubleKeySpace, pathKeySpace, pointKeySpace;
 
 /// Stable identity of one effect INSTANCE on a layer — the lane address
 /// (`fx:<id>:<parameter>`) and the undo commands both name effects by this,
@@ -43,7 +45,18 @@ enum EffectKind {
   /// Erase every pixel whose color is NOT within [tolerance] of the key
   /// color — the same comparison with the answer inverted, which is why
   /// the two share [colorKeyParameterSpecs] rather than repeating it.
-  keepColor('keepColor');
+  keepColor('keepColor'),
+
+  /// The CEL NUMBER (I-65): the row's name and its drawing's, in letters
+  /// laid over the row's picture — 「A1」 — where [LayerEffect.stand] puts
+  /// them ([drawsItsOwnPicture]).
+  ///
+  /// 🗣️유저 08-07: 「종이에 매번 셀번호 적는 게 귀찮아서 … 납품 셀에도 셀번호
+  /// 적는 거야. 그래서 fx 로 하는 거고」 · 「체인 위치 고정 반대 — 블러 걸고
+  /// 싶은 상황을 막는 제한」: a link of the chain like any other, so what
+  /// follows it reads the letters too. 10-24 (I-65-Q1 a): 「레이어 이름 + 셀
+  /// 번호(A1) — 이름 없는 그림은 A●」.
+  celNumber('celNumber');
 
   const EffectKind(this.jsonValue);
 
@@ -66,6 +79,7 @@ enum EffectKind {
     EffectKind.blur => 'Blur',
     EffectKind.deleteColor => 'Delete Color',
     EffectKind.keepColor => 'Keep Color',
+    EffectKind.celNumber => 'Cel Number',
   };
 
   /// Whether this kind SPREADS pixels outside their own coverage — the
@@ -90,6 +104,17 @@ enum EffectKind {
   /// reads this to find the leading run and nothing else does.
   bool get runsOnSourcePixels =>
       this == EffectKind.deleteColor || this == EffectKind.keepColor;
+
+  /// Whether this kind DRAWS a picture of its own over the row's — the cel
+  /// number's letters — rather than filtering the picture it is handed. Such
+  /// a link is never a no-op ([ResolvedLayerEffect.isNoOp]: the letters are
+  /// what it does), splits the chain where it stands (`celNumberedRow`) and
+  /// stands where its [LayerEffect.stand] puts it.
+  ///
+  /// ⚠️Only a row whose drawings carry cel numbers takes one — the letters
+  /// print that number (`LayerKind.numbersItsDrawings`: the same fact the
+  /// auto naming reads, the kinds whose drawings are named by number).
+  bool get drawsItsOwnPicture => this == EffectKind.celNumber;
 
   String toJson() => jsonValue;
 
@@ -209,6 +234,34 @@ const Map<EffectKind, List<EffectParameterSpec>> effectParameterSpecs = {
   ],
   EffectKind.deleteColor: colorKeyParameterSpecs,
   EffectKind.keepColor: colorKeyParameterSpecs,
+  // 🗣️I-65-Q1 메모 (유저 2026-10-24): 「색 키 고르는것도 존재. 심플하게 딱
+  // 하나만」 — the letters' ONE colour, chosen the way a key colour is: three
+  // of the bytes the lanes animate ([colorKeyParameterSpecs]). Black at rest,
+  // the text tool's own ink (`TextLetterStyle.color`). Where they stand and
+  // how big are the effect's [LayerEffect.stand], not parameters.
+  EffectKind.celNumber: [
+    EffectParameterSpec(
+      id: 'red',
+      label: 'Red',
+      defaultValue: 0,
+      minimum: 0,
+      maximum: 255,
+    ),
+    EffectParameterSpec(
+      id: 'green',
+      label: 'Green',
+      defaultValue: 0,
+      minimum: 0,
+      maximum: 255,
+    ),
+    EffectParameterSpec(
+      id: 'blue',
+      label: 'Blue',
+      defaultValue: 0,
+      minimum: 0,
+      maximum: 255,
+    ),
+  ],
 };
 
 /// The color keys' parameters — ONE list for both kinds, because erase and
@@ -369,17 +422,24 @@ class LayerEffect {
   /// resolving to identical pixels — and this class's equality feeds the
   /// composite cache key, the autosave dirty check and the thumbnail
   /// signature.
+  ///
+  /// [stand] is normalized the same way: a kind that draws no picture of its
+  /// own holds none, whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
     this.enabled = true,
     Map<String, EffectParameter>? parameters,
+    TransformTrack? stand,
   }) : parameters = Map.unmodifiable({
          for (final spec in effectParametersOf(kind))
            spec.id:
                parameters?[spec.id] ??
                EffectParameter(value: spec.defaultValue),
-       });
+       }),
+       stand = kind.drawsItsOwnPicture && stand != null
+           ? stand
+           : TransformTrack.empty();
 
   /// A fresh effect of [kind], every parameter at its spec default — what
   /// "Add effect" creates (an effect you just added must change nothing
@@ -402,6 +462,19 @@ class LayerEffect {
   /// its default on old data, with no migration.
   final Map<String, EffectParameter> parameters;
 
+  /// Where the picture a kind that draws its own ([EffectKind
+  /// .drawsItsOwnPicture]) stands on the row's paper, and how big — the KEYS
+  /// of its Position and Scale, in the transform lanes' own words, as the
+  /// reference fx keeps its file's (`MediaReference.fx`). Unkeyed, it stands
+  /// where a row does at rest: the paper's middle, at its size
+  /// ([resolveEffectStandAt]). Empty for every other kind.
+  ///
+  /// 🗣️I-65-Q2 메모 (유저 2026-10-24): 「셀번호 fx 자체적으로 위치/크기값
+  /// 구현. 트랜스폼에 있는거처럼 위치/비율 두개 키. 공용화된거 사용하면서」 ·
+  /// 08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
+  /// 공통된 거 사용」.
+  final TransformTrack stand;
+
   /// The named parameter. Non-null for every id the kind declares (the
   /// constructor materializes them); an id from another kind answers a
   /// zero-valued placeholder rather than throwing, so a stale lane address
@@ -416,12 +489,14 @@ class LayerEffect {
     EffectKind? kind,
     bool? enabled,
     Map<String, EffectParameter>? parameters,
+    TransformTrack? stand,
   }) {
     return LayerEffect(
       id: id,
       kind: kind ?? this.kind,
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
+      stand: stand ?? this.stand,
     );
   }
 
@@ -433,7 +508,8 @@ class LayerEffect {
 
   /// Whether this effect carries any animation at all (the lane group
   /// header's key union asks).
-  bool get isAnimated => parameters.values.any((value) => value.isAnimated);
+  bool get isAnimated =>
+      stand.isNotEmpty || parameters.values.any((value) => value.isAnimated);
 
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
@@ -446,11 +522,13 @@ class LayerEffect {
             entry.value.track.isNotEmpty)
           entry.key: entry.value.toJson(),
     },
+    if (stand.isNotEmpty) 'stand': stand.toJson(),
   };
 
   factory LayerEffect.fromJson(Map<String, dynamic> json) {
     final kind = EffectKind.fromJson(json['kind']);
     final rawParameters = json['parameters'] as Map<String, dynamic>? ?? {};
+    final stand = json['stand'] as Map<String, dynamic>?;
     // The constructor fills whatever the file left out.
     return LayerEffect(
       id: EffectId.fromJson(json['id'] as Map<String, dynamic>),
@@ -462,6 +540,7 @@ class LayerEffect {
             entry.value as Map<String, dynamic>,
           ),
       },
+      stand: stand == null ? null : TransformTrack.fromJson(stand),
     );
   }
 
@@ -472,7 +551,8 @@ class LayerEffect {
           other.id == id &&
           other.kind == kind &&
           other.enabled == enabled &&
-          mapEquals(other.parameters, parameters);
+          mapEquals(other.parameters, parameters) &&
+          other.stand == stand;
 
   @override
   int get hashCode => Object.hash(
@@ -483,6 +563,7 @@ class LayerEffect {
       for (final entry in parameters.entries)
         Object.hash(entry.key, entry.value),
     ]),
+    stand,
   );
 
   @override
@@ -498,11 +579,18 @@ double _specDefault(EffectKind kind, String parameterId) =>
 /// [effectParametersOf]'s order, which is the only order anything builds
 /// them in.
 class ResolvedLayerEffect {
-  ResolvedLayerEffect({required this.kind, required List<double> values})
-    : values = List.unmodifiable(values);
+  ResolvedLayerEffect({
+    required this.kind,
+    required List<double> values,
+    this.stand,
+  }) : values = List.unmodifiable(values);
 
   final EffectKind kind;
   final List<double> values;
+
+  /// Where a kind that draws its own picture stands it at this frame
+  /// ([LayerEffect.stand] sampled); null for every other kind.
+  final EffectStand? stand;
 
   double parameter(String id) {
     final specs = effectParametersOf(kind);
@@ -519,7 +607,12 @@ class ResolvedLayerEffect {
   /// Whether this sample changes any pixel. An effect resolved to its
   /// defaults is dropped by the resolver, so nothing downstream ever pays
   /// for a filter that does nothing.
+  ///
+  /// A kind that draws its own picture never is: drawing it is what it does.
   bool get isNoOp {
+    if (kind.drawsItsOwnPicture) {
+      return false;
+    }
     final specs = effectParametersOf(kind);
     for (
       var index = 0;
@@ -538,13 +631,40 @@ class ResolvedLayerEffect {
       identical(this, other) ||
       other is ResolvedLayerEffect &&
           other.kind == kind &&
-          listEquals(other.values, values);
+          listEquals(other.values, values) &&
+          other.stand == stand;
 
   @override
-  int get hashCode => Object.hash(kind, Object.hashAll(values));
+  int get hashCode => Object.hash(kind, Object.hashAll(values), stand);
 
   @override
-  String toString() => 'ResolvedLayerEffect($kind, $values)';
+  String toString() => 'ResolvedLayerEffect($kind, $values, $stand)';
+}
+
+/// Where the picture of an effect that draws its own stands at one frame
+/// ([LayerEffect.stand] sampled): its Position on the row's paper — null
+/// while that lane holds no key, which is where a row stands at rest, the
+/// paper's middle (the paper is not the effect's to know) — and its Scale,
+/// along each axis.
+typedef EffectStand = ({CanvasPoint? position, CanvasPoint scale});
+
+/// [stand] at [frameIndex] ([EffectStand]).
+EffectStand resolveEffectStandAt(TransformTrack stand, int frameIndex) {
+  final time = frameIndex.toDouble();
+  return (
+    position: stand.position.isEmpty
+        ? null
+        : stand.position.resolveAtTime(
+            time: time,
+            orElse: () => CanvasPoint(x: 0, y: 0),
+            space: pathKeySpace,
+          ),
+    scale: stand.scale.resolveAtTime(
+      time: time,
+      orElse: () => CanvasPoint(x: 1, y: 1),
+      space: pointKeySpace,
+    ),
+  );
 }
 
 /// Samples [effects] at [frameIndex], dropping the disabled ones and the
@@ -569,6 +689,9 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
         for (final spec in specs)
           spec.clamp(effect.parameterOf(spec.id).resolveAt(frameIndex)),
       ],
+      stand: effect.kind.drawsItsOwnPicture
+          ? resolveEffectStandAt(effect.stand, frameIndex)
+          : null,
     );
     if (sample.isNoOp) {
       continue;

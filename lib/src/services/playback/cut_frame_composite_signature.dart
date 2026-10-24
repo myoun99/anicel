@@ -1,6 +1,7 @@
 import '../../core/collection_equality.dart';
 import '../../core/tree_nodes.dart';
 import '../../models/canvas_size.dart';
+import '../../models/cel_number_letters.dart';
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
@@ -293,6 +294,33 @@ final class CompositeOpaqueSignature extends CompositeNodeSignature {
   String toString() => 'CompositeOpaqueSignature($of)';
 }
 
+/// A row's cel number as its signature (I-65): the letters, and the row
+/// they are written on — whose signature says where it lies — so a renamed
+/// drawing, a moved number and a row moved under it are other pictures.
+final class CompositeCelNumberSignature extends CompositeNodeSignature {
+  const CompositeCelNumberSignature({required this.on, required this.letters});
+
+  final CompositeNodeSignature on;
+  final CelNumberLetters letters;
+
+  /// Empty, as [CompositeCelNumber]'s: the row stands in the tree once.
+  @override
+  List<CompositeNodeSignature> get children => const [];
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeCelNumberSignature &&
+          other.letters == letters &&
+          other.on == on;
+
+  @override
+  int get hashCode => Object.hash(CompositeCelNumberSignature, on, letters);
+
+  @override
+  String toString() => 'CompositeCelNumberSignature($letters, on: $on)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -341,6 +369,7 @@ class CutFrameCompositeSignature {
         case CompositeBackdropBlendSignature():
         case CompositeClipSignature():
         case CompositeOpaqueSignature():
+        case CompositeCelNumberSignature():
           break;
       }
     }
@@ -457,5 +486,10 @@ List<CompositeNodeSignature> _nodeSignaturesOf(
       CompositeOpaque(:final of) => CompositeOpaqueSignature(
         _nodeSignaturesOf([of]).single,
       ),
+      CompositeCelNumber(:final on, :final letters) =>
+        CompositeCelNumberSignature(
+          on: _nodeSignaturesOf([on]).single,
+          letters: letters,
+        ),
     },
 ];

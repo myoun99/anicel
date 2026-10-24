@@ -95,6 +95,7 @@ void main() {
       case CompositeBackdropBlend<CutFrameCompositeRow>(:final children):
       case CompositeClip<CutFrameCompositeRow>(:final children):
       case CompositeOpaque<CutFrameCompositeRow>(:final children):
+      case CompositeCelNumber<CutFrameCompositeRow>(:final children):
         return [for (final child in children) ...idsUnder(child)];
     }
   }

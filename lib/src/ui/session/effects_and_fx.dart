@@ -68,21 +68,24 @@ class EffectsAndFx {
     ),
   );
 
-  /// Whether the ACTIVE row can take an effect: a row that carries its own
-  /// FX.
+  /// Whether the ACTIVE row can take an effect of [kind]: a row that carries
+  /// its own FX — and, for a kind that draws a cel number
+  /// ([EffectKind.drawsItsOwnPicture]), one whose drawings carry one
+  /// ([LayerKind.numbersItsDrawings]): the letters print it.
   ///
   /// ↩️A track-owned SE row was fenced off here since R6a (2026-07-30: 「its
   /// display clone strips FX」). The clone projects the track's chain now,
   /// and 유저's law for a global row is that every cut can work it (F-102:
   /// 「로컬에서도 조작은 가능」) — so the chain goes where the row lives
   /// ([ProjectAccess.commitLayerById]).
-  bool get canAddEffectToActiveLayer {
+  bool canAddEffectToActiveLayer(EffectKind kind) {
     final layer = _selection.activeLayer;
     return layer != null &&
         layer.kind.hasLayerEffects &&
         // Attach rows wear their BASE's FX (W5) and have no lanes of their
         // own — the effect belongs on the base.
-        layer.attachedToLayerId == null;
+        layer.attachedToLayerId == null &&
+        (!kind.drawsItsOwnPicture || layer.kind.numbersItsDrawings);
   }
 
   /// Appends a fresh effect of [kind] (every parameter at its default, so
@@ -96,7 +99,7 @@ class EffectsAndFx {
   /// track's row at the wrong frames.
   void addEffectToActiveLayer(EffectKind kind) {
     final active = _selection.activeLayer;
-    if (active == null || !canAddEffectToActiveLayer) {
+    if (active == null || !canAddEffectToActiveLayer(kind)) {
       return;
     }
     final layer = _project.commitLayerById(active.id) ?? active;

@@ -2,6 +2,7 @@ import '../models/attached_layer_resolve.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_number_letters.dart';
 import '../models/composite_tree.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
@@ -17,6 +18,7 @@ import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_matrix.dart' show pictureMoved;
 import 'layer_pose_paint.dart';
+import 'cel_numbered_row.dart';
 import 'cel_source_effect_pass.dart';
 import 'cel_surface_as_shown.dart';
 
@@ -167,6 +169,13 @@ sealed class CutFrameCompositeRow {
   /// The row's strength, folded.
   double get opacity;
 
+  /// The row's effect chain sampled at this frame.
+  List<ResolvedLayerEffect> get effects;
+
+  /// The same row painting with [paint] — the row's picture under part of
+  /// its chain, where a cel number splits it ([celNumberedRow]).
+  CutFrameCompositeRow withPaint(RowPaint paint);
+
   /// The same row painting normal — what a row in an advanced blend
   /// is, composed over its backdrop ([CompositeBackdropBlend]).
   CutFrameCompositeRow paintedNormal();
@@ -208,7 +217,18 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
   /// The row's effect chain sampled at this frame (R6) — from the FX
   /// CARRIER, so an attach row wears its base's effects exactly as it wears
   /// its base's pose, and the carrier's fx switch bypasses both.
+  @override
   final List<ResolvedLayerEffect> effects;
+
+  @override
+  CutFrameCompositeEntry withPaint(RowPaint paint) => CutFrameCompositeEntry(
+    layer: layer,
+    frame: frame,
+    opacity: paint.opacity,
+    blendMode: paint.blendMode,
+    placement: placement,
+    effects: paint.effects,
+  );
 
   @override
   CutFrameCompositeEntry paintedNormal() => CutFrameCompositeEntry(
@@ -272,6 +292,21 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
 
   @override
   double get opacity => render.opacity;
+
+  @override
+  List<ResolvedLayerEffect> get effects => render.effects;
+
+  @override
+  CutFrameCompositeLiveRow withPaint(RowPaint paint) =>
+      CutFrameCompositeLiveRow(
+        layer: layer,
+        render: (
+          opacity: paint.opacity,
+          blendMode: paint.blendMode,
+          placement: render.placement,
+          effects: paint.effects,
+        ),
+      );
 
   @override
   CutFrameCompositeLiveRow paintedNormal() => CutFrameCompositeLiveRow(
@@ -1295,7 +1330,28 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       liveLayerId: liveLayerId,
     ));
     if (row != null) {
-      place(layer, CompositeLeaf(row));
+      place(
+        layer,
+        celNumberedRow(
+          paint: (
+            opacity: row.opacity,
+            blendMode: row.blendMode,
+            effects: row.effects,
+          ),
+          rowOf: row.withPaint,
+          text: celNumberText(
+            rowName: layer.name,
+            drawingName: switch (row) {
+              CutFrameCompositeEntry(:final frame) => frame.name,
+              // Drawn on where nothing is exposed yet: the drawing the pen
+              // makes, which is born unnamed.
+              CutFrameCompositeLiveRow() => null,
+            },
+            kind: layer.kind,
+          ),
+          paper: cut.canvasSize,
+        ),
+      );
     }
   }
   // A row in an advanced blend goes over a picture of its scope — once

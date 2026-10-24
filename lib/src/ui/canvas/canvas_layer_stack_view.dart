@@ -39,6 +39,7 @@ import '../../services/cel_surface_as_shown.dart';
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 import 'tile_pyramid.dart';
+import '../text/cel_number_paint.dart' show paintCelNumber;
 
 part 'layer_stack/layer_stack_paint_pass.dart';
 
@@ -541,6 +542,7 @@ class CanvasLayerStackView extends StatefulWidget {
         case CompositeBackdropBlend():
         case CompositeClip():
         case CompositeOpaque():
+        case CompositeCelNumber():
           break;
       }
     }
@@ -1596,6 +1598,10 @@ bool _nodesMatch(CompositeNode<_PaintRow> a, CompositeNode<_PaintRow> b) =>
             _treesMatch(scope, b.scope),
       CompositeOpaque<_PaintRow>(:final of) =>
         b is CompositeOpaque<_PaintRow> && _nodesMatch(of, b.of),
+      CompositeCelNumber<_PaintRow>(:final on, :final letters) =>
+        b is CompositeCelNumber<_PaintRow> &&
+            letters == b.letters &&
+            _nodesMatch(on, b.on),
     };
 
 /// Whether the live layer's last paint handed its opacity/blend to the
@@ -1962,8 +1968,9 @@ class _LayerStackPainter extends CustomPainter {
         CompositeBackdropBlend(:final children) =>
           children.any(_enclosesActiveSurface),
         CompositeClip(:final children) => children.any(_enclosesActiveSurface),
-        // The base it paints again stands in the clip already.
-        CompositeOpaque() => false,
+        // The base it paints again stands in the clip already, and the row
+        // a cel number is written on as its own leaf.
+        CompositeOpaque() || CompositeCelNumber() => false,
         CompositeLeaf(payload: _PaintImage()) => false,
         // A lifted row only shows; nothing draws into it.
         CompositeLeaf(payload: _PaintLiftedSurface()) => false,

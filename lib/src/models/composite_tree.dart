@@ -1,4 +1,5 @@
 import '../core/tree_nodes.dart';
+import 'cel_number_letters.dart';
 import 'layer_blend_mode.dart';
 import 'layer_effect.dart';
 
@@ -195,6 +196,26 @@ final class CompositeOpaque<L> extends CompositeNode<L> {
   List<CompositeNode<L>> get children => const [];
 }
 
+/// A row's CEL NUMBER (I-65): [letters] written over the row's picture, where
+/// [on] — the row's own leaf, beside it in their group — lies, so they move
+/// with it. It paints nothing of [on]'s: the row's picture is that leaf's
+/// (`celNumberedRow` makes the two).
+final class CompositeCelNumber<L> extends CompositeNode<L> {
+  const CompositeCelNumber({required this.on, required this.letters});
+
+  /// The row the letters are written on — ⚠️THE SAME NODE as the leaf that
+  /// paints it, as [CompositeOpaque.of] is its base: a route asks the row's
+  /// payload where it lies. The folds keep it so ([mapCompositeLeaves]); a
+  /// row that maps to nothing takes its letters with it.
+  final CompositeLeaf<L> on;
+
+  final CelNumberLetters letters;
+
+  /// ⛔EMPTY: [on] stands in the tree as its own leaf.
+  @override
+  List<CompositeNode<L>> get children => const [];
+}
+
 /// THE CLIP LAW (I-92): [clipped] joined to the clipping group [standing]
 /// is the base of, or that [standing] — a row, or a folder's buffer —
 /// becomes the base of ([CompositeClip]).
@@ -221,7 +242,8 @@ CompositeNode<L> clippedOnto<L>(
         CompositeAdjustment<L>() ||
         CompositeBackdropBlend<L>() ||
         CompositeClip<L>() ||
-        CompositeOpaque<L>() => throw StateError(
+        CompositeOpaque<L>() ||
+        CompositeCelNumber<L>() => throw StateError(
           'only a row or a folder clips to the layer below, not $clipped',
         ),
       } !=
@@ -271,7 +293,8 @@ CompositeNode<L> clippedOnto<L>(
     CompositeAdjustment<L>() ||
     CompositeBackdropBlend<L>() ||
     CompositeClip<L>() ||
-    CompositeOpaque<L>() => throw StateError(
+    CompositeOpaque<L>() ||
+    CompositeCelNumber<L>() => throw StateError(
       'only a row or a folder is clipped to, not $standing',
     ),
   };
@@ -374,6 +397,10 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
         CompositeOpaque<L>(bases[of] ?? scopeOf([of]).single),
         null,
       ),
+      // ⛔As it stands: its row is a leaf painting normal (`celNumberedRow`
+      // gives the row's blend to their group), which this fold hands on as
+      // the very node it was — the one [CompositeCelNumber.on] names.
+      CompositeCelNumber<L>() => (node, null),
     };
     if (blend == null || !blend.needsItsBackdrop) {
       out.add(composed);
@@ -468,26 +495,31 @@ List<CompositeNode<L>> onUnderlay<L>(
 List<CompositeNode<M>> mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
   M? Function(L payload) map,
-) => _mapCompositeLeaves<L, M>(nodes, map, bases: Map.identity());
+) => _mapCompositeLeaves<L, M>(nodes, map, kept: Map.identity());
 
-/// [mapCompositeLeaves], with [bases] the clip bases mapped so far — each
-/// source base to what it became, for its [CompositeOpaque].
+/// [mapCompositeLeaves], with [kept] the nodes a later node points back at
+/// — a clip's base ([CompositeOpaque.of]), a row a cel number is written on
+/// ([CompositeCelNumber.on]) — each to what it became, null where it
+/// dropped.
 List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
   M? Function(L payload) map, {
-  required Map<CompositeNode<L>, CompositeNode<M>> bases,
+  required Map<CompositeNode<L>, CompositeNode<M>?> kept,
 }) {
   List<CompositeNode<M>> fold(List<CompositeNode<L>> list) =>
-      _mapCompositeLeaves(list, map, bases: bases);
+      _mapCompositeLeaves(list, map, kept: kept);
+  CompositeNode<M>? keptOf(CompositeNode<L> node) =>
+      kept.containsKey(node) ? kept[node] : fold([node]).singleOrNull;
   final out = <CompositeNode<M>>[];
   for (final node in nodes) {
     switch (node) {
       case CompositeLeaf<L>(:final payload):
         final mapped = map(payload);
-        if (mapped == null) {
-          continue;
+        final leaf = mapped == null ? null : CompositeLeaf<M>(mapped);
+        kept[node] = leaf;
+        if (leaf != null) {
+          out.add(leaf);
         }
-        out.add(CompositeLeaf<M>(mapped));
       case CompositeGroup<L>(
         :final children,
         :final opacity,
@@ -543,27 +575,28 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
         :final opacity,
         :final blendMode,
       ):
-        final mappedBase = fold([base]);
-        if (mappedBase.isEmpty) {
+        final mappedBase = fold([base]).singleOrNull;
+        kept[base] = mappedBase;
+        if (mappedBase == null) {
           // Nothing to clip to: the rows clipped to it show nowhere.
           continue;
         }
-        bases[base] = mappedBase.single;
         out.add(
           CompositeClip<M>(
-            base: mappedBase.single,
+            base: mappedBase,
             scope: List.unmodifiable(fold(scope)),
             opacity: opacity,
             blendMode: blendMode,
           ),
         );
       case CompositeOpaque<L>(:final of):
-        final mapped = switch (bases[of]) {
-          final base? => [base],
-          null => fold([of]),
-        };
-        if (mapped.isNotEmpty) {
-          out.add(CompositeOpaque<M>(mapped.single));
+        if (keptOf(of) case final base?) {
+          out.add(CompositeOpaque<M>(base));
+        }
+      case CompositeCelNumber<L>(:final on, :final letters):
+        // A row with no picture here takes its letters with it.
+        if (keptOf(on) case final CompositeLeaf<M> row) {
+          out.add(CompositeCelNumber<M>(on: row, letters: letters));
         }
     }
   }

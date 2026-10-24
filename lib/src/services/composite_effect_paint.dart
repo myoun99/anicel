@@ -188,6 +188,9 @@ List<double>? resolveColorMatrixIgnoringSpatial(
       // (`CelColorKey.alphaFor`) rather than asking for a matrix that
       // cannot exist.
       EffectKind.deleteColor || EffectKind.keepColor => null,
+      // Letters laid over the picture are spatial work too — what stands at
+      // one point is the picture's, as under a blur.
+      EffectKind.celNumber => null,
     };
     if (next == null) {
       continue;
@@ -273,6 +276,15 @@ CompositeEffectPaint resolveCompositeEffectPaint(
           false,
           'Source-pixel effects must be split off before a paint is '
           'resolved — see splitSourceEffects.',
+        );
+      // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
+      // its own: the row's tree splits the chain where it stands
+      // (`celNumberedRow`), so no chain handed to a paint holds one.
+      case EffectKind.celNumber:
+        assert(
+          false,
+          'A cel number splits the chain before a paint is resolved — see '
+          'celNumberedRow.',
         );
       case EffectKind.brightnessContrast:
         final matrix = brightnessContrastMatrix(

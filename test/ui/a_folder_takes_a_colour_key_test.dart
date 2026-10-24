@@ -34,7 +34,10 @@ void main() {
     // ⛔Prove the row under test really is the folder, or this passes on
     // whatever happened to be selected.
     expect(session.activeLayer?.id, folder.id, reason: 'fixture');
-    expect(session.effectsAndFx.canAddEffectToActiveLayer, isTrue);
+    expect(
+      session.effectsAndFx.canAddEffectToActiveLayer(EffectKind.deleteColor),
+      isTrue,
+    );
 
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.deleteColor);
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.keepColor);

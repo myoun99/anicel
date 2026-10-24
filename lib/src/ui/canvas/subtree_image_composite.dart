@@ -13,6 +13,7 @@ import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
 import 'raster_picture.dart';
+import '../text/cel_number_paint.dart' show celNumberExtent;
 
 /// The largest side a sub-tree's own raster may have, in device pixels.
 ///
@@ -85,11 +86,10 @@ Rect _subtreeExtent<T>(
 ) {
   switch (node) {
     case CompositeLeaf(:final payload):
-      final extent = extentOf(payload);
-      final placement = placementOf(payload);
-      return placement == null
-          ? extent
-          : MatrixUtils.transformRect(placementMatrix(placement), extent);
+      return _placed(extentOf(payload), placementOf(payload));
+    // The letters where they stand on their row's paper, laid as it lies.
+    case CompositeCelNumber(:final on, :final letters):
+      return _placed(celNumberExtent(letters), placementOf(on.payload));
     // What clips is cut to the base: the base's rect is all of it.
     case CompositeClip(base: final of):
     case CompositeOpaque(:final of):
@@ -108,6 +108,12 @@ Rect _subtreeExtent<T>(
       return union;
   }
 }
+
+/// [extent] on a row's paper as the canvas holds it, the row lying at
+/// [placement].
+Rect _placed(Rect extent, LayerPlacement? placement) => placement == null
+    ? extent
+    : MatrixUtils.transformRect(placementMatrix(placement), extent);
 
 /// The grid a sub-tree rasterises on, decided once and then obeyed.
 ///
