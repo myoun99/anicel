@@ -705,17 +705,30 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     unawaited(_ensureImages());
   }
 
+  /// Lets go of what this view held for [key] — in the build that replaces
+  /// the painter drawing with it ([_superseded]), as a settle's handles go.
+  ///
+  /// ⛔Not at once: the async pass drops a row's image and asks for the
+  /// build only once every row is through, and a sibling repainting the
+  /// layer meanwhile — the frame's one picture under the ghosts, at each
+  /// stroke step — repaints this view with the painter it has, which drew
+  /// a disposed image (2026-10-25). ↩️The kept display buffer hid it: the
+  /// painter drew the buffer, not the rows.
   void _dropImage(BrushFrameKey key, _HeldImage held) {
-    // A6: the pin travels with the clone — held pixels are declared
-    // pixels, and the declaration ends exactly when the hold does.
-    widget.imageCache.releasePin(key, held.quality);
-    held.clone.disposeAll();
-    held.laidBack.dispose();
+    final cache = widget.imageCache;
+    _superseded.add(() {
+      // A6: the pin travels with the clone — held pixels are declared
+      // pixels, and the declaration ends exactly when the hold does.
+      cache.releasePin(key, held.quality);
+      held.clone.disposeAll();
+      held.laidBack.dispose();
+    });
   }
 
-  /// Handles a settle replaced ([_settleHeldImage]), kept until the build
-  /// that replaces the painter drawing with them ([_releaseSettled]).
-  final List<ImagePiece> _superseded = <ImagePiece>[];
+  /// What the painter on screen may still draw with — the handles a settle
+  /// replaced ([_settleHeldImage]) and the images let go ([_dropImage]) —
+  /// each let go in the build that replaces it ([_releaseSuperseded]).
+  final List<void Function()> _superseded = [];
 
   /// [image] takes the place of [held] for [key] as the same picture — the
   /// only way into [_images] that leaves the stack on screen standing.
@@ -733,13 +746,13 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   ///
   /// ⛔The replaced clone is not disposed here — the painter on screen draws
   /// with it until the next build, which the settle asks for — so it is
-  /// PARKED ([_superseded]) and goes in that build ([_releaseSettled]).
+  /// PARKED ([_superseded]) and goes in that build ([_releaseSuperseded]).
   void _settleHeldImage(
     BrushFrameKey key,
     _HeldImage held,
     LayerFrameImage image,
   ) {
-    _superseded.addAll(held.clone);
+    _superseded.add(held.clone.disposeAll);
     _images[key] = (
       source: image.pieces,
       clone: image.pieces.clones(),
@@ -753,14 +766,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     );
   }
 
-  /// Lets the handles a settle replaced go, in the build whose painter
-  /// draws with their successors.
-  void _releaseSettled() {
-    if (_superseded.isEmpty) {
-      return;
-    }
-    _superseded.disposeAll();
+  /// Lets go of what a settle replaced and what was dropped, in the build
+  /// whose painter draws with what took their place.
+  void _releaseSuperseded() {
+    final release = List.of(_superseded);
     _superseded.clear();
+    for (final letGo in release) {
+      letGo();
+    }
   }
 
   @override
@@ -773,7 +786,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
       entry.value.laidBack.dispose();
     }
     _images.clear();
-    _releaseSettled();
+    _releaseSuperseded();
     super.dispose();
   }
 
@@ -1096,9 +1109,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   Widget build(BuildContext context) {
     final nodes = _resolvedTree(widget.nodes);
-    // This build's painter draws with a settle's new handles, so the ones
-    // they replaced can go ([_settleHeldImage]).
-    _releaseSettled();
+    // This build's painter draws with what took the place of a settle's
+    // handles and of the images dropped, so those can go ([_superseded]).
+    _releaseSuperseded();
     return IgnorePointer(
       // ⛔**THE `willChange: true` HINT IS GONE** — from this picture and
       // from the three siblings that copied it. The history stays because
