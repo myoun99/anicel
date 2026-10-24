@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/pixel_verbs.dart';
+import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/panel_finders.dart' show visibleCanvasPoint;
@@ -33,6 +34,13 @@ PixelVerbs pixelVerbsOf(EditorSessionManager s) => s.pixelVerbs;
 final _head = find.byKey(const ValueKey<String>('shared-colour-edit-button'));
 final _sharedPill = find.byKey(
   const ValueKey<String>('timeline-toolbar-shared-group'),
+);
+
+/// The timeline's bar, which its host caches on a token of every gate it
+/// shows — the head's among them.
+final _bar = find.ancestor(
+  of: _sharedPill,
+  matching: find.byType(TimelineActionToolbar),
 );
 
 void main() {
@@ -89,6 +97,7 @@ void main() {
     expect(headIsLit(tester), isTrue, reason: 'the head lights with it');
 
     final built = tester.widgetList(_sharedPill).toList();
+    final bar = tester.widget(_bar);
     await press.moveBy(const Offset(30, 20));
     await tester.pump();
     await press.up();
@@ -103,7 +112,13 @@ void main() {
     expect(
       [for (var i = 0; i < built.length; i++) identical(built[i], rebuilt[i])],
       everyElement(isTrue),
-      reason: 'the pen lifting moved no gate the bar shows',
+      reason: 'the pen lifting moved no gate the pill shows',
+    );
+    expect(
+      identical(tester.widget(_bar), bar),
+      isTrue,
+      reason: "the bar's token moved with the head at pen-down, so the pen "
+          'lifting finds it the same and builds no bar again',
     );
 
     s.playbackRig.prerenderScheduler.cancel();

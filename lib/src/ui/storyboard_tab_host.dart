@@ -1351,8 +1351,11 @@ class _CursorGatedStoryboardToolbarState
     // answer from before the clear, and a seek onto a drawn cel then read
     // "unchanged" and left the head dim. ↩️The thumbnail store's landing
     // rebuilt this whole panel and re-derived the token by accident, until
-    // the store left the panel's merge. The timeline's gate lists it too,
-    // for the head a first stroke lights at pen-down (pen-up-dock-tail-Q2).
+    // the store left the panel's merge. ↩️The timeline's gate did not list
+    // it — that host rebuilds on the clear itself, measured, and its F-75
+    // pin holds without it — until the head a first stroke lights at
+    // pen-down (pen-up-dock-tail-Q2): nothing rebuilds that host under the
+    // pen, and the token it kept built its bar again at pen-up.
     widget.session.layerStack.celTintRevision,
   ];
 
