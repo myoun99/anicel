@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -165,6 +167,42 @@ void main() {
       reason: 'and the bar around the groups is the one it was',
     );
   }
+
+  testWidgets('the pixel board filling lights the head over a blank cel, on '
+      'its own news, and builds that pill alone', (tester) async {
+    final s = await openOnAnEmptyCel(tester);
+    final bar = find.descendant(
+      of: find.byType(TimelineTabHost),
+      matching: find.byType(TimelineActionToolbar),
+    );
+    expect(headIsLit(tester, bar), isFalse, reason: 'premise: a blank cel');
+    final before = _controls(tester, bar);
+
+    // I-55: a paste lands on a blank cel too, so a board that holds a piece
+    // opens the head — and the board's news is no notify and no seek.
+    s.appClipboard.pixels.hold(
+      CutPiece(
+        image: BrushStampImage(
+          id: 'board-probe',
+          width: 2,
+          height: 2,
+          rgba: Uint8List(16)..fillRange(0, 16, 0xFF),
+        ),
+        originLeft: 0,
+        originTop: 0,
+      ),
+    );
+    await tester.pump();
+
+    expect(headIsLit(tester, bar), isTrue, reason: 'the head heard the board');
+    expect(
+      _builtAgain(tester, bar, before).difference(
+        _keysIn(tester, bar, 'timeline-toolbar-shared-group'),
+      ),
+      isEmpty,
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
 
   Future<Finder> openTheStoryboard(WidgetTester tester) async {
     await tester.tap(

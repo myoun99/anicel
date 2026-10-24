@@ -496,10 +496,9 @@ Listenable toolbarGateNews(EditorSessionManager session) => Listenable.merge([
   session.layerStack.celTintRevision,
   session.renderCaches.brushFrameStore.celContentRevision,
   // I-55: the pixel board — a copy fills it without moving anything above,
-  // and the two pastes open behind it ([PixelVerbs.canOpenColourEdit]
-  // reads it). ⛔MUTANT SURVIVES (2026-10-24): a copy reads the cel you
-  // stand on, which then already lit the head, so no route fills the board
-  // under a dim head without a seek; it stays for the read.
+  // and the two pastes open behind it: a paste lands on a blank cel too,
+  // so a board that holds a piece opens the 색 편집 head over one
+  // ([PixelVerbs.canOpenColourEdit]) — with no notify and no seek.
   session.appClipboard.pixels,
   // The rows the rail draws — a section toggle, a fold, a twirl, the filter
   // — which no notify carries; the storyboard's gates ask its rows, and its
