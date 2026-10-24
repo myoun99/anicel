@@ -84,10 +84,13 @@ void main() {
   /// [disableBuffer] takes the DIRECT WALK instead of the buffer blit: the
   /// paper rect and the tiles drawn straight under the viewport transform,
   /// which is the route a frame falls to when the buffer is refused.
+  /// Without [live] the stack has no surface to draw and no bake: the walk
+  /// lays its paper straight onto the screen.
   Future<CustomPainter> pumpEditingStack(
     WidgetTester tester, {
     bool disableBuffer = false,
     bool ink = true,
+    bool live = true,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -110,7 +113,7 @@ void main() {
                 ),
                 canvasSize: canvasSize,
                 viewport: viewport,
-                activeSurfacePainter: cornerInkSurface(ink: ink),
+                activeSurfacePainter: live ? cornerInkSurface(ink: ink) : null,
                 paintPaper: true,
                 paperBackground: paper,
                 debugDisableSingleBuffer: disableBuffer,
@@ -319,19 +322,9 @@ void main() {
       expectCutOnTheGrid(bytes, 'playback, every edge blended', ink: false);
     });
 
-    testWidgets('the canvas\'s absent paper', (tester) async {
-      // Its checkerboard covers the pixels the paper covers, so turning
-      // the paper off and on moves no edge.
-      final planes = StagePlanesPainter(
-        pasteboardReach: PasteboardReach.whole,
-        paperNone: true,
-        canvasSize: canvasSize,
-        viewport: viewport,
-        devicePixelRatio: 1.0,
-      );
-      final bytes = (await tester.runAsync(
-        () => rasterize(planes, everyEdgeBlended: true),
-      ))!;
+    /// Every pixel inside the pixel-centre cut wholly covered, and none
+    /// past it touched — whatever [route] lays there.
+    void expectWhollyInside(Uint8List rgba, String route) {
       final snapped = renderSnappedViewport(viewport, 1.0);
       final columns = pixelsInside(
         snapped.panX,
@@ -349,14 +342,111 @@ void main() {
               y >= rows.first &&
               y <= rows.last;
           expect(
-            alphaAt(bytes, x, y),
+            alphaAt(rgba, x, y),
             inside ? 255 : 0,
-            reason: 'absent paper ($x,$y): wholly the checkerboard inside '
-                'the pixel-centre cut, nothing past it',
+            reason: '$route ($x,$y): wholly covered inside the pixel-centre '
+                'cut, untouched past it',
           );
         }
       }
+    }
+
+    testWidgets('the canvas\'s absent paper', (tester) async {
+      // Its checkerboard covers the pixels the paper covers, so turning
+      // the paper off and on moves no edge.
+      final planes = StagePlanesPainter(
+        pasteboardReach: PasteboardReach.whole,
+        paperNone: true,
+        canvasSize: canvasSize,
+        viewport: viewport,
+        devicePixelRatio: 1.0,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(planes, everyEdgeBlended: true),
+      ))!;
+      expectWhollyInside(bytes, 'absent paper');
     });
+
+    testWidgets('the blank canvas — a paper of the default colour', (
+      tester,
+    ) async {
+      // What the brush host paints where no cel stands.
+      final blank = PlaybackFramePainter(
+        canvasSize: canvasSize,
+        viewport: viewport,
+        devicePixelRatio: 1.0,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(blank, everyEdgeBlended: true),
+      ))!;
+      expectWhollyInside(bytes, 'blank canvas');
+    });
+
+    testWidgets('the direct walk laying its paper straight on the screen', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final walk = await pumpEditingStack(
+        tester,
+        disableBuffer: true,
+        live: false,
+      );
+      final bytes = (await tester.runAsync(
+        () => rasterize(walk, everyEdgeBlended: true),
+      ))!;
+      expectWhollyInside(bytes, 'walk, no surface');
+    });
+  });
+
+  test('the grid\'s blit lays the texels drawImageRect lays — only its edge '
+      'moves', () async {
+    // A part of a 4×3 picture of twelve colours, twice its size, at a
+    // phase off the grid.
+    final recorder = ui.PictureRecorder();
+    final paint = Canvas(recorder);
+    for (var y = 0; y < 3; y += 1) {
+      for (var x = 0; x < 4; x += 1) {
+        paint.drawRect(
+          Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+          Paint()..color = Color.fromARGB(255, 60 * x, 80 * y, 20 + x * y),
+        );
+      }
+    }
+    final picture = await recorder.endRecording().toImage(4, 3);
+    const source = Rect.fromLTWH(1, 0, 3, 3);
+    const destination = Rect.fromLTWH(0, 0, 6, 6);
+
+    Future<Uint8List> drawn(void Function(Canvas canvas) draw) async {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..translate(1.3, 0.7);
+      draw(canvas);
+      final image = await recorder.endRecording().toImage(10, 8);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      return bytes!.buffer.asUint8List();
+    }
+
+    final plain = await drawn(
+      (canvas) => canvas.drawImageRect(
+        picture,
+        source,
+        destination,
+        Paint()
+          ..filterQuality = ui.FilterQuality.none
+          ..isAntiAlias = false,
+      ),
+    );
+    final onTheGrid = await drawn(
+      (canvas) => drawImageRectOnThePixelGrid(
+        canvas,
+        picture,
+        source,
+        destination,
+        filterQuality: ui.FilterQuality.none,
+        pixelRatio: 1,
+      ),
+    );
+    expect(onTheGrid, equals(plain));
   });
 
   test('the cut is the pixel centres — on a flip and at a ratio too, and a '
