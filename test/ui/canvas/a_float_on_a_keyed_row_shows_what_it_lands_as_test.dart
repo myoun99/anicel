@@ -212,6 +212,15 @@ void main() {
   /// What the drawing canvas's stack draws — every row, each float in the
   /// slot of the row it lands on — as raw RGBA. Its own painter, so the
   /// box's ants and handles over it are not in it.
+  ///
+  /// 🚨AT DEVICE RESOLUTION — the view's ratio as the root scale, the way
+  /// the compositor rasters it. ↩️It was rastered at logical size, a third
+  /// of the device's pixels at the runner's ratio of 3 — a raster no screen
+  /// makes: a stroke's patch is drawn straight onto the screen at a whole
+  /// display scale (`_pictureDrawsTheSame`), and its tile edges, whole
+  /// device pixels, fell on thirds of the raster's. 🔬Under Impeller
+  /// (Vulkan, 10-24) the multisampled raster blended them — at 1:1 a
+  /// landing read grey 64 on nine pixels the box had carried black.
   Future<Uint8List> composite(WidgetTester tester) async {
     final paint = inMainCanvas(
       find.descendant(
@@ -220,15 +229,16 @@ void main() {
       ),
     ).evaluate().firstWhere((e) => (e.widget as CustomPaint).painter != null);
     final size = (paint.renderObject! as RenderBox).size;
+    final dpr = tester.view.devicePixelRatio;
     final recorder = ui.PictureRecorder();
     (paint.widget as CustomPaint).painter!.paint(
-      Canvas(recorder, Offset.zero & size),
+      Canvas(recorder, Offset.zero & size * dpr)..scale(dpr),
       size,
     );
     final picture = recorder.endRecording();
     final image = picture.toImageSync(
-      size.width.toInt(),
-      size.height.toInt(),
+      (size.width * dpr).round(),
+      (size.height * dpr).round(),
     );
     picture.dispose();
     final bytes = await tester.runAsync(image.toByteData);
