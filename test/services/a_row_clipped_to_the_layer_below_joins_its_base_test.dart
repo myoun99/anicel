@@ -182,20 +182,48 @@ void main() {
     );
   });
 
-  test('a folder is a base: it buffers, even passing through, and paints '
-      'whole while the group takes its strength (Q3 a)', () {
+  test('a folder is a base: it buffers, even passing through and opaque — '
+      'its picture is what cuts (Q3 a)', () {
     final nodes = planOf([
       drawing('x', folder: 'f'),
       drawing('y', folder: 'f'),
-      folderRow('f', opacity: 0.25),
+      folderRow('f'),
       drawing('c', clips: true),
     ]);
     final clip = nodes.single as _Clip;
     final group = clip.base as _Group;
     expect(group.children.map(whose), ['x', 'y']);
+    expect(clip.scope.map(whose), ['c']);
+  });
+
+  test('a folder base paints whole while the group takes its strength', () {
+    final nodes = planOf([
+      drawing('x', folder: 'f'),
+      folderRow('f', opacity: 0.25),
+      drawing('c', clips: true),
+    ]);
+    final clip = nodes.single as _Clip;
+    final group = clip.base as _Group;
     expect((group.opacity, group.blendMode), (1.0, LayerBlendMode.normal));
     expect(clip.opacity, 0.25);
-    expect(clip.scope.map(whose), ['c']);
+  });
+
+  test('a folder base composed over its backdrops is still one node with '
+      'its opaque twin — the camera keeps one picture per row', () {
+    final nodes = planOf([
+      drawing('x', folder: 'f'),
+      drawing('y', folder: 'f', blend: LayerBlendMode.multiply),
+      folderRow('f'),
+      drawing('c', clips: true, blend: LayerBlendMode.multiply),
+    ]);
+    final clip = nodes.single as _Clip;
+    expect(
+      (clip.base as _Group).children.single,
+      isA<CompositeBackdropBlend<CutFrameCompositeLayer>>(),
+      reason: '⛔fixture: the base\'s members were composed anew',
+    );
+    final opaque = preorderNodes(clip.scope).whereType<_Opaque>().single;
+    expect(identical(opaque.of, clip.base), isTrue);
   });
 
   test('a folder clips: its picture goes into the base\'s group (Q3 a)', () {
