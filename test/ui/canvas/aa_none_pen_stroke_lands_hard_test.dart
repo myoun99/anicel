@@ -182,8 +182,11 @@ void main() {
           // 0 unless told otherwise).
           .copyWith(antiAlias: edge, correction: BrushCorrection.none);
 
-  // The pen group's round brushes — the ones 유저 names.
-  for (final id in ['builtin-g-pen', 'builtin-maru-pen', 'builtin-brush-pen']) {
+  // The plain pens: 「G펜처럼 진짜 aa가 필요없는 알기쉬운펜만 aa껐을때
+  // 2치화되있으면되. 그 외는 브러시 개성따라」 (유저 2026-10-02,
+  // brush-pen-wet-ink-Q1). ↩️The brush pen was here until that answer: its
+  // light touch lays thinner ink, partly covered at any edge (below).
+  for (final id in ['builtin-g-pen', 'builtin-maru-pen']) {
     testWidgets('🚨AA none: $id lands NO partly covered pixel, end to end', (
       tester,
     ) async {
@@ -218,6 +221,20 @@ void main() {
       }
     });
   }
+
+  testWidgets('🗣️the brush pen\'s light touch lays thinner ink — partly '
+      'covered pixels even at AA none, and the hard press lays it whole', (
+    tester,
+  ) async {
+    final commits = await strokeWith(
+      tester,
+      penOf('builtin-brush-pen', BrushAntiAlias.none),
+    );
+
+    final pixels = surfaceAlpha(land(commits.single));
+    expect(pixels.partly, greaterThan(0), reason: 'the thin ink of its ends');
+    expect(pixels.solid, greaterThan(0), reason: 'the hard press of its middle');
+  });
 
   testWidgets('premise: the same line at AA high DOES land a soft edge — the '
       'counter can see one', (tester) async {

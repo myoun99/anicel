@@ -601,12 +601,12 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // the same row, 4.3 levels apart). Its tip is felt or hair: the line leaves
   // the paper as a hairline and swells late and wide — so the edge is softer
   // and the swell is an S.
-  // ⛔NO FLOW CURVE, though the F-218 proposal had one (a light touch laying
-  // thinner ink). Thinner ink is a partly covered pixel even with the edge
-  // set to none, and H39 is 유저's 「aa off시엔 진짜 안티앨리어싱
-  // 완전없었으면」 for the pen group's round brushes — confirmed on the
-  // device with this one among them. `aa_none_pen_stroke_lands_hard_test`
-  // holds it.
+  // 🗣️A LIGHT TOUCH LAYS THINNER INK, as the F-218 proposal had it, and at
+  // an edge of none too (유저 2026-10-02, brush-pen-wet-ink-Q1: 「G펜처럼
+  // 진짜 aa가 필요없는 알기쉬운펜만 aa껐을때 2치화되있으면되. 그 외는 브러시
+  // 개성따라 넣어도 전혀문제없어. 개성이 젤 중요」). ↩️It shipped without the
+  // flow curve so H39 (「aa off시엔 진짜 안티앨리어싱 완전없었으면」) could
+  // hold it among the round pens; the answer took it out of that list.
   BrushPreset(
     id: const BrushPresetId('builtin-brush-pen'),
     name: 'Brush Pen',
@@ -615,6 +615,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 14,
       hardness: 0.7,
       spacing: BrushShape.minSpacing,
+      flowPressureCurve: BrushPressureCurve.linearFrom(0.6),
       sizePressureCurve: BrushPressureCurve(const [
         BrushCurvePoint(0.0, 0.02),
         BrushCurvePoint(0.3, 0.1),
