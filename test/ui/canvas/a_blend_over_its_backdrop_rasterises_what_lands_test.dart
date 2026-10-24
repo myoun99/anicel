@@ -1,3 +1,6 @@
+@Tags(['impeller'])
+library;
+
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -166,7 +169,8 @@ void main() {
 
   // ⚠️IMPELLER ONLY: Skia has no shader filter, so on the default runner
   // every blend rasterises its backdrop and these skip.
-  // `flutter test --enable-impeller` runs them (Vulkan).
+  // `flutter test --enable-impeller` runs them (Vulkan) — the file's
+  // `impeller` tag sends it there.
   group('read in the frame', () {
     final skip = ui.ImageFilter.isShaderFilterSupported
         ? false
