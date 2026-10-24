@@ -566,41 +566,35 @@ QA_EXPORT void qa_video_export_abort(void) { qa_video_apple_abort(); }
 
 #elif defined(__ANDROID__)
 // ---------------------------------------------------------------------------
-// Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer, resolved with
-// dlsym exactly like the AAC decoder — libmediandk.so ships on every
-// API 21+ device, and a missing symbol is a capability answer, not a
-// crash. Color conversion RGBA → NV12 happens here (hardware encoders
-// overwhelmingly accept COLOR_FormatYUV420SemiPlanar; the planar variant
-// is the fallback).
+// Android: NDK AMediaCodec (H.264 + AAC) and AMediaMuxer, from the NDK's own
+// headers and libmediandk.so. Color conversion RGBA → NV12 happens here
+// (hardware encoders overwhelmingly accept COLOR_FormatYUV420SemiPlanar; the
+// planar variant is the fallback).
+// ↩️Resolved with dlsym until 2026-10-24, so that a missing symbol was a
+// capability answer — see qa_ndk_media.h for why that went.
 
 #include <fcntl.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaFormat.h>
+#include <media/NdkMediaMuxer.h>
 #include <unistd.h>
 
-// The NDK media API is the library's ONE table (qa_ndk_media.h).
-//
-// 🪦This file resolved its own, and its constants were wrong where it
-// mattered: 「output format changed」 was spelled -1012 and 「buffers
-// changed」 -1014, where the NDK says -2 and -3 (checked against NDK 29's
-// NdkMediaCodec.h). A format change is the moment a codec's track can be
-// ADDED to the muxer, so no track was ever added and the muxer never
-// started — Android export has not been able to finish a file since this
-// backend was written (#646). Its `queueInputBuffer` also took the offset as
-// 64 bits where the NDK says `long`, which on a 32-bit ARM device shifts
-// every argument after it.
-#include "qa_ndk_media.h"
-
-/// The NDK media API when this device can encode with it, else NULL.
-static const qa_ndk_media_api* qa_droid_encoder(void) {
-  const qa_ndk_media_api* api = qa_ndk_media();
-  return qa_ndk_media_encodes(api) ? api : NULL;
-}
+// 🪦This file once resolved its own NDK table, and its constants were wrong
+// where it mattered: 「output format changed」 was spelled -1012 and
+// 「buffers changed」 -1014, where the NDK says -2 and -3. A format change is
+// the moment a codec's track can be ADDED to the muxer, so no track was ever
+// added and the muxer never started — Android export had not been able to
+// finish a file since this backend was written (#646). Its
+// `queueInputBuffer` also took the offset as 64 bits where the NDK says
+// `long`, which on a 32-bit ARM device shifts every argument after it.
+// ⇒ The NDK's own header holds both now (qa_ndk_media.h).
 
 // One deferred encoder sample: output that arrived before the muxer had
 // every track and could start.
 typedef struct qa_pending_sample {
   struct qa_pending_sample* next;
   int32_t track;  // 0 = video, 1 = audio (muxer indexes resolve at start)
-  qa_ndk_buffer_info info;
+  AMediaCodecBufferInfo info;
   uint8_t data[];
 } qa_pending_sample;
 
@@ -630,15 +624,12 @@ typedef struct {
 
 static qa_video_android_state g_droid;
 
-QA_EXPORT int32_t qa_video_export_supported(void) {
-  return qa_droid_encoder() != NULL;
-}
+QA_EXPORT int32_t qa_video_export_supported(void) { return 1; }
 
 // MP4 only (AMediaMuxer's one format here); HEVC answered by actually
 // asking the codec list — a missing encoder is a capability answer.
 QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
-  if (container != QA_VIDEO_CONTAINER_MP4 || ndk == NULL) {
+  if (container != QA_VIDEO_CONTAINER_MP4) {
     return 0;
   }
   if (codec == QA_VIDEO_CODEC_H264) {
@@ -647,16 +638,15 @@ QA_EXPORT int32_t qa_video_export_probe(int32_t container, int32_t codec) {
   if (codec != QA_VIDEO_CODEC_HEVC) {
     return 0;
   }
-  AMediaCodec* probe = ndk->codec_create_encoder("video/hevc");
+  AMediaCodec* probe = AMediaCodec_createEncoderByType("video/hevc");
   if (probe == NULL) {
     return 0;
   }
-  ndk->codec_delete(probe);
+  AMediaCodec_delete(probe);
   return 1;
 }
 
 static void qa_droid_teardown(void) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
   qa_pending_sample* pending = g_droid.pending_head;
   while (pending != NULL) {
     qa_pending_sample* next = pending->next;
@@ -664,18 +654,18 @@ static void qa_droid_teardown(void) {
     pending = next;
   }
   if (g_droid.video_codec != NULL) {
-    ndk->codec_stop(g_droid.video_codec);
-    ndk->codec_delete(g_droid.video_codec);
+    AMediaCodec_stop(g_droid.video_codec);
+    AMediaCodec_delete(g_droid.video_codec);
   }
   if (g_droid.audio_codec != NULL) {
-    ndk->codec_stop(g_droid.audio_codec);
-    ndk->codec_delete(g_droid.audio_codec);
+    AMediaCodec_stop(g_droid.audio_codec);
+    AMediaCodec_delete(g_droid.audio_codec);
   }
   if (g_droid.muxer != NULL) {
     if (g_droid.muxer_started) {
-      ndk->muxer_stop(g_droid.muxer);
+      AMediaMuxer_stop(g_droid.muxer);
     }
-    ndk->muxer_delete(g_droid.muxer);
+    AMediaMuxer_delete(g_droid.muxer);
   }
   if (g_droid.fd >= 0) {
     close(g_droid.fd);
@@ -690,13 +680,12 @@ static void qa_droid_teardown(void) {
 // Queues [info]+[data] for the muxer, writing immediately once started.
 static int qa_droid_emit(int32_t track,
                          const uint8_t* data,
-                         const qa_ndk_buffer_info* info) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
+                         const AMediaCodecBufferInfo* info) {
   const int32_t want_tracks = g_droid.channels > 0 ? 2 : 1;
   const int32_t have_tracks =
       (g_droid.video_track >= 0 ? 1 : 0) + (g_droid.audio_track >= 0 ? 1 : 0);
   if (!g_droid.muxer_started && have_tracks == want_tracks) {
-    if (ndk->muxer_start(g_droid.muxer) != 0) {
+    if (AMediaMuxer_start(g_droid.muxer) != AMEDIA_OK) {
       qa_video_set_error("video export: the MP4 muxer refused to start");
       return 0;
     }
@@ -707,8 +696,8 @@ static int qa_droid_emit(int32_t track,
       const size_t muxer_track = (size_t)(pending->track == 0
                                               ? g_droid.video_track
                                               : g_droid.audio_track);
-      ndk->muxer_write(g_droid.muxer, muxer_track, pending->data,
-                        &pending->info);
+      AMediaMuxer_writeSampleData(g_droid.muxer, muxer_track, pending->data,
+                                  &pending->info);
       qa_pending_sample* next = pending->next;
       free(pending);
       pending = next;
@@ -719,9 +708,10 @@ static int qa_droid_emit(int32_t track,
   if (g_droid.muxer_started) {
     const size_t muxer_track =
         (size_t)(track == 0 ? g_droid.video_track : g_droid.audio_track);
-    qa_ndk_buffer_info adjusted = *info;
+    AMediaCodecBufferInfo adjusted = *info;
     adjusted.offset = 0;
-    return ndk->muxer_write(g_droid.muxer, muxer_track, data, &adjusted) == 0;
+    return AMediaMuxer_writeSampleData(g_droid.muxer, muxer_track, data,
+                                       &adjusted) == AMEDIA_OK;
   }
   qa_pending_sample* copy =
       (qa_pending_sample*)malloc(sizeof(qa_pending_sample) + (size_t)info->size);
@@ -744,17 +734,16 @@ static int qa_droid_emit(int32_t track,
 
 // Drains one codec's ready output into the muxer (or the pending queue).
 static int qa_droid_drain(AMediaCodec* codec, int32_t track) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
   while (1) {
-    qa_ndk_buffer_info info;
-    const ssize_t index = ndk->codec_dequeue_output(codec, &info, 0);
-    if (index == QA_NDK_INFO_TRY_AGAIN_LATER) {
+    AMediaCodecBufferInfo info;
+    const ssize_t index = AMediaCodec_dequeueOutputBuffer(codec, &info, 0);
+    if (index == AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
       return 1;
     }
-    if (index == QA_NDK_INFO_OUTPUT_FORMAT_CHANGED) {
-      AMediaFormat* format = ndk->codec_output_format(codec);
-      const ssize_t added = ndk->muxer_add_track(g_droid.muxer, format);
-      ndk->format_delete(format);
+    if (index == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
+      AMediaFormat* format = AMediaCodec_getOutputFormat(codec);
+      const ssize_t added = AMediaMuxer_addTrack(g_droid.muxer, format);
+      AMediaFormat_delete(format);
       if (added < 0) {
         qa_video_set_error("video export: the muxer rejected a track");
         return 0;
@@ -766,17 +755,18 @@ static int qa_droid_drain(AMediaCodec* codec, int32_t track) {
       }
       continue;
     }
-    if (index == QA_NDK_INFO_OUTPUT_BUFFERS_CHANGED || index < 0) {
+    if (index == AMEDIACODEC_INFO_OUTPUT_BUFFERS_CHANGED || index < 0) {
       continue;
     }
     size_t capacity = 0;
-    uint8_t* data = ndk->codec_output_buffer(codec, (size_t)index, &capacity);
+    uint8_t* data =
+        AMediaCodec_getOutputBuffer(codec, (size_t)index, &capacity);
     int ok = 1;
     if (data != NULL && info.size > 0 &&
-        (info.flags & QA_NDK_FLAG_CODEC_CONFIG) == 0) {
+        (info.flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG) == 0) {
       ok = qa_droid_emit(track, data + info.offset, &info);
     }
-    ndk->codec_release_output(codec, (size_t)index, false);
+    AMediaCodec_releaseOutputBuffer(codec, (size_t)index, false);
     if (!ok) {
       return 0;
     }
@@ -786,15 +776,14 @@ static int qa_droid_drain(AMediaCodec* codec, int32_t track) {
 static AMediaCodec* qa_droid_open_video_codec(const char* mime,
                                               int32_t color_format,
                                               int32_t bitrate_bps) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
-  AMediaCodec* codec = ndk->codec_create_encoder(mime);
+  AMediaCodec* codec = AMediaCodec_createEncoderByType(mime);
   if (codec == NULL) {
     return NULL;
   }
-  AMediaFormat* format = ndk->format_new();
-  ndk->format_set_string(format, "mime", mime);
-  ndk->format_set_int32(format, "width", g_droid.width);
-  ndk->format_set_int32(format, "height", g_droid.height);
+  AMediaFormat* format = AMediaFormat_new();
+  AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, mime);
+  AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_WIDTH, g_droid.width);
+  AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_HEIGHT, g_droid.height);
   int64_t bitrate =
       bitrate_bps > 0
           ? (int64_t)bitrate_bps
@@ -807,17 +796,17 @@ static AMediaCodec* qa_droid_open_video_codec(const char* mime,
   if (bitrate > 50000000) {
     bitrate = 50000000;
   }
-  ndk->format_set_int32(format, "bitrate", (int32_t)bitrate);
-  ndk->format_set_int32(
-      format, "frame-rate",
+  AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_BIT_RATE, (int32_t)bitrate);
+  AMediaFormat_setInt32(
+      format, AMEDIAFORMAT_KEY_FRAME_RATE,
       (int32_t)((g_droid.fps_num + g_droid.fps_den / 2) / g_droid.fps_den));
-  ndk->format_set_int32(format, "i-frame-interval", 1);
-  ndk->format_set_int32(format, "color-format", color_format);
-  const int32_t configured =
-      ndk->codec_configure(codec, format, NULL, NULL, 1 /* encode */);
-  ndk->format_delete(format);
-  if (configured != 0 || ndk->codec_start(codec) != 0) {
-    ndk->codec_delete(codec);
+  AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, 1);
+  AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, color_format);
+  const media_status_t configured = AMediaCodec_configure(
+      codec, format, NULL, NULL, AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+  AMediaFormat_delete(format);
+  if (configured != AMEDIA_OK || AMediaCodec_start(codec) != AMEDIA_OK) {
+    AMediaCodec_delete(codec);
     return NULL;
   }
   return codec;
@@ -835,9 +824,8 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
                                        int32_t alpha,
                                        int32_t bitrate_bps) {
   (void)alpha;  // YUV420 carries no alpha.
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
   if (g_droid.open || utf8_path == NULL || width <= 0 || height <= 0 ||
-      fps_num <= 0 || fps_den <= 0 || channels < 0 || ndk == NULL) {
+      fps_num <= 0 || fps_den <= 0 || channels < 0) {
     qa_video_set_error("video export: unsupported or bad parameters");
     return 0;
   }
@@ -865,7 +853,8 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
     qa_video_set_error("video export: the output file could not be created");
     return 0;
   }
-  g_droid.muxer = ndk->muxer_new(g_droid.fd, 0 /* MPEG_4 */);
+  g_droid.muxer =
+      AMediaMuxer_new(g_droid.fd, AMEDIAMUXER_OUTPUT_FORMAT_MPEG_4);
   if (g_droid.muxer == NULL) {
     qa_video_set_error("video export: the MP4 muxer could not be created");
     qa_droid_teardown();
@@ -901,19 +890,22 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
       (uint8_t)semi_planar;
 
   if (channels > 0) {
-    g_droid.audio_codec = ndk->codec_create_encoder("audio/mp4a-latm");
+    g_droid.audio_codec = AMediaCodec_createEncoderByType("audio/mp4a-latm");
     if (g_droid.audio_codec != NULL) {
-      AMediaFormat* format = ndk->format_new();
-      ndk->format_set_string(format, "mime", "audio/mp4a-latm");
-      ndk->format_set_int32(format, "sample-rate", sample_rate);
-      ndk->format_set_int32(format, "channel-count", channels);
-      ndk->format_set_int32(format, "bitrate", 192000);
-      ndk->format_set_int32(format, "aac-profile", 2 /* AAC LC */);
-      const int32_t configured =
-          ndk->codec_configure(g_droid.audio_codec, format, NULL, NULL, 1);
-      ndk->format_delete(format);
-      if (configured != 0 || ndk->codec_start(g_droid.audio_codec) != 0) {
-        ndk->codec_delete(g_droid.audio_codec);
+      AMediaFormat* format = AMediaFormat_new();
+      AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, "audio/mp4a-latm");
+      AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_SAMPLE_RATE, sample_rate);
+      AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_CHANNEL_COUNT, channels);
+      AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_BIT_RATE, 192000);
+      AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_AAC_PROFILE,
+                            2 /* AAC LC */);
+      const media_status_t configured =
+          AMediaCodec_configure(g_droid.audio_codec, format, NULL, NULL,
+                                AMEDIACODEC_CONFIGURE_FLAG_ENCODE);
+      AMediaFormat_delete(format);
+      if (configured != AMEDIA_OK ||
+          AMediaCodec_start(g_droid.audio_codec) != AMEDIA_OK) {
+        AMediaCodec_delete(g_droid.audio_codec);
         g_droid.audio_codec = NULL;
       }
     }
@@ -928,7 +920,6 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
 }
 
 QA_EXPORT int32_t qa_video_export_write_frame(const uint8_t* rgba) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
   if (!g_droid.open || rgba == NULL) {
     return 0;
   }
@@ -947,14 +938,14 @@ QA_EXPORT int32_t qa_video_export_write_frame(const uint8_t* rgba) {
                       semi_planar ? width : width / 2, semi_planar ? 2 : 1);
 
   const ssize_t input =
-      ndk->codec_dequeue_input(g_droid.video_codec, 100000);
+      AMediaCodec_dequeueInputBuffer(g_droid.video_codec, 100000);
   if (input < 0) {
     qa_video_set_error("video export: the encoder stopped taking frames");
     return 0;
   }
   size_t capacity = 0;
-  uint8_t* target =
-      ndk->codec_input_buffer(g_droid.video_codec, (size_t)input, &capacity);
+  uint8_t* target = AMediaCodec_getInputBuffer(g_droid.video_codec,
+                                               (size_t)input, &capacity);
   const size_t frame_bytes = luma_size * 3 / 2;
   if (target == NULL || capacity < frame_bytes) {
     return 0;
@@ -962,8 +953,9 @@ QA_EXPORT int32_t qa_video_export_write_frame(const uint8_t* rgba) {
   memcpy(target, g_droid.nv12, frame_bytes);
   const int64_t time_us = g_droid.frame_index * 1000000 * g_droid.fps_den /
                           g_droid.fps_num;
-  if (ndk->codec_queue_input(g_droid.video_codec, (size_t)input, 0,
-                              frame_bytes, (uint64_t)time_us, 0) != 0) {
+  if (AMediaCodec_queueInputBuffer(g_droid.video_codec, (size_t)input, 0,
+                                   frame_bytes, (uint64_t)time_us, 0) !=
+      AMEDIA_OK) {
     return 0;
   }
   g_droid.frame_index += 1;
@@ -972,7 +964,6 @@ QA_EXPORT int32_t qa_video_export_write_frame(const uint8_t* rgba) {
 
 QA_EXPORT int32_t qa_video_export_write_audio(const int16_t* interleaved,
                                               int32_t frames) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
   if (!g_droid.open || g_droid.audio_codec == NULL || interleaved == NULL ||
       frames <= 0) {
     return 0;
@@ -981,14 +972,14 @@ QA_EXPORT int32_t qa_video_export_write_audio(const int16_t* interleaved,
   const uint8_t* cursor = (const uint8_t*)interleaved;
   while (remaining > 0) {
     const ssize_t input =
-        ndk->codec_dequeue_input(g_droid.audio_codec, 100000);
+        AMediaCodec_dequeueInputBuffer(g_droid.audio_codec, 100000);
     if (input < 0) {
       qa_video_set_error("video export: the AAC encoder stopped taking audio");
       return 0;
     }
     size_t capacity = 0;
-    uint8_t* target =
-        ndk->codec_input_buffer(g_droid.audio_codec, (size_t)input, &capacity);
+    uint8_t* target = AMediaCodec_getInputBuffer(g_droid.audio_codec,
+                                                 (size_t)input, &capacity);
     if (target == NULL || capacity == 0) {
       return 0;
     }
@@ -998,8 +989,9 @@ QA_EXPORT int32_t qa_video_export_write_audio(const int16_t* interleaved,
     memcpy(target, cursor, chunk);
     const int64_t time_us =
         g_droid.audio_samples * 1000000 / g_droid.sample_rate;
-    if (ndk->codec_queue_input(g_droid.audio_codec, (size_t)input, 0, chunk,
-                                (uint64_t)time_us, 0) != 0) {
+    if (AMediaCodec_queueInputBuffer(g_droid.audio_codec, (size_t)input, 0,
+                                     chunk, (uint64_t)time_us, 0) !=
+        AMEDIA_OK) {
       return 0;
     }
     g_droid.audio_samples +=
@@ -1014,16 +1006,14 @@ QA_EXPORT int32_t qa_video_export_write_audio(const int16_t* interleaved,
 }
 
 static void qa_droid_signal_end(AMediaCodec* codec) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
-  const ssize_t input = ndk->codec_dequeue_input(codec, 100000);
+  const ssize_t input = AMediaCodec_dequeueInputBuffer(codec, 100000);
   if (input >= 0) {
-    ndk->codec_queue_input(codec, (size_t)input, 0, 0, 0,
-                            QA_NDK_FLAG_END_OF_STREAM);
+    AMediaCodec_queueInputBuffer(codec, (size_t)input, 0, 0, 0,
+                                 AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
   }
 }
 
 QA_EXPORT int32_t qa_video_export_finish(void) {
-  const qa_ndk_media_api* ndk = qa_droid_encoder();
   if (!g_droid.open) {
     return 0;
   }
@@ -1040,24 +1030,25 @@ QA_EXPORT int32_t qa_video_export_finish(void) {
     if (g_droid.audio_codec != NULL && !qa_droid_drain(g_droid.audio_codec, 1)) {
       break;
     }
-    qa_ndk_buffer_info info;
+    AMediaCodecBufferInfo info;
     const ssize_t index =
-        ndk->codec_dequeue_output(g_droid.video_codec, &info, 10000);
+        AMediaCodec_dequeueOutputBuffer(g_droid.video_codec, &info, 10000);
     if (index >= 0) {
       size_t capacity = 0;
-      uint8_t* data =
-          ndk->codec_output_buffer(g_droid.video_codec, (size_t)index, &capacity);
+      uint8_t* data = AMediaCodec_getOutputBuffer(g_droid.video_codec,
+                                                  (size_t)index, &capacity);
       if (data != NULL && info.size > 0 &&
-          (info.flags & QA_NDK_FLAG_CODEC_CONFIG) == 0) {
+          (info.flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG) == 0) {
         qa_droid_emit(0, data + info.offset, &info);
       }
-      ndk->codec_release_output(g_droid.video_codec, (size_t)index, false);
-      if ((info.flags & QA_NDK_FLAG_END_OF_STREAM) != 0) {
+      AMediaCodec_releaseOutputBuffer(g_droid.video_codec, (size_t)index,
+                                      false);
+      if ((info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM) != 0) {
         break;
       }
       continue;
     }
-    if (index == QA_NDK_INFO_TRY_AGAIN_LATER) {
+    if (index == AMEDIACODEC_INFO_TRY_AGAIN_LATER) {
       break;
     }
   }

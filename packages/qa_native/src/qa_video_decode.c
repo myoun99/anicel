@@ -19,8 +19,8 @@
 //              chose the generator — 「the only question this app asks is
 //              the picture at frame N」 — stopped being true when the
 //              viewer grew a play button.
-//   Android  — NDK AMediaExtractor + AMediaCodec, resolved with dlsym, so
-//              support is what libmediandk.so actually answers.
+//   Android  — NDK AMediaExtractor + AMediaCodec, linked from
+//              libmediandk.so, which every Android the app serves has.
 //
 // 2026-08-25: the two lines above used to read "not yet" and "likewise".
 // Both readers had been written; the stale note taught the next reader a
@@ -186,8 +186,9 @@ static qa_decode_slot* qa_decode_slot_of(int32_t handle) {
   return slot->doc.open ? slot : NULL;
 }
 
-/// Whether this build has a reader at all. Android answers by `dlsym`, so
-/// this is a hook rather than a constant.
+/// Whether this build has a reader at all.
+/// ↩️Android answered by `dlsym` until 2026-10-24 (qa_ndk_media.h); every
+/// backend now answers a constant.
 static int32_t qa_backend_supported(void);
 
 /// Opens [path] and fills the size/rate/length fields of [g_doc]. Reports
@@ -901,9 +902,11 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 
 #elif defined(__ANDROID__) && !defined(QA_DECODE_LAW_ONLY)
 // ---------------------------------------------------------------------------
-// Android: NDK AMediaExtractor + AMediaCodec, resolved with dlsym exactly
-// like the encoder half — libmediandk.so ships on every API 21+ device,
-// and a missing symbol is a capability answer rather than a crash.
+// Android: NDK AMediaExtractor + AMediaCodec, from the NDK's own headers
+// and libmediandk.so, like the encoder half.
+// ↩️Resolved with dlsym until 2026-10-24, so that a missing symbol was a
+// capability answer rather than a crash — see qa_ndk_media.h for why that
+// went.
 //
 // The colour conversion is ours here, which is the whole difficulty. A
 // decoder hands back YUV in whichever layout the vendor's hardware likes,
@@ -914,40 +917,24 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
 // are handled, and anything else is refused by name instead of drawn as
 // noise.
 
-#include <dlfcn.h>
 #include <fcntl.h>
+#include <media/NdkMediaCodec.h>
+#include <media/NdkMediaExtractor.h>
+#include <media/NdkMediaFormat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdbool.h>  // the release/advance signatures
 
-// The NDK media API is the library's ONE table (qa_ndk_media.h) — this
-// backend used to resolve its own, and its `queueInputBuffer` said the
-// offset was 64 bits where the NDK says `long`, which on a 32-bit ARM device
-// handed the codec a size of zero.
+// ↩️This backend once resolved its own table, whose `queueInputBuffer` said
+// the offset was 64 bits where the NDK says `long` — on a 32-bit ARM device
+// the codec was handed a size of zero. The NDK's own header holds that type
+// now.
 #include "qa_ndk_media.h"
 
-// The format keys — the same strings the NDK headers define.
-#define QA_KEY_MIME "mime"
-#define QA_KEY_WIDTH "width"
-#define QA_KEY_HEIGHT "height"
-#define QA_KEY_FRAME_RATE "frame-rate"
-#define QA_KEY_DURATION "durationUs"
-#define QA_KEY_COLOR_FORMAT "color-format"
-#define QA_KEY_STRIDE "stride"
-#define QA_KEY_SLICE_HEIGHT "slice-height"
-/// MediaFormat.KEY_ROTATION. ⚠️Set on the EXTRACTOR's track format, not on
-/// the codec's output — the codec has already forgotten it.
-#define QA_KEY_ROTATION "rotation-degrees"
-
+// MediaCodecInfo.CodecCapabilities — no NDK header carries these.
 #define QA_COLOR_FORMAT_YUV420_PLANAR 19
 #define QA_COLOR_FORMAT_YUV420_SEMIPLANAR 21
 #define QA_COLOR_FORMAT_YUV420_FLEXIBLE 0x7F420888
-
-/// The NDK media API when this device can decode with it, else NULL.
-static const qa_ndk_media_api* qa_droid_ndk(void) {
-  const qa_ndk_media_api* api = qa_ndk_media();
-  return qa_ndk_media_decodes(api) ? api : NULL;
-}
 
 /// ⚠️The PLATFORM's own state only — size, rate, length and 「where am I
 /// positioned」 live in [g_doc], where all three backends answer alike.
@@ -966,41 +953,30 @@ typedef char qa_droid_state_fits[
     sizeof(qa_video_droid_decode) <= sizeof(qa_backend_store) ? 1 : -1];
 
 static void qa_backend_close(void) {
-  const qa_ndk_media_api* ndk = qa_droid_ndk();
-  if (ndk == NULL) {
-    // Nothing could have been opened without it.
-    memset(&g_droid_dec, 0, sizeof(g_droid_dec));
-    return;
-  }
   if (g_droid_dec.codec != NULL) {
-    ndk->codec_stop(g_droid_dec.codec);
-    ndk->codec_delete(g_droid_dec.codec);
+    AMediaCodec_stop(g_droid_dec.codec);
+    AMediaCodec_delete(g_droid_dec.codec);
     g_droid_dec.codec = NULL;
   }
   if (g_droid_dec.extractor != NULL) {
-    ndk->extractor_delete(g_droid_dec.extractor);
+    AMediaExtractor_delete(g_droid_dec.extractor);
     g_droid_dec.extractor = NULL;
   }
-  qa_ndk_served_span_free(ndk, g_droid_dec.served);
+  qa_ndk_served_span_free(g_droid_dec.served);
   memset(&g_droid_dec, 0, sizeof(g_droid_dec));
 }
 
-static int32_t qa_backend_supported(void) { return qa_droid_ndk() != NULL; }
+static int32_t qa_backend_supported(void) { return 1; }
 
 static int32_t qa_backend_open(const char* path,
                                int64_t offset,
                                int64_t length,
                                int32_t framed) {
-  const qa_ndk_media_api* ndk = qa_droid_ndk();
-  if (ndk == NULL) {
-    qa_decode_set_error("no video decoder in this build");
-    return 0;
-  }
   if (path == NULL || path[0] == '\0') {
     qa_decode_set_error("no path");
     return 0;
   }
-  AMediaExtractor* extractor = ndk->extractor_new();
+  AMediaExtractor* extractor = AMediaExtractor_new();
   if (extractor == NULL) {
     qa_decode_set_error("could not open the container");
     return 0;
@@ -1008,50 +984,49 @@ static int32_t qa_backend_open(const char* path,
   // A FRAMED span is served through a source of our own; a plain span opens
   // by descriptor; a whole file opens by path. The last two are the
   // extractor's own front doors — nothing is wrapped, copied or unpacked.
-  int32_t sourced;
+  media_status_t sourced;
   if (length > 0 && framed) {
     // ⚠️Kept in the slot AT ONCE: every failure below hands the slot to
     // [qa_backend_close], which frees this after the extractor.
-    g_droid_dec.served =
-        qa_ndk_served_span_open(ndk, path, offset, length, 1);
+    g_droid_dec.served = qa_ndk_served_span_open(path, offset, length, 1);
     if (g_droid_dec.served == NULL) {
-      ndk->extractor_delete(extractor);
+      AMediaExtractor_delete(extractor);
       qa_decode_set_error("that span does not hold a readable movie");
       return 0;
     }
-    sourced = ndk->extractor_set_source_custom(
+    sourced = AMediaExtractor_setDataSourceCustom(
         extractor, qa_ndk_served_span_source(g_droid_dec.served));
   } else if (length > 0) {
     const int fd = open(path, O_RDONLY);
     if (fd < 0) {
-      ndk->extractor_delete(extractor);
+      AMediaExtractor_delete(extractor);
       qa_decode_set_error("could not open the container");
       return 0;
     }
-    sourced = ndk->extractor_set_source_fd(extractor, fd, (off64_t)offset,
-                                                (off64_t)length);
+    sourced = AMediaExtractor_setDataSourceFd(extractor, fd, (off64_t)offset,
+                                              (off64_t)length);
     // ⚠️CLOSED EITHER WAY. `setDataSourceFd` dups what it needs, so holding
     // this open would leak one descriptor per movie opened.
     close(fd);
   } else {
-    sourced = ndk->extractor_set_source(extractor, path);
+    sourced = AMediaExtractor_setDataSource(extractor, path);
   }
-  if (sourced != QA_NDK_OK) {
-    ndk->extractor_delete(extractor);
+  if (sourced != AMEDIA_OK) {
+    AMediaExtractor_delete(extractor);
     qa_decode_set_error("could not open the container");
     return 0;
   }
 
-  const size_t tracks = ndk->extractor_track_count(extractor);
+  const size_t tracks = AMediaExtractor_getTrackCount(extractor);
   int32_t video_track = -1;
   AMediaFormat* format = NULL;
   const char* mime = NULL;
   for (size_t i = 0; i < tracks; i += 1) {
-    AMediaFormat* candidate = ndk->extractor_track_format(extractor, i);
+    AMediaFormat* candidate = AMediaExtractor_getTrackFormat(extractor, i);
     const char* candidate_mime = NULL;
     if (candidate != NULL &&
-        ndk->format_get_string(candidate, QA_KEY_MIME,
-                                    &candidate_mime) &&
+        AMediaFormat_getString(candidate, AMEDIAFORMAT_KEY_MIME,
+                               &candidate_mime) &&
         candidate_mime != NULL && strncmp(candidate_mime, "video/", 6) == 0) {
       video_track = (int32_t)i;
       format = candidate;
@@ -1059,11 +1034,11 @@ static int32_t qa_backend_open(const char* path,
       break;
     }
     if (candidate != NULL) {
-      ndk->format_delete(candidate);
+      AMediaFormat_delete(candidate);
     }
   }
   if (video_track < 0 || format == NULL || mime == NULL) {
-    ndk->extractor_delete(extractor);
+    AMediaExtractor_delete(extractor);
     qa_decode_set_error("this file has no readable video stream");
     return 0;
   }
@@ -1073,34 +1048,34 @@ static int32_t qa_backend_open(const char* path,
   int32_t rate = 0;
   float rate_f = 0.0f;
   int64_t duration_us = 0;
-  ndk->format_get_int32(format, QA_KEY_WIDTH, &width);
-  ndk->format_get_int32(format, QA_KEY_HEIGHT, &height);
-  ndk->format_get_int32(format, QA_KEY_FRAME_RATE, &rate);
+  AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_WIDTH, &width);
+  AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_HEIGHT, &height);
+  AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_FRAME_RATE, &rate);
   // ⚠️READ BEFORE THE FORMAT IS RELEASED, and as a FLOAT — see the rate
   // conversion below for why the int32 alone was wrong.
-  if (ndk->format_get_float != NULL) {
-    ndk->format_get_float(format, QA_KEY_FRAME_RATE, &rate_f);
-  }
-  ndk->format_get_int64(format, QA_KEY_DURATION, &duration_us);
+  AMediaFormat_getFloat(format, AMEDIAFORMAT_KEY_FRAME_RATE, &rate_f);
+  AMediaFormat_getInt64(format, AMEDIAFORMAT_KEY_DURATION, &duration_us);
   // Absent on a file with no transform, which is most of them — and what
   // every file looked like to this reader before the law asked.
+  // ⚠️Set on the EXTRACTOR's track format, not on the codec's output — the
+  // codec has already forgotten it.
   int32_t rotation = 0;
-  ndk->format_get_int32(format, QA_KEY_ROTATION, &rotation);
+  AMediaFormat_getInt32(format, AMEDIAFORMAT_KEY_ROTATION, &rotation);
 
-  AMediaCodec* codec = ndk->codec_create_decoder(mime);
+  AMediaCodec* codec = AMediaCodec_createDecoderByType(mime);
   if (codec == NULL ||
-      ndk->codec_configure(codec, format, NULL, NULL, 0) != QA_NDK_OK ||
-      ndk->codec_start(codec) != QA_NDK_OK) {
+      AMediaCodec_configure(codec, format, NULL, NULL, 0) != AMEDIA_OK ||
+      AMediaCodec_start(codec) != AMEDIA_OK) {
     if (codec != NULL) {
-      ndk->codec_delete(codec);
+      AMediaCodec_delete(codec);
     }
-    ndk->format_delete(format);
-    ndk->extractor_delete(extractor);
+    AMediaFormat_delete(format);
+    AMediaExtractor_delete(extractor);
     qa_decode_set_error("no decoder for this codec");
     return 0;
   }
-  ndk->format_delete(format);
-  ndk->extractor_select_track(extractor, (size_t)video_track);
+  AMediaFormat_delete(format);
+  AMediaExtractor_selectTrack(extractor, (size_t)video_track);
 
   // ⛔The size check that stood here is gone, not relaxed — the portable
   // open makes it for every backend.
@@ -1116,9 +1091,8 @@ static int32_t qa_backend_open(const char* path,
   // was pinned to 1, so an NTSC-rate source became 29 or 30 — and every
   // `target_us` below, plus the frame COUNT, drifted with it. Apple has
   // carried the fraction since it was written; this backend simply never
-  // asked. The float getter is the same `dlsym` shape as everything else
-  // here (`AMediaFormat_getFloat`, API 21), and the conversion is the
-  // portable one both backends now share.
+  // asked. The float getter is as old as the rest (`AMediaFormat_getFloat`,
+  // API 21), and the conversion is the portable one both backends now share.
   // ⚠️Some extractors store the key as an int32 and the float getter then
   // refuses it; the integer is still the honest answer for those.
   qa_rate_to_fraction(rate_f > 0.0f ? (double)rate_f : (double)rate,
@@ -1138,15 +1112,13 @@ static int64_t qa_droid_target(int64_t index) {
 /// ⛔The flush goes WITH the seek. Flushing without seeking would throw away
 /// the very frames the codec is holding for us, which is the whole saving.
 static int32_t qa_backend_reposition(int64_t index) {
-  const qa_ndk_media_api* ndk = qa_droid_ndk();
-  ndk->extractor_seek_to(g_droid_dec.extractor, qa_droid_target(index),
-                              QA_NDK_SEEK_PREVIOUS_SYNC);
-  ndk->codec_flush(g_droid_dec.codec);
+  AMediaExtractor_seekTo(g_droid_dec.extractor, qa_droid_target(index),
+                         AMEDIAEXTRACTOR_SEEK_PREVIOUS_SYNC);
+  AMediaCodec_flush(g_droid_dec.codec);
   return 1;
 }
 
 static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
-  const qa_ndk_media_api* ndk = qa_droid_ndk();
   const int64_t target_us = qa_droid_target(index);
   const int64_t frame_us =
       (1000000LL * (int64_t)g_doc.fps_den) / (int64_t)g_doc.fps_num;
@@ -1156,55 +1128,55 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
   for (int guard = 0; guard < 900 && !wrote; guard += 1) {
     if (!input_done) {
       const ssize_t in_index =
-          ndk->codec_dequeue_input(g_droid_dec.codec, 2000);
+          AMediaCodec_dequeueInputBuffer(g_droid_dec.codec, 2000);
       if (in_index >= 0) {
         size_t in_size = 0;
-        uint8_t* in_buffer = ndk->codec_input_buffer(
+        uint8_t* in_buffer = AMediaCodec_getInputBuffer(
             g_droid_dec.codec, (size_t)in_index, &in_size);
-        const ssize_t read = ndk->extractor_read_sample(
+        const ssize_t read = AMediaExtractor_readSampleData(
             g_droid_dec.extractor, in_buffer, in_size);
         if (read <= 0) {
-          ndk->codec_queue_input(g_droid_dec.codec, (size_t)in_index, 0,
-                                      0, 0, QA_NDK_FLAG_END_OF_STREAM);
+          AMediaCodec_queueInputBuffer(g_droid_dec.codec, (size_t)in_index,
+                                       0, 0, 0,
+                                       AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
           input_done = 1;
         } else {
           const int64_t sample_time =
-              ndk->extractor_sample_time(g_droid_dec.extractor);
-          ndk->codec_queue_input(g_droid_dec.codec, (size_t)in_index, 0,
-                                      (size_t)read, (uint64_t)sample_time, 0);
-          ndk->extractor_advance(g_droid_dec.extractor);
+              AMediaExtractor_getSampleTime(g_droid_dec.extractor);
+          AMediaCodec_queueInputBuffer(g_droid_dec.codec, (size_t)in_index,
+                                       0, (size_t)read,
+                                       (uint64_t)sample_time, 0);
+          AMediaExtractor_advance(g_droid_dec.extractor);
         }
       }
     }
 
-    qa_ndk_buffer_info info;
+    AMediaCodecBufferInfo info;
     const ssize_t out_index =
-        ndk->codec_dequeue_output(g_droid_dec.codec, &info, 2000);
+        AMediaCodec_dequeueOutputBuffer(g_droid_dec.codec, &info, 2000);
     if (out_index < 0) {
       continue; // Try again, or a format change we read below.
     }
     if (!qa_sample_reaches((int64_t)info.presentationTimeUs, target_us,
                            frame_us)) {
-      ndk->codec_release_output(g_droid_dec.codec, (size_t)out_index,
-                                     false);
+      AMediaCodec_releaseOutputBuffer(g_droid_dec.codec, (size_t)out_index,
+                                      false);
       continue;
     }
     size_t out_size = 0;
-    uint8_t* out_buffer = ndk->codec_output_buffer(
+    uint8_t* out_buffer = AMediaCodec_getOutputBuffer(
         g_droid_dec.codec, (size_t)out_index, &out_size);
-    AMediaFormat* out_format =
-        ndk->codec_output_format(g_droid_dec.codec);
+    AMediaFormat* out_format = AMediaCodec_getOutputFormat(g_droid_dec.codec);
     int32_t colour = QA_COLOR_FORMAT_YUV420_FLEXIBLE;
     int32_t stride = g_doc.stored_width;
     int32_t slice = g_doc.stored_height;
     if (out_format != NULL) {
-      ndk->format_get_int32(out_format, QA_KEY_COLOR_FORMAT,
-                                 &colour);
-      ndk->format_get_int32(out_format, QA_KEY_STRIDE,
-                                 &stride);
-      ndk->format_get_int32(out_format, QA_KEY_SLICE_HEIGHT,
-                                 &slice);
-      ndk->format_delete(out_format);
+      AMediaFormat_getInt32(out_format, AMEDIAFORMAT_KEY_COLOR_FORMAT,
+                            &colour);
+      AMediaFormat_getInt32(out_format, AMEDIAFORMAT_KEY_STRIDE, &stride);
+      AMediaFormat_getInt32(out_format, AMEDIAFORMAT_KEY_SLICE_HEIGHT,
+                            &slice);
+      AMediaFormat_delete(out_format);
     }
     if (stride < g_doc.stored_width) {
       stride = g_doc.stored_width;
@@ -1224,8 +1196,8 @@ static int32_t qa_backend_read(int64_t index, uint8_t* rgba) {
       qa_decode_set_error("this device's decoder uses a colour format we "
                           "do not read");
     }
-    ndk->codec_release_output(g_droid_dec.codec, (size_t)out_index,
-                                   false);
+    AMediaCodec_releaseOutputBuffer(g_droid_dec.codec, (size_t)out_index,
+                                    false);
     break;
   }
   if (!wrote && g_decode_error[0] == '\0') {

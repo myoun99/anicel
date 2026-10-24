@@ -63,8 +63,9 @@ if(WIN32)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_display_compose.cpp")
 endif()
-# ⛔ANDROID only, for the same reason: the NDK media table is libmediandk's
-# answer and nobody else's (see qa_ndk_media.h for why there is one of it).
+# ⛔ANDROID only, for the same reason: serving a span to MediaExtractor is
+# libmediandk's business and nobody else's (see qa_ndk_media.h for why there
+# is one of it).
 if(ANDROID)
   target_sources(qa_engine PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/qa_ndk_media.c")
@@ -365,9 +366,11 @@ elseif(UNIX AND NOT ANDROID)
   find_package(Threads REQUIRED)
   target_link_libraries(qa_engine Threads::Threads ${CMAKE_DL_LIBS})
 elseif(ANDROID)
-  # The NDK media stack (AAC decode) resolves via dlopen/dlsym at runtime,
-  # so only OpenSLES (miniaudio) links here.
-  target_link_libraries(qa_engine OpenSLES)
+  # mediandk: the NDK media stack — the movie decoder and encoder and the
+  # OS audio decoder (AAC). OpenSLES: miniaudio.
+  # ↩️mediandk was resolved via dlopen/dlsym at runtime until 2026-10-24,
+  # when the minSdk 29 floor left the headers nothing to hide (qa_ndk_media.h).
+  target_link_libraries(qa_engine OpenSLES mediandk)
 elseif(WIN32)
   # The OS decoders (AAC/m4a, and every movie): Media Foundation source
   # readers over the span stream (qa_win_range_stream.c). ole32 carries the
