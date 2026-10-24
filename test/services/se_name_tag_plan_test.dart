@@ -74,8 +74,7 @@ void main() {
   List<ResolvedSeNameTag> resolve(List<Layer> rows, {int globalFrame = 0}) =>
       resolveSeNameTagsAt(
         trackSeLayers: rows,
-        globalFrame: globalFrame,
-        cutId: const CutId('cut'),
+        shown: (globalFrame: globalFrame, cutId: const CutId('cut')),
         cameraFrame: camera,
         shot: atRest,
       );

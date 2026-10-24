@@ -118,8 +118,7 @@ class SeEntries {
     }
     return resolveSeNameTagsAt(
       trackSeLayers: globalLayersShowingDragPreview(track.seLayers, preview),
-      globalFrame: shown,
-      cutId: cut.id,
+      shown: (globalFrame: shown, cutId: cut.id),
       cameraFrame: _camera.cameraFrameSize,
       shot: shotForCutFrame(cut, localFrameIndex),
     );

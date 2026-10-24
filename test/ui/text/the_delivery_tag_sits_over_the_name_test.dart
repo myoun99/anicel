@@ -39,8 +39,7 @@ void main() {
     );
     return resolveSeNameTagsAt(
       trackSeLayers: [row],
-      globalFrame: 3,
-      cutId: const CutId('cut'),
+      shown: (globalFrame: 3, cutId: const CutId('cut')),
       cameraFrame: camera,
       shot: const LayerPlacement.identity(),
     ).single;
