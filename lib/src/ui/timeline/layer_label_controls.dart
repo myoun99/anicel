@@ -529,15 +529,30 @@ class LayerBlendModeChip extends StatelessWidget {
       20 + growth,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
+      // The panels' chip, pressed as the rail presses (I-57 ①): the rail's
+      // plate face instead of a tooltip, a [Material] and an [InkWell] of
+      // its own — ~43 elements a chip, mounted anew whenever a frame panel
+      // is shown again (frame-panels-build-in-one-frame, 10-24). The chip
+      // is clear, so its hover shows: the face paints it, in the chip's
+      // outline.
       child: Center(
-        child: Named(
-          name,
-          child: PanelFlyoutButton(
+        child: RailFlyoutTrigger(
+          name: name,
+          tooltip: isGroup
+              ? AppText.strings.railFolderBlendMode
+              : AppText.strings.railLayerBlendMode,
+          hoverShape: PanelFlyoutChip.shape,
+          entriesBuilder: () => LayerBlendMode.optionsFor(
+            isGroup: isGroup,
+          ).asFlyoutChoices(
+            current: blendMode,
+            keyPrefix: optionKeyPrefix,
+            labelOf: (mode) => mode.labelFor(language),
+            onPicked: onBlendModeSelected,
+          ),
+          child: PanelFlyoutChip(
             axis: axis,
             label: blendMode.labelFor(language),
-            tooltip: isGroup
-                ? AppText.strings.railFolderBlendMode
-                : AppText.strings.railLayerBlendMode,
             expand: true,
             fontSize: _blendFontSize,
             fontWeight: nonNormal ? FontWeight.w700 : FontWeight.w400,
@@ -547,14 +562,6 @@ class LayerBlendModeChip extends StatelessWidget {
             padding: vertical
                 ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
                 : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
-            entriesBuilder: () => LayerBlendMode.optionsFor(
-              isGroup: isGroup,
-            ).asFlyoutChoices(
-              current: blendMode,
-              keyPrefix: optionKeyPrefix,
-              labelOf: (mode) => mode.labelFor(language),
-              onPicked: onBlendModeSelected,
-            ),
           ),
         ),
       ),

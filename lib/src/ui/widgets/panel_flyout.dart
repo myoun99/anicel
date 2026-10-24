@@ -1420,6 +1420,9 @@ class PanelFlyoutTrigger extends StatelessWidget {
 /// The ink is not lost: the plate is opaque, and the ink was drawn on the
 /// [Material] UNDER it. A screen reader's activation opens the list too —
 /// the face carries the real opener, as a [RailGlyphButton]'s node does.
+///
+/// A CLEAR plate — the blend chip, a [PanelFlyoutChip] — showed its hover
+/// ink, so it hands the face the ink's shape ([hoverShape]).
 class RailFlyoutTrigger extends StatelessWidget {
   const RailFlyoutTrigger({
     super.key,
@@ -1428,6 +1431,7 @@ class RailFlyoutTrigger extends StatelessWidget {
     required this.entriesBuilder,
     required this.child,
     this.semanticLabel,
+    this.hoverShape,
   });
 
   /// What a finder calls the [RailPlateFace], the box the user sees and
@@ -1443,12 +1447,16 @@ class RailFlyoutTrigger extends StatelessWidget {
   /// What a screen reader calls it.
   final String? semanticLabel;
 
+  /// [RailPlateFace.hoverShape].
+  final ShapeBorder? hoverShape;
+
   @override
   Widget build(BuildContext context) => RailPlateButton(
     name: name,
     tooltip: tooltip,
     onPressed: () => showPanelFlyout(context, entries: entriesBuilder()),
     semanticLabel: semanticLabel,
+    hoverShape: hoverShape,
     child: child,
   );
 }
@@ -1522,6 +1530,96 @@ class PanelFlyoutButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    void open() => showPanelFlyout(context, entries: entriesBuilder());
+    final chip = Material(
+      color: Colors.transparent,
+      child: ControlPressClaim(
+        onPressed: enabled ? open : null,
+        child: InkWell(
+          customBorder: PanelFlyoutChip.shape,
+          // Null, not a no-op: an `InkWell` with a null callback stops
+          // splashing and stops taking hover, so the button reads shut to
+          // the hand as well as to the eye.
+          onTap: silentPress(enabled ? open : null),
+          child: PanelFlyoutChip(
+            label: label,
+            icon: icon,
+            fontSize: fontSize,
+            labelColor: labelColor,
+            fill: fill,
+            fontWeight: fontWeight,
+            padding: padding,
+            expand: expand,
+            axis: axis,
+            enabled: enabled,
+          ),
+        ),
+      ),
+    );
+    if (tooltip == null) {
+      return chip;
+    }
+    return AppTooltip(message: tooltip, child: chip);
+  }
+}
+
+/// What a [PanelFlyoutButton] SHOWS — its edge (or its ground) and its
+/// label — without the press: the one picture of a list's labelled door,
+/// whichever press wears it. The panels' [PanelFlyoutButton] presses it
+/// through an [InkWell]; a rail row's blend chip through the rail's plate
+/// face ([RailFlyoutTrigger], I-57 ①), so the chip a row shows and the one
+/// the brush panel shows are drawn by this one widget.
+class PanelFlyoutChip extends StatelessWidget {
+  const PanelFlyoutChip({
+    super.key,
+    required this.label,
+    this.icon,
+    this.fontSize = 12,
+    this.labelColor,
+    this.fill,
+    this.fontWeight,
+    this.padding = const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    this.expand = false,
+    this.axis = Axis.horizontal,
+    this.enabled = true,
+  });
+
+  /// The chip's outline — its edge, and where a press's hover ink shows on
+  /// a clear chip.
+  static ShapeBorder get shape => AppShapes.container(AppShapes.wellRadius);
+
+  /// [PanelFlyoutButton.label].
+  final String label;
+
+  /// [PanelFlyoutButton.icon].
+  final IconData? icon;
+
+  /// [PanelFlyoutButton.fontSize].
+  final double fontSize;
+
+  /// [PanelFlyoutButton.labelColor].
+  final Color? labelColor;
+
+  /// [PanelFlyoutButton.fill].
+  final Color? fill;
+
+  /// [PanelFlyoutButton.fontWeight].
+  final FontWeight? fontWeight;
+
+  /// [PanelFlyoutButton.padding].
+  final EdgeInsetsGeometry padding;
+
+  /// [PanelFlyoutButton.expand].
+  final bool expand;
+
+  /// [PanelFlyoutButton.axis].
+  final Axis axis;
+
+  /// [PanelFlyoutButton.enabled].
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
     final vertical = axis == Axis.vertical;
     final ink = labelColor ?? AppColors.text;
     final labelStyle = TextStyle(
@@ -1558,44 +1656,26 @@ class PanelFlyoutButton extends StatelessWidget {
             ],
           );
     final ground = fill;
-    final chip = Material(
-      color: Colors.transparent,
-      child: ControlPressClaim(onPressed: enabled
-            ? () => showPanelFlyout(context, entries: entriesBuilder())
-            : null, child: InkWell(
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        // Null, not a no-op: an `InkWell` with a null callback stops
-        // splashing and stops taking hover, so the button reads shut to the
-        // hand as well as to the eye.
-        onTap: silentPress(enabled
-            ? () => showPanelFlyout(context, entries: entriesBuilder())
-            : null),
-        child: DecoratedBox(
-          decoration: ShapeDecoration(
-            // A plate is a control that IS its ground, so the whole of it
-            // dims ([dimmedIfDisabled]); a clear chip dims its ink and edge.
-            color: ground == null
-                ? null
-                : dimmedIfDisabled(ground, enabled: enabled),
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: ground != null
-                  ? BorderSide.none
-                  : BorderSide(
-                      color: enabled
-                          ? AppColors.hairline
-                          : AppColors.hairline.withValues(alpha: 0.5),
-                    ),
-            ),
-          ),
-          child: Padding(padding: padding, child: line),
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        // A plate is a control that IS its ground, so the whole of it
+        // dims ([dimmedIfDisabled]); a clear chip dims its ink and edge.
+        color: ground == null
+            ? null
+            : dimmedIfDisabled(ground, enabled: enabled),
+        shape: AppShapes.container(
+          AppShapes.wellRadius,
+          side: ground != null
+              ? BorderSide.none
+              : BorderSide(
+                  color: enabled
+                      ? AppColors.hairline
+                      : AppColors.hairline.withValues(alpha: 0.5),
+                ),
         ),
-      )),
+      ),
+      child: Padding(padding: padding, child: line),
     );
-    if (tooltip == null) {
-      return chip;
-    }
-    return AppTooltip(message: tooltip, child: chip);
   }
 }
 

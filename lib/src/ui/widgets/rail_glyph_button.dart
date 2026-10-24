@@ -680,6 +680,11 @@ class RenderRailGlyphFace extends RenderBox with RailPressFace {
 /// state layer would show over it — and the [InkWell] the plate used to wear
 /// drew its ink UNDER it, unseen. Everything else is the press every rail
 /// face is ([RailPressFace]).
+///
+/// A CLEAR plate — an edge and a word, the blend chip's — let that ink show:
+/// the hover, the one ink the app keeps (its theme turns the splash and the
+/// held fill off, F-132 · F-138). Such a face paints it, UNDER the plate as
+/// the [InkWell] drew it ([RailPlateSpec.hoverShape]).
 class RenderRailPlateFace extends RenderProxyBox with RailPressFace {
   RenderRailPlateFace({
     required RailPlateSpec spec,
@@ -694,11 +699,33 @@ class RenderRailPlateFace extends RenderProxyBox with RailPressFace {
     if (value == _spec) {
       return;
     }
+    final repaint = !value.hoversAs(_spec);
     _spec = value;
     if (!value.enabled) {
       letGoOfThePress();
     }
+    if (repaint) {
+      markNeedsPaint();
+    }
     markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void pressLookChanged() {
+    if (_spec.hoverShape != null) {
+      markNeedsPaint();
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_spec.hoverShape case final shape? when hovered && _spec.enabled) {
+      context.canvas.drawPath(
+        shape.getOuterPath(offset & size, textDirection: _spec.textDirection),
+        Paint()..color = _spec.hoverInk,
+      );
+    }
+    super.paint(context, offset);
   }
 
   @override
@@ -733,6 +760,8 @@ final class RailPlateSpec {
     required this.semanticLabel,
     required this.textDirection,
     required this.triggerMode,
+    required this.hoverShape,
+    required this.hoverInk,
   });
 
   final String tooltip;
@@ -741,15 +770,30 @@ final class RailPlateSpec {
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
+  /// A clear plate's hover, in this shape — null for an opaque plate, whose
+  /// ink nobody saw ([RailPlateFace.hoverShape]).
+  final ShapeBorder? hoverShape;
+
+  /// The hover's colour: the theme's, as an [InkWell] with none of its own
+  /// takes it.
+  final Color hoverInk;
+
   bool get enabled => onSemanticTap != null;
+
+  /// Whether [other] paints the same hover.
+  bool hoversAs(RailPlateSpec other) =>
+      other.hoverShape == hoverShape &&
+      other.hoverInk == hoverInk &&
+      other.enabled == enabled &&
+      other.textDirection == textDirection;
 
   @override
   bool operator ==(Object other) =>
       other is RailPlateSpec &&
+      hoversAs(other) &&
       other.tooltip == tooltip &&
       other.onSemanticTap == onSemanticTap &&
       other.semanticLabel == semanticLabel &&
-      other.textDirection == textDirection &&
       other.triggerMode == triggerMode;
 
   @override
@@ -759,6 +803,8 @@ final class RailPlateSpec {
     semanticLabel,
     textDirection,
     triggerMode,
+    hoverShape,
+    hoverInk,
   );
 }
 
@@ -772,6 +818,7 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
     required this.tooltip,
     required this.onSemanticTap,
     this.semanticLabel,
+    this.hoverShape,
     required super.child,
   });
 
@@ -780,6 +827,11 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
   /// What a screen reader's activation calls; null is a dead plate.
   final VoidCallback? onSemanticTap;
   final String? semanticLabel;
+
+  /// A CLEAR plate's hover, painted under it in this shape — the ink an
+  /// [InkWell] drew where the plate let it show ([RenderRailPlateFace]).
+  /// Null for an opaque plate.
+  final ShapeBorder? hoverShape;
 
   @override
   RenderRailPlateFace createRenderObject(BuildContext context) =>
@@ -802,6 +854,8 @@ class RailPlateFace extends SingleChildRenderObjectWidget {
     textDirection: Directionality.of(context),
     triggerMode:
         TooltipTheme.of(context).triggerMode ?? TooltipTriggerMode.longPress,
+    hoverShape: hoverShape,
+    hoverInk: Theme.of(context).hoverColor,
   );
 }
 
@@ -820,6 +874,7 @@ class RailPlateButton extends StatelessWidget {
     required this.onPressed,
     required this.child,
     this.semanticLabel,
+    this.hoverShape,
   });
 
   /// What a finder calls the [RailPlateFace] — a [Named], as a
@@ -834,6 +889,9 @@ class RailPlateButton extends StatelessWidget {
   /// What a screen reader calls it.
   final String? semanticLabel;
 
+  /// [RailPlateFace.hoverShape].
+  final ShapeBorder? hoverShape;
+
   @override
   Widget build(BuildContext context) => ControlPressClaim(
     onPressed: onPressed,
@@ -845,6 +903,7 @@ class RailPlateButton extends StatelessWidget {
         // never hears it ([RailGlyphButton]).
         onSemanticTap: onPressed,
         semanticLabel: semanticLabel,
+        hoverShape: hoverShape,
         child: child,
       ),
     ),
