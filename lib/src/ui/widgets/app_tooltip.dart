@@ -934,7 +934,8 @@ abstract final class SummonedTooltip {
 
   /// The target the window is open over, or about to open over — for tests.
   @visibleForTesting
-  static SummonedTooltipTarget? get debugTarget => _window?.target;
+  static SummonedTooltipTarget? get debugTarget =>
+      _window?.isPendingOrShown ?? false ? _window!.target : null;
 
   /// The message of the open window, or null — for tests.
   @visibleForTesting
@@ -1069,6 +1070,12 @@ final class _Window implements TickerProvider {
   );
 
   bool get isShown => _entry != null && !_fade.isDismissed;
+
+  /// Whether the window is on screen or on its way — not one let go
+  /// ([dismiss]) and kept for its target's next hover, as a dismissed
+  /// [AppTooltip] keeps its state.
+  bool get isPendingOrShown =>
+      !_closed && ((_timer?.isActive ?? false) || !_fade.isDismissed);
 
   @override
   Ticker createTicker(TickerCallback onTick) =>
