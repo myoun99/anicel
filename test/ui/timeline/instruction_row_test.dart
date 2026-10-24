@@ -320,7 +320,7 @@ void main() {
   testWidgets('「(없음)」: a span set to no mark draws none and names no '
       'term — its start and end names stay', (tester) async {
     late ProjectRepository repository;
-    await _pumpHome(
+    await _open(
       tester,
       _project(),
       onRepositoryCreated: (repo) => repository = repo,
