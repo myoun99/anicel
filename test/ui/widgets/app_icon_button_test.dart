@@ -615,7 +615,7 @@ void main() {
       expect(rowTaps, 1);
     });
 
-    testWidgets('🚨one button is at most 22 elements and 9 render objects — '
+    testWidgets('🚨one button is at most 18 elements and 7 render objects — '
         'the light face was 36 and 20, the Material one 27 render objects', (
       tester,
     ) async {
@@ -646,9 +646,10 @@ void main() {
       // mouse region, listener and three boxes became ONE render object —
       // 36 elements → 22, 20 render objects → 9. A Flutter upgrade that adds
       // a node to `Focus`, `Actions` or `Icon` fails this on purpose, so
-      // the number is read again rather than drifting.
-      expect(elements, lessThanOrEqualTo(22));
-      expect(renderObjects, lessThanOrEqualTo(9));
+      // the number is read again rather than drifting. 2026-10-25: the press
+      // claim became one render object too — 22 → 18, 9 → 7.
+      expect(elements, lessThanOrEqualTo(18));
+      expect(renderObjects, lessThanOrEqualTo(7));
     });
   });
 

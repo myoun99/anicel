@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../widgets/axis_bar_gesture.dart';
@@ -20,8 +21,12 @@ import 'value_control_pointers.dart';
 /// ⛔It was written twice first, and the clone ratchet said so
 /// (`one_algorithm_one_place_test`, 90 → 91) while the doc comment on the
 /// second copy was already claiming the two were the same question.
-bool pointerIsStillOn(BuildContext context, Offset globalPosition) {
-  final box = context.findRenderObject() as RenderBox?;
+bool pointerIsStillOn(BuildContext context, Offset globalPosition) =>
+    pointerIsStillOnBox(context.findRenderObject() as RenderBox?, globalPosition);
+
+/// [pointerIsStillOn], asked of the box itself — for a claim that IS its
+/// box ([ControlPressClaim]) and has no context to find one by.
+bool pointerIsStillOnBox(RenderBox? box, Offset globalPosition) {
   if (box == null || !box.hasSize) {
     return false;
   }
@@ -258,11 +263,19 @@ void noteAnOwnedLift() {
 ///    two paths for one look;
 ///  * giving the mouse a drag-scroll this app owns would mean rebuilding
 ///    ballistics, overscroll and nested scrollers.
-class ControlPressClaim extends StatefulWidget {
+///
+/// 🪶ONE BOX (frame-panels-build-in-one-frame, 2026-10-25): the claim is a
+/// render object that holds the pair and hears the pointer itself. It was a
+/// State, a `RawGestureDetector`, that detector's semantics and two
+/// `Listener`s — five elements and three render objects for every control,
+/// and a timeline tab mounts some 135 of them each time it opens. The
+/// detector's semantics said nothing: it names only Flutter's own
+/// recognisers, and the pair is not one of them.
+class ControlPressClaim extends SingleChildRenderObjectWidget {
   const ControlPressClaim({
     super.key,
     required this.onPressed,
-    required this.child,
+    required Widget super.child,
   });
 
   /// What this control does. Null means it is disabled, and then nothing
@@ -281,13 +294,38 @@ class ControlPressClaim extends StatefulWidget {
   /// forgotten argument.
   final VoidCallback? onPressed;
 
-  final Widget child;
+  @override
+  RenderControlPressClaim createRenderObject(BuildContext context) =>
+      RenderControlPressClaim().._wear(this, context);
 
   @override
-  State<ControlPressClaim> createState() => _ControlPressClaimState();
+  void updateRenderObject(
+    BuildContext context,
+    RenderControlPressClaim renderObject,
+  ) => renderObject._wear(this, context);
 }
 
-class _ControlPressClaimState extends State<ControlPressClaim> {
+/// [ControlPressClaim]'s box: the absorbing pair, and the press it fires.
+class RenderControlPressClaim extends _RenderHoldsTheDrag {
+  RenderControlPressClaim()
+    : super(_VerbKnown.byTheFirstMove, behavior: HitTestBehavior.deferToChild);
+
+  VoidCallback? _onPressed;
+  PressFire _fireOn = PressFire.upInside;
+  double _slop = kTouchSlop;
+  VoidCallback? _beforeFire;
+
+  /// Everything the press reads, as [claim]'s place in the tree says it.
+  void _wear(ControlPressClaim claim, BuildContext context) {
+    _onPressed = claim.onPressed;
+    _fireOn = PressFireScope.of(context);
+    _slop = MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
+    // Read as the claim is built, not as a press lands: the watch is a
+    // swipe column's own method, the same one for as long as this claim
+    // sits under that column.
+    _beforeFire = PressFireWatch.maybeOf(context);
+  }
+
   /// Pointers this claim is the INNERMOST owner of.
   ///
   /// 🚨★★★THE DEEPEST CONTROL WINS, and that rule had to be brought back by
@@ -308,90 +346,87 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
   /// is what makes it a drag ([PressFire.upInsideOrPan]).
   final Map<int, Offset> _mine = <int, Offset>{};
 
-  bool _releasedInside(Offset position) {
-    // A control that left the tree while it was held — a playback view that
-    // ended under the finger — still hears the lift, because pointer-up goes
-    // to the path the DOWN was hit-tested on. It has no box to be inside of.
-    if (!mounted) {
-      return false;
-    }
-    return pointerIsStillOn(context, position);
-  }
+  // A control that left the tree while it was held — a playback view that
+  // ended under the finger — still hears the lift, because pointer-up goes
+  // to the path the DOWN was hit-tested on. It has no box to be inside of.
+  bool _releasedInside(Offset position) =>
+      attached && pointerIsStillOnBox(this, position);
 
   @override
-  Widget build(BuildContext context) {
-    final fireOn = PressFireScope.of(context);
-    final slop =
-        MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
-    return RawGestureDetector(
-      behavior: HitTestBehavior.deferToChild,
-      gestures: _absorbingPair(_VerbKnown.byTheFirstMove),
-      child: Listener(
-        onPointerDown: (event) {
-          final innermost = !pressIsSpokenFor(event.pointer);
-          claimTapForControl(event.pointer);
-          if (!innermost) {
-            return;
-          }
-          _mine[event.pointer] = event.position;
-          if (fireOn == PressFire.down) {
-            PressFireWatch.maybeOf(context)?.call();
-            widget.onPressed?.call();
-          }
-        },
-        // A cell's press that turns into a drag is the canvas's from here:
-        // let go of it — the canvas pans a primary press no control holds —
-        // and never act on it. A drag is a press gone past the touch slop
-        // from where it landed, or out of the cell ([PressFire.upInsideOrPan]).
-        onPointerMove: fireOn != PressFire.upInsideOrPan
-            ? null
-            : (event) {
-                final down = _mine[event.pointer];
-                if (down != null &&
-                    ((event.position - down).distance > slop ||
-                        !_releasedInside(event.position))) {
-                  _mine.remove(event.pointer);
-                  releaseTapForControl(event.pointer);
-                }
-              },
-        onPointerUp: (event) {
-          noteAnOwnedLift();
-          releaseTapForControl(event.pointer);
-          if (_mine.remove(event.pointer) == null) {
-            return;
-          }
-          // 🚨A PRESS SOMETHING TURNED INTO A DRAG VERB IS NOT A CLICK (H24,
-          // 2026-09-15). The canvas takes the strong claim on the pointers it
-          // makes into its own gestures — a pan, a pinch, a flip — and a
-          // claimed control on that canvas (the playback view's stop, a conte
-          // cell, the header editor's tap-away) must not fire when that
-          // gesture lifts inside it. The playback view had already said so in
-          // as many words (D13): 「a plain tap — a press that navigates
-          // nothing — still means stop」. ⚠️Read BEFORE the canvas lets go:
-          // pointer-up runs deepest first, so the claim is still standing.
-          // The swipe columns are untouched — they fire on the DOWN.
-          if (fireOn != PressFire.down &&
-              _releasedInside(event.position) &&
-              !valueControlOwnsPointer(event.pointer)) {
-            widget.onPressed?.call();
-          }
-        },
-        // ⛔Cancel too: a claim that outlives its gesture silently deafens
-        // every later press handed the same pointer id. Nothing fires here —
-        // a cancelled gesture is not a release.
-        onPointerCancel: (event) {
-          releaseTapForControl(event.pointer);
-          _mine.remove(event.pointer);
-        },
-        child: widget.child,
-      ),
-    );
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    switch (event) {
+      case PointerDownEvent():
+        _down(event);
+      case PointerMoveEvent() when _fireOn == PressFire.upInsideOrPan:
+        _moved(event);
+      case PointerUpEvent():
+        _up(event);
+      // ⛔Cancel too: a claim that outlives its gesture silently deafens
+      // every later press handed the same pointer id. Nothing fires here —
+      // a cancelled gesture is not a release.
+      case PointerCancelEvent():
+        releaseTapForControl(event.pointer);
+        _mine.remove(event.pointer);
+    }
+    // The pair is offered the pointer AFTER the claim has spoken, as the
+    // detector that held it sat outside the listener that spoke.
+    super.handleEvent(event, entry);
+  }
+
+  void _down(PointerDownEvent event) {
+    final innermost = !pressIsSpokenFor(event.pointer);
+    claimTapForControl(event.pointer);
+    if (!innermost) {
+      return;
+    }
+    _mine[event.pointer] = event.position;
+    if (_fireOn == PressFire.down) {
+      _beforeFire?.call();
+      _onPressed?.call();
+    }
+  }
+
+  // A cell's press that turns into a drag is the canvas's from here: let go
+  // of it — the canvas pans a primary press no control holds — and never
+  // act on it. A drag is a press gone past the touch slop from where it
+  // landed, or out of the cell ([PressFire.upInsideOrPan]).
+  void _moved(PointerMoveEvent event) {
+    final down = _mine[event.pointer];
+    if (down != null &&
+        ((event.position - down).distance > _slop ||
+            !_releasedInside(event.position))) {
+      _mine.remove(event.pointer);
+      releaseTapForControl(event.pointer);
+    }
+  }
+
+  void _up(PointerUpEvent event) {
+    noteAnOwnedLift();
+    releaseTapForControl(event.pointer);
+    if (_mine.remove(event.pointer) == null) {
+      return;
+    }
+    // 🚨A PRESS SOMETHING TURNED INTO A DRAG VERB IS NOT A CLICK (H24,
+    // 2026-09-15). The canvas takes the strong claim on the pointers it
+    // makes into its own gestures — a pan, a pinch, a flip — and a claimed
+    // control on that canvas (the playback view's stop, a conte cell, the
+    // header editor's tap-away) must not fire when that gesture lifts
+    // inside it. The playback view had already said so in as many words
+    // (D13): 「a plain tap — a press that navigates nothing — still means
+    // stop」. ⚠️Read BEFORE the canvas lets go: pointer-up runs deepest
+    // first, so the claim is still standing. The swipe columns are
+    // untouched — they fire on the DOWN.
+    if (_fireOn != PressFire.down &&
+        _releasedInside(event.position) &&
+        !valueControlOwnsPointer(event.pointer)) {
+      _onPressed?.call();
+    }
   }
 }
 
-/// The absorbing pair. They report nothing and change nothing — HOLDING the
-/// pointer IS the whole job, and it is what stops an ancestor scroller from
-/// starting on a control.
+/// The absorbing pair, held. They report nothing and change nothing —
+/// HOLDING the pointer IS the whole job, and it is what stops an ancestor
+/// scroller from starting on a control.
 ///
 /// 🚨★★★NO DISTANCE IS COMPARED. 유저 2026-08-30, on finding the device's own
 /// slop still being consulted here:
@@ -423,25 +458,42 @@ class _ControlPressClaimState extends State<ControlPressClaim> {
 /// has run, which is the earliest moment the answer is complete. Nothing can
 /// scroll in between: a scroller needs a move too, and this one is deeper, so
 /// it is offered the same event first.
-Map<Type, GestureRecognizerFactory> _absorbingPair(_VerbKnown known) =>
-    <Type, GestureRecognizerFactory>{
-      _AbsorbsHorizontalDrag:
-          GestureRecognizerFactoryWithHandlers<_AbsorbsHorizontalDrag>(
-            () => _AbsorbsHorizontalDrag(known),
-            // ⛔A no-op handler is REQUIRED, not decoration:
-            // `DragGestureRecognizer.isPointerAllowed` returns FALSE when
-            // every callback is null, so a recogniser with nothing to report
-            // is never even offered the pointer. 🧪Measured: with `(r) {}`
-            // the absorb silently did nothing and the list scrolled from a
-            // button exactly as before.
-            (recognizer) => recognizer.onStart = (_) {},
-          ),
-      _AbsorbsVerticalDrag:
-          GestureRecognizerFactoryWithHandlers<_AbsorbsVerticalDrag>(
-            () => _AbsorbsVerticalDrag(known),
-            (recognizer) => recognizer.onStart = (_) {},
-          ),
-    };
+///
+/// A trackpad's two-finger pan is offered to them too, as a gesture
+/// detector offers it to the recognisers it holds.
+class _RenderHoldsTheDrag extends RenderProxyBoxWithHitTestBehavior {
+  _RenderHoldsTheDrag(_VerbKnown known, {required super.behavior})
+    : _horizontal = _AbsorbsHorizontalDrag(known)..onStart = _holdOnly,
+      _vertical = _AbsorbsVerticalDrag(known)..onStart = _holdOnly;
+
+  final _AbsorbsHorizontalDrag _horizontal;
+  final _AbsorbsVerticalDrag _vertical;
+
+  // ⛔A no-op handler is REQUIRED, not decoration:
+  // `DragGestureRecognizer.isPointerAllowed` returns FALSE when every
+  // callback is null, so a recogniser with nothing to report is never even
+  // offered the pointer. 🧪Measured: with `(r) {}` the absorb silently did
+  // nothing and the list scrolled from a button exactly as before.
+  static void _holdOnly(DragStartDetails details) {}
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    if (event is PointerDownEvent) {
+      _horizontal.addPointer(event);
+      _vertical.addPointer(event);
+    } else if (event is PointerPanZoomStartEvent) {
+      _horizontal.addPointerPanZoom(event);
+      _vertical.addPointerPanZoom(event);
+    }
+  }
+
+  @override
+  void dispose() {
+    _horizontal.dispose();
+    _vertical.dispose();
+    super.dispose();
+  }
+}
 
 /// When a pointer's drag VERB is known well enough to make way for it.
 ///
@@ -549,33 +601,48 @@ class _AbsorbsVerticalDrag extends OwningVerticalDragGestureRecognizer {
 /// column paints its rows — and the recognisers for that live in
 /// [axis_bar_gesture.dart], where accepting on the first movement is the
 /// half that beats an ancestor scroller.
-class DragVerbClaim extends StatelessWidget {
+class DragVerbClaim extends SingleChildRenderObjectWidget {
   const DragVerbClaim({
     super.key,
-    required this.child,
+    required Widget super.child,
     this.behavior = HitTestBehavior.deferToChild,
   });
-
-  final Widget child;
 
   /// Opaque where the claim must cover its own padding — a splitter grip is
   /// mostly empty space and still has to be claimable.
   final HitTestBehavior behavior;
 
   @override
-  Widget build(BuildContext context) {
-    return Listener(
-      behavior: behavior,
+  RenderDragVerbClaim createRenderObject(BuildContext context) =>
+      RenderDragVerbClaim(behavior: behavior);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderDragVerbClaim renderObject,
+  ) => renderObject.behavior = behavior;
+}
+
+/// [DragVerbClaim]'s box — one, where a widget and its `Listener` were two
+/// ([ControlPressClaim]'s 「ONE BOX」).
+class RenderDragVerbClaim extends RenderProxyBoxWithHitTestBehavior {
+  RenderDragVerbClaim({required super.behavior});
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    switch (event) {
       // Claimed HERE because hit-test dispatch runs deepest-first, so the
       // claim is already standing by the time anything above is offered the
       // same event and asks.
-      onPointerDown: (event) => claimPointerForValueControl(event.pointer),
-      onPointerUp: (event) => releasePointerForValueControl(event.pointer),
+      case PointerDownEvent():
+        claimPointerForValueControl(event.pointer);
+      case PointerUpEvent():
+        releasePointerForValueControl(event.pointer);
       // ⛔Cancel too: a claim that outlives its gesture would silently
       // deafen whichever later pan is handed the same id.
-      onPointerCancel: (event) => releasePointerForValueControl(event.pointer),
-      child: child,
-    );
+      case PointerCancelEvent():
+        releasePointerForValueControl(event.pointer);
+    }
   }
 }
 
@@ -604,20 +671,15 @@ class DragVerbClaim extends StatelessWidget {
 /// view, the conte cells and the header editor's tap-away fire from
 /// [ControlPressClaim] now), and a text field (it takes [DragVerbClaim], and
 /// this makes way).
-class SurfaceDragClaim extends StatelessWidget {
-  const SurfaceDragClaim({super.key, required this.child});
+class SurfaceDragClaim extends SingleChildRenderObjectWidget {
+  const SurfaceDragClaim({super.key, required Widget super.child});
 
-  final Widget child;
-
+  // Translucent, as the canvas layer around it is: a blank canvas paints
+  // nothing hit-testable, and a drag that starts there is still the
+  // canvas's.
   @override
-  Widget build(BuildContext context) {
-    return RawGestureDetector(
-      // Translucent, as the canvas layer around it is: a blank canvas paints
-      // nothing hit-testable, and a drag that starts there is still the
-      // canvas's.
-      behavior: HitTestBehavior.translucent,
-      gestures: _absorbingPair(_VerbKnown.atTheDown),
-      child: child,
-    );
-  }
+  RenderObject createRenderObject(BuildContext context) => _RenderHoldsTheDrag(
+    _VerbKnown.atTheDown,
+    behavior: HitTestBehavior.translucent,
+  );
 }
