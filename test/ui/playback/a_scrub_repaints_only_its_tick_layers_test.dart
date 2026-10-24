@@ -96,15 +96,7 @@ void main() {
   for (final storyboard in [false, true]) {
     final view = storyboard ? 'storyboard' : 'timeline';
     testWidgets('a scrub along the $view ruler repaints its tick layers and '
-        'nothing else of the panel',
-        // 🚨⚠️tick-pins-allow-panel-hosts (10-24) — OPEN: read honestly
-        // ([tickStraysUnder] no longer lets a panel's host repaint), a
-        // scrub along the storyboard's ruler repaints its whole panel from
-        // the third move on — the host, its body, the header and bottom
-        // rows. This passed while the host stood for a tick layer, so it
-        // guarded nothing; it reads it again when the scrub's moves are
-        // ticks.
-        skip: storyboard, (tester) async {
+        'nothing else of the panel', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(

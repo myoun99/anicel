@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
 import '../../helpers/device_viewport.dart';
 import '../../helpers/repaint_strays.dart';
@@ -95,14 +96,26 @@ void main() {
   }
 
   /// Every boundary of the dock region around [host] waiting to repaint in
-  /// the scene that is not a tick layer's, or inside one. The REGION, not
-  /// the sheet: a layout in the sheet marks the boundary above it, and that
-  /// is the region's.
+  /// the scene that is not the sheet's own layer, a tick's, or inside one.
+  /// The REGION, not the sheet: a layout in the sheet marks the boundary
+  /// above it, and that is the region's.
+  ///
+  /// 🚨The sheet's OWN layer and nothing else of the dock: the sheet a pan
+  /// moves and a crossing turns over is painted again, as what changed —
+  /// what this keeps in is the dock round it. ↩️Asked of every [TickLayer]
+  /// in the region, it let any other panel's host there repaint too
+  /// (tick-pins-allow-panel-hosts, 10-24).
   List<String> strays(WidgetTester tester, Finder host) {
     final region = find
         .ancestor(of: host, matching: find.byType(StillRaster))
         .first;
-    return tickStraysUnder(tester.renderObject(region));
+    final ownLayer = find
+        .ancestor(of: host, matching: find.byType(TickLayer))
+        .first;
+    return tickStraysUnder(
+      tester.renderObject(region),
+      alsoAllowed: {tester.renderObject(ownLayer)},
+    );
   }
 
   /// [steps] steps of [gesture], [by] each, and what each one repaints of
@@ -135,14 +148,7 @@ void main() {
 
   for (final tab in const ['timesheet', 'conte', 'envelope']) {
     testWidgets('a pan of the $tab repaints its tick layers and nothing else '
-        'of the dock',
-        // 🚨⚠️tick-pins-allow-panel-hosts (10-24) — OPEN: read honestly
-        // ([tickStraysUnder] no longer lets a panel's host repaint), every
-        // pan step repaints the sheet's whole panel — its host hears the
-        // view and builds again, and the canvas panel builds again round
-        // it. These passed while the host stood for a tick layer, so they
-        // guarded nothing; they read it again when a pan is a tick.
-        skip: true, (tester) async {
+        'of the dock', (tester) async {
       final host = await pumpSheet(tester, tab);
       final panel = find.descendant(
         of: host,
@@ -195,14 +201,7 @@ void main() {
 
   for (final tab in const ['timesheet', 'envelope']) {
     testWidgets('a scrub across cuts turns the $tab over on its tick layers '
-        'and nothing else of the dock',
-        // 🚨⚠️tick-pins-allow-panel-hosts (10-24) — OPEN: read honestly
-        // ([tickStraysUnder] no longer lets a panel's host repaint), every
-        // crossing repaints the sheet's whole panel — its host hears the
-        // cut under the playhead and builds again. These passed while the
-        // host stood for a tick layer, so they guarded nothing; they read
-        // it again when a crossing is a tick.
-        skip: true, (tester) async {
+        'and nothing else of the dock', (tester) async {
       final host = await pumpSheet(tester, tab);
       final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
       final area = tester.getRect(ruler.first);
