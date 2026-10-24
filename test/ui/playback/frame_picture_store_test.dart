@@ -316,6 +316,37 @@ void main() {
       store.dispose();
       noGpu.dispose();
     });
+
+    test('or move still on its way when its picture is let go answers once '
+        '— whoever waited, and nothing when its turn comes', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      await _layed(store, 'a', 256);
+      gpu.holdRenders = true;
+      store.patch(
+        from: 'a',
+        to: 'b',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      store.move(from: 'b', to: 'c');
+      final waited = [store.landingOf('b')!, store.landingOf('c')!];
+      // Ink past the picture: a new lay, the picture let go.
+      expect(
+        store.patch(
+          from: 'b',
+          to: 'd',
+          rect: const ui.Rect.fromLTWH(250, 0, 8, 8),
+          draw: fill,
+        ),
+        isFalse,
+      );
+      await Future.wait(waited);
+      gpu.releaseRender();
+      await pumpEventQueue();
+      expect(store.peek('c'), isNull);
+      store.dispose();
+    });
   });
 
   group('the levels under the base', () {

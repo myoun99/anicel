@@ -112,7 +112,7 @@ class FramePictureStore<K extends Object> {
 
   /// The keys patches are moving pictures to, until the first of them has
   /// its texels — and the moment it has.
-  final Map<K, ({_Entry entry, Completer<void> moved})> _becoming = {};
+  final Map<K, ({_Entry entry, _Patch<K> patch})> _becoming = {};
 
   final PinCounts<K> _pins = PinCounts<K>();
 
@@ -165,7 +165,7 @@ class FramePictureStore<K extends Object> {
     }
     final becoming = _becoming[key];
     if (becoming != null) {
-      await becoming.moved.future;
+      await becoming.patch.moved;
       return peek(key);
     }
     for (final queued in _lays) {
@@ -232,7 +232,7 @@ class FramePictureStore<K extends Object> {
       return false;
     }
     final asked = _Patch<K>(from, to, widened, _recorded(widened, draw));
-    _becoming[to] = (entry: entry, moved: asked.moved);
+    _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
   }
@@ -248,14 +248,14 @@ class FramePictureStore<K extends Object> {
       return false;
     }
     final asked = _Patch<K>(from, to, ui.Rect.zero, null);
-    _becoming[to] = (entry: entry, moved: asked.moved);
+    _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
   }
 
   /// Completes once the last patch or [move] asked for to [key] has its
   /// texels, and [key] answers with them — null where none is on its way.
-  Future<void>? landingOf(K key) => _becoming[key]?.moved.future;
+  Future<void>? landingOf(K key) => _becoming[key]?.patch.moved;
 
   /// Answers once every patch has landed, at every level — the levels under
   /// the base at once, not after the pause they wait for — for a caller
@@ -388,12 +388,12 @@ class FramePictureStore<K extends Object> {
             asked.rect.width.toInt(),
             asked.rect.height.toInt(),
           );
-    if (_becoming[asked.to]?.moved == asked.moved) {
+    if (identical(_becoming[asked.to]?.patch, asked)) {
       _becoming.remove(asked.to);
     }
     if (entry.gone) {
       image?.dispose();
-      asked.moved.complete();
+      asked.answer();
       return;
     }
     // The frame `to` IS the picture with this patch over it, from the
@@ -404,13 +404,13 @@ class FramePictureStore<K extends Object> {
     _entries[asked.to] = entry;
     if (image == null) {
       // A move: nothing to lay over it.
-      asked.moved.complete();
+      asked.answer();
       return;
     }
     final landing = (rect: asked.rect, image: image);
     entry.picture._landing.add(landing);
     entry.waiting.add(landing);
-    asked.moved.complete();
+    asked.answer();
     entry.writes = entry.writes.then((_) => _landWaiting(entry));
   }
 
@@ -700,9 +700,7 @@ class FramePictureStore<K extends Object> {
       if (value.entry != entry) {
         return false;
       }
-      if (!value.moved.isCompleted) {
-        value.moved.complete();
-      }
+      value.patch.answer();
       return true;
     });
     // The GPU may still be writing it: let go once its writes are done.
@@ -962,5 +960,20 @@ class _Patch<K> {
 
   /// What the patch draws — none for a [FramePictureStore.move].
   final ui.Picture? recorded;
-  final Completer<void> moved = Completer<void>();
+
+  /// Answered once [to] answers with the patch's texels — or once its
+  /// picture is let go before that ([FramePictureStore._letGo]), whichever
+  /// comes first ([answer]).
+  Future<void> get moved => _moved.future;
+  final Completer<void> _moved = Completer<void>();
+
+  /// 🚨ONCE, whoever answers first. The picture let go answered whoever
+  /// waited, and the patch behind it in the queue answered again on its
+  /// turn: the second answer threw out of the store into whatever let the
+  /// picture go — a box's undo, a pixel verb, a paste (2026-10-25).
+  void answer() {
+    if (!_moved.isCompleted) {
+      _moved.complete();
+    }
+  }
 }
