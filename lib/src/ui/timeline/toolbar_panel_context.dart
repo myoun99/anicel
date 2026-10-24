@@ -203,6 +203,10 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       };
 }
 
+/// The boards the shared pill's copy takes into — one copy in hand,
+/// whichever of them took it (`AppClipboard`).
+enum _Board { text, rows, keys, frames }
+
 /// The clipboard's four buttons, said ONCE for both panels: a panel answers
 /// only WHERE its press stands ([clipboardPlace]), and the board's verbs
 /// take it from there ([ClipboardPlace]).
@@ -238,40 +242,48 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// 🗣️I-123 (유저 2026-10-22): 「레이어도 타임라인 공용알약의 잘라내기 버튼
   /// 사용가능. 여러레이어 선택해서 사용한다던가 다른 규칙 참고해서 법 통일」.
   ///
-  /// WHAT the cut takes is what the copy takes ([_copySubject]): 복사 and
+  /// WHAT the cut takes is what the copy takes ([_boardTaken]): 복사 and
   /// 잘라내기 are ONE pair (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고
-  /// 클립 저장」, `FrameClipboard.canCopyAt`). Rows the copy takes claim the
+  /// 클립 저장」, `FrameClipboard.canCopyAt`) — a text in hand, the selected
+  /// rows, a lane's keys, the frame axis. Rows the copy takes claim the
   /// press even when none of them may be lifted
   /// ([LayerClipboard.canCutSelectedRows]) — the button dims rather than
-  /// cut the frame under them. ↩️It asked the frame board alone, and under
-  /// a row selection it lifted the standing row's block while the copy beside
-  /// it took the rows.
+  /// cut the frame under them. ↩️It asked the frame board alone: under a
+  /// row selection it lifted the standing row's block while the copy beside
+  /// it took the rows, with a text in hand it lifted the block of the cel
+  /// the text stood on, and on a lane it sat dark over the keys the copy
+  /// took (the-pill-cut-skips-text-and-keys).
   @override
-  bool get canCutRun => switch (_copySubject) {
-    PillSubject.layers => session.layerClipboard.canCutSelectedRows,
-    PillSubject.cells => session.clipboard.canCutAt(clipboardPlace),
-    PillSubject.cuts || PillSubject.nothing => false,
+  bool get canCutRun => switch (_boardTaken) {
+    _Board.rows => session.layerClipboard.canCutSelectedRows,
+    _Board.frames => session.clipboard.canCutAt(clipboardPlace),
+    _Board.text || _Board.keys => true,
+    null => false,
   };
 
   @override
   void cutRun() {
-    switch (_copySubject) {
-      case PillSubject.layers:
+    switch (_boardTaken) {
+      case _Board.text:
+        session.textClipboard.cut();
+      case _Board.rows:
         session.layerClipboard.cutSelectedRows();
-      case PillSubject.cells:
+      case _Board.keys:
+        session.keyClipboard.cut();
+      case _Board.frames:
         session.clipboard.cutAt(clipboardPlace);
-      case PillSubject.cuts:
-      case PillSubject.nothing:
+      case null:
         break;
     }
   }
 
-  /// WHAT the copy takes, on the pill's one ladder ([pillSubjectOn]): the
-  /// selected rows, else the frame axis — 「선택안하면 현재프레임, 선택하면
-  /// 해당 선택한 소재가 기준임」 (I-45's answer, which every verb here
-  /// follows). On the frame axis a LANE's keys come first, as Delete's do
-  /// (F-87): standing on a lane, the frame board has no place
-  /// ([FrameClipboard.timelinePlace]) and the key board answers (F-388).
+  /// The rows-or-frames half of [_boardTaken], on the pill's one ladder
+  /// ([pillSubjectOn]): the selected rows, else the frame axis —
+  /// 「선택안하면 현재프레임, 선택하면 해당 선택한 소재가 기준임」 (I-45's
+  /// answer, which every verb here follows). On the frame axis a LANE's
+  /// keys come first, as Delete's do (F-87): standing on a lane, the frame
+  /// board has no place ([FrameClipboard.timelinePlace]) and the key board
+  /// answers (F-388).
   PillSubject get _copySubject => pillSubjectOn(
     cuts: false,
     layers: () =>
@@ -281,29 +293,40 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.clipboard.canCopyAt(clipboardPlace),
   );
 
+  /// THE BOARD the copy takes into here — and the cut lifts for — or null
+  /// where they take nothing. One answer for both buttons and their keys.
+  ///
   /// 🗣️I-101 (유저 2026-10-15): 「텍스트를 선택한 상태(변형박스로 변한
   /// 상태)에서 복사 가능」. A text held by its box is the THING IN HAND, and
-  /// is copied ahead of every rung of the ladder — Delete's order (R9-rest:
+  /// is taken ahead of every rung of the ladder — Delete's order (R9-rest:
   /// 「the thing in hand first」), which the pill's copy and its key share.
+  _Board? get _boardTaken {
+    if (session.textClipboard.canCopy) {
+      return _Board.text;
+    }
+    return switch (_copySubject) {
+      PillSubject.layers => _Board.rows,
+      PillSubject.cells when session.keyClipboard.canCopy => _Board.keys,
+      PillSubject.cells => _Board.frames,
+      PillSubject.cuts || PillSubject.nothing => null,
+    };
+  }
+
   @override
-  bool get canCopyFrame =>
-      session.textClipboard.canCopy || _copySubject != PillSubject.nothing;
+  bool get canCopyFrame => _boardTaken != null;
 
   @override
   void copyFrame() {
-    if (session.textClipboard.canCopy) {
-      session.textClipboard.copy();
-      return;
-    }
-    switch (_copySubject) {
-      case PillSubject.layers:
+    switch (_boardTaken) {
+      case _Board.text:
+        session.textClipboard.copy();
+      case _Board.rows:
         session.layerClipboard.copySelectedRows();
-      case PillSubject.cells when session.keyClipboard.canCopy:
+      case _Board.keys:
         session.keyClipboard.copy();
-      case PillSubject.cells:
+      case _Board.frames:
         session.clipboard.copyAt(clipboardPlace);
-      case PillSubject.cuts:
-      case PillSubject.nothing:
+      case null:
         break;
     }
   }

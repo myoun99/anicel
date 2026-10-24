@@ -24,6 +24,10 @@ typedef CanvasTextHand = ({
   /// [landing] with the registering of the faces its letters are written
   /// in ([families]), as one step (`ProjectFonts.landingWith`).
   Command Function(Command landing, Set<String> families) landingWith,
+
+  /// Takes the text in hand off its cel — what Delete does with one held
+  /// (R9-rest, `CelTextCommands.deleteText`).
+  void Function() takeOff,
 });
 
 /// THE TEXT BOARD — the text the last copy of one took, the APP's like the
@@ -94,6 +98,21 @@ class TextClipboard {
       return;
     }
     _board._take(copy);
+    _changes.notifyChanged();
+  }
+
+  /// 잘라내기 of the text held by its box: [copy]'s text in hand, and the
+  /// text off its cel as Delete takes it ([CanvasTextHand.takeOff]). Gated
+  /// by [canCopy] — the thing in hand is what the pill's copy and cut both
+  /// take first.
+  void cut() {
+    final hand = canvasText;
+    final copy = hand?.heldByItsBox();
+    if (hand == null || copy == null) {
+      return;
+    }
+    _board._take(copy);
+    hand.takeOff();
     _changes.notifyChanged();
   }
 

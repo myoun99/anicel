@@ -349,6 +349,7 @@ void main() {
             faces.add(families);
             return canvas.landingWith(landing, families);
           },
+          takeOff: canvas.takeOff,
         )
         ..copy();
       return faces;

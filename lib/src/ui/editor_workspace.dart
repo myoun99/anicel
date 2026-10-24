@@ -1372,11 +1372,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
     session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
     // I-101: the text this window's canvas holds — what the pill's copy
-    // takes ahead of anything selected — and the faces a pasted text
-    // brings with it, as a text the hand lands does.
+    // and cut take ahead of anything selected — the faces a pasted text
+    // brings with it, as a text the hand lands does, and the hand's delete
+    // the cut takes it off its cel with.
     session.textClipboard.canvasText = (
       heldByItsBox: _textHeldByItsBox,
       landingWith: _landingWithItsFaces,
+      takeOff: _takeTheHeldTextOff,
     );
     // F-123: what the tools were holding rides with the project — read at
     // each save, put back on open once the library can name the brushes.
@@ -1457,6 +1459,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ? null
         : (content: shown.content, plate: shown.plate);
   }
+
+  /// The text in hand off its cel — Delete's press on it (R9-rest).
+  void _takeTheHeldTextOff() => widget.canvasTextCommands?.deleteText();
 
   /// [landing] — a text set on a cel — with the registering of the faces
   /// its letters are written in ([families]), as one step: the files each
