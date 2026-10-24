@@ -155,7 +155,7 @@ typedef LayerFrameSurfaceResolver =
 ///
 /// Built by [resolveCutFrameCompositeTree] and mapped — never rebuilt —
 /// into the shapes the routes need: surfaces for the paint routes
-/// ([planCutFrameComposite]) and identities for the playback cache
+/// ([planCutFrameCompositeTree]) and identities for the playback cache
 /// ([computeCutFrameCompositeSignature]). One structure, so playback,
 /// export and the editing canvas cannot drift.
 sealed class CutFrameCompositeRow {
@@ -1308,47 +1308,6 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       paintedNormal: (row) => row.paintedNormal(),
     ),
   );
-}
-
-/// Plans which surfaces make up the cut's picture at [frameIndex] — the
-/// shared [resolveCutFrameCompositeEntries] visit with surfaces resolved
-/// (entries whose frame has no artwork drop out).
-///
-/// FLAT: folder opacity/blend fold into the members. The paint routes use
-/// [planCutFrameCompositeTree] instead; this stays for the consumers that
-/// cannot nest (a pixel sample, a fill raster).
-///
-/// ⚠️ Flat-path limitation, the same class as the folder-blend
-/// approximation above: a FOLDER's effects are dropped here (they have no
-/// buffer to land on), and a LAYER's effects arrive as data the byte-level
-/// consumers do not run — the eyedropper and the flood fill read the
-/// artwork as DRAWN, not as filtered. Both are Dart byte walks with no
-/// Skia in reach; the filtered picture lives on the paint routes.
-List<CutFrameCompositeLayer> planCutFrameComposite({
-  required Cut cut,
-  required int frameIndex,
-  required LayerFrameSurfaceResolver surfaceResolver,
-}) {
-  final plan = <CutFrameCompositeLayer>[];
-  for (final entry in resolveCutFrameCompositeEntries(
-    cut: cut,
-    frameIndex: frameIndex,
-  )) {
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
-      continue;
-    }
-    plan.add(
-      CutFrameCompositeLayer(
-        surface: surface,
-        opacity: entry.opacity,
-        blendMode: entry.blendMode,
-        placement: entry.placement,
-        effects: entry.effects,
-      ),
-    );
-  }
-  return plan;
 }
 
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;

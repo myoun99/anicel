@@ -55,8 +55,16 @@ void main() {
     return marker == null ? null : surfaceWithMarker(marker);
   }
 
-  int markerOf(CutFrameCompositeLayer layer) =>
-      layer.surface.tiles.values.single.pixels[0];
+  // ↩️These read `planCutFrameComposite`, a flat plan of surfaces that only
+  // tests called (the-flat-composite-plan-has-no-caller-but-tests, 10-25).
+  // What they pin is the one visit under it, which the flat readers take.
+  List<CutFrameCompositeEntry> visit({
+    required Cut cut,
+    required int frameIndex,
+  }) => resolveCutFrameCompositeEntries(cut: cut, frameIndex: frameIndex);
+
+  int markerOf(CutFrameCompositeEntry entry) =>
+      int.parse(entry.frame.id.value.split('-').last);
 
   group('folder composite', () {
     Layer memberLayer({String folder = 'f'}) => Layer(
@@ -87,44 +95,40 @@ void main() {
     );
 
     test('a folder row paints nothing of its own', () {
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([memberLayer(), folderRow('f')]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(plan, hasLength(1), reason: 'only the member contributes pixels');
     });
 
     test('a hidden folder (or hidden ancestor) hides its subtree', () {
-      final hidden = planCutFrameComposite(
+      final hidden = visit(
         cut: cut([memberLayer(), folderRow('f', isVisible: false)]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(hidden, isEmpty);
 
-      final nestedHidden = planCutFrameComposite(
+      final nestedHidden = visit(
         cut: cut([
           memberLayer(folder: 'inner'),
           folderRow('inner', parent: 'outer'),
           folderRow('outer', isVisible: false),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(nestedHidden, isEmpty, reason: 'the hidden ANCESTOR gates');
     });
 
     test('folder opacity folds into the member (nested folders multiply)',
         () {
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([
           memberLayer(folder: 'inner'),
           folderRow('inner', parent: 'outer', opacity: 0.5),
           folderRow('outer', opacity: 0.5),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(plan.single.opacity, closeTo(0.25, 1e-9));
     });
@@ -136,13 +140,12 @@ void main() {
           0: TransformPose.uniform(center: CanvasPoint(x: 3, y: 2), zoom: 2),
         },
       );
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([
           memberLayer(),
           folderRow('f', transformTrack: folderTrack),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       final placement = plan.single.placement!;
       expect(
@@ -158,13 +161,12 @@ void main() {
           0: TransformPose.uniform(center: CanvasPoint(x: 2, y: 2), zoom: 3),
         },
       );
-      final composedPlan = planCutFrameComposite(
+      final composedPlan = visit(
         cut: cut([
           memberLayer().copyWith(transformTrack: layerTrack),
           folderRow('f', transformTrack: folderTrack),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(composedPlan.single.placement!.evenScale, 6);
     });
@@ -176,7 +178,7 @@ void main() {
         },
       );
       // R8: the switch is the folder row's own persisted field.
-      final bypassed = planCutFrameComposite(
+      final bypassed = visit(
         cut: cut([
           memberLayer(),
           folderRow(
@@ -185,7 +187,6 @@ void main() {
           ).copyWith(transformEnabled: false),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(
         bypassed.single.placement,
@@ -195,10 +196,10 @@ void main() {
       );
     });
 
-    // The tree is the route every painter takes; the flat plan beside it is
-    // the byte walkers'. Both resolve their surfaces off the one visit, and
-    // each hands the leaf its placement with its own hand.
-    test('the TREE hands a leaf the placement the flat plan hands it — a '
+    // The tree is the route every painter takes; the visit beside it is the
+    // byte walkers' (the eyedropper, the fill). Each hands the row its
+    // placement with its own hand.
+    test('the TREE hands a leaf the placement the visit hands its entry — a '
         'member under a posed folder, with a pose of its own', () {
       final posed = cut([
         memberLayer().copyWith(
@@ -220,11 +221,7 @@ void main() {
           ),
         ),
       ]);
-      final flat = planCutFrameComposite(
-        cut: posed,
-        frameIndex: 0,
-        surfaceResolver: resolver,
-      ).single.placement;
+      final flat = visit(cut: posed, frameIndex: 0).single.placement;
       final tree = planCutFrameCompositeTree(
         cut: posed,
         frameIndex: 0,
@@ -238,7 +235,7 @@ void main() {
   });
 
   test('composites layers bottom to top in list order', () {
-    final plan = planCutFrameComposite(
+    final plan = visit(
       cut: cut([
         Layer(
           id: const LayerId('bottom'),
@@ -258,14 +255,13 @@ void main() {
         ),
       ]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     );
 
     expect(plan.map(markerOf), [1, 2]);
   });
 
   test('skips camera, hidden and fully transparent layers', () {
-    final plan = planCutFrameComposite(
+    final plan = visit(
       cut: cut([
         Layer(
           id: const LayerId('visible'),
@@ -302,7 +298,6 @@ void main() {
         ),
       ]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     );
 
     expect(plan.map(markerOf), [1]);
@@ -319,10 +314,9 @@ void main() {
       },
     );
 
-    List<CutFrameCompositeLayer> planAt(int index) => planCutFrameComposite(
+    List<CutFrameCompositeEntry> planAt(int index) => visit(
       cut: cut([layer]),
       frameIndex: index,
-      surfaceResolver: resolver,
     );
 
     expect(planAt(0).map(markerOf), [1]);
@@ -333,8 +327,11 @@ void main() {
     expect(planAt(99), isEmpty);
   });
 
-  test('blank exposures and missing surfaces contribute nothing', () {
-    final plan = planCutFrameComposite(
+  // A frame with no artwork drops where surfaces are resolved — the tree
+  // plan's (one_composite_fold_test: 「a leaf that resolves to nothing
+  // drops」).
+  test('blank exposures contribute nothing', () {
+    final plan = visit(
       cut: cut([
         Layer(
           id: const LayerId('blank'),
@@ -344,24 +341,15 @@ void main() {
             0: const TimelineExposure.drawing(FrameId('frame-1'), length: 2),
           },
         ),
-        Layer(
-          id: const LayerId('undrawn'),
-          name: 'B',
-          frames: [frame('frame-x')],
-          timeline: {
-            0: const TimelineExposure.drawing(FrameId('frame-x'), length: 1),
-          },
-        ),
       ]),
       frameIndex: 3,
-      surfaceResolver: resolver,
     );
 
     expect(plan, isEmpty);
   });
 
   test('layer opacity carries into the plan', () {
-    final plan = planCutFrameComposite(
+    final plan = visit(
       cut: cut([
         Layer(
           id: const LayerId('faded'),
@@ -374,7 +362,6 @@ void main() {
         ),
       ]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     );
 
     expect(plan.single.opacity, 0.25);
@@ -394,10 +381,9 @@ void main() {
 
     // Empty track = identity: the plan carries null so compositors skip
     // the transform entirely.
-    final identityPlan = planCutFrameComposite(
+    final identityPlan = visit(
       cut: cut([transformed()]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     );
     expect(identityPlan.single.placement, isNull);
 
@@ -409,10 +395,9 @@ void main() {
         10: TransformPose(center: CanvasPoint(x: 10, y: 20)),
       },
     );
-    final placedAt5 = planCutFrameComposite(
+    final placedAt5 = visit(
       cut: cut([transformed(track: track)]),
       frameIndex: 5,
-      surfaceResolver: resolver,
     ).single.placement;
     expect(placedAt5, isNotNull);
     expect(
@@ -447,19 +432,17 @@ void main() {
       opacity: PropertyTrack<double>().withKey(0, 1).withKey(10, 0),
     );
 
-    final plan = planCutFrameComposite(
+    final plan = visit(
       cut: cut([animated(track: fading, opacity: 0.5)]),
       frameIndex: 5,
-      surfaceResolver: resolver,
     );
     expect(plan.single.opacity, closeTo(0.25, 1e-9));
     // Opacity animation alone never forces the transform path.
     expect(plan.single.placement, isNull);
 
-    final faded = planCutFrameComposite(
+    final faded = visit(
       cut: cut([animated(track: fading)]),
       frameIndex: 10,
-      surfaceResolver: resolver,
     );
     expect(faded, isEmpty);
   });
@@ -477,17 +460,16 @@ void main() {
       ),
     );
 
-    final plan = planCutFrameComposite(
+    final plan = visit(
       cut: cut([animated(track: anchored)]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     );
     expect(
       plan.single.placement!.apply(CanvasPoint(x: 1, y: 1)),
       CanvasPoint(x: 3, y: 3),
     );
 
-    final unanchored = planCutFrameComposite(
+    final unanchored = visit(
       cut: cut([
         animated(
           track: TransformTrack(
@@ -496,7 +478,6 @@ void main() {
         ),
       ]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     );
     expect(
       unanchored.single.placement!.centreOf(canvasSize),
@@ -517,12 +498,11 @@ void main() {
           ),
         );
 
-    final bypassed = planCutFrameComposite(
+    final bypassed = visit(
       cut: cut([
         animated(track: track, opacity: 0.8).copyWith(transformEnabled: false),
       ]),
       frameIndex: 0,
-      surfaceResolver: resolver,
     ).single;
 
     expect(bypassed.placement, isNull);
@@ -574,37 +554,33 @@ void main() {
         attachedMode: AttachedMode.free,
       );
 
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([baseLayer(), freeRow()]),
         frameIndex: 5,
-        surfaceResolver: resolver,
       );
       expect(plan.map(markerOf), [9], reason: 'own timeline resolves');
 
       // Hiding the base hides ONLY the base's own picture (UI-R24 #5):
       // the attach row keeps compositing under its own eye.
-      final hidden = planCutFrameComposite(
+      final hidden = visit(
         cut: cut([baseLayer(isVisible: false), freeRow()]),
         frameIndex: 5,
-        surfaceResolver: resolver,
       );
       expect(hidden.map(markerOf), [9]);
     });
 
     test('attach rows composite in list order around their base — '
         '[below, base, above] — riding the base exposure', () {
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([attachRow('below', 2), baseLayer(), attachRow('above', 3)]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(plan.map(markerOf), [2, 1, 3]);
 
       // Past the base's block, nothing on any of the three.
-      final past = planCutFrameComposite(
+      final past = visit(
         cut: cut([attachRow('below', 2), baseLayer(), attachRow('above', 3)]),
         frameIndex: 5,
-        surfaceResolver: resolver,
       );
       expect(past, isEmpty);
     });
@@ -614,13 +590,12 @@ void main() {
       final track = TransformTrack(
         keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
       ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5));
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([
           baseLayer(track: track),
           attachRow('above', 3, opacity: 0.5),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
 
       expect(plan, hasLength(2));
@@ -637,13 +612,12 @@ void main() {
       final track = TransformTrack(
         keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
       ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5));
-      final plan = planCutFrameComposite(
+      final plan = visit(
         cut: cut([
           baseLayer(track: track).copyWith(transformEnabled: false),
           attachRow('above', 3),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
 
       expect(plan.map(markerOf), [1, 3]);
@@ -657,27 +631,24 @@ void main() {
       // The base's eye no longer cascades: its synced attach row still
       // composites (the cell links resolve through the base's TIMELINE,
       // which visibility does not touch).
-      final baseHidden = planCutFrameComposite(
+      final baseHidden = visit(
         cut: cut([baseLayer(isVisible: false), attachRow('above', 3)]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(baseHidden.map(markerOf), [3]);
 
-      final rowHidden = planCutFrameComposite(
+      final rowHidden = visit(
         cut: cut([baseLayer(), attachRow('above', 3, isVisible: false)]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(rowHidden.map(markerOf), [1]);
 
-      final dangling = planCutFrameComposite(
+      final dangling = visit(
         cut: cut([
           baseLayer(),
           attachRow('above', 3, attachedTo: const LayerId('gone')),
         ]),
         frameIndex: 0,
-        surfaceResolver: resolver,
       );
       expect(dangling.map(markerOf), [1]);
     });

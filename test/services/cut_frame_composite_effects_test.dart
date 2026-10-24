@@ -251,17 +251,8 @@ void main() {
         surfaceResolver: (layer, frame) => null,
       );
       // No artwork resolved, so the group drops — the point is that it did
-      // not throw and the flat plan carries the field.
+      // not throw.
       expect(nodes, isEmpty);
-
-      final flat = planCutFrameComposite(
-        cut: cut([
-          drawingLayer(id: 'a', effects: [blur(3)]),
-        ]),
-        frameIndex: 0,
-        surfaceResolver: (layer, frame) => null,
-      );
-      expect(flat, isEmpty);
     });
   });
 
