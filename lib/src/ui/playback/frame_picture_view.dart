@@ -66,6 +66,7 @@ class FramePictureView extends StatefulWidget {
     this.live,
     this.laysWhatItMisses = false,
     this.wholeFrames = true,
+    this.alreadyShown = false,
   });
 
   final StackRun run;
@@ -100,6 +101,23 @@ class FramePictureView extends StatefulWidget {
   /// on `CanvasLayerStackView` until the track stack drew its cuts there
   /// (2026-10-10) and asked the second without the first.
   final bool wholeFrames;
+
+  /// Whether what this view shows is on screen already, painted by another
+  /// route it takes over from — the conte's printed pictures, drawn live
+  /// while its brush is on. Its first frame then reads every cel it draws
+  /// on this thread, whatever it takes: a picture on screen may not go
+  /// blank for the frames a read off it takes (F-215, 유저 2026-09-28:
+  /// 「브러시 허용 on시 … 그림이 사라졌다가 다시 렌더되서 보이기시작. on하든off하든
+  /// 바뀌는게 없어야」).
+  ///
+  /// ⛔False is every other view's first frame — a project opened, a cut
+  /// switched to: nothing of it was on screen, and a whole cold stack read
+  /// in one build is a stall nobody asked for.
+  ///
+  /// ↩️`CanvasLayerStackView.alreadyShown`, until the conte's live picture
+  /// was the frame's one picture (one-picture-per-frame ②-3), which left it
+  /// behind: the switch's frame drew the picture without its cut's rows.
+  final bool alreadyShown;
 
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
@@ -187,7 +205,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   void initState() {
     super.initState();
     widget.run.landings.addListener(_landed);
-    _standLive();
+    _standLive(readingNow: widget.alreadyShown);
     _look();
   }
 
@@ -237,14 +255,21 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// The frame as it stands, for a view that draws one ([_live]) — built
   /// again for each tree it is handed, from the cels in hand; the rest are
-  /// read and it is built again once they are.
-  void _standLive() {
+  /// read and it is built again once they are. [readingNow] reads them on
+  /// this thread first ([FramePictureView.alreadyShown]).
+  void _standLive({bool readingNow = false}) {
     _liveChanges = null;
     _live = null;
     final live = widget.live;
     if (live == null && widget.wholeFrames) {
       _standing.whole = false;
       return;
+    }
+    if (readingNow) {
+      _report(
+        _pictures.readInStackNow(widget.nodes, widget.picture),
+        'reading the frame a view takes over',
+      );
     }
     final frame = _pictures.frameAsItStands(
       widget.nodes,
@@ -334,13 +359,19 @@ class _FramePictureViewState extends State<FramePictureView> {
     final now = _pictures.drawingNow(widget.nodes, widget.picture);
     _asItStands = now.frame;
     _showing = key;
-    if (now.thrown case (final error, final stack)) {
+    _report(now.thrown, 'drawing a frame as its cels stand');
+  }
+
+  /// Reports [thrown], the first throw a cel's reading gave while [doing]
+  /// — the cel noted and drawn without.
+  static void _report((Object, StackTrace)? thrown, String doing) {
+    if (thrown case (final error, final stack)) {
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
           stack: stack,
           library: 'frame picture view',
-          context: ErrorDescription('drawing a frame as its cels stand'),
+          context: ErrorDescription(doing),
         ),
       );
     }

@@ -367,29 +367,57 @@ class FramePictures implements PlaybackPictures {
   ) {
     final page = pageOf(picture);
     (Object, StackTrace)? thrown;
-    BitmapSurface? surfaceOf(BrushFrameKey cel) {
-      final BitmapSurface? stored;
-      try {
-        stored = layerImages.storedSurfaceOrNull(
-          cel,
-          canvasSize: page.canvasSize,
-        );
-      } on Object catch (error, stack) {
-        thrown ??= (error, stack);
-        return null;
-      }
-      if (stored == null) {
-        _drawnNothing.note(cel);
-      }
-      return stored;
-    }
-
     final frame = stackedFrameOf(
       _drawnOf(nodes),
       page: page,
-      surfaceOf: surfaceOf,
+      surfaceOf: (cel) =>
+          _readNow(cel, page, (error, stack) => thrown ??= (error, stack)),
     );
     return (frame: frame, thrown: thrown);
+  }
+
+  /// [readInStack] on this thread, for a screen whose first frame may not
+  /// go without them (`FramePictureView.alreadyShown`) — each cel read as
+  /// [drawingNow] reads it, and the first throw a reading gave.
+  (Object, StackTrace)? readInStackNow(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture,
+  ) {
+    final page = pageOf(picture);
+    (Object, StackTrace)? thrown;
+    for (final cel in stackedCelsOf(_drawnOf(nodes))) {
+      if (!layerImages.storedSurfaceIsInHand(
+        cel,
+        canvasSize: page.canvasSize,
+      )) {
+        _readNow(cel, page, (error, stack) => thrown ??= (error, stack));
+      }
+    }
+    return thrown;
+  }
+
+  /// [cel]'s stored pixels on [page], read on this thread — or null, the
+  /// cel noted, where they are held at another canvas size or [thrown]
+  /// says why they cannot be read.
+  BitmapSurface? _readNow(
+    BrushFrameKey cel,
+    FramePage page,
+    void Function(Object error, StackTrace stack) thrown,
+  ) {
+    final BitmapSurface? stored;
+    try {
+      stored = layerImages.storedSurfaceOrNull(
+        cel,
+        canvasSize: page.canvasSize,
+      );
+    } on Object catch (error, stack) {
+      thrown(error, stack);
+      return null;
+    }
+    if (stored == null) {
+      _drawnNothing.note(cel);
+    }
+    return stored;
   }
 
   /// [nodes] for [picture] as they stand, drawn from the cels in hand

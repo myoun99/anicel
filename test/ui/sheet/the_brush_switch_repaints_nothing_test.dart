@@ -571,12 +571,22 @@ class _HeldPrints {
 
   /// Lands every print the store owes — the ones each landing sets the
   /// page asking for too.
+  ///
+  /// ⛔Asked once the frame a landing repaints has painted, as the conte
+  /// asks ([StoryboardThumbnails.pending]): a landing empties what was
+  /// asked, and the page asks again for the prints still owed only as it
+  /// paints. Asked at the landing's own frame, the store owed nothing the
+  /// frame before the page asked for the last print, and that print was
+  /// never landed — the pictures stayed live for good, whichever frame the
+  /// canvas's own repaints happened to land the ask on.
   Future<void> landAll(WidgetTester tester, ui.Image print) async {
-    for (var round = 0; round < 10 && store.pending; round += 1) {
-      _renders
-          .where((render) => !render.isCompleted)
-          .firstOrNull
-          ?.complete(print.clone());
+    for (var round = 0; round < 10; round += 1) {
+      final owed = _renders.where((render) => !render.isCompleted);
+      if (owed.isEmpty && !store.pending) {
+        break;
+      }
+      owed.firstOrNull?.complete(print.clone());
+      await tester.pump();
       await tester.pump();
     }
     expect(store.pending, isFalse, reason: 'every print landed');

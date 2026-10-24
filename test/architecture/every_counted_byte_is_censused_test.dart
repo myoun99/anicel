@@ -389,6 +389,10 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/canvas_layer_stack_view.dart → _superseded':
       'clones a settle replaced, kept only until the build the settle asks '
       'for: the paint before it drew with them, and nothing keeps a paint',
+  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _dropped':
+      'clones of _images let go, kept as _superseded is until the build '
+      'that replaces the painter drawing with them: a sibling repainting '
+      'the layer meanwhile repaints with that painter (2026-10-25)',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
       'counted:decodedBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':

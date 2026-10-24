@@ -199,8 +199,10 @@ class ContePictureLive extends StatelessWidget {
               // picture takes to make — it is drawn as it stands meanwhile
               // (F-215, 유저 2026-09-28: 「브러시 허용 on시 … 그림이
               // 사라졌다가 다시 렌더되서 보이기시작. on하든off하든 바뀌는게
-              // 없어야」).
+              // 없어야」) — from every cel it draws, read for its first
+              // frame.
               wholeFrames: false,
+              alreadyShown: true,
             ),
           ),
         ),

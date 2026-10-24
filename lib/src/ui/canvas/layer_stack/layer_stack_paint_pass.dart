@@ -137,8 +137,12 @@ class _LayerStackPaintPass {
   /// ([displayLevelOf]): 0 at or above 100%, where the buffer is at canvas
   /// resolution and its bytes are what they always were; below, the
   /// artwork halved this many times, so the buffer is the screen's size
-  /// (to within a factor of two) and not the visible canvas's.
-  int get _level => displayLevelOf(_displayScale);
+  /// (to within a factor of two) and not the visible canvas's. Always 0
+  /// for a frame drawn as its picture will show it
+  /// ([_LayerStackPainter.composedAtTheDisplayLevel]).
+  int get _level => _painter.composedAtTheDisplayLevel
+      ? displayLevelOf(_displayScale)
+      : 0;
 
   /// One buffer pixel in canvas pixels at [_level].
   double get _levelStep => (1 << _level).toDouble();

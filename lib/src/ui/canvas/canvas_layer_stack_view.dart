@@ -325,6 +325,7 @@ final class StackedFrame {
             paperBackground: page.paperBackground,
             devicePixelRatio: devicePixelRatio,
             debugDisableSingleBuffer: debugDisableSingleBuffer,
+            composedAtTheDisplayLevel: false,
           ),
     );
   }
@@ -715,20 +716,31 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// a disposed image (2026-10-25). ↩️The kept display buffer hid it: the
   /// painter drew the buffer, not the rows.
   void _dropImage(BrushFrameKey key, _HeldImage held) {
-    final cache = widget.imageCache;
-    _superseded.add(() {
-      // A6: the pin travels with the clone — held pixels are declared
-      // pixels, and the declaration ends exactly when the hold does.
-      cache.releasePin(key, held.quality);
-      held.clone.disposeAll();
-      held.laidBack.dispose();
-    });
+    _dropped.add((cache: widget.imageCache, key: key, held: held));
   }
 
-  /// What the painter on screen may still draw with — the handles a settle
-  /// replaced ([_settleHeldImage]) and the images let go ([_dropImage]) —
-  /// each let go in the build that replaces it ([_releaseSuperseded]).
-  final List<void Function()> _superseded = [];
+  /// The handles a settle replaced ([_settleHeldImage]) — the painter on
+  /// screen may still draw with them — let go in the build that replaces
+  /// it ([_releaseSuperseded]).
+  final List<ImagePiece> _superseded = <ImagePiece>[];
+
+  /// The images let go ([_dropImage]), kept as [_superseded] is — each with
+  /// the cache its pin was taken on, which a cache swap meanwhile does not
+  /// move ([didUpdateWidget] moves the pins of [_images]).
+  final List<_DroppedImage> _dropped = <_DroppedImage>[];
+
+  /// Lets go of [held], pinned on [cache] for [key].
+  static void _letGo(
+    LayerFrameImageCache cache,
+    BrushFrameKey key,
+    _HeldImage held,
+  ) {
+    // A6: the pin travels with the clone — held pixels are declared
+    // pixels, and the declaration ends exactly when the hold does.
+    cache.releasePin(key, held.quality);
+    held.clone.disposeAll();
+    held.laidBack.dispose();
+  }
 
   /// [image] takes the place of [held] for [key] as the same picture — the
   /// only way into [_images] that leaves the stack on screen standing.
@@ -752,7 +764,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _HeldImage held,
     LayerFrameImage image,
   ) {
-    _superseded.add(held.clone.disposeAll);
+    _superseded.addAll(held.clone);
     _images[key] = (
       source: image.pieces,
       clone: image.pieces.clones(),
@@ -769,21 +781,20 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// Lets go of what a settle replaced and what was dropped, in the build
   /// whose painter draws with what took their place.
   void _releaseSuperseded() {
-    final release = List.of(_superseded);
+    _superseded.disposeAll();
     _superseded.clear();
-    for (final letGo in release) {
-      letGo();
+    for (final (:cache, :key, :held) in _dropped) {
+      _letGo(cache, key, held);
     }
+    _dropped.clear();
   }
 
   @override
   void dispose() {
     widget.imageCache.frameStore.removeRekeyListener(_travelWithTheirCels);
     widget.imageCache.frameStore.removeCopyListener(_shareWithTheirCopies);
-    for (final entry in _images.entries) {
-      widget.imageCache.releasePin(entry.key, entry.value.quality);
-      entry.value.clone.disposeAll();
-      entry.value.laidBack.dispose();
+    for (final MapEntry(:key, value: held) in _images.entries) {
+      _letGo(widget.imageCache, key, held);
     }
     _images.clear();
     _releaseSuperseded();
@@ -876,8 +887,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// ([LayerFrameImageCache.prepareSyncOrNull]'s `makePictures`).
   ///
   /// ↩️So was every row of a view taking over what another route showed
-  /// (`alreadyShown`, F-215), until the frame's one picture drew them
-  /// (one-picture-per-frame ②-5a).
+  /// (`alreadyShown`, F-215) — read on this thread by the frame's one
+  /// picture since it took the conte's live picture over
+  /// (`FramePictureView.alreadyShown`).
   bool _wasOnScreen(
     BrushFrameKey key,
     int? revision,
@@ -1283,6 +1295,14 @@ typedef _HeldImage = ({
   LaidBackWhole laidBack,
 });
 
+/// A held image let go, waiting for the build that replaces the painter
+/// drawing with it ([_CanvasLayerStackViewState._dropped]).
+typedef _DroppedImage = ({
+  LayerFrameImageCache cache,
+  BrushFrameKey key,
+  _HeldImage held,
+});
+
 /// The painter's own node shape: the request tree with images resolved.
 sealed class _PaintRow {
   const _PaintRow();
@@ -1639,6 +1659,7 @@ class _LayerStackPainter extends CustomPainter {
     required this.paperBackground,
     this.devicePixelRatio = 1.0,
     this.debugDisableSingleBuffer = false,
+    this.composedAtTheDisplayLevel = true,
   });
 
   /// What moves the live rows' pixels: the live row's surface and stroke,
@@ -1684,6 +1705,20 @@ class _LayerStackPainter extends CustomPainter {
 
   /// See [CanvasLayerStackView.debugDisableSingleBuffer].
   final bool debugDisableSingleBuffer;
+
+  /// Whether below 100% this stack is composed at the display's level
+  /// ([displayLevelOf]; `below_100_the_buffer_is_a_level_test`) — the
+  /// onion's ghosts — or at the frame's own resolution, as its one picture
+  /// is laid, and resampled as the picture is: a frame drawn as it stands
+  /// ([StackedFrame.paintOnScreen]) shows what its picture will (D7-2-Q2
+  /// 「항상 원본 한장으로」; F-215 「on하든off하든 바뀌는게 없어야」).
+  ///
+  /// 🔬At the display's level (2026-10-25), the frame the conte's brush is
+  /// switched on in cut each row's edge on the screen's grid, and the
+  /// picture that landed after it blended it: 172 pixels, up to 28/255, at
+  /// 1/6. So does every patch landing on a canvas zoomed out, at each step
+  /// of a stroke.
+  final bool composedAtTheDisplayLevel;
 
   /// The EFFECTIVE ratio at build time (monitor × UI scale) — the display
   /// scale's axis (`zoom·dpr`, [displayScaleOf]). A monitor move re-runs
