@@ -315,6 +315,43 @@ void main() {
       store.dispose();
     });
 
+    test('wait for the patches to STOP: each that comes puts the pause off',
+        () async {
+      final gpu = _RecordingGpu();
+      // Margins of half a second each way, for a loaded machine.
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        levelsQuiet: const Duration(seconds: 2),
+      );
+      await _layed(store, 'a', 1024);
+      for (final left in [0.0, 100.0]) {
+        store.patch(
+          from: 'a',
+          to: 'a',
+          rect: ui.Rect.fromLTWH(left, 0, 8, 8),
+          draw: fill,
+        );
+        expect(
+          await pollUntil(() => gpu.bases.length == (left == 0 ? 1 : 2)),
+          isTrue,
+        );
+        await Future<void>.delayed(
+          Duration(milliseconds: left == 0 ? 1000 : 1500),
+        );
+      }
+      expect(gpu.levelWrites, isEmpty, reason: '2.5 s after the first, '
+          '1.5 s after the second');
+      expect(await pollUntil(() => gpu.levelWrites.isNotEmpty), isTrue);
+      expect(
+        [
+          for (final span in gpu.levelWrites.single.spans)
+            if (span.level == 1) span.x,
+        ],
+        [0, 50],
+      );
+      store.dispose();
+    });
+
     test('of as many patches as wait at most land with the last of them, '
         'the pause or not', () async {
       final gpu = _RecordingGpu();
