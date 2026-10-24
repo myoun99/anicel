@@ -426,6 +426,58 @@ void main() {
     await leave();
   });
 
+  testWidgets('a button that CHANGES tells a screen reader — lit, renamed, '
+      'gone dead — in the node it already had', (tester) async {
+    final handle = tester.ensureSemantics();
+    final look = ValueNotifier<(bool, String, bool)>((false, 'Eye', true));
+    addTearDown(look.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Material(
+          child: Center(
+            child: ValueListenableBuilder<(bool, String, bool)>(
+              valueListenable: look,
+              builder: (context, value, _) {
+                final (selected, tooltip, alive) = value;
+                return AppIconButton(
+                  keyValue: 'changes',
+                  tooltip: tooltip,
+                  icon: const Icon(Icons.visibility),
+                  onPressed: alive ? () {} : null,
+                  isSelected: selected,
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    final button = find.byKey(const ValueKey<String>('changes'));
+    final node = tester.getSemantics(button);
+    expect(
+      node,
+      isSemantics(tooltip: 'Eye', isSelected: false, isEnabled: true),
+    );
+
+    look.value = (true, 'Eye', true);
+    await tester.pump();
+    expect(tester.getSemantics(button), isSemantics(isSelected: true));
+
+    look.value = (true, 'Hidden', true);
+    await tester.pump();
+    expect(tester.getSemantics(button), isSemantics(tooltip: 'Hidden'));
+
+    look.value = (true, 'Hidden', false);
+    await tester.pump();
+    expect(tester.getSemantics(button), isSemantics(isEnabled: false));
+    expect(
+      tester.getSemantics(button).id,
+      node.id,
+      reason: 'the same node, told — not a new one',
+    );
+    handle.dispose();
+  });
+
   testWidgets('a parent that asks the box\'s size any other way — dry, '
       'intrinsic or by its baseline — hears what the old face said', (
     tester,
