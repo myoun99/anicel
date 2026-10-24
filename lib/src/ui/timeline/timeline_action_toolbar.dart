@@ -1042,7 +1042,16 @@ class TimelineActionToolbar extends StatelessWidget {
       // for both axes, and now ONE pair for both panels: it is a frame-axis
       // shove, so it belongs to the FRAME noun, and [panelContext] is how the
       // asking rail names itself.
-      TimelineShiftButtons(session: session, panel: panelContext),
+      //
+      // A zone with no gates of its own: the pair hears its own (it stands
+      // alone too, [TimelineShiftButtons]), and the zone keeps it — and its
+      // paint — while the bar is built again round it.
+      _StaticCommandGroup(
+        news: _news,
+        gates: () => null,
+        builder: (context) =>
+            TimelineShiftButtons(session: session, panel: panelContext),
+      ),
       const PillDivider(),
       // Comma set (UI-R17 #7, TVP-style): the current block — or the whole
       // selection, packed — takes the pressed exposure outright; N asks for

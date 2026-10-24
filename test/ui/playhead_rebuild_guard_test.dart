@@ -456,6 +456,29 @@ void main() {
     await tester.pumpAndSettle();
 
     final before = tester.widget(find.byType(TimelineActionToolbar));
+    // The controls on every pill but the layer pill, whose menu checks read
+    // the sections.
+    List<Widget> notTheLayerPill() => [
+      for (final element in find
+          .descendant(
+            of: find.byType(TimelineActionToolbar),
+            matching: find.byWidgetPredicate(
+              (w) => w is AppIconButton || w is TextButton,
+            ),
+          )
+          .evaluate())
+        if (find
+            .ancestor(
+              of: find.byWidget(element.widget),
+              matching: find.byKey(
+                const ValueKey<String>('timeline-toolbar-layer-group'),
+              ),
+            )
+            .evaluate()
+            .isEmpty)
+          element.widget,
+    ];
+    final others = notTheLayerPill();
     tester
         .widget<TimelineActionToolbar>(find.byType(TimelineActionToolbar))
         .onToggleSection!(TimelineSection.se);
@@ -466,6 +489,14 @@ void main() {
       identical(tester.widget(find.byType(TimelineActionToolbar)), before),
       isFalse,
       reason: 'a hiddenSections change must refresh the toolbar',
+    );
+    final after = notTheLayerPill();
+    expect(after, hasLength(others.length), reason: 'sanity');
+    expect(
+      [for (var i = 0; i < after.length; i++) identical(after[i], others[i])],
+      everyElement(isTrue),
+      reason: 'the bar built again, and each group kept what it had built '
+          'while its own gates held',
     );
 
     await tester.pump(const Duration(seconds: 1));
