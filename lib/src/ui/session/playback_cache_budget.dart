@@ -3,7 +3,7 @@ import '../../models/cut.dart';
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/frame_demand.dart';
 import '../playback/playback_cache_budget.dart';
-import '../playback/canvas_pictures.dart';
+import '../playback/frame_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart' show PictureRoom;
 import '../timeline/timeline_ruler_cursor_overlay.dart' show ReadyRun;
@@ -24,7 +24,7 @@ abstract interface class PlaybackRun {
 
   /// The pictures every screen shows a frame from — the budget keeps them by
   /// [demand].
-  CanvasPictures get pictures;
+  FramePictures get pictures;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -54,6 +54,7 @@ class PlaybackCacheBudget implements PictureRoom {
 
   PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
       _enforcer ??= PlaybackCacheBudgetEnforcer(
+        pictures: _renderCaches.framePictureStore,
         layerImages: _renderCaches.layerFrameImageCache,
         maxBytes:
             _debugMaxBytes ?? _allowedMaxBytes ?? playbackCacheBudgetBytes,
@@ -155,15 +156,18 @@ class PlaybackCacheBudget implements PictureRoom {
   ///
   /// TWO kinds of frame, one bar (유저 2026-08-16, 「왜 콘텐츠끝너머가
   /// 초록이되면 안되는거지? 재생가능한거잖아」):
-  ///  * a frame with something to compose is green when its composite is
-  ///    warmed — the bake IS its readiness;
+  ///  * a frame with something to compose is green when its picture is
+  ///    made — the making IS its readiness;
   ///  * a frame that composes to NOTHING (a hole between blocks, the
   ///    runway past the drawings, hidden or faded-out layers) is not an
   ///    exception the bar skips — it is ready BY DEFINITION. Playback at
-  ///    that frame draws exactly what its composite would hold: nothing.
+  ///    that frame draws its page alone, the paper or nothing
+  ///    (`FramePictures.drawsOnlyItsPage`), and nothing of it is made.
   ///
-  /// The empty answer reads the same shared visit the signature rides, so
-  /// it cannot disagree with what the compose loop would actually paint.
+  /// The two are ONE question, the run's own ([FramePictures.has]).
+  /// ↩️The bar answered a frame of nothing by the plan's empty signature,
+  /// beside the run's question — the same answer asked twice, until a
+  /// frame became one picture and the run's answered it too.
   ///
   /// ★Asked once per span of one picture, never per frame (I-22): zoomed
   /// out to ten minutes the per-frame read was 94% of a playback tick. The
@@ -171,16 +175,17 @@ class PlaybackCacheBudget implements PictureRoom {
   ///
   /// 🚨A BAR COUNTS WHAT ITS RUN SHOWS (playback-plays-the-screen-material):
   /// a span is ready when the pictures every screen shows a frame from are —
-  /// the question a run asks before it goes on ([CanvasPictures.has]) asked
+  /// the question a run asks before it goes on ([FramePictures.has]) asked
   /// of the span's first frame. ↩️The film's bar — the storyboard's — counted
   /// composites while the film played on them.
   ///
-  /// 🗣️AND A SPAN THE RUN HAS STOPPED WAITING FOR, A CEL OF IT UNREADABLE, IS
-  /// READY RED (frame-picture-indicator-Q1 b): nothing more of its picture
-  /// is to come ([CanvasPictures.failed]) and a cel it shows could not be
-  /// read ([CanvasPictures.cannotRead]), so it plays without that cel.
-  /// ↩️The bar asked only [CanvasPictures.has], and such a span was never
-  /// painted at all — the run going on past it said nothing anywhere.
+  /// 🗣️AND A SPAN WITH A CEL THAT COULD NOT BE READ IS READY RED
+  /// (frame-picture-indicator-Q1 b) once the run waits for no more of it:
+  /// its picture is made without that cel ([FramePictures.cannotRead]), or
+  /// nothing more of it is to come ([FramePictures.failed]) — it plays
+  /// without that cel. ↩️The bar asked only whether the span's pictures
+  /// were there, and such a span was never painted at all — the run going
+  /// on past it said nothing anywhere.
   ///
   /// [paintPaper]: whether the screen its run plays on paints the cut's
   /// paper ([DemandedPicture.paintPaper]) — which of its pictures it shows.
@@ -203,8 +208,8 @@ class PlaybackCacheBudget implements PictureRoom {
         paintPaper: paintPaper,
       );
       final bool unreadable;
-      if (span.signature.nodes.isEmpty || pictures.has(picture)) {
-        unreadable = false;
+      if (pictures.has(picture)) {
+        unreadable = pictures.cannotRead(picture);
       } else if (pictures.failed(picture) && pictures.cannotRead(picture)) {
         unreadable = true;
       } else {

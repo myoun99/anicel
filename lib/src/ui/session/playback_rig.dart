@@ -29,8 +29,9 @@ import '../playback/audio_scrubber.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/playback/playback_wait.dart';
-import '../canvas/canvas_layer_stack_view.dart' show CanvasLayerImageRequest;
-import '../playback/canvas_pictures.dart';
+import '../../models/composite_tree.dart';
+import '../canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
+import '../playback/frame_pictures.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
@@ -65,9 +66,9 @@ class PlaybackRig implements PlaybackRun {
       int startGlobalFrame,
     )
     onPlaylistWarmRequested,
-    required List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
-    canvasRowsOf,
-  }) : _canvasRowsOf = canvasRowsOf,
+    required List<CompositeNode<CanvasStackRow>> Function(Cut cut, int frameIndex)
+    stackOf,
+  }) : _stackOf = stackOf,
        _project = project,
        _selection = selection,
        _changes = changes,
@@ -106,38 +107,37 @@ class PlaybackRig implements PlaybackRun {
   )
   _onPlaylistWarmRequested;
 
-  /// The rows a cut's frame draws as images on the canvas while a run plays
-  /// it — the session's editing canvas answers ([CanvasPictures.rowsOf]).
-  final List<CanvasLayerImageRequest> Function(Cut cut, int frameIndex)
-  _canvasRowsOf;
+  /// The tree a cut's frame stacks on the screen while a run plays it — the
+  /// session's editing canvas answers ([FramePictures.stackOf]).
+  final List<CompositeNode<CanvasStackRow>> Function(Cut cut, int frameIndex)
+  _stackOf;
 
   // ── what the screen shows a frame from ──────────────────────────────
 
-  /// A cut's frame as the screen draws it — its rows' images at the level
-  /// that frame is drawn at — the canvas a cut, the track stack the film.
-  /// ↩️The film was shown from a composite per frame, made beside the
-  /// images the canvas holds (playback-plays-the-screen-material).
-  late final CanvasPictures canvasPictures = CanvasPictures(
+  /// A frame as every screen shows it — the canvas a cut, the track stack
+  /// the film: its one picture, made once ahead of the playhead.
+  /// ↩️The screens stacked a frame from its rows' images, each at the level
+  /// that frame was drawn at (`CanvasPictures`), and the film before that
+  /// from a composite per frame beside them.
+  late final FramePictures framePictures = FramePictures(
+    store: _renderCaches.framePictureStore,
     layerImages: _renderCaches.layerFrameImageCache,
-    rowsOf: _canvasRowsOf,
-    qualityAt: (cut, frameIndex) =>
-        _renderCaches.canvasLook.value.qualityAt(cut, frameIndex),
+    stackOf: (picture) => _stackOf(picture.cut, picture.frameIndex),
+    pageOf: (picture) => (
+      canvasSize: picture.cut.canvasSize,
+      pasteboardReach: _project.repository.requireProject().pasteboardReach,
+      paintPaper: picture.paintPaper,
+      paperBackground: _settings.projectBackground,
+    ),
   );
 
   @override
-  CanvasPictures get pictures => canvasPictures;
+  FramePictures get pictures => framePictures;
 
   /// Whether the canvas shows the run — a cut played alone, through the
   /// camera or not — and not the track stack, which shows the whole film.
   bool get playsOnTheCanvas =>
       !(playback.isActive && playback.scope == PlaybackScope.allCuts);
-
-  /// What was walked over, and what a waiting run waited for, were counted
-  /// at a level the screen no longer draws at.
-  void _theLookChanged() {
-    prerenderScheduler.wake(fromTheStart: true);
-    playback.lookAgain();
-  }
 
   // ── the playback cache budget: its own object ───────────────────────
   //
@@ -152,7 +152,7 @@ class PlaybackRig implements PlaybackRun {
 
   late final PlaybackPrerenderScheduler prerenderScheduler =
       PlaybackPrerenderScheduler(
-        pictures: canvasPictures,
+        pictures: framePictures,
         resolveCut: _project.cutById,
         room: playbackCache,
         // Widget tests: zero idle delay, like before R13-3 — the
@@ -400,10 +400,6 @@ class PlaybackRig implements PlaybackRun {
     // may have changed: a picture landed, one was given up on, or it has
     // come to rest — which is what a run that renders first waits for.
     prerenderScheduler.changes.addListener(playback.lookAgain);
-    // The canvas shows its frames another way — another zoom, another
-    // screen, the camera a run is seen through: what was made for the old
-    // look is not what it will ask for.
-    _renderCaches.canvasLook.addListener(_theLookChanged);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -422,7 +418,6 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
-    _renderCaches.canvasLook.removeListener(_theLookChanged);
     prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(

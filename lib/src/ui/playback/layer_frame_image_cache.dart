@@ -190,11 +190,6 @@ final class _Makings {
   }
 }
 
-/// How many steps on a cached slot's image is next shown — null where no
-/// frame ahead shows it ([LayerFrameImageCache.enforceBudget]).
-typedef LayerImageWantedAt =
-    int? Function((BrushFrameKey, PlaybackQuality) slot);
-
 /// Level-1 playback cache: one GPU [ui.Image] per (layer frame, quality),
 /// built from the brush store's display-cache surface (the first production
 /// consumer of [BrushFrameDisplayCacheService]).
@@ -310,6 +305,32 @@ class LayerFrameImageCache {
       _previews(canvasSize).prepareFramePreview(key);
     }
   }
+
+  /// [key]'s cel's stored pixels at [canvasSize] — what every picture of it
+  /// is made of, this cache's row images and a frame's one picture
+  /// (`FramePictures`), before its texts and colour keys are laid
+  /// ([celSurfaceAsShown]) — or null where they are held at ANOTHER canvas
+  /// size: a picture made of the blank stand-in would bank the cel blank
+  /// under a revision no heal moves. Throws where the cel cannot be read,
+  /// and notes it ([unreadable]).
+  ///
+  /// ⚠️Ask [BrushFrameStore.celHasRenderableContent] first: an empty cel
+  /// answers a blank surface, made for it here.
+  BitmapSurface? storedSurfaceOrNull(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) => unreadable.notingNow(key, () {
+    final preview = _previews(canvasSize).prepareFramePreview(key);
+    return preview.isValid ? preview.previewSurface : null;
+  });
+
+  /// Whether [storedSurfaceOrNull] would read nothing for [key]: its stored
+  /// pixels at [canvasSize] are read and laid out already — what a weight
+  /// asked ahead of the reading may look at ([plannedBytes]).
+  bool storedSurfaceIsInHand(
+    BrushFrameKey key, {
+    required CanvasSize canvasSize,
+  }) => _previews(canvasSize).preparedFramePreviewOrNull(key) != null;
 
   BrushFrameDisplayCacheService _previews(CanvasSize canvasSize) =>
       BrushFrameDisplayCacheService(
@@ -473,8 +494,8 @@ class LayerFrameImageCache {
     if (shouldAbort?.call() ?? false) {
       return null;
     }
-    final previewCache = _previews(canvasSize).prepareFramePreview(key);
-    if (!previewCache.isValid) {
+    final stored = storedSurfaceOrNull(key, canvasSize: canvasSize);
+    if (stored == null) {
       // A cel that HAS pixels, recorded at another canvas size. Composing
       // the blank stand-in and banking it here under [revision] is what
       // makes the row stay blank: the revision does not move when a heal
@@ -491,10 +512,7 @@ class LayerFrameImageCache {
     // is what would have made a color key visible in playback and invisible
     // on the canvas you draw on. The cel's texts are laid in the same call,
     // for the same reason ([celSurfaceAsShown]).
-    final preview = celSurfaceAsShown(
-      previewCache.previewSurface,
-      sourceEffects,
-    );
+    final preview = celSurfaceAsShown(stored, sourceEffects);
 
     final source = (
       revision: revision,
@@ -630,11 +648,11 @@ class LayerFrameImageCache {
     }
     final revision = _currentRevision(key);
 
-    final previewCache = labProbe(
+    final stored = labProbe(
       'prepareFramePreview(${key.frameId.value} rev$revision)',
-      () => _previews(canvasSize).prepareFramePreview(key),
+      () => storedSurfaceOrNull(key, canvasSize: canvasSize),
     );
-    if (!previewCache.isValid) {
+    if (stored == null) {
       // The size miss again — see the async twin. Banking the blank under
       // a revision that a heal never moves is what freezes the row.
       return null;
@@ -642,10 +660,7 @@ class LayerFrameImageCache {
     // The sync twin keys too — see the async path. A handoff that skipped
     // this would flash the unkeyed cel for exactly one layer switch, which
     // is the hardest kind of wrong to catch.
-    final preview = celSurfaceAsShown(
-      previewCache.previewSurface,
-      sourceEffects,
-    );
+    final preview = celSurfaceAsShown(stored, sourceEffects);
     final plan = _levelPlan(
       preview,
       quality,
@@ -772,20 +787,18 @@ class LayerFrameImageCache {
     return total;
   }
 
-  /// Lets go of images until at or under [maxBytes] — the ones wanted
-  /// LATEST first ([wantedAt]: how many frames on a slot's image is next
-  /// shown, null where nothing ahead shows it), the least recently used
-  /// among equals — and answers whether that was enough. With [laterThan],
-  /// never one wanted that soon or sooner: a picture is made only by
-  /// letting go of pictures wanted after it.
+  /// Lets go of images until at or under [maxBytes] — the least recently
+  /// used first — and answers whether that was enough.
   ///
-  /// Without [wantedAt] every image is wanted equally, and recency alone
-  /// orders them. The order is the budget's one ([letGoWantedLatest]).
-  bool enforceBudget({
-    required int maxBytes,
-    LayerImageWantedAt? wantedAt,
-    int? laterThan,
-  }) => letGoWantedLatest(
+  /// ⛔No frame demand ranks them: no frame's picture is made of them
+  /// (one-picture-per-frame ②-2), and a run's screen shows the frames'
+  /// pictures (`FramePictureStore`), which the demand ranks. ↩️They were
+  /// ranked by it — `wantedAt`, and `laterThan` for the room a picture was
+  /// made in — while every screen drew a frame from them. ⚠️An order with
+  /// nothing wanted is an `Lru`'s (`letGoWantedLatest`); kept here until
+  /// the canvas standing on a frame shows its picture too (②-3), which
+  /// says what these are left to be.
+  bool enforceBudget({required int maxBytes}) => letGoWantedLatest(
     entries: [
       for (final entry in _entries.entries)
         // ⛔A pinned slot is ON SCREEN. Evicting it returns zero bytes
@@ -797,12 +810,11 @@ class LayerFrameImageCache {
     ],
     heldBytes: estimatedBytes,
     maxBytes: maxBytes,
-    wantedAt: (entry) => wantedAt?.call(entry.key),
+    wantedAt: (_) => null,
     lastUsed: (entry) => entry.value.lastUsed,
     bytesOf: (entry) =>
         entry.value.pieces.estimatedBytes,
     letGo: (entry) => _dropEntry(entry.key),
-    laterThan: laterThan,
   );
 
   // --- Display pins (A6) ----------------------------------------------

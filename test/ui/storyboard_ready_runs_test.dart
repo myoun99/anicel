@@ -180,7 +180,7 @@ void main() {
       final s = session();
       addTearDown(s.dispose);
       final cut = s.activeCutOrNull!;
-      await s.playbackRig.canvasPictures.make((
+      await s.playbackRig.framePictures.make((
         cut: cut,
         frameIndex: 0,
         paintPaper: true,

@@ -311,10 +311,16 @@ void main() {
   group('the law: 줌이 정한다, 액티브는 안 묻는다', () {
     test('reduced filters, magnified does not', () {
       expect(
-        filterQualityForDisplayScale(0.5),
+        filterQualityForDisplayScale(0.7),
         ui.FilterQuality.low,
         reason: 'more artwork pixels than screen pixels — point sampling '
             'throws most of them away and the line work crawls',
+      );
+      expect(
+        filterQualityForDisplayScale(0.5),
+        ui.FilterQuality.medium,
+        reason: 'at or under half a bilinear window misses texels: the '
+            'image\'s own mip chain, which IS the halvings (D7-2)',
       );
       expect(
         filterQualityForDisplayScale(2),

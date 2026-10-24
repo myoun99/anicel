@@ -7,20 +7,25 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/canvas_pictures.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
 
@@ -28,8 +33,9 @@ import '../../helpers/cels_kept_in_a_file.dart';
 /// inflated on the UI thread the moment a row's image was made — 16–19 ms a
 /// cel, a cut's first play 60–70 ms at a time. Its image now waits for the
 /// thaw made ahead on a worker ([BrushFrameStore.thawAhead]), and a frame's
-/// maker asks for all of its cels at once, though it makes its rows one
-/// after another.
+/// maker asks for all of its cels at once. ↩️It made the frame's rows one
+/// after another, each from its cel, until a frame became one picture
+/// (one-picture-per-frame ②-2).
 void main() {
   // 🚨The road production takes — a REAL worker. The corpus runs every
   // worker's job here ([debugWorkersRunHere]); these tests wait through
@@ -95,15 +101,26 @@ void main() {
     }
   }
 
-  CanvasPictures picturesOf(LayerFrameImageCache images, List<String> cels) =>
-      CanvasPictures(
-        layerImages: images,
-        rowsOf: (_, _) => [
-          for (final cel in cels)
+  FramePictures picturesOf(LayerFrameImageCache images, List<String> cels) {
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    return FramePictures(
+      store: store,
+      layerImages: images,
+      stackOf: (_) => [
+        for (final cel in cels)
+          CompositeLeaf(
             CanvasLayerImageRequest(frameKey: keyOf(cel), opacity: 1),
-        ],
-        qualityAt: (_, _) => PlaybackQuality.full,
-      );
+          ),
+      ],
+      pageOf: (picture) => (
+        canvasSize: picture.cut.canvasSize,
+        pasteboardReach: PasteboardReach.none,
+        paintPaper: picture.paintPaper,
+        paperBackground: ProjectBackground.defaultBackground,
+      ),
+    );
+  }
 
   Future<LayerFrameImage?> prepare(
     LayerFrameImageCache images,
@@ -143,9 +160,8 @@ void main() {
     });
   });
 
-  testWidgets('🚨a frame\'s cels thaw at once — every row\'s is asked for '
-      'while the first row waits for its own, though the rows are made one '
-      'after another', (tester) async {
+  testWidgets('🚨a frame\'s cels thaw at once — every one is asked for before '
+      'any is thawed', (tester) async {
     await tester.runAsync(() async {
       final store = _ThawAsks();
       keepInTheFile(store, ['a', 'b', 'c']);
@@ -155,7 +171,11 @@ void main() {
 
       late Future<bool> made;
       await whileNoWorkerIsFree(() async {
-        made = pictures.make((cut: cut, frameIndex: 0, paintPaper: true), shouldAbort: () => false);
+        made = pictures.make((
+          cut: cut,
+          frameIndex: 0,
+          paintPaper: true,
+        ), shouldAbort: () => false);
         await pumpEventQueue();
         expect(
           store.asked.toSet(),
@@ -180,10 +200,11 @@ void main() {
       addTearDown(images.dispose);
 
       expect(
-        await picturesOf(
-          images,
-          ['a', 'b'],
-        ).make((cut: cut, frameIndex: 0, paintPaper: true), shouldAbort: () => true),
+        await picturesOf(images, ['a', 'b']).make((
+          cut: cut,
+          frameIndex: 0,
+          paintPaper: true,
+        ), shouldAbort: () => true),
         isFalse,
       );
       expect(await prepare(images, 'a', shouldAbort: () => true), isNull);

@@ -140,14 +140,6 @@ typedef _LiftedRowPaint = ({
   SelectionFloatOverlay float,
 });
 
-/// What a view showing a RUN takes from the run's maker
-/// ([CanvasLayerStackView.run]): the signal that a picture landed, and the
-/// rows it gave up on — a frame waits for nothing that will not come.
-typedef StackRun = ({
-  Listenable landings,
-  bool Function(CanvasLayerImageRequest row) gaveUpOn,
-});
-
 /// One non-active layer to composite around the interactive canvas.
 class CanvasLayerImageRequest extends CanvasStackRow {
   const CanvasLayerImageRequest({
@@ -217,8 +209,8 @@ class CanvasLayerImageRequest extends CanvasStackRow {
 /// level buffer draws them 1:1 instead of reducing a canvas-resolution
 /// picture by more than a bilinear window can hold.
 ///
-/// The stack's own answer, and the warmer's for the frames it makes ahead
-/// of one ([CanvasLook.qualityAt]) — the same view, so the same level.
+/// ↩️The warmer's answer too, for the rows it made ahead of a stack
+/// (`CanvasLook.qualityAt`), until a run's frame became one picture.
 PlaybackQuality rowQualityThrough(
   CanvasViewport viewport,
   double devicePixelRatio,
@@ -308,18 +300,8 @@ class CanvasLayerStackView extends StatefulWidget {
     this.debugBufferCache,
     this.onBufferBytes,
     this.alreadyShown = false,
-    this.run,
     this.wholeFrames = false,
   });
-
-  /// The RUN this view shows, when it shows one
-  /// (playback-plays-the-screen-material): its maker makes the rows' images
-  /// ahead of the playhead, so this view makes none — it takes each as it
-  /// [StackRun.landings] — and it changes frames WHOLE whatever
-  /// [wholeFrames] says (유저 2026-10-08: 「재생바는 지나가고있는데 그림이
-  /// 없어서 비어있다던가」). Null for every other view, which makes what it
-  /// lacks itself.
-  final StackRun? run;
 
   /// Whether this view changes frames WHOLE where it makes its rows itself:
   /// a frame whose rows are not all there leaves the last whole one on
@@ -330,9 +312,10 @@ class CanvasLayerStackView extends StatefulWidget {
   /// 보여야함」). False shows rows as they come — the editing canvas, where
   /// a row being drawn on may not wait for its neighbours.
   ///
-  /// ↩️One flag, [run], answered both questions — who makes the rows, and
+  /// ↩️One flag, `run`, answered both questions — who makes the rows, and
   /// whether a frame waits to be whole — until the track stack drew its
   /// cuts on this view (2026-10-10) and asked the second without the first.
+  /// ↩️A run is shown by its frames' pictures since (`FramePictureView`).
   final bool wholeFrames;
 
   /// Whether what this stack shows is on screen already, painted by
@@ -465,9 +448,9 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   bool _preparing = false;
   bool _rerunRequested = false;
 
-  /// The tree this view PAINTS — [CanvasLayerStackView.nodes], save under a
-  /// run, where a frame not yet whole leaves the last whole one standing
-  /// ([CanvasLayerStackView.run]): its images stay held until then.
+  /// The tree this view PAINTS — [CanvasLayerStackView.nodes], save where a
+  /// frame not yet whole leaves the last whole one standing
+  /// ([CanvasLayerStackView.wholeFrames]): its images stay held until then.
   late List<CompositeNode<CanvasStackRow>> _shownNodes = widget.nodes;
 
   /// The cel revision a held image was captured at.
@@ -517,7 +500,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // The first sweep runs in [didChangeDependencies]: the level it asks
     // images at needs the effective ratio, which is a dependency.
     InputInspector.visible.addListener(_rebuildForInspector);
-    widget.run?.landings.addListener(_takeWhatLanded);
     widget.imageCache.frameStore.addRekeyListener(_travelWithTheirCels);
     widget.imageCache.frameStore.addCopyListener(_shareWithTheirCopies);
   }
@@ -582,20 +564,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     ));
   }
 
-  /// A picture of the run's landed: the rows it brought are taken, and the
-  /// frame goes up if that made it whole.
-  void _takeWhatLanded() {
-    if (!mounted) {
-      return;
-    }
-    final revision = _imagesRevision;
-    final shown = _shownNodes;
-    _syncImagesWithCache();
-    if (revision != _imagesRevision || !identical(shown, _shownNodes)) {
-      setState(() {});
-    }
-  }
-
   @override
   void didUpdateWidget(covariant CanvasLayerStackView oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -626,10 +594,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     final leftLineage = oldWidget.activeSurfacePainter?.lineage;
     if (leftLineage != widget.activeSurfacePainter?.lineage) {
       TilePyramid.instance.dropSeed(leftLineage);
-    }
-    if (!identical(oldWidget.run?.landings, widget.run?.landings)) {
-      oldWidget.run?.landings.removeListener(_takeWhatLanded);
-      widget.run?.landings.addListener(_takeWhatLanded);
     }
     _syncImagesWithCache(shownAlready: oldWidget.activeCels.toSet());
     unawaited(_ensureImages());
@@ -793,7 +757,6 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   @override
   void dispose() {
     InputInspector.visible.removeListener(_rebuildForInspector);
-    widget.run?.landings.removeListener(_takeWhatLanded);
     widget.imageCache.frameStore.removeRekeyListener(_travelWithTheirCels);
     widget.imageCache.frameStore.removeCopyListener(_shareWithTheirCopies);
     TilePyramid.instance.dropSeed(widget.activeSurfacePainter?.lineage);
@@ -925,15 +888,11 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         (held != null && held.revision != revision);
   }
 
-  /// Whether a frame not yet whole leaves the last whole one standing
-  /// ([CanvasLayerStackView.wholeFrames]) — always, under a run.
-  bool get _changesWhole => widget.run != null || widget.wholeFrames;
-
   void _syncSweepBody(Set<BrushFrameKey> shownAlready) {
     _adoptWhatIsThere(shownAlready);
     // What is shown is the frame asked for — or the last whole frame until
-    // this one is whole ([_changesWhole]).
-    if (!_changesWhole || _isWhole(widget.layers)) {
+    // this one is whole ([CanvasLayerStackView.wholeFrames]).
+    if (!widget.wholeFrames || _isWhole(widget.layers)) {
       _shownNodes = widget.nodes;
     }
     final kept = _keptKeys();
@@ -967,16 +926,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   }
 
   /// Whether every one of [layers] can be drawn now — held, or with nothing
-  /// to draw, or given up on (by this view or by the run's maker): nothing
-  /// of the frame is still to come.
+  /// to draw, or given up on: nothing of the frame is still to come.
   bool _isWhole(Iterable<CanvasLayerImageRequest> layers) => layers.every(
     (layer) =>
         _images.containsKey(layer.frameKey) ||
         !widget.imageCache.frameStore.celHasRenderableContent(
           layer.frameKey,
         ) ||
-        _unreadable(layer.frameKey) ||
-        (widget.run?.gaveUpOn(layer) ?? false),
+        _unreadable(layer.frameKey),
   );
 
   /// Adopts every requested row whose image is valid in the cache now — or
@@ -1119,16 +1076,14 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     _preparing = true;
     try {
       do {
-        // A RUN's rows are its maker's to make ([CanvasLayerStackView.run]):
-        // made here as well, the same cel would be made twice at once.
-        if (widget.run != null) {
-          return;
-        }
         _rerunRequested = false;
         var changed = false;
         final wanted = <BrushFrameKey>{};
-        // ⛔One row after another, as the warm's walk ([CanvasPictures.make]
-        // says why).
+        // ⛔ONE ROW AFTER ANOTHER, on purpose: a row's making holds its cel's
+        // tile pictures until its raster lands, and asked for at once a
+        // frame of thirteen rows held thirteen cels' worth — for no gain
+        // (measured 10-10, camera view, profile: the warm's whole cut made
+        // +0.3–15% LATER, when it made rows as this does).
         for (final layer in List.of(widget.layers)) {
           wanted.add(layer.frameKey);
           final refreshed = await _refreshLayerImage(layer);
@@ -1144,8 +1099,8 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           _shownNodes = widget.nodes;
           changed = true;
         }
-        // A run that began during the pass shows a frame of its own: what it
-        // still shows is not this pass's to let go of.
+        // A frame left standing while another is made whole ([_keptKeys]):
+        // what it still shows is not this pass's to let go of.
         final kept = {...wanted, ..._keptKeys()};
         for (final key in _images.keys.toList()) {
           if (!kept.contains(key)) {

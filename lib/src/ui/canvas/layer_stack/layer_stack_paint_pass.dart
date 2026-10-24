@@ -174,13 +174,9 @@ class _LayerStackPaintPass {
   /// One buffer pixel in canvas pixels at [_level].
   double get _levelStep => (1 << _level).toDouble();
 
-  /// How the buffer's blit samples: the residual the level image is
-  /// reduced by ([displayResidualOf]) — `none` where a level lands 1:1.
-  ui.FilterQuality get _bufferQuality =>
-      filterQualityForDisplayScale(displayResidualOf(_displayScale));
-
-  /// The display law's edge for the buffer's blit and the paper inside it,
-  /// cut by the residual the level is reduced by.
+  /// The display law's edge for the paper inside the buffer, cut by the
+  /// residual the level is reduced by — the buffer's blit's own
+  /// ([drawOnTheDisplay]).
   bool get _bufferEdgeAntiAliased => displayEdgeAntiAliased(
     _painter.viewport,
     _painter.devicePixelRatio,
@@ -562,31 +558,18 @@ class _LayerStackPaintPass {
   void _blitBuffer(Canvas canvas, _BufferImage buffer) {
     final source = Offset.zero & Size(buffer.pixelWidth, buffer.pixelHeight);
     try {
-      // The buffer's edge IS the canvas's edge on screen, cut by the same
-      // law as the paper's (F-67-paper-edge): under nearest on an
-      // axis-aligned view it is one more texel boundary, decided by pixel
-      // centres, not a blended line.
-      if (_bufferEdgeAntiAliased) {
-        canvas.drawImageRect(
-          buffer.image,
-          source,
-          buffer.rect,
-          Paint()
-            // The residual, not the device scale: below 100% the buffer is
-            // a level, and this blit reduces it by (0.5, 1] — `none` where
-            // the level lands 1:1 (안 1, 2026-09-16).
-            ..filterQuality = _bufferQuality,
-        );
-      } else {
-        drawImageRectOnThePixelGrid(
-          canvas,
-          buffer.image,
-          source,
-          buffer.rect,
-          filterQuality: _bufferQuality,
-          pixelRatio: _painter.devicePixelRatio,
-        );
-      }
+      drawOnTheDisplay(
+        canvas,
+        buffer.image,
+        source,
+        buffer.rect,
+        viewport: _painter.viewport,
+        devicePixelRatio: _painter.devicePixelRatio,
+        // The residual, not the device scale: below 100% the buffer is a
+        // level, and this blit reduces it by (0.5, 1] — `none` where the
+        // level lands 1:1 (안 1, 2026-09-16).
+        level: _level,
+      );
     } finally {
       // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
       // this frame's display list, and the engine holds its own reference

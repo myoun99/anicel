@@ -63,14 +63,14 @@ void main() {
     ],
   );
 
-  /// The pictures are the CANVAS's (playback-plays-the-screen-material): a
-  /// cut stood on is shown from its own rows' images — through the camera
-  /// or not — so its two cels are inked, each in both corners, which makes
-  /// each image the whole 8×8 canvas: one [picture]. A cel with nothing in
-  /// it asks for no picture at all, so the hole between is there by
-  /// definition. ↩️This file pinned the composite view's route, which the
-  /// camera view played on, and then the film's composites — every screen
-  /// shows a frame from the same images now (2026-10-10).
+  /// The pictures are the frames' own (one-picture-per-frame ②-2): every
+  /// screen — through the camera or not — shows a frame as its one picture,
+  /// so the two cels are inked, each in both corners, which makes each
+  /// frame's picture the whole 8×8 canvas on its paper. A frame with
+  /// nothing in it draws its page alone: there by definition, nothing made.
+  /// ↩️This file pinned the composite view's route, which the camera view
+  /// played on, then the film's composites, then the canvas's row images
+  /// (2026-10-10) — the hole between asked for none of those.
   EditorSessionManager session() {
     final s = EditorSessionManager(
       initialProject: Project(
@@ -112,21 +112,32 @@ void main() {
   PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
       s.playbackRig.playbackCache;
 
-  const picture = 8 * 8 * 4;
-
   /// Whether frame [frameIndex]'s picture is there, as the screen counts it.
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
-      .canvasPictures
+      .framePictures
       .has((cut: s.activeCutOrNull!, frameIndex: frameIndex, paintPaper: true));
 
   int heldBytes(EditorSessionManager s) =>
-      s.renderCaches.layerFrameImageCache.estimatedBytes;
+      s.renderCaches.framePictureStore.estimatedBytes;
+
+  /// What one frame's picture weighs — the body cel's, made in a session of
+  /// its own, laid as the store lays it.
+  Future<int> onePicture() async {
+    final s = session();
+    addTearDown(s.dispose);
+    final frame = (cut: s.activeCutOrNull!, frameIndex: 0, paintPaper: true);
+    await s.playbackRig.framePictures.make(frame, shouldAbort: () => false);
+    return s.renderCaches.framePictureStore.bytesOf(
+      s.playbackRig.framePictures.keyOf(frame),
+    )!;
+  }
 
   testWidgets('🚨the warm makes no picture the budget then lets go: under an '
       'allowance of one it rests on the one nearest the playhead, and the '
       'enforcer that follows takes nothing', (tester) async {
     await tester.runAsync(() async {
+      final picture = await onePicture();
       final s = session();
       addTearDown(s.dispose);
       final budget = budgetOf(s);
@@ -171,6 +182,7 @@ void main() {
   testWidgets('🚨the enforcer lets go by what is WANTED, not by what was '
       'used longest ago', (tester) async {
     await tester.runAsync(() async {
+      final picture = await onePicture();
       final s = session();
       addTearDown(s.dispose);
       final budget = budgetOf(s);
@@ -181,7 +193,7 @@ void main() {
 
       // A second picture — the runway cel, made by another hand — and the
       // body cel is now the one used longest ago.
-      await s.playbackRig.canvasPictures.make(
+      await s.playbackRig.framePictures.make(
         (cut: s.activeCutOrNull!, frameIndex: 5, paintPaper: true),
         shouldAbort: () => false,
       );
@@ -267,8 +279,14 @@ void main() {
         reason: 'the body cel waits for its bake too; everything that '
             'composes to nothing is one stretch each',
       );
+      expect(
+        budget.playbackReadyRunsForCut(activeCut, 0, 12, paintPaper: false),
+        budget.playbackReadyRunsForCut(activeCut, 0, 12, paintPaper: true),
+        reason: 'on its paper or on none — a track over the stage — a frame '
+            'of nothing draws its page alone, and nothing of it is made',
+      );
 
-      await s.playbackRig.canvasPictures.make(
+      await s.playbackRig.framePictures.make(
         (cut: activeCut, frameIndex: 5, paintPaper: true),
         shouldAbort: () => false,
       );

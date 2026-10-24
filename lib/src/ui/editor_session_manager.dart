@@ -528,8 +528,11 @@ class EditorSessionManager extends ChangeNotifier
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
     onPlaylistWarmRequested: _onPlaybackPlaylistWarmRequested,
-    canvasRowsOf: (cut, frameIndex) =>
-        editingCanvas.playedRowsAt(cut, frameIndex),
+    // ⛔Not the tear-off `editingCanvas.playedStackAt`: it reads the canvas
+    // as the rig is made, and the canvas's own making reaches the rig
+    // (opacity verbs → transitions → camera → the scrub) — a stack overflow
+    // the moment any part of the session is first asked for.
+    stackOf: (cut, frameIndex) => editingCanvas.playedStackAt(cut, frameIndex),
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,

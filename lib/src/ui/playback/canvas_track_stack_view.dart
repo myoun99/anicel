@@ -17,6 +17,7 @@ import '../../services/se_name_tag_plan.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../canvas/stage_planes_painter.dart';
 import 'camera_shot.dart';
+import 'frame_picture_view.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_frame_painter.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -52,6 +53,10 @@ typedef TrackStackRun = ({
 /// would see it through. ↩️Each covered cut was one composite per frame,
 /// made and held here beside the very images the canvas holds — a second
 /// picture of everything the film showed.
+///
+/// 🚨★★★UNDER A RUN, A CUT'S FRAME IS ITS ONE PICTURE (one-picture-per-frame
+/// ②-2, D7-2-Q3=a): the same tree, signed, and the picture the warmer made
+/// of it ([FramePictureView]) — the one the canvas shows of that frame.
 ///
 /// The bottom covered track is the STAGE: its paper and apron lie under its
 /// picture, and its fade thins the whole unit, revealing the floor; the
@@ -130,7 +135,7 @@ class CanvasTrackStackView extends StatelessWidget {
   ///
   /// Set where a run PLAYS through it: the warmer follows the run and is the
   /// one maker of its pictures, in the order the run wants them, so each cut
-  /// here shows what has landed ([CanvasLayerStackView.run]) and the film
+  /// here shows what has landed ([FramePictureView]) and the film
   /// changes frames whole, across its cuts as within one
   /// ([_WholeFilmFrames]). ↩️It composed the frame under the playhead
   /// itself, beside a warmer that was baking the playlist from wherever
@@ -331,23 +336,35 @@ class CanvasTrackStackView extends StatelessWidget {
           opacity: isStage ? 1 : weight,
           child: ShotClip(
             outline: pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
-            child: CanvasLayerStackView(
-              nodes: stackOf(cut, localFrame),
-              imageCache: imageCache,
-              canvasSize: cut.canvasSize,
-              pasteboardReach: pasteboardReach,
-              viewport: shot?.frameView ?? view,
-              paintPaper: isStage,
-              paperBackground: background,
-              // A drag parks one frame after another: a cut shows its last
-              // whole frame until the next one is — a run's are whole anyway
-              // ([CanvasLayerStackView.wholeFrames]).
-              wholeFrames: true,
-              run: run?.cuts,
-              onBufferBytes: onBufferBytes == null
-                  ? null
-                  : (bytes) => onBufferBytes!(cut.id, bytes),
-            ),
+            child: switch (run) {
+              // A run's frame is its one picture, made ahead of it.
+              (:final cuts, frameIsThere: _) => FramePictureView(
+                run: cuts,
+                picture: (
+                  cut: cut,
+                  frameIndex: localFrame,
+                  paintPaper: isStage,
+                ),
+                nodes: stackOf(cut, localFrame),
+                viewport: shot?.frameView ?? view,
+              ),
+              null => CanvasLayerStackView(
+                nodes: stackOf(cut, localFrame),
+                imageCache: imageCache,
+                canvasSize: cut.canvasSize,
+                pasteboardReach: pasteboardReach,
+                viewport: shot?.frameView ?? view,
+                paintPaper: isStage,
+                paperBackground: background,
+                // A drag parks one frame after another: a cut shows its last
+                // whole frame until the next one is
+                // ([CanvasLayerStackView.wholeFrames]).
+                wholeFrames: true,
+                onBufferBytes: onBufferBytes == null
+                    ? null
+                    : (bytes) => onBufferBytes!(cut.id, bytes),
+              ),
+            },
           ),
         ),
         CustomPaint(painter: painter(under: false)),
@@ -370,7 +387,7 @@ class CanvasTrackStackView extends StatelessWidget {
 /// 2026-10-15, F-365-Q2: 「컷을 넘을 때도 직전 그림을 남기고, 건너뛴 프레임
 /// 수를 재생 버튼 왼쪽에 빨갛게」). Under a run, the frame shown is the
 /// run's — or, while its picture is not all there, the last one that was.
-/// Each cut's view changes its own frames whole ([CanvasLayerStackView.run]),
+/// Each cut's view changes its own frames whole ([FramePictureView]),
 /// but a cut coming in is a view of its own, with no frame of its own to
 /// leave standing: it showed its paper until its rows landed.
 ///

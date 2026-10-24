@@ -22,7 +22,12 @@ import 'package:anicel/src/services/cel_surface_as_shown.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/playback/canvas_pictures.dart';
+import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 
@@ -76,11 +81,25 @@ void main() {
   CanvasLayerImageRequest asItLies() =>
       CanvasLayerImageRequest(frameKey: key, opacity: 1);
 
-  CanvasPictures picturesOf(LayerFrameImageCache images) => CanvasPictures(
-    layerImages: images,
-    rowsOf: (_, _) => [asItLies()],
-    qualityAt: (_, _) => PlaybackQuality.full,
-  );
+  FramePictures picturesOf(
+    LayerFrameImageCache images, {
+    List<CompositeNode<CanvasStackRow>> Function(int frame)? rowsAt,
+  }) {
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    return FramePictures(
+      store: store,
+      layerImages: images,
+      stackOf: (picture) =>
+          rowsAt?.call(picture.frameIndex) ?? [CompositeLeaf(asItLies())],
+      pageOf: (picture) => (
+        canvasSize: picture.cut.canvasSize,
+        pasteboardReach: PasteboardReach.whole,
+        paintPaper: picture.paintPaper,
+        paperBackground: ProjectBackground.defaultBackground,
+      ),
+    );
+  }
 
   final shapes = {
     'inked in a corner': inACorner,
@@ -166,10 +185,10 @@ void main() {
 
   testWidgets('🚨a cel still in the file is weighed as the canvas, reading '
       'nothing, until what its making reads first is read — then as the '
-      'image it is made as', (tester) async {
+      'picture it is made as', (tester) async {
     await tester.runAsync(() async {
       final store = BrushFrameStore();
-      keepInAFile(store, {key: inACorner()});
+      keepInAFile(store, {key: onThePasteboard()});
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
       final pictures = picturesOf(images);
@@ -186,7 +205,11 @@ void main() {
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);
 
       expect(weight, pictures.weighNew(picture, {}));
-      expect(weight, lessThan(canvasBytes), reason: '⛔premise: a corner');
+      expect(
+        weight,
+        greaterThan(canvasBytes),
+        reason: '⛔premise: ink past the canvas',
+      );
     });
   });
 
@@ -195,7 +218,7 @@ void main() {
       'why', (tester) async {
     await tester.runAsync(() async {
       final store = BrushFrameStore();
-      final kept = keepInAFile(store, {key: inACorner()});
+      final kept = keepInAFile(store, {key: onThePasteboard()});
       File(kept[key]!.filePath).deleteSync();
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
@@ -207,8 +230,8 @@ void main() {
     });
   });
 
-  testWidgets('🚨reading a picture in reads the rows still to make, and no '
-      'cel another frame has made already', (tester) async {
+  testWidgets('🚨reading a picture in reads the cels not in hand, and no cel '
+      'another frame has read already', (tester) async {
     await tester.runAsync(() async {
       final other = BrushFrameKey(
         projectId: key.projectId,
@@ -221,13 +244,13 @@ void main() {
       keepInAFile(store, {key: inACorner(), other: inACorner()});
       final images = _ReadsRecorded(frameStore: store);
       addTearDown(images.dispose);
-      final pictures = CanvasPictures(
-        layerImages: images,
-        rowsOf: (_, frame) => [
-          asItLies(),
-          if (frame == 1) CanvasLayerImageRequest(frameKey: other, opacity: 1),
+      final pictures = picturesOf(
+        images,
+        rowsAt: (frame) => [
+          CompositeLeaf(asItLies()),
+          if (frame == 1)
+            CompositeLeaf(CanvasLayerImageRequest(frameKey: other, opacity: 1)),
         ],
-        qualityAt: (_, _) => PlaybackQuality.full,
       );
       await pictures.readIn(picture);
       expect(await pictures.make(picture, shouldAbort: () => false), isTrue);

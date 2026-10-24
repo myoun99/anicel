@@ -15,7 +15,9 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
@@ -28,20 +30,40 @@ import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 
 /// One covered cut's share of the frame as the stack lays it: the unit's
 /// fade, the painter under its picture (the apron, an absent paper's
-/// checkerboard), the thinning on its picture, the picture's own stack —
-/// its paper with it — and the painter over it (names, veils).
+/// checkerboard), the thinning on its picture, the picture — parked, its
+/// own stack, its paper with it; under a run, the frame's one picture —
+/// and the painter over it (names, veils).
 typedef _Unit = ({
   double fade,
   PlaybackFramePainter under,
   double thinning,
-  CanvasLayerStackView stack,
+  Widget picture,
   PlaybackFramePainter over,
+});
+
+extension on _Unit {
+  /// The picture parked: the cut's own stack.
+  CanvasLayerStackView get stack => picture as CanvasLayerStackView;
+
+  /// The picture under a run: the frame's one picture.
+  FramePictureView get played => picture as FramePictureView;
+}
+
+/// What a run on the stack hands it: the signal its pictures landed, and
+/// whether a frame goes up when asked for.
+typedef _Run = ({
+  ValueNotifier<int> landings,
+  bool Function(int frame) frameIsThere,
 });
 
 /// The multitrack display path's canvas content: every track's covered cut
@@ -99,8 +121,11 @@ void main() {
     ),
   ];
 
-  String? toldFrame(CanvasLayerStackView stack) =>
-      stack.layers.single.frameKey.frameId.value;
+  String? toldFrame(Widget picture) => switch (picture) {
+    CanvasLayerStackView(:final layers) => layers.single.frameKey.frameId.value,
+    FramePictureView(:final nodes) => stackedCelsOf(nodes).single.frameId.value,
+    _ => throw StateError('not a cut\'s picture: $picture'),
+  };
 
   ({ValueNotifier<int?> frame, List<StoryboardTimelineLayoutEntry> layout})
   fixture() => (
@@ -114,7 +139,7 @@ void main() {
     required List<StoryboardTimelineLayoutEntry> layout,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
-    TrackStackRun? run,
+    _Run? run,
     void Function(Object cut, int bytes)? onBufferBytes,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
@@ -122,6 +147,8 @@ void main() {
   }) async {
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
+    final pictures = FramePictureStore<FramePictureKey>();
+    addTearDown(pictures.dispose);
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -139,7 +166,27 @@ void main() {
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             seNameTagsOf: seNameTagsOf,
-            run: run,
+            run: switch (run) {
+              (:final landings, :final frameIsThere) => (
+                cuts: (
+                  landings: landings,
+                  pictures: FramePictures(
+                    store: pictures,
+                    layerImages: images,
+                    stackOf: (picture) =>
+                        stackOf(picture.cut, picture.frameIndex),
+                    pageOf: (picture) => (
+                      canvasSize: picture.cut.canvasSize,
+                      pasteboardReach: PasteboardReach.none,
+                      paintPaper: picture.paintPaper,
+                      paperBackground: ProjectBackground.defaultBackground,
+                    ),
+                  ),
+                ),
+                frameIsThere: frameIsThere,
+              ),
+              null => null,
+            },
             onBufferBytes: onBufferBytes,
             pasteboardArgb: 0xff123456,
             backdropNone: backdropNone,
@@ -177,10 +224,14 @@ void main() {
                 find.descendant(of: inUnit, matching: find.byType(Opacity)),
               )
               .opacity,
-          stack: tester.widget<CanvasLayerStackView>(
+          picture: tester.widget(
             find.descendant(
               of: inUnit,
-              matching: find.byType(CanvasLayerStackView),
+              matching: find.byWidgetPredicate(
+                (widget) =>
+                    widget is CanvasLayerStackView ||
+                    widget is FramePictureView,
+              ),
             ),
           ),
           over: painters.last,
@@ -421,8 +472,8 @@ void main() {
     f.frame.value = 3;
     await pumpView(tester, frame: f.frame, layout: f.layout);
     expect(
-      [for (final unit in unitsOf(tester)) unit.stack.run],
-      [null, null],
+      [for (final unit in unitsOf(tester)) unit.picture],
+      everyElement(isA<CanvasLayerStackView>()),
       reason: 'parked: 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206)',
     );
     expect(
@@ -438,15 +489,24 @@ void main() {
       tester,
       frame: f.frame,
       layout: f.layout,
-      run: (
-        cuts: (landings: landings, gaveUpOn: (_) => false),
-        frameIsThere: (_) => true,
-      ),
+      run: (landings: landings, frameIsThere: (_) => true),
     );
+    final played = [for (final unit in unitsOf(tester)) unit.played];
     expect(
-      [for (final unit in unitsOf(tester)) unit.stack.run?.landings],
+      [for (final view in played) view.run.landings],
       [same(landings), same(landings)],
       reason: 'a run: every cut it shows waits on the one maker',
+    );
+    expect(
+      played.last.run.pictures,
+      same(played.first.run.pictures),
+      reason: 'and shows the one maker\'s pictures',
+    );
+    expect(
+      [for (final view in played) view.picture.paintPaper],
+      [true, false],
+      reason: 'the stage\'s picture is on its paper, the track over it on '
+          'none — two pictures of one frame',
     );
   });
 
@@ -467,13 +527,10 @@ void main() {
       tester,
       frame: f.frame,
       layout: f.layout,
-      run: (
-        cuts: (landings: landings, gaveUpOn: (_) => false),
-        frameIsThere: (frame) => frame != 2 || made,
-      ),
+      run: (landings: landings, frameIsThere: (frame) => frame != 2 || made),
     );
     List<String?> told() => [
-      for (final unit in unitsOf(tester)) toldFrame(unit.stack),
+      for (final unit in unitsOf(tester)) toldFrame(unit.picture),
     ];
     expect(told(), ['cut-a@1']);
 
@@ -505,7 +562,7 @@ void main() {
       'asked for goes up at once', (tester) async {
     final f = fixture();
     List<String?> told() => [
-      for (final unit in unitsOf(tester)) toldFrame(unit.stack),
+      for (final unit in unitsOf(tester)) toldFrame(unit.picture),
     ];
     f.frame.value = 1;
     await pumpView(tester, frame: f.frame, layout: f.layout);
@@ -520,10 +577,7 @@ void main() {
       tester,
       frame: clock,
       layout: f.layout,
-      run: (
-        cuts: (landings: landings, gaveUpOn: (_) => false),
-        frameIsThere: (_) => made,
-      ),
+      run: (landings: landings, frameIsThere: (_) => made),
     );
     expect(told(), ['cut-a@1'], reason: 'the run\'s frame is not whole yet');
 

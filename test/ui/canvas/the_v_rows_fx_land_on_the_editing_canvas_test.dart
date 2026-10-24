@@ -16,6 +16,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// playback-plays-the-screen-material ④ (10-09): the V row's fx filter the
@@ -162,15 +163,15 @@ void main() {
     );
   });
 
-  test('the rows the warmer makes are the cut\'s own — the V row\'s group '
-      'wraps them, it is no row of its own', () {
+  test('the cels the warmer makes a frame of are the cut\'s own — the V '
+      'row\'s group wraps them, it is no row of its own', () {
     final s = session();
     addTearDown(s.dispose);
 
     expect(
-      s.editingCanvas
-          .playedRowsAt(s.requireActiveCut, 0)
-          .map((row) => row.frameKey.frameId),
+      stackedCelsOf(
+        s.editingCanvas.playedStackAt(s.requireActiveCut, 0),
+      ).map((cel) => cel.frameId),
       [const FrameId('f')],
     );
   });

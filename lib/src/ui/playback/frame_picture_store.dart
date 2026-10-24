@@ -126,6 +126,17 @@ class FramePictureStore<K extends Object> {
   bool _disposed = false;
   int _clock = 0;
 
+  /// Whether [key]'s picture is there — asked by a warmer and a ready bar
+  /// over frames no screen draws now, so unlike [peek] it is no use of the
+  /// picture: what the budget lets go of last among equals is what a
+  /// screen drew last.
+  bool holds(K key) => _entries.containsKey(key);
+
+  /// The bytes [key]'s picture holds ([estimatedBytes]' word), or null
+  /// where there is none — what a warmer's walk weighs the window by; no
+  /// use of the picture either ([holds]).
+  int? bytesOf(K key) => _entries[key]?.bytes;
+
   /// The picture of [key], or null when there is none yet.
   FramePicture? peek(K key) {
     final entry = _entries[key];

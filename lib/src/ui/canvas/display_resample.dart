@@ -35,8 +35,22 @@ import '../../models/canvas_viewport.dart';
 /// Applied per layer it would still be N resamples that merely agree with
 /// each other; the composite buffer is what turns it into the law
 /// ([[editing-canvas-composite-cache-program]] stage 2).
-ui.FilterQuality filterQualityForDisplayScale(double scale) =>
-    scale < 1 ? ui.FilterQuality.low : ui.FilterQuality.none;
+///
+/// 🔁AT OR UNDER HALF, THE IMAGE'S OWN MIP CHAIN — `medium` (D7-2,
+/// one-picture-per-frame; 유저 10-24 「항상 원본 한장으로」): a frame's one
+/// picture is at canvas resolution at every zoom, and the engine gives every
+/// `toImage` picture a whole chain (`mipLevelCount` 11 at 3840², measured).
+/// Measured on the Surface Pro 11 against the display's own levels (each a
+/// 2×2 box, then the residual at `low`): 0 bytes apart at 1/2, 1/4 and 1/8,
+/// at most 2 between them — the engine's chain IS the halvings — at the
+/// cost of any image draw. Over half a bilinear window still holds every
+/// texel, and `medium` would only blend in the level under it. An image
+/// with no chain (a `toImageSync` tile's) samples `medium` as `low` does.
+ui.FilterQuality filterQualityForDisplayScale(double scale) => scale <= 0.5
+    ? ui.FilterQuality.medium
+    : scale < 1
+    ? ui.FilterQuality.low
+    : ui.FilterQuality.none;
 
 /// The scale a canvas-space image is actually resampled by on screen:
 /// DEVICE pixels per artwork pixel, `|zoom| × devicePixelRatio`.
@@ -258,6 +272,55 @@ ui.Rect displayEdgeRect(
   required double pixelRatio,
 }) => antiAlias ? rect : cutOnThePixelGrid(canvas, rect, pixelRatio);
 
+/// [image]'s [src] laid over [dst] as the display lays an image it is
+/// handed: one composed at [level] ([displayLevelOf]) — 0 for one at
+/// canvas resolution — of the world [viewport] shows on a screen of
+/// [devicePixelRatio], under the canvas's transform. It samples by the
+/// scale the draw resamples it by ([filterQualityForDisplayScale]) and cuts
+/// its edge by the same law ([displayEdgeAntiAliased]).
+///
+/// 🚨ONE BLIT for every image the display lays over the view — the
+/// canvas's display buffer, and a frame's one picture (`FramePictureView`):
+/// two spellings of it would be two answers to how a frame is shown.
+void drawOnTheDisplay(
+  ui.Canvas canvas,
+  ui.Image image,
+  ui.Rect src,
+  ui.Rect dst, {
+  required CanvasViewport viewport,
+  required double devicePixelRatio,
+  int level = 0,
+  ui.BlendMode blendMode = ui.BlendMode.srcOver,
+}) {
+  final filterQuality = filterQualityForDisplayScale(
+    displayScaleOf(viewport.zoom, devicePixelRatio) * (1 << level),
+  );
+  // The image's edge IS the canvas's edge on screen, cut by the same law
+  // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
+  // view it is one more texel boundary, decided by pixel centres, not a
+  // blended line.
+  if (displayEdgeAntiAliased(viewport, devicePixelRatio, level: level)) {
+    canvas.drawImageRect(
+      image,
+      src,
+      dst,
+      ui.Paint()
+        ..filterQuality = filterQuality
+        ..blendMode = blendMode,
+    );
+  } else {
+    drawImageRectOnThePixelGrid(
+      canvas,
+      image,
+      src,
+      dst,
+      filterQuality: filterQuality,
+      pixelRatio: devicePixelRatio,
+      blendMode: blendMode,
+    );
+  }
+}
+
 /// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel
 /// shows what its centre falls on — with the edge cut on the grid
 /// ([cutOnThePixelGrid]): the texels ride a shader mapped [src] → [dst],
@@ -271,6 +334,7 @@ void drawImageRectOnThePixelGrid(
   ui.Rect dst, {
   required ui.FilterQuality filterQuality,
   required double pixelRatio,
+  ui.BlendMode blendMode = ui.BlendMode.srcOver,
 }) {
   final sx = dst.width / src.width;
   final sy = dst.height / src.height;
@@ -292,7 +356,8 @@ void drawImageRectOnThePixelGrid(
       cutOnThePixelGrid(canvas, dst, pixelRatio),
       ui.Paint()
         ..shader = shader
-        ..isAntiAlias = false,
+        ..isAntiAlias = false
+        ..blendMode = blendMode,
     );
   } finally {
     // The drawing holds the shader from the draw on, as it holds an image.

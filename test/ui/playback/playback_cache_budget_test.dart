@@ -18,8 +18,10 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
@@ -95,6 +97,14 @@ void main() {
     return layers;
   }
 
+  /// The frames' pictures, none laid: what is on this line here is the row
+  /// images.
+  FramePictureStore<FramePictureKey> pictures() {
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    return store;
+  }
+
   /// The drawing's image at [quality], stored as its ink where the ink
   /// alone draws the same.
   Future<void> make(LayerFrameImageCache layers, PlaybackQuality quality) =>
@@ -141,6 +151,7 @@ void main() {
         for (final lent in [0, 200]) {
           final layers = await filled();
           PlaybackCacheBudgetEnforcer(
+            pictures: pictures(),
             layerImages: layers,
             maxBytes: 400,
           ).enforce(wantedAt: (_) => null, lentBytes: lent);
@@ -164,6 +175,7 @@ void main() {
       await tester.runAsync(() async {
         final layers = await filled();
         final enforcer = PlaybackCacheBudgetEnforcer(
+          pictures: pictures(),
           layerImages: layers,
           maxBytes: 1024,
         );
@@ -192,6 +204,7 @@ void main() {
   group('memory pressure', () {
     PlaybackCacheBudgetEnforcer enforcerAt(int maxBytes) =>
         PlaybackCacheBudgetEnforcer(
+          pictures: pictures(),
           layerImages: layerImages(),
           maxBytes: maxBytes,
         );

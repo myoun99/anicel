@@ -1,9 +1,7 @@
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -11,18 +9,15 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_mode.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
-import 'package:anicel/src/ui/canvas/canvas_look.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
-import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/session/playback_rig.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -127,7 +122,7 @@ void main() {
   /// shown on counts it.
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
-      .canvasPictures
+      .framePictures
       .has((cut: s.activeCutOrNull!, frameIndex: frameIndex, paintPaper: true));
 
   test('the transport is ATTACHED: the controller holds an audio clock to '
@@ -512,7 +507,7 @@ void main() {
   }
 
   /// The screen changing what it shows a frame from — the whole film
-  /// stopped, the canvas drawing at another level.
+  /// stopped.
   group('when the screen changes', () {
     testWidgets('🚨the whole film plays from the canvas\'s own pictures — '
         'nothing is made for it that the canvas does not hold', (
@@ -534,12 +529,26 @@ void main() {
           [true, true],
           reason: 'the canvas shows a frame from what the film made',
         );
+        final store = s.renderCaches.framePictureStore;
+        final pictures = [
+          for (final frame in [0, 2])
+            store.bytesOf(
+              rig.framePictures.keyOf(
+                (cut: s.requireActiveCut, frameIndex: frame, paintPaper: true),
+              ),
+            )!,
+        ];
+        expect(
+          store.estimatedBytes,
+          pictures[0] + pictures[1],
+          reason: 'the two frames\' pictures, and nothing beside them. ↩️The '
+              'film made a composite of each of its frames too, until '
+              '2026-10-10; then it played the canvas\'s row images',
+        );
         expect(
           s.renderCaches.layerFrameImageCache.estimatedBytes,
-          2 * picture,
-          reason: 'the two cels\' images, and nothing beside them. ↩️The '
-              'film made a composite of each of its frames too, until '
-              '2026-10-10',
+          0,
+          reason: 'no row image is made for a run',
         );
 
         // An export run borrows half the line.
@@ -553,84 +562,14 @@ void main() {
       });
     });
 
-    testWidgets('🚨the canvas drawing at another level, the warmer makes the '
-        'images it will ask for', (tester) async {
-      await tester.runAsync(() async {
-        final s = twoPictures();
-        addTearDown(s.dispose);
-        final rig = playbackRigOf(s);
-        rig.playback.play(scope: PlaybackScope.activeCut);
-        await patiently(rig.prerenderScheduler.idle);
-        expect(held(s, 0), isTrue, reason: '⛔premise');
-
-        s.renderCaches.canvasLook.value = CanvasLook(
-          view: CanvasViewport(zoom: 0.4),
-          devicePixelRatio: 1,
-        );
-        expect(held(s, 0), isFalse, reason: 'nothing is made at half yet');
-        await patiently(rig.prerenderScheduler.idle);
-        expect([held(s, 0), held(s, 2)], [true, true]);
-        rig.playback.stop();
-      });
-    });
-
-    testWidgets('🚨seen through a camera that zooms out in the middle of the '
-        'cut, each frame is made at the level the camera shows it at', (
-      tester,
-    ) async {
-      await tester.runAsync(() async {
-        final s = twoPictures();
-        addTearDown(s.dispose);
-        final rig = playbackRigOf(s);
-        final cut = s.requireActiveCut;
-        // Frames 0..1 at the camera's own size, 2..3 at 40% of it.
-        s.renderCaches.canvasLook.value = CanvasLook(
-          view: CanvasViewport(),
-          devicePixelRatio: 1,
-          camera: (
-            poseOf: (cut, frame) => CameraPose(
-              center: CanvasPoint(x: 128, y: 128),
-              zoom: frame < 2 ? 1 : 0.4,
-            ),
-            frameSize: cut.canvasSize,
-          ),
-        );
-        rig.playback.play(scope: PlaybackScope.activeCut);
-        await patiently(rig.prerenderScheduler.idle);
-
-        LayerFrameImage? imageOf(String cel, PlaybackQuality level) =>
-            s.renderCaches.layerFrameImageCache.peek(
-              s.brushFrameKeyForCut(
-                cut,
-                const LayerId('layer'),
-                FrameId(cel),
-              ),
-              level,
-              canvasSize: cut.canvasSize,
-              sourceEffects: const [],
-              inkSuffices: true,
-            );
-        expect([held(s, 0), held(s, 2)], [true, true]);
-        expect(
-          [
-            imageOf('a', PlaybackQuality.full) != null,
-            imageOf('b', PlaybackQuality.half) != null,
-          ],
-          [true, true],
-          reason: 'each cel at the level of the frames that show it',
-        );
-        expect(
-          [
-            imageOf('a', PlaybackQuality.half) != null,
-            imageOf('b', PlaybackQuality.full) != null,
-          ],
-          [false, false],
-          reason: 'and at no other: a cel made at another level is a second '
-              'picture of it',
-        );
-        rig.playback.stop();
-      });
-    });
+    // ↩️Two pins stood here for the canvas's LOOK — the level it drew at,
+    // and the camera it was seen through, frame by frame — which the
+    // warmer made each row at: at 40% the half-size rows, through a camera
+    // zooming out each frame at the level that frame was shown at. A
+    // frame's picture is made once, whatever it is seen through (D7-2-Q2
+    // 「항상 원본 한장으로」), so the look went, and its pins with it — what
+    // stands for them is that a run seen at 40% shows the very picture
+    // made (`a_run_changes_frames_whole_test`).
 
     testWidgets('a screen\'s pins are inside the line — the room is the line '
         'less what is lent, whatever plays', (tester) async {
@@ -639,21 +578,18 @@ void main() {
         addTearDown(s.dispose);
         final rig = playbackRigOf(s);
         rig.playbackCache.debugSetPlaybackCacheBudgetBytes(4 * picture);
-        await rig.canvasPictures.make(
+        await rig.framePictures.make(
           (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true),
           shouldAbort: () => false,
         );
-        s.renderCaches.layerFrameImageCache.retainPin(
-          s.brushFrameKeyForCut(
-            s.requireActiveCut,
-            const LayerId('layer'),
-            const FrameId('a'),
-          ),
-          PlaybackQuality.full,
+        final shown = rig.framePictures.keyOf(
+          (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true),
         );
+        s.renderCaches.framePictureStore.retainPin(shown);
+        addTearDown(() => s.renderCaches.framePictureStore.releasePin(shown));
         expect(
-          s.renderCaches.layerFrameImageCache.pinnedBytes,
-          picture,
+          s.renderCaches.framePictureStore.pinnedBytes,
+          s.renderCaches.framePictureStore.bytesOf(shown),
           reason: '⛔premise: a screen holds one picture',
         );
 

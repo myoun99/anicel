@@ -13,19 +13,17 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_mode.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
-import '../../helpers/one_piece.dart';
 
 /// 🚨WHAT THE WALK MADE, THE BUDGET KEEPS (F-365, 유저 2026-10-15, iPad ·
 /// AMMI OP: 「재생전 렌더링은 3번컷 처음부분에서 막혀서 그이후로 재생해도
@@ -116,32 +114,23 @@ void main() {
     await tester.runAsync(() async {
       final s = session();
       final rig = s.playbackRig;
-      final images = s.renderCaches.layerFrameImageCache;
+      final pictures = s.renderCaches.framePictureStore;
       final cuts = [
         for (final id in ['cut-1', 'cut-2', 'cut-3']) s.cutById(CutId(id))!,
       ];
+      DemandedPicture headOf(Cut cut) =>
+          (cut: cut, frameIndex: 0, paintPaper: true);
       keepInkedPastEveryEdge(s, cuts);
       await rig.prerenderScheduler.idle;
       // Nothing made but the first cut's picture, the one the run is put on.
       rig.prerenderScheduler.cancel();
-      images.enforceBudget(maxBytes: 0);
-      await rig.canvasPictures.make((
-        cut: cuts.first,
-        frameIndex: 0,
-        paintPaper: true,
-      ), shouldAbort: () => false);
-      final first = images.validImageOrNull(
-        celOf(s, cuts.first),
-        PlaybackQuality.full,
-        canvasSize: canvasSize,
-        sourceEffects: const [],
-      )!;
-      final made = estimatedImageBytes(first.image.width, first.image.height);
-      final estimated = rig.canvasPictures.bytesToMake((
-        cut: cuts[2],
-        frameIndex: 0,
-        paintPaper: true,
-      ));
+      pictures.enforceBudget(maxBytes: 0, wantedAt: (_) => null);
+      await rig.framePictures.make(
+        headOf(cuts.first),
+        shouldAbort: () => false,
+      );
+      final made = pictures.bytesOf(rig.framePictures.keyOf(headOf(cuts[0])))!;
+      final estimated = rig.framePictures.bytesToMake(headOf(cuts[2]));
       expect(
         made,
         greaterThan(estimated),
@@ -153,7 +142,7 @@ void main() {
       // third by its weight.
       final line = 2 * made + estimated + (made - estimated) ~/ 2;
       rig.playbackCache.playbackCacheByteBudget = line;
-      expect(images.estimatedBytes, made, reason: 'premise');
+      expect(pictures.estimatedBytes, made, reason: 'premise');
 
       // The walk comes to rest — or, making and letting go of the same
       // pictures, lands more of them than there are to make: whichever is
@@ -189,13 +178,8 @@ void main() {
         reason: 'the second cut\'s picture and the third\'s, each once',
       );
       expect(
-        images.validImageOrNull(
-          celOf(s, cuts[1]),
-          PlaybackQuality.full,
-          canvasSize: canvasSize,
-          sourceEffects: const [],
-        ),
-        isNotNull,
+        rig.framePictures.has(headOf(cuts[1])),
+        isTrue,
         reason: 'what the walk made, the budget keeps',
       );
       expect(

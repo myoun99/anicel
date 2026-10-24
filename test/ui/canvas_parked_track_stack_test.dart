@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
     show commitStoryboardScrub;
@@ -132,15 +133,16 @@ void main() {
     await tester.pump();
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
+    final played = tester.widget<FramePictureView>(
+      find.byType(FramePictureView),
+    );
     expect(
-      tester
-          .widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
-          .run
-          ?.landings,
+      played.run.landings,
       same(landings),
       reason: 'a cut played alone plays on the canvas, from the warmer\'s '
           'pictures (playback-plays-the-screen-material)',
     );
+    expect(played.run.pictures, same(s.playbackRig.framePictures));
     s.playbackRig.playback.stop();
     await drainWarming(tester);
   });
@@ -178,7 +180,10 @@ void main() {
     );
     await tester.pump();
     // What was made of the second cut's head goes: a memory warning's work.
-    s.renderCaches.layerFrameImageCache.enforceBudget(maxBytes: 0);
+    s.renderCaches.framePictureStore.enforceBudget(
+      maxBytes: 0,
+      wantedAt: (_) => null,
+    );
     expect(
       s.playbackRig.pictureIsThere(head),
       isFalse,

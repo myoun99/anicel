@@ -1,3 +1,4 @@
+import '../../core/tree_nodes.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
@@ -110,6 +111,33 @@ FrameDrawing stackedFrameDrawingOf(
   }),
   page: page,
 );
+
+/// Every cel [nodes] — a stack of a frame's — draw, bottom to top: the cels
+/// its key is signed by and its drawing reads ([_stackedCelOf]).
+Iterable<BrushFrameKey> stackedCelsOf(
+  List<CompositeNode<CanvasStackRow>> nodes,
+) sync* {
+  for (final node in preorderNodes(nodes)) {
+    if (node case CompositeLeaf(:final payload)) {
+      final stacked = _stackedCelOf(payload);
+      if (stacked != null) {
+        yield stacked.cel;
+      }
+    }
+  }
+}
+
+/// [nodes] with only the rows whose cel the picture is [drawn] of — a row
+/// left out dropped as [mapCompositeLeaves] drops one, by the reading the
+/// key and the drawing take ([_stackedCelOf]), so a picture keyed by what
+/// is left is the picture drawn of it.
+List<CompositeNode<CanvasStackRow>> stackOfDrawnCels(
+  List<CompositeNode<CanvasStackRow>> nodes, {
+  required bool Function(BrushFrameKey cel) drawn,
+}) => mapCompositeLeaves(nodes, (row) {
+  final stacked = _stackedCelOf(row);
+  return stacked == null || drawn(stacked.cel) ? row : null;
+});
 
 /// A row of a stack as a frame's picture takes it: the cel it draws, and
 /// how.

@@ -628,16 +628,11 @@ class _InteractiveCanvasBuild {
           // track stack on the clock's global axis (R3a) — a selected-track
           // gap shows what the OTHER tracks hold there instead of the void.
           : _isPlaybackActive
-          ? (context, viewport) {
-              // The film is made at the level its cuts are drawn at — the
-              // canvas's own look, through the camera when it is on.
-              _sayTheLook(session, _look(context, session, viewport));
-              return _state._buildTrackStackView(
-                session,
-                viewport,
-                ofTheRun: true,
-              );
-            }
+          ? (context, viewport) => _state._buildTrackStackView(
+              session,
+              viewport,
+              ofTheRun: true,
+            )
           // The parked state (no active cut): the multitrack
           // display path — every covered track's composite stacks
           // where the void used to be, in its own CANVAS space (the
@@ -695,8 +690,7 @@ class _InteractiveCanvasBuild {
     _HostFrame frame,
   ) => _followingDragAndRun(frame.session, (context) {
     final session = frame.session;
-    final look = _look(context, session, viewport);
-    _sayTheLook(session, look);
+    final look = _look(session);
     final shot = _shotAt(session, look, viewport);
     final project = session.repository.requireProject();
     return CameraShot(
@@ -707,8 +701,8 @@ class _InteractiveCanvasBuild {
       pasteboardColor: Color(project.pasteboardArgb),
       pasteboardNone: project.pasteboardNone,
       pasteboardReach: project.pasteboardReach,
-      // The view the frame is drawn through — the one its rows were made
-      // for ([CanvasLook.qualityAt]).
+      // The view the frame is drawn through: the camera's, while a run
+      // plays here through it ([CanvasLook.frameViewThrough]).
       child: _stackView(
         shot?.frameView ?? viewport,
         activeSurfacePainter,
@@ -718,18 +712,11 @@ class _InteractiveCanvasBuild {
     );
   });
 
-  /// How this canvas shows a cut's frame through the panel's [viewport]
-  /// ([CanvasLook]) — through the camera while a run plays here, a cut's or
-  /// the film's, with the camera view on (the camera view is playback's crop
-  /// alone: a canvas that stands or is scrubbed shows the camera's frame
-  /// OVER it).
-  CanvasLook _look(
-    BuildContext context,
-    EditorSessionManager session,
-    CanvasViewport viewport,
-  ) => CanvasLook(
-    view: viewport,
-    devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+  /// How this canvas shows a cut's frame ([CanvasLook]) — through the camera
+  /// while a run plays here, a cut's or the film's, with the camera view on
+  /// (the camera view is playback's crop alone: a canvas that stands or is
+  /// scrubbed shows the camera's frame OVER it).
+  CanvasLook _look(EditorSessionManager session) => CanvasLook(
     camera: _isPlaybackActive && _state.widget.cameraViewEnabled.value
         ? (
             poseOf: session.camera.cameraPoseForCut,
@@ -758,42 +745,48 @@ class _InteractiveCanvasBuild {
     );
   }
 
-  /// Tells the session [look] ([RenderCaches.canvasLook]) — after the
-  /// frame: whoever hears it may let a waiting run go on, and a run that
-  /// goes on builds this canvas again, never from inside its build.
-  void _sayTheLook(EditorSessionManager session, CanvasLook look) {
-    if (session.renderCaches.canvasLook.value == look) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_state.mounted) {
-        session.renderCaches.canvasLook.value = look;
-      }
-    });
-  }
-
   Widget _stackView(
     CanvasViewport viewport,
     BitmapSurfacePainter? activeSurfacePainter,
     CanvasFloats floats,
     _HostFrame frame,
   ) {
-    final below = CanvasLayerStackView(
+    final session = frame.session;
+    if (_canvasPlays) {
+      // A RUN this canvas plays shows each frame's one picture, made ahead
+      // of the playhead — no ghosts: a ghost is editing scaffolding, as a
+      // guide is, and the film has none.
+      final rig = session.playbackRig;
+      return FramePictureView(
+        run: (
+          landings: rig.prerenderScheduler.landings,
+          pictures: rig.framePictures,
+        ),
+        // The cut's own run, on the canvas: on its paper.
+        picture: (
+          cut: session.requireActiveCut,
+          frameIndex: session.currentFrameIndex,
+          paintPaper: true,
+        ),
+        nodes: session.editingCanvas.playingStack.nodes,
+        viewport: viewport,
+      );
+    }
+    // The paper-stays-put split under a cut pose went with
+    // the V row's transform: nothing poses the whole cut on
+    // the editing canvas, so the layers draw straight.
+    return CanvasLayerStackView(
       // MERGED: the whole tree, active layer included, so
       // a folder's group buffer encloses the layer being
       // drawn on. Onion ghosts (P2) sit above the other
       // layers and directly UNDER the active drawing, and
-      // a scrub shows them as it crosses frames — but a RUN
-      // shows the film, and a ghost is editing scaffolding
-      // as a guide is. A gap parking shows the VOID
-      // (R16-⑥): no ghosts either.
+      // a scrub shows them as it crosses frames. A gap
+      // parking shows the VOID (R16-⑥): no ghosts either.
       nodes: _inGap
           ? const []
-          : _canvasPlays
-          ? frame.session.editingCanvas.playingStack.nodes
           : stackNodesWithGhosts(
-              frame.session.editingCanvas.stack.nodes,
-              frame.session.onionSkin.onionSkinCanvasRequests(),
+              session.editingCanvas.stack.nodes,
+              session.onionSkin.onionSkinCanvasRequests(),
             ),
       activeSurfacePainter: activeSurfacePainter,
       // TS1: the _selection's float draws in the active
@@ -802,31 +795,18 @@ class _InteractiveCanvasBuild {
       // and a folder's lifted rows each in its own (I-37).
       floatOverlay: floats.liveRow,
       liftedRows: floats.liftedRows,
-      imageCache: frame.session.renderCaches.layerFrameImageCache,
+      imageCache: session.renderCaches.layerFrameImageCache,
       // The census cannot reach a widget State; the session can be reached.
       onBufferBytes: (bytes) =>
-          frame.session.renderCaches.countStackBuffer('canvas', bytes),
-      // A run this canvas plays: its maker makes the rows, and the frame
-      // goes up whole.
-      run: _canvasPlays
-          ? (
-              landings: frame.session.playbackRig.prerenderScheduler.landings,
-              gaveUpOn: frame.session.playbackRig.canvasPictures.gaveUpOn,
-            )
-          : null,
+          session.renderCaches.countStackBuffer('canvas', bytes),
       canvasSize: _canvasSize,
-      pasteboardReach:
-          frame.session.repository.requireProject().pasteboardReach,
+      pasteboardReach: session.repository.requireProject().pasteboardReach,
       viewport: viewport,
       // R16-⑥: no cut in a gap — no paper (per-cut papers
       // make anything else confusing; the void is the truth).
       paintPaper: !_inGap,
-      paperBackground: frame.session.projectSettings.projectBackground,
+      paperBackground: session.projectSettings.projectBackground,
     );
-    // The paper-stays-put split under a cut pose went with
-    // the V row's transform: nothing poses the whole cut on
-    // the editing canvas, so the layers draw straight.
-    return below;
   }
 
   /// What is stacked OVER the canvas inside the viewport: the guides and
@@ -856,7 +836,7 @@ class _InteractiveCanvasBuild {
     // has — its SE tags and its fade — and none of the chrome about editing
     // it, the way playback has never drawn a guide or the camera's frame.
     final editing = !_isPlaybackActive;
-    final shot = _shotAt(session, _look(context, session, viewport), viewport);
+    final shot = _shotAt(session, _look(session), viewport);
     return _inTheCamerasFrame(
       context,
       viewport,

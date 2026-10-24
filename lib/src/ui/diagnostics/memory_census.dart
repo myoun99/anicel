@@ -218,6 +218,18 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           LastStrokeSlot.allStrokeBytes,
     ),
     if (textures)
+      // The frames' pictures every screen shows (one-picture-per-frame),
+      // the ones on screen in its detail.
+      MemoryCensusItem(
+        id: 'framePictures',
+        bytes: sum(
+          (session) => session.renderCaches.framePictureStore.estimatedBytes,
+        ),
+        detail: sum(
+          (session) => session.renderCaches.framePictureStore.pinnedBytes,
+        ),
+      ),
+    if (textures)
       MemoryCensusItem(
         id: 'layerImages',
         bytes: sum(
