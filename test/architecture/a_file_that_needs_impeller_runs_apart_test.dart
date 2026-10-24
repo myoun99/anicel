@@ -22,6 +22,7 @@ import '../../tool/affected_tests.dart'
         ranNowhere,
         runInBatches;
 import '../../tool/native_engine_provenance.dart' show engineStampPath;
+import '../helpers/dart_sources.dart' show filesUnder;
 
 /// 🖥️**A FILE THAT NEEDS IMPELLER RUNS ON IT, APART.**
 ///
@@ -265,8 +266,7 @@ void main() {
     test('⛔no step runs `flutter test` itself — every run goes by the '
         'plan', () {
       final runs = <String>[];
-      for (final file in Directory('.github').listSync(recursive: true)) {
-        if (file is! File) continue;
+      for (final file in filesUnder('.github')) {
         final lines = file.readAsStringSync().replaceAll('\r\n', '\n');
         for (final line in lines.split('\n')) {
           final code = line.trimLeft();
