@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import '../core/neighbour_pairs.dart';
 import '../models/canvas_point.dart';
 import 'input/pen_readings.dart';
 import 'stroke_corners.dart';
@@ -40,8 +41,8 @@ List<PenPoint> postCorrected(
     drawn.length - 1,
   ];
   final pieces = <_Piece>[];
-  for (var i = 1; i < ends.length; i += 1) {
-    final kept = _standing(drawn, within, from: ends[i - 1], to: ends[i]);
+  for (final (from, to) in neighbourPairs(ends)) {
+    final kept = _standing(drawn, within, from: from, to: to);
     final points = [for (final k in kept) drawn[k].position];
     final places = [for (final k in kept) along[k]];
     pieces.addAll(
@@ -61,10 +62,9 @@ const double _stepSpan = 2;
 
 /// How far along [line] each of its points stands.
 List<double> _distancesAlong(List<PenPoint> line) {
-  final along = List<double>.filled(line.length, 0);
-  for (var i = 1; i < line.length; i += 1) {
-    along[i] =
-        along[i - 1] + line[i - 1].position.distanceTo(line[i].position);
+  final along = [0.0];
+  for (final (from, to) in neighbourPairs(line)) {
+    along.add(along.last + from.position.distanceTo(to.position));
   }
   return along;
 }
@@ -185,8 +185,8 @@ CanvasPoint _mirrored(CanvasPoint end, CanvasPoint next) =>
 List<_CurvePoint> _laid(_Piece piece) {
   final (:controls, :fromAt, :toAt) = piece;
   var longestLeg = 0.0;
-  for (var i = 1; i < controls.length; i += 1) {
-    longestLeg = math.max(longestLeg, controls[i - 1].distanceTo(controls[i]));
+  for (final (from, to) in neighbourPairs(controls)) {
+    longestLeg = math.max(longestLeg, from.distanceTo(to));
   }
   final fastest = (controls.length - 1) * longestLeg;
   final steps = (fastest / _stepSpan).ceil().clamp(1, 1 << 16);

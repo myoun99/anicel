@@ -89,9 +89,7 @@ List<CanvasPoint> _strokeWaypoints(List<CanvasPoint> path) {
     return const [];
   }
   final points = [path.first];
-  for (var i = 1; i < path.length; i += 1) {
-    final from = path[i - 1];
-    final to = path[i];
+  for (final (from, to) in neighbourPairs(path)) {
     final pieces = (from.distanceTo(to) / _waypointSpan).ceil();
     for (var piece = 1; piece < pieces; piece += 1) {
       points.add(CanvasPoint.lerp(from, to, piece / pieces));

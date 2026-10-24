@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../core/neighbour_pairs.dart';
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
 import '../../services/input/modifier_keys.dart';
