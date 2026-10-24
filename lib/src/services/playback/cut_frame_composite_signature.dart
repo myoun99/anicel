@@ -248,6 +248,19 @@ class CutFrameCompositeSignature {
     required List<CompositeNodeSignature> nodes,
   }) : nodes = List.unmodifiable(nodes);
 
+  /// The signature of [tree], each of its rows already reduced to what
+  /// changes its pixels — 🚨ONE WALK FOR EVERY TREE THAT IS SIGNED: the
+  /// plan's ([computeCutFrameCompositeSignature]) and the one a screen
+  /// stacks (a frame's one picture, `framePictureKeyOf`). The two trees
+  /// differ only in what a row is, so they differ only in the leaf each
+  /// maps first ([mapCompositeLeaves], whose folds of a row that maps to
+  /// nothing are the same for both); a folder, an adjustment and a blend
+  /// over its backdrop are signed here once.
+  CutFrameCompositeSignature.of(
+    List<CompositeNode<CompositeLayerSignature>> tree, {
+    required CanvasSize canvasSize,
+  }) : this(canvasSize: canvasSize, nodes: _nodeSignaturesOf(tree));
+
   final CanvasSize canvasSize;
 
   /// The composite TREE, bottom → top, matching
@@ -301,74 +314,71 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required Cut cut,
   required int frameIndex,
   required BrushFrameRevisionResolver revisionOf,
-}) {
-  List<CompositeNodeSignature> mapNodes(
-    List<CompositeNode<CutFrameCompositeRow>> nodes,
-  ) => [
-    for (final node in nodes)
-      switch (node) {
-        // R28 #13: the folder bypass rides the ENTRIES (poses and opacity
-        // resolve through it), so the signature self-invalidates on a
-        // folder fx toggle exactly as it does on a layer's.
-        // ⛔A LIVE ROW HAS NO SIGNATURE. The cache keys STORED pixels;
-        // the live surface is not stored, and only the editing stack asks
-        // the tree for one — so a signature built over a live row would be
-        // a cache key for something about to change under it. If this route
-        // ever starts passing one, the throw says so rather than banking a
-        // composite that is already wrong.
-        CompositeLeaf(payload: CutFrameCompositeLiveRow()) => throw StateError(
-          'The composite signature has no key for a live row.',
-        ),
-        CompositeLeaf(payload: final CutFrameCompositeEntry entry) =>
-          CompositeLeafSignature(
-            CompositeLayerSignature(
-              layerId: entry.layer.id,
-              frameId: entry.frame.id,
-              opacity: entry.opacity,
-              sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
-              blendMode: entry.blendMode,
-              placement: entry.placement,
-              effects: entry.effects,
-            ),
-          ),
-        CompositeGroup(
-          :final children,
-          :final opacity,
-          :final blendMode,
-          :final effects,
-        ) =>
-          CompositeGroupSignature(
-            children: mapNodes(children),
-            opacity: opacity,
-            blendMode: blendMode,
-            effects: effects,
-          ),
-        CompositeAdjustment(:final children, :final effects, :final mix) =>
-          CompositeAdjustmentSignature(
-            children: mapNodes(children),
-            effects: effects,
-            mix: mix,
-          ),
-        CompositeBackdropBlend(
-          :final backdrop,
-          :final source,
-          :final blendMode,
-        ) =>
-          CompositeBackdropBlendSignature(
-            backdrop: mapNodes(backdrop),
-            source: mapNodes([source]).single,
-            blendMode: blendMode,
-          ),
-      },
-  ];
-
-  return CutFrameCompositeSignature(
-    canvasSize: cut.canvasSize,
-    nodes: mapNodes(
-      resolveCutFrameCompositeTree(
-        cut: cut,
-        frameIndex: frameIndex,
+}) => CutFrameCompositeSignature.of(
+  mapCompositeLeaves(
+    resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+    (row) => switch (row) {
+      // R28 #13: the folder bypass rides the ENTRIES (poses and opacity
+      // resolve through it), so the signature self-invalidates on a
+      // folder fx toggle exactly as it does on a layer's.
+      // ⛔A LIVE ROW HAS NO SIGNATURE. The cache keys STORED pixels;
+      // the live surface is not stored, and only the editing stack asks
+      // the tree for one — so a signature built over a live row would be
+      // a cache key for something about to change under it. If this route
+      // ever starts passing one, the throw says so rather than banking a
+      // composite that is already wrong.
+      CutFrameCompositeLiveRow() => throw StateError(
+        'The composite signature has no key for a live row.',
       ),
-    ),
-  );
-}
+      final CutFrameCompositeEntry entry => CompositeLayerSignature(
+        layerId: entry.layer.id,
+        frameId: entry.frame.id,
+        opacity: entry.opacity,
+        sourceRevision: revisionOf(entry.layer.id, entry.frame.id),
+        blendMode: entry.blendMode,
+        placement: entry.placement,
+        effects: entry.effects,
+      ),
+    },
+  ),
+  canvasSize: cut.canvasSize,
+);
+
+/// [CutFrameCompositeSignature.of]'s walk: [tree]'s nodes as the
+/// signature's, a row's own signature at each leaf.
+List<CompositeNodeSignature> _nodeSignaturesOf(
+  List<CompositeNode<CompositeLayerSignature>> tree,
+) => [
+  for (final node in tree)
+    switch (node) {
+      CompositeLeaf(:final payload) => CompositeLeafSignature(payload),
+      CompositeGroup(
+        :final children,
+        :final opacity,
+        :final blendMode,
+        :final effects,
+      ) =>
+        CompositeGroupSignature(
+          children: _nodeSignaturesOf(children),
+          opacity: opacity,
+          blendMode: blendMode,
+          effects: effects,
+        ),
+      CompositeAdjustment(:final children, :final effects, :final mix) =>
+        CompositeAdjustmentSignature(
+          children: _nodeSignaturesOf(children),
+          effects: effects,
+          mix: mix,
+        ),
+      CompositeBackdropBlend(
+        :final backdrop,
+        :final source,
+        :final blendMode,
+      ) =>
+        CompositeBackdropBlendSignature(
+          backdrop: _nodeSignaturesOf(backdrop),
+          source: _nodeSignaturesOf([source]).single,
+          blendMode: blendMode,
+        ),
+    },
+];
