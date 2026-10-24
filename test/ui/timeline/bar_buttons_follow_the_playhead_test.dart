@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -85,6 +86,12 @@ Map<String, Color?> _barInk(WidgetTester tester) {
         return;
       }
       final widget = element.widget;
+      // A face that draws its glyph itself holds no RichText: its ink
+      // is read off the face (2026-10-25).
+      if (widget is RailGlyphButton) {
+        found = (element.renderObject! as RenderRailGlyphFace).debugGlyphInk;
+        return;
+      }
       if (widget is RichText) {
         found = widget.text.style?.color;
         return;

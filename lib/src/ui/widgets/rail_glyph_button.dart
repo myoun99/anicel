@@ -88,24 +88,39 @@ final class RailTextGlyph extends RailGlyph {
 class RailGlyphButton extends LeafRenderObjectWidget implements NamesItself {
   const RailGlyphButton({
     super.key,
-    required this.name,
+    required String this.name,
     required this.tooltip,
     required this.glyph,
     required this.onPressed,
     required this.size,
     this.isSelected = false,
     this.danger = false,
-    this.outlined = false,
-    this.focus,
     this.semanticLabel,
-  });
+  }) : outlined = false,
+       focus = null;
+
+  /// The face an [AppIconButton] wears around a plain [Icon] (2026-10-25)
+  /// — that button, not one of its own: its key is the handle above it,
+  /// its `Focus` the keyboard's, and its action is named where it is
+  /// called (`a_button_names_an_action_or_says_why_test`).
+  const RailGlyphButton.face({
+    super.key,
+    required this.tooltip,
+    required this.glyph,
+    required this.onPressed,
+    required this.size,
+    required this.isSelected,
+    required this.danger,
+    required this.outlined,
+    required IconButtonFocus this.focus,
+  }) : name = null,
+       semanticLabel = null;
 
   /// What a finder calls this button, the box the user sees and presses —
   /// the tests' handle, a name and never a key: a rail row shows one layer
   /// and then another in the same elements (I-57, 10-13), and a key spelled
   /// from the layer remade every button of every row on every cut switch.
-  /// Null where the button has a handle above it already — an
-  /// [AppIconButton]'s key.
+  /// Null on a [RailGlyphButton.face], whose button's key is its handle.
   @override
   final String? name;
 

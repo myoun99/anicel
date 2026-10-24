@@ -36,7 +36,9 @@ import '../../helpers/menu_rows_without_an_action.dart';
 /// read). ⛔Not the kinds that are one of the answer's exclusions by what
 /// they ARE — a boolean dot is a switch, a colour swatch a choice, a
 /// flyout button a door, the layer row's toggles a row's — whose every use
-/// would stand here with the same reason.
+/// would stand here with the same reason. Nor `RailGlyphButton.face`: the
+/// face an `AppIconButton` wears around a plain `Icon` IS that button, and
+/// is scanned where the button is called.
 enum Why { aRow, aSetting, aSecondLevel, inAWindow, declined }
 
 const ledger = <String, Why>{

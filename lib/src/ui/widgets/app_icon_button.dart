@@ -319,8 +319,7 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
         includeSemantics: false,
         onFocusChange: _setHasFocus,
         child: switch (_glyphOf(context)) {
-          final glyph? => RailGlyphButton(
-            name: null,
+          final glyph? => RailGlyphButton.face(
             tooltip: widget.tooltip,
             glyph: glyph,
             onPressed: widget.onPressed,
