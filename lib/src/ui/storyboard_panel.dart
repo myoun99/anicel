@@ -118,7 +118,13 @@ import 'timeline/timeline_lane_rows.dart'
         timelineStretchWordSpan;
 import 'timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectPropertyLanes, parseEffectLaneId;
-import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
+import 'timeline/layer_drop_policy.dart'
+    show
+        linesBeyondRow,
+        ownsTheLane,
+        rowStepsBetween,
+        rowUnitAround,
+        slotForSteps;
 import 'timeline/layer_row_drag.dart'
     show
         ConteSeatRowSubject,

@@ -131,6 +131,38 @@ void main() {
     expect(_drawn(tester, 'xsheet'), before.shifted(Offset(column, 0)));
     await _letGoElsewhere(tester, gesture);
   });
+
+  testWidgets('🚨on the sheet the file held between two columns stands '
+      'before the lanes the next one opens before it: they, their graph '
+      'and the column move one column right, the column before stays', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await _openTheGraph(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    final column = tester.getRect(_column('A')).width;
+    final before = _drawn(tester, 'xsheet');
+
+    final gesture = await _holdAPicture(tester);
+    await gesture.moveTo(
+      Offset(before.a.right - 2, before.strip.center.dy),
+    );
+    await tester.pump();
+
+    expect(
+      tester.getRect(_column('placement-preview')).left,
+      before.graph.left,
+      reason: 'the column it would make, where B\'s unit began',
+    );
+    final now = _drawn(tester, 'xsheet');
+    expect(now.a, before.a);
+    expect(now.graph, before.graph.shift(Offset(column, 0)));
+    expect(now.b, before.b.shift(Offset(column, 0)));
+    await _letGoElsewhere(tester, gesture);
+  });
 }
 
 const _dragSourceKey = ValueKey<String>('test-media-drag-source');

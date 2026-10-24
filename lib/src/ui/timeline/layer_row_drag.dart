@@ -464,6 +464,7 @@ class LayerRowDragTarget extends StatelessWidget {
     this.pointerRowsAt,
     required this.child,
     this.drawsTheGapAfter = false,
+    this.linesBeyond,
     this.grabOffsetWithinRun = 0,
     this.onGripTaken,
     this.onGripReleased,
@@ -507,6 +508,7 @@ class LayerRowDragTarget extends StatelessWidget {
        grabOffsetWithinRun = 0,
        slotBefore = null,
        drawsTheGapAfter = false,
+       linesBeyond = null,
        onCrossed = _neverCrosses,
        pointerRowsAt = null;
 
@@ -603,6 +605,14 @@ class LayerRowDragTarget extends StatelessWidget {
   /// would both draw the same gap ([LayerRowCaret.drawsTheGapAfter]).
   final bool drawsTheGapAfter;
 
+  /// How far past this row each of its two lines stands — before it, to
+  /// where its unit begins, and after it, to where the unit ends
+  /// ([linesBeyondRow]): the lanes a rail opens after a row or before it
+  /// are the row's, and no gap is drawn inside them. Asked as a line is
+  /// drawn, so a twirl since this row was kept is in it. Null draws both
+  /// at the row's own edges.
+  final ({double lead, double trail}) Function()? linesBeyond;
+
   /// A5 (2026-08-17): the press landed here and its recognizer lives in
   /// this row's State — a host that windows its rows listens so it can
   /// keep this ONE row built while the window slides past it ("a press
@@ -643,6 +653,7 @@ class LayerRowDragTarget extends StatelessWidget {
       selectRowDeltaAt: selectRowDeltaAt,
       pointerRowsAt: pointerRowsAt,
       drawsTheGapAfter: drawsTheGapAfter,
+      linesBeyond: linesBeyond,
       grabOffsetWithinRun: grabOffsetWithinRun,
       onGripTaken: onGripTaken,
       onGripReleased: onGripReleased,
@@ -663,6 +674,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.onCrossed,
     required this.canReorder,
     required this.drawsTheGapAfter,
+    this.linesBeyond,
     this.onSelectCrossed,
     this.selectRowDeltaAt,
     this.pointerRowsAt,
@@ -695,6 +707,9 @@ class _LayerRowDragBody extends StatefulWidget {
   /// See [LayerRowDragTarget.grip].
   final List<DragChipItem> Function()? grip;
   final bool drawsTheGapAfter;
+
+  /// See [LayerRowDragTarget.linesBeyond].
+  final ({double lead, double trail}) Function()? linesBeyond;
   final Widget child;
 
   @override
@@ -1191,13 +1206,15 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
               _dropWord(colorScheme, label),
             ],
           );
+    final beyond = widget.linesBeyond?.call();
+    final past = (atStart ? beyond?.lead : beyond?.trail) ?? 0;
     return stripAcross(
       widget.axis,
       key: ValueKey<String>(
         'timeline-row-caret-${atStart ? 'before' : 'after'}-'
         '${_keyOf(widget.subject)}',
       ),
-      across: -layerRowCaretThickness / 2,
+      across: -past - layerRowCaretThickness / 2,
       fromEnd: !atStart,
       alongStart: _layerAreaStart,
       child: content,
@@ -1390,6 +1407,7 @@ Widget layerRowDragWrapper({
     onGripReleased: onGripReleased,
     grip: grip,
     drawsTheGapAfter: caret.drawsTheGapAfter,
+    linesBeyond: reach.linesBeyond,
     onCrossed: hooks == null
         ? (_, _, _) {}
         : (steps, onRow, inRow) {
@@ -1419,7 +1437,11 @@ Widget layerRowDragWrapper({
 /// How far a drag from the row at [address] has reached, read off where the
 /// rows of [dragRows] sit ([dragEdges]) at the EVENT — the pointer in rows
 /// ([LayerRowDragTarget.pointerRowsAt]) and a select span's head
-/// ([LayerRowDragTarget.selectRowDeltaAt]).
+/// ([LayerRowDragTarget.selectRowDeltaAt]) — and how far its lines stand
+/// past it as they are drawn ([LayerRowDragTarget.linesBeyond]).
+///
+/// The rows as drawn NOW, all three: the rail keeps a wrapper across builds
+/// that moved no row (F-244), so its lanes may have twirled since.
 _RowReach _rowReach(
   TimelineRowAddress address,
   List<TimelineDisplayRow> Function() dragRows,
@@ -1431,11 +1453,19 @@ _RowReach _rowReach(
   },
   selectRowDeltaAt: (offset) =>
       timelineRowDeltaAt(dragRows(), dragEdges(), address, offset),
+  linesBeyond: () {
+    final rows = dragRows();
+    final index = rows.indexWhere((row) => row.address == address);
+    return index < 0
+        ? (lead: 0.0, trail: 0.0)
+        : linesBeyondRow(dragEdges(), index, displayRowUnitAt(rows, index));
+  },
 );
 
 typedef _RowReach = ({
   double Function(double offset) pointerRowsAt,
   int Function(double offset) selectRowDeltaAt,
+  ({double lead, double trail}) Function() linesBeyond,
 });
 
 /// What [layerRowDragWrapper] builds a row's wrapper FROM — equal while the
@@ -1612,6 +1642,7 @@ Widget _laneRowDragTarget(
     onGripReleased: wiring.onGripReleased,
     grip: () => [effectRowDragChip(subject.lane)],
     drawsTheGapAfter: slot == headers.length - 1,
+    linesBeyond: wiring.reach.linesBeyond,
     // An fx chain has no "inside a row" to drop into — an effect holds
     // nothing — so the on-row band is ignored here and the caret stays
     // the only answer (R5 #15).

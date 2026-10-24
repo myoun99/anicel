@@ -104,6 +104,7 @@ class _StoryboardRowsAndLabels {
       hooks: hooks,
       grip: () => [effectRowDragChip(at.lane)],
       drawsTheGapAfter: slot == displayEffects.length - 1,
+      linesBeyond: _state._railRows.linesBeyondFrom(address),
       onCrossed: (steps, _, _) => hooks.onEffectUpdate(
         chainId,
         displayEffects,
@@ -416,6 +417,9 @@ class _StoryboardRowsAndLabels {
             ),
         ],
         drawsTheGapAfter: at == shown.length - 1,
+        linesBeyond: _state._railRows.linesBeyondFrom(
+          LayerRowAddress(layer.id),
+        ),
         // The S rows are a flat SE list — no row here holds another, so
         // there is nothing for an on-row drop to mean and the caret stays
         // the only answer (R5 #15). The rows are the track's at the event:
@@ -595,6 +599,7 @@ class _StoryboardRowsAndLabels {
         hooks: hooks,
         grip: grip,
         drawsTheGapAfter: index == seats.length - 1,
+        linesBeyond: _state._railRows.linesBeyondFrom(LayerRowAddress(rowId)),
         // A conte group's rows hold nothing to drop into, so the caret is
         // the only answer (the S rows' reasoning).
         onCrossed: (steps, _, inRow) {
@@ -1104,6 +1109,9 @@ class _StoryboardRowsAndLabels {
           hooks: hooks,
           grip: grip,
           drawsTheGapAfter: index == trackCount - 1,
+          linesBeyond: _state._railRows.linesBeyondFrom(
+            TrackRowAddress(trackId),
+          ),
           // A track holds nothing, so its middle means nothing: the caret
           // is the only answer and the on-row arm stays unused (the S rows'
           // reasoning, one list up).

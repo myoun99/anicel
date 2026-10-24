@@ -4,6 +4,16 @@ part of '../storyboard_panel.dart';
 /// lane carrier — and whether this build reads it open.
 typedef _Twirl = ({LayerId id, bool open});
 
+/// A row of the rail as a pointer counts it
+/// ([_StoryboardRailRows._pointerTable]): the address it is stood on by,
+/// the address of the row the timeline's rail holds for it
+/// ([_StoryboardRailSlot.display]), and its track.
+typedef _PointerRow = ({
+  TimelineRowAddress? standing,
+  TimelineRowAddress? held,
+  TrackId track,
+});
+
 /// Every lane the rail draws, every track's, as the timeline's rows hold it
 /// (I-89 ①): the [lanes] as they are, the [rows] they make seated in their
 /// groups' open header graphs ([seatLaneGraphs]), where those sit — each
@@ -1734,29 +1744,71 @@ class _StoryboardRailRows {
   /// [TimelineRowEdges.rowsAt]), as on the timeline's rail.
   double Function(double offset) pointerRowsFrom(TimelineRowAddress anchor) =>
       (offset) {
-        final rows = <TimelineRowSlot>[];
-        var anchorAt = -1;
-        for (final track in _state.widget.project.tracks) {
-          for (final slot in _trackGroupRowGeometry(track)) {
-            if (_isRoom(slot)) {
-              final last = rows.removeLast();
-              rows.add((
-                extent: last.extent,
-                room: slot.height,
-                joinsNext: false,
-              ));
-              continue;
-            }
-            if (_standingAddressOf(slot) == anchor) {
-              anchorAt = rows.length;
-            }
-            rows.add((extent: slot.height, room: 0, joinsNext: false));
-          }
-        }
-        return anchorAt < 0
-            ? 0
-            : TimelineRowEdges(rows).rowsAt(anchorAt, offset);
+        final table = _pointerTable();
+        final anchorAt = table.rows.indexWhere(
+          (row) => row.standing == anchor,
+        );
+        return anchorAt < 0 ? 0 : table.edges.rowsAt(anchorAt, offset);
       };
+
+  /// How far past [anchor]'s label its two lines stand
+  /// ([LayerRowDragTarget.linesBeyond]): to where its unit begins and
+  /// ends on the table a pointer counts ([_pointerTable]) — the lanes a row
+  /// stands for read as the timeline's rail reads them ([ownsTheLane], over
+  /// the rows the timeline holds for these), and a V row's whole track
+  /// group, which its drag carries.
+  ///
+  /// 🚨The timeline's law on this rail (10-25): every line stood at the
+  /// label's own edges — under an S row, a conte row and an fx header while
+  /// their lanes followed, and at the V row inside a group whose drop lands
+  /// past the rows above and below it.
+  ({double lead, double trail}) Function() linesBeyondFrom(
+    TimelineRowAddress anchor,
+  ) => () {
+    final table = _pointerTable();
+    final rows = table.rows;
+    final at = rows.indexWhere((row) => row.standing == anchor);
+    if (at < 0) {
+      return (lead: 0.0, trail: 0.0);
+    }
+    final head = rows[at].held;
+    final track = rows[at].track;
+    final owns = switch ((anchor, head)) {
+      (TrackRowAddress(), _) => (int index) => rows[index].track == track,
+      (_, final head?) => (int index) => ownsTheLane(head, rows[index].held),
+      _ => (int _) => false,
+    };
+    return linesBeyondRow(
+      table.edges,
+      at,
+      rowUnitAround(at, rows.length, owns),
+    );
+  };
+
+  /// The rail's rows as a pointer counts them — the room an open graph
+  /// stands past its lanes folded into the row before it (I-89 ③,
+  /// [TimelineRowEdges.rowsAt]), as on the timeline's rail — and where they
+  /// lie along it.
+  ({TimelineRowEdges edges, List<_PointerRow> rows}) _pointerTable() {
+    final slots = <TimelineRowSlot>[];
+    final rows = <_PointerRow>[];
+    for (final track in _state.widget.project.tracks) {
+      for (final slot in _trackGroupRowGeometry(track)) {
+        if (_isRoom(slot)) {
+          final last = slots.removeLast();
+          slots.add((extent: last.extent, room: slot.height, joinsNext: false));
+          continue;
+        }
+        slots.add((extent: slot.height, room: 0, joinsNext: false));
+        rows.add((
+          standing: _standingAddressOf(slot),
+          held: slot.display?.address,
+          track: track.id,
+        ));
+      }
+    }
+    return (edges: TimelineRowEdges(slots), rows: rows);
+  }
 
   /// C② — the lane strips' gesture bundle for [track]: raw cross pixels
   /// resolved against THIS rail's mixed-height row table (R9 #25), the
