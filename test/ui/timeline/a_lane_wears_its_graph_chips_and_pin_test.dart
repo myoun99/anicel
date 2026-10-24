@@ -15,8 +15,6 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
@@ -47,6 +45,7 @@ import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// **I-89 ③ — a lane on a rail that carries header graphs: its curve's
 /// chips before its name, its pin before its value.**
@@ -711,20 +710,12 @@ Project _project() => Project(
   ],
 );
 
-Future<EditorSessionManager> _pump(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
-  );
-  await tester.pumpAndSettle();
-  await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -520),
-  );
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
+/// The timeline tab alone ([pumpTimelineHost]) — the lanes are the panel's.
+Future<EditorSessionManager> _pump(WidgetTester tester) => pumpTimelineHost(
+  tester,
+  _project(),
+  surface: const Size(870, 546),
+);
 
 /// The drawing row's lanes twirled open, and its Transform group.
 Future<void> _openTransform(WidgetTester tester) async {

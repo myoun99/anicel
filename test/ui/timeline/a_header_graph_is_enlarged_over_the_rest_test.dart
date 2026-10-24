@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/widgets/app_icon_button.dart'
     show AppIconButtonFace;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// **I-89 ③D — a header graph is enlarged over every other row.**
 ///
@@ -254,7 +255,7 @@ void main() {
 
   testWidgets('the panel resized, it stands the new view less its header\'s '
       'row', (tester) async {
-    await _pump(tester);
+    await _pumpApp(tester);
     await _openEverything(tester);
     await _tap(tester, _enlarge('timeline', _draw));
     final row = _rowExtent(tester);
@@ -461,13 +462,22 @@ ScrollPosition? _layersScroll(WidgetTester tester) {
   return null;
 }
 
-/// [tall]: a surface twice as tall, the dock at its cap of half of it —
-/// the sheet stands the rail up as its header.
+/// The timeline tab alone ([pumpTimelineHost]), as the app's window of 1400 ×
+/// 1200 laid it — the graph's view is the panel's. [tall]: as one twice as
+/// tall did, room for the sheet, which stands the rail up as its header.
 Future<EditorSessionManager> _pump(
   WidgetTester tester, {
   bool tall = false,
-}) async {
-  await tester.binding.setSurfaceSize(Size(1400, tall ? 2400 : 1200));
+}) => pumpTimelineHost(
+  tester,
+  _project(),
+  surface: Size(870, tall ? 610 : 546),
+);
+
+/// The app, its dock pulled up for room — where the panel is resized by the
+/// hand.
+Future<EditorSessionManager> _pumpApp(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1400, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(home: HomePage(initialProject: _project())),
@@ -475,7 +485,7 @@ Future<EditorSessionManager> _pump(
   await tester.pumpAndSettle();
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    Offset(0, tall ? -1200 : -520),
+    const Offset(0, -520),
   );
   await tester.pumpAndSettle();
   return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;

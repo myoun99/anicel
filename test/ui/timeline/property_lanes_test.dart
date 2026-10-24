@@ -23,6 +23,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart' show offsetAlong;
@@ -51,6 +52,7 @@ import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// A straight key that holds from there on — AE's Toggle Hold Keyframe.
 const _heldOut = SidesKeyMark(
@@ -102,7 +104,14 @@ CameraPose _pose(double x) => CameraPose(
   zoom: 1.5,
 );
 
-Future<void> _pump(WidgetTester tester, Project project) async {
+/// The timeline tab alone ([pumpTimelineHost]), as [_pumpApp]'s window lays
+/// it — the lanes are the panel's.
+Future<EditorSessionManager> _pump(WidgetTester tester, Project project) =>
+    pumpTimelineHost(tester, project, surface: const Size(843, 610));
+
+/// The app, its dock pulled up for room — where the app's own buttons and
+/// tools answer.
+Future<void> _pumpApp(WidgetTester tester, Project project) async {
   // The AE 'Transform' group header (+ anchor/opacity lanes on drawing
   // layers) deepens the twirl-down; a wide surface and a taller bottom
   // dock (splitter drag, like a user would) keep every lane row on screen.
@@ -528,7 +537,7 @@ void main() {
         "transform tool's own switch — the camera's one zoom wears none", (
       tester,
     ) async {
-      await _pump(tester, _project());
+      await _pumpApp(tester, _project());
       for (final twirl in const [
         'timeline-lane-toggle-lane-draw-layer',
         _laneToggleName,
@@ -681,18 +690,9 @@ void main() {
 
     testWidgets('SE rows twirl down Transform lanes above the audio lane '
         'and key their own track', (tester) async {
-      late ProjectRepository repository;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(
-            initialProject: seInstructionProject(),
-            onRepositoryCreated: (repo) => repository = repo,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      final s = await _pump(tester, seInstructionProject());
 
-      Layer seLayer() => repository
+      Layer seLayer() => s.repository
           .requireProject()
           .tracks
           .single
@@ -791,18 +791,9 @@ void main() {
     testWidgets('instruction rows twirl down the same Transform lanes', (
       tester,
     ) async {
-      late ProjectRepository repository;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(
-            initialProject: seInstructionProject(),
-            onRepositoryCreated: (repo) => repository = repo,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      final s = await _pump(tester, seInstructionProject());
 
-      Layer instructionLayer() => repository
+      Layer instructionLayer() => s.repository
           .requireProject()
           .tracks
           .single
@@ -1182,7 +1173,7 @@ void main() {
 
     testWidgets('the navigator diamond toggles a key at the playhead on '
         'ONE lane', (tester) async {
-      await _pump(
+      final s = await _pump(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
       );
@@ -1213,8 +1204,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(_laneKey('position', 0), findsOneWidget);
 
-      // One undo step per toggle.
-      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      // One undo step per toggle — the session's; the app's button is the
+      // drawing layer's test's.
+      s.undo();
       await tester.pumpAndSettle();
       expect(_laneKey('position', 0), findsNothing);
     });
@@ -1632,17 +1624,10 @@ void main() {
 
     // Lane COLUMNS extend the sheet rightward and the default 36px frame
     // rows put late frames below the bottom dock's fold — a wide surface,
-    // near keys (frames 0/4) AND a taller bottom dock (splitter drag, like
-    // a user would) keep every gesture target on screen.
+    // near keys (frames 0/4) AND a tall panel keep every gesture target on
+    // screen.
     Future<void> pumpXSheet(WidgetTester tester, Project project) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
       await _pump(tester, project);
-      await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-bottom')),
-        const Offset(0, -300),
-      );
-      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
           const ValueKey<String>('timeline-orientation-toggle-button'),
