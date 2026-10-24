@@ -49,6 +49,10 @@ const ledger = <String, Why>{
   'dialogs/input_settings_dialog.dart | '
           "'settings-zoom-snap-\${_shownPercent(stop)}'":
       Why.aChoice,
+  // I-72-block-without-instruction: 「(없음)」, the first value of the mark
+  // list — the vocabulary's own rows go through `asFlyoutValueChoices`.
+  "dialogs/instruction_event_dialog.dart | 'instruction-option-none'":
+      Why.aChoice,
   // 🗣️I-40-Q2 (유저 2026-10-09, a file row's ⋮ — which file would a key
   // take?): 「그런건 단축키 안만들어도됨」.
   "media/media_pool_panel.dart | 'media-asset-menu-export-wav'": Why.declined,

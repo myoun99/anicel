@@ -406,6 +406,7 @@ void main() {
     'instructionEventEditTitle': (s) => s.instructionEventEditTitle,
     'instructionEventAddTitle': (s) => s.instructionEventAddTitle,
     'instructionMarkLabel': (s) => s.instructionMarkLabel,
+    'instructionMarkNone': (s) => s.instructionMarkNone,
     'instructionNameLabel': (s) => s.instructionNameLabel,
     'instructionStartLabel': (s) => s.instructionStartLabel,
     'instructionEndLabel': (s) => s.instructionEndLabel,
