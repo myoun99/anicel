@@ -83,7 +83,13 @@ void main() {
           framed: true,
         ),
       ),
-      throwsA(isA<ViewerDocumentException>()),
+      throwsA(
+        isA<ViewerDocumentException>().having(
+          (e) => e.reason,
+          'reason',
+          'that movie is not where the project keeps it',
+        ),
+      ),
     );
     expect(backend.openedAt, isEmpty);
   });
