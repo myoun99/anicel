@@ -399,54 +399,60 @@ void main() {
     });
   });
 
-  test('the grid\'s blit lays the texels drawImageRect lays — only its edge '
-      'moves', () async {
+  test('the grid\'s blit lays the texels a nearest sample picks — only its '
+      'edge moves', () async {
     // A part of a 4×3 picture of twelve colours, twice its size, at a
     // phase off the grid.
+    List<int> colourOf(int x, int y) => [60 * x, 80 * y, 20 + x * y, 255];
     final recorder = ui.PictureRecorder();
     final paint = Canvas(recorder);
     for (var y = 0; y < 3; y += 1) {
       for (var x = 0; x < 4; x += 1) {
+        final [r, g, b, a] = colourOf(x, y);
         paint.drawRect(
           Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
-          Paint()..color = Color.fromARGB(255, 60 * x, 80 * y, 20 + x * y),
+          Paint()..color = Color.fromARGB(a, r, g, b),
         );
       }
     }
     final picture = await recorder.endRecording().toImage(4, 3);
     const source = Rect.fromLTWH(1, 0, 3, 3);
     const destination = Rect.fromLTWH(0, 0, 6, 6);
+    const phase = Offset(1.3, 0.7);
+    const size = (width: 10, height: 8);
 
-    Future<Uint8List> drawn(void Function(Canvas canvas) draw) async {
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder)..translate(1.3, 0.7);
-      draw(canvas);
-      final image = await recorder.endRecording().toImage(10, 8);
-      final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-      return bytes!.buffer.asUint8List();
+    final drawn = ui.PictureRecorder();
+    drawImageRectOnThePixelGrid(
+      Canvas(drawn)..translate(phase.dx, phase.dy),
+      picture,
+      source,
+      destination,
+      filterQuality: ui.FilterQuality.none,
+      pixelRatio: 1,
+    );
+    final image = await drawn.endRecording().toImage(size.width, size.height);
+    final bytes = (await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!.buffer.asUint8List();
+
+    // Worked out here, not drawn by the engine: a reference drawn with
+    // `drawImageRect` would blend its own edge on Impeller.
+    for (var y = 0; y < size.height; y += 1) {
+      for (var x = 0; x < size.width; x += 1) {
+        final centre = Offset(x + 0.5, y + 0.5) - phase;
+        final at = (y * size.width + x) * 4;
+        expect(
+          bytes.sublist(at, at + 4),
+          destination.contains(centre)
+              ? colourOf(
+                  (source.left + centre.dx / 2).floor(),
+                  (source.top + centre.dy / 2).floor(),
+                )
+              : const [0, 0, 0, 0],
+          reason: '($x,$y): the texel its centre falls on, or nothing',
+        );
+      }
     }
-
-    final plain = await drawn(
-      (canvas) => canvas.drawImageRect(
-        picture,
-        source,
-        destination,
-        Paint()
-          ..filterQuality = ui.FilterQuality.none
-          ..isAntiAlias = false,
-      ),
-    );
-    final onTheGrid = await drawn(
-      (canvas) => drawImageRectOnThePixelGrid(
-        canvas,
-        picture,
-        source,
-        destination,
-        filterQuality: ui.FilterQuality.none,
-        pixelRatio: 1,
-      ),
-    );
-    expect(onTheGrid, equals(plain));
   });
 
   test('the cut is the pixel centres — on a flip and at a ratio too, and a '
