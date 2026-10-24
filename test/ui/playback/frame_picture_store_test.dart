@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/rgba_image_bytes.dart';
@@ -582,6 +583,45 @@ void main() {
       store.dispose();
     });
 
+    // 🚨In place, never over (`FramePictureStore.patch`) — under the patched
+    // levels too: the levels below them are made from the deepest, the
+    // picture's own with each patch drawn into its place there.
+    test('of a patch that clears are clear under it — its texels take the '
+        'place of the picture\'s there, below the patched levels too',
+        () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(
+        gpu: gpu,
+        levelsQuiet: Duration.zero,
+      );
+      // Blue, 1024 a side: two levels patched, eight made from the deepest.
+      await _layed(store, 'a', 1024);
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 64, 64),
+        draw: (_) {},
+      );
+      expect(await pollUntil(() => gpu.runs.isNotEmpty), isTrue);
+      final run = (await gpu.runs.single)!;
+      final below = gpu.levelWrites.single.spans.firstWhere(
+        (span) => span.level == 3,
+      );
+      expect(
+        (below.x, below.y),
+        (0, 0),
+        reason: '⛔premise: the first level made from the deepest',
+      );
+      expect(
+        run.getUint8(below.start * 4 + 3),
+        0,
+        reason: 'the patch drew nothing there and the level under it still '
+            'holds the picture — the patch was drawn OVER the deepest level, '
+            'not in its place',
+      );
+      store.dispose();
+    });
+
     test('are background GPU work: they take their turn in the quiet '
         'between held frames', () async {
       final turns = _turnsInAQuiet();
@@ -926,6 +966,9 @@ class _RecordingGpu implements FramePictureGpu {
   final List<ui.Picture> recorded = [];
   final List<List<BaseWrite>> bases = [];
   final List<({(int, int) run, List<RunSpan> spans})> levelWrites = [];
+
+  /// The texels of each run [levelWrites] was handed, RGBA row after row.
+  final List<Future<ByteData?>> runs = [];
   final List<void Function()> _heldRenders = [];
   final List<Completer<bool>> _heldWrites = [];
 
@@ -974,6 +1017,7 @@ class _RecordingGpu implements FramePictureGpu {
   @override
   Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) {
     levelWrites.add((run: (run.width, run.height), spans: spans));
+    runs.add(run.toByteData());
     return _written();
   }
 

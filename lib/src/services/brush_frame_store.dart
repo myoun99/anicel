@@ -1673,8 +1673,23 @@ class BrushFrameStore {
     required BrushFrameKey source,
   }) {
     storeBakedSurface(key, surface);
-    if (!identical(_bakedSurfaces[_canonicalize(source)], surface)) {
+    final from = _canonicalize(source);
+    if (!identical(_bakedSurfaces[from], surface)) {
       return;
+    }
+    // The preview a cel is drawn from is the copy's too, as a rekey carries
+    // it ([_rehome]): the frame a screen shows while its picture is laid
+    // draws a cel only once its preview is prepared, and the copy had none
+    // for a frame — F-275 again, under the frame's one picture
+    // (one-picture-per-frame ②-3, 2026-10-25).
+    final preview = _displayCaches[from];
+    if (preview != null && preview.isValid) {
+      final to = _canonicalize(key);
+      _displayCaches[to] = BrushFrameDisplayCache(
+        frameKey: to,
+        previewSurface: preview.previewSurface,
+        sourceRevision: getOrCreateFrame(to).sourceRevision,
+      );
     }
     for (final listener in List.of(_copyListeners)) {
       listener([(source, key)]);
