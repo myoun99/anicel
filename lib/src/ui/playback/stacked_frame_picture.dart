@@ -131,7 +131,7 @@ typedef _StackedCel = ({
 /// empty.
 ///
 /// ⛔A TINTED ROW IS AN ONION GHOST, which a stack lays round the frame
-/// for the one canvas that edits it (`_stackNodesWithGhosts`) and is no
+/// for the one canvas that edits it (`stackNodesWithGhosts`) and is no
 /// part of the frame's picture (one-picture-per-frame-Q1). Handed one, this
 /// says so rather than keying a picture the ghost is not drawn in.
 _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {

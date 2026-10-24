@@ -791,7 +791,7 @@ class _InteractiveCanvasBuild {
           ? const []
           : _canvasPlays
           ? frame.session.editingCanvas.playingStack.nodes
-          : _EditorCanvasAreaState._stackNodesWithGhosts(
+          : stackNodesWithGhosts(
               frame.session.editingCanvas.stack.nodes,
               frame.session.onionSkin.onionSkinCanvasRequests(),
             ),

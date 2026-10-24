@@ -352,6 +352,134 @@ class EditorCanvasArea extends StatefulWidget {
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
 }
 
+/// [nodes] with the onion ghosts inserted directly UNDER the active
+/// layer — where they belong visually, and (since the merge) inside
+/// whatever folder buffer the active layer sits in.
+List<CompositeNode<CanvasStackRow>> stackNodesWithGhosts(
+  List<CompositeNode<CanvasStackRow>> nodes,
+  List<CanvasLayerImageRequest> ghosts,
+) {
+  if (ghosts.isEmpty) {
+    return nodes;
+  }
+  final ghostNodes = [
+    for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost),
+  ];
+  var placed = false;
+  List<CompositeNode<CanvasStackRow>> walk(
+    List<CompositeNode<CanvasStackRow>> list,
+  ) {
+    final out = <CompositeNode<CanvasStackRow>>[];
+    for (final node in list) {
+      switch (node) {
+        case CompositeLeaf(payload: CanvasActiveLayerRow()):
+          if (!placed) {
+            out.addAll(ghostNodes);
+            placed = true;
+          }
+          out.add(node);
+        case CompositeGroup(
+          :final children,
+          :final opacity,
+          :final blendMode,
+          :final effects,
+        ):
+          out.add(
+            // The folder's effects (R6) travel with it — turning onion
+            // skin on must not drop them. One structural class carries
+            // every field, so only the children are replaced.
+            CompositeGroup<CanvasStackRow>(
+              children: walk(children),
+              opacity: opacity,
+              blendMode: blendMode,
+              effects: effects,
+            ),
+          );
+        case CompositeAdjustment(:final children, :final effects, :final mix):
+          // Like the group above: the ghosts have to be able to land
+          // INSIDE an adjustment's scope, or the row you are drawing on
+          // would show the grade while its onion ghosts did not.
+          out.add(
+            CompositeAdjustment<CanvasStackRow>(
+              children: walk(children),
+              effects: effects,
+              mix: mix,
+            ),
+          );
+        case CompositeBackdropBlend(
+          :final backdrop,
+          :final source,
+          :final blendMode,
+        ):
+          // Under the active row wherever it stands: in what the blend
+          // reads below it — at its top when the row IS the blended one,
+          // directly under it, which it then composes over as it would
+          // over a ghost in a GPU blend.
+          final below = walk(backdrop);
+          final CompositeNode<CanvasStackRow> row;
+          if (!placed &&
+              source is CompositeLeaf<CanvasStackRow> &&
+              source.payload is CanvasActiveLayerRow) {
+            below.addAll(ghostNodes);
+            placed = true;
+            row = source;
+          } else {
+            row = walk([source]).single;
+          }
+          out.add(
+            CompositeBackdropBlend<CanvasStackRow>(
+              backdrop: below,
+              source: row,
+              blendMode: blendMode,
+            ),
+          );
+        case CompositeClip(
+          :final base,
+          :final scope,
+          :final opacity,
+          :final blendMode,
+        ):
+          // Under the active row wherever it stands, but never IN a base:
+          // what the base holds is what its clip cuts by, and a ghost
+          // there would widen the cut. A row drawn on in the base takes
+          // its ghosts under the whole group; one that clips, in what
+          // clips — cut by the base as the row is.
+          final inTheBase = preorderNodes([base]).any(
+            (inside) =>
+                inside is CompositeLeaf<CanvasStackRow> &&
+                inside.payload is CanvasActiveLayerRow,
+          );
+          if (!placed && inTheBase) {
+            out
+              ..addAll(ghostNodes)
+              ..add(node);
+            placed = true;
+          } else {
+            out.add(
+              CompositeClip<CanvasStackRow>(
+                base: base,
+                scope: walk(scope),
+                opacity: opacity,
+                blendMode: blendMode,
+              ),
+            );
+          }
+        // The base it paints again, as it stands.
+        case CompositeOpaque():
+          out.add(node);
+        case CompositeLeaf(payload: CanvasLayerImageRequest()):
+          out.add(node);
+      }
+    }
+    return out;
+  }
+
+  final result = walk(nodes);
+  // No active node (a brush-banned row, or nothing exposed): the ghosts
+  // still show, on top like the old below-stack put them.
+  return placed ? result : [...result, ...ghostNodes];
+}
+
 class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// The last T12 probe line, so the inspector shows a line per CHANGE
   /// rather than one per build. See the probe in [build].
@@ -380,134 +508,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// exactly the invariant this round wants.
   ValueNotifier<CanvasViewport?> get _canvasViewport =>
       widget.session.canvasViewport;
-
-  /// [nodes] with the onion ghosts inserted directly UNDER the active
-  /// layer — where they belong visually, and (since the merge) inside
-  /// whatever folder buffer the active layer sits in.
-  static List<CompositeNode<CanvasStackRow>> _stackNodesWithGhosts(
-    List<CompositeNode<CanvasStackRow>> nodes,
-    List<CanvasLayerImageRequest> ghosts,
-  ) {
-    if (ghosts.isEmpty) {
-      return nodes;
-    }
-    final ghostNodes = [
-      for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost),
-    ];
-    var placed = false;
-    List<CompositeNode<CanvasStackRow>> walk(
-      List<CompositeNode<CanvasStackRow>> list,
-    ) {
-      final out = <CompositeNode<CanvasStackRow>>[];
-      for (final node in list) {
-        switch (node) {
-          case CompositeLeaf(payload: CanvasActiveLayerRow()):
-            if (!placed) {
-              out.addAll(ghostNodes);
-              placed = true;
-            }
-            out.add(node);
-          case CompositeGroup(
-            :final children,
-            :final opacity,
-            :final blendMode,
-            :final effects,
-          ):
-            out.add(
-              // The folder's effects (R6) travel with it — turning onion
-              // skin on must not drop them. One structural class carries
-              // every field, so only the children are replaced.
-              CompositeGroup<CanvasStackRow>(
-                children: walk(children),
-                opacity: opacity,
-                blendMode: blendMode,
-                effects: effects,
-              ),
-            );
-          case CompositeAdjustment(:final children, :final effects, :final mix):
-            // Like the group above: the ghosts have to be able to land
-            // INSIDE an adjustment's scope, or the row you are drawing on
-            // would show the grade while its onion ghosts did not.
-            out.add(
-              CompositeAdjustment<CanvasStackRow>(
-                children: walk(children),
-                effects: effects,
-                mix: mix,
-              ),
-            );
-          case CompositeBackdropBlend(
-            :final backdrop,
-            :final source,
-            :final blendMode,
-          ):
-            // Under the active row wherever it stands: in what the blend
-            // reads below it — at its top when the row IS the blended one,
-            // directly under it, which it then composes over as it would
-            // over a ghost in a GPU blend.
-            final below = walk(backdrop);
-            final CompositeNode<CanvasStackRow> row;
-            if (!placed &&
-                source is CompositeLeaf<CanvasStackRow> &&
-                source.payload is CanvasActiveLayerRow) {
-              below.addAll(ghostNodes);
-              placed = true;
-              row = source;
-            } else {
-              row = walk([source]).single;
-            }
-            out.add(
-              CompositeBackdropBlend<CanvasStackRow>(
-                backdrop: below,
-                source: row,
-                blendMode: blendMode,
-              ),
-            );
-          case CompositeClip(
-            :final base,
-            :final scope,
-            :final opacity,
-            :final blendMode,
-          ):
-            // Under the active row wherever it stands, but never IN a base:
-            // what the base holds is what its clip cuts by, and a ghost
-            // there would widen the cut. A row drawn on in the base takes
-            // its ghosts under the whole group; one that clips, in what
-            // clips — cut by the base as the row is.
-            final inTheBase = preorderNodes([base]).any(
-              (inside) =>
-                  inside is CompositeLeaf<CanvasStackRow> &&
-                  inside.payload is CanvasActiveLayerRow,
-            );
-            if (!placed && inTheBase) {
-              out
-                ..addAll(ghostNodes)
-                ..add(node);
-              placed = true;
-            } else {
-              out.add(
-                CompositeClip<CanvasStackRow>(
-                  base: base,
-                  scope: walk(scope),
-                  opacity: opacity,
-                  blendMode: blendMode,
-                ),
-              );
-            }
-          // The base it paints again, as it stands.
-          case CompositeOpaque():
-            out.add(node);
-          case CompositeLeaf(payload: CanvasLayerImageRequest()):
-            out.add(node);
-        }
-      }
-      return out;
-    }
-
-    final result = walk(nodes);
-    // No active node (a brush-banned row, or nothing exposed): the ghosts
-    // still show, on top like the old below-stack put them.
-    return placed ? result : [...result, ...ghostNodes];
-  }
 
   /// The live-stroke overlay, owned HERE so the layer stack can paint the
   /// active layer inside the composite tree — that is what lets a folder's
