@@ -622,7 +622,11 @@ ui.Rect _scaled(ui.Rect rect, double scale) => ui.Rect.fromLTRB(
 /// busy), so a long stroke has one such frame every [_levelsWaitAtMost]
 /// patches — 0–4 a 1.3 s stroke at 64; 0–3 at 128, with up to 130 patches
 /// drawn over the picture and held (about 50 MB at a 200 px brush); 1–23
-/// at 32. ⚠️Not measured: a stroke begun into the pause's write.
+/// at 32. Hatching — strokes of 30 patches, 150–800 ms apart — no vsync
+/// late at 250 ms apart and more: the pause's write was done before the
+/// next stroke began, even 50 ms after it. ⛔A longer pause is worse: at
+/// 1 s every gap left the levels to the cap, inside a stroke (2–3 vsyncs
+/// late, 66–76 ms).
 const Duration _levelsQuiet = Duration(milliseconds: 200);
 
 /// The most patches that wait for the levels under their base: the one
