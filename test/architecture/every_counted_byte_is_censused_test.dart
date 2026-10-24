@@ -489,6 +489,9 @@ const _imageHolders = <String, String>{
   'lib/src/ui/playback/frame_picture_store.dart → _landing':
       'one picture\'s patches on their way into it, the entry\'s own — of '
       '_entries (estimatedBytes sums them)',
+  'lib/src/ui/playback/frame_picture_store.dart → waiting':
+      'the landing patches no batch has taken yet: the very images of '
+      '_landing, counted there',
   'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
       'one row\'s picture carried into a paint: the clones _images holds',
 };
