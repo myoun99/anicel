@@ -310,8 +310,8 @@ void main() {
         expect(
           f.pictures.has((cut: cut(), frameIndex: index, paintPaper: true)),
           isTrue,
-          reason: 'frame $index should be warmed — 1..3 show no cel: one '
-              'picture of the paper between them',
+          reason: 'frame $index should be warmed — 1..3 show no cel: their '
+              'page alone, there by definition',
         );
       }
       expect(
@@ -345,8 +345,9 @@ void main() {
 
       warm();
       await patiently(scheduler.idle);
-      // The empty frames share one picture of the paper: two to make.
-      expect(warmed, 2, reason: 'the premise: two pictures to make');
+      // The empty frames are their page alone, there by definition: one to
+      // make.
+      expect(warmed, 1, reason: 'the premise: one picture to make');
       expect(
         reports,
         greaterThan(1),

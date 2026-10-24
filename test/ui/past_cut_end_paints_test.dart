@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -28,9 +28,9 @@ EditorSessionManager _sessionOf(WidgetTester tester) =>
     tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
 
 /// The stack view that paints the editing canvas — the merged underlay.
-CanvasLayerStackView _stackView(WidgetTester tester) =>
-    tester.widgetList<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView),
+FramePictureView _stackView(WidgetTester tester) =>
+    tester.widgetList<FramePictureView>(
+      find.byType(FramePictureView),
     ).first;
 
 Future<void> _pump(WidgetTester tester) async {
@@ -57,7 +57,7 @@ void main() {
     // Inside the cut first, so the assertions below have a known-good
     // reading to differ from rather than an absolute nobody has checked.
     expect(
-      _stackView(tester).paintPaper,
+      _stackView(tester).picture.paintPaper,
       isTrue,
       reason: 'baseline: inside the cut the paper is painted',
     );
@@ -71,7 +71,7 @@ void main() {
       reason: 'the playhead really moved past the end line',
     );
     expect(
-      _stackView(tester).paintPaper,
+      _stackView(tester).picture.paintPaper,
       isTrue,
       reason: 'past the end line is ordinary space, so the paper is painted '
           'there exactly like it is inside the cut',
@@ -94,7 +94,7 @@ void main() {
     session.selectFrameIndex(duration * 2);
     await tester.pumpAndSettle();
 
-    expect(_stackView(tester).paintPaper, isTrue);
+    expect(_stackView(tester).picture.paintPaper, isTrue);
     expect(_stackView(tester).nodes, isNotEmpty);
   });
 }

@@ -15,7 +15,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -177,17 +177,17 @@ void main() {
 
     final commands = await openTheBox(tester);
     expect(commands.transformActive, isTrue);
-    final stack = tester.widget<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView).first,
+    final stack = tester.widget<FramePictureView>(
+      find.byType(FramePictureView).first,
     );
     expect(
-      {for (final key in stack.liftedRows.keys) key.frameId.value},
+      {for (final key in stack.live!.liftedRows.keys) key.frameId.value},
       {'${b.value}-0'},
       reason: 'B shows lifted in its own row — at the playhead, the frame '
           'on screen; A floats in the live row, as a cel\'s own lift does',
     );
     expect(
-      surfacePixelRgba(stack.liftedRows.values.single.surface, 75, 75) ?? 0,
+      surfacePixelRgba(stack.live!.liftedRows.values.single.surface, 75, 75) ?? 0,
       0,
       reason: 'B is drawn from its own cel with its hole while the box is '
           'open, not as it stood',

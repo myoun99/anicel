@@ -23,7 +23,7 @@ typedef LandingPatch = ({ui.Rect rect, ui.Image image});
 /// stack lays it under its stage track alone and lets the tracks over that
 /// one show through — so a picture holding it would be one view's. The
 /// compositor's [outside] is clear for the same reason
-/// (`frameDrawingOf`).
+/// (`StackedFrame`).
 typedef FrameDrawing = ({
   ui.Rect extent,
   ui.Color outside,
@@ -224,6 +224,26 @@ class FramePictureStore<K extends Object> {
     return true;
   }
 
+  /// Moves the picture of [from] to [to] as it is, in its turn behind the
+  /// patches still on their way into it — the caller vouches that its
+  /// texels are [to]'s: a stroke that lands moves the frame it was drawn
+  /// on, every step of it patched in already (one-picture-per-frame ②-4).
+  /// Answers false where there is no picture under [from].
+  bool move({required K from, required K to}) {
+    final entry = _entries[from] ?? _becoming[from]?.entry;
+    if (entry == null) {
+      return false;
+    }
+    final asked = _Patch<K>(from, to, ui.Rect.zero, null);
+    _becoming[to] = (entry: entry, moved: asked.moved);
+    entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
+    return true;
+  }
+
+  /// Completes once the last patch or [move] asked for to [key] has its
+  /// texels, and [key] answers with them — null where none is on its way.
+  Future<void>? landingOf(K key) => _becoming[key]?.moved.future;
+
   /// Answers once every patch has landed, at every level — the levels under
   /// the base at once, not after the pause they wait for — for a caller
   /// that must read the pictures' own texels rather than draw them with
@@ -347,16 +367,19 @@ class FramePictureStore<K extends Object> {
   }
 
   Future<void> _renderPatch(_Entry entry, _Patch<K> asked) async {
-    final image = await _rendered(
-      asked.recorded,
-      asked.rect.width.toInt(),
-      asked.rect.height.toInt(),
-    );
+    final recorded = asked.recorded;
+    final image = recorded == null
+        ? null
+        : await _rendered(
+            recorded,
+            asked.rect.width.toInt(),
+            asked.rect.height.toInt(),
+          );
     if (_becoming[asked.to]?.moved == asked.moved) {
       _becoming.remove(asked.to);
     }
     if (entry.gone) {
-      image.dispose();
+      image?.dispose();
       asked.moved.complete();
       return;
     }
@@ -366,6 +389,11 @@ class FramePictureStore<K extends Object> {
       _entries.remove(asked.from);
     }
     _entries[asked.to] = entry;
+    if (image == null) {
+      // A move: nothing to lay over it.
+      asked.moved.complete();
+      return;
+    }
     final landing = (rect: asked.rect, image: image);
     entry.picture._landing.add(landing);
     entry.waiting.add(landing);
@@ -918,6 +946,8 @@ class _Patch<K> {
   final K from;
   final K to;
   final ui.Rect rect;
-  final ui.Picture recorded;
+
+  /// What the patch draws — none for a [FramePictureStore.move].
+  final ui.Picture? recorded;
   final Completer<void> moved = Completer<void>();
 }

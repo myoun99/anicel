@@ -14,12 +14,17 @@ import 'layer_frame_image_cache.dart';
 import 'playback_pictures.dart';
 import 'stacked_frame_picture.dart';
 
-/// A frame's drawing as its cels stand now, and the first throw a cel's
-/// reading gave — the cel noted and drawn without.
+/// A frame as its cels stand now ([StackedFrame]), and the first throw a
+/// cel's reading gave — the cel noted and drawn without.
 typedef FrameDrawingNow = ({
-  FrameDrawing drawing,
+  StackedFrame frame,
   (Object, StackTrace)? thrown,
 });
+
+/// A cel as a frame's key reads it at one moment
+/// ([FramePictures.celNow]): whether the picture is made of it, and at
+/// which revision.
+typedef CelAsOf = ({BrushFrameKey cel, bool drawn, int revision});
 
 /// 🚨★★★A FRAME IS MADE ONCE, AS ONE PICTURE (one-picture-per-frame ②-2,
 /// D7-2-Q3=a — 「쓸데없는 소재를 만들고 싶지 않은 것」): what the warmer makes
@@ -93,29 +98,43 @@ class FramePictures implements PlaybackPictures {
       !layerImages.unreadable.has(cel) &&
       !_drawnNothing.has(cel);
 
-  /// [nodes] as the picture draws them: the rows of cels it is [_drawn] of.
+  /// [nodes] as the picture draws them: the rows of cels it is [_drawn] of
+  /// — [asOf]'s cel as it was then.
   List<CompositeNode<CanvasStackRow>> _drawnOf(
-    List<CompositeNode<CanvasStackRow>> nodes,
-  ) => stackOfDrawnCels(nodes, drawn: _drawn);
+    List<CompositeNode<CanvasStackRow>> nodes, {
+    CelAsOf? asOf,
+  }) => stackOfDrawnCels(
+    nodes,
+    drawn: (cel) => cel == asOf?.cel ? asOf!.drawn : _drawn(cel),
+  );
 
   /// The key of the picture a screen shows where it stacks [nodes] for
   /// [picture] — the warmer's own key for it ([keyOf]) wherever it stacks
   /// the tree [stackOf] answers. Signed by the rows the picture draws: a
   /// cel it is made without is no part of it ([_drawn]), and one that
   /// comes in is a new picture.
+  ///
+  /// [asOf] asks the key the stack had with one cel as it was then
+  /// ([celNow]): a frame whose key that is changed in that cel alone — what
+  /// a stroke's landing moves (`FramePictureView`).
   FramePictureKey keyOfStack(
     List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) => framePictureKeyOf(
-    _drawnOf(nodes),
+    DemandedPicture picture, {
+    CelAsOf? asOf,
+  }) => framePictureKeyOf(
+    _drawnOf(nodes, asOf: asOf),
     cutId: picture.cut.id,
     page: pageOf(picture),
-    revisionOf: _revisionOf,
+    revisionOf: (cel) => cel == asOf?.cel ? asOf!.revision : _revisionOf(cel),
   );
 
   /// The key [picture]'s picture is kept under.
   FramePictureKey keyOf(DemandedPicture picture) =>
       keyOfStack(stackOf(picture), picture);
+
+  /// [cel] as a frame's key reads it now ([keyOfStack]).
+  CelAsOf celNow(BrushFrameKey cel) =>
+      (cel: cel, drawn: _drawn(cel), revision: _revisionOf(cel));
 
   int _revisionOf(BrushFrameKey cel) =>
       layerImages.frameStore.frameOrNull(cel)?.sourceRevision ?? 0;
@@ -175,23 +194,41 @@ class FramePictures implements PlaybackPictures {
   int bytesToMake(DemandedPicture picture) {
     final nodes = stackOf(picture);
     final canvasSize = pageOf(picture).canvasSize;
-    final inHand = stackedCelsOf(_drawnOf(nodes)).every(
-      (cel) => layerImages.storedSurfaceIsInHand(cel, canvasSize: canvasSize),
-    );
-    final extent = inHand ? drawingNow(nodes, picture).drawing.extent : null;
+    final extent = allInHand(nodes, picture)
+        ? drawingNow(nodes, picture).frame.drawing.extent
+        : null;
     return extent == null
         ? estimatedImageBytes(canvasSize.width, canvasSize.height)
         : estimatedImageBytes(extent.width.ceil(), extent.height.ceil());
+  }
+
+  /// Whether every cel [nodes] draw for [picture] is in hand — its stored
+  /// pixels read and laid out already ([readInStack] reads the rest).
+  bool allInHand(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture,
+  ) {
+    final canvasSize = pageOf(picture).canvasSize;
+    return stackedCelsOf(_drawnOf(nodes)).every(
+      (cel) => layerImages.storedSurfaceIsInHand(cel, canvasSize: canvasSize),
+    );
   }
 
   /// Thaws every cel [picture] draws that is not in hand already, at once,
   /// off the UI thread ([LayerFrameImageCache.readIn]) — none another frame
   /// has read.
   @override
-  Future<void> readIn(DemandedPicture picture) {
+  Future<void> readIn(DemandedPicture picture) =>
+      readInStack(stackOf(picture), picture);
+
+  /// [readIn] for the cels [nodes] — a screen's own stack — draw.
+  Future<void> readInStack(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture,
+  ) {
     final canvasSize = pageOf(picture).canvasSize;
     return Future.wait([
-      for (final cel in stackedCelsOf(_drawnOf(stackOf(picture))))
+      for (final cel in stackedCelsOf(_drawnOf(nodes)))
         if (!layerImages.storedSurfaceIsInHand(cel, canvasSize: canvasSize))
           layerImages.readIn(cel, canvasSize: canvasSize),
     ]);
@@ -221,20 +258,56 @@ class FramePictures implements PlaybackPictures {
     DemandedPicture picture, {
     required bool Function() shouldAbort,
     bool Function() due = notDue,
+  }) => _make(
+    () => stackOf(picture),
+    picture,
+    shouldAbort: shouldAbort,
+    due: due,
+    shownNow: false,
+  );
+
+  /// Makes the frame a screen stands on — stacked as that screen stacks it
+  /// ([nodes]: a drag in flight, the row a pen is on) — at once, at the
+  /// front of the store's line: the frame on screen before any made ahead
+  /// of it ([make] has the rest).
+  Future<bool> makeShown(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    required bool Function() shouldAbort,
+  }) => _make(
+    () => nodes,
+    picture,
+    shouldAbort: shouldAbort,
+    due: () => true,
+    shownNow: true,
+  );
+
+  Future<bool> _make(
+    List<CompositeNode<CanvasStackRow>> Function() nodesOf,
+    DemandedPicture picture, {
+    required bool Function() shouldAbort,
+    required bool Function() due,
+    required bool shownNow,
   }) async {
     if (shouldAbort()) {
       return false;
     }
-    await readIn(picture);
+    await readInStack(nodesOf(), picture);
     if (shouldAbort()) {
       return false;
     }
-    final nodes = stackOf(picture);
+    final nodes = nodesOf();
     final made = drawingNow(nodes, picture);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
     if (!drawsOnlyItsPage(key) &&
-        !await _lay(key, made.drawing, shouldAbort, due)) {
+        !await _lay(
+          key,
+          made.frame.drawing,
+          shouldAbort,
+          due,
+          shownNow: shownNow,
+        )) {
       return false;
     }
     if (made.thrown case (final error, final stack)) {
@@ -249,8 +322,9 @@ class FramePictures implements PlaybackPictures {
     FramePictureKey key,
     FrameDrawing drawing,
     bool Function() shouldAbort,
-    bool Function() due,
-  ) async {
+    bool Function() due, {
+    required bool shownNow,
+  }) async {
     final turn = await quietTurns.inAQuiet(
       _frameSpan,
       gone: shouldAbort,
@@ -265,8 +339,9 @@ class FramePictures implements PlaybackPictures {
       // not that this is it — every picture a walk asks for ahead while it
       // waits is due, and laid at the front each went before the one the
       // run waits for (the asks came back last first). The walk asks in the
-      // order it wants them; the store lays them so.
-      laid = await store.lay(key, drawing);
+      // order it wants them; the store lays them so — and a screen standing
+      // on a frame that is not there asks for it to go first ([makeShown]).
+      laid = await store.lay(key, drawing, shownNow: shownNow);
     } on Object {
       unawaited(turn.gaveUp());
       rethrow;
@@ -309,12 +384,37 @@ class FramePictures implements PlaybackPictures {
       return stored;
     }
 
-    final drawing = stackedFrameDrawingOf(
+    final frame = stackedFrameOf(
       _drawnOf(nodes),
       page: page,
       surfaceOf: surfaceOf,
     );
-    return (drawing: drawing, thrown: thrown);
+    return (frame: frame, thrown: thrown);
+  }
+
+  /// [nodes] for [picture] as they stand, drawn from the cels in hand
+  /// alone — none is read here, and one not in hand is left out until it
+  /// is — and, under [live], the rows a canvas that stands holds live: the
+  /// frame a still screen shows while its picture is not there
+  /// ([makeShown]), and the body its strokes are patched in by.
+  ///
+  /// ⛔Not [_drawnOf]: the row a pen is on draws what it holds live, a cel
+  /// with nothing stored in it included — the first stroke on it.
+  StackedFrame frameAsItStands(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    ({LiveRows rows, LiftedRowPainters painters})? live,
+  }) {
+    final page = pageOf(picture);
+    return stackedFrameOf(
+      nodes,
+      page: page,
+      surfaceOf: (cel) =>
+          layerImages.storedSurfaceIsInHand(cel, canvasSize: page.canvasSize)
+          ? layerImages.storedSurfaceOrNull(cel, canvasSize: page.canvasSize)
+          : null,
+      live: live,
+    );
   }
 
   /// How many steps on each frame's picture is next shown under [demand] —

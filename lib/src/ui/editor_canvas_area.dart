@@ -123,8 +123,8 @@ part 'canvas_area/interactive_canvas_build.dart';
 
 /// What one mount of the track stack says of itself: the frame it follows,
 /// whose contributions it draws there, whether it lays its own floor,
-/// whether it crops to the camera, whose pictures it shows (a run's, made
-/// by the warmer — or its own, when null) and the key it is found by.
+/// whether it crops to the camera, who makes the pictures it shows (a
+/// run's warmer — or its own cuts, when null) and the key it is found by.
 typedef _TrackStackMount = ({
   ValueListenable<int?> globalFrame,
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
@@ -871,15 +871,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     positionsOf: session.rowSpans.trackStackContributionsAt,
     paintsFloor: true,
     cameraView: ofTheRun && widget.cameraViewEnabled.value,
-    run: ofTheRun
-        ? (
-            cuts: (
-              landings: session.playbackRig.prerenderScheduler.landings,
-              pictures: session.playbackRig.framePictures,
-            ),
-            frameIsThere: session.playbackRig.frameIsThere,
-          )
-        : null,
+    run: ofTheRun ? (frameIsThere: session.playbackRig.frameIsThere) : null,
     key: const ValueKey<String>('canvas-track-stack-view'),
   ));
 
@@ -920,16 +912,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         positionsOf: mount.positionsOf,
         paintsFloor: mount.paintsFloor,
         stackOf: session.editingCanvas.playedStackAt,
-        imageCache: session.renderCaches.layerFrameImageCache,
+        pictures: (
+          landings: session.playbackRig.prerenderScheduler.landings,
+          pictures: session.playbackRig.framePictures,
+        ),
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
         seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
         run: mount.run,
-        onBufferBytes: (cut, bytes) => session.renderCaches.countStackBuffer(
-          (mount.key, cut),
-          bytes,
-        ),
         viewport: viewport,
         background: session.projectSettings.projectBackground,
         backdropArgb: project.backdropArgb,

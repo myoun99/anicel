@@ -241,19 +241,22 @@ void main() {
       tiles: const {},
     );
     final asked = <String>[];
-    final drawing = stackedFrameDrawingOf(
+    final drawing = stackedFrameOf(
       [drawn, empty],
       page: page,
       surfaceOf: (cel) {
         asked.add(cel.layerId.value);
         return cel.layerId.value == 'drawn' ? surface : null;
       },
-    );
+    ).drawing;
     expect(asked, ['drawn', 'empty'], reason: '⛔premise: both were asked');
     expect(
       drawing.extent,
-      stackedFrameDrawingOf([drawn], page: page, surfaceOf: (_) => surface)
-          .extent,
+      stackedFrameOf(
+        [drawn],
+        page: page,
+        surfaceOf: (_) => surface,
+      ).drawing.extent,
     );
   });
 
@@ -270,7 +273,7 @@ void main() {
     ];
     expect(() => keyOf(ghosted), throwsStateError);
     expect(
-      () => stackedFrameDrawingOf(
+      () => stackedFrameOf(
         ghosted,
         page: page,
         surfaceOf: (_) => fail('a ghost has no surface to ask for'),

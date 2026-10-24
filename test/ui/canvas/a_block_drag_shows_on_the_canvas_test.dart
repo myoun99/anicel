@@ -23,6 +23,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -128,9 +129,9 @@ void main() {
     return session;
   }
 
-  /// The stack the canvas has MOUNTED — what it paints.
-  CanvasLayerStackView mountedStack(WidgetTester tester) =>
-      tester.widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView));
+  /// The stack the canvas has MOUNTED — the frame its picture is of.
+  FramePictureView mountedStack(WidgetTester tester) =>
+      tester.widget<FramePictureView>(find.byType(FramePictureView));
 
   List<CanvasStackRow> mountedRows(WidgetTester tester) => [
     for (final node in preorderNodes(mountedStack(tester).nodes))
@@ -138,8 +139,10 @@ void main() {
   ];
 
   List<FrameId> imagesOn(WidgetTester tester, LayerId layerId) => [
-    for (final request in mountedStack(tester).layers)
-      if (request.frameKey.layerId == layerId) request.frameKey.frameId,
+    for (final row in mountedRows(tester))
+      if (row case CanvasLayerImageRequest(:final frameKey)
+          when frameKey.layerId == layerId)
+        frameKey.frameId,
   ];
 
   CanvasActiveLayerRow? liveRow(WidgetTester tester) =>

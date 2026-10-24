@@ -24,7 +24,7 @@ import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
@@ -294,8 +294,8 @@ Future<Uint8List> canvasRaster(
 }
 
 BitmapSurfacePainter _canvasPainter(WidgetTester tester) => tester
-    .widgetList<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
-    .map((stack) => stack.activeSurfacePainter)
+    .widgetList<FramePictureView>(find.byType(FramePictureView))
+    .map((view) => view.live?.activeSurfacePainter)
     .whereType<BitmapSurfacePainter>()
     .single;
 

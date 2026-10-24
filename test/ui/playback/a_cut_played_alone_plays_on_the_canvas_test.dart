@@ -87,10 +87,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  CanvasLayerStackView stackOf(WidgetTester tester) =>
-      tester.widget<CanvasLayerStackView>(find.byType(CanvasLayerStackView));
-
-  /// The frame a run shows on the canvas: its one picture.
+  /// The frame the canvas shows — standing still or under a run: its one
+  /// picture.
   FramePictureView playedOf(WidgetTester tester) =>
       tester.widget<FramePictureView>(find.byType(FramePictureView));
 
@@ -104,7 +102,7 @@ void main() {
 
   /// Whether a row stands LIVE in the tree the canvas paints.
   bool aRowStandsLive(WidgetTester tester) =>
-      preorderNodes(stackOf(tester).nodes).any(
+      preorderNodes(playedOf(tester).nodes).any(
         (node) => node is CompositeLeaf<CanvasStackRow> &&
             node.payload is CanvasActiveLayerRow,
       );
@@ -213,15 +211,15 @@ void main() {
     tester,
   ) async {
     final (s, _) = await pumpArea(tester);
-    final view = tester.state(find.byType(CanvasLayerStackView));
+    final view = tester.state(find.byType(FramePictureView));
 
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(tester.state(find.byType(CanvasLayerStackView)), same(view));
+    expect(tester.state(find.byType(FramePictureView)), same(view));
 
     s.playbackRig.playback.stop();
     await tester.pump();
-    expect(tester.state(find.byType(CanvasLayerStackView)), same(view));
+    expect(tester.state(find.byType(FramePictureView)), same(view));
     await drain(tester);
   });
 
@@ -236,7 +234,7 @@ void main() {
       reason: '⛔premise: standing still, the camera\'s frame is drawn OVER '
           'the whole canvas — the crop is playback\'s',
     );
-    expect(stackOf(tester).viewport, shotOf().view);
+    expect(playedOf(tester).viewport, shotOf().view);
 
     final playback = s.playbackRig.playback;
     playback.play(scope: PlaybackScope.activeCut);
@@ -469,9 +467,9 @@ void main() {
       isFalse,
     );
     expect(
-      find.byType(CanvasLayerStackView),
-      findsNothing,
-      reason: 'the frame is its one picture: no stack paints a live row',
+      playedOf(tester).live,
+      isNull,
+      reason: 'the frame is its one picture: nothing in it is drawn live',
     );
     expect(
       find.byType(InteractiveBrushEditCanvasView),

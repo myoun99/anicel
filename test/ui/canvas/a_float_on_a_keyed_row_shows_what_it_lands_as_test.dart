@@ -28,6 +28,7 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart'
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/display_resample.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_float.dart';
@@ -196,15 +197,15 @@ void main() {
     );
   }
 
-  CanvasLayerStackView stackOf(WidgetTester tester) =>
-      tester.widget<CanvasLayerStackView>(
-        inMainCanvas(find.byType(CanvasLayerStackView)),
+  FramePictureView canvasOf(WidgetTester tester) =>
+      tester.widget<FramePictureView>(
+        inMainCanvas(find.byType(FramePictureView)),
       );
 
   /// The level of the view's pyramid the stack composes at.
   int levelOf(WidgetTester tester) => displayLevelOf(
     displayScaleOf(
-      stackOf(tester).viewport.zoom,
+      canvasOf(tester).viewport.zoom,
       tester.view.devicePixelRatio,
     ),
   );
@@ -224,7 +225,7 @@ void main() {
   Future<Uint8List> composite(WidgetTester tester) async {
     final paint = inMainCanvas(
       find.descendant(
-        of: find.byType(CanvasLayerStackView),
+        of: find.byType(FramePictureView),
         matching: find.byType(CustomPaint),
       ),
     ).evaluate().firstWhere((e) => (e.widget as CustomPaint).painter != null);
@@ -412,7 +413,7 @@ void main() {
     await settle(tester);
     expect(commands.transformActive, isTrue, reason: '⛔fixture: a box');
     expect(
-      stackOf(tester).liftedRows.keys.toSet(),
+      canvasOf(tester).live!.liftedRows.keys.toSet(),
       switch (rows) {
         _Rows.live => isEmpty,
         _Rows.range => {keyB},
@@ -420,10 +421,10 @@ void main() {
       },
       reason: '⛔fixture: the rows floating in slots of their own',
     );
-    final stack = stackOf(tester);
+    final stack = canvasOf(tester);
     final floats = [
-      if (rows != _Rows.folder) stack.floatOverlay?.value,
-      for (final lifted in stack.liftedRows.values) lifted.float.value,
+      if (rows != _Rows.folder) stack.live!.floatOverlay?.value,
+      for (final lifted in stack.live!.liftedRows.values) lifted.float.value,
     ];
     expect(
       [
@@ -716,7 +717,7 @@ void main() {
     await settle(tester);
     expect(
       tester
-          .getRect(inMainCanvas(find.byType(CanvasLayerStackView)))
+          .getRect(inMainCanvas(find.byType(FramePictureView)))
           .contains(onScreen(tester, page.width + 29.0, c.dy + 30)),
       isTrue,
       reason: '⛔fixture: what lands past the page is on the screen',
@@ -788,7 +789,7 @@ void main() {
     /// The landing the live row shows the float as, asked through the
     /// row's own keys — the one its paint was handed.
     CelTextLanding shownLanding() {
-      final stack = stackOf(tester);
+      final stack = canvasOf(tester);
       CanvasActiveLayerRow? row;
       void walk(List<CompositeNode<CanvasStackRow>> nodes) {
         for (final node in nodes) {
@@ -811,7 +812,7 @@ void main() {
       }
 
       walk(stack.nodes);
-      final shown = stack.floatOverlay!.value!
+      final shown = stack.live!.floatOverlay!.value!
           .shownOn(row!.sourceEffects)
           .preview;
       expect(shown, isA<CelTextLanding>(), reason: '⛔fixture: a landing');

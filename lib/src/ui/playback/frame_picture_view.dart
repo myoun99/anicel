@@ -1,11 +1,22 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
+import '../../core/tree_nodes.dart';
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/composite_tree.dart';
 import '../../services/playback/frame_demand.dart';
-import '../canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
+import '../canvas/canvas_layer_stack_view.dart'
+    show
+        CanvasActiveLayerRow,
+        CanvasStackRow,
+        LiftedRowPainters,
+        LiveRows,
+        StackedFrame;
+import '../canvas/display_buffer_cache.dart' show LiveSurfaceTokens;
 import '../canvas/display_resample.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -13,27 +24,39 @@ import 'frame_picture_store.dart';
 import 'frame_pictures.dart';
 import 'stacked_frame_picture.dart';
 
-/// What a screen showing a RUN takes from the run's maker: the signal that
-/// a frame's picture landed, and the pictures the frames are kept in.
+/// What a screen showing frames takes from their maker: the signal that a
+/// frame's picture landed, and the pictures the frames are kept in.
 typedef StackRun = ({Listenable landings, FramePictures pictures});
 
-/// 🚨★★★A RUN'S FRAME ON SCREEN IS ITS ONE PICTURE (one-picture-per-frame
-/// ②-2, D7-2-Q3=a): the frame [nodes] stack for [picture], as the run's
-/// maker made it ([FramePictures]) — drawn, never composited here. A frame
-/// two screens show the same way is one picture, and this view makes
-/// nothing: it takes each as it [StackRun.landings].
+/// 🚨★★★A FRAME ON SCREEN IS ITS ONE PICTURE (one-picture-per-frame ②-2 ·
+/// ②-3, D7-2-Q3=a): the frame [nodes] stack for [picture], as its maker
+/// made it ([FramePictures]) — drawn, never composited here. A frame two
+/// screens show the same way is one picture: the canvas standing on a frame
+/// and a run playing it show the same one, and pressing Play changes
+/// nothing on the screen.
 ///
-/// A frame changes WHOLE (유저 2026-10-08: 「재생바는 지나가고있는데 그림이
-/// 없어서 비어있다던가」): the last picture shown stands, held by the store
-/// for this view ([FramePictureStore.retainPin]), until the one asked for
-/// is there. A frame the maker gave up on is drawn from its cels as they
-/// stand ([FramePictures.drawingNow]): the run does not wait for it, and
-/// what it shows is the frame without what would not come. So is a frame
-/// of no row — its page alone, of which the store keeps no picture
+/// A frame not there yet is made by the run's maker as it walks ahead of
+/// the playhead — or by this view at once ([laysWhatItMisses]); meanwhile
+/// the last picture shown stands ([wholeFrames]; 유저 2026-10-08: 「재생바는
+/// 지나가고있는데 그림이 없어서 비어있다던가」) or the frame is drawn as it
+/// stands. A frame the maker gave up on is drawn from its cels as they
+/// stand ([FramePictures.drawingNow]): nothing waits for it, and what it
+/// shows is the frame without what would not come. So is a frame of no row
+/// — its page alone, of which the store keeps no picture
 /// ([FramePictures.drawsOnlyItsPage]).
 ///
-/// ↩️Each screen stacked a run's frame from its ROWS' images
-/// (`CanvasLayerStackView.run`), and composited them again every frame.
+/// 🚨A CANVAS THAT STANDS WRITES ITS LIVE ROWS INTO THE PICTURE ([live],
+/// ②-4): each change of theirs is patched in where it lands
+/// ([StackedFrame.movedSince] → [FramePictureStore.patch]), drawn as it
+/// stands over the picture until its texels are in; a stroke that lands
+/// moves the picture to the frame's next key ([FramePictureStore.move]).
+/// Where a change cannot be told by where it lands — a pose or a spreading
+/// effect on the row, a float or a lift in hand, past the picture — the
+/// frame is drawn as it stands until its key moves.
+///
+/// ↩️Each screen stacked a frame from its ROWS' images
+/// (`CanvasLayerStackView`), and composited them again into a buffer of its
+/// own at the display's level.
 class FramePictureView extends StatefulWidget {
   const FramePictureView({
     super.key,
@@ -41,6 +64,9 @@ class FramePictureView extends StatefulWidget {
     required this.picture,
     required this.nodes,
     required this.viewport,
+    this.live,
+    this.laysWhatItMisses = false,
+    this.wholeFrames = true,
   });
 
   final StackRun run;
@@ -54,6 +80,28 @@ class FramePictureView extends StatefulWidget {
 
   final CanvasViewport viewport;
 
+  /// The rows a canvas that stands draws live ([LiveRows]) — what a stroke,
+  /// a float or a lift moves with no new frame. Null for a screen that
+  /// draws nothing live: a run, the track stack.
+  final LiveRows? live;
+
+  /// Whether a frame not there yet is made by this view — at once, at the
+  /// front of the store's line ([FramePictures.makeShown]) — rather than
+  /// left to the run's maker walking ahead of the playhead.
+  final bool laysWhatItMisses;
+
+  /// Whether a frame not there yet leaves the last one shown standing until
+  /// it is, or is drawn as it stands meanwhile from the cels in hand
+  /// ([FramePictures.frameAsItStands]) — a canvas that stands, where a row
+  /// being drawn on may not wait for its neighbours.
+  ///
+  /// ⛔Not one flag with [laysWhatItMisses]: who makes a frame and whether
+  /// a frame waits to be whole are two questions, and a track stack's
+  /// parked cut asks the first and waits. ↩️One flag, `run`, answered both
+  /// on `CanvasLayerStackView` until the track stack drew its cuts there
+  /// (2026-10-10) and asked the second without the first.
+  final bool wholeFrames;
+
   @override
   State<FramePictureView> createState() => _FramePictureViewState();
 }
@@ -63,22 +111,63 @@ class FramePictureView extends StatefulWidget {
 /// drawn as it stands.
 typedef _Shown = ({FramePicture picture, ui.Image image})?;
 
+/// A patch on its way into the picture shown: its rect drawn as it stands
+/// until [landed].
+typedef _Patching = ({ui.Rect rect, Future<void> landed});
+
 class _FramePictureViewState extends State<FramePictureView> {
   /// The key of the frame shown — its picture, held for this view by the
-  /// store; nothing, where it draws nothing; or the frame as it stands.
+  /// store; or the frame as it stands.
   FramePictureKey? _showing;
 
   _Shown _shown;
 
-  /// A frame the maker gave up on, drawn as its cels stand.
-  FrameDrawing? _asItStands;
+  /// A frame of no row, or one the maker gave up on, drawn as its cels
+  /// stand — by a view that draws nothing live ([_live] where it does).
+  StackedFrame? _asItStands;
 
-  FramePictureStore<FramePictureKey> get _store => widget.run.pictures.store;
+  /// The frame as it stands with its live rows ([LiveRows]) — drawn
+  /// wherever its picture is not shown or [_liveOver], and the body every
+  /// patch is drawn by. Null where this view draws nothing as it stands.
+  StackedFrame? _live;
+
+  /// What moves [_live]'s pixels ([StackedFrame.changes]).
+  Listenable? _liveChanges;
+
+  final LiftedRowPainters _painters = LiftedRowPainters();
+
+  /// What of the live rows the picture shown holds, to measure their next
+  /// change from — null while it cannot be told.
+  LiveSurfaceTokens? _held;
+
+  /// The live rows moved where no patch can follow: the frame is drawn as
+  /// it stands until its key moves.
+  bool _liveOver = false;
+
+  /// The patches on their way into the picture shown.
+  final List<_Patching> _patching = [];
+
+  /// The cel the pen is on, as the key of the picture shown read it.
+  CelAsOf? _drawnOn;
+
+  /// The key a stroke's landing is moving the picture shown to.
+  FramePictureKey? _moving;
+
+  /// The key this view asked to be made ([FramePictureView.laysWhatItMisses]).
+  FramePictureKey? _making;
+
+  /// Ticks when what this view draws changes with no build.
+  final ValueNotifier<int> _repaint = ValueNotifier(0);
+
+  FramePictures get _pictures => widget.run.pictures;
+
+  FramePictureStore<FramePictureKey> get _store => _pictures.store;
 
   @override
   void initState() {
     super.initState();
     widget.run.landings.addListener(_landed);
+    _standLive();
     _look();
   }
 
@@ -92,51 +181,327 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (!identical(oldWidget.run.pictures, widget.run.pictures)) {
       _letGo(oldWidget.run.pictures.store);
     }
+    if (!identical(oldWidget.nodes, widget.nodes) ||
+        !_sameLive(oldWidget.live, widget.live) ||
+        oldWidget.wholeFrames != widget.wholeFrames) {
+      _standLive();
+    }
     _look();
   }
 
   @override
   void dispose() {
     widget.run.landings.removeListener(_landed);
+    _liveChanges?.removeListener(_liveMoved);
     _letGo(_store);
+    _repaint.dispose();
     super.dispose();
   }
 
   void _landed() => setState(_look);
 
+  static bool _sameLive(LiveRows? a, LiveRows? b) =>
+      identical(a?.activeSurfacePainter, b?.activeSurfacePainter) &&
+      identical(a?.floatOverlay, b?.floatOverlay) &&
+      identical(a?.liftedRows, b?.liftedRows);
+
+  /// The frame as it stands, for a view that draws one ([_live]) — built
+  /// again for each tree it is handed, from the cels in hand; the rest are
+  /// read and it is built again once they are.
+  void _standLive() {
+    _liveChanges?.removeListener(_liveMoved);
+    _liveChanges = null;
+    _live = null;
+    final live = widget.live;
+    if (live == null && widget.wholeFrames) {
+      _liveOver = false;
+      return;
+    }
+    final frame = _pictures.frameAsItStands(
+      widget.nodes,
+      widget.picture,
+      live: live == null ? null : (rows: live, painters: _painters),
+    );
+    _live = frame;
+    if (live != null) {
+      _liveChanges = frame.changes..addListener(_liveMoved);
+      _liveRowsHandedAnew();
+    }
+    final nodes = widget.nodes;
+    if (!_pictures.allInHand(nodes, widget.picture)) {
+      unawaited(
+        _pictures.readInStack(nodes, widget.picture).then((_) {
+          if (mounted && identical(widget.nodes, nodes)) {
+            setState(_standLive);
+          }
+        }),
+      );
+    }
+  }
+
   /// Takes the frame asked for where it is there; leaves what stands where
   /// it is not yet.
   void _look() {
-    final pictures = widget.run.pictures;
-    final key = pictures.keyOfStack(widget.nodes, widget.picture);
-    if (key == _showing) {
+    final key = _pictures.keyOfStack(widget.nodes, widget.picture);
+    if (key == _showing && _shown != null) {
       return;
     }
     final there = _store.peek(key);
     if (there != null) {
-      _letGo(_store);
-      _store.retainPin(key);
-      _shown = (picture: there, image: there.image.clone());
-    } else if (pictures.drawsOnlyItsPage(key) || pictures.gaveUpAt(key)) {
-      // Nothing of it to wait for: its page alone, or a frame whose making
-      // threw — drawn as it stands.
-      _letGo(_store);
-      final now = pictures.drawingNow(widget.nodes, widget.picture);
-      _asItStands = now.drawing;
-      if (now.thrown case (final error, final stack)) {
-        FlutterError.reportError(
-          FlutterErrorDetails(
-            exception: error,
-            stack: stack,
-            library: 'frame picture view',
-            context: ErrorDescription('drawing a frame as its cels stand'),
-          ),
-        );
-      }
-    } else {
+      _take(key, there);
       return;
     }
+    if (key == _showing || key == _moving) {
+      return;
+    }
+    if (_pictures.drawsOnlyItsPage(key) || _pictures.gaveUpAt(key)) {
+      _standAsStored(key);
+      return;
+    }
+    if (_moves(key)) {
+      return;
+    }
+    if (widget.laysWhatItMisses) {
+      _make(key);
+    }
+    if (!widget.wholeFrames) {
+      // Drawn as it stands until its picture is there.
+      _letGo(_store);
+      _showing = key;
+    }
+  }
+
+  /// Shows [there], the picture of [key] — the one shown already where a
+  /// stroke's landing moved it here, what it holds of the live rows kept.
+  void _take(FramePictureKey key, FramePicture there) {
+    final moved = identical(there, _shown?.picture);
+    final held = _held;
+    final image = there.image.clone();
+    _letGo(_store);
+    _store.retainPin(key);
+    _shown = (picture: there, image: image);
     _showing = key;
+    final cel = _celDrawnOn();
+    _drawnOn = cel == null ? null : _pictures.celNow(cel);
+    if (moved) {
+      // ⛔Not let go with the key it left: what the picture holds of the
+      // live rows it holds under this one, and the next stroke patches in
+      // from there — let go, every stroke after the first would be drawn
+      // as it stands whole, a step at a time.
+      _held = held;
+      return;
+    }
+    _liveOver = false;
+    _tell();
+  }
+
+  /// A frame with nothing of it to wait for — its page alone, or one whose
+  /// making threw — drawn as it stands.
+  void _standAsStored(FramePictureKey key) {
+    _letGo(_store);
+    final now = _pictures.drawingNow(widget.nodes, widget.picture);
+    _asItStands = now.frame;
+    _showing = key;
+    if (now.thrown case (final error, final stack)) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'frame picture view',
+          context: ErrorDescription('drawing a frame as its cels stand'),
+        ),
+      );
+    }
+  }
+
+  /// Makes [key]'s frame now, as this view stacks it.
+  void _make(FramePictureKey key) {
+    if (_making == key) {
+      return;
+    }
+    _making = key;
+    unawaited(
+      _pictures
+          .makeShown(
+            widget.nodes,
+            widget.picture,
+            shouldAbort: () => !mounted || _making != key,
+          )
+          .then<void>(
+            (_) {},
+            onError: (Object error, StackTrace stack) {
+              FlutterError.reportError(
+                FlutterErrorDetails(
+                  exception: error,
+                  stack: stack,
+                  library: 'frame picture view',
+                  context: ErrorDescription('making the frame a screen shows'),
+                ),
+              );
+            },
+          )
+          .whenComplete(() {
+            if (!mounted || _making != key) {
+              return;
+            }
+            _making = null;
+            setState(_look);
+          }),
+    );
+  }
+
+  /// The cel of the row the pen is on, where a canvas that stands has one.
+  BrushFrameKey? _celDrawnOn() {
+    if (widget.live?.activeSurfacePainter == null) {
+      return null;
+    }
+    for (final node in preorderNodes(widget.nodes)) {
+      if (node case CompositeLeaf(
+        payload: CanvasActiveLayerRow(frameKey: final cel?),
+      )) {
+        return cel;
+      }
+    }
+    return null;
+  }
+
+  /// 🚨A STROKE THAT LANDS MOVES THE PICTURE IT WAS PATCHED INTO: [key] is
+  /// the frame shown but for the cel the pen is on, and every change of
+  /// the live rows is in its picture — the stroke's own steps — so its
+  /// texels are [key]'s. ⛔Any other change of the frame — another row, the
+  /// pen's own row's opacity, another frame — is a new picture.
+  bool _moves(FramePictureKey key) {
+    final from = _showing;
+    final drawnOn = _drawnOn;
+    if (_shown == null || from == null || drawnOn == null) {
+      return false;
+    }
+    if (_pictures.keyOfStack(widget.nodes, widget.picture, asOf: drawnOn) !=
+        from) {
+      return false;
+    }
+    // What is still out of it goes in first, as the move's own.
+    _liveMoved();
+    if (_liveOver || !_store.move(from: from, to: key)) {
+      return false;
+    }
+    _moving = key;
+    unawaited(
+      _store.landingOf(key)!.then((_) {
+        if (mounted && _moving == key) {
+          setState(_look);
+        }
+      }),
+    );
+    return true;
+  }
+
+  /// The live rows were handed anew — a lift taken up or put down, the
+  /// pen's row's painter once its stroke landed: a change of the live rows
+  /// like any other ([_liveMoved]).
+  ///
+  /// ⛔Not left unasked: a box's lift would come with the picture standing,
+  /// the float drawn nowhere until the box landed.
+  void _liveRowsHandedAnew() {
+    if (_shown != null) {
+      _liveMoved();
+    }
+  }
+
+  /// Tells what of the live rows the picture just taken holds: all of them
+  /// where nothing is in hand — what is stored is what they show — and
+  /// else what cannot be told, so the frame is drawn as it stands.
+  void _tell() {
+    final live = _live;
+    if (widget.live == null || live == null) {
+      return;
+    }
+    final now = live.tokens;
+    if (!live.steady ||
+        (now != null && (now.overlay.isNotEmpty || now.previews.isNotEmpty))) {
+      _liveOver = true;
+      return;
+    }
+    _held = now;
+  }
+
+  /// The live rows moved: what moved is patched into the picture shown, or
+  /// the frame is drawn as it stands from here on.
+  void _liveMoved() {
+    _repaint.value += 1;
+    final live = _live;
+    final shown = _shown;
+    final key = _showing;
+    if (live == null || shown == null || key == null || _liveOver) {
+      return;
+    }
+    if (_moving != null) {
+      return;
+    }
+    final held = _held;
+    if (held == null) {
+      // A live row whose change cannot be told by where it lands — none
+      // where nothing is drawn live at all.
+      _liveOver =
+          !live.steady || widget.live?.activeSurfacePainter != null;
+      return;
+    }
+    if (!live.steady) {
+      _liveOver = true;
+      return;
+    }
+    final moved = live.movedSince(held);
+    final dirty = moved.dirty;
+    if (!moved.located) {
+      _liveOver = true;
+      return;
+    }
+    _held = moved.now;
+    if (dirty == null || dirty.isEmpty) {
+      return;
+    }
+    _writeIn(key, shown.picture, live, dirty);
+  }
+
+  /// Writes the live rows' change at [dirty] into [picture], the picture of
+  /// [key] shown — or draws the frame as it stands from here on, where it
+  /// cannot be.
+  void _writeIn(
+    FramePictureKey key,
+    FramePicture picture,
+    StackedFrame live,
+    Rect dirty,
+  ) {
+    // ⛔A picture does not grow: a frame that now draws past it is drawn as
+    // it stands, and its next picture is laid wide enough. Inside it, the
+    // change is cut to it — past it the frame draws nothing, and the pixel
+    // the change is widened by ([StackedFrame.movedSince]) has no texel
+    // there. ⛔Not by the change alone: every stroke on the page's first
+    // row or column of tiles would be drawn as it stands.
+    final extent = picture.extent;
+    final drawing = live.drawing;
+    if (drawing.extent.intersect(extent) != drawing.extent) {
+      _liveOver = true;
+      return;
+    }
+    final rect = dirty.intersect(extent);
+    if (rect.isEmpty) {
+      return;
+    }
+    if (!_store.patch(from: key, to: key, rect: rect, draw: drawing.draw)) {
+      _liveOver = true;
+      return;
+    }
+    final landed = _store.landingOf(key)!;
+    final patching = (rect: rect, landed: landed);
+    _patching.add(patching);
+    unawaited(
+      landed.then((_) {
+        if (_patching.remove(patching) && mounted) {
+          _repaint.value += 1;
+        }
+      }),
+    );
   }
 
   /// Lets go of what is shown, and of [store]'s hold on its picture.
@@ -148,51 +513,125 @@ class _FramePictureViewState extends State<FramePictureView> {
     _shown = null;
     _asItStands = null;
     _showing = null;
+    _moving = null;
+    _held = null;
+    _patching.clear();
   }
 
   @override
-  Widget build(BuildContext context) => CustomPaint(
-    painter: _FramePicturePainter(
-      shown: _shown,
-      asItStands: _asItStands,
-      viewport: widget.viewport,
-      devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-    ),
-    child: const SizedBox.expand(),
-  );
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _FramePicturePainter(
+        shown: _liveOver ? null : _shown,
+        // ⛔Not the stored cels where the view draws rows live: a frame of
+        // no row is a page the pen may be drawing on.
+        asItStands: _live ?? _asItStands,
+        patching: [
+          if (!_liveOver)
+            for (final patching in _patching) patching.rect,
+        ],
+        patchedBy: _live,
+        viewport: widget.viewport,
+        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+        repaint: Listenable.merge([_repaint, _liveChanges]),
+      ),
+      child: const SizedBox.expand(),
+    );
+  }
 }
 
 class _FramePicturePainter extends CustomPainter {
   _FramePicturePainter({
     required this.shown,
     required this.asItStands,
+    required this.patching,
+    required this.patchedBy,
     required this.viewport,
     required this.devicePixelRatio,
-  });
+    required Listenable repaint,
+  }) : super(repaint: repaint);
 
   final _Shown shown;
-  final FrameDrawing? asItStands;
+
+  /// The frame as it stands, drawn where [shown] is not
+  /// ([StackedFrame.paintOnScreen]).
+  final StackedFrame? asItStands;
+
+  /// Where patches are on their way into [shown], drawn as they stand by
+  /// [patchedBy] until their texels are in.
+  final List<ui.Rect> patching;
+  final StackedFrame? patchedBy;
   final CanvasViewport viewport;
   final double devicePixelRatio;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final screen = Offset.zero & size;
     canvas.save();
-    canvas.clipRect(Offset.zero & size);
-    applyViewportTransform(
-      canvas,
-      viewport,
-      devicePixelRatio: devicePixelRatio,
-    );
+    canvas.clipRect(screen);
     if (shown case (:final picture, :final image)) {
+      final landing = patchedBy == null ? null : _onScreen(patching);
+      // 🚨A patch still landing is drawn by the walk ALONE: the picture
+      // under it holds what the rows were, and translucent ink laid over
+      // that again — no paper under it — is the ink twice. Both sides are
+      // cut on one edge, unsmoothed, so no pixel is drawn twice or not at
+      // all.
+      if (landing != null) {
+        canvas.clipPath(
+          ui.Path.combine(
+            ui.PathOperation.difference,
+            ui.Path()..addRect(screen),
+            landing,
+          ),
+          doAntiAlias: false,
+        );
+      }
+      canvas.save();
+      applyViewportTransform(
+        canvas,
+        viewport,
+        devicePixelRatio: devicePixelRatio,
+      );
       _paintPicture(canvas, picture, image);
-    } else if (asItStands case final drawing?) {
-      _paintOutside(canvas, drawing.extent, drawing.outside);
-      canvas.clipRect(drawing.extent);
-      drawing.draw(canvas);
+      canvas.restore();
+      if (landing != null) {
+        canvas.restore();
+        canvas.save();
+        canvas.clipRect(screen);
+        canvas.clipPath(landing, doAntiAlias: false);
+        _standOnScreen(canvas, size, patchedBy!);
+      }
+    } else if (asItStands case final frame?) {
+      _standOnScreen(canvas, size, frame);
     }
     canvas.restore();
   }
+
+  /// [rects], world rects, where the screen shows them — on the grid
+  /// [applyViewportTransform] lays the picture on — or null where there are
+  /// none.
+  ui.Path? _onScreen(List<ui.Rect> rects) {
+    if (rects.isEmpty) {
+      return null;
+    }
+    final world = ui.Path();
+    for (final rect in rects) {
+      world.addRect(rect);
+    }
+    return world.transform(
+      viewportTransformMatrix(
+        renderSnappedViewport(viewport, devicePixelRatio),
+      ).storage,
+    );
+  }
+
+  void _standOnScreen(Canvas canvas, Size size, StackedFrame frame) =>
+      frame.paintOnScreen(
+        canvas,
+        size,
+        viewport: viewport,
+        devicePixelRatio: devicePixelRatio,
+      );
 
   /// The picture as its store says it is drawn ([FramePicture]): its image
   /// where its extent lies, the world outside it its colour, and every
@@ -243,6 +682,8 @@ class _FramePicturePainter extends CustomPainter {
   bool shouldRepaint(_FramePicturePainter oldDelegate) =>
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
+      !identical(oldDelegate.patchedBy, patchedBy) ||
+      !listEquals(oldDelegate.patching, patching) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }

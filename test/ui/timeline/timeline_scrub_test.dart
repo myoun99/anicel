@@ -10,7 +10,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
@@ -352,8 +352,8 @@ layers: layers,
       );
       await tester.pumpAndSettle();
 
-      final stackFinder = find.byType(CanvasLayerStackView);
-      CanvasLayerStackView stack() => tester.widget(stackFinder.first);
+      final stackFinder = find.byType(FramePictureView);
+      FramePictureView stack() => tester.widget(stackFinder.first);
 
       // ⛔The gesture must already BE a scrub before the interesting part:
       // the very first move flips `frameScrub.active`, and that flag has its

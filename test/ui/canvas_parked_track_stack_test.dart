@@ -4,7 +4,6 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
@@ -122,10 +121,16 @@ void main() {
     s.parkGlobalFrame(1);
     await tester.pump();
     expect(stack().run, isNull, reason: 'parked: it makes its own');
+    expect(
+      stack().pictures.pictures,
+      same(s.playbackRig.framePictures),
+      reason: 'the frames\' one pictures, the canvas\'s own',
+    );
 
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     await tester.pump();
-    expect(stack().run?.cuts.landings, same(landings));
+    expect(stack().run, isNotNull, reason: 'a run: the warmer makes them');
+    expect(stack().pictures.landings, same(landings));
     s.playbackRig.playback.stop();
     await tester.pump();
 
@@ -315,7 +320,12 @@ void main() {
       findsNothing,
       reason: 'a crossing is a cut switch, not the track stack\'s preview',
     );
-    expect(find.byType(CanvasLayerStackView), findsOneWidget);
+    expect(
+      tester.widget<FramePictureView>(find.byType(FramePictureView)).live,
+      isNotNull,
+      reason: 'the cut\'s editing canvas: its frame\'s picture with the row '
+          'a pen is on live in it',
+    );
 
     // And back: the first cut is the one again, mid-gesture.
     scrub(s).scrubGlobalFrame(1);

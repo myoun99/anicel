@@ -56,7 +56,7 @@ typedef _Cel = ({
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」).
 ///
 /// The picture a frame is kept as is drawn off the tree the screen stacks
-/// ([stackedFrameDrawingOf]) by the canvas's own body (`frameDrawingOf`)
+/// ([stackedFrameOf]) by the canvas's own body (`frameDrawingOf`)
 /// with every row from its tiles, where the canvas standing still draws
 /// each row of that SAME tree as its cel's image
 /// ([LayerFrameImageCache]). At 100% the two must be one picture, byte for
@@ -221,7 +221,7 @@ void main() {
     );
     // The SAME tree the canvas is handed: a frame's picture is keyed and
     // drawn off what the screen stacks.
-    final drawing = stackedFrameDrawingOf(
+    final drawing = stackedFrameOf(
       asTheCanvasAsks(scene),
       page: (
         canvasSize: canvasSize,
@@ -230,7 +230,7 @@ void main() {
         paperBackground: paper,
       ),
       surfaceOf: (cel) => previews.prepareFramePreview(cel).previewSurface,
-    );
+    ).drawing;
     final world = Rect.fromLTWH(
       -margin.toDouble(),
       -margin.toDouble(),

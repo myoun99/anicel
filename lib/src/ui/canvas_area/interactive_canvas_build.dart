@@ -752,62 +752,95 @@ class _InteractiveCanvasBuild {
     _HostFrame frame,
   ) {
     final session = frame.session;
-    if (_canvasPlays) {
-      // A RUN this canvas plays shows each frame's one picture, made ahead
-      // of the playhead — no ghosts: a ghost is editing scaffolding, as a
-      // guide is, and the film has none.
-      final rig = session.playbackRig;
-      return FramePictureView(
-        run: (
-          landings: rig.prerenderScheduler.landings,
-          pictures: rig.framePictures,
-        ),
-        // The cut's own run, on the canvas: on its paper.
-        picture: (
-          cut: session.requireActiveCut,
-          frameIndex: session.currentFrameIndex,
-          paintPaper: true,
-        ),
-        nodes: session.editingCanvas.playingStack.nodes,
-        viewport: viewport,
-      );
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      // R16-⑥: a gap parking has no cut — the void.
+      return const SizedBox.expand();
     }
-    // The paper-stays-put split under a cut pose went with
-    // the V row's transform: nothing poses the whole cut on
+    final rig = session.playbackRig;
+    final standing = !_canvasPlays;
+    // 🚨ONE VIEW, STANDING AND PLAYING (one-picture-per-frame ②-3): the
+    // canvas standing on a frame and a run playing it show the frame's one
+    // picture, through the same view — pressing Play changes nothing on the
+    // screen and makes nothing again. The paper-stays-put split under a cut
+    // pose went with the V row's transform: nothing poses the whole cut on
     // the editing canvas, so the layers draw straight.
-    return CanvasLayerStackView(
-      // MERGED: the whole tree, active layer included, so
-      // a folder's group buffer encloses the layer being
-      // drawn on. Onion ghosts (P2) sit above the other
-      // layers and directly UNDER the active drawing, and
-      // a scrub shows them as it crosses frames. A gap
-      // parking shows the VOID (R16-⑥): no ghosts either.
+    final picture = FramePictureView(
+      run: (
+        landings: rig.prerenderScheduler.landings,
+        pictures: rig.framePictures,
+      ),
+      // R16-⑥: no cut in a gap — no paper (per-cut papers make anything
+      // else confusing; the void is the truth).
+      picture: (
+        cut: cut,
+        frameIndex: session.currentFrameIndex,
+        paintPaper: !_inGap,
+      ),
+      // MERGED: the whole tree, active layer included, so a folder's group
+      // buffer encloses the layer being drawn on — asked afresh at each
+      // build: a drag in flight, a run's step ([_followingDragAndRun]).
       nodes: _inGap
           ? const []
-          : stackNodesWithGhosts(
-              session.editingCanvas.stack.nodes,
-              session.onionSkin.onionSkinCanvasRequests(),
-            ),
-      activeSurfacePainter: activeSurfacePainter,
-      // TS1: the _selection's float draws in the active
-      // layer's slot, so the rows above it occlude the live
-      // preview the way they occlude the landed pixels —
-      // and a folder's lifted rows each in its own (I-37).
-      floatOverlay: floats.liveRow,
-      liftedRows: floats.liftedRows,
-      imageCache: session.renderCaches.layerFrameImageCache,
-      // The census cannot reach a widget State; the session can be reached.
-      onBufferBytes: (bytes) =>
-          session.renderCaches.countStackBuffer('canvas', bytes),
-      canvasSize: _canvasSize,
-      pasteboardReach: session.repository.requireProject().pasteboardReach,
+          : standing
+          ? session.editingCanvas.stack.nodes
+          : session.editingCanvas.playingStack.nodes,
       viewport: viewport,
-      // R16-⑥: no cut in a gap — no paper (per-cut papers
-      // make anything else confusing; the void is the truth).
-      paintPaper: !_inGap,
-      paperBackground: session.projectSettings.projectBackground,
+      // Standing, the canvas draws the row a pen is on live — TS1: the
+      // selection's float in that row's slot, so the rows above it occlude
+      // the live preview the way they occlude the landed pixels, and a
+      // folder's lifted rows each in its own (I-37) — and makes the frame it
+      // stands on at once. A RUN draws nothing live and waits for each frame
+      // whole, made ahead of the playhead.
+      live: standing
+          ? (
+              activeSurfacePainter: activeSurfacePainter,
+              floatOverlay: floats.liveRow,
+              liftedRows: floats.liftedRows,
+            )
+          : null,
+      laysWhatItMisses: standing,
+      wholeFrames: !standing,
+    );
+    // No ghosts in a run: a ghost is editing scaffolding, as a guide is, and
+    // the film has none. A gap parking shows the VOID (R16-⑥): no ghosts
+    // either.
+    final ghosts = standing && !_inGap
+        ? session.onionSkin.onionSkinCanvasRequests()
+        : const <CanvasLayerImageRequest>[];
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        picture,
+        if (ghosts.isNotEmpty) _ghostsOver(session, ghosts, viewport),
+      ],
     );
   }
+
+  /// 🚨THE ONION GHOSTS LIE OVER THE FRAME'S ONE PICTURE — over its paper
+  /// and every row, at their tint and opacity as before
+  /// (one-picture-per-frame-Q1 = a, 유저 2026-10-24 「한 장 위에 얹는다」),
+  /// each drawn from its row's image, and a scrub shows them as it crosses
+  /// frames. ↩️They sat directly UNDER the active drawing, inside the folder
+  /// and adjustment around it (`_stackNodesWithGhosts`) — no room for that
+  /// between the rows of one picture.
+  Widget _ghostsOver(
+    EditorSessionManager session,
+    List<CanvasLayerImageRequest> ghosts,
+    CanvasViewport viewport,
+  ) => CanvasLayerStackView(
+    nodes: [for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost)],
+    imageCache: session.renderCaches.layerFrameImageCache,
+    // The census cannot reach a widget State; the session can be reached.
+    onBufferBytes: (bytes) =>
+        session.renderCaches.countStackBuffer('canvas', bytes),
+    canvasSize: _canvasSize,
+    pasteboardReach: session.repository.requireProject().pasteboardReach,
+    viewport: viewport,
+    // The frame's picture under them holds its paper.
+    paintPaper: false,
+    paperBackground: session.projectSettings.projectBackground,
+  );
 
   /// What is stacked OVER the canvas inside the viewport: the guides and
   /// their edit layer, the SE name tags, the fade wash past the cut's end

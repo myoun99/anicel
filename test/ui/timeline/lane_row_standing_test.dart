@@ -15,7 +15,7 @@ import 'package:anicel/src/models/timeline_frame_range.dart'
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -521,15 +521,15 @@ void main() {
       // the row up either way, so only this reads what the user sees.
       bool canvasPaintsCel() =>
           tester
-              .widget<CanvasLayerStackView>(
+              .widget<FramePictureView>(
                 find.descendant(
                   of: find.byKey(
                     const ValueKey<String>('main-canvas-brush-host'),
                   ),
-                  matching: find.byType(CanvasLayerStackView),
+                  matching: find.byType(FramePictureView),
                 ),
               )
-              .activeSurfacePainter !=
+              .live?.activeSurfacePainter !=
           null;
 
       expect(

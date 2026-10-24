@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -39,8 +40,12 @@ import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
 import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_store.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_frame_painter.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
@@ -49,14 +54,20 @@ import '../../helpers/settle_async.dart';
 /// 미묘하게 화면 움직이는데 … 배율따라서 끝에 흰 선 보이는데」 — a canvas
 /// filled black, a light line along its right and bottom edges).
 ///
-/// Standing still, the active row is drawn from its tiles' level blocks
-/// ([TilePyramid]) on the stack's own paper; a run draws every row as its
-/// cel's image at the display's level ([LayerFrameImageCache]) — a cut's
-/// run on the canvas, the film's on the track stack, either of them through
-/// the camera. Pressing Play must change nothing on the screen, and a cel
-/// filled to the canvas's edge, on a canvas that is no whole number of
-/// tiles and halves to an odd size, is where the roads part if they part
-/// anywhere.
+/// Standing still, the canvas shows the frame's one picture with the row a
+/// pen is on live in it; a run shows that frame's picture as the warmer
+/// made it — a cut's run on the canvas, the film's on the track stack,
+/// either of them through the camera ([FramePictureView],
+/// one-picture-per-frame ②-3). Each road here keeps pictures of its own, so
+/// what is compared is two makings and two showings, not one image twice.
+/// Pressing Play must change nothing on the screen, and a cel filled to
+/// the canvas's edge, on a canvas that is no whole number of tiles and
+/// halves to an odd size, is where the roads part if they part anywhere.
+///
+/// ↩️Standing still the active row was drawn from its tiles' level blocks
+/// (`TilePyramid`) and a run drew every row as its cel's image at the
+/// display's level (`LayerFrameImageCache`), each on a `CanvasLayerStackView`
+/// — two roads this pinned to meet; and a road per baked static composite.
 ///
 /// 🚨Seen through no camera, that holds PAST the canvas too
 /// (conte-playback-hides-the-pasteboard, 유저 10-13 「둘 다 보인다(편집
@@ -198,13 +209,18 @@ void main() {
     ),
   );
 
-  /// The editing canvas's stack, as the canvas area mounts it: inside the
-  /// camera's shot, which cuts nothing without a [shot] — on the stage's
-  /// [planes], where the canvas panel lays them under all of it.
+  /// The frame's picture as the canvas and the film ask for it — the paper
+  /// under the ink, as every cut has, white unless it is absent.
+  final frame = (cut: cut, frameIndex: 0, paintPaper: true);
+
+  /// The editing canvas, as the canvas area mounts it: the frame's one
+  /// picture — the cel [live] in it standing still, made by the view itself;
+  /// a run's, the warmer's ([warm]) — inside the camera's shot, which cuts
+  /// nothing without a [shot], on the stage's [planes], where the canvas
+  /// panel lays them under all of it.
   Widget canvas(
-    LayerFrameImageCache images, {
+    Road road, {
     required CanvasViewport view,
-    required bool bake,
     BitmapSurfacePainter? live,
     CameraShotAt? shot,
     StagePlanesPainter? planes,
@@ -220,10 +236,10 @@ void main() {
       pasteboardColor: pasteboard,
       pasteboardNone: false,
       pasteboardReach: PasteboardReach.whole,
-      child: CanvasLayerStackView(
-        // Each road a stack of its own: nothing one drew is handed to the
-        // other.
+      child: FramePictureView(
         key: ValueKey<(bool, bool)>((live != null, shot != null)),
+        run: road,
+        picture: frame,
         nodes: live != null
             ? [
                 const CompositeLeaf<CanvasStackRow>(
@@ -231,22 +247,23 @@ void main() {
                 ),
               ]
             : rows,
-        imageCache: images,
-        canvasSize: canvasSize,
         viewport: shot?.frameView ?? view,
-        activeSurfacePainter: live,
-        debugDisableBake: !bake,
-        // The paper under the ink, as every cut has — white unless it is
-        // absent.
-        paintPaper: true,
-        paperBackground: paper,
+        live: live == null
+            ? null
+            : (
+                activeSurfacePainter: live,
+                floatOverlay: null,
+                liftedRows: const {},
+              ),
+        laysWhatItMisses: live != null,
+        wholeFrames: live == null,
       ),
     ),
   );
 
   /// The film's track stack at the cut's one frame, on a [past] floor.
   Widget film(
-    LayerFrameImageCache images, {
+    Road road, {
     required CanvasViewport view,
     required bool throughTheCamera,
     Color pasteboard = past,
@@ -261,7 +278,7 @@ void main() {
       globalFrameIndex: frame,
     ),
     stackOf: (_, _) => rows,
-    imageCache: images,
+    pictures: road,
     cameraFrameSize: canvasSize,
     cameraViewEnabled: throughTheCamera,
     cameraPoseOf: (_, _) => atRest,
@@ -288,12 +305,6 @@ void main() {
     return shot!;
   }
 
-  Future<void> landEverything(WidgetTester tester) => lendBothClocks(
-    tester,
-    rounds: 8,
-    beat: const Duration(milliseconds: 30),
-  );
-
   /// The RGBA of device pixel ([x], [y]).
   List<int> pixelAt(Shot shot, int x, int y) => shot.rgba.sublist(
     (y * shot.width + x) * 4,
@@ -314,39 +325,62 @@ void main() {
           '($x, $y): ${pixelAt(a, x, y)} → ${pixelAt(b, x, y)}',
   ];
 
-  /// What [picture] puts on the screen once everything it asked for landed.
-  Future<Shot> shown(WidgetTester tester, Widget picture) async {
+  /// The pictures of the frame a road keeps — of its own, on [paper]:
+  /// nothing one road made is handed to another.
+  Road roadOf(
+    LayerFrameImageCache images, {
+    ProjectBackground paper = ProjectBackground.defaultBackground,
+  }) {
+    final store = FramePictureStore<FramePictureKey>();
+    addTearDown(store.dispose);
+    final landings = ValueNotifier<int>(0);
+    addTearDown(landings.dispose);
+    return (
+      landings: landings,
+      pictures: FramePictures(
+        store: store,
+        layerImages: images,
+        stackOf: (_) => rows,
+        pageOf: (picture) => (
+          canvasSize: canvasSize,
+          pasteboardReach: PasteboardReach.whole,
+          paintPaper: picture.paintPaper,
+          paperBackground: paper,
+        ),
+      ),
+    );
+  }
+
+  /// The warmer making the frame's picture ahead of a run on [road], and
+  /// telling the run it landed.
+  void warm(Road road) => unawaited(
+    road.pictures
+        .make(frame, shouldAbort: () => false)
+        .then((_) => road.landings.value += 1),
+  );
+
+  /// What [picture] puts on the screen once [road] holds the frame's
+  /// picture and the screen took it.
+  Future<Shot> shown(WidgetTester tester, Widget picture, Road road) async {
     await pump(tester, picture);
-    await landEverything(tester);
+    final made = road.pictures.keyOfStack(rows, frame);
+    expect(
+      await settleAsync(tester, () => road.pictures.store.bytesOf(made) != null),
+      isTrue,
+      reason: 'LIVENESS: the frame\'s picture is made',
+    );
+    await lendBothClocks(tester, rounds: 2);
     return onScreen(tester);
   }
 
-  /// The cel's image made at the display's level through [view], as a run
-  /// makes it.
-  Future<void> madeForTheRun(
-    WidgetTester tester,
-    LayerFrameImageCache images,
-    CanvasViewport view,
-  ) => tester.runAsync(
-    () => images.prepare(
-      key: key,
-      canvasSize: canvasSize,
-      quality: rowQualityThrough(view, tester.view.devicePixelRatio),
-      sourceEffects: const [],
-    ),
-  );
-
   /// The canvas standing still at [zoom], with the cel — filled [reach]
   /// pixels past the canvas — as the active row, on the stage's [planes],
-  /// and [road] after it — the cel's image made at the display's level as a
-  /// run makes it — each on a stack of its own.
+  /// and [road] after it, each with pictures of its own ([roadOf]).
   Future<({Shot still, Shot running})> stillThen(
     WidgetTester tester, {
     required double zoom,
     required String lineage,
-    required Widget Function(LayerFrameImageCache images, CanvasViewport view)
-    road,
-    bool bake = true,
+    required Widget Function(Road road, CanvasViewport view) road,
     int reach = 0,
     StagePlanesPainter Function(CanvasViewport view)? planes,
     ProjectBackground paper = ProjectBackground.defaultBackground,
@@ -357,12 +391,12 @@ void main() {
     addTearDown(() => TilePyramid.instance.drop(lineage));
     final view = CanvasViewport(zoom: zoom);
 
+    final standing = roadOf(images, paper: paper);
     final still = await shown(
       tester,
       canvas(
-        images,
+        standing,
         view: view,
-        bake: bake,
         live: BitmapSurfacePainter(
           surface: surfaceOf(store),
           showTransparentBackground: false,
@@ -371,10 +405,11 @@ void main() {
         planes: planes?.call(view),
         paper: paper,
       ),
+      standing,
     );
 
-    await madeForTheRun(tester, images, view);
-    final running = await shown(tester, road(images, view));
+    final playing = roadOf(images, paper: paper);
+    final running = await shown(tester, road(playing, view), playing);
     expect(
       pixelAt(still, 0, 0),
       fill,
@@ -402,30 +437,29 @@ void main() {
 
   group('a cut\'s run on the canvas', () {
     for (final ratio in ratios) {
-      for (final bake in const [false, true]) {
-        for (final zoom in zooms) {
-          final where = '${at(zoom, ratio)}${bake ? ', baked' : ''}';
-          testWidgets('🚨at $where draws, pixel for pixel, the picture the '
-              'canvas draws standing still', (tester) async {
-            tester.view.devicePixelRatio = ratio;
-            addTearDown(tester.view.resetDevicePixelRatio);
+      for (final zoom in zooms) {
+        final where = at(zoom, ratio);
+        testWidgets('🚨at $where draws, pixel for pixel, the picture the '
+            'canvas draws standing still', (tester) async {
+          tester.view.devicePixelRatio = ratio;
+          addTearDown(tester.view.resetDevicePixelRatio);
 
-            final (:still, :running) = await stillThen(
-              tester,
-              zoom: zoom,
-              bake: bake,
-              lineage: 'on-the-canvas-$where',
-              road: (images, view) =>
-                  canvas(images, view: view, bake: bake),
-            );
+          final (:still, :running) = await stillThen(
+            tester,
+            zoom: zoom,
+            lineage: 'on-the-canvas-$where',
+            road: (road, view) {
+              warm(road);
+              return canvas(road, view: view);
+            },
+          );
 
-            expect(
-              differences(still, running),
-              isEmpty,
-              reason: 'pressing Play must change nothing on the screen',
-            );
-          });
-        }
+          expect(
+            differences(still, running),
+            isEmpty,
+            reason: 'pressing Play must change nothing on the screen',
+          );
+        });
       }
     }
   });
@@ -443,8 +477,8 @@ void main() {
             tester,
             zoom: zoom,
             lineage: 'the-film-$where',
-            road: (images, view) =>
-                film(images, view: view, throughTheCamera: false),
+            road: (road, view) =>
+                film(road, view: view, throughTheCamera: false),
           );
 
           expect(
@@ -501,8 +535,8 @@ void main() {
                 devicePixelRatio: ratio,
               ),
               paper: paper,
-              road: (images, view) => film(
-                images,
+              road: (road, view) => film(
+                road,
                 view: view,
                 throughTheCamera: false,
                 pasteboard: pasteboard,
@@ -549,10 +583,65 @@ void main() {
     }
   });
 
+  /// The device pixels a run seen through the camera at rest on [view]
+  /// shows the canvas in — inside the cut both roads make
+  /// ([pictureOutlineOnScreen], [shotClipOnScreen]).
+  Rect cutOnScreen(CanvasViewport view, double ratio) {
+    final corners = shotClipOnScreen(
+      pictureOutlineOnScreen(view, shotAtRest(view), canvasSize, ratio)!,
+      ratio,
+    ).corners;
+    final cut = Rect.fromPoints(corners[0], corners[2]);
+    return Rect.fromLTRB(
+      cut.left * ratio,
+      cut.top * ratio,
+      cut.right * ratio,
+      cut.bottom * ratio,
+    );
+  }
+
+  /// A camera at rest cuts nothing OF THE CANVAS, and past the canvas shows
+  /// its apron (「페이스트보드는 포함 안 시킴」) — where the canvas standing
+  /// still shows its pasteboard. The two are one colour here, so ⛔what is
+  /// compared stops at the cut: zoomed out, the canvas's one picture is read
+  /// through its own mip chain (D7-2-Q2 — 「축소해서 볼때는 정확도는
+  /// 기대안해서 심각하게 맞출필요는없어」, within 2 of the levels it replaced),
+  /// and the page's edge reaches a level's texel past the page onto the
+  /// pasteboard — a trace the camera covers as it covers any ink there.
+  /// ↩️Compared whole until the canvas standing still drew its picture
+  /// (2026-10-25): at 31% (ratio 1.25) that trace lay one row under the
+  /// page, 1 in 255.
   group('through the camera at rest', () {
     for (final ratio in ratios) {
       for (final zoom in zooms) {
         final where = at(zoom, ratio);
+
+        void expectCutsNothing(Shot still, Shot running) {
+          final cut = cutOnScreen(CanvasViewport(zoom: zoom), ratio);
+          final inside = <String>[];
+          final apron = <String>[];
+          for (var y = 0; y < still.height; y += 1) {
+            for (var x = 0; x < still.width; x += 1) {
+              if (cut.contains(Offset(x + 0.5, y + 0.5))) {
+                if (!listEquals(pixelAt(still, x, y), pixelAt(running, x, y))) {
+                  inside.add(
+                    '($x, $y): ${pixelAt(still, x, y)} → '
+                    '${pixelAt(running, x, y)}',
+                  );
+                }
+              } else if (!listEquals(pixelAt(running, x, y), rgbaOf(past))) {
+                apron.add('($x, $y): ${pixelAt(running, x, y)}');
+              }
+            }
+          }
+          expect(
+            inside,
+            isEmpty,
+            reason: 'a camera framing the canvas cuts nothing of it',
+          );
+          expect(apron, isEmpty, reason: 'and past it shows its apron');
+        }
+
         testWidgets('🚨at $where a cut\'s run draws, pixel for pixel, the '
             'picture the canvas draws standing still', (tester) async {
           tester.view.devicePixelRatio = ratio;
@@ -562,19 +651,13 @@ void main() {
             tester,
             zoom: zoom,
             lineage: 'a-cut-through-the-camera-$where',
-            road: (images, view) => canvas(
-              images,
-              view: view,
-              bake: true,
-              shot: shotAtRest(view),
-            ),
+            road: (road, view) {
+              warm(road);
+              return canvas(road, view: view, shot: shotAtRest(view));
+            },
           );
 
-          expect(
-            differences(still, running),
-            isEmpty,
-            reason: 'a camera framing the canvas cuts nothing of it',
-          );
+          expectCutsNothing(still, running);
         });
 
         testWidgets('🚨at $where the film draws, pixel for pixel, the '
@@ -586,15 +669,11 @@ void main() {
             tester,
             zoom: zoom,
             lineage: 'the-film-through-the-camera-$where',
-            road: (images, view) =>
-                film(images, view: view, throughTheCamera: true),
+            road: (road, view) =>
+                film(road, view: view, throughTheCamera: true),
           );
 
-          expect(
-            differences(still, running),
-            isEmpty,
-            reason: 'a camera framing the canvas cuts nothing of it',
-          );
+          expectCutsNothing(still, running);
         });
       }
     }
@@ -622,28 +701,31 @@ void main() {
           final images = LayerFrameImageCache(frameStore: storeWithTheCel());
           addTearDown(images.dispose);
           final view = CanvasViewport(zoom: zoom);
-          await madeForTheRun(tester, images, view);
 
+          final filmed = roadOf(images, paper: paper);
           final theFilm = await shown(
             tester,
             film(
-              images,
+              filmed,
               view: view,
               throughTheCamera: true,
               pasteboard: apron,
               paper: paper,
             ),
+            filmed,
           );
+          final played = roadOf(images, paper: paper);
+          warm(played);
           final aCutsRun = await shown(
             tester,
             canvas(
-              images,
+              played,
               view: view,
-              bake: true,
               shot: shotAtRest(view),
               pasteboard: apron,
               paper: paper,
             ),
+            played,
           );
           if (zoom == 1) {
             expect(
@@ -667,3 +749,7 @@ void main() {
 
 /// A screen shot in device pixels.
 typedef Shot = ({Uint8List rgba, int width, int height});
+
+/// The pictures of the frame a road keeps, and the signal that one landed
+/// ([StackRun]).
+typedef Road = ({ValueNotifier<int> landings, FramePictures pictures});

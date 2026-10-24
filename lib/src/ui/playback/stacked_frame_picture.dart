@@ -10,7 +10,6 @@ import '../../services/cut_frame_composite_plan.dart'
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../canvas/canvas_layer_stack_view.dart';
-import 'frame_picture_store.dart' show FrameDrawing;
 
 /// 🚨★★★WHAT A FRAME'S ONE PICTURE IS KEYED BY: THE TREE A SCREEN STACKS
 /// FOR IT (one-picture-per-frame ②-1, D7-2-Q3=a).
@@ -88,15 +87,18 @@ FramePictureKey framePictureKeyOf(
   ),
 );
 
-/// The picture [nodes] draw on [page], every row from its cel's stored
-/// surface ([surfaceOf]; null where the cel has none) — by the canvas's own
-/// body ([frameDrawingOf]), so it is what the canvas shows of them.
-FrameDrawing stackedFrameDrawingOf(
+/// [nodes] on [page] as the canvas's own body draws them ([StackedFrame]):
+/// every row from its cel's stored surface ([surfaceOf]) — save, under
+/// [live], the rows a canvas that stands holds live.
+StackedFrame stackedFrameOf(
   List<CompositeNode<CanvasStackRow>> nodes, {
   required FramePage page,
   required BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
-}) => frameDrawingOf(
-  mapCompositeLeaves(nodes, (row) {
+  ({LiveRows rows, LiftedRowPainters painters})? live,
+}) => StackedFrame.of(
+  nodes,
+  page: page,
+  storedRowOf: (row) {
     final stacked = _stackedCelOf(row);
     final surface = stacked == null ? null : surfaceOf(stacked.cel);
     return stacked == null || surface == null
@@ -108,8 +110,8 @@ FrameDrawing stackedFrameDrawingOf(
             placement: stacked.placement,
             effects: stacked.effects,
           );
-  }),
-  page: page,
+  },
+  live: live,
 );
 
 /// Every cel [nodes] — a stack of a frame's — draw, bottom to top: the cels
@@ -158,10 +160,10 @@ typedef _StackedCel = ({
 /// drops — as [mapCompositeLeaves] drops it, with a folder it leaves
 /// empty.
 ///
-/// ⛔A TINTED ROW IS AN ONION GHOST, which a stack lays round the frame
-/// for the one canvas that edits it (`stackNodesWithGhosts`) and is no
-/// part of the frame's picture (one-picture-per-frame-Q1). Handed one, this
-/// says so rather than keying a picture the ghost is not drawn in.
+/// ⛔A TINTED ROW IS AN ONION GHOST, which lies over the frame's picture
+/// on the one canvas that edits it (`_ghostsOver`; one-picture-per-frame-Q1
+/// = a) and is no part of it. Handed one, this says so rather than keying
+/// a picture the ghost is not drawn in.
 _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {
   CanvasLayerImageRequest(tint: _?) => throw StateError(
     'An onion ghost is no part of a frame\'s picture.',

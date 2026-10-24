@@ -18,7 +18,7 @@ import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -183,18 +183,18 @@ void main() {
       isTrue,
       reason: 'a box opens on a folder',
     );
-    final stack = tester.widget<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView).first,
+    final stack = tester.widget<FramePictureView>(
+      find.byType(FramePictureView).first,
     );
     expect(
-      {for (final key in stack.liftedRows.keys) key.frameId.value},
+      {for (final key in stack.live!.liftedRows.keys) key.frameId.value},
       {'${a.value}-0', '${b.value}-0'},
       reason: 'while the box is open, each row shows lifted in its own '
           'place in the composite',
     );
     // Each shows ITS OWN cel with its own hole: lifted whole, nothing of
     // either picture is left in either row.
-    for (final MapEntry(:key, value: lifted) in stack.liftedRows.entries) {
+    for (final MapEntry(:key, value: lifted) in stack.live!.liftedRows.entries) {
       expect(
         (
           surfacePixelRgba(lifted.surface, 25, 25) ?? 0,
@@ -264,11 +264,11 @@ void main() {
       isTrue,
       reason: 'the box walks with its numbers (유저 확정 2026-09-17)',
     );
-    final stack = tester.widget<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView).first,
+    final stack = tester.widget<FramePictureView>(
+      find.byType(FramePictureView).first,
     );
     expect(
-      {for (final key in stack.liftedRows.keys) key.frameId.value},
+      {for (final key in stack.live!.liftedRows.keys) key.frameId.value},
       {'${a.value}-1', '${b.value}-1'},
     );
 
@@ -326,12 +326,12 @@ void main() {
     commands.beginTransform();
     await pumpFrames(tester);
 
-    final stack = tester.widget<CanvasLayerStackView>(
-      find.byType(CanvasLayerStackView).first,
+    final stack = tester.widget<FramePictureView>(
+      find.byType(FramePictureView).first,
     );
     bool shows(LayerId row, int x, int y) =>
         (surfacePixelRgba(
-              stack.liftedRows[session.brushFrameKeyForCut(
+              stack.live!.liftedRows[session.brushFrameKeyForCut(
                     session.requireActiveCut,
                     row,
                     FrameId('${row.value}-0'),

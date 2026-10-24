@@ -688,7 +688,26 @@ void main() {
   /// walks; `LayerStackPaintPass._paintClipNode` (five) — the shape of the
   /// three node painters the 10-23 note names. 🔬`clean_code_diff` against
   /// master (`3354f5258`, at 420) named those two added and nothing gone.
-  const wideSignatures = 422;
+  /// ⚠️422 → 425 on 2026-10-25, three named as the rule above asks (card
+  /// one-picture-per-frame ②-3 · ②-4 — every screen draws a frame's one
+  /// picture, and a canvas that stands patches its strokes into it).
+  /// `drawOnTheDisplay` (eight) is the ONE blit the display lays an image
+  /// it is handed by — the canvas's display buffer and a frame's picture —
+  /// and each parameter is one the draw reads: the canvas, the image, what
+  /// of it and where, the view and the device's ratio its sampling and its
+  /// edge are read off, the level it was composed at, and how it lays (a
+  /// patch still landing lays its clear texels too). `FramePictures._make`
+  /// (five) — what the frame is stacked of, which frame, when its maker
+  /// gives up, when its turn is due, and whether it goes to the front of
+  /// the store's line — is the one road `make` (a run's frame, ahead) and
+  /// `makeShown` (the frame a screen stands on) take; `_lay` (five) takes
+  /// the key and the drawing and hands the last three on.
+  /// 🔬`clean_code_diff` against the lane's base (`3cee149eb`, at 420) named
+  /// those three added and nothing gone. ⛔Not bundled to fit: the turn
+  /// reads two of the three (`QuietTurns.inAQuiet`) and the store the third
+  /// (`FramePictureStore.lay`), so a value of them would be taken apart at
+  /// the one place it is handed to.
+  const wideSignatures = 425;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1310,7 +1329,18 @@ void main() {
   /// painter. 🔬`clean_code_diff` against master (`b0a486341`) names this
   /// one and no other class. ⛔Not split to fit: the row's painter is built
   /// in the one place its other arguments are.
-  const longClasses = 74;
+  ///
+  /// ⚠️74 → 75 on 2026-10-25, ONE name: `FramePictureStore` crossed
+  /// (588 → 627) when a frame's one picture came to be every screen's (card
+  /// one-picture-per-frame ②-2 · ②-4): a frame's picture is weighed by the
+  /// bytes the store holds for it (`holds` · `bytesOf`), and a stroke that
+  /// lands moves the picture it was patched into to the frame's next key
+  /// (`move` · `landingOf`), in line behind the patches still landing.
+  /// 🔬`clean_code_diff` against the lane's base (`3cee149eb`) names this
+  /// one and no other class. ⛔Not split to fit: a move is the store's own
+  /// hold on a picture's texture, renamed in the one line its patches land
+  /// in, under the one count of who pins it.
+  const longClasses = 75;
 
   late CleanCodeScan scan;
   setUpAll(() {

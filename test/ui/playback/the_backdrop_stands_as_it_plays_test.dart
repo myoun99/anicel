@@ -13,7 +13,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart'
     show CanvasStageColors;
 import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
-import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
@@ -136,11 +136,13 @@ void main() {
 
   /// The standing cut's paper and pasteboard on the screen.
   ({Rect paper, Rect pasteboard}) stageOnScreen(WidgetTester tester) {
-    final found = find.byType(CanvasLayerStackView);
-    final stack = tester.widget<CanvasLayerStackView>(found);
+    final found = find.byType(FramePictureView);
+    final shown = tester.widget<FramePictureView>(found);
+    // The page the frame's picture is drawn on.
+    final page = shown.run.pictures.pageOf(shown.picture);
     final origin =
         tester.getTopLeft(found) - tester.getTopLeft(find.byKey(screen));
-    final view = stack.viewport;
+    final view = shown.viewport;
     Rect onTheScreen(Rect rect) => Rect.fromLTWH(
       origin.dx + view.panX + rect.left * view.zoom,
       origin.dy + view.panY + rect.top * view.zoom,
@@ -148,9 +150,9 @@ void main() {
       rect.height * view.zoom,
     );
     return (
-      paper: onTheScreen(stack.canvasSize.canvasRect),
+      paper: onTheScreen(page.canvasSize.canvasRect),
       pasteboard: onTheScreen(
-        stack.canvasSize.pasteboardAt(stack.pasteboardReach).rect,
+        page.canvasSize.pasteboardAt(page.pasteboardReach).rect,
       ),
     );
   }

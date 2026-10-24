@@ -519,7 +519,7 @@ class _LayerStackPaintPass {
   }
 
   /// Where the frame lies in the world with no screen around it
-  /// ([frameDrawingOf]): the rect the display buffer covers, the whole
+  /// ([StackedFrame]): the rect the display buffer covers, the whole
   /// pasteboard on screen — the page and every row's content.
   Rect frameExtent() {
     _standInTheWorld();
