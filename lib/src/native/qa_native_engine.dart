@@ -2278,6 +2278,7 @@ class QaNativeEngine {
     required double roundScale,
     required double roundReach,
     required double roundInner,
+    required double roundRowLength,
     required double minorRadius,
     required double tipCos,
     required double tipSin,
@@ -2345,6 +2346,7 @@ class QaNativeEngine {
     spec.roundScale = roundScale;
     spec.roundReach = roundReach;
     spec.roundInner = roundInner;
+    spec.roundRowLength = roundRowLength;
     spec.minorRadius = minorRadius;
     spec.tipCos = tipCos;
     spec.tipSin = tipSin;
@@ -2628,6 +2630,12 @@ final class QaDabSpecStruct extends Struct {
   external double roundReach;
   @Double()
   external double roundInner;
+
+  /// ABI 57: entries a row of the round tables holds where they are square
+  /// (`RoundTipProfile.rowLength` — a small circle's), or 0 where they run
+  /// along the radius.
+  @Double()
+  external double roundRowLength;
   @Double()
   external double minorRadius;
   @Double()

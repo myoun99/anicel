@@ -304,6 +304,10 @@ typedef struct {
   double round_scale;
   double round_reach;
   double round_inner;
+  /* Entries a row of the round tables holds where they are SQUARE - a small
+     circle's, read at (|dx|, |dy|) (qa_round_square_at) - or 0 where they
+     run along the radius. v57. */
+  double round_row_length;
   double minor_radius;
   double tip_cos;
   double tip_sin;
@@ -562,6 +566,30 @@ static inline double qa_round_profile_at(
   const int32_t i = (int32_t)x;
   const double low = table[i];
   return low + (table[i + 1] - low) * (x - (double)i);
+}
+
+// 🚨★★A SMALL CIRCLE IS READ BY ITS SQUARE'S WHOLE AREA (board
+// a-one-pixel-dab-drops-out-by-where-it-lies Q6, 유저 2026-10-25): its
+// tables are square, `row_length` entries a row, and this is
+// `readSquareAt`'s arithmetic, operation by operation.
+static inline double qa_round_square_at(
+    const double* table,
+    int32_t row_length,
+    double scale,
+    double across,
+    double down) {
+  const double x = across * scale;
+  const double y = down * scale;
+  const int32_t i = (int32_t)x;
+  const int32_t j = (int32_t)y;
+  const double along_row = x - (double)i;
+  const int32_t above = j * row_length + i;
+  const int32_t below = above + row_length;
+  const double top =
+      table[above] + (table[above + 1] - table[above]) * along_row;
+  const double bottom =
+      table[below] + (table[below + 1] - table[below]) * along_row;
+  return top + (bottom - top) * (y - (double)j);
 }
 
 // 🚨★★★A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (F-205, 유저 2026-09-28:
@@ -1094,6 +1122,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int texture_height = (flags & QA_DAB_FLAG_TEXTURE_HEIGHT) != 0;
   const double aa_contrast = s->aa_contrast;
   const int edge_held = (flags & QA_DAB_FLAG_EDGE_HELD) != 0;
+  const int32_t round_row_length = (int32_t)s->round_row_length;
 #if defined(QA_DAB_PAIRS)
   const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
 #endif
@@ -1151,6 +1180,22 @@ QA_EXPORT int32_t qa_dab_blend_tile(
           }
           coverage = qa_sample_tip_scalar(
               s->tip_alpha, s->tip_size, tip_u, tip_v, s->radius);
+        }
+        if (coverage <= 0.0) {
+          continue;
+        }
+      } else if (is_round && round_row_length > 0) {
+        // A small circle: its square tables at the pixel's (|dx|, |dy|).
+        const double across = fabs((double)x + 0.5 - s->center_x);
+        const double down = fabs(dy);
+        if (across >= s->round_reach || down >= s->round_reach) {
+          continue;
+        }
+        coverage = qa_round_square_at(
+            s->round_coverage, round_row_length, s->round_scale, across, down);
+        if (edge_held) {
+          pile = qa_round_square_at(
+              s->round_pile, round_row_length, s->round_scale, across, down);
         }
         if (coverage <= 0.0) {
           continue;
@@ -6440,4 +6485,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // round_coverage and round_pile - and QA_DAB_FLAG_EDGE_HELD: a round tip is
 // its profile read along its radius (qa_round_profile_at), and its edge does
 // not pile (qa_dab_source_alpha's ceiling). Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 56; }
+// v57: qa_dab_spec gains round_row_length: a small circle's round tables
+// are square, what each pixel's whole square covers (qa_round_square_at),
+// so a dot lays the same ink wherever it lies. Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 57; }

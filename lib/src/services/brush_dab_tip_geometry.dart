@@ -48,14 +48,15 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
   final radius = tip.size / 2.0;
   final isRound = tip.tipShape == BrushTipShape.round;
   final tipMask = tip.tipMask;
+  final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
   final profile = isRound && tipMask == null
       ? RoundTipProfile.of(
           radius: radius,
           hardness: tip.hardness,
           edge: tip.edge,
+          circle: !isEllipse,
         )
       : null;
-  final isEllipse = tipMask == null && isRound && tip.roundness < 1.0;
   // A circle and a square do not turn; the others take their cosine and
   // sine from the one table, exact at the quarter turns ([turnCos]).
   final turns = isEllipse || tipMask != null;
@@ -210,6 +211,20 @@ double _tipAt(
     );
   }
   final profile = tip.profile!;
+  if (profile.rowLength > 0) {
+    // A small circle: its square tables, read at the pixel's (|dx|, |dy|)
+    // — a circle's turn is the identity, so these are the canvas offsets.
+    final across = tipU.abs();
+    final down = tipV.abs();
+    if (across >= profile.reach || down >= profile.reach) {
+      return 0.0;
+    }
+    return profile.readSquareAt(
+      pile ? profile.pile : profile.coverage,
+      across,
+      down,
+    );
+  }
   final distance = math.sqrt(tipU * tipU + tipV * tipV);
   if (distance >= profile.reach) {
     return 0.0;

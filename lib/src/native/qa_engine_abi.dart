@@ -293,7 +293,13 @@ import '../core/on_a_worker.dart';
 ///   가장자리는 쌓이지 않는다」). The tables are built once per tip in Dart
 ///   and copied into the batch arena once per batch. `qa_dab_spec_sizeof`
 ///   moves.
-const int kQaEngineAbiVersion = 56;
+/// - v57: `qa_dab_spec` gains `round_row_length`: a small circle's round
+///   tables are SQUARE — what each pixel's whole square covers, read at
+///   (|dx|, |dy|) (`qa_round_square_at`) — so a dot lays the same ink
+///   wherever it lies (board a-one-pixel-dab-drops-out-by-where-it-lies Q6,
+///   유저 2026-10-25). 0 keeps them along the radius. `qa_dab_spec_sizeof`
+///   moves.
+const int kQaEngineAbiVersion = 57;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

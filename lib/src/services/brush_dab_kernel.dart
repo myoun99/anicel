@@ -503,6 +503,7 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     roundScale: plan.tip.profile?.scale ?? 0.0,
     roundReach: plan.tip.reach,
     roundInner: plan.tip.profile?.inner ?? 0.0,
+    roundRowLength: (plan.tip.profile?.rowLength ?? 0).toDouble(),
     minorRadius: plan.tip.minorRadius,
     tipCos: plan.tip.tipCos,
     tipSin: plan.tip.tipSin,
