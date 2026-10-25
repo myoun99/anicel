@@ -259,6 +259,30 @@ void main() {
     );
   });
 
+  test('a repeat\'s copy the cut\'s start wall cuts into keeps the dots '
+      'past the wall, moved to its own start, each wearing its mark', () {
+    final layer = _layer(
+      timeline: {
+        5: const TimelineExposure.drawing(
+          FrameId('a'),
+          length: 3,
+          breakdownMarks: {1: InbetweenMark.one, 2: InbetweenMark.two},
+          startEdge: repeatMark,
+        ),
+      },
+    );
+
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 8);
+    // Tiled leftward from 5: a whole copy at [2,5), and the one placed at
+    // -1 is cut at 0, its first cell gone.
+    expect(derived.timeline[2]!.breakdownMarks, {
+      1: InbetweenMark.one,
+      2: InbetweenMark.two,
+    });
+    expect(derived.timeline[0]!.length, 2, reason: '⛔전제: cut at the wall');
+    expect(derived.timeline[0]!.breakdownMarks, {1: InbetweenMark.two});
+  });
+
   test('both edges of one run derive together; holds apply first, and the '
       'end repeat cycles the DISPLAYED run — front hold included '
       '(UI-R13 #5)', () {

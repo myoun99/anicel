@@ -46,6 +46,36 @@ void main() {
       expect(h.timeline(_b), {0: _drawing('b', 4)});
     });
 
+    test('blank: the tail a swept block leaves keeps its dots, moved to its '
+        'own start, each wearing its mark', () {
+      final h = _Harness(
+        a: {
+          0: const TimelineExposure.drawing(
+            FrameId('a'),
+            length: 6,
+            breakdownMarks: {
+              1: InbetweenMark.two,
+              4: InbetweenMark.one,
+              5: InbetweenMark.two,
+            },
+          ),
+        },
+        b: {0: _drawing('b', 4)},
+      );
+
+      h.controller.blankSpansForLayers({_a: (start: 1, endExclusive: 3)});
+
+      expect(
+        h.timeline(_a)[0]!.breakdownMarks,
+        isEmpty,
+        reason: 'the head is its drawing alone',
+      );
+      expect(h.timeline(_a)[3]!.breakdownMarks, {
+        1: InbetweenMark.one,
+        2: InbetweenMark.two,
+      });
+    });
+
     test('delete: every row\'s blocks go in ONE undo step', () {
       final h = _Harness(
         a: {0: _drawing('a', 2), 2: _drawing('a2', 2)},

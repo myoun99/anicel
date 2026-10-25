@@ -1203,15 +1203,14 @@ class TimelineGridTileStore {
       if (mark != null) {
         final place = painter.inbetweenMarkLayoutFor(frameIndex);
         final center = place.center + toLocal;
-        _emitInbetweenMark(
-          writer,
+        writer.inbetweenMark(
           mark,
           Rect.fromCenter(
             center: center * dpr,
             width: place.size.width * dpr,
             height: place.size.height * dpr,
           ),
-          timelineGridPackRgba(painter.foregroundInkFor(model)),
+          rgba: timelineGridPackRgba(painter.foregroundInkFor(model)),
           devicePixelRatio: dpr,
         );
         continue;
@@ -1335,46 +1334,6 @@ class TimelineGridTileStore {
       );
     }
     return _TileAtlas(width: atlasWidth, height: atlasHeight, alpha: atlas);
-  }
-
-  /// An in-between mark as tile ops over [disc], its box in tile pixels —
-  /// the shape [paintInbetweenMark] draws on the classic pass
-  /// ([inbetweenMarkShape]), where the painter lays it.
-  static void _emitInbetweenMark(
-    TimelineGridTileOpWriter writer,
-    InbetweenMark mark,
-    Rect disc,
-    int rgba, {
-    required double devicePixelRatio,
-  }) {
-    // A rounded rect as round as it is narrow: the disc, and the stadium a
-    // narrowed one is.
-    switch (mark) {
-      case InbetweenMark.one:
-        writer.rrectRing(
-          (
-            x: disc.left,
-            y: disc.top,
-            width: disc.width,
-            height: disc.height,
-            radius: disc.shortestSide / 2,
-            cornerMask: 15,
-          ),
-          lineWidth: inbetweenMarkRingWidth * devicePixelRatio,
-          openMask: 0,
-          rgba: rgba,
-        );
-      case InbetweenMark.two:
-        writer.rrectFill(
-          disc.left,
-          disc.top,
-          disc.width,
-          disc.height,
-          disc.shortestSide / 2,
-          15,
-          rgba,
-        );
-    }
   }
 
   Future<ui.Image> _upload(
@@ -1862,6 +1821,48 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
     _emitRing(writer, ring.rect.shift(toLocal), ring, devicePixelRatio);
   }
   return substrate;
+}
+
+extension on TimelineGridTileOpWriter {
+  /// An in-between mark as tile ops over [disc], its box in tile pixels —
+  /// the shape [paintInbetweenMark] draws on the classic pass
+  /// ([inbetweenMarkShape]), where the painter lays it: mark 1 ringed
+  /// [inbetweenMarkRingWidth] wide at [devicePixelRatio], mark 2 filled.
+  void inbetweenMark(
+    InbetweenMark mark,
+    Rect disc, {
+    required int rgba,
+    required double devicePixelRatio,
+  }) {
+    // A rounded rect as round as it is narrow: the disc, and the stadium a
+    // narrowed one is.
+    switch (mark) {
+      case InbetweenMark.one:
+        rrectRing(
+          (
+            x: disc.left,
+            y: disc.top,
+            width: disc.width,
+            height: disc.height,
+            radius: disc.shortestSide / 2,
+            cornerMask: 15,
+          ),
+          lineWidth: inbetweenMarkRingWidth * devicePixelRatio,
+          openMask: 0,
+          rgba: rgba,
+        );
+      case InbetweenMark.two:
+        rrectFill(
+          disc.left,
+          disc.top,
+          disc.width,
+          disc.height,
+          disc.shortestSide / 2,
+          15,
+          rgba,
+        );
+    }
+  }
 }
 
 /// [ring] as tile ops, laid over [local] — its rect, tile-local.

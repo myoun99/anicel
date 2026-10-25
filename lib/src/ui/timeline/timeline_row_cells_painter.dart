@@ -490,10 +490,7 @@ class TimelineRowCellsPainter extends CustomPainter
       writing = switch (exposureState) {
         TimelineCellExposureState.drawingStart =>
           drawingHeadOf(frameName, kind: layer.kind),
-        TimelineCellExposureState.markOneHeld ||
-        TimelineCellExposureState.markTwoHeld => timelineDotWriting(
-          exposureState,
-        ),
+        _ when exposureState.isMark => timelineDotWriting(exposureState),
         _ => timelineCellWritesNothing,
       };
     } else {
