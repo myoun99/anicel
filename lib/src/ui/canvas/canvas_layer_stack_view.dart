@@ -1718,6 +1718,14 @@ class _LayerStackPainter extends CustomPainter {
   /// picture that landed after it blended it: 172 pixels, up to 28/255, at
   /// 1/6. So does every patch landing on a canvas zoomed out, at each step
   /// of a stroke.
+  ///
+  /// ⚠️What it costs, known and kept: zoomed out, a frame drawn whole as it
+  /// stands — a float's drag, the stroke steps of a posed or bleeding row —
+  /// is a buffer of the canvas's size at each paint, the cost the knee was
+  /// dropped for ([_maxBufferSide]). ⛔Not answered by going back to the
+  /// levels: 유저 (D7-2-Q2, 2026-10-24) 「배율이 어떻든 항상 원본 한장 …
+  /// 100%랑 통일하되, 그런 문제는 통일한 이후 극한으로 해결하고싶어」 — the
+  /// cost is card one-picture-per-frame's to solve on this road.
   final bool composedAtTheDisplayLevel;
 
   /// The EFFECTIVE ratio at build time (monitor × UI scale) — the display
