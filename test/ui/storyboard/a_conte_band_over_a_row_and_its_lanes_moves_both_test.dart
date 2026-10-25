@@ -354,6 +354,22 @@ void main() {
     expect(_sounds(session, _s1), [4], reason: 'its row was not swept');
   });
 
+  testWidgets('…and carried by the lane onto S2, nothing changes rows — the '
+      'band holds no sound to hand over', (tester) async {
+    final session = await _openS1Lanes(tester);
+    await _sweep(tester, _vRow, _position);
+
+    await _carry(
+      tester,
+      _position,
+      across: tester.getCenter(_s2Row).dy - tester.getCenter(_position).dy,
+    );
+
+    expect(_sounds(session, _s1), [4]);
+    expect(_sounds(session, _s2), isEmpty);
+    expect(_positionKeys(session), [7, 9]);
+  });
+
   testWidgets('a band that holds no whole sound still carries the keys its '
       'lane holds', (tester) async {
     final session = await _openS1Lanes(tester);
