@@ -3,7 +3,9 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -169,6 +171,39 @@ void main() {
       isEmpty,
       reason: 'each of these draws another picture',
     );
+  });
+
+  test('a cel number\'s letters part the key — what they say and where '
+      'they stand (I-65)', () {
+    List<CompositeNode<CanvasStackRow>> numbered(String text, {double x = 12}) {
+      final row = CompositeLeaf<CanvasStackRow>(
+        CanvasLayerImageRequest(frameKey: cel('a'), opacity: 1.0),
+      );
+      return [
+        CompositeGroup(
+          children: [
+            row,
+            CompositeCelNumber(
+              on: row,
+              letters: CelNumberLetters(
+                text: text,
+                color: 0xFF000000,
+                center: CanvasPoint(x: x, y: 8),
+                scale: CanvasPoint(x: 1, y: 1),
+              ),
+            ),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: const [],
+        ),
+      ];
+    }
+
+    final plain = keyOf(numbered('A1'));
+    expect(keyOf(numbered('A1')), plain);
+    expect(keyOf(numbered('A2')), isNot(plain));
+    expect(keyOf(numbered('A1', x: 13)), isNot(plain));
   });
 
   test('the row a pen stands on is keyed as the cel it shows', () {

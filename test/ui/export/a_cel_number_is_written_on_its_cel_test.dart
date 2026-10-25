@@ -46,6 +46,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/text/cel_number_paint.dart' show celNumberExtent;
 
 import '../../helpers/placement_reading.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// 🗣️I-65 (유저 2026-10-24): a CEL NUMBER is written over its row's
 /// picture where the row lies — it moves with the layer's transform (Q2 a:
@@ -228,7 +229,7 @@ void main() {
               child: SizedBox(
                 width: canvas.width.toDouble(),
                 height: canvas.height.toDouble(),
-                child: CanvasLayerStackView(
+                child: TheFrameAsItStands(
                   nodes: [
                     CompositeGroup(
                       children: [
@@ -258,7 +259,7 @@ void main() {
       final painter = tester
           .widgetList<CustomPaint>(
             find.descendant(
-              of: find.byType(CanvasLayerStackView),
+              of: find.byType(TheFrameAsItStands),
               matching: find.byType(CustomPaint),
             ),
           )
