@@ -253,7 +253,7 @@ void main() {
   });
 
   test('🚨a cel never stands at a revision it once held at other pixels — '
-      'a movie's picture installed, a cel carried onto a key, drawn on, '
+      'a movie\'s picture installed, a cel carried onto a key, drawn on, '
       'carried back', () {
     // A frame's picture is kept under its cels' revisions: a revision a
     // key comes back to names the pixels it named then.
