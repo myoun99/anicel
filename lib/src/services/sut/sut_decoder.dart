@@ -200,8 +200,27 @@ Future<SutImportResult> _decode(
     }
     // Dual brush: a second tip whose coverage multiplies the primary's,
     // referenced through its own pattern array.
+    //
+    // 📏A DUAL TIP AT 通常 COMES IN WITHOUT IT (유저 2026-10-25, board
+    // an-imported-pencil-drops-its-second-brush Q2 「「通常」과 두 번째 종이
+    // 결까지 맞춘다」): the user drew 鉛筆 in Clip Studio with its dual tip at
+    // 通常 and with it off, and the two lines measure alike — 3.64 and 3.60
+    // ink a column, the same width, the same grain. At 乗算 the line drew
+    // nothing. ↩️It came in as multiply — a mask that thinned every line
+    // the pencil drew. ⚠️One brush measured; what 通常 does with a second
+    // tip wider than the first is not.
     BrushTipMask? dualMask;
-    if (_intOf(variant['UseDualBrush']) == 1 &&
+    final dualAtNormal =
+        _intOf(variant['UseDualBrush']) == 1 &&
+        _intOf(variant['DualBrushCompositeMode']) == 0;
+    if (dualAtNormal) {
+      warnings.add(
+        'Brush "$name": dual brush tip at 通常 draws as no dual tip; '
+        'imported without it.',
+      );
+    }
+    if (!dualAtNormal &&
+        _intOf(variant['UseDualBrush']) == 1 &&
         _intOf(variant['DualUsePatternImage']) == 1) {
       final part = (
         brushName: name,
@@ -405,9 +424,10 @@ BrushSettings _settingsFromVariant(
     // ⛔It is the SAME 合成モード menu index the main tip's `CompositeMode`
     // uses, so it goes through the same [_blendModeOf] — a second table
     // would be a second chance to get 加算 wrong. Narrowed to the separable
-    // half afterwards: a dual tip combines two COVERAGES, and 通常/背景/消去
+    // half afterwards: a dual tip combines two COVERAGES, and 背景/消去
     // answer a question about pixels and alpha that a mask pair does not
-    // ask. ウェット水彩 stores 12, which is 加算.
+    // ask (a tip at 通常 never gets here — the decode leaves it out).
+    // ウェット水彩 stores 12, which is 加算.
     dualCompositeMode: dualMask == null
         ? SeparableBlendMode.multiply
         : _dualCompositeModeOf(
@@ -1039,22 +1059,36 @@ List<({String path, Uint8List data})> _materialsNamedBy(
 
 /// [material]'s image as a mask, or `null` — with a warning — when it holds
 /// none that reads.
+///
+/// 🚨THE TIP IS THE LARGEST IMAGE THAT HOLDS ANYTHING. Clip Studio's own
+/// 鉛筆 · デッサン鉛筆 · ガッシュ carry each tip twice at one size, a blank
+/// one first (measured 2026-10-25, board
+/// an-imported-pencil-drops-its-second-brush). ↩️The first of two equal
+/// areas came in, so those brushes came in drawing nothing at all.
 Future<BrushTipMask?> _tipMaskOf(
   ({String path, Uint8List data}) material, {
   required String id,
   required _BrushPart part,
 }) async {
-  final png = _largestPng(material.data);
-  if (png == null) {
+  final pngs = _largestPngs(material.data);
+  if (pngs.isEmpty) {
     _leftOut(part, 'material holds no readable image');
     return null;
   }
-  try {
-    return await decodeBrushTipImage(png, id: id);
-  } on Object catch (error) {
-    _leftOut(part, 'image could not be decoded ($error)');
-    return null;
+  for (final png in pngs) {
+    final BrushTipMask mask;
+    try {
+      mask = await decodeBrushTipImage(png, id: id);
+    } on Object catch (error) {
+      _leftOut(part, 'image could not be decoded ($error)');
+      return null;
+    }
+    if (mask.alpha.any((alpha) => alpha != 0)) {
+      return mask;
+    }
   }
+  _leftOut(part, 'material holds a blank image alone');
+  return null;
 }
 
 String _stripLayerSuffix(String path) {
@@ -1082,10 +1116,11 @@ String _utf16Runs(Uint8List bytes) {
   return buffer.toString();
 }
 
-/// Finds the largest embedded PNG in a CSP material archive blob — the tip
-/// image itself; smaller PNGs are thumbnails.
-Uint8List? _largestPng(Uint8List data) {
-  Uint8List? best;
+/// The largest embedded PNGs in a CSP material archive blob, in the order
+/// they lie — the tip image itself and any twin of its size; smaller PNGs
+/// are thumbnails.
+List<Uint8List> _largestPngs(Uint8List data) {
+  final best = <Uint8List>[];
   var bestArea = 0;
   for (var i = 0; i + 26 < data.length; i += 1) {
     if (data[i] != 0x89 ||
@@ -1104,7 +1139,10 @@ Uint8List? _largestPng(Uint8List data) {
     final area = width * height;
     if (area > bestArea) {
       bestArea = area;
-      best = Uint8List.sublistView(data, i, end);
+      best.clear();
+    }
+    if (area > 0 && area == bestArea) {
+      best.add(Uint8List.sublistView(data, i, end));
     }
     i = end - 1;
   }
