@@ -588,7 +588,7 @@ Uint8List rasterizeBrushStrokeSample(
     );
     sequence += placed.length;
     for (final dab in placed) {
-      _layPreviewDab(accumulated, width, height, dab);
+      layPreviewDab(accumulated, width, height, dab);
     }
   }
 
@@ -605,7 +605,8 @@ Uint8List rasterizeBrushStrokeSample(
 
 /// Lays [placed], one dab as the stroke placed it, into [accumulated] — a
 /// [width] × [height] plane of alpha.
-void _layPreviewDab(
+@visibleForTesting
+void layPreviewDab(
   Float64List accumulated,
   int width,
   int height,
