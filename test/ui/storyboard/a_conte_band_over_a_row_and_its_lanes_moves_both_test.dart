@@ -122,6 +122,9 @@ final _s2Row = find.byKey(const ValueKey<String>('storyboard-se-row-0-2'));
 final _position = find.byKey(
   const ValueKey<String>('storyboard-se-lane-row-0-1-position'),
 );
+final _transformGroup = find.byKey(
+  const ValueKey<String>('storyboard-se-lane-row-0-1-transform-group'),
+);
 final _vRow = find.byKey(const ValueKey<String>('storyboard-track-row-t'));
 final _vLane = find.byKey(
   ValueKey<String>(
@@ -307,6 +310,48 @@ void main() {
     expect(session.trackFrameRangeSelection.value, isNull);
     expect(session.laneRangeSelection.value, isNull);
     expect(_positionKeys(session), [5, 7]);
+  });
+
+  testWidgets('carried by its Position lane one row up, onto the lane above '
+      'it, the sound stays on S1 — the rows count from the lane', (
+    tester,
+  ) async {
+    final session = await _openS1Lanes(tester);
+    await _sweep(tester, _s1Row, _position);
+
+    await _carry(
+      tester,
+      _position,
+      across:
+          tester.getCenter(_transformGroup).dy -
+          tester.getCenter(_position).dy,
+    );
+
+    expect(_sounds(session, _s1), [6]);
+    expect(_sounds(session, _s2), isEmpty);
+    expect(_positionKeys(session), [7, 9]);
+  });
+
+  testWidgets('a band from the V row\'s cells up into S1\'s Position lane '
+      'holds S1\'s keys but not its sound — dragged by the lane, the keys '
+      'go alone', (tester) async {
+    final session = await _openS1Lanes(tester);
+    await _sweep(tester, _vRow, _position);
+    final rows = session.trackFrameRangeSelection.value?.spanRows;
+    expect(
+      rows,
+      containsAllInOrder(const [
+        LaneRowAddress(_s1, 'position'),
+        TrackRowAddress(_track),
+      ]),
+      reason: 'premise: the lane and the V row, S1\'s own row not',
+    );
+    expect(rows, isNot(contains(const LayerRowAddress(_s1))));
+
+    await _carry(tester, _position);
+
+    expect(_positionKeys(session), [7, 9]);
+    expect(_sounds(session, _s1), [4], reason: 'its row was not swept');
   });
 
   testWidgets('a band that holds no whole sound still carries the keys its '
