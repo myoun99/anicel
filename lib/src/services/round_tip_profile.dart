@@ -55,6 +55,11 @@ const double roundTipReachPastRim = 0.5;
 /// A bigger circle and every ellipse stay radial: past a few pixels the
 /// two reads part by less than a hundredth of a pixel of a line's ink, and
 /// a square table grows with the square of the radius.
+/// ⛔So does a circle under 없음, whose cut is half coverage at the pixel's
+/// centre along the radius (`onItsPixel`, 2026-10-24 「AA 없음은 중심이 든
+/// 픽셀 하나」): read by area, a 1.5px hard dot on a pixel's corner covered
+/// each of the four pixels round it under half and laid none, and a 1px
+/// dot at hardness 0.5 laid none anywhere (measured).
 class RoundTipProfile {
   RoundTipProfile._({
     required this.coverage,
@@ -92,15 +97,15 @@ class RoundTipProfile {
   final double inner;
 
   /// The profile of a round tip of [radius] at [hardness] under [edge] —
-  /// built once per such tip; a [circle] (roundness 1) up to
-  /// [squareReadRadius] is read by area.
+  /// built once per such tip; an [antiAliasedCircle] (roundness 1, not
+  /// 없음) up to [squareReadRadius] is read by area.
   static RoundTipProfile of({
     required double radius,
     required double hardness,
     required BrushTipEdge edge,
-    required bool circle,
+    required bool antiAliasedCircle,
   }) {
-    final square = circle && radius <= squareReadRadius;
+    final square = antiAliasedCircle && radius <= squareReadRadius;
     return _profiles.resolve(
       (radius: radius, hardness: hardness, edge: edge, square: square),
       () => square
@@ -335,8 +340,11 @@ class _RampPair {
   /// This pair with its EDGE re-solved for a read by area (Q6 b): its rim
   /// kept and its hard part chosen so a level line's column lays what the
   /// radial read lays it — `∫` of the profile across the line, the fit's
-  /// ink. Where even a cone over-inks the rim comes in; where a hard disc
-  /// under-inks it goes out, as far as the radius.
+  /// ink. A cone to the rim never over-inks — a column across a profile
+  /// that falls from its centre holds at most that profile's line ink, and
+  /// the cone's is the least of any hard part — so the solve starts there;
+  /// where even a hard disc to the rim under-inks, the rim goes out, as far
+  /// as the radius (the solve's bound).
   _RampPair readByArea() {
     final want = 2.0 * _integral(radius);
     double strip(double hard, double rim) =>
@@ -355,14 +363,8 @@ class _RampPair {
       return (lo + hi) / 2;
     }
 
-    if (strip(0.0, edgeRim) > want) {
-      final rim = solve((rim) => strip(0.0, rim), 0.0, edgeRim);
-      return _RampPair._edged(radius, hardRadius, rim, 0.0);
-    }
     if (strip(edgeRim, edgeRim) < want) {
-      final rim = strip(radius, radius) < want
-          ? radius
-          : solve((rim) => strip(rim, rim), edgeRim, radius);
+      final rim = solve((rim) => strip(rim, rim), edgeRim, radius);
       return _RampPair._edged(radius, hardRadius, rim, rim);
     }
     final hard = solve((hard) => strip(hard, edgeRim), 0.0, edgeRim);

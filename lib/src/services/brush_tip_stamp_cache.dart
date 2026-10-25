@@ -187,6 +187,8 @@ class BrushTipStampCache {
       tipShape: tipShape,
       tipMask: null,
       edge: BrushAntiAlias.none.edge,
+      // The mask is the raw coverage; the dab that lays it cuts it.
+      threshold: false,
     ));
 
     // The consumer maps texel i to tip-space (canvas-offset) coordinates

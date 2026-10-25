@@ -41,6 +41,7 @@ void main() {
     tipShape: BrushTipShape.round,
     tipMask: tipMask,
     edge: edge,
+    threshold: false,
   );
 
   /// An edge [width] wide at every radius.
@@ -347,6 +348,7 @@ void main() {
         tipShape: BrushTipShape.square,
         tipMask: null,
         edge: BrushAntiAlias.high.edge,
+        threshold: false,
       ));
       const law = (threshold: false, contrast: 1.0);
       for (final tip in [raster, square]) {
@@ -400,6 +402,7 @@ void main() {
       tipShape: BrushTipShape.square,
       tipMask: null,
       edge: BrushAntiAlias.high.edge,
+      threshold: false,
     ));
     expect(tipCoverageAt(tip, 0, 0), 1.0);
     expect(

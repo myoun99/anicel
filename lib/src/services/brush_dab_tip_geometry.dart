@@ -28,7 +28,8 @@ typedef BrushDabTipGeometry = ({
 
 /// The numbers a tip is made of, however the caller came by them: a dab
 /// carries them as fields, the stamp cache as a quantized cache key.
-/// [edge] is the anti-alias step's ([BrushAntiAlias.edge]).
+/// [edge] is the anti-alias step's ([BrushAntiAlias.edge]); [threshold],
+/// whether 없음's cut follows the sampling ([brushDabEdgeLaw]).
 typedef BrushTipNumbers = ({
   double size,
   double hardness,
@@ -37,6 +38,7 @@ typedef BrushTipNumbers = ({
   BrushTipShape tipShape,
   BrushTipMask? tipMask,
   BrushTipEdge edge,
+  bool threshold,
 });
 
 /// 🚨ONE derivation for the coverage list, the kernel plan and the stamp
@@ -54,7 +56,7 @@ BrushDabTipGeometry brushTipGeometry(BrushTipNumbers tip) {
           radius: radius,
           hardness: tip.hardness,
           edge: tip.edge,
-          circle: !isEllipse,
+          antiAliasedCircle: !isEllipse && !tip.threshold,
         )
       : null;
   // A circle and a square do not turn; the others take their cosine and
@@ -83,6 +85,7 @@ BrushDabTipGeometry brushDabTipGeometry(BrushDab dab) => brushTipGeometry((
   tipShape: dab.tipShape,
   tipMask: dab.tipMask,
   edge: dab.antiAlias.edge,
+  threshold: brushDabEdgeLaw(dab).threshold,
 ));
 
 /// What a dab's coverage goes through AFTER its tip is sampled — the

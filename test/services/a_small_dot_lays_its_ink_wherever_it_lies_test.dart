@@ -143,6 +143,61 @@ void main() {
     expect(centred, closeTo(0.526, 0.08));
   });
 
+  test('🚨an aliased dot lays the pixel its centre is in, wherever it '
+      'lies — 없음 is read along the radius', () {
+    // 없음 cuts at half coverage at the pixel's centre (`onItsPixel`):
+    // read by area, a 1.5px dot on a corner covered each pixel round it
+    // under half and laid none.
+    for (final hardness in [1.0, 0.5]) {
+      for (final size in [0.7, 1.0, 1.42, 1.5, 1.6, 2.0, 2.5, 3.0, 5.0]) {
+        for (final (fx, fy) in [
+          (0.0, 0.0),
+          (0.5, 0.5),
+          (0.0, 0.5),
+          (0.27, 0.71),
+          (0.999, 0.999),
+        ]) {
+          final surface = materializeBrushDabSequenceOnBitmapSurface(
+            surface: BitmapSurface(
+              canvasSize: const CanvasSize(width: 16, height: 16),
+              tileSize: 16,
+            ),
+            sequence: BrushDabSequence(
+              BrushTipStampCache().resolveDabs([
+                gPen(
+                  BrushAntiAlias.none,
+                  size,
+                  8 + fx,
+                  8 + fy,
+                  hardness: hardness,
+                ),
+              ]),
+            ),
+          ).surface;
+          expect(
+            (surfacePixelRgba(surface, 8, 8) ?? 0) & 0xFF,
+            greaterThan(0),
+            reason: 'size $size, hardness $hardness at ($fx, $fy)',
+          );
+        }
+      }
+    }
+  });
+
+  test('only an anti-aliased circle up to the square read\'s radius is '
+      'read by its square', () {
+    int rowsOf(BrushDab dab) => brushDabTipGeometry(dab).profile!.rowLength;
+    expect(rowsOf(gPen(BrushAntiAlias.medium, 5, 8, 8)), greaterThan(0));
+    expect(rowsOf(gPen(BrushAntiAlias.medium, 5.5, 8, 8)), 0);
+    expect(rowsOf(gPen(BrushAntiAlias.none, 2, 8, 8)), 0);
+    // An ellipse turns the pixel into its own space, where its square is
+    // no square.
+    expect(
+      rowsOf(gPen(BrushAntiAlias.medium, 2, 8, 8).copyWith(roundness: 0.5)),
+      0,
+    );
+  });
+
   const lineSteps = [
     BrushAntiAlias.low,
     BrushAntiAlias.medium,
