@@ -29,6 +29,7 @@ void main() {
     BrushTipEdge edge = (
       width: 0.0,
       widthPerRadius: 0.0,
+      widthReach: 0.0,
       inset: 0.0,
       insetReach: 1.0,
     ),
@@ -50,6 +51,7 @@ void main() {
   }) => (
     width: width,
     widthPerRadius: 0.0,
+    widthReach: 0.0,
     inset: inset,
     insetReach: insetReach,
   );
@@ -205,13 +207,14 @@ void main() {
       );
     });
 
-    test('it widens with the radius as far as the samples reach, and no '
+    test('it widens with the radius as far as its reach, and no '
         'further', () {
-      // Clip Studio's edge is wider on a bigger nib (Q4's fit); past the
-      // largest sample it holds (Q5).
+      // Clip Studio's edge is wider on a bigger nib and stops widening
+      // somewhere past 50 (Q4 · Q5's fits).
       const edge = (
         width: 1.0,
         widthPerRadius: 0.04,
+        widthReach: 25.0,
         inset: 0.0,
         insetReach: 1.0,
       );
@@ -237,9 +240,8 @@ void main() {
       expect(
         halfway(100),
         closeTo(halfway(25), 1e-6),
-        reason: 'past edgeSampledRadius the width holds',
+        reason: 'past its reach the width holds',
       );
-      expect(edgeSampledRadius, 25.0);
     });
 
     test('a hardness ramp lower than the step stands to the bit', () {

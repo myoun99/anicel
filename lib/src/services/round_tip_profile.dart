@@ -133,8 +133,7 @@ class _RampPair {
     : hardRadius = radius * hardness,
       edgeRim = radius - edge.inset * math.min(1.0, radius / edge.insetReach) {
     final width =
-        edge.width +
-        edge.widthPerRadius * math.min(radius, edgeSampledRadius);
+        edge.width + edge.widthPerRadius * math.min(radius, edge.widthReach);
     edgeHard = math.max(0.0, edgeRim - width);
     turn = _turn();
   }

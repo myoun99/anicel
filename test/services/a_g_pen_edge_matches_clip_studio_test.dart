@@ -3,8 +3,9 @@
 // 유저 2026-09-30: 「경도와 따로 — 단계마다 고정 폭, 클튜 샘플로 맞춤」, and
 // 2026-10-25 (board a-one-pixel-dab-drops-out-by-where-it-lies Q3): 「표본을
 // 넣는다」. The samples are their own Clip Studio G펜 lines — I-50's at size
-// 10 and 50 (`参考/brush/cls_gpen_AA.png`), Q4's at sizes 1–8, 10 and 50 —
-// and `BrushAntiAlias.edge` is fitted to all of them at once. THIS is the
+// 10 and 50 (`参考/brush/cls_gpen_AA.png`), Q4's at sizes 1–8, 10 and 50,
+// Q5's at 100 and 300 (「100 · 300px 표본을 더 준다」) — and
+// `BrushAntiAlias.edge` is fitted to all of them at once. THIS is the
 // pin that the fit still holds: lines drawn the way the canvas draws one
 // (the interpolator's step, the stamp cache, the kernel and each dab's
 // share of a stamp), measured the way the samples were.
@@ -18,8 +19,9 @@
 // from 90% to 10%, and from 254/255 to 1/255.
 //
 // ⚠️The tolerances are the fit's own residuals at landing (2026-10-25: ink
-// within 0.28 a column, bands within 0.10 and 0.28) — one law for every
-// size leaves some, and they are the room a refit has, not noise.
+// within 0.28 a column; bands within 0.15 and 0.37 since Q5's refit, 0.10
+// and 0.28 before it over 10 and 50 alone) — one law for every size leaves
+// some, and they are the room a refit has, not noise.
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -36,7 +38,9 @@ import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 
 /// Clip Studio's G펜 rows at size 10 and 50, measured 2026-10-01 by the same
-/// method (10–90% band, full band) — board I-50.
+/// method (10–90% band, full band) — board I-50 — and at 100 and 300
+/// (`参考/CSP_decode/1024_gpen`, board a-one-pixel-dab-drops-out-by-where-it-lies
+/// Q5, 2026-10-25).
 const _clipStudio = {
   10: {
     BrushAntiAlias.low: (tenToNinety: 0.79, full: 1.28),
@@ -49,6 +53,19 @@ const _clipStudio = {
     BrushAntiAlias.low: (tenToNinety: 0.87, full: 1.49),
     BrushAntiAlias.medium: (tenToNinety: 1.22, full: 2.25),
     BrushAntiAlias.high: (tenToNinety: 1.69, full: 3.02),
+  },
+  // Q5 (2026-10-25): near-level strokes, so a column plays a row's part —
+  // the edge drifts through every sub-pixel phase along the stroke, and its
+  // place in each column is a local fit of the half-coverage crossings.
+  100: {
+    BrushAntiAlias.low: (tenToNinety: 0.98, full: 1.53),
+    BrushAntiAlias.medium: (tenToNinety: 1.82, full: 2.72),
+    BrushAntiAlias.high: (tenToNinety: 1.94, full: 3.43),
+  },
+  300: {
+    BrushAntiAlias.low: (tenToNinety: 1.17, full: 1.60),
+    BrushAntiAlias.medium: (tenToNinety: 1.86, full: 2.64),
+    BrushAntiAlias.high: (tenToNinety: 2.47, full: 3.69),
   },
 };
 
@@ -132,41 +149,44 @@ double _ink(BrushAntiAlias step, double size) {
   return sum / count;
 }
 
-const _side = 200;
-
-/// A straight G-pen line at -62° ([_laid]), its alpha row by row.
+/// A straight G-pen line at -62° ([_laid]), its alpha row by row on a
+/// square canvas that holds its middle rows clear of its caps — 200 a side
+/// up to size 50.
 List<int> _line(BrushAntiAlias step, {double size = 10}) {
+  final reach = math.max(60.0, size * 0.8);
+  final side = math.max(200, (2 * (0.883 * reach + size / 2) + 20).ceil());
   BrushDab at(double t) {
     const angle = -62.0 * math.pi / 180.0;
     return _gPen(
       step,
       size,
-      _side / 2 + t * math.cos(angle) + 0.137,
-      _side / 2 + t * math.sin(angle) + 0.291,
+      side / 2 + t * math.cos(angle) + 0.137,
+      side / 2 + t * math.sin(angle) + 0.291,
     );
   }
 
-  final surface = _laid(at(-60), at(60), _side, _side);
+  final surface = _laid(at(-reach), at(reach), side, side);
   return [
-    for (var y = 0; y < _side; y += 1)
-      for (var x = 0; x < _side; x += 1)
+    for (var y = 0; y < side; y += 1)
+      for (var x = 0; x < side; x += 1)
         (surfacePixelRgba(surface, x, y) ?? 0) & 0xFF,
   ];
 }
 
-/// The edge profile — mean coverage against the distance outward from each
-/// row's half-coverage crossing, both sides, over the middle of the line —
-/// and the median width at half coverage.
+/// The edge profile of a line [_line] drew — mean coverage against the
+/// distance outward from each row's half-coverage crossing, both sides,
+/// over the middle of the line — and the median width at half coverage.
 ({Map<int, double> profile, double width}) _profile(List<int> alpha) {
   const bin = 0.125;
   const sinTheta = 0.8829475928589269; // sin 62°
+  final side = math.sqrt(alpha.length).round();
   final sum = <int, double>{};
   final count = <int, int>{};
   final widths = <double>[];
-  for (var y = 70; y <= 130; y += 1) {
-    final row = alpha.sublist(y * _side, (y + 1) * _side);
+  for (var y = side ~/ 2 - 30; y <= side ~/ 2 + 30; y += 1) {
+    final row = alpha.sublist(y * side, (y + 1) * side);
     final inked = [
-      for (var x = 0; x < _side; x += 1)
+      for (var x = 0; x < side; x += 1)
         if (row[x] > 0) x,
     ];
     if (inked.isEmpty) continue;
@@ -230,10 +250,12 @@ void main() {
         final p = _profile(_line(step, size: size.toDouble())).profile;
         final tenToNinety = _crossing(p, 0.1) - _crossing(p, 0.9);
         final full = _crossing(p, 1 / 255) - _crossing(p, 254 / 255);
-        // Landed 2026-10-25 at 0.87/1.34 · 1.07/1.92 · 1.29/2.30 (size 10)
-        // and 0.89/1.36 · 1.19/2.14 · 1.71/2.74 (size 50).
-        expect(tenToNinety, closeTo(target.tenToNinety, 0.12));
-        expect(full, closeTo(target.full, 0.3));
+        // Landed 2026-10-25 (Q5's refit) at 0.87/1.34 · 1.08/1.97 ·
+        // 1.29/2.29 (size 10), 0.90/1.36 · 1.32/2.32 · 1.66/2.65 (50),
+        // 0.94/1.51 · 1.67/2.71 · 2.09/3.26 (100) and 1.05/1.84 · 1.81/2.85
+        // · 2.45/3.74 (300).
+        expect(tenToNinety, closeTo(target.tenToNinety, 0.16));
+        expect(full, closeTo(target.full, 0.4));
       });
     }
   }

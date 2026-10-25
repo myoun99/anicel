@@ -1,19 +1,14 @@
 /// The edge an anti-alias step gives an analytic round tip
 /// ([BrushAntiAlias.edge]): a ramp [width] wide, [widthPerRadius] wider a
-/// pixel of radius, ending [inset] inside the rim, the inset in full from a
-/// radius of [insetReach] up.
+/// pixel of radius up to a radius of [widthReach], ending [inset] inside
+/// the rim, the inset in full from a radius of [insetReach] up.
 typedef BrushTipEdge = ({
   double width,
   double widthPerRadius,
+  double widthReach,
   double inset,
   double insetReach,
 });
-
-/// ⚠️The largest radius the anti-alias edge was fitted at — Clip Studio's
-/// size-50 lines ([BrushAntiAlias.edge]). Past it the edge stops widening:
-/// whether Clip Studio's goes on is unmeasured (board
-/// a-one-pixel-dab-drops-out-by-where-it-lies Q5, 2026-10-25).
-const double edgeSampledRadius = 25.0;
 
 /// How hard a brush's own edge lands (유저 2026-09-08, 클튜 4단).
 ///
@@ -99,20 +94,26 @@ enum BrushAntiAlias {
   /// The edge an ANALYTIC round tip is given at this step: a ramp
   /// [BrushTipEdge.width] canvas pixels wide — and
   /// [BrushTipEdge.widthPerRadius] more for each pixel of radius, up to
-  /// [edgeSampledRadius] — that ends [BrushTipEdge.inset] inside the rim,
-  /// the inset shrinking with the radius below [BrushTipEdge.insetReach],
-  /// so the finest nibs are a cone to the rim. Nothing for [none], whose
-  /// cut happens after sampling.
+  /// [BrushTipEdge.widthReach] — that ends [BrushTipEdge.inset] inside the
+  /// rim, the inset shrinking with the radius below
+  /// [BrushTipEdge.insetReach], so the finest nibs are a cone to the rim.
+  /// Nothing for [none], whose cut happens after sampling.
   ///
   /// 📏Fitted 2026-10-25 (board a-one-pixel-dab-drops-out-by-where-it-lies,
-  /// Q4 「AA 가장자리는 쌓이지 않는다」) to the user's Clip Studio G펜 lines
-  /// at sizes 1–8, 10 and 50 and every step — the ink of a line's column at
-  /// each, and the 10–90% and full edge bands at 10 and 50 — as a line
-  /// whose cross-section is ONE dab's, as the pixel's square covers it: the
-  /// edge does not pile ([tipCoverageAt] · [tipPileAt]). Clip Studio's edge
-  /// widens with the size (3단계 about 1.4px at 10, 2.0px at 50): one width
-  /// for every size left twice the error (0.95 against 0.48, summed over
-  /// the steps).
+  /// Q4 「AA 가장자리는 쌓이지 않는다」 · Q5 「100 · 300px 표본을 더 준다」) to
+  /// the user's Clip Studio G펜 lines at sizes 1–8, 10, 50, 100 and 300 and
+  /// every step — the ink of a line's column at 1–50, and the 10–90% and
+  /// full edge bands at 10, 50, 100 and 300 — as a line whose cross-section
+  /// is ONE dab's, as the pixel's square covers it: the edge does not pile
+  /// ([tipCoverageAt] · [tipPileAt]). Clip Studio's edge widens with the
+  /// size and then stops (3단계 10–90% about 1.3px at 10, 1.7 at 50, 1.9 at
+  /// 100, 2.5 at 300; 2단계 1.8 at both 100 and 300): one width for every
+  /// size left twice the error (0.95 against 0.48 over 1–50), and a width
+  /// that went on widening drew 300 far too soft — the reach is where each
+  /// step's stops.
+  /// ⚠️Past 300 is unmeasured: the edge holds its width at 300's.
+  /// ↩️Q4's fit stopped every step's widening at radius 25, the largest
+  /// sample then (total error over the four band sizes 2.56 against 0.62).
   /// ↩️I-50's ramps 0.4375 · 1.6 · 2.75 wide ENDING at the rim (2026-10-01)
   /// were fitted at sizes 10 and 50 through a stamp path where every dab
   /// piled its edge too (`a_g_pen_edge_matches_clip_studio_test`); measured
@@ -121,19 +122,33 @@ enum BrushAntiAlias {
   /// Studio's ink — and no width alone fitted every size, since a different
   /// number of dabs piled the edge at each.
   BrushTipEdge get edge => switch (this) {
-    none => (width: 0.0, widthPerRadius: 0.0, inset: 0.0, insetReach: 1.0),
-    low => (width: 0.44, widthPerRadius: 0.004, inset: 0.30, insetReach: 1.2),
+    none => (
+      width: 0.0,
+      widthPerRadius: 0.0,
+      widthReach: 0.0,
+      inset: 0.0,
+      insetReach: 1.0,
+    ),
+    low => (
+      width: 0.44,
+      widthPerRadius: 0.0045,
+      widthReach: 120.0,
+      inset: 0.30,
+      insetReach: 1.2,
+    ),
     medium => (
-      width: 0.97,
-      widthPerRadius: 0.0105,
-      inset: 0.18,
+      width: 0.95,
+      widthPerRadius: 0.019,
+      widthReach: 60.0,
+      inset: 0.17,
       insetReach: 2.0,
     ),
     high => (
       width: 1.25,
-      widthPerRadius: 0.0275,
-      inset: 0.11,
-      insetReach: 2.75,
+      widthPerRadius: 0.025,
+      widthReach: 70.0,
+      inset: 0.12,
+      insetReach: 3.0,
     ),
   };
 
