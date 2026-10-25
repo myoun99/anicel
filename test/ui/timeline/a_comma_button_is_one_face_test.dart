@@ -55,6 +55,24 @@ Widget _newComma({
   onPressed: onPressed,
 );
 
+/// The app's theme with a text button that asks more of the chain than the
+/// app's own does, so each step shows: a square corner, a word of its own
+/// under focus, and no state layer — M3's defaults answer that.
+ThemeData _askingTheme() => buildAppTheme().copyWith(
+  textButtonTheme: TextButtonThemeData(
+    style: ButtonStyle(
+      shape: WidgetStatePropertyAll(AppShapes.container(0)),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? AppColors.textDim
+            : states.contains(WidgetState.focused)
+            ? const Color(0xFFE0A030)
+            : AppColors.text,
+      ),
+    ),
+  ),
+);
+
 const _boundary = ValueKey<String>('boundary');
 const _button = ValueKey<String>('button');
 
@@ -79,10 +97,11 @@ Future<void> _pump(
   WidgetTester tester,
   Widget button, {
   double scale = 1,
+  ThemeData? theme,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
-      theme: buildAppTheme(),
+      theme: theme ?? buildAppTheme(),
       home: MediaQuery(
         data: MediaQueryData(textScaler: TextScaler.linear(scale)),
         child: Material(
@@ -152,11 +171,13 @@ Future<_Reading> _read(
   required bool enabled,
   String label = '3',
   double scale = 1,
+  ThemeData? theme,
 }) async {
   await _pump(
     tester,
     make(label: label, onPressed: enabled ? () {} : null),
     scale: scale,
+    theme: theme,
   );
   final box = tester.renderObject<RenderBox>(find.byKey(_button));
   final center = tester.getCenter(find.byKey(_button));
@@ -235,13 +256,16 @@ void main() {
         FocusHighlightStrategy.automatic,
   );
 
-  for (final (enabled, label, scale) in [
-    (true, '3', 1.0),
-    (true, 'N', 1.0),
-    (false, '3', 1.0),
-    (true, '1', 1.5),
+  for (final (enabled, label, scale, theme) in [
+    (true, '3', 1.0, null),
+    (true, 'N', 1.0, null),
+    (false, '3', 1.0, null),
+    (true, '1', 1.5, null),
+    (true, '3', 1.0, _askingTheme),
+    (false, '3', 1.0, _askingTheme),
   ]) {
-    testWidgets('a ${enabled ? 'live' : 'dead'} 「$label」 at ${scale}x looks, '
+    testWidgets('a ${enabled ? 'live' : 'dead'} 「$label」 at ${scale}x'
+        '${theme == null ? '' : ', under a theme that asks more,'} looks, '
         'measures, points and says as the TextButton did', (tester) async {
       final semantics = tester.ensureSemantics();
       final old = await _read(
@@ -250,6 +274,7 @@ void main() {
         enabled: enabled,
         label: label,
         scale: scale,
+        theme: theme?.call(),
       );
       final now = await _read(
         tester,
@@ -257,6 +282,7 @@ void main() {
         enabled: enabled,
         label: label,
         scale: scale,
+        theme: theme?.call(),
       );
 
       expect(now.size, old.size);

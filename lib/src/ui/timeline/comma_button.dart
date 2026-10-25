@@ -35,10 +35,11 @@ import '../widgets/keyboard_press.dart';
 /// traced as a path) — at most 5 of 255, measured.
 ///
 /// ⛔The word's colour is read for the states a build knows — disabled, and
-/// the keyboard's focus. The hover and the press live in the face and are
-/// not asked: no step of the foreground answers them (`styleFrom` builds it
-/// from `ButtonStyleButton.defaultColor`, enabled or disabled) — pinned by
-/// the same test.
+/// the focus. The hover and the press live in the face and are not asked:
+/// no step of the foreground answers them in the app's theme (`styleFrom`
+/// builds it from `ButtonStyleButton.defaultColor`, enabled or disabled) —
+/// pinned by the same test, which also holds the face to a theme that asks
+/// more of the chain than the app's does.
 class CommaButton extends StatefulWidget {
   const CommaButton({
     super.key,
@@ -90,7 +91,9 @@ class _CommaButtonState extends State<CommaButton> with KeyboardPress {
     final focus = keyboardFocus;
     final states = <WidgetState>{
       if (widget.onPressed == null) WidgetState.disabled,
-      if (focus == IconButtonFocus.shown) WidgetState.focused,
+      // Any focus, as the TextButton's states said it — only the focus
+      // LAYER waits for the keyboard ([KeyboardPress.keyboardFocus]).
+      if (focus != IconButtonFocus.away) WidgetState.focused,
     };
     final ink = IconButtonInk.textButton(context);
     final theme = TextButtonTheme.of(context).style;
