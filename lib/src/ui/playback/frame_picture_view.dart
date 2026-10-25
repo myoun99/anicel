@@ -239,10 +239,11 @@ final class _LandingAsItWillBe {
     // as far past it as the display reads ([rectTheDisplayReads]), and
     // finds there the texels the picture holds. ↩️Held only over what it
     // shows, a pixel at its edge read its edge texel again where the
-    // picture beside it holds what lies past — 🔬up to 3/255 at 20% over
-    // line art of no period (Impeller tester, 2026-10-25, F-465 again).
-    // The ⛔ that kept no margin was measured on line art of period 8,
-    // which every level from 1/8 down averages flat.
+    // picture beside it holds what lies past — 🔬up to 8/255 down its edge
+    // at 20% under opaque line art of no period (Impeller tester,
+    // 2026-10-25, F-465 again). The ⛔ that kept no margin was measured on
+    // translucent line art of period 8, which every level from 1/8 down
+    // averages flat.
     final within = rectTheDisplayReads(
       patch.rect,
       displayScale,
