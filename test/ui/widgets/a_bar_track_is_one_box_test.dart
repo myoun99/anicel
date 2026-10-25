@@ -204,6 +204,7 @@ void main() {
     await tester.pumpWidget(at(0.5));
     final box = tester.renderObject<RenderBox>(find.byKey(trackKey));
     final before = laidOut;
+    final half = await pixels(tester);
 
     await tester.pumpWidget(at(0.7));
 
@@ -216,6 +217,39 @@ void main() {
       reason: 'the fill moved',
     );
     expect(laidOut, before, reason: 'a fill is a paint, never a layout');
+    final moved = await pixels(tester);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(at(0.7));
+    expect(
+      moved,
+      allOf(isNot(half), await pixels(tester)),
+      reason: 'and the screen shows it — the track asked to be painted again',
+    );
+  });
+
+  testWidgets('a bar that goes dead dims its frame on the screen', (
+    tester,
+  ) async {
+    Widget at({required bool enabled}) => host(
+      FieldSliderTrack(
+        axis: Axis.horizontal,
+        onExtent: (_) {},
+        frame: FieldSlider.frameOf(18, enabled: enabled),
+        fill: fill,
+        shape: AppShapes.container(FieldSlider.radiusFor(18)),
+        child: acrossBox(Axis.horizontal, 18, child: writing),
+      ),
+      axis: Axis.horizontal,
+    );
+    await tester.pumpWidget(at(enabled: true));
+    final live = await pixels(tester);
+
+    await tester.pumpWidget(at(enabled: false));
+    final dimmed = await pixels(tester);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(at(enabled: false));
+
+    expect(dimmed, allOf(isNot(live), await pixels(tester)));
   });
 
   testWidgets('a bar mounts its track as one box — no frame, clip or '
