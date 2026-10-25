@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
@@ -128,10 +127,14 @@ Future<Shot> shotOf(WidgetTester tester, GlobalKey screen) async {
   return shot!;
 }
 
-/// Each pixel [a] and [b] show differently, where and how.
-List<String> differences(Shot a, Shot b) => [
+/// Each pixel [a] and [b] show differently — more than [by] apart in a
+/// channel — where and how.
+List<String> differences(Shot a, Shot b, {int by = 0}) => [
   for (var at = 0; at < a.rgba.length; at += 4)
-    if (!listEquals(a.rgba.sublist(at, at + 4), b.rgba.sublist(at, at + 4)))
+    if ([
+      for (var channel = at; channel < at + 4; channel += 1)
+        (a.rgba[channel] - b.rgba[channel]).abs(),
+    ].any((apart) => apart > by))
       '(${at ~/ 4 % a.width}, ${at ~/ 4 ~/ a.width}): '
           '${a.rgba.sublist(at, at + 4)} → ${b.rgba.sublist(at, at + 4)}',
 ];

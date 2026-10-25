@@ -199,15 +199,13 @@ class _LayerStackPaintPass {
     // intersection is empty in both, nothing intersects the screen, and
     // drawing nothing is pixel-identical on it.
     //
-    // 🚨Grown by what the display reads past it ([rectTheDisplayReads]):
-    // the buffer is resampled as the frame's one picture is, so it holds
-    // what the picture holds a texel past the view and lies on the grid of
-    // the levels read. ↩️Cut at the view, a stroke's step drawn as it
-    // stands under its patch's clip framed the patch in a grey line at
-    // 50% and shifted the ink inside it off the picture's chain (F-465).
-    _visibleCanvasRect = pasteboardRect.intersect(
-      rectTheDisplayReads(visibleRect, _displayScale),
-    );
+    // ⛔Not grown by what the display reads past the view: the buffer's
+    // rect is put on the levels' grid where it is decided
+    // ([_composeDisplayBuffer]), and grown here as well the two answered
+    // one question — 🔬either alone kept a stroke's step at 25% on a page
+    // of line art cut by the view's edge to the byte, and neither showed
+    // anything the other did not (Impeller tester, 2026-10-25, F-465).
+    _visibleCanvasRect = pasteboardRect.intersect(visibleRect);
     if (_visibleCanvasRect.isEmpty) {
       canvas.restore();
       return;
@@ -1118,8 +1116,10 @@ class _LayerStackPaintPass {
     // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
     // pair that disagree by a fraction of a pixel would resample the buffer
     // a second time and undo the point of having it. Whole texels of every
-    // level the display reads, too: the buffer's chain halves on the grid
-    // the frame's one picture's does ([rectTheDisplayReads]).
+    // level the display reads, too ([levelsReadAt]): the buffer's chain
+    // halves on the grid the frame's one picture's does. ↩️Cut where the
+    // view cut it, a stroke's step drawn as it stands under its patch's
+    // clip read its ink off another chain than the picture's at 25% (F-465).
     final rect = wholeLevelPixelsOutward(bounds, levelsReadAt(_displayScale));
     final width = rect.width.round();
     final height = rect.height.round();

@@ -165,13 +165,13 @@ final class _DrawnAsItStands {
   final List<_Patching> patching = [];
 }
 
-/// What of an image is drawn where: [src] of [image] over [rect].
-typedef _Laid = ({ui.Rect rect, ui.Image image, ui.Rect src});
+/// What is drawn where: [image] over [rect].
+typedef _Laid = ({ui.Rect rect, ui.Image image});
 
 /// A picture's landing patches ([FramePicture.landing]) as a display that
 /// reads the picture's chain shows them ([levelsReadAt]): each over as far
 /// as the display reads past it ([rectTheDisplayReads]), from an image of
-/// the picture with the patches up to it laid in at 100%, as far again —
+/// the picture with the patches up to it laid in at 100% there —
 /// a chain halved over what the picture's own will hold once the patch is
 /// in every level of it. Where the display reads no level the patch is
 /// drawn as it is: nothing past it is read, nor any chain.
@@ -224,7 +224,7 @@ final class _LandingAsItWillBe {
   }
 
   /// The last of [upTo] as it shows: over what the display reads past it,
-  /// from [image] with every one of [upTo] laid in at 100% as far again.
+  /// from [image] with every one of [upTo] laid in at 100% there.
   static _Laid _laidOf(
     FramePicture picture,
     ui.Image image,
@@ -233,38 +233,32 @@ final class _LandingAsItWillBe {
   ) {
     final patch = upTo.last;
     if (levelsReadAt(displayScale) == 0) {
-      return (
-        rect: patch.rect,
-        image: patch.image,
-        src: _whole(patch.image),
-      );
+      return (rect: patch.rect, image: patch.image);
     }
+    // ⛔No margin past it: 🔬an image read as far again past what it shows
+    // drew nothing a cut one did not (Impeller and Skia testers, a stroke
+    // on line art at 50%, 25% and from 50% to 12.5%, 2026-10-25).
     final rect = rectTheDisplayReads(
       patch.rect,
-      displayScale,
-    ).intersect(picture.extent);
-    final read = rectTheDisplayReads(
-      rect,
       displayScale,
     ).intersect(picture.extent);
     final recorded = picturedReads([
       (
         image: image,
-        from: read.shift(-picture.extent.topLeft),
-        to: Offset.zero & read.size,
+        from: rect.shift(-picture.extent.topLeft),
+        to: Offset.zero & rect.size,
       ),
       for (final laid in upTo)
         (
           image: laid.image,
           from: _whole(laid.image),
-          to: laid.rect.shift(-read.topLeft),
+          to: laid.rect.shift(-rect.topLeft),
         ),
     ]);
     try {
       return (
         rect: rect,
-        image: recorded.toImageSync(read.width.round(), read.height.round()),
-        src: rect.shift(-read.topLeft),
+        image: recorded.toImageSync(rect.width.round(), rect.height.round()),
       );
     } finally {
       recorded.dispose();
@@ -908,13 +902,7 @@ class _FramePicturePainter extends CustomPainter {
     }
     _lay(canvas, image, picture.extent);
     for (final laid in landing) {
-      _lay(
-        canvas,
-        laid.image,
-        laid.rect,
-        src: laid.src,
-        blendMode: BlendMode.src,
-      );
+      _lay(canvas, laid.image, laid.rect, blendMode: BlendMode.src);
     }
     if (landing.isNotEmpty) {
       canvas.restore();
@@ -925,12 +913,11 @@ class _FramePicturePainter extends CustomPainter {
     Canvas canvas,
     ui.Image image,
     Rect at, {
-    Rect? src,
     BlendMode blendMode = BlendMode.srcOver,
   }) => drawOnTheDisplay(
     canvas,
     image,
-    src ?? Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+    Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
     at,
     viewport: viewport,
     devicePixelRatio: devicePixelRatio,
