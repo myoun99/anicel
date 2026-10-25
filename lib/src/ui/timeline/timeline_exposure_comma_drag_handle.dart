@@ -332,7 +332,8 @@ const TimelineBlockFace blockEdgeGripOnPaper = (
 /// colour with its row ([blockEdgeGripColor]); and a hover on an empty
 /// block, which goes full on what that block shows — the ground — so the
 /// ladder (「반투명 먹」, quiet at rest and full on hover) still reads there.
-/// ⚠️The hover is this lane's reading of the ladder, not the user's.
+/// 🗣️I-129-Q2 (유저 2026-10-26 「올리면 진하게(지금)」) kept that hover:
+/// ↩️it was the lane's own reading of the ladder until then.
 Color timelineBlockGripColor(BlockEdgeGripInk ink, TimelineBlockFace on) {
   final mark = blockEdgeGripColor(ink, ground: on.paper);
   if (ink == BlockEdgeGripInk.dragging) {
