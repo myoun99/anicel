@@ -258,7 +258,7 @@ typedef StoredRow = ({CutFrameCompositeLayer layer, int? tint});
 /// into the picture ([movedSince]).
 ///
 /// The extent is what the buffer covers with the whole pasteboard in view:
-/// the page and every row's content.
+/// every row's content, and the page where the frame paints its paper.
 ///
 /// 🚨[FrameDrawing.outside] IS NOTHING, and the picture holds what the
 /// buffer holds past the paper — what the rows lay over no paper, as they
