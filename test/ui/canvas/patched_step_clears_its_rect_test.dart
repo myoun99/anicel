@@ -10,6 +10,12 @@
 // same stroke drawn as it stands, byte for byte. ↩️The patches went into
 // the canvas's display buffer, until a canvas that stands patched its
 // strokes into the frame's one picture (one-picture-per-frame ②-5a).
+//
+// The writes are Flutter GPU's: the picture holds the steps only where
+// the GPU wrote them, so this runs in the `gpu` tag's batch.
+@Tags(['gpu'])
+library;
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -158,7 +164,7 @@ void main() {
       await lendBothClocks(tester, rounds: 2);
     }
 
-    final gpu = WritesNeverLand();
+    final gpu = WritesLand();
     addTearDown(gpu.letAllThrough);
     final patched = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(patched.dispose);
@@ -187,8 +193,7 @@ void main() {
             'frame drawn as it stands',
       );
       gpu.letAllThrough();
-      await tester.runAsync(() => landing!);
-      await tester.pump();
+      await inThePicture(tester, landing);
     }
 
     await step(
@@ -198,11 +203,6 @@ void main() {
     await step(
       [dabAt(2), dabAt(5, sequence: 1)],
       DirtyRegion.fromXYWH(x: 3, y: 2, width: 5, height: 5),
-    );
-    expect(
-      patched.peek(shown)!.landing,
-      isNotEmpty,
-      reason: 'LIVENESS: the steps\' own texels are drawn over the picture',
     );
     final afterPatch = await shotOf(tester, screen);
 
@@ -220,5 +220,5 @@ void main() {
           'the dirty rect is cleared before its repaint — the first dab, '
           'drawn again over its own previous frame, would read darker',
     );
-  });
+  }, skip: noFlutterGpu != null);
 }

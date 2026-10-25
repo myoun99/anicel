@@ -241,19 +241,21 @@ const _keepers =
 /// (`var _thisFrame = <Object, ui.Image>{}`), where a field stands: the top
 /// level, and the bodies of the classes and mixins ([_typesIn]). A local of
 /// a top-level function stands two spaces in as a member does, and is in
-/// neither.
+/// neither. A picture type of its own type arguments is one too
+/// (`Map<K, _Entry<K>>` — the frame picture store's, 2026-10-26: made
+/// generic, its entries fell out of the census).
 Iterable<String> _imageKeepersIn(String source, String pictures) sync* {
   final typed =
       '(?:$_keepers)<'
       r'[^;=]*\b(?:'
       '$pictures'
-      r')\??>+\s+(\w+)\s*[=;]';
+      r')(?:<[^;=]*?>)?\??>+\s+(\w+)\s*[=;]';
   final literal =
       r'(\w+)\s*=\s*(?:'
       '$_keepers'
       r')?<[^;]*\b(?:'
       '$pictures'
-      r')\??>\s*[{\[(]';
+      r')(?:<[^;]*?>)?\??>\s*[{\[(]';
   final declared = '(?:late )?(?:(?:final )?$typed|(?:final |var )$literal)';
   final member = RegExp('^  (?:static )?$declared', multiLine: true);
   final topLevel = RegExp('^$declared', multiLine: true);
@@ -454,16 +456,10 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
       'one compose\'s picture, in pieces past the side (piecesOver): its '
       'holder keeps and counts them as it did the one image',
-  'lib/src/ui/playback/frame_picture_store.dart → _landing':
-      'one picture\'s patches on their way into it, the entry\'s own — of '
-      '_entries (estimatedBytes sums them)',
   'lib/src/ui/playback/frame_picture_store.dart → waiting':
-      'the landing patches no batch has taken yet: the very images of '
-      '_landing, counted there',
-  'lib/src/ui/playback/frame_picture_store.dart → levelsDue':
-      'the landing patches whose base is in and whose levels are not: the '
-      'very images of _landing, counted there',
-  'lib/src/ui/playback/frame_picture_store.dart → levelsDueAsOne':
-      'landing patches laid again as one at the cap: the very images of '
-      '_landing, counted there',
+      'a patch\'s texels from its render to the write that takes them, a '
+      'batch at a time, let go of once written (_writeWaiting) — a write\'s '
+      'round trip, never drawn: ↩️billed with their picture while they were '
+      'drawn over it until its levels were in, up to 64 at a time (F-465, '
+      '2026-10-26)',
 };

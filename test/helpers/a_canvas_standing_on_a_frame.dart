@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
+import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -19,6 +20,8 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+
+import 'settle_async.dart';
 
 /// What a screen shows, row by row.
 typedef Shot = ({Uint8List rgba, int width});
@@ -139,10 +142,9 @@ List<String> differences(Shot a, Shot b, {int by = 0}) => [
           '${a.rgba.sublist(at, at + 4)} → ${b.rgba.sublist(at, at + 4)}',
 ];
 
-/// A GPU whose writes never come back: every patch stays drawn over its
-/// picture ([FramePicture.landing]), so what shows once it lands is the
-/// patch's own texels.
-class WritesNeverLand implements FramePictureGpu {
+/// A GPU whose renders wait their turn where asked ([holdsRenders]) — what
+/// it does with a write is its kind's: [WritesNeverLand], [WritesLand].
+abstract class RendersHeld implements FramePictureGpu {
   /// Whether every render waits its turn ([letOneThrough]): a step stays on
   /// its way into the picture, none of its texels there. ⛔Not left to the
   /// test's raster: it renders a patch before the next paint, and the
@@ -175,7 +177,11 @@ class WritesNeverLand implements FramePictureGpu {
     }
     return picture.toImage(width, height);
   }
+}
 
+/// A GPU whose writes never come back: every patch stays on its way into
+/// its picture, and the picture shows what it was.
+class WritesNeverLand extends RendersHeld {
   @override
   Object? hold(ui.Image image) => image;
 
@@ -192,4 +198,57 @@ class WritesNeverLand implements FramePictureGpu {
   @override
   Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) =>
       Completer<bool>().future;
+}
+
+/// The app's own writes into a frame's picture ([FlutterGpuFramePictures]):
+/// a step seen on its way into the picture, then in it.
+///
+/// Flutter GPU's, so Impeller's alone: a pin on it carries the `gpu` tag
+/// and skips where there is none to write with ([noFlutterGpu]).
+class WritesLand extends RendersHeld {
+  final FlutterGpuFramePictures _gpu = FlutterGpuFramePictures();
+
+  @override
+  Object? hold(ui.Image image) => _gpu.hold(image);
+
+  @override
+  int levelsOf(Object held) => _gpu.levelsOf(held);
+
+  @override
+  Future<bool> writeBase(Object held, List<BaseWrite> writes) =>
+      _gpu.writeBase(held, writes);
+
+  @override
+  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) =>
+      _gpu.writeLevels(held, run, spans);
+}
+
+/// Why this runner cannot write into a frame's picture, or null when it can.
+final String? noFlutterGpu = () {
+  try {
+    gpu.gpuContext;
+    return null;
+  } on Exception catch (error) {
+    return 'needs Impeller with Flutter GPU — run with '
+        '`flutter test --enable-impeller --enable-flutter-gpu`: $error';
+  }
+}();
+
+/// Waits for [landing] — a patch or a move a store answers for
+/// (`FramePictureStore.landingOf`) — to be in its picture, and pumps the
+/// paint after it.
+///
+/// ⚠️Both clocks ([settleAsync]), not `runAsync` alone: the store's chain
+/// runs in the test's pumped zone, and a write in it comes back from the
+/// GPU in real time — awaited inside `runAsync`, the chain never moved on.
+Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
+  expect(landing, isNotNull, reason: '⛔premise: on its way into a picture');
+  var landed = false;
+  unawaited(landing!.then((_) => landed = true));
+  expect(
+    await settleAsync(tester, () => landed),
+    isTrue,
+    reason: 'LIVENESS: it is in the picture',
+  );
+  await tester.pump();
 }

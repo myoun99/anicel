@@ -5,10 +5,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
-import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../helpers/poll_until.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
 
 /// 🚨★★★A PATCHED PICTURE IS THE PICTURE LAID WITH THE PATCH IN IT — at
 /// every level of its mip chain, which is what a zoomed-out view draws.
@@ -63,9 +62,10 @@ void main() {
         store.patch(from: 'before', to: 'after', rect: patch, draw: withPatch),
         isTrue,
       );
-      await store.settled();
+      // Answered the moment every level holds it: what a screen shows
+      // under that key from then on is the picture alone.
+      await store.landingOf('after');
       expect(store.peek('after'), same(patched));
-      expect(patched.landing, isEmpty);
 
       final fresh = await store.lay('fresh', (
         extent: extent,
@@ -90,7 +90,7 @@ void main() {
       }
       store.dispose();
     },
-    skip: _noFlutterGpu,
+    skip: noFlutterGpu,
   );
 
   test(
@@ -128,7 +128,7 @@ void main() {
           isTrue,
         );
       }
-      await store.settled();
+      await store.landingOf('${strokes.length}');
       expect(store.peek('${strokes.length}'), same(patched));
 
       final fresh = await store.lay('fresh', (
@@ -147,127 +147,9 @@ void main() {
       }
       store.dispose();
     },
-    skip: _noFlutterGpu,
-  );
-
-  test(
-    'patches laid as one at the cap show what they were drawn over the '
-    'picture, and land as the picture laid with them all',
-    () async {
-      final store = FramePictureStore<String>(
-        levelsQuiet: const Duration(days: 1),
-        levelsWaitAtMost: 2,
-      );
-      const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
-      const strokes = [
-        (ui.Rect.fromLTWH(480, 490, 61, 50), ui.Color(0xFFFFEE00)),
-        (ui.Rect.fromLTWH(601, 703, 45, 70), ui.Color(0xFF20C040)),
-        (ui.Rect.fromLTWH(530, 470, 33, 64), ui.Color(0xFF8020C0)),
-      ];
-      void Function(ui.Canvas) upTo(int count) => (canvas) {
-        frame(canvas);
-        for (final (rect, colour) in strokes.take(count)) {
-          canvas.drawRect(rect, ui.Paint()..color = colour);
-        }
-      };
-      Future<FramePicture> fresh(int count) async => (await store.lay(
-        'fresh $count',
-        (
-          extent: extent,
-          outside: const ui.Color(0xFFFFFFFF),
-          draw: upTo(count),
-        ),
-      ))!;
-      final patched = (await store.lay('0', (
-        extent: extent,
-        outside: const ui.Color(0xFFFFFFFF),
-        draw: frame,
-      )))!;
-      for (var index = 0; index < 2; index += 1) {
-        store.patch(
-          from: '$index',
-          to: '${index + 1}',
-          rect: strokes[index].$1,
-          draw: upTo(index + 1),
-        );
-      }
-      final spanning = strokes[0].$1.expandToInclude(strokes[1].$1);
-      expect(
-        await pollUntil(
-          () =>
-              patched.landing.length == 1 &&
-              patched.landing.single.rect.contains(spanning.topLeft) &&
-              patched.landing.single.rect.contains(
-                spanning.bottomRight - const ui.Offset(1, 1),
-              ),
-        ),
-        isTrue,
-        reason: 'the two laid as one',
-      );
-      expect(
-        _mostApart(
-          await _shown(patched),
-          (await _levels((await fresh(2)).image)).first,
-        ),
-        lessThanOrEqualTo(1),
-        reason: 'the picture with the one over it is the frame with both',
-      );
-
-      store.patch(from: '2', to: '3', rect: strokes[2].$1, draw: upTo(3));
-      await store.settled();
-      expect(patched.landing, isEmpty);
-      final want = await _levels((await fresh(3)).image);
-      final got = await _levels(patched.image);
-      for (var level = 0; level < want.length; level += 1) {
-        expect(
-          _mostApart(got[level], want[level]),
-          lessThanOrEqualTo(1),
-          reason: 'level $level',
-        );
-      }
-      store.dispose();
-    },
-    skip: _noFlutterGpu,
+    skip: noFlutterGpu,
   );
 }
-
-/// [picture] as a 100% view draws it: its image, each of its landing
-/// patches over its place with `BlendMode.src`.
-Future<Uint8List> _shown(FramePicture picture) async {
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder)
-    ..drawImage(picture.image, ui.Offset.zero, ui.Paint());
-  for (final patch in picture.landing) {
-    canvas.drawImageRect(
-      patch.image,
-      ui.Rect.fromLTWH(
-        0,
-        0,
-        patch.image.width.toDouble(),
-        patch.image.height.toDouble(),
-      ),
-      patch.rect.shift(-picture.extent.topLeft),
-      ui.Paint()..blendMode = ui.BlendMode.src,
-    );
-  }
-  final drawn = recorder.endRecording();
-  final image = await drawn.toImage(picture.image.width, picture.image.height);
-  drawn.dispose();
-  final bytes = (await image.toByteData())!.buffer.asUint8List();
-  image.dispose();
-  return bytes;
-}
-
-/// Why this runner cannot write into a picture, or null when it can.
-final String? _noFlutterGpu = () {
-  try {
-    gpu.gpuContext;
-    return null;
-  } on Exception catch (error) {
-    return 'needs Impeller with Flutter GPU — run with '
-        '`flutter test --enable-impeller --enable-flutter-gpu`: $error';
-  }
-}();
 
 /// [image] at every level of its chain, as a zoomed-out view draws it:
 /// at 1/2^k under `FilterQuality.medium`.

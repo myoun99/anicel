@@ -149,7 +149,14 @@ final int deepestLevelACanvasReads = levelsReadAt(CanvasViewport.minZoom);
 
 /// [extent] out to whole texels of [deepestLevelACanvasReads] — the grid a
 /// frame's picture lies on (`FramePictureStore`), and the display buffer
-/// that draws the frame as it stands beside it.
+/// that draws the frame as it stands in its place.
+///
+/// 🔬Still so with nothing drawn beside the picture (F-465, 2026-10-26):
+/// the screen draws a frame as it stands until its picture is there, and
+/// wherever no patch can follow a change, and goes back and forth between
+/// the two — off this grid they were apart by up to 15/255 at 25%, 20%,
+/// 15% and 10% where the view cuts the page or shows its corner, and
+/// turned at 33% (Impeller tester).
 ///
 /// 🚨★ONE GRID FOR EVERY IMAGE OF A FRAME THE DISPLAY READS A CHAIN OF
 /// (F-465 again, 유저 실기 Windows 2026-10-25: 「10%에서 발생하는거 확인 …
@@ -176,13 +183,15 @@ ui.Rect frameGridOutward(ui.Rect extent) =>
 /// frame's one picture holds there, and a device pixel inside [rect] reads
 /// nothing past it.
 ///
-/// 🚨What lets a frame drawn as it stands under a clip show, inside the
-/// clip, what its one picture shows (F-465, 유저 2026-10-25: 「줌 75%에서는
-/// 발생 안하는거같고, 50%에서는 매번」 — a stroke's step at 50% framed in a
-/// grey line for a frame). Cut at the clip, the buffer's edge was a
-/// texel boundary the picture does not have: its pixel half covered over
-/// what lies under the view, and the pixels inside it sampled off a chain
-/// laid on another grid.
+/// 🚨What lets a frame drawn as it stands show, at the view's edge, what
+/// its one picture shows — the screen goes back and forth between the two
+/// ([frameGridOutward]). ↩️It grew a stroke's step drawn as it stood under
+/// its patch's clip (F-465, 유저 2026-10-25: 「줌 75%에서는 발생
+/// 안하는거같고, 50%에서는 매번」 — a stroke's step at 50% framed in a grey
+/// line for a frame), until the step was written into the picture: cut at
+/// the clip, the buffer's edge was a texel boundary the picture does not
+/// have, its pixel half covered over what lies under the view, and the
+/// pixels inside it sampled off a chain laid on another grid.
 ///
 /// ⛔Not grown where the display reads no level (100% and up): nothing
 /// past [rect] is read there, and 🔬a canvas pixel more laid a line of
@@ -293,14 +302,6 @@ ui.Rect displayEdgeRect(
 /// 🚨ONE BLIT for every image the display lays over the view — the
 /// canvas's display buffer, and a frame's one picture (`FramePictureView`):
 /// two spellings of it would be two answers to how a frame is shown.
-///
-/// Shown over [within] alone where it is named — a rect [src] lies over
-/// [dst] by, past [dst]'s edge by its edge texels — cut on the pixel grid
-/// ([cutOnThePixelGrid]) whatever the zoom: an image laid in over another
-/// one's texels, whose every pixel by the cut is the one image's or the
-/// other's, never a blend of the two (F-465 — a frame's landing patch over
-/// its picture). The texels past [within] are still read where a pixel
-/// inside it reads them.
 void drawOnTheDisplay(
   ui.Canvas canvas,
   ui.Image image,
@@ -308,8 +309,6 @@ void drawOnTheDisplay(
   ui.Rect dst, {
   required CanvasViewport viewport,
   required double devicePixelRatio,
-  ui.BlendMode blendMode = ui.BlendMode.srcOver,
-  ui.Rect? within,
 }) {
   final filterQuality = filterQualityForDisplayScale(
     displayScaleOf(viewport.zoom, devicePixelRatio),
@@ -317,40 +316,24 @@ void drawOnTheDisplay(
   // The image's edge IS the canvas's edge on screen, cut by the same law
   // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
   // view it is one more texel boundary, decided by pixel centres, not a
-  // blended line. One laid in over another's texels is cut on the grid
-  // at any zoom.
-  if (within == null && displayEdgeAntiAliased(viewport, devicePixelRatio)) {
+  // blended line.
+  if (displayEdgeAntiAliased(viewport, devicePixelRatio)) {
     canvas.drawImageRect(
       image,
       src,
       dst,
-      ui.Paint()
-        ..filterQuality = filterQuality
-        ..blendMode = blendMode,
+      ui.Paint()..filterQuality = filterQuality,
     );
-    return;
+  } else {
+    drawImageRectOnThePixelGrid(
+      canvas,
+      image,
+      src,
+      dst,
+      filterQuality: filterQuality,
+      pixelRatio: devicePixelRatio,
+    );
   }
-  drawImageRectOnThePixelGrid(
-    canvas,
-    image,
-    within == null ? src : _mappedInto(src, dst, within),
-    within ?? dst,
-    filterQuality: filterQuality,
-    pixelRatio: devicePixelRatio,
-    blendMode: blendMode,
-  );
-}
-
-/// What of [src] lands on [part] of [dst], where [src] is laid over [dst].
-ui.Rect _mappedInto(ui.Rect src, ui.Rect dst, ui.Rect part) {
-  final sx = src.width / dst.width;
-  final sy = src.height / dst.height;
-  return ui.Rect.fromLTRB(
-    src.left + (part.left - dst.left) * sx,
-    src.top + (part.top - dst.top) * sy,
-    src.left + (part.right - dst.left) * sx,
-    src.top + (part.bottom - dst.top) * sy,
-  );
 }
 
 /// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel
@@ -366,7 +349,6 @@ void drawImageRectOnThePixelGrid(
   ui.Rect dst, {
   required ui.FilterQuality filterQuality,
   required double pixelRatio,
-  ui.BlendMode blendMode = ui.BlendMode.srcOver,
 }) {
   final sx = dst.width / src.width;
   final sy = dst.height / src.height;
@@ -388,8 +370,7 @@ void drawImageRectOnThePixelGrid(
       cutOnThePixelGrid(canvas, dst, pixelRatio),
       ui.Paint()
         ..shader = shader
-        ..isAntiAlias = false
-        ..blendMode = blendMode,
+        ..isAntiAlias = false,
     );
   } finally {
     // The drawing holds the shader from the draw on, as it holds an image.

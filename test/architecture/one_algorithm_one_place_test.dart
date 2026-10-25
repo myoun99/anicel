@@ -578,8 +578,14 @@ import '../../tool/refactor/clone_scan.dart';
 /// presses the board in hand merges the three.
 /// 🔬Measured on the lane over master (`f1e746c91`, at 91): this one
 /// added, none gone.
+/// 92 → 91 (2026-10-26, F-465 picture-written-at-once — a step is written
+/// into its picture's base and every level before it answers). The pair
+/// laid at 90 → 91 is gone: no patch waits for a quiet turn, so neither
+/// the cap's lay nor the levels' landing is left to take one.
+/// 🔬Measured on the lane over master (`12f2dbcfd`, at 86): none added,
+/// that one gone.
 void main() {
-  const ceiling = 92;
+  const ceiling = 91;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

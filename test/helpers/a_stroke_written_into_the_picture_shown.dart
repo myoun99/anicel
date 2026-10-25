@@ -36,40 +36,33 @@ import 'settle_async.dart';
 
 /// 🚨A STROKE'S STEP IS WRITTEN INTO THE PICTURE THE CANVAS SHOWS
 /// (one-picture-per-frame ②-4): where it lands is patched into the frame's
-/// one picture, and until the patch's texels are in, that rect is drawn as
-/// it stands — by the walk ALONE. What the screen shows while the step lands,
-/// once it has landed, and drawn as it stands whole is one picture, pixel for
-/// pixel, through a pan, a zoom in and out and a device's ratio.
+/// one picture, and the screen shows that picture ALONE — as it was while
+/// the step is on its way into it, and with the step once its texels are
+/// in every level of it, pixel for pixel what the frame drawn as it stands
+/// shows, through a pan, a zoom in and out and a device's ratio (F-465, 유저
+/// 채팅 2026-10-26: 「그럼 그냥 바로 바로쓰기로 바꾸고, 잔재들 없애고」).
 ///
-/// 🚨Zoomed out, the display reads past a patch, and the picture's chain
-/// (F-465, 유저 2026-10-25: 「50%에서는 매번」 — a stroke's step framed in a
-/// grey line for a frame, and the ink under it 「진해졌다가 돌아왔다가」):
-/// what the step is drawn by while it lands reaches past it by what the
-/// display reads there, and once it has, it shows by the chain the
-/// picture's own will hold.
+/// The ink is translucent and no paper lies under it, so anything drawn
+/// OVER the picture shows its ink twice.
 ///
-/// The ink is translucent and no paper lies under it, so a rect drawn as it
-/// stands OVER the picture shows its ink twice.
-///
-/// A step shows at the paint after it, with no build between: the rect it
-/// lands in, and the whole frame as it stands where the step goes past the
-/// picture (a picture does not grow).
+/// A step shows at the paint after its texels are in, with no build
+/// between; where it goes past the picture (a picture does not grow), the
+/// whole frame as it stands shows at the paint after it.
 ///
 /// A stroke that lands moves the picture to the frame's next key where it
-/// stands, and the next stroke is written into it there — its steps shown
-/// while the picture is still on its way. Another screen showing the frame
-/// sees nothing change as the stroke lands.
+/// stands, and the next stroke is written into it there. Another screen
+/// showing the frame sees nothing change as the stroke lands.
 ///
-/// The step is seen at each of [views] on a screen of each of [ratios],
-/// and once it has landed at each of [thenAt] too — the view zoomed with
-/// its texels in and the picture's levels not yet: a cel of [inkAt] (one
-/// ink where it is null) under a stroke at [strokeAt], each pixel shown
-/// as it stands to within [apartBy] of a channel, on a page of [page]. The
-/// pins of no view come [withThePinsOfNoView].
+/// The step is seen at each of [views] on a screen of each of [ratios]: a
+/// cel of [inkAt] (one ink where it is null) under a stroke at [strokeAt],
+/// each pixel shown as it stands to within [apartBy] of a channel, on a page
+/// of [page]. The pins of no view come [withThePinsOfNoView].
+///
+/// The writes are Flutter GPU's ([WritesLand]): the files that call this
+/// carry the `gpu` tag, and on a runner with none every pin skips.
 void aStrokeIsWrittenIntoThePictureShown({
   required Map<String, CanvasViewport> views,
   required List<double> ratios,
-  Map<String, CanvasViewport> thenAt = const {},
   List<int> Function(int x, int y)? inkAt,
   Rect strokeAt = const Rect.fromLTRB(4, 4, 12, 12),
   CanvasSize page = const CanvasSize(width: 32, height: 32),
@@ -77,6 +70,7 @@ void aStrokeIsWrittenIntoThePictureShown({
   bool withThePinsOfNoView = true,
   bool skip = false,
 }) {
+  final skipped = skip || noFlutterGpu != null;
   const tileSize = 16;
   final canvasSize = page;
   const viewSize = Size(48, 40);
@@ -196,20 +190,40 @@ void aStrokeIsWrittenIntoThePictureShown({
   Future<Shot> onScreen(WidgetTester tester, [GlobalKey? boundary]) =>
       shotOf(tester, boundary ?? screen);
 
-  final seen = [
-    for (final ratio in ratios)
-      for (final (thenName, then) in <(String, CanvasViewport?)>[
-        ('', null),
-        for (final MapEntry(:key, :value) in thenAt.entries)
-          (' then $key', value),
-      ])
-        (ratio: ratio, thenName: thenName, then: then),
-  ];
+  /// What a view of its own shows of the frame, the rows [live] draws in
+  /// hand before it takes a picture: the frame drawn as it stands.
+  Future<Shot> asItStands(
+    WidgetTester tester,
+    LayerFrameImageCache images, {
+    required FramePictureKey picture,
+    required CanvasViewport view,
+    required BitmapSurfacePainter live,
+  }) async {
+    final standing = FramePictureStore<FramePictureKey>(
+      gpu: WritesNeverLand(),
+    );
+    addTearDown(standing.dispose);
+    await pump(
+      tester,
+      runOf(images, standing),
+      key: const ValueKey(1),
+      view: view,
+      live: live,
+    );
+    expect(
+      await settleAsync(tester, () => standing.bytesOf(picture) != null),
+      isTrue,
+      reason: 'LIVENESS: its picture is made too',
+    );
+    await lendBothClocks(tester, rounds: 2);
+    return onScreen(tester);
+  }
 
   for (final MapEntry(key: name, value: view) in views.entries) {
-    for (final (:ratio, :thenName, :then) in seen) {
-      testWidgets('🚨$name$thenName (ratio $ratio): the screen shows one '
-          'picture while a step lands, once it has, and drawn as it stands', (
+    for (final ratio in ratios) {
+      testWidgets('🚨$name (ratio $ratio): the screen shows the frame\'s one '
+          'picture — as it was while a step is on its way into it, and with '
+          'it once it is in, as the frame drawn as it stands shows', (
         tester,
       ) async {
         tester.view.devicePixelRatio = ratio;
@@ -228,7 +242,7 @@ void aStrokeIsWrittenIntoThePictureShown({
           showTransparentBackground: false,
           lineage: lineage,
         );
-        final gpu = WritesNeverLand();
+        final gpu = WritesLand();
         final store = FramePictureStore<FramePictureKey>(gpu: gpu);
         addTearDown(store.dispose);
         final run = runOf(images, store);
@@ -267,76 +281,42 @@ void aStrokeIsWrittenIntoThePictureShown({
           reason: 'LIVENESS: the step is on its way into the picture, not '
               'the frame drawn as it stands',
         );
-        final landing = await onScreen(tester);
         expect(
-          store.peek(picture)!.landing,
+          differences(before, await onScreen(tester)),
           isEmpty,
-          reason: 'LIVENESS: none of the step\'s texels are there yet',
-        );
-        expect(
-          differences(before, landing),
-          isNotEmpty,
-          reason: 'the step shows at the paint after it — not once its '
-              'texels are in',
+          reason: 'while the step is on its way, the screen shows the '
+              'picture as it was — nothing drawn over it',
         );
 
         gpu.letAllThrough();
-        await tester.runAsync(() => step!);
-        await tester.pump();
+        await inThePicture(tester, step);
+        final shown = await onScreen(tester);
         expect(
-          store.peek(picture)!.landing,
+          differences(before, shown),
           isNotEmpty,
-          reason: 'LIVENESS: the step\'s own texels are drawn over the picture',
+          reason: 'LIVENESS: the step shows at the paint after it is in',
         );
-        if (then != null) {
-          await pump(tester, run, key: const ValueKey(0), view: then, live: live);
-          expect(
-            store.peek(picture)!.landing,
-            isNotEmpty,
-            reason: '⛔premise: zoomed with the picture\'s levels not yet in',
-          );
-        }
-        final landed = await onScreen(tester);
 
-        // A view of its own, the step in hand before it takes a picture:
-        // the frame drawn as it stands.
-        final standing = FramePictureStore<FramePictureKey>(
-          gpu: WritesNeverLand(),
-        );
-        addTearDown(standing.dispose);
-        await pump(
-          tester,
-          runOf(images, standing),
-          key: const ValueKey(1),
-          view: then ?? view,
-          live: live,
-        );
         expect(
-          await settleAsync(tester, () => standing.bytesOf(picture) != null),
-          isTrue,
-          reason: 'LIVENESS: its picture is made too',
-        );
-        await lendBothClocks(tester, rounds: 2);
-        final asItStands = await onScreen(tester);
-
-        if (then == null) {
-          expect(
-            differences(asItStands, landing, by: apartBy),
-            isEmpty,
-            reason: 'while the step lands its rect is drawn as it stands, '
-                'once',
-          );
-        }
-        expect(
-          differences(asItStands, landed, by: apartBy),
+          differences(
+            await asItStands(
+              tester,
+              images,
+              picture: picture,
+              view: view,
+              live: live,
+            ),
+            shown,
+            by: apartBy,
+          ),
           isEmpty,
-          reason: 'once it has, the picture holds what the rows show — at '
-              'the zoom it is shown at',
+          reason: 'once it is in, the picture shows what the frame drawn as '
+              'it stands shows — at every level the view reads',
         );
 
         await tester.pumpWidget(const SizedBox());
         overlay.dispose();
-      }, skip: skip);
+      }, skip: skipped);
     }
   }
 
@@ -364,7 +344,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    final store = FramePictureStore<FramePictureKey>(gpu: WritesLand());
     addTearDown(store.dispose);
     final run = runOf(images, store);
     final picture = run.pictures.keyOfStack(nodes, frame);
@@ -397,38 +377,28 @@ void aStrokeIsWrittenIntoThePictureShown({
       isNotEmpty,
       reason: 'the step shows at the paint after it',
     );
-
-    // A view of its own, the step in hand: the frame as it stands.
-    final standing = FramePictureStore<FramePictureKey>(
-      gpu: WritesNeverLand(),
-    );
-    addTearDown(standing.dispose);
-    await pump(
-      tester,
-      runOf(images, standing),
-      key: const ValueKey(1),
-      view: view,
-      live: live,
-    );
     expect(
-      await settleAsync(tester, () => standing.bytesOf(picture) != null),
-      isTrue,
-      reason: 'LIVENESS: its picture is made too',
-    );
-    await lendBothClocks(tester, rounds: 2);
-    expect(
-      differences(await onScreen(tester), stepped),
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: picture,
+          view: view,
+          live: live,
+        ),
+        stepped,
+      ),
       isEmpty,
       reason: 'drawn as it stands, at once',
     );
 
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
-  });
+  }, skip: skipped);
 
   testWidgets('🚨the next stroke\'s step while the picture moves to the '
-      'frame\'s next key shows at the paint after it, and still as the move '
-      'lands — not once its texels are in', (tester) async {
+      'frame\'s next key is written into it there, and shows once it is in '
+      '— not left out until the move lands', (tester) async {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const lineage = 'a-step-while-it-moves';
@@ -445,7 +415,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final gpu = WritesNeverLand();
+    final gpu = WritesLand();
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
@@ -470,15 +440,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
     ]);
     await tester.pump();
-    expect(
-      await settleAsync(
-        tester,
-        () => store.peek(before)!.landing.isNotEmpty,
-      ),
-      isTrue,
-      reason: '⛔premise: the stroke is written into the picture',
-    );
-    await tester.pump();
+    await inThePicture(tester, store.landingOf(before));
 
     // The pen lifts while the stroke's last step is on its way: the
     // picture's move to the frame's next key waits behind it, and what the
@@ -527,6 +489,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       reason: 'LIVENESS: the picture is still on its way to its next key',
     );
 
+    final moving = store.landingOf(after);
     final second = TileCoord(x: 1, y: 1);
     overlay.showResultTiles([
       PromotedStrokeTile(
@@ -536,66 +499,34 @@ void aStrokeIsWrittenIntoThePictureShown({
       ),
     ]);
     await tester.pump();
-    final whileItMoves = await onScreen(tester);
-
-    // The move lands — what waits before it let through a render at a
-    // time — and the patches behind it, the next stroke's last, still wait.
-    while (store.peek(after) == null) {
-      expect(
-        await settleAsync(
-          tester,
-          () => gpu.rendersWaiting > 0 || store.peek(after) != null,
-        ),
-        isTrue,
-        reason: 'LIVENESS: the picture answers to the frame\'s next key',
-      );
-      if (store.peek(after) == null) {
-        gpu.letOneThrough();
-      }
-    }
+    final secondStep = store.landingOf(after);
     expect(
-      await settleAsync(tester, () => gpu.rendersWaiting == 1),
-      isTrue,
-      reason: '⛔premise: the patches behind the move — the next stroke\'s '
-          'last — are still on their way, a render at a time',
-    );
-    await tester.pump();
-    final onceMoved = await onScreen(tester);
-
-    // A view of its own, the stroke in hand: the frame as it stands.
-    final standing = FramePictureStore<FramePictureKey>(
-      gpu: WritesNeverLand(),
-    );
-    addTearDown(standing.dispose);
-    await pump(
-      tester,
-      runOf(images, standing),
-      key: const ValueKey(1),
-      view: view,
-      live: painterOfTheCel(),
-    );
-    expect(
-      await settleAsync(tester, () => standing.bytesOf(after) != null),
-      isTrue,
-      reason: 'LIVENESS: its picture is made too',
-    );
-    await lendBothClocks(tester, rounds: 2);
-    final asItStands = await onScreen(tester);
-    expect(
-      differences(asItStands, whileItMoves),
-      isEmpty,
-      reason: 'the step shows while the picture moves',
-    );
-    expect(
-      differences(asItStands, onceMoved),
-      isEmpty,
-      reason: 'and still once it has moved, its texels not yet in',
+      secondStep,
+      isNot(same(moving)),
+      reason: 'the next stroke\'s step is on its way into the picture under '
+          'the key it moves to, behind the move',
     );
 
     gpu.letAllThrough();
+    await inThePicture(tester, secondStep);
+    expect(
+      differences(
+        await asItStands(
+          tester,
+          images,
+          picture: after,
+          view: view,
+          live: painterOfTheCel(),
+        ),
+        await onScreen(tester),
+      ),
+      isEmpty,
+      reason: 'the step shows once it is in the picture it moved',
+    );
+
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
-  });
+  }, skip: skipped);
 
   testWidgets('🚨a stroke that lands changes nothing on another screen '
       'showing its frame — not the frame without the stroke for a moment', (
@@ -617,7 +548,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final gpu = WritesNeverLand();
+    final gpu = WritesLand();
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
@@ -705,14 +636,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     final drawnTile = tileOf(first, stroke, strokeAt.contains);
     overlay.showResultTiles([PromotedStrokeTile(first, drawnTile, 1)]);
     await tester.pump();
-    expect(
-      await settleAsync(
-        tester,
-        () => store.peek(before)!.landing.isNotEmpty,
-      ),
-      isTrue,
-      reason: '⛔premise: the stroke is written into the picture',
-    );
+    await inThePicture(tester, store.landingOf(before));
     final drawn = await otherPaints();
     expect(
       differences(shown, drawn),
@@ -739,7 +663,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.reset();
     final letGo = store.landingOf(before);
     if (letGo != null) {
-      await tester.runAsync(() => letGo);
+      await inThePicture(tester, letGo);
     }
     gpu.holdsRenders = true;
     addTearDown(gpu.letAllThrough);
@@ -754,7 +678,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     gpu.letAllThrough();
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
-  });
+  }, skip: skipped);
 
   testWidgets('🚨a stroke that lands moves the picture it was written into to '
       'the frame\'s next key — not laid anew — and the next stroke is written '
@@ -775,7 +699,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       showTransparentBackground: false,
       lineage: lineage,
     );
-    final gpu = WritesNeverLand();
+    final gpu = WritesLand();
     final store = _LaysCounted(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOf(images, store);
@@ -800,15 +724,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
     ]);
     await tester.pump();
-    expect(
-      await settleAsync(
-        tester,
-        () => store.peek(before)!.landing.isNotEmpty,
-      ),
-      isTrue,
-      reason: '⛔premise: the stroke is written into the picture',
-    );
-    await tester.pump();
+    await inThePicture(tester, store.landingOf(before));
 
     // The pen lifts: the stroke is the cel's, and the pen's row is drawn
     // by a painter of what it holds now.
@@ -868,9 +784,10 @@ void aStrokeIsWrittenIntoThePictureShown({
           'key — not the frame drawn as it stands a step at a time',
     );
 
+    gpu.letAllThrough();
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
-  });
+  }, skip: skipped);
 }
 
 /// A store that says which keys were laid.

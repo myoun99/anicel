@@ -46,9 +46,12 @@ typedef StackRun = ({Listenable landings, FramePictures pictures});
 ///
 /// 🚨A CANVAS THAT STANDS WRITES ITS LIVE ROWS INTO THE PICTURE ([live],
 /// ②-4): each change of theirs is patched in where it lands
-/// ([StackedFrame.movedSince] → [FramePictureStore.patch]), drawn as it
-/// stands over the picture until its texels are in; a stroke that lands
-/// moves the picture to the frame's next key ([FramePictureStore.move]).
+/// ([StackedFrame.movedSince] → [FramePictureStore.patch]) and shown once
+/// its texels are in the picture; a stroke that lands moves the picture to
+/// the frame's next key ([FramePictureStore.move]). ↩️Drawn as it stood
+/// over the picture until then, a step and its picture were two images of
+/// one frame, and their edges drew apart (F-465 — the store's write has
+/// the measurement).
 /// Where a change cannot be told by where it lands — a pose or a spreading
 /// effect on the row, a float or a lift in hand, past the picture — the
 /// frame is drawn as it stands until its key moves.
@@ -139,150 +142,20 @@ class FramePictureView extends StatefulWidget {
 }
 
 /// What the view draws: a frame's picture — the view's own handle on its
-/// image, with what the store lays over it while patches land — or a frame
-/// drawn as it stands.
+/// image — or a frame drawn as it stands.
 typedef _Shown = ({FramePicture picture, ui.Image image})?;
 
-/// A patch on its way into the picture shown: its rect drawn as it stands
-/// until [landed].
-typedef _Patching = ({ui.Rect rect, Future<void> landed});
-
-/// What of a frame is drawn as it stands where its picture is shown: all of
-/// it ([whole]), or the rects of the patches on their way into the picture
-/// ([patching]).
+/// Whether a frame is drawn as it stands where its picture is shown
+/// ([whole]).
 ///
 /// 🚨READ AT EACH PAINT, not handed to the painter at a build: a change of
-/// the live rows moves it with no build — a stroke's step patched in, a
-/// change no patch can follow. Handed at the build before, the step did not
-/// show until its texels were in the picture, and a frame gone to be drawn
-/// as it stands showed the picture without the change until the next build.
+/// the live rows moves it with no build — a change no patch can follow.
+/// Handed at the build before, a frame gone to be drawn as it stands showed
+/// the picture without the change until the next build.
 final class _DrawnAsItStands {
   /// The live rows moved where no patch can follow: the frame is drawn as
   /// it stands until its key moves.
   bool whole = false;
-
-  /// The patches on their way into the picture shown.
-  final List<_Patching> patching = [];
-}
-
-/// What is drawn where: [image] over [rect], shown over [within].
-typedef _Laid = ({ui.Rect rect, ui.Image image, ui.Rect within});
-
-/// A picture's landing patches ([FramePicture.landing]) as a display that
-/// reads the picture's chain shows them ([levelsReadAt]): each over as far
-/// as the display reads past it ([rectTheDisplayReads]), from an image of
-/// the picture with the patches up to it laid in at 100% there —
-/// a chain halved over what the picture's own will hold once the patch is
-/// in every level of it. Where the display reads no level the patch is
-/// drawn as it is: nothing past it is read, nor any chain.
-///
-/// 🚨F-465 (유저 2026-10-25: 「그려져있는 스트로크가 진해졌다가
-/// 돌아왔다가」): drawn by its own chain, a patch read its edge where the
-/// picture's chain reads past it, and the picture beside it read the
-/// patch's place from levels holding what the rows were. 🔬Line art under
-/// a stroke's step at 50% on a 1.0 screen showed up to 40/255 lighter
-/// (63 → 103), 60 at 25%, until the levels landed after the stroke.
-final class _LandingAsItWillBe {
-  final Map<LandingPatch, ({int levels, _Laid laid})> _made = {};
-
-  /// [picture]'s landing patches, in their order, as they show over
-  /// [image] — the view's handle on it — at [displayScale].
-  List<_Laid> of(FramePicture picture, ui.Image image, double displayScale) {
-    final landing = picture.landing;
-    final levels = levelsReadAt(displayScale);
-    _made.removeWhere((patch, made) {
-      final gone = made.levels != levels || !landing.contains(patch);
-      if (gone) {
-        _letGoOf(patch, made.laid);
-      }
-      return gone;
-    });
-    return [
-      for (final (index, patch) in landing.indexed)
-        (_made[patch] ??= (
-          levels: levels,
-          laid: _laidOf(
-            picture,
-            image,
-            landing.take(index + 1).toList(),
-            displayScale,
-          ),
-        )).laid,
-    ];
-  }
-
-  /// Lets go of every image made here.
-  void forget() {
-    _made.forEach((patch, made) => _letGoOf(patch, made.laid));
-    _made.clear();
-  }
-
-  static void _letGoOf(LandingPatch patch, _Laid laid) {
-    if (!identical(laid.image, patch.image)) {
-      laid.image.dispose();
-    }
-  }
-
-  /// The last of [upTo] as it shows: over what the display reads past it,
-  /// from [image] with every one of [upTo] laid in at 100% there.
-  static _Laid _laidOf(
-    FramePicture picture,
-    ui.Image image,
-    List<LandingPatch> upTo,
-    double displayScale,
-  ) {
-    final patch = upTo.last;
-    if (levelsReadAt(displayScale) == 0) {
-      return (rect: patch.rect, image: patch.image, within: patch.rect);
-    }
-    // 🚨Held as far again past what it shows: a pixel it is shown on reads
-    // as far past it as the display reads ([rectTheDisplayReads]), and
-    // finds there the texels the picture holds. ↩️Held only over what it
-    // shows, a pixel at its edge read its edge texel again where the
-    // picture beside it holds what lies past — 🔬up to 8/255 down its edge
-    // at 20% under opaque line art of no period (Impeller tester,
-    // 2026-10-25, F-465 again). The ⛔ that kept no margin was measured on
-    // translucent line art of period 8, which every level from 1/8 down
-    // averages flat.
-    //
-    // 🚨Shown on past the picture's edge where it meets it, as the step's
-    // walk is ([_FramePicturePainter._onScreen]): the picture's own edge
-    // cuts it there ([_FramePicturePainter._paintPicture]). ↩️Shown up to
-    // the edge, it was cut on the pixels' grid short of a pixel the edge
-    // crosses, which the picture covers part of — 🔬up to 13/255 down the
-    // page's edge at 20% and 15%, a stroke at its corner (Impeller tester,
-    // 2026-10-26, F-465 again).
-    final within = rectTheDisplayReads(patch.rect, displayScale);
-    final rect = rectTheDisplayReads(
-      within,
-      displayScale,
-    ).intersect(picture.extent);
-    final recorded = picturedReads([
-      (
-        image: image,
-        from: rect.shift(-picture.extent.topLeft),
-        to: Offset.zero & rect.size,
-      ),
-      for (final laid in upTo)
-        (
-          image: laid.image,
-          from: _whole(laid.image),
-          to: laid.rect.shift(-rect.topLeft),
-        ),
-    ]);
-    try {
-      return (
-        rect: rect,
-        image: recorded.toImageSync(rect.width.round(), rect.height.round()),
-        within: within,
-      );
-    } finally {
-      recorded.dispose();
-    }
-  }
-
-  static ui.Rect _whole(ui.Image image) =>
-      Offset.zero & Size(image.width.toDouble(), image.height.toDouble());
 }
 
 class _FramePictureViewState extends State<FramePictureView> {
@@ -334,11 +207,9 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// (F-130).
   LiveSurfaceTokens? _held;
 
-  /// What of the frame is drawn as it stands over the picture shown.
+  /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
 
-  /// The picture shown's landing patches as this view shows them.
-  final _LandingAsItWillBe _landingShown = _LandingAsItWillBe();
 
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
@@ -408,7 +279,6 @@ class _FramePictureViewState extends State<FramePictureView> {
     widget.run.landings.removeListener(_landed);
     _letGo(_store);
     _repaint.dispose();
-    _landingShown.forget();
     super.dispose();
   }
 
@@ -508,7 +378,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   void _take(FramePictureKey key, FramePicture there) {
     final moved = identical(there, _shown?.picture);
     final held = _held;
-    final patching = [..._standing.patching];
     final image = there.image.clone();
     _letGo(_store);
     _store.retainPin(key);
@@ -520,11 +389,8 @@ class _FramePictureViewState extends State<FramePictureView> {
       // ⛔Not let go with the key it left: what the picture holds of the
       // live rows it holds under this one, and the next stroke patches in
       // from there — let go, every stroke after the first would be drawn
-      // as it stands whole, a step at a time. Nor the patches the next
-      // stroke sent after it while it moved: their rects are drawn as
-      // they stand until their texels are in.
+      // as it stands whole, a step at a time.
       _held = held;
-      _standing.patching.addAll(patching);
       return;
     }
     _standing.whole = false;
@@ -749,12 +615,10 @@ class _FramePictureViewState extends State<FramePictureView> {
       _standing.whole = true;
       return;
     }
-    final landed = _store.landingOf(key)!;
-    final patching = (rect: rect, landed: landed);
-    _standing.patching.add(patching);
+    // Shown once its texels are in the picture, at every level.
     unawaited(
-      landed.then((_) {
-        if (_standing.patching.remove(patching) && mounted) {
+      _store.landingOf(key)!.then((_) {
+        if (mounted) {
           _repaint.value += 1;
         }
       }),
@@ -772,7 +636,6 @@ class _FramePictureViewState extends State<FramePictureView> {
     _showing = null;
     _moving = null;
     _held = null;
-    _standing.patching.clear();
   }
 
   @override
@@ -784,9 +647,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         // no row is a page the pen may be drawing on.
         asItStands: _live ?? _asItStands,
         standing: _standing,
-        landingShown: _landingShown,
         catchUp: _catchUp,
-        patchedBy: _live,
         viewport: widget.viewport,
         devicePixelRatio: EffectiveDevicePixelRatio.of(context),
         repaint: Listenable.merge([_repaint, _liveChanges]),
@@ -801,9 +662,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.shown,
     required this.asItStands,
     required this.standing,
-    required this.landingShown,
     required this.catchUp,
-    required this.patchedBy,
     required this.viewport,
     required this.devicePixelRatio,
     required Listenable repaint,
@@ -815,204 +674,63 @@ class _FramePicturePainter extends CustomPainter {
   /// ([StackedFrame.paintOnScreen]).
   final StackedFrame? asItStands;
 
-  /// What of the frame is drawn as it stands over [shown] — whole, or where
-  /// patches are on their way into it, by [patchedBy] until their texels
-  /// are in.
+  /// Whether the frame is drawn as it stands in place of [shown].
   final _DrawnAsItStands standing;
 
-  /// [shown]'s landing patches as the display shows them.
-  final _LandingAsItWillBe landingShown;
-
-  /// Puts what the live rows moved into [standing] before it is read
-  /// ([_FramePictureViewState._catchUp]).
+  /// Puts what the live rows moved into [standing] or the picture shown
+  /// before it is read ([_FramePictureViewState._catchUp]).
   final VoidCallback catchUp;
-  final StackedFrame? patchedBy;
   final CanvasViewport viewport;
   final double devicePixelRatio;
 
   @override
   void paint(Canvas canvas, Size size) {
     catchUp();
-    final screen = Offset.zero & size;
     canvas.save();
-    canvas.clipRect(screen);
+    canvas.clipRect(Offset.zero & size);
     final shown = standing.whole ? null : this.shown;
     if (shown case (:final picture, :final image)) {
-      final landing = patchedBy == null
-          ? null
-          : _onScreen(canvas, [
-              for (final patching in standing.patching) patching.rect,
-            ]);
-      // 🚨A patch still landing is drawn by the walk ALONE: the picture
-      // under it holds what the rows were, and translucent ink laid over
-      // that again — no paper under it — is the ink twice. Both sides are
-      // cut on one edge, unsmoothed, so no pixel is drawn twice or not at
-      // all.
-      if (landing != null) {
-        canvas.clipPath(
-          ui.Path.combine(
-            ui.PathOperation.difference,
-            ui.Path()..addRect(screen),
-            landing,
-          ),
-          doAntiAlias: false,
-        );
-      }
-      canvas.save();
       applyViewportTransform(
         canvas,
         viewport,
         devicePixelRatio: devicePixelRatio,
       );
       _paintPicture(canvas, picture, image);
-      canvas.restore();
-      if (landing != null) {
-        canvas.restore();
-        canvas.save();
-        canvas.clipRect(screen);
-        canvas.clipPath(landing, doAntiAlias: false);
-        _standOnScreen(canvas, size, patchedBy!);
-      }
     } else if (asItStands case final frame?) {
-      _standOnScreen(canvas, size, frame);
-    }
-    canvas.restore();
-  }
-
-  /// [rects], world rects, where the screen shows them — on the grid
-  /// [applyViewportTransform] lays the picture on — or null where there are
-  /// none.
-  ///
-  /// 🚨Each grown by what the display reads past it ([rectTheDisplayReads]):
-  /// zoomed out, a pixel beside a patch reads the picture's texels inside
-  /// it, which hold what the rows were until the patch lands. ↩️Cut at the
-  /// patch, the picture beside it read the ink the step had moved (F-465).
-  ///
-  /// 🚨And each cut on [canvas]'s pixels ([cutOnThePixelGrid]) where the
-  /// view is not turned: the picture and the walk are each clipped to their
-  /// side of this one edge, and Impeller covers a pixel an edge crosses by
-  /// what falls on each side — so a pixel it crossed showed the ink twice,
-  /// or what lies under the view. 🔬At 10%, 125% and 150% on a 1.0 screen
-  /// and 50% on a 1.25 one, up to 8/255 down the edge (Impeller tester,
-  /// 2026-10-25 — F-465 again, 유저 실기 Windows: 「10%에서 발생하는거
-  /// 확인 … 소수점배율에서 발생할거같아서」). ↩️The edge lay on the level
-  /// grid alone, which lands on whole pixels only where its texel is a
-  /// whole number of them: 50%, 25% and 12.5% on a 1.0 screen. An edge on
-  /// a pixel boundary covers each pixel on one side wholly, at any scale.
-  ui.Path? _onScreen(Canvas canvas, List<ui.Rect> rects) {
-    if (rects.isEmpty) {
-      return null;
-    }
-    final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
-    final toScreen = viewportTransformMatrix(
-      renderSnappedViewport(viewport, devicePixelRatio),
-    ).storage;
-    final shown = ui.Path();
-    for (final rect in rects) {
-      final there = (ui.Path()..addRect(rectTheDisplayReads(rect, scale)))
-          .transform(toScreen);
-      if (viewport.rotationDegrees == 0) {
-        shown.addRect(
-          cutOnThePixelGrid(canvas, there.getBounds(), devicePixelRatio),
-        );
-      } else {
-        shown.addPath(there, Offset.zero);
-      }
-    }
-    return shown;
-  }
-
-  void _standOnScreen(Canvas canvas, Size size, StackedFrame frame) =>
       frame.paintOnScreen(
         canvas,
         size,
         viewport: viewport,
         devicePixelRatio: devicePixelRatio,
       );
-
-  /// The picture as its store says it is drawn ([FramePicture]): its image
-  /// where its extent lies, the world outside it its colour, and every
-  /// patch still landing over it with `BlendMode.src` — the image and its
-  /// patches in a layer of their own, so a patch's clear texels cut
-  /// through the picture alone — each as the display shows it
-  /// ([_LandingAsItWillBe]).
-  void _paintPicture(Canvas canvas, FramePicture picture, ui.Image image) {
-    _paintOutside(canvas, picture.extent, picture.outside);
-    final landing = landingShown.of(
-      picture,
-      image,
-      displayScaleOf(viewport.zoom, devicePixelRatio),
-    );
-    if (landing.isEmpty) {
-      _lay(canvas, image, picture.extent);
-      return;
     }
-    canvas.saveLayer(picture.extent, Paint());
-    _lay(canvas, image, picture.extent);
-    // 🚨Cut where the picture's own edge is cut ([displayEdgeAntiAliased]),
-    // inside its layer — a patch is shown on past it ([_LandingAsItWillBe]).
-    // A patch laid in at the picture's edge covered all of a pixel the
-    // edge crosses, where the picture covers part of it —
-    // 🔬9/255 at the page's corner at 33% turned by 30° (Impeller tester,
-    // 2026-10-26, F-465 again). ⛔Not round the layer: there the cut came
-    // on top of the edge the picture already drew, the edge's pixels
-    // covered twice over — 🔬12/255 down the page's edge.
-    final antiAlias = displayEdgeAntiAliased(viewport, devicePixelRatio);
-    canvas.save();
-    canvas.clipRect(
-      displayEdgeRect(
-        canvas,
-        picture.extent,
-        antiAlias: antiAlias,
-        pixelRatio: devicePixelRatio,
-      ),
-      doAntiAlias: antiAlias,
-    );
-    for (final laid in landing) {
-      _lay(
-        canvas,
-        laid.image,
-        laid.rect,
-        blendMode: BlendMode.src,
-        within: laid.within,
-      );
-    }
-    canvas.restore();
     canvas.restore();
   }
 
-  void _lay(
-    Canvas canvas,
-    ui.Image image,
-    Rect at, {
-    BlendMode blendMode = BlendMode.srcOver,
-    Rect? within,
-  }) => drawOnTheDisplay(
-    canvas,
-    image,
-    Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
-    at,
-    viewport: viewport,
-    devicePixelRatio: devicePixelRatio,
-    blendMode: blendMode,
-    within: within,
-  );
-
-  void _paintOutside(Canvas canvas, Rect extent, Color outside) {
-    if (outside.a == 0) {
-      return;
+  /// The picture as its store says it is drawn ([FramePicture]): its image
+  /// where its extent lies, and the world outside it its colour.
+  void _paintPicture(Canvas canvas, FramePicture picture, ui.Image image) {
+    final extent = picture.extent;
+    if (picture.outside.a != 0) {
+      canvas.save();
+      canvas.clipRect(extent, clipOp: ui.ClipOp.difference);
+      canvas.drawPaint(Paint()..color = picture.outside);
+      canvas.restore();
     }
-    canvas.save();
-    canvas.clipRect(extent, clipOp: ui.ClipOp.difference);
-    canvas.drawPaint(Paint()..color = outside);
-    canvas.restore();
+    drawOnTheDisplay(
+      canvas,
+      image,
+      Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+      extent,
+      viewport: viewport,
+      devicePixelRatio: devicePixelRatio,
+    );
   }
 
   @override
   bool shouldRepaint(_FramePicturePainter oldDelegate) =>
       !identical(oldDelegate.shown?.image, shown?.image) ||
       !identical(oldDelegate.asItStands, asItStands) ||
-      !identical(oldDelegate.patchedBy, patchedBy) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 }

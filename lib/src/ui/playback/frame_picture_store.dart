@@ -7,38 +7,17 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
 import '../canvas/display_resample.dart'
     show frameGridOutward, wholeLevelPixelsOutward;
-import '../quiet_turns.dart';
 import 'frame_picture_gpu.dart';
 
-/// Texels on their way into a [FramePicture]: drawn over it at [rect] with
-/// `BlendMode.src` until they land, then gone from [FramePicture.landing].
-typedef LandingPatch = ({ui.Rect rect, ui.Image image});
+/// A patch's texels, rendered, on their way into its picture at [rect].
+typedef _Texels = ({ui.Rect rect, ui.Image image});
+
+/// A patch rendered — its texels, none for a move — on its way into its
+/// picture.
+typedef _Rendered<K> = ({_Patch<K> patch, ui.Image? image});
 
 /// The [from] rect of [image] drawn into the [to] rect of a raster.
-typedef PictureRead = ({ui.Image image, ui.Rect from, ui.Rect to});
-
-/// Each of [reads] — a later one in place of an earlier — recorded for one
-/// raster, under `FilterQuality.medium`: drawn at 1/2^k a side so, the GPU
-/// samples the image's own level k — the engine's halving, the one the
-/// picture's chain was made with — so a patch's levels are the very code
-/// of the levels round it, on any backend (measured on the Surface Pro
-/// 11: the levels it replaced, byte for byte, 2026-10-24). Drawn 1:1 on
-/// whole pixels, it is a copy.
-///
-/// ★ONE recording for every raster made of a picture and its patches: the
-/// store's levels, and a screen's landing patches as they will show
-/// (`FramePictureView`, F-465).
-ui.Picture picturedReads(List<PictureRead> reads) {
-  final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  final paint = ui.Paint()
-    ..filterQuality = ui.FilterQuality.medium
-    ..blendMode = ui.BlendMode.src;
-  for (final (:image, :from, :to) in reads) {
-    canvas.drawImageRect(image, from, to, paint);
-  }
-  return recorder.endRecording();
-}
+typedef _PictureRead = ({ui.Image image, ui.Rect from, ui.Rect to});
 
 /// A frame as its compositor gives it to [FramePictureStore.lay]: [draw]
 /// draws it in world coordinates over all of [extent] as the canvas's
@@ -62,25 +41,20 @@ typedef FrameDrawing = ({
 /// 개선 + 법 통일까지가 목표」): the frame composited, kept where it stands
 /// — an edit is written INTO it, never a new picture beside it.
 ///
-/// The consumer draws [image] where [extent] lies in the world, paints the
-/// world outside [extent] [outside], and draws every [landing] patch over
-/// it with `BlendMode.src` — a patch holds the picture's texels where it
-/// lies, alpha and all, so wherever one is landing the image and its
-/// patches are drawn in a layer of their own and that layer over what lies
-/// under the frame: drawn straight over it, a patch's clear texels would
-/// cut through that too.
+/// The consumer draws [image] where [extent] lies in the world and paints
+/// the world outside [extent] [outside] — nothing else: no patch is ever
+/// drawn over it.
 ///
 /// 🔁ZOOMED OUT IT IS DRAWN WITH ITS OWN MIP CHAIN — `FilterQuality.medium`
 /// at or under 50%. The engine gives every picture it rasters a whole chain
 /// (`mipLevelCount` 11 at 3840², measured), made once, when the picture is;
-/// [FramePictureStore] writes every patch into every level of it — the base
-/// at once, the levels under it once the patches pause — and the patch is
-/// drawn over it until the last level has it ([landing]), so what shows is
-/// never stale. Measured on the Surface Pro 11 (2026-10-24): drawn so, it
-/// gives the bytes of the levels it replaces at 1/2, 1/4 and 1/8 and is
-/// within 2 between them, at the cost of any image draw — where a shader
-/// reading the original every frame cost 6–24 ms a frame at 50%, and any
-/// shader paint over that area did (D7-2).
+/// [FramePictureStore] writes every patch into every level of it, at once
+/// ([FramePictureStore.patch]). Measured on the Surface Pro 11
+/// (2026-10-24): a patch's levels so written are the bytes of the levels
+/// they replace at 1/2, 1/4 and 1/8 and within 2 between them, at the cost
+/// of any image draw — where a shader reading the original every frame
+/// cost 6–24 ms a frame at 50%, and any shader paint over that area did
+/// (D7-2).
 class FramePicture {
   FramePicture._(this.image, this.extent, this.outside);
 
@@ -93,57 +67,26 @@ class FramePicture {
 
   /// The frame's colour everywhere outside [extent].
   final ui.Color outside;
-
-  final List<LandingPatch> _landing = [];
-
-  /// The patches drawn over [image] until their texels are in every level
-  /// of it, in the order they were made — a later one over an earlier.
-  List<LandingPatch> get landing => List.unmodifiable(_landing);
 }
 
 /// The frames' pictures, each under the identity of what it shows ([K]):
 /// laid whole once ([lay]), then patched where it stands ([patch]), let go
 /// of by the playback budget's one order ([enforceBudget]).
 class FramePictureStore<K extends Object> {
-  FramePictureStore({
-    FramePictureGpu? gpu,
-    QuietTurns? quietTurns,
-    Duration levelsQuiet = _levelsQuiet,
-    int levelsWaitAtMost = _levelsWaitAtMost,
-    int levelsWaitTexelsAtMost = _levelsWaitTexelsAtMost,
-  }) : _gpu = gpu ?? FlutterGpuFramePictures(),
-       _quietTurns = quietTurns ?? QuietTurns.instance,
-       _levelsQuietFor = levelsQuiet,
-       _levelsWaitingAtMost = levelsWaitAtMost,
-       _levelsWaitingTexelsAtMost = levelsWaitTexelsAtMost;
+  FramePictureStore({FramePictureGpu? gpu})
+    : _gpu = gpu ?? FlutterGpuFramePictures();
 
   final FramePictureGpu _gpu;
 
-  /// Where the levels under the base take their turn to be written
-  /// ([_landLevels]), and the patches waiting for them to be laid as one
-  /// ([_layAsOne]).
-  final QuietTurns _quietTurns;
+  final Map<K, _Entry<K>> _entries = {};
 
-  /// How long a write of the levels under the base has taken from its turn
-  /// to its landing, at the most of late.
-  final QuietSpan _levelsSpan = QuietSpan();
-
-  /// How long laying patches as one has taken from its turn to its landing.
-  final QuietSpan _asOneSpan = QuietSpan();
-
-  final Duration _levelsQuietFor;
-  final int _levelsWaitingAtMost;
-  final int _levelsWaitingTexelsAtMost;
-
-  final Map<K, _Entry> _entries = {};
-
-  /// The keys patches are moving pictures to, until the first of them has
-  /// its texels — and the moment it has.
-  final Map<K, ({_Entry entry, _Patch<K> patch})> _becoming = {};
+  /// The keys patches are moving pictures to, until the first of them is in
+  /// its picture — and the moment it is.
+  final Map<K, ({_Entry<K> entry, _Patch<K> patch})> _becoming = {};
 
   final PinCounts<K> _pins = PinCounts<K>();
 
-  Set<_Entry> get _everyEntry => {
+  Set<_Entry<K>> get _everyEntry => {
     ..._entries.values,
     for (final becoming in _becoming.values) becoming.entry,
   };
@@ -229,10 +172,10 @@ class FramePictureStore<K extends Object> {
   /// they lay with every stroke on a row above them. A patch of its own
   /// size has nothing under it to blend with and nowhere past it to reach.
   ///
-  /// The picture answers to [to] once the patch's texels are drawn, with
-  /// them [FramePicture.landing] over it; until then [from] still shows
-  /// what it was. [from] may be [to] — a stroke's next step — and a patch
-  /// may move a picture an earlier patch is still moving.
+  /// The picture answers to [to] once the patch's texels are in it, at
+  /// every level ([_written]); until then [from] still shows what it was.
+  /// [from] may be [to] — a stroke's next step — and a patch may move a
+  /// picture an earlier patch is still moving.
   ///
   /// Answers false, and lets go of [from]'s picture, where it cannot: no
   /// picture under [from], no GPU to write with, or [rect] reaching past
@@ -280,26 +223,21 @@ class FramePictureStore<K extends Object> {
     return true;
   }
 
-  /// Completes once the last patch or [move] asked for to [key] has its
-  /// texels, and [key] answers with them — null where none is on its way.
+  /// Completes once the last patch or [move] asked for to [key] is in its
+  /// picture, and [key] answers with it — null where none is on its way.
   Future<void>? landingOf(K key) => _becoming[key]?.patch.moved;
 
-  /// Answers once every patch has landed, at every level — the levels under
-  /// the base at once, not after the pause they wait for — for a caller
-  /// that must read the pictures' own texels rather than draw them with
-  /// their landing patches.
+  /// Answers once every patch asked for is in its picture.
   Future<void> settled() async {
     for (final entry in _everyEntry) {
       await entry.renders;
-      entry.levelsWanted = true;
-      entry.writes = entry.writes.then((_) => _landLevels(entry));
       await entry.writes;
     }
   }
 
-  /// The bytes the pictures and their landing patches hold, by the app's
-  /// one image estimate ([estimatedImageBytes]) — the budgets it shares are
-  /// compared in that word.
+  /// The bytes the pictures hold, by the app's one image estimate
+  /// ([estimatedImageBytes]) — the budgets it shares are compared in that
+  /// word.
   ///
   /// ⚠️The engine allocates a whole mip chain beside each, a third more
   /// than this says (measured, D7-2 2026-10-24) — as for every picture any
@@ -396,7 +334,7 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     final held = _gpu.hold(image);
-    final entry = _Entry(
+    final entry = _Entry<K>(
       FramePicture._(image, extent, lay.frame.outside),
       held: held,
       levels: held == null ? 1 : _gpu.levelsOf(held),
@@ -406,7 +344,7 @@ class FramePictureStore<K extends Object> {
     return entry.picture;
   }
 
-  Future<void> _renderPatch(_Entry entry, _Patch<K> asked) async {
+  Future<void> _renderPatch(_Entry<K> entry, _Patch<K> asked) async {
     final recorded = asked.recorded;
     final image = recorded == null
         ? null
@@ -415,222 +353,150 @@ class FramePictureStore<K extends Object> {
             asked.rect.width.toInt(),
             asked.rect.height.toInt(),
           );
-    if (identical(_becoming[asked.to]?.patch, asked)) {
-      _becoming.remove(asked.to);
-    }
     if (entry.gone) {
       image?.dispose();
-      asked.answer();
+      _arrived(entry, asked);
       return;
     }
-    // The frame `to` IS the picture with this patch over it, from the
-    // moment the patch has texels — and not a moment before.
-    if (_entries[asked.from] == entry) {
-      _entries.remove(asked.from);
-    }
-    _entries[asked.to] = entry;
-    if (image == null) {
-      // A move: nothing to lay over it.
-      asked.answer();
-      return;
-    }
-    final landing = (rect: asked.rect, image: image);
-    entry.picture._landing.add(landing);
-    entry.waiting.add(landing);
-    asked.answer();
-    entry.writes = entry.writes.then((_) => _landWaiting(entry));
+    entry.waiting.add((patch: asked, image: image));
+    entry.writes = entry.writes.then((_) => _writeWaiting(entry));
   }
 
-  /// Lands every patch that has texels and is not in yet at the BASE level,
-  /// in one write — a later patch over an earlier — and leaves the levels
-  /// under it to [_landLevels]: once patches stop coming for
-  /// [_levelsQuietFor], or at once when as much waits as may
-  /// ([_Entry.waitsAtTheMost]) after the ones not laid as one yet are
-  /// ([_layAsOne]).
+  /// Writes every patch that has texels and is not in yet into its picture
+  /// in one write ([_written]), then moves the picture to each one's key in
+  /// the order they were asked for — a [move] waiting among them too.
   ///
   /// 🔬A batch, not a write a patch (D7-2, 2026-10-24): on the Surface Pro
   /// 11 a 3840² picture took about 57 ms to land one patch — five waits on
-  /// the GPU — so a stroke patching every vsync fell 600 patches behind,
-  /// every one of them drawn over the picture each frame and held. Patches
-  /// that render while a batch lands wait for the next one.
-  ///
-  /// 🔬THE BASE AT ONCE, THE LEVELS UNDER IT ONCE THE PATCHES PAUSE (D7-2,
-  /// 2026-10-24, the Surface Pro 11, release, a 3840² frame patched every
-  /// vsync): a level under the base is written only from a buffer that a
-  /// copy out of the GPU fills, and on GLES that copy holds the raster
-  /// thread until the GPU has done everything before it. Every level with
-  /// each batch put a stroke's frames at p90 19–35 ms, 21–44% of them past
-  /// 16.7 ms (p90 4 ms at rest); the base alone, a texture copy, cost
-  /// nothing — p90 4.1–6.1 ms, 0–4 frames past 16.7 ms a 1.3 s stroke, the
-  /// levels written in the pause. Meanwhile the patches are drawn over the
-  /// picture: 64 of them drew at the cost of none (raster p90 2.0–2.6 ms).
-  /// ⛔Laying the picture again on the GPU, with no copy out: about 200 ms a
-  /// 3840² lay, a 1.3 s stroke took 32 s. ⛔The engine's `toByteData` for
-  /// the copy out: no better (0–21 frames past 16.7 ms a stroke).
-  Future<void> _landWaiting(_Entry entry) async {
+  /// the GPU — so a stroke patching every vsync fell 600 patches behind.
+  /// Patches that render while a batch is written wait for the next one.
+  Future<void> _writeWaiting(_Entry<K> entry) async {
     if (entry.waiting.isEmpty) {
       return;
     }
     final batch = List.of(entry.waiting);
     entry.waiting.clear();
-    final picture = entry.picture;
-    if (entry.gone) {
-      return;
+    final texels = <_Texels>[
+      for (final (:patch, :image) in batch)
+        if (image != null) (rect: patch.rect, image: image),
+    ];
+    var written = true;
+    try {
+      if (texels.isNotEmpty && !entry.gone) {
+        written = await _written(entry, texels);
+      }
+    } finally {
+      for (final patch in texels) {
+        patch.image.dispose();
+      }
     }
-    await _gpu.writeBase(entry.held!, [
-      for (final landing in batch)
-        (
-          source: landing.image,
-          x: _xOf(picture, landing),
-          y: _yOf(picture, landing),
-        ),
-    ]);
-    entry.levelsDue.addAll(batch);
-    entry.quiet?.cancel();
-    bool atTheMost() => entry.waitsAtTheMost(
-      patches: _levelsWaitingAtMost,
-      texels: _levelsWaitingTexelsAtMost,
-    );
-    if (atTheMost() && entry.levelsDue.length > 1) {
-      await _layAsOne(entry);
+    if (!written) {
+      // Not in the picture: no key may answer with it.
+      _letGo(entry);
     }
-    if (atTheMost()) {
-      await _landLevels(entry);
-      return;
+    for (final (:patch, image: _) in batch) {
+      _arrived(entry, patch);
     }
-    entry.quiet = Timer(_levelsQuietFor, () {
-      entry.writes = entry.writes.then((_) => _landLevels(entry));
-    });
   }
 
-  /// The patches of [_Entry.levelsDue] drawn over the picture as ONE, over
-  /// their bounds, read from the base they are in ([_readAt]): a raster on
-  /// the GPU, no copy out of it — the levels under them wait on.
+  /// Writes [batch] into [entry]'s picture — a later patch over an earlier
+  /// — at every level of it: the base, each patch's own halvings down to
+  /// the deepest patched level, and every level under that made again
+  /// whole, once for them all ([_run]). Answers whether the GPU did.
   ///
-  /// Background GPU work like the levels' write — what the picture shows
-  /// is the same with it or without it — so it takes its turn in the quiet
-  /// between held frames ([QuietTurns]). Why at the cap this and not the
-  /// levels: [_levelsWaitAtMost] has the measurement.
-  Future<void> _layAsOne(_Entry entry) async {
-    final turn = await _quietTurns.inAQuiet(
-      _asOneSpan,
-      gone: () => entry.gone,
-      due: () => entry.levelsWanted,
-    );
-    if (turn == null) {
-      return;
-    }
-    final picture = entry.picture;
-    final patches = List.of(entry.levelsDue);
-    var bounds = patches.first.rect;
-    for (final patch in patches) {
-      bounds = bounds.expandToInclude(patch.rect);
-    }
-    final image = await _readAt(
-      [
-        (
-          image: picture.image,
-          from: bounds.shift(-picture.extent.topLeft),
-          to: ui.Offset.zero & bounds.size,
-        ),
-      ],
-      bounds.width.toInt(),
-      bounds.height.toInt(),
-    );
-    if (entry.gone) {
-      image.dispose();
-      unawaited(turn.gaveUp());
-      return;
-    }
-    final one = (rect: bounds, image: image);
-    final landing = picture._landing;
-    landing.insert(landing.indexOf(patches.first), one);
-    for (final patch in patches) {
-      landing.remove(patch);
-      patch.image.dispose();
-    }
-    entry.levelsDue.clear();
-    entry.levelsDueAsOne.add(one);
-    unawaited(turn.landed());
-  }
-
-  /// Writes the levels under the base of every patch whose base is in, in
-  /// ONE copy out of the GPU: each patch's own halvings down to the deepest
-  /// patched level, a later patch over an earlier, then every level under
-  /// that made again whole, once for them all ([_run]).
+  /// 🚨★★★EVERY LEVEL WITH EVERY BATCH, AND THE PICTURE ANSWERS ONLY THEN —
+  /// the screen draws the picture and nothing over it (F-465, 유저 채팅
+  /// 2026-10-26 「그럼 그냥 바로 바로쓰기로 바꾸고, 잔재들 없애고, 최대한
+  /// 개선해보자」).
   ///
-  /// Background GPU work — the patches are drawn over the picture meanwhile
-  /// — so it takes its turn in the quiet between held frames ([QuietTurns]).
-  ///
-  /// 🚨LEVELS A CALLER WAITS FOR ARE NOT BACKGROUND WORK ([settled]): its
-  /// caller reads the picture's own texels now, so the write is due and
-  /// goes at once ([QuietTurns.inAQuiet]) — while a run plays, a turn
-  /// barely comes (브러시/렌더링 2026-10-24: 2 of 50 asked, the jobs'
-  /// lengths past the 16–32 ms between held frames).
+  /// ↩️The base went in with each batch and the levels under it waited —
+  /// for the patches to pause 200 ms, or for 64 of them or 4 Mi texels,
+  /// laid again as one at that cap, each write taking its turn in the
+  /// quiet between held frames — the patches drawn over the picture
+  /// meanwhile (D7-2, 2026-10-24). On the Surface Pro 11 (release, GLES, a
+  /// 3840² frame patched every vsync) every level with each batch had put
+  /// a stroke's frames at p90 19–35 ms, 21–44% of them past 16.7 ms: a
+  /// level under the base is written only from a buffer that a copy out of
+  /// the GPU fills, and on GLES that copy holds the raster thread until
+  /// the GPU has done everything before it — one frame 18–114 ms. The base
+  /// alone cost nothing (p90 4.1–6.1 ms). ⛔Laying the picture again on the
+  /// GPU, with no copy out: about 200 ms a 3840² lay. ⛔The engine's
+  /// `toByteData` for the copy out: no better.
+  /// But a patch drawn over its picture made two images of one frame, and
+  /// their edges drew apart — zoomed out, turned, at the page's own edge
+  /// (F-465, 유저 실기 2026-10-25) — and every fix widened the picture or
+  /// cut the patch to a grid. Written so on the main PC (2026-10-26,
+  /// Windows, GLES, profile, 1080p and 4K, 120 steps at 100% and fitted,
+  /// the two in turn in one run): raster p50 0.5–0.7 ms and p90 0.7–1.2 ms
+  /// against 0.7–1.5 and 1.2–2.3, no frame late against 0–8, every level
+  /// in at p50 5–7 ms against about 250 ms — a step showing 0–4 frames
+  /// later than drawn over (p50 1.6–7.3 ms, at most 29 ms).
   ///
   /// 🔬One copy out a write (D7-2, 2026-10-24): the levels go out end to end
   /// in one raster ([_run]); its 1,000–28,000 rows rastered in 4–144 ms on
   /// the Surface Pro 11 and held no frame doing it — the copy out did.
-  Future<void> _landLevels(_Entry entry) async {
-    entry.quiet?.cancel();
-    entry.quiet = null;
-    if (entry.levelsDueAsOne.isEmpty && entry.levelsDue.isEmpty) {
-      entry.levelsWanted = false;
-      return;
-    }
-    final turn = await _quietTurns.inAQuiet(
-      _levelsSpan,
-      gone: () => entry.gone,
-      due: () => entry.levelsWanted,
-    );
-    if (turn == null) {
-      return;
-    }
-    final due = [...entry.levelsDueAsOne, ...entry.levelsDue];
-    entry.levelsDueAsOne.clear();
-    entry.levelsDue.clear();
-    entry.levelsWanted = false;
+  Future<bool> _written(_Entry<K> entry, List<_Texels> batch) async {
     final picture = entry.picture;
+    final held = entry.held!;
+    final based = await _gpu.writeBase(held, [
+      for (final patch in batch)
+        (
+          source: patch.image,
+          x: _xOf(picture, patch.rect),
+          y: _yOf(picture, patch.rect),
+        ),
+    ]);
+    if (!based || entry.gone) {
+      return based;
+    }
     final patched = entry.patchedLevels;
     final below = entry.levels - 1 - patched;
-    final deepest = below > 0 ? await _deepestPatchedLevel(entry, due) : null;
+    final deepest = below > 0 ? await _deepestPatchedLevel(entry, batch) : null;
     final run = await _run([
-      for (final landing in due)
+      for (final patch in batch)
         (
-          image: landing.image,
+          image: patch.image,
           level: 0,
-          x: _xOf(picture, landing),
-          y: _yOf(picture, landing),
+          x: _xOf(picture, patch.rect),
+          y: _yOf(picture, patch.rect),
           count: patched,
         ),
       if (deepest != null)
         (image: deepest, level: patched, x: 0, y: 0, count: below),
     ]);
     deepest?.dispose();
-    var landed = false;
     final image = run.image;
-    if (image != null && !entry.gone) {
-      landed = await _gpu.writeLevels(entry.held!, image, run.spans);
+    if (image == null) {
+      return true;
     }
-    image?.dispose();
-    // Off the picture only once every level has it — a zoomed-out view
-    // would otherwise show the old texels for as long as the deep levels
-    // take.
-    for (final landing in due) {
-      picture._landing.remove(landing);
-      landing.image.dispose();
+    try {
+      return entry.gone || await _gpu.writeLevels(held, image, run.spans);
+    } finally {
+      image.dispose();
     }
-    unawaited(landed ? turn.landed() : turn.gaveUp());
+  }
+
+  /// [asked] has its texels in [entry]'s picture, or never will: its key
+  /// answers with the picture, if it is still held, and whoever waits for
+  /// it is answered.
+  void _arrived(_Entry<K> entry, _Patch<K> asked) {
+    if (identical(_becoming[asked.to]?.patch, asked)) {
+      _becoming.remove(asked.to);
+    }
+    if (!entry.gone) {
+      if (_entries[asked.from] == entry) {
+        _entries.remove(asked.from);
+      }
+      _entries[asked.to] = entry;
+    }
+    asked.answer();
   }
 
   /// The picture's deepest patched level with [batch] in it: the level as
   /// the picture holds it, each patch drawn over its place there — the
   /// reading its own write lays at that level ([_readAt]) — whole, so the
   /// levels under it are its halvings.
-  Future<ui.Image> _deepestPatchedLevel(
-    _Entry entry,
-    List<LandingPatch> batch,
-  ) {
+  Future<ui.Image> _deepestPatchedLevel(_Entry<K> entry, List<_Texels> batch) {
     final picture = entry.picture;
     final level = entry.patchedLevels;
     final width = math.max(1, picture.image.width >> level);
@@ -642,11 +508,11 @@ class FramePictureStore<K extends Object> {
         from: _whole(picture.image),
         to: ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
       ),
-      for (final landing in batch)
+      for (final patch in batch)
         (
-          image: landing.image,
-          from: _whole(landing.image),
-          to: _scaled(landing.rect.shift(-picture.extent.topLeft), scale),
+          image: patch.image,
+          from: _whole(patch.image),
+          to: _scaled(patch.rect.shift(-picture.extent.topLeft), scale),
         ),
     ], width, height);
   }
@@ -662,7 +528,7 @@ class FramePictureStore<K extends Object> {
   Future<({ui.Image? image, List<RunSpan> spans})> _run(
     List<({ui.Image image, int level, int x, int y, int count})> sources,
   ) async {
-    final reads = <PictureRead>[];
+    final reads = <_PictureRead>[];
     final spans = <RunSpan>[];
     var at = 0;
     for (final (:image, :level, :x, :y, :count) in sources) {
@@ -688,9 +554,24 @@ class FramePictureStore<K extends Object> {
     return (image: await _readAt(reads, _runWidth, rows), spans: spans);
   }
 
-  /// Each of [reads] in one [width] x [height] raster ([picturedReads]).
-  Future<ui.Image> _readAt(List<PictureRead> reads, int width, int height) =>
-      _rendered(picturedReads(reads), width, height);
+  /// Each of [reads] — a later one in place of an earlier — in one [width]
+  /// x [height] raster, under `FilterQuality.medium`: drawn at 1/2^k a side
+  /// so, the GPU samples the image's own level k — the engine's halving,
+  /// the one the picture's chain was made with — so a patch's levels are
+  /// the very code of the levels round it, on any backend (measured on the
+  /// Surface Pro 11: the levels it replaced, byte for byte, 2026-10-24).
+  /// Drawn 1:1 on whole pixels, it is a copy.
+  Future<ui.Image> _readAt(List<_PictureRead> reads, int width, int height) {
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    final paint = ui.Paint()
+      ..filterQuality = ui.FilterQuality.medium
+      ..blendMode = ui.BlendMode.src;
+    for (final (:image, :from, :to) in reads) {
+      canvas.drawImageRect(image, from, to, paint);
+    }
+    return _rendered(recorder.endRecording(), width, height);
+  }
 
   /// [recorded] rastered, and let go of — rendered or not.
   Future<ui.Image> _rendered(ui.Picture recorded, int width, int height) async {
@@ -701,7 +582,7 @@ class FramePictureStore<K extends Object> {
     }
   }
 
-  void _letGo(_Entry entry) {
+  void _letGo(_Entry<K> entry) {
     entry.gone = true;
     _entries.removeWhere((_, value) => value == entry);
     _becoming.removeWhere((_, value) {
@@ -712,15 +593,7 @@ class FramePictureStore<K extends Object> {
       return true;
     });
     // The GPU may still be writing it: let go once its writes are done.
-    unawaited(
-      entry.writes.whenComplete(() {
-        entry.picture.image.dispose();
-        for (final patch in entry.picture._landing) {
-          patch.image.dispose();
-        }
-        entry.picture._landing.clear();
-      }),
-    );
+    unawaited(entry.writes.whenComplete(entry.picture.image.dispose));
   }
 }
 
@@ -779,76 +652,20 @@ ui.Rect _scaled(ui.Rect rect, double scale) => ui.Rect.fromLTRB(
   rect.bottom * scale,
 );
 
-/// How long patches stop coming before the levels under their base are
-/// written ([FramePictureStore._landLevels]) — a stroke's pause, not the
-/// time between its dabs.
-///
-/// 🔬200 ms and 64 measured together (D7-2, 2026-10-24, the Surface Pro 11,
-/// a 3840² frame patched every vsync): the levels' one copy out of the GPU
-/// held one frame 18–114 ms (11 ms most times, more while the GPU was
-/// busy), so a long stroke has one such frame every [_levelsWaitAtMost]
-/// patches — 0–4 a 1.3 s stroke at 64; 0–3 at 128, with up to 130 patches
-/// drawn over the picture and held (about 50 MB at a 200 px brush); 1–23
-/// at 32. Hatching — strokes of 30 patches, 150–800 ms apart — no vsync
-/// late at 250 ms apart and more: the pause's write was done before the
-/// next stroke began, even 50 ms after it. ⛔A longer pause is worse: at
-/// 1 s every gap left the levels to the cap, inside a stroke (2–3 vsyncs
-/// late, 66–76 ms).
-///
-/// Since the patches at the cap are laid as one
-/// ([FramePictureStore._layAsOne], the same day), the levels are written at
-/// the cap only once as much waits as may all the same — 8 times a 25 s
-/// stroke at a 200 px brush, not 40.
-const Duration _levelsQuiet = Duration(milliseconds: 200);
-
-/// The most patches drawn over a picture while the levels under their base
-/// wait: at that many, the ones not laid as one yet are laid as one
-/// ([FramePictureStore._layAsOne]); when as many wait all the same, the
-/// levels are written at once ([_levelsQuiet] has the measurement).
-///
-/// 🔬AT THE CAP, THE PATCHES AS ONE, NOT THE LEVELS (D7-2, 2026-10-24,
-/// the Surface Pro 11, release, a 3840² frame patched every vsync with no
-/// pause, the two taken in turn in one session): the levels' write at the
-/// cap held one frame every 64 patches — at a 200 px brush at 25%, 2–12
-/// frames past 16.7 ms a 1.6 s stroke, the longest 72–110 ms; laid as one,
-/// 0–6, the longest 6–27 ms. At a 24 px brush at 100%, 4–65 a 2.6 s stroke
-/// against 0–1 in the last three sessions (0–53 in the two before, the
-/// machine busy). Each laid as one in 1–10 ms.
-/// The levels are written once as much waits as may all the same
-/// ([_levelsWaitTexelsAtMost] too) — a 25 s stroke round and round at
-/// 200 px wrote them 8 times, not 40: 51–66 frames past 16.7 ms, not 135.
-/// ⛔The ones laid as one at a cap of their own, the patches as asked at
-/// theirs: 39 laid as one, not 101, but 88 MB drawn over the picture and
-/// held, not 76, and 84–100 frames past 16.7 ms.
-const int _levelsWaitAtMost = 64;
-
-/// The most texels of the patches drawn over a picture while the levels
-/// under their base wait, as [_levelsWaitAtMost] is of patches: 4 Mi, the
-/// 16 MiB of 64 patches 256 a side.
-///
-/// 🔬(D7-2, 2026-10-24, the Surface Pro 11, release, a 3840² frame, a
-/// 200 px brush at 25%): drawn over the picture, 64 patches of the brush
-/// (3.4 Mi texels) and two laid as one with the ones after them (4.0 Mi)
-/// cost nothing — raster p90 2.1–2.3 ms; laid as one with no bound, a 25 s
-/// stroke round and round held 25 Mi drawn over it (105 MB): 128 frames
-/// past 16.7 ms, raster p90 7.7 ms, and the levels' write at its end held
-/// one frame 299 ms.
-const int _levelsWaitTexelsAtMost = 4 << 20;
-
 /// The run's width ([FramePictureStore._run]): the widest texture every
 /// GPU the app runs on takes — OpenGL ES 3's floor.
 const int _runWidth = 2048;
 
-/// Where [landing] lies in [picture]'s base level.
-int _xOf(FramePicture picture, LandingPatch landing) =>
-    (landing.rect.left - picture.extent.left).toInt();
+/// Where [rect] lies in [picture]'s base level.
+int _xOf(FramePicture picture, ui.Rect rect) =>
+    (rect.left - picture.extent.left).toInt();
 
-int _yOf(FramePicture picture, LandingPatch landing) =>
-    (landing.rect.top - picture.extent.top).toInt();
+int _yOf(FramePicture picture, ui.Rect rect) =>
+    (rect.top - picture.extent.top).toInt();
 
 /// The reads that lay [image] halved to [width] x [height] into a run from
 /// texel [at] on: one a row, and one more each time a row wraps.
-Iterable<PictureRead> _rowsOf(
+Iterable<_PictureRead> _rowsOf(
   ui.Image image,
   int width,
   int height,
@@ -888,7 +705,7 @@ ui.Picture _recorded(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
   return recorder.endRecording();
 }
 
-class _Entry {
+class _Entry<K> {
   _Entry(
     this.picture, {
     required this.held,
@@ -916,45 +733,13 @@ class _Entry {
   /// makes are made from the levels the writes before it wrote.
   Future<void> writes = Future<void>.value();
 
-  /// The patches with texels that no batch has taken yet, in the order
-  /// they were made ([FramePictureStore._landWaiting]).
-  final List<LandingPatch> waiting = [];
+  /// The patches rendered that no write has taken yet, in the order they
+  /// were asked for, with their texels — none for a move
+  /// ([FramePictureStore._writeWaiting]).
+  final List<_Rendered<K>> waiting = [];
 
-  /// The patches whose base is in and whose levels under it are not yet,
-  /// in the order they were made ([FramePictureStore._landLevels]) — after
-  /// every one of [levelsDueAsOne].
-  final List<LandingPatch> levelsDue = [];
-
-  /// Patches of [levelsDue] laid again as one each, in the order they were
-  /// laid ([FramePictureStore._layAsOne]); their levels are not in either.
-  final List<LandingPatch> levelsDueAsOne = [];
-
-  /// Whether as much is drawn over [picture], waiting for the levels under
-  /// its base, as may be: [patches] of them, or [texels].
-  bool waitsAtTheMost({required int patches, required int texels}) {
-    final waiting = [...levelsDueAsOne, ...levelsDue];
-    var drawn = 0.0;
-    for (final patch in waiting) {
-      drawn += patch.rect.width * patch.rect.height;
-    }
-    return waiting.length >= patches || drawn >= texels;
-  }
-
-  /// Runs out once patches stop coming for the pause the levels wait for.
-  Timer? quiet;
-
-  /// Whether a caller waits for [levelsDue] and [levelsDueAsOne] to be
-  /// written ([FramePictureStore.settled]) — which makes the write due.
-  bool levelsWanted = false;
-
-  int get bytes {
-    final image = picture.image;
-    var total = estimatedImageBytes(image.width, image.height);
-    for (final patch in picture._landing) {
-      total += estimatedImageBytes(patch.image.width, patch.image.height);
-    }
-    return total;
-  }
+  int get bytes =>
+      estimatedImageBytes(picture.image.width, picture.image.height);
 }
 
 class _Lay<K> {

@@ -27,6 +27,12 @@
 // one draw the active slot has, so the last test pins the frame the
 // stand-in existed for — activation (↩️with the ghost over the tiles, until
 // brush-fidelity-Q9).
+//
+// The patches are Flutter GPU's writes: the picture holds them only where
+// the GPU wrote them, so this runs in the `gpu` tag's batch.
+@Tags(['gpu'])
+library;
+
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -177,7 +183,7 @@ void main() {
   /// [shown]'s picture — held on its way until that is seen — and lands.
   Future<void> patchedIn(
     WidgetTester tester,
-    WritesNeverLand gpu,
+    WritesLand gpu,
     FramePictureStore<FramePictureKey> store,
     FramePictureKey shown,
     Future<void> Function() change, {
@@ -194,8 +200,7 @@ void main() {
           'drawn as it stands',
     );
     gpu.letAllThrough();
-    await tester.runAsync(() => landing!);
-    await tester.pump();
+    await inThePicture(tester, landing);
   }
 
   testWidgets('🚨F-344: a LANDING PREVIEW that moves is where it was and '
@@ -273,7 +278,7 @@ void main() {
         CanvasActiveLayerRow(opacity: 1, frameKey: cel),
       ),
     ];
-    final gpu = WritesNeverLand();
+    final gpu = WritesLand();
     addTearDown(gpu.letAllThrough);
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
@@ -321,7 +326,7 @@ void main() {
       isEmpty,
       reason: 'the patched picture is the frame as it stands',
     );
-  });
+  }, skip: noFlutterGpu != null);
 
   // ↩️A preview that crossed the edge of the live row's extent moved the
   // display buffer's rect, and the carry had to repaint both its places
@@ -376,7 +381,7 @@ void main() {
       pressure: 1,
       sequence: sequence,
     );
-    final gpu = WritesNeverLand();
+    final gpu = WritesLand();
     addTearDown(gpu.letAllThrough);
     final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
@@ -412,7 +417,7 @@ void main() {
         );
       });
     }, what: 'the second step');
-  });
+  }, skip: noFlutterGpu != null);
 
   testWidgets('on the activation frame the tiles draw themselves', (
     tester,
