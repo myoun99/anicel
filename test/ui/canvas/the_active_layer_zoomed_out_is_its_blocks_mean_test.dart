@@ -92,11 +92,14 @@ void main() {
     },
   );
 
+  /// [walk]: no buffer, the stack drawn row by row under the view — the
+  /// safety net past the texture cap.
   Widget stackAt({
     required CanvasViewport viewport,
     required Size logicalSize,
     required BitmapSurfacePainter live,
     required LayerFrameImageCache images,
+    bool walk = false,
   }) => MaterialApp(
     home: Scaffold(
       body: Center(
@@ -113,6 +116,7 @@ void main() {
             activeSurfacePainter: live,
             paintPaper: true,
             paperBackground: ProjectBackground.defaultBackground,
+            debugDisableSingleBuffer: walk,
           ),
         ),
       ),
@@ -151,40 +155,46 @@ void main() {
     return bytes!;
   }
 
-  testWidgets('at 25% every pixel of the active layer is the mean of its '
-      '4×4 block, not nearest', (tester) async {
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final images = LayerFrameImageCache(frameStore: BrushFrameStore());
-    addTearDown(images.dispose);
-    final live = BitmapSurfacePainter(
-      surface: columns(),
-      showTransparentBackground: false,
-    );
-    // The cel's interior (canvas x 16..48 × y 8..24) in an 8×4 view: one
-    // device pixel per 4×4 block, away from the paper's yielded edge.
-    const logicalSize = Size(8, 4);
-    await tester.pumpWidget(
-      stackAt(
-        viewport: CanvasViewport(zoom: 0.25, panX: -4, panY: -2),
-        logicalSize: logicalSize,
-        live: live,
-        images: images,
-      ),
-    );
-    await tester.pumpAndSettle();
-    final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
-    for (var i = 0; i < bytes.length; i += 4) {
-      expect(bytes[i + 3], 255, reason: 'pixel ${i ~/ 4} is opaque');
-      expect(
-        bytes[i],
-        inInclusiveRange(189, 193),
-        reason: 'pixel ${i ~/ 4}: one column in four is ink, so the mean '
-            'reads 191 — 0 or 255 is a tile drawn by nearest under the '
-            'recorder\'s scale',
+  // Composed whole and reduced as one picture, and on the walk past the
+  // texture cap, where the active row draws its tiles reduced itself.
+  for (final walk in [false, true]) {
+    testWidgets('at 25% every pixel of the active layer is the mean of its '
+        '4×4 block, not nearest${walk ? ' — on the walk past the cap' : ''}',
+        (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final images = LayerFrameImageCache(frameStore: BrushFrameStore());
+      addTearDown(images.dispose);
+      final live = BitmapSurfacePainter(
+        surface: columns(),
+        showTransparentBackground: false,
       );
-    }
-  });
+      // The cel's interior (canvas x 16..48 × y 8..24) in an 8×4 view: one
+      // device pixel per 4×4 block, away from the paper's yielded edge.
+      const logicalSize = Size(8, 4);
+      await tester.pumpWidget(
+        stackAt(
+          viewport: CanvasViewport(zoom: 0.25, panX: -4, panY: -2),
+          logicalSize: logicalSize,
+          live: live,
+          images: images,
+          walk: walk,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
+      for (var i = 0; i < bytes.length; i += 4) {
+        expect(bytes[i + 3], 255, reason: 'pixel ${i ~/ 4} is opaque');
+        expect(
+          bytes[i],
+          inInclusiveRange(189, 193),
+          reason: 'pixel ${i ~/ 4}: one column in four is ink, so the mean '
+              'reads 191 — 0 or 255 is a tile drawn by nearest under the '
+              'recorder\'s scale',
+        );
+      }
+    });
+  }
 
   // 🚨★★★WHAT IS ON SCREEN AFTER ONE BUILD, read off the layer tree — not
   // by calling the painter again, which would BE the second paint the old

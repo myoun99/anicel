@@ -92,12 +92,13 @@ void main() {
 
   /// [painter]'s content at [scale], the float laid through the surface
   /// pass — or, [floatOnTop], drawn over it at `none` afterwards, the way
-  /// the stack did before F-240.
+  /// the stack did before F-240 — the row's [layerPaint] riding the draws.
   Future<ui.Image> paint(
     BitmapSurfacePainter painter, {
     required double scale,
     LandingPreview? float,
     bool floatOnTop = false,
+    ui.Paint? layerPaint,
   }) async {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder)
@@ -105,6 +106,7 @@ void main() {
       ..clipRect(const ui.Rect.fromLTWH(0, 0, width * 1.0, height * 1.0));
     painter.paintContentInto(
       canvas,
+      layerPaint: layerPaint,
       scale: scale,
       float: floatOnTop || float == null
           ? null
@@ -147,11 +149,13 @@ void main() {
     lineage: 'f240-${lineages++}',
   );
 
-  /// While it floats and once it has landed, at [scale]: the floating
-  /// paint, the landed paint, and what the old overlay drew.
+  /// While it floats and once it has landed, at [scale] on a row drawn with
+  /// [layerPaint]: the floating paint, the landed paint, and what the old
+  /// overlay drew. The landing writes what 100% shows of the cel itself.
   Future<({Uint8List floating, Uint8List landed, Uint8List old})> both(
     double scale, {
     required LandingPreview float,
+    ui.Paint? layerPaint,
   }) async {
     final cel = surfaceOf(pattern(width, height, 1));
     final floating = painterOf(cel);
@@ -161,13 +165,23 @@ void main() {
       await bytes(atFull, format: ui.ImageByteFormat.rawStraightRgba),
     );
     atFull.dispose();
-    final whileFloating = await paint(floating, scale: scale, float: float);
-    final afterLanding = await paint(painterOf(landedCel), scale: scale);
+    final whileFloating = await paint(
+      floating,
+      scale: scale,
+      float: float,
+      layerPaint: layerPaint,
+    );
+    final afterLanding = await paint(
+      painterOf(landedCel),
+      scale: scale,
+      layerPaint: layerPaint,
+    );
     final oldWay = await paint(
       painterOf(cel),
       scale: scale,
       float: float,
       floatOnTop: true,
+      layerPaint: layerPaint,
     );
     final result = (
       floating: await bytes(whileFloating),
@@ -217,6 +231,25 @@ void main() {
         clip: const ui.Rect.fromLTWH(9, 7, 27, 19),
       );
       final seen = await both(scale, float: float);
+      expect(differing(seen.old, seen.landed), greaterThan(20));
+      expect(differing(seen.floating, seen.landed), 0);
+    });
+
+    // A row's opacity rides each tile's draw, so a tile the float touches
+    // is drawn once — as the tile it lands as — and never under it too: a
+    // pixel drawn twice at half reads three quarters.
+    test('a TRANSFORM\'s float at $zoom on a row at half opacity shows the '
+        'bytes it lands as', () async {
+      final floatImage = await imageOf(pattern(22, 14, 2), 22, 14);
+      final seen = await both(
+        scale,
+        float: SelectionFloatPaint(
+          image: floatImage,
+          imageLeft: 13,
+          imageTop: 9,
+        ),
+        layerPaint: ui.Paint()..color = const ui.Color(0x80000000),
+      );
       expect(differing(seen.old, seen.landed), greaterThan(20));
       expect(differing(seen.floating, seen.landed), 0);
     });

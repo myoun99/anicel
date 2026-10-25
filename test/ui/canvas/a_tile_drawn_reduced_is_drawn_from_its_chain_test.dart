@@ -110,8 +110,10 @@ void main() {
     );
   });
 
-  test('a tile drawn reduced gains its chain IN ITS PICTURE\'S PLACE — one '
-      'picture a tile, counted with its chain', () {
+  // A widget test: the pictures let go are retired a few frames later
+  // (`DeferredImageDisposer`), and only frames show which went.
+  testWidgets('a tile drawn reduced gains its chain IN ITS PICTURE\'S PLACE — '
+      'one picture a tile, counted with its chain', (tester) async {
     final pictures = ownPictures();
     final tile = columns();
     final door = pictures.cache.pictureFor(tile);
@@ -131,6 +133,15 @@ void main() {
     );
     expect(pictures.cache.chainedPictureFor(tile), same(chained));
     expect(pictures.cache.pictureFor(tile), same(chained));
+    for (var frame = 0; frame < 4; frame += 1) {
+      await tester.pump();
+    }
+    expect(door.debugDisposed, isTrue, reason: 'the door picture went');
+    expect(
+      chained.debugDisposed,
+      isFalse,
+      reason: 'asked again, the picture the tile holds is not let go',
+    );
     pictures.cache.releasePicture(tile);
   });
 
