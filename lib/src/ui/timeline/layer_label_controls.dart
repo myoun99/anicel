@@ -81,14 +81,13 @@ Color railSelectedRowColor(ColorScheme colorScheme) =>
 /// element where three stood, in every row of every rail, paid on every
 /// panel reopen (card frame-panels-build-in-one-frame, 2026-10-25).
 class LayerSectionBandCell extends SizedBox {
-  const LayerSectionBandCell({super.key, this.axis = Axis.horizontal})
-    : super(
-        width: axis == Axis.horizontal
-            ? layerSectionLabelSlotWidth
-            : double.infinity,
-        height: axis == Axis.horizontal
-            ? double.infinity
-            : layerSectionLabelSlotWidth,
+  LayerSectionBandCell({super.key, this.axis = Axis.horizontal})
+    : super.fromSize(
+        size: sizeAlong(
+          axis,
+          along: layerSectionLabelSlotWidth,
+          across: double.infinity,
+        ),
       );
 
   /// The rail's own direction — the slot's extent is measured along it, and

@@ -6,10 +6,15 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/finger_mode_devices.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
+
+import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 const _probe = ValueKey<String>('probe');
 const _beside = ValueKey<String>('beside');
@@ -118,7 +123,7 @@ void main() {
     }
 
     expect(
-      await sizeOf(const LayerSectionBandCell(key: _probe)),
+      await sizeOf(LayerSectionBandCell(key: _probe)),
       await sizeOf(
         KeyedSubtree(
           key: _probe,
@@ -132,9 +137,30 @@ void main() {
     );
   });
 
+  testWidgets('a rail row writes its name from the start of its name area, '
+      'across its middle', (tester) async {
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    await pumpTimelineHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 700),
+      pixelsPerFrame: 24,
+    );
+    final area = find.named('timeline-layer-name-${session.activeLayerId}');
+    final letters = find
+        .descendant(of: area, matching: find.byType(RichText))
+        .first;
+    expect(tester.getTopLeft(letters).dx, tester.getTopLeft(area).dx);
+    expect(
+      tester.getCenter(letters).dy,
+      closeTo(tester.getCenter(area).dy, 0.5),
+    );
+  });
+
   testWidgets('the section slot is one element', (tester) async {
     await tester.pumpWidget(
-      const Directionality(
+      Directionality(
         textDirection: TextDirection.ltr,
         child: Row(children: [LayerSectionBandCell(key: _probe)]),
       ),

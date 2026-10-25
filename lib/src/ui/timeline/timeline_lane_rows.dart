@@ -707,7 +707,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (widget.axis != Axis.horizontal || widget.leadingInset <= 0) {
       return null;
     }
-    return [const LayerSectionBandCell(), SizedBox(width: gap)];
+    return [LayerSectionBandCell(), SizedBox(width: gap)];
   }
 
   // ── the group header ──────────────────────────────────────────────────
