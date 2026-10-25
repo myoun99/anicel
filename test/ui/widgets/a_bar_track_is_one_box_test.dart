@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
-    show acrossBox, extentAlong;
+    show acrossBox, alongBox, extentAlong;
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 
@@ -75,9 +75,9 @@ void main() {
           color: const Color(0xFF101010),
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: SizedBox(
-              width: axis == Axis.horizontal ? 120 : null,
-              height: axis == Axis.horizontal ? null : 120,
+            child: alongBox(
+              axis,
+              120,
               child: KeyedSubtree(key: trackKey, child: track),
             ),
           ),

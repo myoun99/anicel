@@ -614,13 +614,15 @@ void main() {
         ),
       );
       final painter = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((p) => p.painter)
-          .singleWhere(
-            (p) => p.runtimeType.toString() == '_FieldSliderTrackPainter',
-          );
+          .widget<FieldSliderTrack>(find.byType(FieldSliderTrack))
+          .fill;
+      expect(
+        painter.runtimeType.toString(),
+        '_FieldSliderTrackPainter',
+        reason: 'fixture: the track fills with the bar painter',
+      );
       final spy = _CanvasSpy();
-      painter!.paint(spy, size);
+      painter.paint(spy, size);
       return spy;
     }
 
