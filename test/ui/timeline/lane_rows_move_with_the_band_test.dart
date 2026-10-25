@@ -385,11 +385,18 @@ void main() {
       // `coversRow`, the law the storyboard's rail presses by — so a swept
       // lane is inside the band whether or not its layer's row was swept.
       expect(
-        RegExp(r'row\.owningLayerId').allMatches(text).length,
-        greaterThanOrEqualTo(2),
+        text,
+        contains('row.owningLayerId'),
+        reason: 'onSelectUpdate needs it',
+      );
+      // ↩️H20: onMoveBegin hands the move's resolver the ROW — its steps
+      // count from it — and the resolver asks the address there.
+      expect(
+        text,
+        contains('rangeMove.begin(row)'),
         reason:
-            'onSelectUpdate and onMoveBegin each need it — a builder that '
-            'keeps one type test keeps half of the bug',
+            'onMoveBegin hands the row on — a builder that keeps one type '
+            'test keeps half of the bug',
       );
       expect(
         text,
