@@ -321,7 +321,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
     final shown = trackConteRowShown(trackId, layoutEntries, seat: seat);
     final headShown = _headShown();
     final stripGesture = _stripGesture();
-    final stripEdges = this.stripEdges;
+    final edges = stripEdges;
     final stripSelect = this.stripSelect;
     final edit = _edit;
     return SizedBox(
@@ -372,27 +372,31 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
           if (stripSelect != null) _selectionBand(stripSelect),
           // THE EDGES ride ABOVE the range gesture so an edge keeps its
           // priority over it; the middles keep the rest.
-          if (stripEdges != null)
-            _edges(
-              stripEdges,
-              row: (
-                layer: shown,
-                shown: headShown,
-                content: _celContent(shown),
-                ground: TimelineGridLaw.maybeOf(context)?.ground,
-              ),
-            ),
+          if (edges != null) _edges(edges, _blocks(context, shown, headShown)),
         ],
       ),
     );
   }
 
+  /// The row [shown] as its cells draw its blocks: the head's eye
+  /// ([headShown]), its cels and the host's ground.
+  TimelineBlockRow _blocks(
+    BuildContext context,
+    Layer shown,
+    bool headShown,
+  ) => (
+    layer: shown,
+    shown: headShown,
+    content: _celContent(shown),
+    ground: TimelineGridLaw.maybeOf(context)?.ground,
+  );
+
   /// The row's edges, over its blocks ([_StoryboardPanelEdges]) — on them
   /// as [row] draws them, the cells' own (I-129).
   Widget _edges(
-    StoryboardStripEdgeCallbacks stripEdges, {
-    required TimelineBlockRow row,
-  }) => Positioned.fill(
+    StoryboardStripEdgeCallbacks stripEdges,
+    TimelineBlockRow row,
+  ) => Positioned.fill(
     key: ValueKey<String>('storyboard-edit-chrome-slot-$_scope'),
     child: _StoryboardPanelEdges(
       trackId: trackId,
