@@ -63,4 +63,54 @@ void main() {
     );
     expect(committed.points[1].x, closeTo(0.5, 0.1));
   });
+
+  // A source that is off draws its curve dimmed and edits nothing: its graph
+  // holds the press (it landed on a control) and offers it no drag. ↩️The
+  // graph's detector was handed no recogniser while its source was off, and
+  // no test said so until its grip became one box (2026-10-25).
+  testWidgets('a press on the graph of a source that is OFF adds nothing', (
+    tester,
+  ) async {
+    final commits = <Map<BrushInputSource, BrushPressureCurve?>>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: Builder(
+              builder: (context) => ElevatedButton(
+                key: const ValueKey<String>('open-curve'),
+                onPressed: () => showPressureCurvePopup(
+                  context,
+                  target: BrushPressureTarget.size,
+                  initialCurves: {
+                    BrushInputSource.pressure: BrushPressureCurve.identity(),
+                  },
+                  onChanged: commits.add,
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('open-curve')));
+    await tester.pumpAndSettle();
+    final graph = find.byKey(const ValueKey<String>('pressure-curve-graph-tilt'));
+    expect(graph, findsOneWidget, reason: '⛔the popup shows no tilt graph');
+    await tester.ensureVisible(graph);
+    await tester.pumpAndSettle();
+
+    final gesture = await tester.startGesture(tester.getCenter(graph));
+    await gesture.moveBy(const Offset(0, -12));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(commits, isEmpty, reason: 'tilt is off: the press edits nothing');
+
+    // Turned on, it is the curve it was — two endpoints, nothing added.
+    await tester.tap(find.byKey(const ValueKey<String>('curve-source-tilt')));
+    await tester.pumpAndSettle();
+    expect(commits.last[BrushInputSource.tilt]?.points, hasLength(2));
+  });
 }
