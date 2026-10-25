@@ -196,14 +196,16 @@ void main() {
 
     test('its inset pulls its rim in — in full from its reach up, by the '
         'radius below it', () {
-      final edge = flat(0.0, inset: 0.5, insetReach: 2.0);
+      // Read along the radius: a circle up to `squareReadRadius` is read
+      // by its area instead (a_small_dot_lays_its_ink_wherever_it_lies).
+      final edge = flat(0.0, inset: 0.5, insetReach: 6.0);
       final large = brushTipGeometry(round(edge: edge));
       expect(tipCoverageAt(large, 9.5, 0), closeTo(0.5, 1e-12));
-      final small = brushTipGeometry(round(size: 2, edge: edge));
+      final small = brushTipGeometry(round(size: 6, edge: edge));
       expect(
-        tipCoverageAt(small, 0.75, 0),
+        tipCoverageAt(small, 2.75, 0),
         closeTo(0.5, 1e-12),
-        reason: 'a radius of 1 is half the reach: half the inset',
+        reason: 'a radius of 3 is half the reach: half the inset',
       );
     });
 
@@ -279,10 +281,11 @@ void main() {
     });
 
     test('a tip smaller than its edge is all edge, a cone to its rim', () {
-      final tip = brushTipGeometry(round(size: 4, edge: flat(2.75)));
-      expect(tipCoverageAt(tip, 0, 0), closeTo(0.875, 1e-12));
-      expect(tipCoverageAt(tip, 1, 0), closeTo(0.5, 1e-12));
-      expect(tipCoverageAt(tip, 2.5, 0), 0.0);
+      // Past `squareReadRadius`, read along the radius.
+      final tip = brushTipGeometry(round(size: 6, edge: flat(3.75)));
+      expect(tipCoverageAt(tip, 0, 0), closeTo(1 - 0.25 / 3, 1e-12));
+      expect(tipCoverageAt(tip, 1.5, 0), closeTo(0.5, 1e-12));
+      expect(tipCoverageAt(tip, 3.5, 0), 0.0);
     });
   });
 
