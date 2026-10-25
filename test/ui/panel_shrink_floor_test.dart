@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/frame_panel_transport.dart'
+    show FramePanelTransport;
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/widgets/command_pill.dart' show CommandPill;
@@ -162,30 +164,35 @@ void main() {
   group('the two bars are the same bar', () {
     testWidgets('⑫ the first pill starts the same distance in on both '
         'panels', (tester) async {
-      Future<double> inset(
+      Future<({double lead, double pill})> inset(
         Widget Function(EditorSessionManager session) build,
       ) async {
         await pumpAt(tester, build, height: 600);
         final bar = tester.getRect(find.byType(TimelineCommandBar));
-        // The cut pill is the first thing on either bar.
+        // ↩️F-111: the transport is the first thing on either bar, and the
+        // cut pill the first after it.
+        final transport = tester.getRect(find.byType(FramePanelTransport));
         final pill = tester.getRect(find.byType(CommandPill).first);
-        return pill.left - bar.left;
+        return (lead: transport.left - bar.left, pill: pill.left - bar.left);
       }
 
       final timelineInset = await inset(timeline);
       final storyboardInset = await inset(storyboard);
 
       expect(
-        storyboardInset,
-        timelineInset,
+        storyboardInset.pill,
+        timelineInset.pill,
         reason: 'the storyboard paid the leading inset twice — its own row '
             'padded what the toolbar had already padded',
       );
-      expect(
-        timelineInset,
-        TimelineCommandBar.padding.left + TimelineCommandBar.leadingInset,
-        reason: 'and the inset is the BAR\'s, so it is these two numbers',
-      );
+      for (final lead in [timelineInset.lead, storyboardInset.lead]) {
+        expect(
+          lead,
+          TimelineCommandBar.padding.left,
+          reason: 'and the inset is the BAR\'s, so it is this number — its '
+              'leading inset pads the pills after the transport',
+        );
+      }
     });
 
     testWidgets('㉓ the seconds toggle is the same box on both panels', (
