@@ -14,13 +14,25 @@ import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/rail_group_button.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// F-111 (유저 2026-09-12: 「재생 버튼쪽 역시 다른곳으로 옮기고싶음. 문턱이아니라
 /// 그냥 타임라인 버튼있는쪽 제일 왼쪽에 둔다던가?」), answered 10-08
 /// (F-111-Q1 「버튼행 맨 왼쪽에 고정 — 알약 칸 밖」): each frame panel's
 /// transport leads its own command bar, pinned outside the pills' overflow
 /// scroller — and the region's 문턱 holds its tabs and its ⌃ alone.
+///
+/// The bar and its transport are the TAB's, so most of this opens the tab
+/// alone, at the size the app lays it out. What the app answers opens the
+/// app: the fold (the workspace's ⌃), a panel moved to a rail of its own,
+/// and a language switch — the panel strip is what hears the language and
+/// builds the tab again (`OpenTabContent`), and the tab alone has no strip.
 void main() {
+  /// Either tab as the app lays it out in a 1700 × 900 window (🔬1069 ×
+  /// 396, both, 2026-10-25).
+  const appTab = Size(1069, 396);
+
   Future<void> pumpApp(WidgetTester tester, Size size) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -46,12 +58,16 @@ void main() {
     (
       name: 'timeline',
       tab: 'timeline-mode-timeline-button',
+      pumpTab: (WidgetTester tester) =>
+          pumpTimelineHost(tester, createDefaultProject(), surface: appTab),
       transport: 'playback-transport-activeCut',
       camera: 'timeline-camera-view-button',
     ),
     (
       name: 'storyboard',
       tab: 'timeline-mode-storyboard-button',
+      pumpTab: (WidgetTester tester) =>
+          pumpStoryboardHost(tester, createDefaultProject(), surface: appTab),
       transport: 'playback-transport-allCuts',
       camera: 'storyboard-camera-view-button',
     ),
@@ -61,9 +77,7 @@ void main() {
     testWidgets('🚨the ${panel.name}\'s transport leads its bar — at the '
         'bar\'s left edge, the camera view beside it, outside the pills\' '
         'scroller', (tester) async {
-      await pumpApp(tester, const Size(1700, 900));
-      await tester.tap(byKey(panel.tab));
-      await tester.pumpAndSettle();
+      await panel.pumpTab(tester);
 
       final transport = byKey(panel.transport);
       expect(transport, findsOneWidget);
@@ -101,10 +115,7 @@ void main() {
         '${panel.name}\'s transport again — its host keeps it', (
       tester,
     ) async {
-      await pumpApp(tester, const Size(1700, 900));
-      await tester.tap(byKey(panel.tab));
-      await tester.pumpAndSettle();
-      final session = sessionOf(tester);
+      final session = await panel.pumpTab(tester);
       List<Widget> controls() => [
         ...tester.widgetList(
           find.descendant(
@@ -175,10 +186,7 @@ void main() {
   ]) {
     testWidgets('the ${panel.name}\'s play button plays from where its '
         'playhead stands', (tester) async {
-      await pumpApp(tester, const Size(1700, 900));
-      await tester.tap(byKey(panel.tab));
-      await tester.pumpAndSettle();
-      final session = sessionOf(tester);
+      final session = await panel.pumpTab(tester);
       seek(session);
       await tester.pumpAndSettle();
 
@@ -200,7 +208,13 @@ void main() {
 
   testWidgets('a pill row scrolled to its end leaves the transport where it '
       'stands', (tester) async {
-    await pumpApp(tester, const Size(1000, 900));
+    // The timeline as the app lays it out in a 1000 × 900 window (🔬640 ×
+    // 396, 2026-10-25).
+    await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(640, 396),
+    );
     final transport = byKey('playback-transport-activeCut');
     final scroller = scrollerOn(barOf(transport));
     final position = tester
@@ -253,8 +267,7 @@ void main() {
 
   testWidgets('with no cut selected, the transport stands where it stands '
       'with one', (tester) async {
-    await pumpApp(tester, const Size(1700, 900));
-    final session = sessionOf(tester);
+    final session = await panels[0].pumpTab(tester);
     final cut = session.repository.requireProject().tracks.first.cuts.first;
     session.repository.updateCutLeadingGap(
       cutId: cut.id,
