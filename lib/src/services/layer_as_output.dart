@@ -24,14 +24,17 @@ import '../models/transform_track.dart';
 /// 바껴서 기본fx로 분류되고 그거마저 끌수있게 하는걸 노리는것임」. ↩️I-68-Q1
 /// kept it whatever the output's switch said.
 ///
-/// The camera row is left as it is: its switch bypasses the cut's camera
-/// work, which an output keeps whatever its FX (cut-level, as the fade).
+/// 🗣️I-65-Q8 (유저 2026-10-25): 「출력은 이 머리도 안 본다」 — 「그 두개는
+/// 기본만켬에 포함. 시퀀스 출력같은거 얘기잖아」: the camera row's switch
+/// bypasses the cut's camera work on the screen, and an output keeps the
+/// work whatever its FX (cut-level, as the fade) — the V row's chain too
+/// (the renderer's `_trackFxLaid`). ↩️Both switches reached the output.
 ///
 /// The window's choice expressed as DATA: the plan renders exactly the rows
 /// it is given, so no route can forget it.
 Layer layerAsOutput(Layer layer, ExportLayerFx fx) {
   if (layer.kind == LayerKind.camera) {
-    return layer;
+    return layer.copyWith(transformEnabled: true);
   }
   final reference = layer.mediaReference;
   return layer.copyWith(

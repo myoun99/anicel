@@ -30,6 +30,7 @@ import '../../models/composite_tree.dart';
 import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_as_output.dart';
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show
@@ -78,13 +79,23 @@ typedef _CelAt = (CutId, LayerId, FrameId);
 
 /// A row of a label-group cel ([ExportFrameRenderer.renderCelGroup]): the
 /// row and the cut it is a row of, its drawing there and that drawing's
-/// picture, and the effects it wears.
+/// picture, the effects it wears, and where its file's picture stands on
+/// the paper — its reference fx alone, null for every other row.
+///
+/// 🗣️I-65-Q7 (유저 2026-10-25): 「참조 fx 만 따른다」 — 「트랜스폼은 기본만켬에서
+/// 빠진다고 몇번이나 말했잖아」: a cel goes out on its paper, so the row's
+/// transform never moves it; the reference fx says where a file's picture
+/// stands on that paper, so it is the paper's, and the tab's 레이어 FX keeps
+/// it as every tab's does ([layerAsOutput] — 켬 · 기본만 켬 keep it, 끔
+/// lays the picture where its pixels are). ↩️A cel left it out under all
+/// three.
 typedef _CelRow = ({
   Cut cut,
   Layer layer,
   Frame frame,
   BitmapSurface surface,
   List<ResolvedLayerEffect> effects,
+  LayerPlacement? placement,
 });
 
 /// A [row] of a cel and how the cel lays it — [paint]
@@ -146,11 +157,11 @@ class ExportFrameRenderer {
   /// What the export window's 레이어 FX keeps of the rows
   /// ([layerAsOutput]) — or null for a picture of the SCREEN, which no
   /// window asks about (the storyboard's panels, the conte's cells): every
-  /// row's own switches read as they stand — ⚠️whether those still look at
-  /// the heads is asked as [[I-65-Q9]]. The cut's fade and camera work
-  /// are cut-level and stay either way — the camera row's switch and the V
-  /// row's as the screen holds them. ⚠️Whether an output still looks at
-  /// those two heads is asked as [[I-65-Q8]].
+  /// row's own switches read as they stand, the camera row's and the V
+  /// row's too (🗣️I-65-Q9, 유저 2026-10-25: 「화면 그대로(지금)」). The
+  /// cut's fade and camera work are cut-level and stay either way; an
+  /// output keeps the camera work and the V row's chain whatever their
+  /// switches say (I-65-Q8, [layerAsOutput] · [_trackFxLaid]).
   final ExportLayerFx? layerFx;
 
   /// Whether the frames drawn here go into a file that keeps the cut's rows
@@ -374,6 +385,14 @@ class ExportFrameRenderer {
     final fx? => layerAsOutput(layer, fx),
     null => layer,
   };
+
+  /// Whether this render lays [cutId]'s V row chain: an output always, a
+  /// picture of the screen ([layerFx] null) by the row's switch — the row's
+  /// head hides the chain on the screen and an output does not look at it
+  /// (I-65-Q8 「출력은 이 머리도 안 본다」, [layerAsOutput]). ↩️The switch
+  /// gated the output since R8, as every fx switch did.
+  bool _trackFxLaid(CutId cutId) =>
+      layerFx != null || session.effectsAndFx.isCutFxEnabled(cutId);
 
   static List<LayerEffect> _switchedOff(List<LayerEffect> effects) => [
     for (final effect in effects) effect.copyWith(enabled: false),
@@ -628,10 +647,17 @@ class ExportFrameRenderer {
   /// What a render of [cut] at [frameIndex] looks through in [mode]: its
   /// camera there, or the whole canvas — a camera standing square over all
   /// of it, at its own size.
+  ///
+  /// The camera is the RENDER's ([_cutForRender]): an output keeps the
+  /// camera work whatever the camera row's switch says ([layerAsOutput],
+  /// I-65-Q8), a picture of the screen keeps the switch.
   CameraView _viewFor(Cut cut, int frameIndex, ExportSizeMode mode) =>
       switch (mode) {
         ExportSizeMode.camera => (
-          pose: session.camera.cameraPoseForCut(cut, frameIndex),
+          pose: session.camera.cameraPoseForCut(
+            _cutForRender(cut),
+            frameIndex,
+          ),
           frameSize: session.camera.cameraFrameSize,
         ),
         ExportSizeMode.canvas => cameraViewOver(cut.canvasSize.canvasRect),
@@ -994,20 +1020,13 @@ class ExportFrameRenderer {
       cut.id,
       task.frameIndex,
     );
-    // The V row's fx MASTER reaches the OUTPUT, as every fx switch did
-    // since R8 ("a bypass that vanished on reload while a per-effect bypass
-    // survived" is exactly what R8 refused). It gates the effect chain.
-    // ⚠️A row's own switches no longer reach it (I-65-Q5 「출력은 머리를 안
-    // 본다」, [layerAsOutput]); whether this one still does is asked as
-    // [[I-65-Q8]].
-    final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
     // No track fade: the transition row's ramp lands in
     // [_canvasSpaceTransitionFrame] above, on the frames it actually covers,
     // and the track's static opacity went with the V row's bar (I-73).
     final trackEffects = trackEffectsAt(
       session.effectsAndFx.trackEffectsForCut(cut.id),
       trackFrame,
-      enabled: trackFxEnabled,
+      enabled: _trackFxLaid(cut.id),
     );
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
@@ -1128,9 +1147,7 @@ class ExportFrameRenderer {
                       contribution.cut.id,
                     ),
                     shared.globalFrame,
-                    enabled: session.effectsAndFx.isCutFxEnabled(
-                      contribution.cut.id,
-                    ),
+                    enabled: _trackFxLaid(contribution.cut.id),
                   ),
                 ),
               ),
@@ -1225,12 +1242,11 @@ class ExportFrameRenderer {
     final frameIndex = position.localFrameIndex;
     final view = _viewFor(cut, frameIndex, ExportSizeMode.camera);
     // Track effects at the frame's GLOBAL position (R4) — the stack's
-    // own axis — with the row's fx master gating them (R8's rule; the
-    // static opacity is not an fx and stays).
+    // own axis — laid as [_trackFxLaid] says.
     final trackEffects = trackEffectsAt(
       session.effectsAndFx.trackEffectsForCut(cut.id),
       position.globalFrameIndex,
-      enabled: session.effectsAndFx.isCutFxEnabled(cut.id),
+      enabled: _trackFxLaid(cut.id),
     );
     // The stage belongs to the bottom covered TRACK, and to every
     // contribution of it: an O.L is a 場面転換, so the arriving cut brings
@@ -1458,6 +1474,7 @@ class ExportFrameRenderer {
           effects: _outputChainOf(chainWornBy(cut, layer)),
           frameIndex: firstExposure,
         ),
+        placement: referenceMoveAt(_asOutput(layer), firstExposure),
       ));
     }
 
@@ -1514,6 +1531,7 @@ class ExportFrameRenderer {
     surface: laid.row.surface,
     opacity: laid.paint.opacity,
     blendMode: laid.paint.blendMode,
+    placement: laid.row.placement,
     effects: laid.paint.effects,
   );
 

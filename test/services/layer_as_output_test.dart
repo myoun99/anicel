@@ -100,13 +100,17 @@ void main() {
     expect(raw.laid, laid);
   });
 
-  test('the camera row is the cut\'s camera work, left as the screen holds '
-      'it', () {
-    final camera = createCameraLayer(
-      cutId: const CutId('cut'),
-    ).copyWith(transformEnabled: false);
+  // 🗣️I-65-Q8 (유저 2026-10-25): 「출력은 이 머리도 안 본다」 — 「그 두개는
+  // 기본만켬에 포함」.
+  test('🚨the camera row\'s work goes out whatever its switch and the '
+      'window\'s FX say', () {
+    final camera = createCameraLayer(cutId: const CutId('cut'));
     for (final fx in ExportLayerFx.values) {
-      expect(layerAsOutput(camera, fx), camera, reason: '$fx');
+      expect(
+        layerAsOutput(camera.copyWith(transformEnabled: false), fx),
+        camera.copyWith(transformEnabled: true),
+        reason: '$fx',
+      );
     }
   });
 }
