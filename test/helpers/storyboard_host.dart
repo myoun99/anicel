@@ -56,9 +56,9 @@ Future<void> pumpStoryboardHostOn(
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
-      // A tab is its session's: the host binds what it reads off the session
-      // once, so another session's tab is a new one — as another project
-      // is another page in the app.
+      // A tab is built for one session, as the workspace builds every panel
+      // (I-7, `EditorPanelTab.builtFor`): the host takes the session into
+      // its State, so another session's tab is a new one.
       key: ObjectKey(session),
       // The app's theme, as `main.dart` lays it over the workspace: it is
       // what keeps a press inkless (`splashFactory`), among the rest.
