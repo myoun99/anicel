@@ -2414,10 +2414,13 @@ void main() {
       timelineDrawingStartColor,
     );
     expect(timelineDrawingStartColor, timelineDrawingHeldColor);
-    expect(
-      timelineCellPaper(TimelineCellExposureState.markTwoHeld),
-      timelineDrawingHeldColor,
-    );
+    for (final mark in InbetweenMark.values) {
+      expect(
+        timelineCellPaper(TimelineCellExposureState.markHeld(mark)),
+        timelineDrawingHeldColor,
+        reason: 'a dotted cell keeps its block\'s paper, either mark',
+      );
+    }
     // UI-R21 #2: empties are TRANSPARENT — the substrate carries no
     // per-row state, so switching the active layer re-rasters nothing.
     expect(
