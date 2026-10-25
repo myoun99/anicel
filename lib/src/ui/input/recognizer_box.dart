@@ -61,6 +61,10 @@ class RenderRecognizerBox<T extends GestureRecognizer>
   T? _recognizer;
   VoidCallback? _semanticTap;
 
+  /// The recognizer the box holds now — null while it offers none.
+  @protected
+  T? get recognizer => _recognizer;
+
   void wear(RecognizerBox<T> box) {
     behavior = box.behavior;
     if (_recognizer case final kept? when !box.offers || !box.fits(kept)) {
@@ -78,6 +82,12 @@ class RenderRecognizerBox<T extends GestureRecognizer>
       markNeedsSemanticsUpdate();
     }
   }
+
+  /// A box with no child takes all the room it is given, as the listener of
+  /// a [RawGestureDetector] with none does — the box IS the press area.
+  @override
+  Size computeSizeForNoChild(BoxConstraints constraints) =>
+      constraints.biggest;
 
   @override
   void handleEvent(PointerEvent event, HitTestEntry entry) {

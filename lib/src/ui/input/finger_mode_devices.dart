@@ -24,9 +24,10 @@ import '../../models/app_input_settings.dart';
 /// one the child it already had.
 ///
 /// ★It listens ITSELF. ↩️It built a `ValueListenableBuilder` that did the
-/// listening — two elements where one does, under every row's drag and
-/// every cell's edit pan, paid on every panel reopen (card
-/// frame-panels-build-in-one-frame, 2026-10-25).
+/// listening — two elements where one does, paid on every panel reopen
+/// (card frame-panels-build-in-one-frame, 2026-10-25). The eager edit pans
+/// under every row's cells and drag no longer build through it: their box
+/// hears the mode and re-dresses its own recogniser (`TimelineEditPan`).
 class FingerModeDevices extends StatefulWidget {
   /// The timeline's edit pans ([AppInput.timelineEditPanDevices]).
   const FingerModeDevices.timelineEditPan({super.key, required this.builder})

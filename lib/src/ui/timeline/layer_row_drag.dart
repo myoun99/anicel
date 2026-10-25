@@ -12,7 +12,6 @@
 library;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 import '../../models/layer_kind.dart';
 
@@ -22,8 +21,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_conte_row.dart' show trackIdOfConteRow;
 import '../../models/track_id.dart';
-import '../input/finger_mode_devices.dart';
-import '../input/eager_pan_gesture_recognizer.dart';
+import '../input/timeline_edit_pan.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
@@ -450,7 +448,7 @@ const double _dropWordInset = 6;
 ///
 /// [child] is passed through untouched, so a memoized row stays memoized:
 /// only this thin wrapper rebuilds while a drag is in flight.
-class LayerRowDragTarget extends StatelessWidget {
+class LayerRowDragTarget extends StatefulWidget {
   const LayerRowDragTarget({
     super.key,
     required this.subject,
@@ -635,88 +633,19 @@ class LayerRowDragTarget extends StatelessWidget {
 
   final Widget child;
 
+  /// ★The target IS the stateful drag, not a widget building one.
+  /// ↩️It built a `_LayerRowDragBody` handed every field of its own — an
+  /// element more on every rail row, paid on every panel reopen (card
+  /// frame-panels-build-in-one-frame, 2026-10-25).
   @override
-  Widget build(BuildContext context) {
-    final hooks = this.hooks;
-    if (hooks == null) {
-      return child;
-    }
-    return _LayerRowDragBody(
-      subject: subject,
-      canReorder: canReorder,
-      slotBefore: slotBefore,
-      rowExtent: rowExtent,
-      axis: axis,
-      hooks: hooks,
-      onCrossed: onCrossed,
-      onSelectCrossed: onSelectCrossed,
-      selectRowDeltaAt: selectRowDeltaAt,
-      pointerRowsAt: pointerRowsAt,
-      drawsTheGapAfter: drawsTheGapAfter,
-      linesBeyond: linesBeyond,
-      grabOffsetWithinRun: grabOffsetWithinRun,
-      onGripTaken: onGripTaken,
-      onGripReleased: onGripReleased,
-      grip: grip,
-      child: child,
-    );
-  }
+  State<LayerRowDragTarget> createState() => _LayerRowDragTargetState();
 }
 
-class _LayerRowDragBody extends StatefulWidget {
-  const _LayerRowDragBody({
-    required this.subject,
-    required this.slotBefore,
-    required this.rowExtent,
-    required this.grabOffsetWithinRun,
-    required this.axis,
-    required this.hooks,
-    required this.onCrossed,
-    required this.canReorder,
-    required this.drawsTheGapAfter,
-    this.linesBeyond,
-    this.onSelectCrossed,
-    this.selectRowDeltaAt,
-    this.pointerRowsAt,
-    this.onGripTaken,
-    this.onGripReleased,
-    this.grip,
-    required this.child,
-  });
+class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
+  /// The hooks a drag on this row speaks to. A row without them builds no
+  /// detector ([build]), so no drag begins where they are null.
+  TimelineRowDragHooks get _hooks => widget.hooks!;
 
-  final LayerRowDragSubject subject;
-  final int? slotBefore;
-  final double rowExtent;
-  final double grabOffsetWithinRun;
-  final Axis axis;
-  final TimelineRowDragHooks hooks;
-  final void Function(int crossedRows, int? onRow, int inRow) onCrossed;
-
-  /// See [LayerRowDragTarget.canReorder] — false rows always select.
-  final bool canReorder;
-  final void Function(int rowDelta)? onSelectCrossed;
-
-  /// See [LayerRowDragTarget.selectRowDeltaAt].
-  final int Function(double offset)? selectRowDeltaAt;
-
-  /// See [LayerRowDragTarget.pointerRowsAt].
-  final double Function(double offset)? pointerRowsAt;
-  final VoidCallback? onGripTaken;
-  final VoidCallback? onGripReleased;
-
-  /// See [LayerRowDragTarget.grip].
-  final List<DragChipItem> Function()? grip;
-  final bool drawsTheGapAfter;
-
-  /// See [LayerRowDragTarget.linesBeyond].
-  final ({double lead, double trail}) Function()? linesBeyond;
-  final Widget child;
-
-  @override
-  State<_LayerRowDragBody> createState() => _LayerRowDragBodyState();
-}
-
-class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   double _travelled = 0;
 
   /// I-39: the chips at the pointer while this row is picked up — null the
@@ -791,7 +720,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // re-asked — the same reason the cells decide it at the press too
     // (their range gesture's `isInSelection`). A drag that changed its mind halfway
     // would be a row moving because the selection happened to grow under it.
-    final inSelection = widget.hooks.isInRowSelection?.call(widget.subject);
+    final inSelection = _hooks.isInRowSelection?.call(widget.subject);
     // 🚨A row that cannot be reordered ALWAYS takes the select half — the
     // ban is on moving, not on selecting (F-16). ⛔Without this the two
     // questions ride one flag again, just one layer down.
@@ -810,11 +739,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _selecting = !widget.canReorder || inSelection == false;
     if (_selecting) {
-      widget.hooks.onSelectBegin?.call(widget.subject);
+      _hooks.onSelectBegin?.call(widget.subject);
       return;
     }
     _moving = true;
-    widget.hooks.onBegin(widget.subject);
+    _hooks.onBegin(widget.subject);
     widget.onCrossed(0, null, 0);
     _pickUp(globalPosition);
   }
@@ -851,7 +780,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     if (_selecting) {
       _selecting = false;
-      widget.hooks.onSelectEnd?.call();
+      _hooks.onSelectEnd?.call();
       return;
     }
     if (!_moving) {
@@ -859,10 +788,10 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     }
     _moving = false;
     if (cancelled) {
-      widget.hooks.onCancel();
+      _hooks.onCancel();
       return;
     }
-    widget.hooks.onEnd();
+    _hooks.onEnd();
   }
 
   @override
@@ -875,7 +804,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     // itself disappears mid-drag (layer deleted, panel torn down) — the
     // window sliding past the row no longer unmounts it, the host pins it.
     if (_selecting || _moving) {
-      final hooks = widget.hooks;
+      final hooks = _hooks;
       final selecting = _selecting;
       _selecting = false;
       _moving = false;
@@ -994,9 +923,13 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
 
   @override
   Widget build(BuildContext context) {
+    final hooks = widget.hooks;
+    if (hooks == null) {
+      return widget.child;
+    }
     final colorScheme = Theme.of(context).colorScheme;
     return ValueListenableBuilder<LayerRowDragState?>(
-      valueListenable: widget.hooks.drag,
+      valueListenable: hooks.drag,
       builder: (context, drag, child) {
         // A caret belongs on rows of the dragged subject's OWN kind: a Blur
         // travelling on layer A raises nothing on layer B's chain, and
@@ -1040,42 +973,20 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     );
   }
 
-  Widget _gestures({required Widget child}) {
-    return FingerModeDevices.timelineEditPan(
-      builder: (context, devices) => RawGestureDetector(
-        // Translucent: the row's own taps (select the layer, the eye, the
-        // sliders) keep firing — only the pan recognizer joins the arena.
-        behavior: HitTestBehavior.translucent,
-        gestures: <Type, GestureRecognizerFactory>{
-          EagerPanGestureRecognizer:
-              GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-                () => EagerPanGestureRecognizer(debugOwner: this),
-                (recognizer) {
-                  // The rail SCROLLS along the same axis this drag runs, so
-                  // the device policy is what separates them: pen and mouse
-                  // move rows, a finger scrolls (UI-R22 #6).
-                  recognizer.supportedDevices = devices;
-                  // PEN-11: RawGestureDetector does not inject these.
-                  recognizer.gestureSettings =
-                      MediaQuery.maybeGestureSettingsOf(context);
-                  recognizer.dragStartBehavior = DragStartBehavior.down;
-                  recognizer.onStart = (details) => _begin(
-                    details.localPosition,
-                    globalPosition: details.globalPosition,
-                  );
-                  recognizer.onUpdate = _update;
-                  // ⑨: a SELECT drag ends its own way. Falling through to
-                  // the move's end would run the DROP COMMIT for a gesture
-                  // that never proposed a drop.
-                  recognizer.onEnd = (_) => _end();
-                  recognizer.onCancel = () => _end(cancelled: true);
-                },
-              ),
-        },
-        child: child,
-      ),
-    );
-  }
+  // The rail SCROLLS along the same axis this drag runs, so the device
+  // policy is what separates them: pen and mouse move rows, a finger
+  // scrolls (UI-R22 #6) — the edit pans' one set-up ([TimelineEditPan]).
+  Widget _gestures({required Widget child}) => TimelineEditPan(
+    debugOwner: this,
+    onStart: (details) =>
+        _begin(details.localPosition, globalPosition: details.globalPosition),
+    onUpdate: _update,
+    // ⑨: a SELECT drag ends its own way. Falling through to the move's end
+    // would run the DROP COMMIT for a gesture that never proposed a drop.
+    onEnd: _end,
+    onCancel: () => _end(cancelled: true),
+    child: child,
+  );
 
   /// Where the row's LAYER AREA starts: what a drop draws on a row is drawn
   /// from here.

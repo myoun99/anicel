@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/app_input_settings.dart' show AppInput;
@@ -18,7 +17,7 @@ import 'berth_row.dart' show rowAddressNow;
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
-import '../input/finger_mode_devices.dart';
+import '../input/timeline_edit_pan.dart';
 import 'timeline_frame_coordinate_policy.dart' show frameAtVisibleX;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
@@ -574,12 +573,11 @@ class _TimelineFrameRangeGestureLayerState
               widget.callbacks.onTapClear(_rowNow);
             }
           },
-          child: timelineEagerPanDetector(
-            context: context,
+          child: TimelineEditPan(
             debugOwner: this,
             firstStepAt: _firstStepAt,
             draggedAStep: () => _dragStepped,
-            onStart: _startDrag,
+            onStart: (details) => _startDrag(details.localPosition),
             onUpdate: _updateDrag,
             onEnd: _endDrag,
             onCancel: _cancelDrag,
@@ -1085,12 +1083,11 @@ class _TimelineLaneRangeGestureLayerState
                       activate(widget.layer.id, widget.laneId, frame),
                 ),
           onDoubleTap: activate == null ? null : () {},
-          child: timelineEagerPanDetector(
-            context: context,
+          child: TimelineEditPan(
             debugOwner: this,
             firstStepAt: _firstStepAt,
             draggedAStep: () => _dragStepped,
-            onStart: _startDrag,
+            onStart: (details) => _startDrag(details.localPosition),
             onUpdate: _updateDrag,
             onEnd: _endDrag,
             onCancel: _cancelDrag,
@@ -1099,45 +1096,6 @@ class _TimelineLaneRangeGestureLayerState
       ),
     );
   }
-}
-
-/// The eager pan that owns a range drag from its first pixel — one
-/// recogniser set-up for the cell layer and the lane layer (the audit's
-/// clone scan, 2026-09-03), and a header graph's box (I-3 ⑤).
-Widget timelineEagerPanDetector({
-  required BuildContext context,
-  required Object debugOwner,
-  required bool Function(Offset down, Offset now) firstStepAt,
-  required bool Function() draggedAStep,
-  required void Function(Offset localPosition) onStart,
-  required GestureDragUpdateCallback onUpdate,
-  required VoidCallback onEnd,
-  required VoidCallback onCancel,
-}) {
-  return FingerModeDevices.timelineEditPan(
-    builder: (context, devices) => RawGestureDetector(
-      behavior: HitTestBehavior.translucent,
-      gestures: <Type, GestureRecognizerFactory>{
-        EagerPanGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-              () => EagerPanGestureRecognizer(debugOwner: debugOwner),
-              (recognizer) {
-                recognizer.firstStepAt = firstStepAt;
-                recognizer.draggedAStep = draggedAStep;
-                recognizer.supportedDevices = devices;
-                recognizer.gestureSettings =
-                    MediaQuery.maybeGestureSettingsOf(context);
-                recognizer.dragStartBehavior = DragStartBehavior.down;
-                recognizer.onStart = (details) =>
-                    onStart(details.localPosition);
-                recognizer.onUpdate = onUpdate;
-                recognizer.onEnd = (_) => onEnd();
-                recognizer.onCancel = onCancel;
-              },
-            ),
-      },
-    ),
-  );
 }
 
 /// A range drag's FIRST STEP ([EagerPanGestureRecognizer.firstStepAt]) — the
