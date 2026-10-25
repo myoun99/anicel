@@ -160,7 +160,7 @@ void main() {
         matching: find.byWidgetPredicate(
           (widget) =>
               widget is TimelineBlockEdgeGrip &&
-              widget.layerId == session.activeTrack.transitionLayer.id &&
+              widget.layer.id == session.activeTrack.transitionLayer.id &&
               widget.edge == edge,
         ),
       );

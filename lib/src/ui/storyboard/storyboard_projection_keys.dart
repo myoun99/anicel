@@ -55,6 +55,21 @@ mixin _StoryboardProjectionKeys on Widget {
   /// none.
   PropertyLaneRow? _laneOf(Cut cut, Layer layer);
 
+  /// The eye [cut]'s [layer] wears on this row — its cut's own answer for
+  /// it by default ([_cutsOwnEye]).
+  RailEye _eyeOf(Cut cut, Layer layer) => _cutsOwnEye(cut, layer);
+
+  /// Every cut's layer this row shows, with the eye it wears here
+  /// ([_eyeOf]) — what its keys, its line and its words are drawn in, as
+  /// the row's blocks are: 🗣️I-129-Q1 (유저 2026-10-25 「셋 다 같은 법으로
+  /// 흐린다」 — 투영 키는 폴더 숨김도 본다). ↩️They read each layer's own
+  /// switch alone, so a folder that hid the row left its keys dark.
+  Map<LayerId, RailEye> get _eyes => {
+    for (final reach in reaches)
+      if (_layerOf(reach.entry.cut) case final layer?)
+        layer.id: _eyeOf(reach.entry.cut, layer),
+  };
+
   int _frameAtX(double x) =>
       timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
 
@@ -129,7 +144,11 @@ mixin _StoryboardProjectionKeys on Widget {
           windowBucket: windowBucket,
           viewportWidth: viewportWidth,
         ),
-        Positioned.fill(child: IgnorePointer(child: keys)),
+        Positioned.fill(
+          child: IgnorePointer(
+            child: RailEyes(eyes: _eyes, child: keys),
+          ),
+        ),
         if (onRowFramePress != null || onCameraCutPress != null || onEdit != null)
           _storyboardRowPressLayer(
             key: ValueKey<String>(
@@ -510,6 +529,9 @@ class _StoryboardProjectionLaneRow extends StatelessWidget
   Layer? _layerOf(Cut cut) => projection.layerOf(cut);
 
   @override
+  RailEye _eyeOf(Cut cut, Layer layer) => projection.eyeOf(cut, layer);
+
+  @override
   PropertyLaneRow? _laneOf(Cut cut, Layer layer) {
     for (final lane in projection.lanesOf(cut, layer)) {
       if (lane.laneId == laneId) {
@@ -584,11 +606,18 @@ typedef _ProjectionSweeps = ({
 /// marks are, the layer it shows of a cut ([projectedRowOf]), and that
 /// layer's lanes there — every one of them, whatever the twirls: a lane row
 /// finds its own among them by id, in every cut — valued in that cut, the
-/// line a header graph draws of it there (I-89 ①).
+/// line a header graph draws of it there (I-89 ①) — and the eye that
+/// layer wears on the row ([_StoryboardProjectionKeys._eyeOf]).
 typedef _ProjectionLanes = ({
   LayerId rowId,
   String keyName,
   String markPrefix,
   Layer? Function(Cut cut) layerOf,
   List<PropertyLaneRow> Function(Cut cut, Layer layer) lanesOf,
+  RailEye Function(Cut cut, Layer layer) eyeOf,
 });
+
+/// [layer]'s eye as its own [cut]'s folders gate it — the timeline rail's
+/// answer for it there ([railEyesOf]).
+RailEye _cutsOwnEye(Cut cut, Layer layer) =>
+    railEyesOf([layer], stack: cut.layers)[layer.id]!;

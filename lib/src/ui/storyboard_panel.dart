@@ -68,7 +68,8 @@ import 'timeline/timeline_cut_end_handle.dart'
     show EndLineGrip, timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
-import 'timeline/rail_eyes.dart' show RailEyeShown, RailEyes, railEyesOf;
+import 'timeline/rail_eyes.dart'
+    show RailEye, RailEyeShown, RailEyes, railEyesOf;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'timeline/timeline_grid_frame.dart';
@@ -140,7 +141,8 @@ import 'timeline/layer_row_drag.dart'
         effectRowDragChip,
         layerRowDragChips,
         timelineRowAddressOfDragSubject;
-import 'timeline/timeline_block_look.dart' show timelineRowLookOf;
+import 'timeline/timeline_block_look.dart'
+    show TimelineBlockRow, timelineRowLookOf;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
@@ -4542,7 +4544,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
           'storyboard-se-grip-${layer.id}-$blockOrdinal'
           '-${edge.name}',
         ),
-        layerId: layer.id,
+        layer: layer,
         blockStartIndex: block.startIndex,
         blockOrdinal: blockOrdinal,
         edge: edge,

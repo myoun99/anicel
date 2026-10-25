@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart' show BuildContext, Color;
 import '../../models/layer.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart' show layerMarkColor;
+import 'memo_token.dart' show ByIdentity;
 import 'rail_eyes.dart';
 import 'timeline_beat_lines.dart' show TimelineGridLaw, timelineGridGroundOver;
 import 'timeline_cel_content_source.dart';
@@ -118,52 +119,112 @@ typedef TimelineBlockRow = ({
   Color? ground,
 });
 
-/// The look of [row]'s FRAME block over [frameIndex], made of [paper] with
-/// words in [ink] ([timelineBlockLook]) — the ONE answer its paper, its cel
-/// name and its 코마 number are drawn from.
+/// What of [row] its blocks' look reads, as a painter compares it between
+/// two paints: its layer, its eye, what its cels hold and its ground — or
+/// nothing, for a row that hands none.
+Object? timelineBlockRowFacts(TimelineBlockRow? row) => row == null
+    ? null
+    : (
+        ByIdentity(row.layer),
+        row.shown,
+        row.content?.hasContent,
+        row.content?.cannotRead,
+        row.content?.revision.value,
+        row.ground,
+      );
+
+/// What a block IS, for whatever is laid on it: the [state] it is drawn
+/// in, its [paper], and what stands behind it ([ground] — null over the
+/// artwork). Its words are read off it ([timelineBlockLookOn]), and so are
+/// its grips (`timelineBlockGripColor`).
+typedef TimelineBlockFace = ({
+  TimelineBlockState state,
+  Color paper,
+  Color? ground,
+});
+
+/// The look of a block that is [face], with words in [ink]
+/// ([timelineBlockLook]).
+TimelineBlockLook timelineBlockLookOn(
+  TimelineBlockFace face, {
+  required Color ink,
+}) => timelineBlockLook(
+  face.state,
+  paper: face.paper,
+  ink: ink,
+  ground: face.ground,
+);
+
+/// What [row]'s FRAME block over [frameIndex] is, made of [paper] — the ONE
+/// answer its paper, its cel name, its 코마 number and its grips are drawn
+/// from.
 ///
 /// A cel whose picture could not be read is a fault: its block is red
 /// ([timelineUnreadableCelPaperColor], frame-picture-indicator-Q1 b) and
 /// never taken for empty.
-TimelineBlockLook timelineFrameBlockLook(
+TimelineBlockFace timelineFrameBlockFace(
   TimelineBlockRow row,
   int frameIndex, {
   required Color paper,
-  required Color ink,
 }) {
   final content = row.content;
   final unreadable = content?.cannotRead(row.layer, frameIndex) ?? false;
   final drawn =
       unreadable || (content?.hasContent(row.layer, frameIndex) ?? true);
-  return timelineBlockLook(
-    timelineBlockStateOf(shown: row.shown, drawn: drawn),
+  return (
+    state: timelineBlockStateOf(shown: row.shown, drawn: drawn),
     paper: _paperOf(paper, unreadable: unreadable),
-    ink: ink,
     ground: row.ground,
   );
 }
+
+/// The look of [row]'s FRAME block over [frameIndex], made of [paper] with
+/// words in [ink] ([timelineFrameBlockFace]).
+TimelineBlockLook timelineFrameBlockLook(
+  TimelineBlockRow row,
+  int frameIndex, {
+  required Color paper,
+  required Color ink,
+}) => timelineBlockLookOn(
+  timelineFrameBlockFace(row, frameIndex, paper: paper),
+  ink: ink,
+);
 
 /// A block's [paper] — red where what it holds cannot be read or played.
 Color _paperOf(Color paper, {required bool unreadable}) =>
     unreadable ? timelineUnreadableCelPaperColor : paper;
 
-/// The look of what [layer]'s row draws in its colour label — its keys,
-/// the marks and words laid over its blocks, and the blocks a row with no
-/// cells under it paints for itself (the storyboard's S and transition
-/// rows) — with words in [ink] (the block's own by default), as its rail's
-/// eye shows the row ([RailEyes]), onto the host's ground
+/// The state of what [layer]'s row draws, as its rail's eye shows the row
+/// ([RailEyes]): what it draws holds its value, so it is never an empty
+/// block.
+TimelineBlockState timelineRowStateOf(BuildContext context, Layer layer) =>
+    timelineBlockStateOf(shown: RailEyes.of(context, layer).shown, drawn: true);
+
+/// What a block [layer]'s row draws in its colour label is — its keys, the
+/// marks and words laid over its blocks, the blocks a row with no cells
+/// under it paints for itself (the storyboard's S and transition rows) and
+/// the grips on them — in [timelineRowStateOf], onto the host's ground
 /// ([TimelineGridLaw]): 🗣️I-129 「이 비지블시 비활성화색은 키던
-/// 프레임블록이던 동일하게 법통일해서」. What it draws holds its value, so it
-/// is never an empty block; one that is [unreadable] is red, as
-/// [timelineFrameBlockLook]'s is.
+/// 프레임블록이던 동일하게 법통일해서」. One that is [unreadable] is red, as
+/// [timelineFrameBlockFace]'s is.
+TimelineBlockFace timelineRowFaceOf(
+  BuildContext context,
+  Layer layer, {
+  bool unreadable = false,
+}) => (
+  state: timelineRowStateOf(context, layer),
+  paper: _paperOf(layerMarkColor(layer.mark), unreadable: unreadable),
+  ground: TimelineGridLaw.maybeOf(context)?.ground,
+);
+
+/// The look of what [layer]'s row draws in its colour label
+/// ([timelineRowFaceOf]), with words in [ink] — the block's own by default.
 TimelineBlockLook timelineRowLookOf(
   BuildContext context,
   Layer layer, {
   Color? ink,
   bool unreadable = false,
-}) => timelineBlockLook(
-  timelineBlockStateOf(shown: RailEyes.of(context, layer).shown, drawn: true),
-  paper: _paperOf(layerMarkColor(layer.mark), unreadable: unreadable),
+}) => timelineBlockLookOn(
+  timelineRowFaceOf(context, layer, unreadable: unreadable),
   ink: ink ?? timelineInBlockInk(),
-  ground: TimelineGridLaw.maybeOf(context)?.ground,
 );

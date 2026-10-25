@@ -9,7 +9,7 @@ import 'axis_turn.dart';
 import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
 import 'timeline_block_look.dart'
-    show TimelineBlockRow, timelineFrameBlockLook;
+    show TimelineBlockRow, timelineBlockRowFacts, timelineFrameBlockLook;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
@@ -326,11 +326,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter
         axis,
         ByIdentity(windowBucket),
         viewportMainExtent,
-        shown,
-        celContent?.hasContent,
-        celContent?.cannotRead,
-        celContent?.revision.value,
-        paperGround,
+        timelineBlockRowFacts(_blockRow),
       );
   // ↩️The cel-content comparison went with F-24 (the ink had read the
   // empty-cel ground) and came back with I-129: what a block holds is its

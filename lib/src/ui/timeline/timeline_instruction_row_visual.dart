@@ -238,7 +238,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
               crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
             ),
             child: TimelineBlockEdgeGrip(
-              layerId: layer.id,
+              layer: layer,
               blockStartIndex: start,
               blockOrdinal: ordinal,
               edge: edge,

@@ -763,6 +763,15 @@ class TimelineFrameCellsRow extends StatelessWidget {
             // layer's color label (⑲) — so a purple row's bars go black by
             // the same ground law its numbers follow.
             gripGround: layerMarkColor(layer.mark),
+            // …each grip on its block as the cells draw the block (I-129):
+            // the row's eye, its cels and the host's ground, as the 코마
+            // numbers take them.
+            gripRow: (
+              layer: layer,
+              shown: RailEyes.of(context, layer).shown,
+              content: celContent,
+              ground: TimelineGridLaw.maybeOf(context)?.ground,
+            ),
             // The cells' window: what the chrome draws, as the cells under
             // it.
             windowBucket: windowBucket,

@@ -514,6 +514,9 @@ class _StoryboardRailRows {
   /// (I-89 ①).
   _ProjectionLanes _conteProjection(Track track, int seat) {
     final keyName = _StoryboardRowsAndLabels.conteLabelKeyName(seat);
+    // The row's blocks wear its head's eye in every cut (I-129), and so do
+    // its keys.
+    final headEye = _conteHeadEye(track.cuts, seat);
     return (
       rowId: trackConteRowId(track.id, seat: seat),
       keyName: keyName,
@@ -530,6 +533,7 @@ class _StoryboardRailRows {
         valueSourceAt: (frame) => (layer: row, frame: frame),
         poseCentre: cut.canvasSize,
       ),
+      eyeOf: (cut, row) => headEye ?? _cutsOwnEye(cut, row),
     );
   }
 
@@ -2881,6 +2885,7 @@ class _StoryboardRailRows {
       cut.camera.track,
       canvasSize: cut.canvasSize,
     ),
+    eyeOf: _cutsOwnEye,
   );
 
   /// A projection row's lane strips (I-73 ④ⓔ), row for row with their
