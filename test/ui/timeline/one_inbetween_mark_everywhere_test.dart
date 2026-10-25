@@ -153,8 +153,10 @@ void main() {
     });
   }
 
+  for (final dotMark in InbetweenMark.values) {
   test('a repeat GHOST wears the same marks — its unnamed head and its '
-      'dot, text-only like every ghost (UI-R10 #11)', () {
+      'dot, text-only like every ghost (UI-R10 #11) — whichever mark the '
+      'dot wears ($dotMark)', () {
     final repeated = rederiveRunBehaviors(
       Layer(
         id: const LayerId('ghosts'),
@@ -182,7 +184,7 @@ void main() {
       // The ghost chain restarts the block at 2; its dot rides at 3.
       exposureStateForLayer: (_, frame) => switch (frame) {
         0 || 2 => TimelineCellExposureState.drawingStart,
-        3 => TimelineCellExposureState.markTwoHeld,
+        3 => TimelineCellExposureState.markHeld(dotMark),
         _ => TimelineCellExposureState.held,
       },
       colorScheme: const ColorScheme.dark(),
@@ -193,10 +195,11 @@ void main() {
     final dot = painter.cellModelAt(3);
     expect(head.ghost && dot.ghost, isTrue, reason: '⛔전제: ghost cells');
     expect(head.mark, unnamedDrawingMark);
-    expect(dot.mark, InbetweenMark.two);
+    expect(dot.mark, dotMark);
     expect(head.glyph, isEmpty);
     expect(dot.glyph, isEmpty);
   });
+  }
 
   // 🚨F-297 (유저 2026-10-05): 「점 지금 줌 낮아지면 크기 자체가 작아지는데
   // 그게아니라 글자랑 똑같이 법 통일해서 가로가 작아지도록」. ↩️This pinned
