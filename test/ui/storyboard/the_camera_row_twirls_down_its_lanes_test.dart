@@ -19,14 +19,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_camera_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart' show StoryboardPanel;
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart'
     show TimelineLaneKeyMarker, timelineLaneKeyMarkerSizeOf;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-73 ④ (유저 2026-10-08): 「카메라 행 범위는 키표시/이동/레인 등 모든거
 /// 콘티패널에서 가능. 컷 클램핑만 되도록」 — and the camera row's head is the
@@ -111,34 +110,17 @@ void main() {
     Map<int, InstructionEvent> transitions = const {},
     bool open = true,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: film());
     addTearDown(session.dispose);
     if (transitions.isNotEmpty) {
       session.transitions.updateTransitionInstructions(transitions);
     }
-    final twirls = session.railView.expandedLaneLayerIds;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([session, twirls]),
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              expandedLaneLayerIds: twirls.value,
-              onToggleLayerLanes: SessionRowButtonPresses(session).toggleLanes,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 900),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     if (open) {
       await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
       await tester.pumpAndSettle();

@@ -19,16 +19,13 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/session/session_row_button_presses.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
-import 'package:anicel/src/ui/timeline/lane_graph.dart' show LaneGraphsView;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-89 ①ⓒ (유저 2026-10-13): 「다시 말하지만 이런건 다 콘티패널에도
 /// 동일하게 있어야해. 같은 법으로」 — the conte rail sweeps the timeline's
@@ -122,44 +119,12 @@ void main() {
   Future<EditorSessionManager> pump(
     WidgetTester tester, {
     bool conteOnT2 = false,
-  }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1400));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(
-      initialProject: film(conteOnT2: conteOnT2),
-    );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => ValueListenableBuilder<LaneGraphsView>(
-              valueListenable: session.railView.laneGraphs,
-              builder: (context, open, _) => StoryboardTabHost(
-                session: session,
-                expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-                onToggleLayerLanes: twirls.onToggleLayerLanes,
-                expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-                onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-                laneGraphs: open,
-                laneGraphVerbs: SessionRowButtonPresses(
-                  session,
-                ).laneGraphVerbs,
-                pixelsPerFrame: 12,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+  }) => pumpStoryboardHost(
+    tester,
+    film(conteOnT2: conteOnT2),
+    surface: const Size(1600, 1400),
+    pixelsPerFrame: 12,
+  );
 
   Future<void> tap(WidgetTester tester, String name) async {
     await tester.tap(find.named(name));

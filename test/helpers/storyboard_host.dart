@@ -24,10 +24,32 @@ Future<EditorSessionManager> pumpStoryboardHost(
   Size surface = const Size(1500, 800),
   double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
 }) async {
-  await tester.binding.setSurfaceSize(surface);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
   final session = EditorSessionManager(initialProject: project);
   addTearDown(session.dispose);
+  await pumpStoryboardHostOn(
+    tester,
+    session,
+    surface: surface,
+    pixelsPerFrame: pixelsPerFrame,
+  );
+  return session;
+}
+
+/// [pumpStoryboardHost] on a [session] the test made and set up itself —
+/// the test disposes it.
+///
+/// 📏tests-hand-roll-the-tab-hosts (2026-10-25): seventy test files built
+/// the tab themselves, most with a session they had edited first; each
+/// told its own part of the workspace's wiring, and what the workspace
+/// learned later none of them heard.
+Future<void> pumpStoryboardHostOn(
+  WidgetTester tester,
+  EditorSessionManager session, {
+  Size surface = const Size(1500, 800),
+  double pixelsPerFrame = PanelViewMemory.defaultStoryboardPixelsPerFrame,
+}) async {
+  await tester.binding.setSurfaceSize(surface);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   final rail = session.railView;
   final presses = SessionRowButtonPresses(session);
   await tester.pumpWidget(
@@ -62,5 +84,4 @@ Future<EditorSessionManager> pumpStoryboardHost(
     ),
   );
   await tester.pumpAndSettle();
-  return session;
 }

@@ -21,7 +21,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_box_stretch.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart'
@@ -45,6 +44,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// **I-89 ① — a projection row's header graph draws a line a cut.**
 ///
@@ -147,41 +147,12 @@ void main() {
     Project project, {
     required String twirl,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final session = EditorSessionManager(initialProject: project);
-    addTearDown(session.dispose);
-    final rail = session.railView;
-    final presses = SessionRowButtonPresses(session);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([
-              session,
-              rail.expandedLaneLayerIds,
-              rail.expandedLaneGroupKeys,
-              rail.laneGraphs,
-            ]),
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
-              onToggleLayerLanes: presses.toggleLanes,
-              expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: presses.toggleLaneGroup,
-              laneGraphs: rail.laneGraphs.value,
-              laneGraphVerbs: presses.laneGraphVerbs,
-            ),
-          ),
-        ),
-      ),
+    final session = await pumpStoryboardHost(
+      tester,
+      project,
+      surface: const Size(1600, 1200),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     await tester.tap(find.named('storyboard-lane-toggle-$twirl'));
     await tester.pumpAndSettle();
     return session;

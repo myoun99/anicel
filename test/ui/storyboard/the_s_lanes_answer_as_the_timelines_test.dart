@@ -8,12 +8,11 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// I-89 ① ⓕ (2026-10-20) — what the conte panel's S rows answer, against
 /// the timeline's (유저 2026-10-13: 「다시 말하지만 이런건 다 콘티패널에도
@@ -36,36 +35,18 @@ void main() {
     WidgetTester tester, {
     Layer Function(Layer row)? rowOf,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final se = s.activeTrack.seLayers.first;
     if (rowOf != null) {
       s.repository.replaceLayer(layer: rowOf(se));
     }
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            s,
-            (twirls) => StoryboardTabHost(
-              session: s,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      s,
+      surface: const Size(1400, 900),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
     await tester.tap(find.named('storyboard-lane-toggle-${se.id}'));
     await tester.pumpAndSettle();
     await tester.tap(

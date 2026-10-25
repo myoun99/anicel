@@ -13,13 +13,12 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerBlendSlotWidth;
 
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
-import '../helpers/storyboard_twirls.dart';
+import '../helpers/storyboard_host.dart';
 
 /// 🚨★★★THE STORYBOARD RAIL SWIPES A COLUMN, LIKE THE TIMELINE RAIL DOES.
 ///
@@ -105,32 +104,14 @@ void main() {
     WidgetTester tester, {
     Layer Function(Layer se)? seOf,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = threeTracks(seOf: seOf);
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 800),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return session;
   }
 
@@ -538,8 +519,6 @@ void main() {
     // first, so a stroke that reached S2 and stopped there hid S1 and left
     // S2 alone (measured: [false, true]) — found while the storyboard's rows
     // learned to grow with their words (text-scale-storyboard-rows).
-    await tester.binding.setSurfaceSize(const Size(1400, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     Layer se(String id, String name) => Layer(
       id: LayerId(id),
       name: name,
@@ -578,28 +557,12 @@ void main() {
       ),
     );
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 800),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     Track theTrack() => session.repository.requireProject().tracks.single;
     Finder eye(String id) =>

@@ -6,12 +6,11 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 import '../../helpers/named_finders.dart';
-import '../../helpers/storyboard_twirls.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// F-195 on the STORYBOARD's rail: a value scrubbed on an S row's lane or on
 /// the V row's fx chain is shown by the label itself through the one drag
@@ -22,37 +21,13 @@ import '../../helpers/storyboard_twirls.dart';
 /// through the timeline's row gate, which is why this rail needs pinning
 /// apart from the timeline's (`an_edit_shows_while_it_is_dragged_test`).
 void main() {
-  Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(session.dispose);
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return session;
-  }
+  Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) =>
+      pumpStoryboardHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(1600, 1200),
+        pixelsPerFrame: 12,
+      );
 
   Future<void> tapNamed(WidgetTester tester, String name) async {
     final target = find.named(name);
