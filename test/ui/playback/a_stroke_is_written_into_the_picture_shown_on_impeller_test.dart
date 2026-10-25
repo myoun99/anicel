@@ -34,10 +34,18 @@ import '../../helpers/a_stroke_written_into_the_picture_shown.dart';
 /// beside the step, the buffer cut at the view's edge read its own edge
 /// again there: 🔬2/255 to 3/255 down the view's edge.
 ///
+/// And where a landing patch meets the page's edge, which a pixel crosses
+/// off its centre: turned by 30° at 33%, where the patch covered all of
+/// the pixel the picture covers part of — 🔬9/255 at the page's corner —
+/// and with a stroke at the page's corner at 20% and 15%, where the patch
+/// was cut short of it — 🔬up to 13/255 down the page's edge (2026-10-26).
+///
 /// 🔬Each pixel to within 1/255 a channel: the tester's Vulkan halves an
 /// image cut where a patch is and the picture it is cut from a level apart
 /// by one where line art changes under them (measured 2026-10-25 — one
-/// pixel at 25% and 12.5%, 0 on one ink). A step cut at its patch was up to
+/// pixel at 25% and 12.5%, 0 on one ink), and a turned view within 2/255
+/// (measured 2026-10-26 — a pixel here and there inside the page at 33%,
+/// as it is on master). A step cut at its patch was up to
 /// 12/255 off, a buffer off the grid 8, a patch laid for 37.5% shown at
 /// 18.75% 2, an edge between the picture and the step off the screen's
 /// pixels 8.
@@ -138,6 +146,44 @@ void main() {
     inkAt: (x, y) => [0, ((x * 73856093) ^ (y * 19349663)) & 0xFF, 0, 0xFF],
     strokeAt: const ui.Rect.fromLTRB(41, 41, 47, 47),
     page: const CanvasSize(width: 160, height: 128),
+    apartBy: 1,
+    withThePinsOfNoView: false,
+    skip: !ui.ImageFilter.isShaderFilterSupported,
+  );
+  aStrokeIsWrittenIntoThePictureShown(
+    views: {
+      'turned by 30° at 33%': CanvasViewport(
+        zoom: 0.33,
+        panX: 8,
+        panY: 4,
+        rotationDegrees: 30,
+      ),
+    },
+    ratios: const [1.0, 1.25],
+    inkAt: (x, y) => [0, ((x * 73856093) ^ (y * 19349663)) & 0xF0, 0, 0x80],
+    strokeAt: const ui.Rect.fromLTRB(9, 9, 15, 15),
+    page: const CanvasSize(width: 320, height: 256),
+    apartBy: 2,
+    withThePinsOfNoView: false,
+    skip: !ui.ImageFilter.isShaderFilterSupported,
+  );
+  aStrokeIsWrittenIntoThePictureShown(
+    views: {
+      'at the page\'s corner at 20%': CanvasViewport(
+        zoom: 0.2,
+        panX: -14,
+        panY: -14,
+      ),
+      'at the page\'s corner at 15%': CanvasViewport(
+        zoom: 0.15,
+        panX: -2,
+        panY: -4,
+      ),
+    },
+    ratios: const [1.0, 1.25],
+    inkAt: (x, y) => [0, ((x * 73856093) ^ (y * 19349663)) & 0xFF, 0, 0xFF],
+    strokeAt: const ui.Rect.fromLTRB(249, 249, 256, 256),
+    page: const CanvasSize(width: 256, height: 256),
     apartBy: 1,
     withThePinsOfNoView: false,
     skip: !ui.ImageFilter.isShaderFilterSupported,

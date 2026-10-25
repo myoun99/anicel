@@ -244,10 +244,15 @@ final class _LandingAsItWillBe {
     // 2026-10-25, F-465 again). The ⛔ that kept no margin was measured on
     // translucent line art of period 8, which every level from 1/8 down
     // averages flat.
-    final within = rectTheDisplayReads(
-      patch.rect,
-      displayScale,
-    ).intersect(picture.extent);
+    //
+    // 🚨Shown on past the picture's edge where it meets it, as the step's
+    // walk is ([_FramePicturePainter._onScreen]): the picture's own edge
+    // cuts it there ([_FramePicturePainter._paintPicture]). ↩️Shown up to
+    // the edge, it was cut on the pixels' grid short of a pixel the edge
+    // crosses, which the picture covers part of — 🔬up to 13/255 down the
+    // page's edge at 20% and 15%, a stroke at its corner (Impeller tester,
+    // 2026-10-26, F-465 again).
+    final within = rectTheDisplayReads(patch.rect, displayScale);
     final rect = rectTheDisplayReads(
       within,
       displayScale,
@@ -938,10 +943,31 @@ class _FramePicturePainter extends CustomPainter {
       image,
       displayScaleOf(viewport.zoom, devicePixelRatio),
     );
-    if (landing.isNotEmpty) {
-      canvas.saveLayer(picture.extent, Paint());
+    if (landing.isEmpty) {
+      _lay(canvas, image, picture.extent);
+      return;
     }
+    canvas.saveLayer(picture.extent, Paint());
     _lay(canvas, image, picture.extent);
+    // 🚨Cut where the picture's own edge is cut ([displayEdgeAntiAliased]),
+    // inside its layer — a patch is shown on past it ([_LandingAsItWillBe]).
+    // A patch laid in at the picture's edge covered all of a pixel the
+    // edge crosses, where the picture covers part of it —
+    // 🔬9/255 at the page's corner at 33% turned by 30° (Impeller tester,
+    // 2026-10-26, F-465 again). ⛔Not round the layer: there the cut came
+    // on top of the edge the picture already drew, the edge's pixels
+    // covered twice over — 🔬12/255 down the page's edge.
+    final antiAlias = displayEdgeAntiAliased(viewport, devicePixelRatio);
+    canvas.save();
+    canvas.clipRect(
+      displayEdgeRect(
+        canvas,
+        picture.extent,
+        antiAlias: antiAlias,
+        pixelRatio: devicePixelRatio,
+      ),
+      doAntiAlias: antiAlias,
+    );
     for (final laid in landing) {
       _lay(
         canvas,
@@ -951,9 +977,8 @@ class _FramePicturePainter extends CustomPainter {
         within: laid.within,
       );
     }
-    if (landing.isNotEmpty) {
-      canvas.restore();
-    }
+    canvas.restore();
+    canvas.restore();
   }
 
   void _lay(

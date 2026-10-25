@@ -294,12 +294,13 @@ ui.Rect displayEdgeRect(
 /// canvas's display buffer, and a frame's one picture (`FramePictureView`):
 /// two spellings of it would be two answers to how a frame is shown.
 ///
-/// Shown over [within] alone where it is named — a rect inside [dst], cut
-/// on the pixel grid ([cutOnThePixelGrid]) whatever the zoom where the
-/// view is not turned: an image laid in over another one's texels, whose
-/// every pixel by the cut is the one image's or the other's, never a blend
-/// of the two (F-465 — a frame's landing patch over its picture). The
-/// texels past [within] are still read where a pixel inside it reads them.
+/// Shown over [within] alone where it is named — a rect [src] lies over
+/// [dst] by, past [dst]'s edge by its edge texels — cut on the pixel grid
+/// ([cutOnThePixelGrid]) whatever the zoom: an image laid in over another
+/// one's texels, whose every pixel by the cut is the one image's or the
+/// other's, never a blend of the two (F-465 — a frame's landing patch over
+/// its picture). The texels past [within] are still read where a pixel
+/// inside it reads them.
 void drawOnTheDisplay(
   ui.Canvas canvas,
   ui.Image image,
@@ -313,37 +314,31 @@ void drawOnTheDisplay(
   final filterQuality = filterQualityForDisplayScale(
     displayScaleOf(viewport.zoom, devicePixelRatio),
   );
-  final (from, to) = within == null
-      ? (src, dst)
-      : (_mappedInto(src, dst, within), within);
   // The image's edge IS the canvas's edge on screen, cut by the same law
   // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
   // view it is one more texel boundary, decided by pixel centres, not a
   // blended line. One laid in over another's texels is cut on the grid
-  // at any zoom; a turned view has no grid.
-  final antiAliased = within == null
-      ? displayEdgeAntiAliased(viewport, devicePixelRatio)
-      : viewport.rotationDegrees != 0;
-  if (antiAliased) {
+  // at any zoom.
+  if (within == null && displayEdgeAntiAliased(viewport, devicePixelRatio)) {
     canvas.drawImageRect(
       image,
-      from,
-      to,
+      src,
+      dst,
       ui.Paint()
         ..filterQuality = filterQuality
         ..blendMode = blendMode,
     );
-  } else {
-    drawImageRectOnThePixelGrid(
-      canvas,
-      image,
-      from,
-      to,
-      filterQuality: filterQuality,
-      pixelRatio: devicePixelRatio,
-      blendMode: blendMode,
-    );
+    return;
   }
+  drawImageRectOnThePixelGrid(
+    canvas,
+    image,
+    within == null ? src : _mappedInto(src, dst, within),
+    within ?? dst,
+    filterQuality: filterQuality,
+    pixelRatio: devicePixelRatio,
+    blendMode: blendMode,
+  );
 }
 
 /// What of [src] lands on [part] of [dst], where [src] is laid over [dst].
