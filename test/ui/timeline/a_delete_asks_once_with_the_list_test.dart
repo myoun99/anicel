@@ -241,6 +241,43 @@ void main() {
     expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
   });
 
+  // 🗣️F-464 (유저 2026-10-25): 「기준레이어 밑에 어태치레이어 두고, 이렇게
+  // 선택한 상태로 레이어 삭제하면 삭제해도 반응없음. 다른 레이어 이동하니까
+  // 삭제되있음. 기준레이어 위에 어태치 두고 같은방식으로 선택해서 삭제하면
+  // 정상적으로 됨. 법 다른거같으니 통일하면서 해결」.
+  for (final rider in ['under', 'over']) {
+    testWidgets('a base selected with its attach row '
+        '${rider == 'under' ? 'BELOW' : 'above'} it is deleted as the base '
+        'alone, which takes the row along — at the press', (tester) async {
+      final session = _session(_withABase());
+      _select(session, ['base', rider]);
+      expect(
+        rowsOf(session).deletableSelectedLayerIds(),
+        [const LayerId('base')],
+        reason: 'the attach row is the base\'s, as a folder\'s rows are the '
+            'folder\'s (F-305)',
+      );
+      final steps = session.historyManager.undoCount;
+      var told = 0;
+      void tell() => told += 1;
+      session.addListener(tell);
+      addTearDown(() => session.removeListener(tell));
+
+      await _pressDelete(tester, session);
+      told = 0;
+      await tester.tap(
+        find.byKey(const ValueKey<String>('delete-layer-confirm-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(_stack(session), ['x', 'y', 'z']);
+      expect(told, isPositive, reason: '「삭제해도 반응없음」');
+      expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
+      session.undo();
+      expect(_stack(session), ['x', 'under', 'base', 'over', 'y', 'z']);
+    });
+  }
+
   testWidgets('declining leaves every row where it was', (tester) async {
     final session = _session(_withABase());
     _select(session, ['x', 'z']);

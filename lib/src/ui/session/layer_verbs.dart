@@ -65,19 +65,24 @@ class LayerVerbs {
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
   ///
-  /// A row inside a folder that is selected too is that folder's: the folder
-  /// alone is deleted, and takes it along (F-305, 유저 2026-10-06:
-  /// 「폴더/내용물 선택하고 삭제하는건 알아서 폴더만 삭제되도록 하는게
-  /// 로직적으로 깔끔」).
+  /// A row another selected row takes along ([rowsHeldBy]) is that row's:
+  /// the one that holds it alone is deleted, and takes it along — a folder
+  /// what it holds (F-305, 유저 2026-10-06: 「폴더/내용물 선택하고 삭제하는건
+  /// 알아서 폴더만 삭제되도록 하는게 로직적으로 깔끔」), a base its attach
+  /// rows (F-464, 유저 2026-10-25: 「법 다른거같으니 통일하면서 해결」).
+  ///
+  /// ↩️Only a folder's rows were left out until F-464. A base selected with
+  /// its attach rows BELOW it went first (the delete walks top down), took
+  /// them along, and the next delete asked for a row already gone: the
+  /// throw skipped the refresh and lost the undo step — 「삭제해도
+  /// 반응없음. 다른 레이어 이동하니까 삭제되있음」. Above it they went first,
+  /// one by one, which is why that side worked.
   List<LayerId> deletableSelectedLayerIds() {
     final ids = selectedLayerIdsWhere(canDeleteLayer);
-    final rows = _project.layers;
+    final takenAlong = _takenAlongBy(ids);
     return [
       for (final id in ids)
-        if (!ids.any(
-          (other) => rows.isInsideFolder(rows.byId(id)?.folderId, other),
-        ))
-          id,
+        if (!takenAlong.contains(id)) id,
     ];
   }
 
@@ -92,22 +97,33 @@ class LayerVerbs {
   /// showed — and the hand-off stood on one of them ([_standAfterDeleting]).
   List<Layer> rowsHeldBy(Iterable<LayerId> ids) {
     final named = ids.toSet();
+    final takenAlong = _takenAlongBy(named);
+    return [
+      for (final row in _project.layers.reversed)
+        if (!named.contains(row.id) && takenAlong.contains(row.id)) row,
+    ];
+  }
+
+  /// The rows a delete of [ids] takes along, each by ANOTHER row that goes —
+  /// one of [ids] too, when another of them takes it: what a folder among
+  /// them holds, and the attach rows and organizer folders of a base that
+  /// goes.
+  Set<LayerId> _takenAlongBy(Iterable<LayerId> ids) {
+    final named = ids.toSet();
     final rows = _project.layers;
-    final going = {
-      ...named,
+    final inAFolderThatGoes = {
       for (final row in rows)
         if (named.any((id) => rows.isInsideFolder(row.folderId, id))) row.id,
     };
-    bool ridesOneThatGoes(Layer row) =>
-        going.contains(
+    final going = {...named, ...inAFolderThatGoes};
+    return {
+      ...inAFolderThatGoes,
+      for (final row in rows)
+        if (going.contains(
           row.attachedToLayerId ?? attachOrganizerBaseOf(row, rows),
-        );
-    return [
-      for (final row in rows.reversed)
-        if (!named.contains(row.id) &&
-            (going.contains(row.id) || ridesOneThatGoes(row)))
-          row,
-    ];
+        ))
+          row.id,
+    };
   }
 
   /// Whether a delete of [layer] takes it ALONE: it may go, and nothing goes
@@ -580,9 +596,16 @@ class LayerVerbs {
   /// `LayerClipboard.cutSelectedRows`).
   ///
   /// Deleting from the TOP down keeps each removal's own bookkeeping (the
-  /// stable next-active pick, an attach cascade) reading the stack it was
-  /// written against: taking a lower row out first would shift the ones
-  /// above it under the loop's feet.
+  /// stable next-active pick) reading the stack it was written against:
+  /// taking a lower row out first would shift the ones above it under the
+  /// loop's feet.
+  ///
+  /// No row named here is one another of them takes along — the selection's
+  /// delete leaves those out ([deletableSelectedLayerIds]) and a 잘라내기
+  /// lifts only rows that go alone ([deletesAlone]) — so no removal finds
+  /// its row already gone. ↩️The order was thought to answer that too, for
+  /// an attach cascade; it did only while the attach rows stood above their
+  /// base (F-464).
   void deleteLayers(List<LayerId> ids, {required String step}) {
     if (ids.isEmpty) {
       return;
