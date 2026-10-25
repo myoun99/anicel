@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
-import '../input/control_press_claim.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../session/storyboard_cursor.dart' show CommaTargetKind;
 import '../widgets/app_icon_button.dart';
+import 'comma_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
@@ -459,51 +459,27 @@ class TimelineActionToolbar extends StatelessWidget {
     required ({String text, String action}) tooltip,
     required VoidCallback? onPressed,
   }) {
-    return ShortcutTooltip(
-      label: tooltip.text,
+    // 🚨F-45 (유저 2026-08-29: 「F45는 해당 버튼쪽만 보지말고 **다른거도
+    // 봐줘 통일해서**」). These five were the app's only chrome buttons
+    // that mounted no claim at all: the ledger that keeps hand-rolled
+    // buttons honest scans `IconButton(`, so a TEXT button walked straight
+    // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
+    // The BOX is still theirs (a pill promised it); the LAW never was — the
+    // face IS its claim ([CommaButton]).
+    //
+    // 🚨유저 #8 (2026-08-14): 「1,2,3,4,n만 천천히 페이드인하면서
+    // 나타나거나 페이드아웃하면서 사라짐. **누가 이런 차이 두라했지?
+    // 다 똑같이해. 페이드같은거 넣지마**」. ⛔They were the only toolbar
+    // buttons that faded, and it was never authored — Material animated a
+    // TextButton's foreground between its enabled and disabled colours. A
+    // face reads its colour at build, as the icon buttons beside it do, so
+    // there is nothing left to interpolate.
+    return CommaButton(
+      key: key,
+      label: label,
+      tooltip: tooltip.text,
       shortcuts: [tooltip.action],
-      // 🚨F-45 (유저 2026-08-29: 「F45는 해당 버튼쪽만 보지말고 **다른거도
-      // 봐줘 통일해서**」). These five were the app's only chrome buttons
-      // that mounted no claim at all: the ledger that keeps hand-rolled
-      // buttons honest scans `IconButton(`, so a TEXT button walked straight
-      // past it and a drag begun on 1·2·3·4·N leaked into the bar's pan.
-      // The BOX is still theirs (a pill promised it); the LAW never was.
-      child: ControlPressClaim(onPressed: onPressed,
-        // A context of its own for the one fact the box reads from where it
-        // is shown: the pill's height, which grows with the OS text size.
-        child: Builder(builder: (context) => TextButton(
-          key: key,
-          onPressed: silentPress(onPressed),
-          style: TextButton.styleFrom(
-            // Sized to sit INSIDE a pill (28 outer, 2px of breath each side)
-            // rather than to stand on its own in the bar.
-            minimumSize: Size(21, CommandPill.heightIn(context) - 4),
-            maximumSize: Size(24, CommandPill.heightIn(context) - 4),
-            padding: EdgeInsets.zero,
-            visualDensity: VisualDensity.compact,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            // 🚨유저 #8 (2026-08-14): 「1,2,3,4,n만 천천히 페이드인하면서
-            // 나타나거나 페이드아웃하면서 사라짐. **누가 이런 차이 두라했지?
-            // 다 똑같이해. 페이드같은거 넣지마**」.
-            //
-            // ⛔These five were the only toolbar buttons that faded, and it
-            // was never authored — Material animates a button's foreground
-            // between its enabled and disabled colours over
-            // `kThemeChangeDuration`, and a TEXT button's colour comes from
-            // that state. The icon buttons beside them look instant because
-            // their colour is baked into the `Icon` at build time, so nothing
-            // is left for the button to interpolate.
-            //
-            // ⇒ Zero here says 「같이 하라」 rather than adding a matching
-            // fade to nine other buttons.
-            animationDuration: Duration.zero,
-          ),
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: CommandPill.verbFontSize),
-          ),
-        )),
-      ),
+      onPressed: onPressed,
     );
   }
 

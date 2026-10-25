@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show TimelineGridLaw, TimelineOutsideCutWashPainter;
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
@@ -241,7 +242,7 @@ void main() {
 
     bool commaEnabled() =>
         tester
-            .widget<TextButton>(
+            .widget<CommaButton>(
               find.byKey(const ValueKey<String>('set-comma-1-button')),
             )
             .onPressed !=

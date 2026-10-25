@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
     show renameActiveCutWithDialog;
 
@@ -508,7 +509,7 @@ Future<bool> isActionButtonEnabled(
   final widget = tester.widget(button);
 
   return switch (widget) {
-    TextButton(:final onPressed) => onPressed != null,
+    CommaButton(:final onPressed) => onPressed != null,
     AppIconButtonFace(:final onPressed) => onPressed != null,
     RailGlyphButton(:final enabled) => enabled,
     _ => isDescendantIconButtonEnabled(tester, button),

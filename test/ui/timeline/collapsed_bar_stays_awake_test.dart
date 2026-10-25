@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/panel_collapsed_scope.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 
 /// 🚨T16ⓒ — 유저 mandate: 「t16잔여 맞음. **비활성화인채 얼어있음. 이런거 좀
 /// 없게하자.**」
@@ -63,7 +64,7 @@ bool? _enabledOf(WidgetTester tester, String key) {
   }
   final widget = finder.evaluate().first.widget;
   return switch (widget) {
-    TextButton(:final onPressed) => onPressed != null,
+    CommaButton(:final onPressed) => onPressed != null,
     AppIconButtonFace(:final onPressed) => onPressed != null,
     InkWell(:final onTap) => onTap != null,
     _ => null,

@@ -429,11 +429,11 @@ void main() {
         await claimedWhileDown(tester, finder, pointer: pointer++),
         isTrue,
         reason:
-            '$id is a TEXT button, and the ledger that keeps hand-rolled '
-            'buttons honest reads `IconButton(` — so it walked straight '
-            'past the one thing that exists to notice it (F-45). These also '
-            'sit inside a baked StaticRaster, which is why they are PRESSED '
-            'here and not just scanned',
+            '$id let its press through. As a TEXT button it walked straight '
+            'past the ledger that keeps hand-rolled buttons honest — that '
+            'reads `IconButton(` (F-45); the face it became is its claim. '
+            'These also sit inside a baked StaticRaster, which is why they '
+            'are PRESSED here and not just scanned',
       );
     }
   });

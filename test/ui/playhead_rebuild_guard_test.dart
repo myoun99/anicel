@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -40,7 +41,7 @@ void main() {
         find.descendant(
           of: find.byType(TimelineActionToolbar),
           matching: find.byWidgetPredicate(
-            (w) => w is AppIconButton || w is PillNameCell || w is TextButton,
+            (w) => w is AppIconButton || w is PillNameCell || w is CommaButton,
           ),
         ),
       )
@@ -419,7 +420,7 @@ void main() {
           .descendant(
             of: find.byType(TimelineActionToolbar),
             matching: find.byWidgetPredicate(
-              (w) => w is AppIconButton || w is TextButton,
+              (w) => w is AppIconButton || w is CommaButton,
             ),
           )
           .evaluate())

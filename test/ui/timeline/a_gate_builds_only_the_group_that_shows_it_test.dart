@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
@@ -44,7 +45,7 @@ List<(String, Widget)> _controls(WidgetTester tester, Finder bar) => [
         (w) =>
             w is AppIconButton ||
             w is PillNameCell ||
-            (w is TextButton && w.key is ValueKey<String>),
+            (w is CommaButton && w.key is ValueKey<String>),
       ),
     ),
   ))

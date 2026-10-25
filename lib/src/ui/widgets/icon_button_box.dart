@@ -198,7 +198,23 @@ final class IconButtonInk {
        _theme = IconButtonTheme.of(context).style,
        _defaults = _m3DefaultsFor(
          Theme.of(context).colorScheme,
-       );
+       ),
+       _asksIconColor = true;
+
+  /// A TEXT button's ink, in `TextButton`'s order: the app's
+  /// `TextButtonTheme`, then M3's `TextButton` defaults — what the
+  /// toolbar's word buttons wore while they were Material `TextButton`s
+  /// (`CommaButton`). They say no colour of their own: their style is
+  /// their box.
+  IconButtonInk.textButton(BuildContext context)
+    : _own = null,
+      _theme = TextButtonTheme.of(context).style,
+      _defaults = _m3TextDefaultsFor(Theme.of(context).colorScheme),
+      _asksIconColor = false;
+
+  /// Whether the foreground asks the theme's `iconColor` first — an icon
+  /// button's glyph does, a text button's word never does.
+  final bool _asksIconColor;
 
   /// 🚨DANGER OUTRANKS SELECTED. The red is about the thing the button acts
   /// on and stands until that is fixed; selected says only that its popover
@@ -239,6 +255,18 @@ final class IconButtonInk {
         disabledForegroundColor: scheme.onSurface.withValues(alpha: 0.38),
       );
 
+  /// M3's `TextButton` defaults (`_TextButtonDefaultsM3`) the same way: the
+  /// primary, and the state layer `styleFrom` derives from it.
+  static final Expando<ButtonStyle> _m3TextDefaults = Expando<ButtonStyle>(
+    'M3 text button defaults',
+  );
+
+  static ButtonStyle _m3TextDefaultsFor(ColorScheme scheme) =>
+      _m3TextDefaults[scheme] ??= TextButton.styleFrom(
+        foregroundColor: scheme.primary,
+        disabledForegroundColor: scheme.onSurface.withValues(alpha: 0.38),
+      );
+
   /// `ButtonStyleButton`'s rule: resolve each step against [states] in
   /// order, and the first non-null answer wins.
   static Color? _firstResolved(
@@ -254,12 +282,12 @@ final class IconButtonInk {
     return null;
   }
 
-  /// `ButtonStyleButton`'s icon colour. Its own- and default-style
-  /// `iconColor` steps are dropped: `styleFrom` never sets one, so only a
-  /// theme can answer there.
+  /// `ButtonStyleButton`'s icon colour — or, for a text button, its
+  /// foreground. The own- and default-style `iconColor` steps are dropped:
+  /// `styleFrom` never sets one, so only a theme can answer there.
   Color foreground(Set<WidgetState> states) =>
       _firstResolved(states, [
-        _theme?.iconColor,
+        if (_asksIconColor) _theme?.iconColor,
         _own?.foregroundColor,
         _theme?.foregroundColor,
         _defaults.foregroundColor,
@@ -283,13 +311,15 @@ final class IconButtonInk {
       other is IconButtonInk &&
       identical(other._own, _own) &&
       identical(other._theme, _theme) &&
-      identical(other._defaults, _defaults);
+      identical(other._defaults, _defaults) &&
+      other._asksIconColor == _asksIconColor;
 
   @override
   int get hashCode => Object.hash(
     identityHashCode(_own),
     identityHashCode(_theme),
     identityHashCode(_defaults),
+    _asksIconColor,
   );
 }
 

@@ -7,6 +7,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../theme/app_theme.dart';
 import 'press_face.dart';
 import 'icon_button_box.dart';
+import 'keyboard_press.dart';
 import 'rail_glyph_button.dart';
 
 export 'icon_button_box.dart';
@@ -259,80 +260,29 @@ class AppIconButtonFace extends StatefulWidget {
   State<AppIconButtonFace> createState() => _AppIconButtonFaceState();
 }
 
-class _AppIconButtonFaceState extends State<AppIconButtonFace> {
-  bool _hasFocus = false;
-
+class _AppIconButtonFaceState extends State<AppIconButtonFace>
+    with KeyboardPress {
   bool get _enabled => widget.onPressed != null;
 
-  /// Where the focus is, as the face shows it — M3's focus layer is for
-  /// KEYBOARD focus only, the same gate `InkResponse.updateFocusHighlights`
-  /// applies.
-  IconButtonFocus get _focus => !_hasFocus
-      ? IconButtonFocus.away
-      : _enabled &&
-            FocusManager.instance.highlightMode ==
-                FocusHighlightMode.traditional
-      ? IconButtonFocus.shown
-      : IconButtonFocus.held;
-
   @override
-  void initState() {
-    super.initState();
-    FocusManager.instance.addHighlightModeListener(_highlightModeChanged);
-  }
-
-  @override
-  void dispose() {
-    FocusManager.instance.removeHighlightModeListener(_highlightModeChanged);
-    super.dispose();
-  }
-
-  void _highlightModeChanged(FocusHighlightMode mode) {
-    if (_hasFocus) {
-      setState(() {});
-    }
-  }
-
-  void _setHasFocus(bool value) {
-    if (_hasFocus != value) {
-      setState(() => _hasFocus = value);
-    }
-  }
+  VoidCallback? get keyboardPress => widget.onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = _enabled;
-    final focus = _focus;
-    return Actions(
-      actions: <Type, Action<Intent>>{
-        ActivateIntent: CallbackAction<ActivateIntent>(
-          onInvoke: (_) {
-            widget.onPressed?.call();
-            return null;
-          },
-        ),
-      },
-      child: Focus(
-        canRequestFocus: enabled,
-        // The face's ONE node says the focus ([RenderRailGlyphFace],
-        // [RenderIconButtonPressFace]).
-        includeSemantics: false,
-        onFocusChange: _setHasFocus,
-        child: switch (_glyphOf(context)) {
-          final glyph? => RailGlyphButton.face(
-            tooltip: widget.tooltip,
-            glyph: glyph,
-            onPressed: widget.onPressed,
-            size: widget.size,
-            isSelected: widget.isSelected,
-            danger: widget.danger,
-            outlined: widget.outlined,
-            focus: focus,
-          ),
-          null => _faceAround(context, focus),
-        },
+    final focus = keyboardFocus;
+    return keyboardReaches(switch (_glyphOf(context)) {
+      final glyph? => RailGlyphButton.face(
+        tooltip: widget.tooltip,
+        glyph: glyph,
+        onPressed: widget.onPressed,
+        size: widget.size,
+        isSelected: widget.isSelected,
+        danger: widget.danger,
+        outlined: widget.outlined,
+        focus: focus,
       ),
-    );
+      null => _faceAround(context, focus),
+    });
   }
 
   /// [AppIconButton.icon] as a glyph the face draws itself — an [Icon] that
@@ -413,7 +363,8 @@ class _AppIconButtonFaceState extends State<AppIconButtonFace> {
       ),
       minWidth: box.minWidth,
       maxWidth: box.maxWidth,
-      height: box.height,
+      minHeight: box.height,
+      maxHeight: box.height,
       child: IconTheme.merge(
         data: IconThemeData(color: foreground, size: widget.size.iconSize),
         // Text glyphs take the button's colour too — the promise
@@ -454,7 +405,8 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
     required this.shape,
     required this.minWidth,
     required this.maxWidth,
-    required this.height,
+    required this.minHeight,
+    required this.maxHeight,
     required super.child,
   });
 
@@ -471,7 +423,11 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
   final ShapeBorder shape;
   final double minWidth;
   final double maxWidth;
-  final double height;
+
+  /// The box's height, between these — one height for an icon button,
+  /// a span for a text button's, whose density lets it shrink to its word.
+  final double minHeight;
+  final double maxHeight;
 
   @override
   RenderIconButtonPressFace createRenderObject(BuildContext context) =>
@@ -500,7 +456,8 @@ class IconButtonPressFace extends SingleChildRenderObjectWidget {
     shape: shape,
     minWidth: minWidth,
     maxWidth: maxWidth,
-    height: height,
+    minHeight: minHeight,
+    maxHeight: maxHeight,
     textDirection: Directionality.of(context),
     triggerMode: AppTooltipLook.triggerModeIn(context),
   );
@@ -519,7 +476,8 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
     required this.shape,
     required this.minWidth,
     required this.maxWidth,
-    required this.height,
+    required this.minHeight,
+    required this.maxHeight,
     required this.textDirection,
     required this.triggerMode,
   });
@@ -532,7 +490,8 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   final ShapeBorder shape;
   final double minWidth;
   final double maxWidth;
-  final double height;
+  final double minHeight;
+  final double maxHeight;
   final TextDirection textDirection;
   final TooltipTriggerMode triggerMode;
 
@@ -542,15 +501,16 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
   BoxConstraints get box => BoxConstraints(
     minWidth: minWidth,
     maxWidth: maxWidth,
-    minHeight: height,
-    maxHeight: height,
+    minHeight: minHeight,
+    maxHeight: maxHeight,
   );
 
   @override
   bool laysOutAs(IconButtonPressSpec other) =>
       other.minWidth == minWidth &&
       other.maxWidth == maxWidth &&
-      other.height == height;
+      other.minHeight == minHeight &&
+      other.maxHeight == maxHeight;
 
   /// A host that hands down a fresh closure every build changes what a
   /// screen reader's activation calls, never a pixel.
@@ -584,7 +544,8 @@ final class IconButtonPressSpec implements FaceSpec<IconButtonPressSpec> {
     shape,
     minWidth,
     maxWidth,
-    height,
+    minHeight,
+    maxHeight,
     textDirection,
     triggerMode,
   );
@@ -692,8 +653,8 @@ class RenderIconButtonPressFace extends RenderShiftedBox
   }
 
   /// The face's old `ConstrainedBox`'s rule: the glyph's own intrinsic
-  /// width held to the box's numbers — and the box's height, which is
-  /// fixed.
+  /// width held to the box's numbers — and its height held to the box's
+  /// span, which for an icon button is one height.
   double _widthAround(double glyph) => _spec.box.constrainWidth(glyph);
 
   @override
@@ -705,10 +666,12 @@ class RenderIconButtonPressFace extends RenderShiftedBox
       _widthAround(super.computeMaxIntrinsicWidth(height));
 
   @override
-  double computeMinIntrinsicHeight(double width) => _spec.height;
+  double computeMinIntrinsicHeight(double width) =>
+      _spec.box.constrainHeight(super.computeMinIntrinsicHeight(width));
 
   @override
-  double computeMaxIntrinsicHeight(double width) => _spec.height;
+  double computeMaxIntrinsicHeight(double width) =>
+      _spec.box.constrainHeight(super.computeMaxIntrinsicHeight(width));
 
   late final IconButtonLayer _layer = IconButtonLayer(markNeedsPaint);
 
