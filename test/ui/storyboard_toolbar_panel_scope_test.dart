@@ -8,9 +8,9 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import '../helpers/storyboard_host.dart';
 import 'flyout_test_helpers.dart' show readCommandEnabled;
 
 /// B8 (2026-08-17): 상단 버튼의 패널 스코프 — the toolbar's layer/frame/
@@ -20,35 +20,13 @@ import 'flyout_test_helpers.dart' show readCommandEnabled;
 /// pressed in a timeline context, they keep the cut-local dispatch they
 /// always had. Every press here is REAL INPUT on the mounted button.
 void main() {
-  Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final manager = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(manager.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([manager, manager.frameSeekCommitted]),
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return manager;
-  }
+  Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) =>
+      pumpStoryboardHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(1600, 700),
+        pixelsPerFrame: 12,
+      );
 
   /// The active track's conte row — where a cut's panels are stood on.
   LayerRowAddress conteRowOf(EditorSessionManager manager) =>

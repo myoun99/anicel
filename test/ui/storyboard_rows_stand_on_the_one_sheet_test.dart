@@ -3,10 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
+
+import '../helpers/storyboard_host.dart';
 
 /// F-92 → I-44 — the storyboard's rows stand on the timeline's one sheet.
 ///
@@ -49,26 +50,12 @@ void main() {
       soundLength,
       reason: 'fixture: the sound stands where the test reads it',
     );
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: pixelsPerFrame,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 1200),
+      pixelsPerFrame: pixelsPerFrame,
     );
-    await tester.pumpAndSettle();
     return (session, 'storyboard-se-paper-${seId.value}-$soundStart');
   }
 

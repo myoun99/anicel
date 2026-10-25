@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/widgets/tick_text.dart';
+
+import '../helpers/storyboard_host.dart';
 
 /// UI-R9 #6, restated 2026-08-10: the counter reads the track-global frame
 /// ABOVE the cut-local one — two lines, one number each, no `G`/`L` labels
@@ -16,33 +17,17 @@ import 'package:anicel/src/ui/widgets/tick_text.dart';
 /// timeline_panel_test pins that half.
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     final manager = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     manager.cutVerbs.createCut();
     addTearDown(manager.dispose);
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([manager, manager.frameSeekCommitted]),
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      manager,
+      surface: const Size(1400, 600),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return manager;
   }
 

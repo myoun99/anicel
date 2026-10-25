@@ -5,7 +5,8 @@ import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
+
+import '../../helpers/storyboard_host.dart';
 
 /// 🚨F-119 (유저 2026-09-12): 「마지막에 있던 컷 블록을 앞으로 당기면 최종 영상
 /// 엔드라인이 움직이면서 룰러랑 프레임영역이랑 어긋남 … 타임라인에도 같은
@@ -24,8 +25,6 @@ void main() {
   const pixelsPerFrame = 24.0;
 
   Future<EditorSessionManager> openTwoCutsAtTheEnd(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(900, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -36,24 +35,12 @@ void main() {
       cutId: last.id,
       leadingGapFrames: 40,
     );
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: pixelsPerFrame,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(900, 600),
+      pixelsPerFrame: pixelsPerFrame,
     );
-    await tester.pumpAndSettle();
     return session;
   }
 

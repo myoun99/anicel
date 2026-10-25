@@ -25,9 +25,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
-
 import '../helpers/named_finders.dart';
+import '../helpers/storyboard_host.dart';
 
 void main() {
   tearDown(debugClearValueControlPointers);
@@ -87,9 +86,7 @@ Layer _row(EditorSessionManager s, LayerId id) =>
 
 /// The storyboard tab over two tracks; the second's S row carries an
 /// effect, so the master has a chain to switch as well as the transform.
-Future<EditorSessionManager> _rail(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+Future<EditorSessionManager> _rail(WidgetTester tester) {
   Track track(String id, {List<LayerEffect> effects = const []}) => Track(
     id: TrackId(id),
     name: id,
@@ -120,8 +117,9 @@ Future<EditorSessionManager> _rail(WidgetTester tester) async {
       ),
     ],
   );
-  final s = EditorSessionManager(
-    initialProject: Project(
+  return pumpStoryboardHost(
+    tester,
+    Project(
       id: const ProjectId('two-tracks'),
       name: 'Two tracks',
       createdAt: DateTime.utc(2026, 9, 25),
@@ -135,25 +133,7 @@ Future<EditorSessionManager> _rail(WidgetTester tester) async {
         ),
       ],
     ),
+    surface: const Size(1400, 800),
+    pixelsPerFrame: 12,
   );
-  addTearDown(s.dispose);
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: s,
-          builder: (context, _) => StoryboardTabHost(
-            session: s,
-            pixelsPerFrame: 12,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-            thumbnails: null,
-          ),
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  return s;
 }
