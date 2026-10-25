@@ -311,8 +311,7 @@ class _LayerStackPaintPass {
 
   /// Where the frame lies in the world with no screen around it
   /// ([StackedFrame]): the rect the display buffer covers, the whole
-  /// pasteboard on screen — every row's content, and the page where the
-  /// stack paints its paper.
+  /// pasteboard on screen — the page and every row's content.
   Rect frameExtent() {
     _standInTheWorld();
     return wholeLevelPixelsOutward(_contentExtent, 0);
@@ -506,30 +505,36 @@ class _LayerStackPaintPass {
     return null;
   }
 
-  /// What the composite covers: every root row's buffer bounds — the paper,
-  /// where the stack paints it, among them — clamped to the view. CONTENT,
+  /// What the composite covers: the page and every row's buffer bounds,
+  /// clamped to the view — and nothing for a stack of nothing. CONTENT,
   /// clamped to the storable universe; the pasteboard clamp is the backstop
   /// a pose needs, since a transform can push a layer anywhere and an
-  /// unbounded rect is an unbounded offscreen. Empty where the stack draws
-  /// nothing: no buffer, no paint.
+  /// unbounded rect is an unbounded offscreen.
   Rect _compositeExtent() {
-    // 🚨WHAT THE STACK DRAWS, AND NOTHING ELSE. The paper is a root row of
-    // its own ([_rootNodes], [_PaintPaper]) and brings the page with it, so
-    // a stack that paints its paper covers the document whether or not any
-    // row has ink there.
+    // 🚨A STACK OF NOTHING COMPOSES NOTHING — no row and no paper, no
+    // buffer. The canvas's ghosts' view stays mounted standing with no
+    // ghost, and through the seed below it rastered a page of nothing at
+    // every paint and laid it over the frame: a scrub step on a 3840² page
+    // took 150ms at 100% and 130–300ms at fit to reach the screen, 89 and
+    // 72ms without it (D7-2, Surface Pro 11, 2026-10-25).
+    if (_rootNodes.isEmpty) {
+      return Rect.zero;
+    }
+    // 🚨SEEDED WITH THE PAGE, not with the nodes alone.
     //
-    // ↩️SEEDED WITH THE PAGE (2026-08-27) while the paper was not among the
-    // rows this walked: seeded from the rows alone the buffer shrank below
-    // the page — a row's extent is measured against its SURFACE's canvas —
-    // and the paper went with it. Seeded so, a stack that paints no paper
-    // composed the page too: the canvas's ghosts' view, mounted standing
-    // with no ghost, rastered a page of nothing at every paint and laid it
-    // over the frame — a scrub step on a 3840² page took 150ms at 100% and
-    // 130–300ms at fit to reach the screen, 89 and 72ms without it (D7-2,
-    // Surface Pro 11, 2026-10-25). The empty extent fell back to the whole
-    // view for the same seed's sake.
-    var extent = Rect.zero;
-    for (final node in _rootNodes) {
+    // The composite always covers the document: the paper is drawn over the
+    // canvas rect whether or not any row has ink there, and a row's own
+    // extent is measured against the SURFACE's canvas — which is not
+    // necessarily this view's. Starting from the nodes alone shrank the
+    // buffer below the page, and the paper went with it.
+    //
+    // ⚠️And a root row's SPREAD lies past its content: the blur of a folder
+    // whose ink stops at the view's edge reaches into the view, which a
+    // composite measured over the rows alone — the paper among them — cut
+    // at the ink (2026-10-25,
+    // `a_folder_in_a_blurred_folder_reads_past_the_view_test`).
+    var extent = _canvasRect;
+    for (final node in _painter.nodes) {
       final rect = _bufferBoundsFor(node, _visibleCanvasRect);
       if (rect.isEmpty) {
         continue;
@@ -550,7 +555,9 @@ class _LayerStackPaintPass {
     //
     // The intersection is under the cap whenever either one is, which is what
     // keeps a single resolution reachable at every zoom and every page size.
-    return extent.isEmpty ? Rect.zero : extent.intersect(_visibleCanvasRect);
+    return extent.isEmpty
+        ? _visibleCanvasRect
+        : extent.intersect(_visibleCanvasRect);
   }
 
   /// The CANVAS-SPACE rect a buffer for [node] covers — what of it lies
