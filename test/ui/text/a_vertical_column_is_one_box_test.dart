@@ -186,6 +186,45 @@ void main() {
     expect(render.debugNeedsPaint, isTrue);
   });
 
+  testWidgets('a column its host hands a new text paints and measures it as '
+      'one built for it does', (tester) async {
+    Widget writing(String text) => _framed(
+      VerticalWritingText(text: text, style: const TextStyle(fontSize: 9)),
+      (column) => Center(child: column),
+      1,
+    );
+    final box = find.byType(VerticalWritingText);
+    await tester.pumpWidget(writing('カ'));
+    await _settle(tester);
+    await tester.pumpWidget(writing('カットシーン'));
+    await _settle(tester);
+    final handedSize = tester.getSize(box);
+    final handedPixels = await _pixels(tester);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(writing('カットシーン'));
+    await _settle(tester);
+    expect(handedSize, tester.getSize(box));
+    expect(handedPixels, await _pixels(tester));
+  });
+
+  testWidgets('a column told a new text says it', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _framed(columns['kana']!, (column) => Center(child: column), 1),
+    );
+    final render = tester.renderObject<RenderVerticalWriting>(
+      find.byType(VerticalWritingText),
+    );
+    render.text = 'シーン';
+    await tester.pump();
+    expect(
+      tester.getSemantics(find.byKey(_host)).getSemanticsData().label,
+      'host\nシーン',
+    );
+    handle.dispose();
+  });
+
   testWidgets('a new text is said', (tester) async {
     final handle = tester.ensureSemantics();
     Widget saying(String text) => _framed(

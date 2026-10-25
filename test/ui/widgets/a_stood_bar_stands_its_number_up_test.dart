@@ -123,9 +123,7 @@ void main() {
     expect(inset.height, bare.height + 16);
     // The one cell's centre: an inset down, then half a cell of 10 × 1.15.
     expect(
-      tester.renderObject(
-        find.descendant(of: writing(), matching: find.byType(CustomPaint)),
-      ),
+      tester.renderObject(writing()),
       paints..translate(x: 10, y: 8 + 10 * verticalWritingLineHeight / 2),
     );
   });
@@ -142,9 +140,7 @@ void main() {
     ]);
     final box = tester.getSize(writing());
     expect(
-      tester.renderObject(
-        find.descendant(of: writing(), matching: find.byType(CustomPaint)),
-      ),
+      tester.renderObject(writing()),
       paints
         ..clipRect(rect: Rect.fromLTRB(0, 0, box.width, box.height / 2))
         ..clipRect(
