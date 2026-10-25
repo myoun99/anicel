@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -191,4 +193,75 @@ void main() {
       }
     });
   }
+
+  testWidgets('the camera row and its lanes wear each cut\'s own camera\'s '
+      'eye — the timeline rail\'s answer for it there', (tester) async {
+    Cut cutOf(String id, {required bool cameraShown}) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 12,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      camera: CutCamera(
+        keyframes: {
+          for (final frame in [2, 8])
+            frame: CameraPose(center: CanvasPoint(x: 320.0 + frame, y: 180)),
+        },
+      ),
+      layers: [
+        Layer(
+          id: LayerId('$id-cam'),
+          name: 'Camera',
+          kind: LayerKind.camera,
+          isVisible: cameraShown,
+          frames: const [],
+        ),
+      ],
+    );
+    await pumpStoryboardHost(
+      tester,
+      Project(
+        id: const ProjectId('camera-eyes'),
+        name: 'Camera eyes',
+        createdAt: DateTime.utc(2026, 10, 26),
+        tracks: [
+          Track(
+            id: trackId,
+            name: 'V1',
+            cuts: [
+              cutOf('a', cameraShown: false),
+              cutOf('b', cameraShown: true),
+            ],
+          ),
+        ],
+      ),
+      surface: const Size(1600, 1000),
+      pixelsPerFrame: 12,
+    );
+    await tester.tap(find.named('storyboard-lane-toggle-a-cam'));
+    await tester.pumpAndSettle();
+
+    Finder marksIn(String strip) => find.descendant(
+      of: find.byKey(ValueKey<String>(strip)),
+      matching: find.byType(TimelineLaneKeyMarker),
+    );
+    expect(
+      marksIn('storyboard-camera-row-t1'),
+      findsWidgets,
+      reason: 'premise: the row\'s own keys',
+    );
+    expect(
+      marksIn('storyboard-camera-lane-position-row-t1'),
+      findsWidgets,
+      reason: 'premise: a lane\'s keys',
+    );
+    final eyes = <LayerId, Set<bool>>{};
+    for (final element in find.byType(TimelineLaneKeyMarker).evaluate()) {
+      final layer = (element.widget as TimelineLaneKeyMarker).layer;
+      (eyes[layer.id] ??= {}).add(RailEyes.of(element, layer).shown);
+    }
+    expect(eyes, {
+      const LayerId('a-cam'): {false},
+      const LayerId('b-cam'): {true},
+    });
+  });
 }

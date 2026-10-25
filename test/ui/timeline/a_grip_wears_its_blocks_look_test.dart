@@ -17,6 +17,8 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -40,6 +42,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show SePaperSpan;
 
@@ -269,9 +272,54 @@ void main() {
       expect(repaints, 1);
     });
 
-    test('a row with other answers is another paint', () {
+    test('a row with other answers is another paint — the chrome\'s, the '
+        'numbers\' and a widget grip\'s', () {
       expect(chrome().shouldRepaint(chrome()), isFalse);
       expect(chrome().shouldRepaint(chrome(shown: false)), isTrue);
+
+      TimelineRowRunLabelsPainter numbers({required bool shown}) =>
+          TimelineRowRunLabelsPainter(
+            baseTextStyle: const TextStyle(fontSize: 11),
+            layer: row,
+            geometry: testFrameGeometry(
+              frameCellExtent: 24,
+              frameEndIndexExclusive: 8,
+            ),
+            crossAxisExtent: 28,
+            showSeconds: false,
+            countingBase: 24,
+            paperGround: ground,
+            shown: shown,
+          );
+      expect(numbers(shown: true).shouldRepaint(numbers(shown: true)), isFalse);
+      expect(numbers(shown: true).shouldRepaint(numbers(shown: false)), isTrue);
+
+      final geometry = testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: 8,
+      );
+      addTearDown(geometry.dispose);
+      BlockEdgeGripPainter grip(TimelineBlockState state) =>
+          BlockEdgeGripPainter(
+            edge: TimelineBlockEdge.start,
+            axis: Axis.horizontal,
+            ink: BlockEdgeGripInk.rest,
+            devicePixelRatio: 1,
+            geometry: geometry,
+            on: face(state),
+          );
+      expect(
+        grip(TimelineBlockState.shown).shouldRepaint(
+          grip(TimelineBlockState.shown),
+        ),
+        isFalse,
+      );
+      expect(
+        grip(TimelineBlockState.shown).shouldRepaint(
+          grip(TimelineBlockState.empty),
+        ),
+        isTrue,
+      );
     });
   });
 
@@ -395,6 +443,18 @@ void main() {
           paper: layerMarkColor(layer.mark),
           ground: null,
         ));
+        final canvas = TestRecordingCanvas();
+        painter.paint(canvas, const Size(16, 15));
+        final drawn = canvas.invocations.firstWhere(
+          (call) => call.invocation.memberName == #drawPath,
+        );
+        final paint = drawn.invocation.positionalArguments[1] as Paint;
+        // As ARGB: a Paint keeps its colour in 32 bits.
+        expect(
+          paint.color.toARGB32(),
+          timelineBlockGripColor(BlockEdgeGripInk.rest, painter.on).toARGB32(),
+          reason: 'it paints the block it stands on',
+        );
       }
     });
 
