@@ -9,7 +9,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -26,11 +25,12 @@ import '../../helpers/draw_on_current_frame.dart';
 /// 「허용치 = 레이어 그림 수요 순서」(playback-plays-the-screen-material,
 /// 10-09): what every screen shows is what the budget keeps — by when each
 /// is wanted, the latest let go first. Since a frame became one picture
-/// (one-picture-per-frame ②-2) that is the frames' pictures; the canvas's
-/// row images hold what the pictures leave of the line, and give way first.
+/// (one-picture-per-frame ②-2) that is the frames' pictures.
 /// ↩️The row images were every screen's pictures, kept by the demand, until
 /// then; ↩️the composites the film was shown from gave way before any of
-/// them, until they went (2026-10-10).
+/// them, until they went (2026-10-10); ↩️the canvas's row images held what
+/// the pictures left of the line, and gave way first, until no screen drew
+/// a row's image (②-5b-1).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -53,9 +53,8 @@ void main() {
   const names = ['a', 'b', 'c'];
 
   /// Frames 0, 1 and 2 show cels a, b and c — each inked into both
-  /// corners, so each frame's picture and each row image is the whole
-  /// canvas.
-  ({LayerFrameImageCache layers, FramePictures pictures}) caches() {
+  /// corners, so each frame's picture is the whole canvas.
+  FramePictures picturesOfTheFrames() {
     final store = BrushFrameStore();
     for (final name in names) {
       for (final corner in [CanvasPoint(x: 1, y: 1), CanvasPoint(x: 6, y: 6)]) {
@@ -74,7 +73,7 @@ void main() {
     addTearDown(layers.dispose);
     final pictureStore = FramePictureStore<FramePictureKey>();
     addTearDown(pictureStore.dispose);
-    final pictures = FramePictures(
+    return FramePictures(
       store: pictureStore,
       layerImages: layers,
       stackOf: (picture) => [
@@ -92,7 +91,6 @@ void main() {
         paperBackground: ProjectBackground.defaultBackground,
       ),
     );
-    return (layers: layers, pictures: pictures);
   }
 
   FramePictureKey keyOf(FramePictures pictures, String name) => pictures
@@ -105,17 +103,6 @@ void main() {
         frameIndex: frame,
         paintPaper: true,
       ), shouldAbort: () => false);
-    }
-  }
-
-  Future<void> makeRows(LayerFrameImageCache layers) async {
-    for (final name in names) {
-      await layers.prepare(
-        key: cel(name),
-        canvasSize: canvasSize,
-        quality: PlaybackQuality.full,
-        sourceEffects: const [],
-      );
     }
   }
 
@@ -135,81 +122,70 @@ void main() {
   testWidgets('the frames\' pictures go latest-wanted first, and the one '
       'under the playhead stays whatever the cap', (tester) async {
     await tester.runAsync(() async {
-      final c = caches();
-      await makePictures(c.pictures);
-      final picture = c.pictures.store.bytesOf(keyOf(c.pictures, 'a'))!;
-      final wantedAt = wantedAtOf(c.pictures);
+      final pictures = picturesOfTheFrames();
+      await makePictures(pictures);
+      final picture = pictures.store.bytesOf(keyOf(pictures, 'a'))!;
+      final wantedAt = wantedAtOf(pictures);
       PlaybackCacheBudgetEnforcer budget(int maxBytes) =>
           PlaybackCacheBudgetEnforcer(
-            pictures: c.pictures.store,
-            layerImages: c.layers,
+            pictures: pictures.store,
             maxBytes: maxBytes,
           );
 
       budget(3 * picture).enforce(wantedAt: wantedAt);
       expect(
-        heldPictures(c.pictures),
+        heldPictures(pictures),
         [true, true, true],
         reason: 'LIVENESS: room for all',
       );
 
       budget(2 * picture).enforce(wantedAt: wantedAt);
-      expect(heldPictures(c.pictures), [true, true, false]);
+      expect(heldPictures(pictures), [true, true, false]);
 
       budget(picture).enforce(wantedAt: wantedAt);
-      expect(heldPictures(c.pictures), [false, true, false]);
+      expect(heldPictures(pictures), [false, true, false]);
 
       budget(0).enforce(wantedAt: wantedAt);
       expect(
-        heldPictures(c.pictures),
+        heldPictures(pictures),
         [false, true, false],
         reason: 'b is the playhead\'s',
       );
     });
   });
 
-  testWidgets('🚨the pictures claim the line first — the row images hold '
-      'what they leave of it', (tester) async {
+  /// 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」 — an
+  /// export run borrows this line for the rows it keeps, playback resting
+  /// while it goes. What it holds comes off the pictures' share.
+  testWidgets('🎯what is lent comes off the pictures — the same budget with '
+      'nothing lent keeps them all', (tester) async {
     await tester.runAsync(() async {
-      final c = caches();
-      await makePictures(c.pictures);
-      await makeRows(c.layers);
-      final pictures = c.pictures.store.estimatedBytes;
-      final rows = c.layers.estimatedBytes;
-      expect(rows, greaterThan(0));
-
-      PlaybackCacheBudgetEnforcer(
-        pictures: c.pictures.store,
-        layerImages: c.layers,
-        maxBytes: pictures + rows,
-      ).enforce(wantedAt: wantedAtOf(c.pictures));
-      expect(c.layers.estimatedBytes, rows, reason: 'LIVENESS: room for all');
-
-      PlaybackCacheBudgetEnforcer(
-        pictures: c.pictures.store,
-        layerImages: c.layers,
-        maxBytes: pictures + rows - 1,
-      ).enforce(wantedAt: wantedAtOf(c.pictures));
-      expect(
-        heldPictures(c.pictures),
-        [true, true, true],
-        reason: 'a picture wanted five steps on outranks a row image',
-      );
-      expect(c.layers.estimatedBytes, lessThan(rows));
+      for (final lent in [0, 1]) {
+        final pictures = picturesOfTheFrames();
+        await makePictures(pictures);
+        final picture = pictures.store.bytesOf(keyOf(pictures, 'a'))!;
+        PlaybackCacheBudgetEnforcer(
+          pictures: pictures.store,
+          maxBytes: 3 * picture,
+        ).enforce(wantedAt: wantedAtOf(pictures), lentBytes: lent * picture);
+        expect(
+          heldPictures(pictures),
+          lent == 0 ? [true, true, true] : [true, true, false],
+          reason: 'lent: $lent pictures',
+        );
+      }
     });
   });
 
-  testWidgets('🚨room is made out of the row images first, then a picture '
-      'wanted LATER — never out of one wanted sooner', (tester) async {
+  testWidgets('🚨room is made out of a picture wanted LATER — never out of '
+      'one wanted sooner', (tester) async {
     await tester.runAsync(() async {
-      final c = caches();
-      await makePictures(c.pictures);
-      await makeRows(c.layers);
-      final picture = c.pictures.store.bytesOf(keyOf(c.pictures, 'a'))!;
-      final wantedAt = wantedAtOf(c.pictures);
+      final pictures = picturesOfTheFrames();
+      await makePictures(pictures);
+      final picture = pictures.store.bytesOf(keyOf(pictures, 'a'))!;
+      final wantedAt = wantedAtOf(pictures);
       final budget = PlaybackCacheBudgetEnforcer(
-        pictures: c.pictures.store,
-        layerImages: c.layers,
+        pictures: pictures.store,
         maxBytes: 4 * picture,
       );
 
@@ -222,9 +198,8 @@ void main() {
         ),
         isTrue,
       );
-      expect(c.layers.estimatedBytes, 0, reason: 'the row images went first');
       expect(
-        heldPictures(c.pictures),
+        heldPictures(pictures),
         [true, true, false],
         reason: 'c is wanted after step 1',
       );
@@ -239,36 +214,32 @@ void main() {
         isFalse,
         reason: 'a and b are wanted sooner than step 3',
       );
-      expect(heldPictures(c.pictures), [true, true, false]);
+      expect(heldPictures(pictures), [true, true, false]);
     });
   });
 
   testWidgets('what may be lent is the line less the pictures a screen '
-      'shows, its frame\'s and its rows\' alike', (tester) async {
+      'shows', (tester) async {
     await tester.runAsync(() async {
-      final c = caches();
-      await makePictures(c.pictures);
-      await makeRows(c.layers);
+      final pictures = picturesOfTheFrames();
+      await makePictures(pictures);
       final budget = PlaybackCacheBudgetEnforcer(
-        pictures: c.pictures.store,
-        layerImages: c.layers,
+        pictures: pictures.store,
         maxBytes: 4096,
       );
       expect(budget.lendableBytes(), 4096, reason: 'all of it gives way');
 
-      final shown = keyOf(c.pictures, 'b');
-      c.pictures.store.retainPin(shown);
-      addTearDown(() => c.pictures.store.releasePin(shown));
-      final picture = c.pictures.store.bytesOf(shown)!;
+      final shown = keyOf(pictures, 'b');
+      pictures.store.retainPin(shown);
+      addTearDown(() => pictures.store.releasePin(shown));
+      final picture = pictures.store.bytesOf(shown)!;
       expect(budget.lendableBytes(), 4096 - picture);
     });
   });
 
   test('the pictures may hold the line, less what is lent', () {
-    final c = caches();
     final budget = PlaybackCacheBudgetEnforcer(
-      pictures: c.pictures.store,
-      layerImages: c.layers,
+      pictures: picturesOfTheFrames().store,
       maxBytes: 1000,
     );
     expect(budget.room(), 1000);

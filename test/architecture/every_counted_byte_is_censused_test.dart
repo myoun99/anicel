@@ -386,13 +386,6 @@ const _imageHolders = <String, String>{
       'block only carries them into a paint',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
       'counted:liveImageBytes',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _superseded':
-      'clones a settle replaced, kept only until the build the settle asks '
-      'for: the paint before it drew with them, and nothing keeps a paint',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _dropped':
-      'clones of _images let go, kept as _superseded is until the build '
-      'that replaces the painter drawing with them: a sibling repainting '
-      'the layer meanwhile repaints with that painter (2026-10-25)',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':
       'counted:decodedBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _pictures':
@@ -418,8 +411,6 @@ const _imageHolders = <String, String>{
       'counted:tileImageBytes',
   // … holdings counted all along, by a counter of their own file …
   'lib/src/ui/canvas/tile_pyramid.dart → tiles': 'counted:liveBytes',
-  'lib/src/ui/playback/layer_frame_image_cache.dart → _entries':
-      'counted:estimatedBytes',
   'lib/src/ui/playback/frame_picture_store.dart → _entries':
       'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',
@@ -449,11 +440,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/export/export_frame_renderer.dart → all':
       'one camera frame\'s track stack, laying pictures the run\'s '
       'HeldPictures holds — a frame described, not a holding',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → _images':
-      'clones of the layer images the rows this view shows draw from — '
-      'the playback cache\'s pictures (estimatedBytes); a clone outlives '
-      'the cache\'s own only for a row on screen, or of the last whole '
-      'frame until this one is whole',
   'lib/src/ui/canvas/canvas_selection_layer.dart → floats':
       'the open move\'s floats, one a cel it lifted: what each keeps of '
       'pictures is its warp preview — the last resample decoded for the '
@@ -461,10 +447,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/selection_float_overlay.dart → floats':
       'a paint\'s floats: each picture is a float\'s warp preview, owned by '
       'the float (canvas_selection_layer.dart → floats)',
-  'lib/src/ui/canvas/tiled_surface_compose.dart → _halvings':
-      'one compose\'s laid tiles, drawn halved at its finish: the tile '
-      'cache\'s pictures (liveImageBytes), or the blocks the compose '
-      'pictured itself and lets go when it ends',
 
   // — 2026-10-21, a picture past the side held in pieces (card
   // a-cel-past-the-device-side-composes-smaller): ONE picture, as many
@@ -473,9 +455,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/canvas/tiled_surface_compose.dart → pieces':
       'one compose\'s picture, in pieces past the side (piecesOver): its '
       'holder keeps and counts them as it did the one image',
-  'lib/src/ui/playback/layer_frame_image_cache.dart → pieces':
-      'one stored picture\'s pieces, the entry\'s own — of _entries '
-      '(estimatedBytes sums them)',
   'lib/src/ui/playback/frame_picture_store.dart → _landing':
       'one picture\'s patches on their way into it, the entry\'s own — of '
       '_entries (estimatedBytes sums them)',
@@ -488,6 +467,4 @@ const _imageHolders = <String, String>{
   'lib/src/ui/playback/frame_picture_store.dart → levelsDueAsOne':
       'landing patches laid again as one at the cap: the very images of '
       '_landing, counted there',
-  'lib/src/ui/canvas/canvas_layer_stack_view.dart → pieces':
-      'one row\'s picture carried into a paint: the clones _images holds',
 };

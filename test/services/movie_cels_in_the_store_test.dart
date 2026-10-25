@@ -75,7 +75,7 @@ void main() {
       ),
       isTrue,
     );
-    expect(store.frameOrNull(key(5))!.sourceRevision, revision + 1);
+    expect(store.frameOrNull(key(5))!.sourceRevision, greaterThan(revision));
     expect(store.celPixelRevision.value, pixels + 1);
     expect(store.hasMovieCel(key(5), canvas), isTrue);
     expect(

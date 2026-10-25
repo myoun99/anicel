@@ -148,12 +148,6 @@ void main() {
         reason: 'the frame is its picture',
       );
       expect(
-        images.estimatedBytes,
-        0,
-        reason: 'no row image is made: the picture is drawn from the cels\' '
-            'stored pixels',
-      );
-      expect(
         pictures.has(at(0, paintPaper: false)),
         isFalse,
         reason: 'a screen that does not paint the paper shows another '
@@ -212,6 +206,39 @@ void main() {
       isFalse,
       reason: '⛔premise: a frame with a row in it is a picture to make',
     );
+  });
+
+  /// A cel donated with no drawing state — a layer's cels forked by an
+  /// unlink, an independent clip's copies — had its pixels and no picture
+  /// while the drawing state was asked beside the content (2026-10-10).
+  /// ↩️Pinned on the row images, until a frame's one picture was all a
+  /// screen drew (one-picture-per-frame ②-5b-1).
+  testWidgets('🚨a cel donated without a drawing state is in the picture — '
+      'the content alone says whether a cel has one', (tester) async {
+    await tester.runAsync(() async {
+      final store = BrushFrameStore()
+        ..storeBakedSurface(
+          keyOf('a'),
+          storeOf(['a']).bakedSurfaceOrNull(keyOf('a'))!,
+        );
+      expect(
+        store.frameOrNull(keyOf('a')),
+        isNull,
+        reason: '⛔premise: the donation alone, no drawing state',
+      );
+      final images = LayerFrameImageCache(frameStore: store);
+      addTearDown(images.dispose);
+      final pictures = picturesOf(images);
+      final frame = at(0, paintPaper: false);
+
+      expect(await pictures.make(frame, shouldAbort: () => false), isTrue);
+
+      final pixels = (await pictures.store
+          .peek(pictures.keyOf(frame))!
+          .image
+          .toByteData())!;
+      expect(pixels.getUint8((1 * 8 + 1) * 4 + 3), 0xFF, reason: 'its ink');
+    });
   });
 
   testWidgets('🚨one cel\'s failure is one cel\'s: the frame is laid without '

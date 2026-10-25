@@ -21,7 +21,6 @@ import 'src/native/window_full_screen.dart';
 import 'src/native/window_place.dart';
 import 'src/ui/canvas/colour_key_shader.dart';
 import 'src/ui/canvas/layer_blend_shader.dart';
-import 'src/ui/canvas/level_image.dart' show measuredHalving;
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/repaint_cause.dart';
@@ -189,14 +188,8 @@ Future<void> main(List<String> handedAtLaunch) async {
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => unawaited(AppStorage.ensureMicrophoneAccess()),
   );
-  // The engine's halving read once, after the first frame (a few small
-  // pictures, off the frame): a level of a picture laid past the wall is
-  // halved through it ([measuredHalving]), and one made inside a build
-  // before it is read is rastered as it always was.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(measuredHalving()),
-  );
-  // And the side this engine holds, the same way: a compose past it is made
+  // The side this engine holds, read once after the first frame (a few small
+  // pictures, off the frame): a compose past it is made
   // in pieces (`piecesOver`), and one made inside a build before it is read
   // is made whole, as it always was.
   WidgetsBinding.instance.addPostFrameCallback(

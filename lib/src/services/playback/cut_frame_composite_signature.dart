@@ -27,6 +27,7 @@ class CompositeLayerSignature {
     this.blendMode = LayerBlendMode.normal,
     this.placement,
     this.effects = const [],
+    this.tint,
   });
 
   final LayerId layerId;
@@ -56,6 +57,11 @@ class CompositeLayerSignature {
   /// composite's identity, and the compose loop filters with exactly this.
   final List<ResolvedLayerEffect> effects;
 
+  /// The ARGB tint an onion ghost wears over its cel (the onion's Colors
+  /// mode) — a picture of the ghosts is another picture in another colour.
+  /// Null on every row of a cut's own frame.
+  final int? tint;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -66,6 +72,7 @@ class CompositeLayerSignature {
           other.sourceRevision == sourceRevision &&
           other.blendMode == blendMode &&
           other.placement == placement &&
+          other.tint == tint &&
           listEquals(other.effects, effects);
 
   @override
@@ -76,6 +83,7 @@ class CompositeLayerSignature {
     sourceRevision,
     blendMode,
     placement,
+    tint,
     Object.hashAll(effects),
   );
 

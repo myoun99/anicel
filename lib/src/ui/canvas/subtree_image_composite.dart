@@ -7,7 +7,6 @@ import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
-import 'image_pieces.dart';
 import 'layer_blend_shader.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart'
@@ -420,11 +419,10 @@ const List<double> _opaqueMatrix = <double>[
 /// shown 49ms after its input against 12ms with the row normal, whatever
 /// the brush's size.
 ///
-/// ★[sourceAsIs] is the row's own image where the caller has one that the
-/// row is, painted normal — one piece, at full strength, with nothing on
-/// it. Where it lands texel for texel on the grid the shader draws on, the
-/// shader samples it there and the row is not rasterised at all
-/// ([_laidAsItIs]); anywhere else [paintSource] rasterises it as before.
+/// ↩️A row that was its own image in one piece, laid texel for texel on the
+/// grid, was handed to the shader as it was rather than rasterised
+/// (`sourceAsIs`, 10-23), until no row was drawn as its own image
+/// (one-picture-per-frame ②-5b-1).
 void drawBlendOverBackdrop({
   required Canvas canvas,
   required Rect bounds,
@@ -432,7 +430,6 @@ void drawBlendOverBackdrop({
   int maxPixelSide = maxSubtreeRasterSide,
   required void Function(Canvas into, double rasterScale) paintBackdrop,
   required void Function(Canvas into, double rasterScale) paintSource,
-  ImagePiece? sourceAsIs,
   required LayerBlendMode blendMode,
   Rect? shownWithin,
 }) {
@@ -455,22 +452,13 @@ void drawBlendOverBackdrop({
     return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
   }
 
-  final asItIs = _laidAsItIs(plan, sourceAsIs);
-  _BlendSource source({required bool onTheGrid}) => asItIs != null && onTheGrid
-      ? (image: sourceAsIs!.image, at: asItIs, owned: false)
-      : (
-          image: rasterOf(paintSource),
-          at: LayerBlendShader.wholeDraw,
-          owned: true,
-        );
-
   if (_readsInTheFrame(canvas, plan, shownWithin)) {
     _composeInTheFrame(
       canvas: canvas,
       plan: plan,
       rasterScale: rasterScale,
       paintBackdrop: paintBackdrop,
-      source: source(onTheGrid: _layerIsTheGrid(canvas, plan)),
+      source: rasterOf(paintSource),
       blendMode: blendMode,
     );
     return;
@@ -479,7 +467,7 @@ void drawBlendOverBackdrop({
     canvas: canvas,
     plan: plan,
     backdrop: rasterOf(paintBackdrop),
-    source: () => source(onTheGrid: true),
+    source: () => rasterOf(paintSource),
     blendMode: blendMode,
   );
 }
@@ -508,21 +496,20 @@ void _composeInARaster({
   required Canvas canvas,
   required SubtreeRasterPlan plan,
   required ui.Image backdrop,
-  required _BlendSource Function() source,
+  required ui.Image Function() source,
   required LayerBlendMode blendMode,
 }) {
-  _BlendSource? row;
+  ui.Image? row;
   ui.FragmentShader? shader;
   ui.Image? composed;
   try {
     row = source();
     shader = LayerBlendShader.shaderFor(
       backdrop: backdrop,
-      source: row.image,
+      source: row,
       mode: blendMode,
       width: plan.pixelWidth.toDouble(),
       height: plan.pixelHeight.toDouble(),
-      sourceRect: row.at,
     );
     if (!plan.magnifies) {
       assert(() {
@@ -556,9 +543,7 @@ void _composeInARaster({
     // from then on.
     composed?.dispose();
     shader?.dispose();
-    if (row != null && row.owned) {
-      row.image.dispose();
-    }
+    row?.dispose();
     backdrop.dispose();
   }
 }
@@ -584,54 +569,6 @@ void _shadeTheGrid(Canvas into, SubtreeRasterPlan plan, ui.Shader shader) =>
       ),
       Paint()..shader = shader,
     );
-
-/// The row a blend composes, as the shader is handed it: an image, where it
-/// lies on the draw in the draw's own 0..1, and whether the draw made it
-/// (a raster of the row) or only borrows it (the row's own image).
-typedef _BlendSource = ({ui.Image image, Rect at, bool owned});
-
-/// Whether a row's own image is handed to the shader as it is where it can
-/// be ([drawBlendOverBackdrop]'s `sourceAsIs`). Off, every row is
-/// rasterised — the route a test holds the bytes against.
-@visibleForTesting
-bool debugSourceAsIs = true;
-
-/// Where [sourceAsIs] lies on [plan]'s grid in the draw's own 0..1, when it
-/// lands there texel for texel ([landsTexelForTexel]) — a raster of it would
-/// be its texels, copied, with nothing past its edge, so the shader samples
-/// the image instead. Null anywhere else.
-Rect? _laidAsItIs(SubtreeRasterPlan plan, ImagePiece? sourceAsIs) {
-  // A grid the cap shrank is not the one the row's draw would have laid it
-  // on (`texelScale` is the scale the walk asked for), so it is drawn.
-  if (sourceAsIs == null || !debugSourceAsIs || plan.magnifies) {
-    return null;
-  }
-  final (:image, :worldRect) = sourceAsIs;
-  if (!landsTexelForTexel(image, worldRect, plan.scale)) {
-    return null;
-  }
-  final width = plan.pixelWidth.toDouble();
-  final height = plan.pixelHeight.toDouble();
-  return Rect.fromLTWH(
-    ((worldRect.left - plan.destination.left) * plan.scale).roundToDouble() /
-        width,
-    ((worldRect.top - plan.destination.top) * plan.scale).roundToDouble() /
-        height,
-    image.width / width,
-    image.height / height,
-  );
-}
-
-/// Whether the layer read in the frame is [plan]'s own grid — a device
-/// pixel a raster pixel — so a row laid texel for texel on the one is on
-/// the other. Drawn on a screen past the raster's scale, the layer has more
-/// pixels than the raster, and a row is rasterised on the raster's grid as
-/// it was.
-bool _layerIsTheGrid(Canvas canvas, SubtreeRasterPlan plan) {
-  final m = canvas.getTransform();
-  bool same(double v) => (v - plan.scale).abs() < 1e-6;
-  return same(m[0]) && same(m[5]);
-}
 
 /// Whether a blend is read in the frame where it can be
 /// ([_composeInTheFrame]). Off, every blend rasterises its backdrop — the
@@ -687,10 +624,9 @@ bool _readsInTheFrame(
 
 /// [paintBackdrop] drawn into a layer whose filter IS the blend: the engine
 /// hands that layer to [LayerBlendShader] as the backdrop, in the frame, and
-/// [source] — rasterised on [plan]'s grid, which the layer lands on, or the
-/// row's own image laid texel for texel on it — is the other picture. One
-/// raster where the backdrop's route makes three, or none, and none of them
-/// waits on the frame.
+/// [source] — rasterised on [plan]'s grid, which the layer lands on — is the
+/// other picture. One raster where the backdrop's route makes three, and
+/// none of them waits on the frame.
 ///
 /// 🗣️a-blurred-folder-cut-by-the-view-moves-on-vulkan (유저 2026-10-22
 /// 「골은 b」): the backdrop is read where the frame is drawn, the way the
@@ -705,7 +641,7 @@ void _composeInTheFrame({
   required SubtreeRasterPlan plan,
   required double rasterScale,
   required void Function(Canvas into, double rasterScale) paintBackdrop,
-  required _BlendSource source,
+  required ui.Image source,
   required LayerBlendMode blendMode,
 }) {
   assert(() {
@@ -713,11 +649,7 @@ void _composeInTheFrame({
     debugLastSubtreeRaster = plan;
     return true;
   }());
-  final shader = LayerBlendShader.filterFor(
-    source: source.image,
-    mode: blendMode,
-    sourceRect: source.at,
-  );
+  final shader = LayerBlendShader.filterFor(source: source, mode: blendMode);
   try {
     canvas
       ..saveLayer(
@@ -743,9 +675,7 @@ void _composeInTheFrame({
     // ⚠️Safe once the layer is recorded: the display list holds its own
     // claim on the filter and the image it samples.
     shader.dispose();
-    if (source.owned) {
-      source.image.dispose();
-    }
+    source.dispose();
   }
 }
 

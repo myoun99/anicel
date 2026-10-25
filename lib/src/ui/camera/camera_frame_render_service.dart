@@ -146,8 +146,9 @@ class CameraFrameRenderService {
     final cameraRasterScale = (previewScale * pose.zoom).abs();
     final level = displayLevelOf(cameraRasterScale);
     // 🚨A ROW IS COMPOSED AS ITS INK ALONE ONLY WHERE IT IS LAID DOWN TEXEL
-    // FOR TEXEL — the playback cache's law (`inkCropDrawsTheSame`,
-    // `LayerFrameImageCache.prepare`'s `inkSuffices`), asked of this route.
+    // FOR TEXEL — `inkCropDrawsTheSame`, asked of this route. ↩️The playback
+    // cache asked it of its rows too, until it kept no row image
+    // (one-picture-per-frame ②-5b-1).
     // A projection that moves every canvas pixel onto an output pixel whole
     // draws the ink exactly as it draws the whole image; any other has a
     // crop laid back to the whole first ([drawPosedLayerImage]), which pays

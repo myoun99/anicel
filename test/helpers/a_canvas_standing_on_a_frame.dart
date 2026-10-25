@@ -73,6 +73,21 @@ FramePictureView standingOn(
   wholeFrames: false,
 );
 
+/// The frame's own picture where a canvas stands on it or plays it — under
+/// [within] where a test names where.
+///
+/// ⚠️Not a bare `find.byType(FramePictureView)`: the onion ghosts lie over
+/// the frame's picture in a picture view of their own, there while the
+/// canvas stands with no ghost too (`_ghostsOver`). Laid under them, the
+/// frame's is the first.
+Finder theFramesPicture({Finder? within}) {
+  final views = find.byType(FramePictureView);
+  return (within == null
+          ? views
+          : find.descendant(of: within, matching: views))
+      .first;
+}
+
 /// [view] on a screen of its own, [size] logical pixels at the window's
 /// top left over [under] — what [screen] shows ([shotOf]).
 Widget onAScreen(

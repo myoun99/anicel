@@ -11,10 +11,8 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
-import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -122,41 +120,36 @@ void main() {
     );
   }
 
-  Future<LayerFrameImage?> prepare(
-    LayerFrameImageCache images,
-    String cel, {
-    bool Function()? shouldAbort,
-  }) => images.prepare(
-    key: keyOf(cel),
-    canvasSize: canvasSize,
-    quality: PlaybackQuality.full,
-    sourceEffects: const <ResolvedLayerEffect>[],
-    shouldAbort: shouldAbort,
-  );
-
-  testWidgets('🚨a row\'s image waits for its cel\'s thaw on a worker — the '
-      'cel is not read on this thread', (tester) async {
+  /// ↩️A row's image waited for it, until no row image was made
+  /// (one-picture-per-frame ②-5b-1).
+  testWidgets('🚨a cel read in waits for its thaw on a worker — the cel is '
+      'not read on this thread', (tester) async {
     await tester.runAsync(() async {
       final store = _ThawAsks();
       keepInTheFile(store, ['a']);
       final images = LayerFrameImageCache(frameStore: store);
       addTearDown(images.dispose);
 
-      late Future<LayerFrameImage?> prepared;
+      late Future<void> read;
       var answered = false;
       await whileNoWorkerIsFree(() async {
-        prepared = prepare(images, 'a');
-        unawaited(prepared.whenComplete(() => answered = true));
+        read = images.readIn(keyOf('a'), canvasSize: canvasSize);
+        unawaited(read.whenComplete(() => answered = true));
         await pumpEventQueue();
-        expect(answered, isFalse, reason: 'the image waits for the thaw');
+        expect(answered, isFalse, reason: 'the reading waits for the thaw');
         expect(
           store.hotBakedSurfaceOrNull(keyOf('a')),
           isNull,
           reason: 'no worker was free, and the cel was not read here',
         );
       });
-      expect(await prepared, isNotNull);
+      await read;
       expect(store.hotBakedSurfaceOrNull(keyOf('a')), isNotNull);
+      expect(
+        images.storedSurfaceIsInHand(keyOf('a'), canvasSize: canvasSize),
+        isTrue,
+        reason: 'its preview prepared once it is hot',
+      );
     });
   });
 
@@ -191,8 +184,11 @@ void main() {
     });
   });
 
-  testWidgets('a maker the editor has stood down starts no thaw — neither '
-      'the frame\'s nor a row\'s', (tester) async {
+  /// ↩️Nor a row's image's, until no row image was made
+  /// (one-picture-per-frame ②-5b-1).
+  testWidgets('a maker the editor has stood down starts no thaw', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final store = _ThawAsks();
       keepInTheFile(store, ['a', 'b']);
@@ -207,7 +203,6 @@ void main() {
         ), shouldAbort: () => true),
         isFalse,
       );
-      expect(await prepare(images, 'a', shouldAbort: () => true), isNull);
       expect(store.asked, isEmpty);
     });
   });

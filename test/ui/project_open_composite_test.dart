@@ -15,7 +15,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
@@ -116,8 +115,11 @@ void main() {
     );
   });
 
-  testWidgets('playback layer images build from the baked raster after an '
-      'open (LayerFrameImageCache)', (tester) async {
+  /// ↩️It asked the row image a cel made, until a frame's one picture was
+  /// all playback drew (one-picture-per-frame ②-5b-1): the picture is made of
+  /// the cels' stored pixels.
+  testWidgets('playback reads the baked raster after an open '
+      '(LayerFrameImageCache)', (tester) async {
     await tester.runAsync(() async {
       final (s, drawnKey) = await reopenedSession();
       addTearDown(s.dispose);
@@ -126,14 +128,13 @@ void main() {
         frameStore: s.renderCaches.brushFrameStore,
       );
       addTearDown(cache.dispose);
-      final image = await cache.prepare(
-        key: drawnKey,
+      final surface = cache.storedSurfaceOrNull(
+        drawnKey,
         canvasSize: s.requireActiveCut.canvasSize,
-        quality: PlaybackQuality.full,
-        sourceEffects: const [],
       );
 
-      expect(image, isNotNull, reason: 'a loaded cel must render in playback');
+      expect(surface, isNotNull, reason: 'a loaded cel must render in playback');
+      expect(surface!.tiles, isNotEmpty);
     });
   });
 

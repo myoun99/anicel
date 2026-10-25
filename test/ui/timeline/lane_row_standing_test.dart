@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// R10 #19's RAIL half: the row you are standing on is drawn, and a
 /// property lane's LABEL is a place you can stand.
@@ -522,11 +523,10 @@ void main() {
       bool canvasPaintsCel() =>
           tester
               .widget<FramePictureView>(
-                find.descendant(
-                  of: find.byKey(
+                theFramesPicture(
+                  within: find.byKey(
                     const ValueKey<String>('main-canvas-brush-host'),
                   ),
-                  matching: find.byType(FramePictureView),
                 ),
               )
               .live?.activeSurfacePainter !=

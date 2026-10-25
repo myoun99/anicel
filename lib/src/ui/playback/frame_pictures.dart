@@ -207,12 +207,12 @@ class FramePictures implements PlaybackPictures {
   bool allInHand(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture,
-  ) {
-    final canvasSize = pageOf(picture).canvasSize;
-    return stackedCelsOf(_drawnOf(nodes)).every(
-      (cel) => layerImages.storedSurfaceIsInHand(cel, canvasSize: canvasSize),
-    );
-  }
+  ) => stackedCelsOf(_drawnOf(nodes)).every((cel) => inHand(cel, picture));
+
+  /// Whether [cel]'s stored pixels on [picture]'s page are read and laid
+  /// out already — drawn without a reading ([frameAsItStands]).
+  bool inHand(BrushFrameKey cel, DemandedPicture picture) => layerImages
+      .storedSurfaceIsInHand(cel, canvasSize: pageOf(picture).canvasSize);
 
   /// Thaws every cel [picture] draws that is not in hand already, at once,
   /// off the UI thread ([LayerFrameImageCache.readIn]) — none another frame
@@ -229,7 +229,7 @@ class FramePictures implements PlaybackPictures {
     final canvasSize = pageOf(picture).canvasSize;
     return Future.wait([
       for (final cel in stackedCelsOf(_drawnOf(nodes)))
-        if (!layerImages.storedSurfaceIsInHand(cel, canvasSize: canvasSize))
+        if (!inHand(cel, picture))
           layerImages.readIn(cel, canvasSize: canvasSize),
     ]);
   }
@@ -376,20 +376,21 @@ class FramePictures implements PlaybackPictures {
     return (frame: frame, thrown: thrown);
   }
 
-  /// [readInStack] on this thread, for a screen whose first frame may not
-  /// go without them (`FramePictureView.alreadyShown`) — each cel read as
-  /// [drawingNow] reads it, and the first throw a reading gave.
+  /// [readInStack] on this thread for the cels [onScreen] says are on screen
+  /// already — a screen whose first frame may not go without them
+  /// (`FramePictureView.alreadyShown`), a cel the canvas drew live that is
+  /// a ghost now (`FramePictureView.drawnLive`), one the screen drew a
+  /// frame ago that an edit took out of hand — each read as [drawingNow]
+  /// reads it, and the first throw a reading gave.
   (Object, StackTrace)? readInStackNow(
     List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) {
+    DemandedPicture picture, {
+    required bool Function(BrushFrameKey cel) onScreen,
+  }) {
     final page = pageOf(picture);
     (Object, StackTrace)? thrown;
-    for (final cel in stackedCelsOf(_drawnOf(nodes))) {
-      if (!layerImages.storedSurfaceIsInHand(
-        cel,
-        canvasSize: page.canvasSize,
-      )) {
+    for (final cel in stackedCelsOf(_drawnOf(nodes)).where(onScreen)) {
+      if (!inHand(cel, picture)) {
         _readNow(cel, page, (error, stack) => thrown ??= (error, stack));
       }
     }
@@ -437,8 +438,7 @@ class FramePictures implements PlaybackPictures {
     return stackedFrameOf(
       nodes,
       page: page,
-      surfaceOf: (cel) =>
-          layerImages.storedSurfaceIsInHand(cel, canvasSize: page.canvasSize)
+      surfaceOf: (cel) => inHand(cel, picture)
           ? layerImages.storedSurfaceOrNull(cel, canvasSize: page.canvasSize)
           : null,
       live: live,

@@ -461,6 +461,20 @@ class BrushFrameStore {
     return _frames.putIfAbsent(key, () => BrushFrameDrawingState(key: key));
   }
 
+  /// The revision [_nextRevision] gave last.
+  int _lastRevision = 1;
+
+  /// 🚨A REVISION NO CEL OF THIS STORE HAS HELD — every content a cel
+  /// takes is given one: a frame's picture is kept under its cels'
+  /// revisions (`FramePictureKey`), and a cel that came back to a revision
+  /// it once had at other pixels was shown the picture of those. A cel
+  /// carried onto a row's key took the revision it had where it came from
+  /// — the same number the cel it replaced had been drawn at, and the
+  /// screen showed the cel that was gone (F-313 again, under the frame's
+  /// one picture: one-picture-per-frame ②-5b-1, 2026-10-25). ↩️Each cel
+  /// counted its own, until then.
+  int _nextRevision() => _lastRevision += 1;
+
   /// A MOVIE cel exists before anything decodes it — its held cel is on the
   /// timeline, and a movie always has a picture — so its state is made on
   /// first ask ([installMovieCel] moves it on).
@@ -539,7 +553,7 @@ class BrushFrameStore {
     _fitMovieCels();
     _displayCaches.remove(key);
     final state = getOrCreateFrame(key);
-    _frames[key] = state.copyWith(sourceRevision: state.sourceRevision + 1);
+    _frames[key] = state.copyWith(sourceRevision: _nextRevision());
     celPixelRevision.value += 1;
   }
 
@@ -1618,55 +1632,19 @@ class BrushFrameStore {
   /// written beside the project file.
   Future<void> drainTiering() => drainCooling();
 
-  /// Told the pairs [rekeyFrames] or [carryCels] moved, once they are moved,
-  /// under the keys their caller named: every picture made of a cel travels
-  /// with its pixels, as the display cache does here.
-  ///
-  /// 🚨F-313 (유저 2026-10-08: 「… 싹 삭제하고 법 통일. 항상 보여야함」):
-  /// the image cache's pictures stayed under the key the move left, so a cel
-  /// carried onto another row went blank on the frame it landed and came
-  /// back with the asynchronous build — 🔬0 of 32 columns on that frame, at
-  /// 50% and at 100%, in
-  /// `a_cel_carried_onto_another_row_shows_on_the_frame_it_lands_test`.
-  final List<void Function(List<(BrushFrameKey from, BrushFrameKey to)>)>
-  _rekeyListeners = [];
-
-  void addRekeyListener(
-    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
-  ) => _rekeyListeners.add(listener);
-
-  void removeRekeyListener(
-    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
-  ) => _rekeyListeners.remove(listener);
-
-  /// Told the pairs [storeCopiedSurface] gave a copy, once it is stored: the
-  /// copy holds the very pixels its source does, so every picture made of
-  /// the source is a picture of the copy — the rekey's twin, the source
-  /// kept ([addRekeyListener]).
+  /// [surface] stored under [key] as a COPY of the cel [source]
+  /// ([storeBakedSurface]) — and when it is the very surface [source] holds,
+  /// the preview [source] is drawn from is the copy's too. Any other
+  /// surface (a copy taken before the source was drawn over, one laid to
+  /// another canvas) is only stored.
   ///
   /// 🚨F-275 (유저 2026-10-08): 「링크독립하면 싱크어태치 그림 사라지길래
   /// 해결안된건가 했는데 다른 레이어 이동하니 화면에 정상표시」 — 링크 독립
   /// hands a block a cel of its own and its attach row a mirror of it, the
-  /// same pictures under new keys, and the rows went blank on the frame
-  /// after it until the asynchronous build came back with what they had
-  /// shown — 🔬0 of 7225 pixels on that frame, in
+  /// same pixels under new keys, and the rows went blank on the frame after
+  /// it until an asynchronous build came back with what they had shown —
+  /// 🔬0 of 7225 pixels on that frame, in
   /// `an_unlinked_cel_keeps_its_attach_on_screen_test`.
-  final List<void Function(List<(BrushFrameKey from, BrushFrameKey to)>)>
-  _copyListeners = [];
-
-  void addCopyListener(
-    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
-  ) => _copyListeners.add(listener);
-
-  void removeCopyListener(
-    void Function(List<(BrushFrameKey from, BrushFrameKey to)>) listener,
-  ) => _copyListeners.remove(listener);
-
-  /// [surface] stored under [key] as a COPY of the cel [source]
-  /// ([storeBakedSurface]) — and when it is the very surface [source] holds,
-  /// the pictures made of [source] are the copy's too ([addCopyListener]).
-  /// Any other surface (a copy taken before the source was drawn over,
-  /// one laid to another canvas) is only stored.
   void storeCopiedSurface(
     BrushFrameKey key,
     BitmapSurface surface, {
@@ -1681,7 +1659,10 @@ class BrushFrameStore {
     // it ([_rehome]): the frame a screen shows while its picture is laid
     // draws a cel only once its preview is prepared, and the copy had none
     // for a frame — F-275 again, under the frame's one picture
-    // (one-picture-per-frame ②-3, 2026-10-25).
+    // (one-picture-per-frame ②-3, 2026-10-25). ↩️The pictures made of the
+    // source were handed on to the copy too, through listeners the image
+    // cache and the editing stack held, until no row's picture was kept
+    // (②-5b-1).
     final preview = _displayCaches[from];
     if (preview != null && preview.isValid) {
       final to = _canonicalize(key);
@@ -1691,58 +1672,52 @@ class BrushFrameStore {
         sourceRevision: getOrCreateFrame(to).sourceRevision,
       );
     }
-    for (final listener in List.of(_copyListeners)) {
-      listener([(source, key)]);
-    }
   }
 
   /// Re-homes stored drawings under new keys, AS GIVEN — the cut-scoped ops
   /// that manage canonical storage directly (a cut deleted, a cut made
   /// 겸용). Content is untouched, so the display cache travels along and
-  /// stays valid — and so do the pictures made of it ([addRekeyListener]).
-  /// Missing sources are skipped (an empty cel moved). The inverse pair
-  /// list undoes the move exactly.
-  void rekeyFrames(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
-    _rehome(pairs);
-    _tellRekeyListeners(pairs);
-  }
+  /// stays valid. Missing sources are skipped (an empty cel moved). The
+  /// inverse pair list undoes the move exactly.
+  void rekeyFrames(List<(BrushFrameKey from, BrushFrameKey to)> pairs) =>
+      _rehome(pairs);
 
   /// Carries cels from one ROW to another (a block moved across rows,
   /// R10-④b): [rowPairs] are the keys the rows ask with. The pixels are
   /// re-homed where those keys resolve — a 겸용 row is a window onto its
-  /// group's canonical cel ([setLinkResolver]) — and the pictures made of
-  /// them travel under the rows' keys, the keys they were made under.
+  /// group's canonical cel ([setLinkResolver]).
   ///
   /// 🚨F-413 (유저 2026-10-19): 「겸용컷일때 프레임블록 드래그해서
   /// 다른행으로 이동시키면 그림이 사라짐」 — the carry re-homed the rows'
   /// keys as given: in a cut its group is not canonical in, the row's key
   /// held nothing to move, and the row it landed on resolved to an empty
   /// cel.
-  void carryCels(List<(BrushFrameKey from, BrushFrameKey to)> rowPairs) {
-    _rehome([
-      for (final (from, to) in rowPairs)
-        (_canonicalize(from), _canonicalize(to)),
-    ]);
-    _tellRekeyListeners(rowPairs);
-  }
-
-  void _tellRekeyListeners(
-    List<(BrushFrameKey from, BrushFrameKey to)> pairs,
-  ) {
-    for (final listener in List.of(_rekeyListeners)) {
-      listener(pairs);
-    }
-  }
+  void carryCels(List<(BrushFrameKey from, BrushFrameKey to)> rowPairs) =>
+      _rehome([
+        for (final (from, to) in rowPairs)
+          (_canonicalize(from), _canonicalize(to)),
+      ]);
 
   void _rehome(List<(BrushFrameKey from, BrushFrameKey to)> pairs) {
     for (final (from, to) in pairs) {
+      // A content new to [to]'s key: a revision of its own ([_nextRevision]).
       final state = _frames.remove(from);
+      final revision = state == null ? null : _nextRevision();
       if (state != null) {
-        _frames[to] = state.copyWithKey(to);
+        _frames[to] = state.copyWithKey(to).copyWith(sourceRevision: revision);
       }
+      // 🚨F-313 (유저 2026-10-08: 「다른행이동하면 일시적으로 빈 블록으로
+      // 만드는 로직 있는거같은데 싹 삭제하고 법 통일. 항상 보여야함」): the
+      // preview a cel is drawn from travels with it, so the frame it lands
+      // on draws it while its picture is laid — 🔬0 of 32 columns on that
+      // frame where a cel's pictures stayed under the key the move left, in
+      // `a_cel_carried_onto_another_row_shows_on_the_frame_it_lands_test`.
+      // ↩️The image cache's and the editing stack's pictures of it were
+      // told the move through listeners too, until no row's picture was
+      // kept (one-picture-per-frame ②-5b-1).
       final cache = _displayCaches.remove(from);
       if (cache != null) {
-        _displayCaches[to] = cache;
+        _displayCaches[to] = cache.copyWith(sourceRevision: revision);
       }
       // The baked truth travels with the cel (R19) — either tier.
       final baked = _bakedSurfaces.remove(from);
@@ -2245,7 +2220,7 @@ class BrushFrameStore {
   BrushFrameDrawingState _markCacheDirty(BrushFrameDrawingState state) {
     final next = state.copyWith(
       inactivePreviewDirty: true,
-      sourceRevision: state.sourceRevision + 1,
+      sourceRevision: _nextRevision(),
     );
     final existing = _displayCaches[state.key];
     if (existing != null) {

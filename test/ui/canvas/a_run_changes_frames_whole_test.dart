@@ -14,7 +14,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -36,8 +35,9 @@ import '../../helpers/draw_on_current_frame.dart';
 /// takes each as it lands ([FramePictureView]).
 ///
 /// 유저 2026-10-08: 「재생했는데 재생바는 지나가고있는데 그림이 없어서
-/// 비어있다던가」. Standing still the canvas shows rows as they come, as it
-/// always has ([CanvasLayerStackView]); only a run holds a frame back.
+/// 비어있다던가」. Standing still the canvas shows the frame as it stands
+/// while its picture is made (`FramePictureView.wholeFrames` off); only a
+/// run holds a frame back.
 ///
 /// ↩️The canvas stacked a run's frame from its rows' images
 /// (`CanvasLayerStackView.run`), each asked at the level of the view it was
@@ -128,21 +128,6 @@ void main() {
     ),
   );
 
-  /// What the canvas standing still makes for a row: its image.
-  Future<void> makeRow(
-    WidgetTester tester,
-    LayerFrameImageCache cache,
-    String cel,
-  ) => tester.runAsync(
-    () => cache.prepare(
-      key: keyOf(cel),
-      canvasSize: canvasSize,
-      quality: PlaybackQuality.full,
-      sourceEffects: const [],
-      inkSuffices: true,
-    ),
-  );
-
   Future<void> pumpScreen(WidgetTester tester, Widget view) {
     // One canvas pixel a device pixel at 100%: the middle is the middle.
     tester.view.devicePixelRatio = 1;
@@ -176,21 +161,22 @@ void main() {
     ),
   );
 
-  /// The stack standing still on [cel]'s frame — its rows' images, as it
-  /// draws the onion's ghosts.
-  Future<void> pumpStill(
-    WidgetTester tester,
-    LayerFrameImageCache cache,
-    String cel,
-  ) => pumpScreen(
-    tester,
-    CanvasLayerStackView(
-      nodes: frameOf(cel),
-      imageCache: cache,
-      canvasSize: canvasSize,
-      viewport: CanvasViewport(),
-    ),
-  );
+  /// The canvas standing still on [cel]'s frame: its picture, made where
+  /// the view misses it, and drawn as it stands until it is there.
+  /// ↩️The stack drew its rows' images, until no screen did
+  /// (one-picture-per-frame ②-5b-1).
+  Future<void> pumpStill(WidgetTester tester, StackRun run, String cel) =>
+      pumpScreen(
+        tester,
+        FramePictureView(
+          run: run,
+          picture: at(cel),
+          nodes: frameOf(cel),
+          viewport: CanvasViewport(),
+          laysWhatItMisses: true,
+          wholeFrames: false,
+        ),
+      );
 
   /// A view that makes [cel]'s frame itself ([FramePictureView.
   /// laysWhatItMisses]) and changes frames whole, as a cut on the track
@@ -280,7 +266,6 @@ void main() {
       isFalse,
       reason: 'a run\'s frames are its maker\'s',
     );
-    expect(cache.estimatedBytes, 0, reason: 'nor a row of it');
   });
 
   testWidgets('a frame waits for nothing that will not come: one the maker '
@@ -334,13 +319,9 @@ void main() {
     addTearDown(cache.dispose);
     final pictures = picturesOver(cache);
     final (:run, landings: _) = runOver(pictures);
-    // The canvas at 40%, over the middle the probe reads.
+    // The canvas at 40%, over the middle the probe reads — where a row was
+    // asked at half its size (↩️until no row image was made, ②-5b-1).
     final view = CanvasViewport(zoom: 0.4, panX: 5, panY: 5);
-    expect(
-      rowQualityThrough(view, 1),
-      PlaybackQuality.half,
-      reason: '⛔premise: 40% is a level a row would be asked at',
-    );
 
     await makePicture(tester, pictures, 'blue');
     await pumpRun(tester, run, 'blue', viewport: view);
@@ -374,23 +355,57 @@ void main() {
     expect(store.pinnedBytes, 0, reason: 'a view gone holds nothing');
   });
 
-  testWidgets('standing still, rows come as they are made: a frame not made '
-      'yet is not held back — the view makes what it lacks', (tester) async {
+  /// A pin is taken on the store it was taken from: the view handed the
+  /// pictures of another store lets go of the first's hold at once.
+  testWidgets('🚨a view handed another store lets go of the hold it took on '
+      'the first', (tester) async {
     final cache = images();
     addTearDown(cache.dispose);
-    await makeRow(tester, cache, 'blue');
+    final first = picturesOver(cache);
+    final second = picturesOver(cache);
+    final (run: onFirst, landings: _) = runOver(first);
+    final (run: onSecond, landings: _) = runOver(second);
+    await makePicture(tester, first, 'blue');
+    await makePicture(tester, second, 'blue');
+    await pumpRun(tester, onFirst, 'blue');
+    expect(
+      first.store.pinnedBytes,
+      first.store.bytesOf(first.keyOf(at('blue'))),
+      reason: '⛔premise: the view holds the frame it shows',
+    );
 
-    await pumpStill(tester, cache, 'blue');
-    expect(await middle(tester), blue, reason: '⛔premise');
+    await pumpRun(tester, onSecond, 'blue');
 
-    await pumpStill(tester, cache, 'red');
+    expect(first.store.pinnedBytes, 0, reason: 'the first store\'s hold');
+    expect(
+      second.store.pinnedBytes,
+      second.store.bytesOf(second.keyOf(at('blue'))),
+      reason: 'held where it is shown from now',
+    );
+    expect(await middle(tester), blue);
+  });
+
+  testWidgets('standing still, a frame not made yet is not held back — it '
+      'is drawn as it stands, and the view makes what it lacks', (
+    tester,
+  ) async {
+    final cache = images();
+    addTearDown(cache.dispose);
+    final pictures = picturesOver(cache);
+    final (:run, landings: _) = runOver(pictures);
+
+    await pumpStill(tester, run, 'blue');
+    expect(await middle(tester), blue, reason: 'drawn as it stands');
+
+    await pumpStill(tester, run, 'red');
     expect(
       await middle(tester),
-      isNot(blue),
+      red,
       reason: 'no run: the frame asked for is the frame shown',
     );
     await aWhile(tester);
-    expect(await middle(tester), red, reason: 'the view made it');
+    expect(pictures.has(at('red')), isTrue, reason: 'the view made it');
+    expect(await middle(tester), red);
   });
 
   /// F-206 (유저 2026-09-28: 「스크럽하던 뭐던 존재하는게 보여야함」): the

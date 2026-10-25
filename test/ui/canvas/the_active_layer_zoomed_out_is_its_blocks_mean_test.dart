@@ -26,11 +26,12 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// buffer still reduced by nearest under the recorder's scale; 4c drew them
 /// into it as LEVEL TILES ([TilePyramid]), each an exact box mean of its
 /// block. Since 2026-10-25 the frame drawn as it stands is composed at its
-/// own resolution, as its one picture is (`composedAtTheDisplayLevel`), and
+/// own resolution, as its one picture is (`StackedFrame.paintOnScreen`), and
 /// the blit reduces it: this pins that the mean holds on that road.
 ///
-/// The fixture is the cel from `below_100_the_buffer_is_a_level_test` as
-/// the ACTIVE layer: 64×32, an opaque black column every four pixels, every
+/// The fixture is the cel the level buffer's own pin stood on (↩️until the
+/// row levels went, one-picture-per-frame ②-5b-1) as the ACTIVE layer:
+/// 64×32, an opaque black column every four pixels, every
 /// tile with its picture already in the cache. At 25% each device pixel is
 /// a 4×4 block holding one column — a quarter ink over white paper reads
 /// 191; nearest reads 0 or 255.

@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/playback_run_layer.dart';
 import 'package:anicel/src/ui/repaint_props.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// playback-plays-the-screen-material ① (10-09) and ② (10-10): a cut played
 /// alone plays ON the editing canvas, through the camera or not. The clock
@@ -90,7 +91,7 @@ void main() {
   /// The frame the canvas shows — standing still or under a run: its one
   /// picture.
   FramePictureView playedOf(WidgetTester tester) =>
-      tester.widget<FramePictureView>(find.byType(FramePictureView));
+      tester.widget<FramePictureView>(theFramesPicture());
 
   /// The cels the rows of [nodes] are images of.
   List<BrushFrameKey> celsOf(List<CompositeNode<CanvasStackRow>> nodes) => [
@@ -211,15 +212,15 @@ void main() {
     tester,
   ) async {
     final (s, _) = await pumpArea(tester);
-    final view = tester.state(find.byType(FramePictureView));
+    final view = tester.state(theFramesPicture());
 
     s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
-    expect(tester.state(find.byType(FramePictureView)), same(view));
+    expect(tester.state(theFramesPicture()), same(view));
 
     s.playbackRig.playback.stop();
     await tester.pump();
-    expect(tester.state(find.byType(FramePictureView)), same(view));
+    expect(tester.state(theFramesPicture()), same(view));
     await drain(tester);
   });
 
@@ -425,7 +426,7 @@ void main() {
     playback.play(scope: PlaybackScope.activeCut);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
-    final view = tester.state(find.byType(FramePictureView));
+    final view = tester.state(theFramesPicture());
 
     for (final throughTheCamera in [true, false]) {
       camera.value = throughTheCamera;
@@ -439,7 +440,7 @@ void main() {
         reason: '$seen, the clock still runs',
       );
       expect(
-        tester.state(find.byType(FramePictureView)),
+        tester.state(theFramesPicture()),
         same(view),
         reason: '$seen, the view that holds the run\'s picture is the same — '
             'not made again, and nothing of it made again',

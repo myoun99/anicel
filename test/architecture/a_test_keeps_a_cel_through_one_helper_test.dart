@@ -93,10 +93,6 @@ void main() {
       'times the landing of 400 blobs alone — the encode has a stopwatch of '
           'its own',
     ),
-    'test/ui/canvas/layer_stack_failure_isolation_test.dart': (
-      1,
-      'an empty open that reseeds every frame — no cel parked',
-    ),
   };
 
   /// Each entrance, the helper that owns it, and its ledger.

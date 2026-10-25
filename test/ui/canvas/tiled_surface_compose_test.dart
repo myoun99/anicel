@@ -135,41 +135,14 @@ void main() {
             'this cel — the next edit — pays for the tiles that changed',
       );
       expect(await bytesOf(now), reference);
-
-      // The positioned road, with the plain snapshot of the same recording.
-      // It rasters over the CONTENT extent — these 256px tiles reach past
-      // the 300×200 canvas — so its twin is the asynchronous positioned
-      // compose, not the canvas-sized reference.
-      final later = (await composePositionedSurfaceImage(surface))!;
-      final want = await bytesOf(later.image);
-      final positioned = composePositionedSurfaceImageSync(
-        surface,
-        reuse: BitmapTileImageCache(),
-        makePictures: true,
-        snapshot: true,
-      )!;
-      expect(positioned.deferred.worldRect, surfaceContentWorldRect(surface));
-      expect(positioned.deferred.worldRect, later.worldRect);
-      expect(await bytesOf((await positioned.real!).single), want);
-      expect(await bytesOf(positioned.deferred.image), want);
-
-      // And the FREE road refuses rather than makes.
-      expect(
-        composePositionedSurfaceImageSync(
-          surface,
-          reuse: BitmapTileImageCache(),
-          makePictures: false,
-          snapshot: false,
-        ),
-        isNull,
-      );
     });
   });
 
-  testWidgets('🚨the compose in turn is a snapshot WAITED FOR unless its '
-      'caller takes it as a step of a chain: the canvas-sized and the '
-      'positioned one always, the halved one by its word — the same pixels '
-      'either way', (tester) async {
+  /// ↩️A halved compose could be taken as a step of a chain, not waited for,
+  /// and a positioned one made now beside its snapshot, until no row image
+  /// was made (one-picture-per-frame ②-5b-1).
+  testWidgets('🚨the compose in turn is a snapshot WAITED FOR: the '
+      'canvas-sized and the positioned one alike', (tester) async {
     await tester.runAsync(() async {
       final surface = patternedSurface(
         const CanvasSize(width: 300, height: 200),
@@ -186,24 +159,6 @@ void main() {
       final positioned = (await composePositionedSurfaceImage(surface))!;
       expect(waited, [(positioned.image.width, positioned.image.height)]);
       positioned.image.dispose();
-
-      // The first level — the step a level image begins with.
-      final over = surfaceContentWorldRect(surface);
-      waited.clear();
-      final kept =
-          (await composeHalvedSurfaceImage(surface, over: over))!.image;
-      expect(waited, [(kept.width, kept.height)]);
-      final want = await bytesOf(kept);
-
-      waited.clear();
-      final step = (await composeHalvedSurfaceImage(
-        surface,
-        over: over,
-        deferred: true,
-      ))!.image;
-      expect(waited, isEmpty, reason: 'a step of a chain waits for nothing');
-      expect((step.width, step.height), (kept.width, kept.height));
-      expect(await bytesOf(step), want);
     });
   });
 
@@ -728,60 +683,20 @@ void main() {
           surface,
           reuse: reuse,
         ))!;
-        final tiles = composePositionedSurfaceImageSync(
+        // Every tile pictured on its own first: no block is cold.
+        final pictured = BitmapTileImageCache();
+        surface.tiles.values.forEach(pictured.pictureFor);
+        final tiles = (await composePositionedSurfaceImage(
           surface,
-          reuse: BitmapTileImageCache(),
-          makePictures: true,
-          snapshot: true,
-        )!;
-        expect(blocks.worldRect, tiles.deferred.worldRect);
+          reuse: pictured,
+        ))!;
+        expect(blocks.worldRect, tiles.worldRect);
         expect(
           blocks.worldRect,
           const ui.Rect.fromLTRB(-128, -128, 1280, 768),
           reason: 'fixture: the pasteboard\'s tiles grow the content',
         );
-        tiles.deferred.image.dispose();
-        expect(
-          await bytesOf(blocks.image),
-          await bytesOf((await tiles.real!).single),
-        );
-      });
-    });
-
-    testWidgets('🚨the blocks HALVED are the tiles halved — the first level '
-        'of a cel the warm makes, against the one the canvas makes', (
-      tester,
-    ) async {
-      await tester.runAsync(() async {
-        final surface = celOf(coords);
-        final over = surfaceContentWorldRect(surface);
-        final shared = BitmapTileImageCache.instance;
-        expect(
-          surface.tiles.values.every((tile) => shared.imageFor(tile) == null),
-          isTrue,
-          reason: 'fixture: nothing has pictured these tiles',
-        );
-        // One block in part: pictured whole.
-        shared.pictureFor(surface.tileAt(TileCoord(x: 1, y: 1))!);
-        addTearDown(() {
-          for (final tile in surface.tiles.values) {
-            shared.releasePicture(tile);
-          }
-        });
-
-        final blocks = await bytesOf(
-          (await composeHalvedSurfaceImage(surface, over: over))!.image,
-        );
-        // Made now, every tile pictured on its own and kept — the road the
-        // canvas shows a cel by.
-        final tiles = composeHalvedSurfaceImageSync(
-          surface,
-          makePictures: true,
-          snapshot: true,
-          over: over,
-        )!;
-        tiles.deferred.image.dispose();
-        expect(blocks, await bytesOf((await tiles.real!).single));
+        expect(await bytesOf(blocks.image), await bytesOf(tiles.image));
       });
     });
   });

@@ -19,14 +19,12 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/import/cel_picture.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
@@ -42,17 +40,18 @@ import '../../helpers/the_frame_as_it_stands.dart';
 ///
 /// Each case is the camera's pin (`a_folder_through_the_camera_is_buffered_
 /// at_its_shot_test`): a row in a buffer of its own inside the blurred one
-/// lays the same bytes as the row drawn straight into it. And a row's image
-/// — what the stack draws the onion's ghosts from — is bounded by what
-/// reads it too, which a picture held in pieces asks of the canvas it lands
-/// on (↩️the bake's recordings of the rows beside the pen's, until ②-5a).
+/// lays the same bytes as the row drawn straight into it — a cel off the pen
+/// as well as the pen's (↩️the bake's recordings of the rows beside the
+/// pen's, until ②-5a; a row's image, as the stack drew the onion's ghosts
+/// from, whole or held in pieces, until ②-5b-1).
 void main() {
   setUpAll(LayerBlendShader.load);
 
   // The view sees (16, 16)–(48, 32) of the canvas. The ink lies left of it,
   // up to its edge. ⚠️The blur is wide on purpose: under `--enable-impeller`
-  // a blur of 4 hardly reaches past the two pixels the pieces are laid
-  // beyond what a canvas sees, and the pieces' case could not fail there.
+  // a blur of 4 hardly reaches past the two pixels the pieces were laid
+  // beyond what a canvas sees, and the pieces' case (↩️until ②-5b-1) could
+  // not fail there.
   const canvasSize = CanvasSize(width: 64, height: 48);
   const view = Size(32, 16);
   final viewport = CanvasViewport(panX: -16, panY: -16);
@@ -88,12 +87,8 @@ void main() {
     );
   }
 
-  /// A drawn cel left of the view, its ink up to the view's edge — a row
-  /// drawn from its image — held in pieces past a [side].
-  Future<LayerFrameImageCache> celLeftOfTheView(
-    WidgetTester tester, {
-    int? side,
-  }) async {
+  /// A drawn cel left of the view, its ink up to the view's edge.
+  LayerFrameImageCache celLeftOfTheView() {
     final store = BrushFrameStore();
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey,
@@ -120,27 +115,7 @@ void main() {
       ],
     );
     final cache = LayerFrameImageCache(frameStore: store);
-    final engineSide = debugPictureSideLimit;
-    debugPictureSideLimit = side ?? engineSide;
-    try {
-      // Warmed before the stack mounts, so its sweep holds the image at the
-      // first build.
-      final made = await tester.runAsync(
-        () => cache.prepare(
-          key: frameKey,
-          canvasSize: canvasSize,
-          quality: PlaybackQuality.full,
-          sourceEffects: const [],
-        ),
-      );
-      expect(
-        made!.pieces.length > 1,
-        side != null,
-        reason: '전제: held in pieces past the side, whole otherwise',
-      );
-    } finally {
-      debugPictureSideLimit = engineSide;
-    }
+    addTearDown(cache.dispose);
     return cache;
   }
 
@@ -177,9 +152,8 @@ void main() {
   );
 
   /// What is laid over the view for [nodes], through the display buffer —
-  /// or on the [walk] that paints the screen: the frame as it stands with
-  /// the [pen]'s row drawn live ([TheFrameAsItStands]), or without one the
-  /// stack drawing its rows' images, as it draws the onion's ghosts.
+  /// or on the [walk] that paints the screen: the frame as it stands
+  /// ([TheFrameAsItStands]), the [pen]'s row drawn live.
   Future<Uint8List> paint(
     WidgetTester tester,
     List<CompositeNode<CanvasStackRow>> nodes, {
@@ -192,24 +166,15 @@ void main() {
     final images =
         cache ?? LayerFrameImageCache(frameStore: BrushFrameStore());
     // A view of its own each time: nothing one paint kept is the other's.
-    final Widget stack = pen == null
-        ? CanvasLayerStackView(
-            key: UniqueKey(),
-            nodes: nodes,
-            imageCache: images,
-            canvasSize: canvasSize,
-            viewport: viewport,
-            debugDisableSingleBuffer: walk,
-          )
-        : TheFrameAsItStands(
-            key: UniqueKey(),
-            nodes: nodes,
-            imageCache: images,
-            canvasSize: canvasSize,
-            viewport: viewport,
-            activeSurfacePainter: pen,
-            debugDisableSingleBuffer: walk,
-          );
+    final Widget stack = TheFrameAsItStands(
+      key: UniqueKey(),
+      nodes: nodes,
+      imageCache: images,
+      canvasSize: canvasSize,
+      viewport: viewport,
+      activeSurfacePainter: pen,
+      debugDisableSingleBuffer: walk,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -355,7 +320,7 @@ void main() {
     testWidgets('a folder in the backdrop a blend composes over', (
       tester,
     ) async {
-      final cache = await celLeftOfTheView(tester);
+      final cache = celLeftOfTheView();
       final straight = await paint(
         tester,
         [
@@ -387,10 +352,13 @@ void main() {
   });
 
   // ↩️The rows beside the pen's, recorded once and replayed under it, until
-  // the bake went with the live rows (one-picture-per-frame ②-5a).
-  group('🎯a row\'s image, as the stack draws the onion\'s ghosts', () {
+  // the bake went with the live rows (one-picture-per-frame ②-5a); and the
+  // rows' images the stack drew the onion's ghosts from — whole, or held in
+  // pieces past a side — until the ghosts were a picture of their own
+  // (②-5b-1). A cel off the pen is drawn from its tiles, as the pen's is.
+  group('🎯a cel off the pen', () {
     testWidgets('a folder inside a blurred folder', (tester) async {
-      final cache = await celLeftOfTheView(tester);
+      final cache = celLeftOfTheView();
       final straight = await paint(
         tester,
         [
@@ -409,19 +377,6 @@ void main() {
       );
 
       expectTheSame(nested, straight);
-    });
-
-    // It lays the pieces the canvas it lands on can see.
-    testWidgets('a picture held in pieces', (tester) async {
-      final whole = await celLeftOfTheView(tester);
-      final inPieces = await celLeftOfTheView(tester, side: 32);
-      final nodes = [
-        folder([celRow], effects: blur),
-      ];
-      final reference = await paint(tester, nodes, cache: whole);
-      final held = await paint(tester, nodes, cache: inPieces);
-
-      expectTheSame(held, reference);
     });
   });
 }

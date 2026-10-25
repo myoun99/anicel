@@ -66,7 +66,7 @@ void main() {
   /// Mounts the panel with two counting painters:
   ///
   ///  * `canvasPaints` through `viewportUnderlayBuilder` — the SAME seam
-  ///    `editor_canvas_area` hangs `CanvasLayerStackView` on, and left BARE
+  ///    `editor_canvas_area` hangs the frame's picture on, and left BARE
   ///    on purpose. ⚠️Giving the underlay a `RepaintBoundary` would make
   ///    this counter stop responding to the very regression it exists to
   ///    catch, and the test would go green through it.

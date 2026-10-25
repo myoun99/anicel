@@ -102,8 +102,9 @@ void main() {
 
       store.markCelEdited(memberKey);
 
-      expect(store.frameOrNull(canonicalKey)!.sourceRevision, before + 1);
-      expect(store.frameOrNull(memberKey)!.sourceRevision, before + 1);
+      final after = store.frameOrNull(canonicalKey)!.sourceRevision;
+      expect(after, greaterThan(before));
+      expect(store.frameOrNull(memberKey)!.sourceRevision, after);
     });
 
     test('unlinked keys resolve to themselves', () {
@@ -116,8 +117,8 @@ void main() {
 
     // 🚨F-413: a block carried across rows in the cut its groups are not
     // canonical in.
-    test('a carry between two member rows moves the canonical cel, and '
-        'tells the pictures the ROWS\' keys', () {
+    test('a carry between two member rows moves the canonical cel, its '
+        'preview with it', () {
       final store = BrushFrameStore();
       store.setLinkResolver(
         LayerLinkRegistry(
@@ -143,9 +144,9 @@ void main() {
       );
       final from = key(cut: 'cut-b', layer: 'x-b');
       final to = key(cut: 'cut-b', layer: 'y-b');
-      store.storeBakedSurface(from, surfaceWithInk());
-      final told = <(BrushFrameKey, BrushFrameKey)>[];
-      store.addRekeyListener(told.addAll);
+      final surface = surfaceWithInk();
+      store.storeBakedSurface(from, surface);
+      store.storeRebuiltDisplayCache(key: from, previewSurface: surface);
 
       store.carryCels([(from, to)]);
 
@@ -157,9 +158,10 @@ void main() {
         reason: 'under the landing row\'s canonical key, the one saved',
       );
       expect(
-        told,
-        [(from, to)],
-        reason: 'a picture is made under the key its row asks with',
+        store.hasValidDisplayCache(to),
+        isTrue,
+        reason: 'the frame the cel lands on draws it from its preview while '
+            'its picture is laid (F-313)',
       );
 
       store.carryCels([(to, from)]);
@@ -250,25 +252,66 @@ void main() {
     expect(store.frameOrNull(to)?.key, to);
   });
 
-  test('storeCopiedSurface tells the copy listeners only where the copy is '
-      'the very surface its source holds (F-275)', () {
+  test('🚨a cel never stands at a revision it once held at other pixels — '
+      'carried onto a key, drawn on, carried back', () {
+    // A frame's picture is kept under its cels' revisions: a revision a
+    // key comes back to names the pixels it named then.
+    final store = BrushFrameStore();
+    final a = key(layer: 'a');
+    final b = key(layer: 'b');
+    parkCold(store, {a: surfaceWithInk(), b: surfaceWithInk()});
+    final pixelsAt = {a: 'a as opened', b: 'b as opened'};
+    final named = <(BrushFrameKey, int), String>{};
+    void look(BrushFrameKey cel) {
+      final at = (cel, store.frameOrNull(cel)!.sourceRevision);
+      expect(
+        named.putIfAbsent(at, () => pixelsAt[cel]!),
+        pixelsAt[cel],
+        reason: '$at named other pixels before',
+      );
+    }
+
+    void carry(BrushFrameKey from, BrushFrameKey to) {
+      store.rekeyFrames([(from, to)]);
+      pixelsAt[to] = pixelsAt.remove(from)!;
+      look(to);
+    }
+
+    void drawOn(BrushFrameKey cel, String pixels) {
+      store.storeBakedSurface(cel, surfaceWithInk());
+      store.markCelEdited(cel);
+      pixelsAt[cel] = pixels;
+      look(cel);
+    }
+
+    look(a);
+    look(b);
+    carry(a, b);
+    drawOn(b, 'b drawn once');
+    drawOn(b, 'b drawn twice');
+    carry(b, a);
+    drawOn(a, 'a drawn');
+    carry(a, b);
+  });
+
+  test('storeCopiedSurface shares its source\'s preview only where the copy '
+      'is the very surface its source holds (F-275)', () {
     final store = BrushFrameStore();
     final source = key(layer: 'a');
     final surface = surfaceWithInk();
     store.storeBakedSurface(source, surface);
-    final told = <(BrushFrameKey, BrushFrameKey)>[];
-    store.addCopyListener(told.addAll);
+    store.storeRebuiltDisplayCache(key: source, previewSurface: surface);
 
     final copy = key(layer: 'b');
     store.storeCopiedSurface(copy, surface, source: source);
-    expect(told, [(source, copy)]);
+    expect(store.hasValidDisplayCache(copy), isTrue);
     expect(identical(store.bakedSurfaceOrNull(copy), surface), isTrue);
 
-    // Pixels taken before the source was drawn over are not its picture.
+    // Pixels taken before the source was drawn over are not its preview.
     final older = key(layer: 'c');
     final olderSurface = surfaceWithInk();
     store.storeCopiedSurface(older, olderSurface, source: source);
-    expect(told, [(source, copy)]);
+    expect(store.hasValidDisplayCache(older), isFalse);
     expect(identical(store.bakedSurfaceOrNull(older), olderSurface), isTrue);
   });
 

@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// 🚨WHAT THE FILM LAYS UNDER ITS CUTS IS WHAT THE EDITING CANVAS SHOWS:
 /// pressing nothing but where you stand changes nothing on the screen
@@ -136,7 +137,7 @@ void main() {
 
   /// The standing cut's paper and pasteboard on the screen.
   ({Rect paper, Rect pasteboard}) stageOnScreen(WidgetTester tester) {
-    final found = find.byType(FramePictureView);
+    final found = theFramesPicture();
     final shown = tester.widget<FramePictureView>(found);
     // The page the frame's picture is drawn on.
     final page = shown.run.pictures.pageOf(shown.picture);

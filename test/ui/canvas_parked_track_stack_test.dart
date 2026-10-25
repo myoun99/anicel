@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
     show commitStoryboardScrub;
 
 import '../helpers/draw_on_current_frame.dart';
+import '../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// The multitrack display path's canvas mount (parked state): a gap
 /// parking swaps the canvas content to the track stack — a parked frame
@@ -321,7 +322,7 @@ void main() {
       reason: 'a crossing is a cut switch, not the track stack\'s preview',
     );
     expect(
-      tester.widget<FramePictureView>(find.byType(FramePictureView)).live,
+      tester.widget<FramePictureView>(theFramesPicture()).live,
       isNotNull,
       reason: 'the cut\'s editing canvas: its frame\'s picture with the row '
           'a pen is on live in it',

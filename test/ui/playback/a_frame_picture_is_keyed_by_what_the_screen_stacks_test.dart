@@ -295,26 +295,25 @@ void main() {
     );
   });
 
-  test('⛔an onion ghost is no part of a frame\'s picture — keyed or drawn',
-      () {
-    final ghosted = [
+  // ↩️A tinted row was refused here — an onion ghost no part of any
+  // frame's picture — until the ghosts were a picture of their own
+  // (one-picture-per-frame ②-5b-1): no frame's own tree holds one now.
+  test('an onion ghost\'s tint parts the key — the ghosts\' picture is not '
+      'the picture of their cels untinted, nor tinted otherwise', () {
+    List<CompositeNode<CanvasStackRow>> ghosted(int? tint) => [
       CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(
           frameKey: cel('ghost'),
           opacity: 0.3,
-          tint: 0xFFFF0000,
+          tint: tint,
         ),
       ),
     ];
-    expect(() => keyOf(ghosted), throwsStateError);
-    expect(
-      () => stackedFrameOf(
-        ghosted,
-        page: page,
-        surfaceOf: (_) => fail('a ghost has no surface to ask for'),
-      ),
-      throwsStateError,
-    );
+
+    final red = keyOf(ghosted(0xFFFF0000));
+    expect(keyOf(ghosted(0xFFFF0000)), red);
+    expect(keyOf(ghosted(null)), isNot(red));
+    expect(keyOf(ghosted(0xFF0000FF)), isNot(red));
   });
 
   group('a session\'s stacks', () {

@@ -21,9 +21,9 @@ import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
-import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
+import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🚨★★★A PAINT UNDER A CLIP DRAWS WHAT IT SHOWS, AND ONLY THAT
 /// (one-picture-per-frame ②-5a, 2026-10-25). A patch on its way into a
@@ -148,7 +148,7 @@ void main() {
   };
 
   StackedFrame frameOf(List<CompositeNode<CanvasStackRow>> nodes) =>
-      StackedFrame.of(
+      stackedFrameOf(
         nodes,
         page: (
           canvasSize: canvasSize,
@@ -156,16 +156,7 @@ void main() {
           paintPaper: true,
           paperBackground: paper,
         ),
-        storedRowOf: (stackRow) => switch (stackRow) {
-          final CanvasLayerImageRequest request => CutFrameCompositeLayer(
-            surface: surfaces[request.frameKey]!,
-            opacity: request.opacity,
-            blendMode: request.blendMode,
-            placement: request.placement,
-            effects: request.effects,
-          ),
-          CanvasActiveLayerRow() => null,
-        },
+        surfaceOf: (cel) => surfaces[cel],
       );
 
   Future<Uint8List> pixelsOf(

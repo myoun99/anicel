@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/stack_as_the_plan_hands_it.dart';
+import '../../helpers/the_frame_as_it_stands.dart';
 
 /// One row's composite paint, written once for both of its shapes.
 typedef _RowPaint = ({
@@ -57,10 +58,11 @@ typedef _Cel = ({
 ///
 /// The picture a frame is kept as is drawn off the tree the screen stacks
 /// ([stackedFrameOf]) by the canvas's own body (`frameDrawingOf`)
-/// with every row from its tiles, where the canvas standing still draws
-/// each row of that SAME tree as its cel's image
-/// ([LayerFrameImageCache]). At 100% the two must be one picture, byte for
-/// byte, wherever the canvas shows the world — the page, and the
+/// with every row from its tiles, where the canvas draws that SAME tree as
+/// it stands while the picture is not there (`TheFrameAsItStands`) — ↩️each
+/// row as its cel's image, until no screen drew a row's image
+/// (one-picture-per-frame ②-5b-1). At 100% the two must be one picture,
+/// byte for byte, wherever the canvas shows the world — the page, and the
 /// pasteboard round it — through every road the body has: rows over one
 /// another, a blend over its backdrop and the paper, a blurred folder, a
 /// pose, a colour key, an adjustment, ink past the page, a blend inside a
@@ -174,7 +176,7 @@ void main() {
             key: screen,
             child: SizedBox.fromSize(
               size: viewSize,
-              child: CanvasLayerStackView(
+              child: TheFrameAsItStands(
                 nodes: asTheCanvasAsks(scene),
                 imageCache: images,
                 canvasSize: canvasSize,
@@ -428,7 +430,7 @@ void main() {
   };
 
   // 🚨 Decision (2026-10-24, the one-frame compositor): a blur may round
-  // apart by 2 in a channel, and only a blur. Today's canvas blurs a cel row
+  // apart by 2 in a channel, and only a blur. The canvas blurred a cel row
   // as its row image (an image filter on an image), the frame's picture
   // blurs it as a layer of its tiles (the same filter on a saveLayer) — two
   // engine passes. Measured here: the Skia test runner rounds them 1 apart
@@ -436,6 +438,14 @@ void main() {
   // Impeller at sigma 3 and 6 (`a_group_is_an_image_test.dart`). The two
   // passes stop being two when the canvas draws every row from its tiles —
   // the row image is what the switch deletes. Every other scene is exact.
+  //
+  // 🔬2026-10-25, one-picture-per-frame ②-5b-1: the canvas draws every row
+  // from its tiles now, and the two scenes still round apart — 122 pixels
+  // of the blurred folder, each by 1 — so the row image was not what set
+  // them apart. ⚠️Not known what does: the screen draws the frame as it
+  // stands straight onto the screen's raster, the picture is laid in a
+  // raster of its own and then drawn; that is the difference left, not a
+  // measured cause.
   const blurs = {
     'a blurred folder of two rows at half opacity',
     'a blurred row with ink on the pasteboard',

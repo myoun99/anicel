@@ -313,7 +313,6 @@ class RenderCaches {
       : const Duration(milliseconds: 200);
 
   void _onBrushFrameInvalidated(BrushFrameCacheInvalidation invalidation) {
-    layerFrameImageCache.invalidateFrame(invalidation.frameKey);
     // Warming yields to the edit and then re-renders the dirty frames.
     _onEditActivity();
     _warmDebounce?.cancel();

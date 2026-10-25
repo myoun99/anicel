@@ -545,11 +545,6 @@ void main() {
               'film made a composite of each of its frames too, until '
               '2026-10-10; then it played the canvas\'s row images',
         );
-        expect(
-          s.renderCaches.layerFrameImageCache.estimatedBytes,
-          0,
-          reason: 'no row image is made for a run',
-        );
 
         // An export run borrows half the line.
         rig.playbackCache.lend(2 * picture);

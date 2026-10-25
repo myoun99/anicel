@@ -14,7 +14,7 @@ import '../canvas/canvas_layer_stack_view.dart';
 /// 🚨★★★WHAT A FRAME'S ONE PICTURE IS KEYED BY: THE TREE A SCREEN STACKS
 /// FOR IT (one-picture-per-frame ②-1, D7-2-Q3=a).
 ///
-/// The tree is the one the screen draws ([CanvasLayerStackView.nodes] —
+/// The tree is the one the screen draws (`FramePictureView.nodes` —
 /// the cut's own under the V row's fx, the track's SE rows, a drag in
 /// flight, a movie where its file stands), each row reduced to what
 /// changes its pixels, signed by the walk the plan's tree is signed by
@@ -81,6 +81,7 @@ FramePictureKey framePictureKeyOf(
               blendMode: stacked.blendMode,
               placement: stacked.placement,
               effects: stacked.effects,
+              tint: stacked.tint,
             );
     }),
     canvasSize: page.canvasSize,
@@ -103,12 +104,15 @@ StackedFrame stackedFrameOf(
     final surface = stacked == null ? null : surfaceOf(stacked.cel);
     return stacked == null || surface == null
         ? null
-        : CutFrameCompositeLayer(
-            surface: surface,
-            opacity: stacked.opacity,
-            blendMode: stacked.blendMode,
-            placement: stacked.placement,
-            effects: stacked.effects,
+        : (
+            layer: CutFrameCompositeLayer(
+              surface: surface,
+              opacity: stacked.opacity,
+              blendMode: stacked.blendMode,
+              placement: stacked.placement,
+              effects: stacked.effects,
+            ),
+            tint: stacked.tint,
           );
   },
   live: live,
@@ -149,6 +153,7 @@ typedef _StackedCel = ({
   LayerBlendMode blendMode,
   LayerPlacement? placement,
   List<ResolvedLayerEffect> effects,
+  int? tint,
 });
 
 /// [row] as [_StackedCel] — the ONE reading the key and the drawing both
@@ -160,20 +165,21 @@ typedef _StackedCel = ({
 /// drops — as [mapCompositeLeaves] drops it, with a folder it leaves
 /// empty.
 ///
-/// ⛔A TINTED ROW IS AN ONION GHOST, which lies over the frame's picture
-/// on the one canvas that edits it (`_ghostsOver`; one-picture-per-frame-Q1
-/// = a) and is no part of it. Handed one, this says so rather than keying
-/// a picture the ghost is not drawn in.
+/// A TINTED ROW IS AN ONION GHOST, and the ghosts are a picture of their
+/// own, laid over the frame's (`_ghostsOver`; one-picture-per-frame-Q1 = a,
+/// 「한 장 위에 얹는다」): no frame's own tree holds one, and the tint is
+/// read with the rest of the row. ↩️It was refused here while the ghosts
+/// were stacked from their rows' images at the display's level, until those
+/// were the last per-zoom pictures kept (②-5b-1, 유저 2026-10-25 「원본기준으로
+/// 해서 쓸데없는 소재 없애고 거기서 극한 최적화 해야지」).
 _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {
-  CanvasLayerImageRequest(tint: _?) => throw StateError(
-    'An onion ghost is no part of a frame\'s picture.',
-  ),
   CanvasLayerImageRequest(
     :final frameKey,
     :final opacity,
     :final blendMode,
     :final placement,
     :final effects,
+    :final tint,
   ) =>
     (
       cel: frameKey,
@@ -181,6 +187,7 @@ _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {
       blendMode: blendMode,
       placement: placement,
       effects: effects,
+      tint: tint,
     ),
   CanvasActiveLayerRow(
     frameKey: final cel?,
@@ -195,6 +202,7 @@ _StackedCel? _stackedCelOf(CanvasStackRow row) => switch (row) {
       blendMode: blendMode,
       placement: placement,
       effects: effects,
+      tint: null,
     ),
   CanvasActiveLayerRow() => null,
 };

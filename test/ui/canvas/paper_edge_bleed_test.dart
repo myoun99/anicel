@@ -38,7 +38,7 @@ import '../../helpers/the_frame_as_it_stands.dart';
 /// and ink jointly on whole canvas pixels.
 ///
 /// ↩️A frame drawn as it stands is composed at its own resolution since
-/// 2026-10-25, as its one picture is (`composedAtTheDisplayLevel`), so the
+/// 2026-10-25, as its one picture is (`StackedFrame.paintOnScreen`), so the
 /// 28% paint takes the control's road: this pins that the zoom #15 was
 /// seen at stays clean on it.
 ///
@@ -195,22 +195,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
     decodeAll(surface);
-    debugLastBufferLevel = null;
     final painter = await pump(tester, surface: surface, viewport: atLevelOne);
 
     final bytes = await paintOverBackdrop(tester, painter, screen);
 
     // 🚨THE PATH THIS PINS: the frame composed at its own resolution, as
     // its picture is laid. ↩️Below 50% it was a level, where #15's
-    // mechanism lived — a fixture that quietly stays off the road it names
-    // proves nothing (this file's own history: the cap moved twice under
-    // it).
-    expect(
-      debugLastBufferLevel,
-      0,
-      reason: 'a frame drawn as it stands is composed at its own '
-          'resolution at 28% too',
-    );
+    // mechanism lived — and a fixture that quietly stays off the road it
+    // names proves nothing (this file's own history: the cap moved twice
+    // under it), so the level was asked (`debugLastBufferLevel`) until the
+    // buffer had no level to be at (one-picture-per-frame ②-5b-1).
     expect(
       inkPixels(bytes),
       greaterThan(100000),
@@ -231,16 +225,10 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final surface = blackFilledSurface();
     decodeAll(surface);
-    debugLastBufferLevel = null;
     final painter = await pump(tester, surface: surface, viewport: atLevelZero);
 
     final bytes = await paintOverBackdrop(tester, painter, screen);
 
-    expect(
-      debugLastBufferLevel,
-      0,
-      reason: '60% is above the halving: the canvas-resolution buffer',
-    );
     expect(inkPixels(bytes), greaterThan(100000));
     expect(
       brightPixels(bytes),

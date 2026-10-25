@@ -11,13 +11,13 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 
-/// The onion's ghosts lie over the frame's one picture in a stack of their
+/// The onion's ghosts lie over the frame's one picture in a view of their
 /// own, and the cel the canvas draws live is a ghost the frame after a step
-/// — whole on its first frame only when the ghosts' stack was told, the
+/// — whole on its first frame only when the ghosts' view was told, the
 /// build before, that the canvas drew it live
 /// (`a_cel_drawn_live_is_its_ghost_on_the_frame_after_test`).
 void main() {
-  testWidgets('the ghosts\' stack stands over the canvas with no ghost too, '
+  testWidgets('the ghosts\' view stands over the canvas with no ghost too, '
       'told the cel the canvas draws live', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1280, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -31,10 +31,23 @@ void main() {
     session.createDrawingAtCurrentFrame();
     await tester.pumpAndSettle();
 
+    final views = tester
+        .widgetList<FramePictureView>(
+          find.descendant(
+            of: find.byType(DeviceGridProbe),
+            matching: find.byType(FramePictureView),
+          ),
+        )
+        .toList();
+    expect(
+      views,
+      hasLength(2),
+      reason: 'the frame\'s picture, and the ghosts\' over it',
+    );
+    final [canvas, ghosts] = views;
+
     final drawnLive = <BrushFrameKey>[
-      for (final node in preorderNodes(
-        tester.widget<FramePictureView>(find.byType(FramePictureView)).nodes,
-      ))
+      for (final node in preorderNodes(canvas.nodes))
         if (node case CompositeLeaf(
           payload: CanvasActiveLayerRow(frameKey: final cel?),
         ))
@@ -42,19 +55,13 @@ void main() {
     ];
     expect(drawnLive, hasLength(1), reason: '⛔premise: a cel is drawn live');
 
-    final ghosts = tester.widget<CanvasLayerStackView>(
-      find.descendant(
-        of: find.byType(DeviceGridProbe),
-        matching: find.byType(CanvasLayerStackView),
-      ),
-    );
     expect(ghosts.nodes, isEmpty, reason: '⛔premise: no onion skin is on');
     expect(
       ghosts.drawnLive,
       {drawnLive.single},
-      reason: 'the ghosts\' stack has to know the cel the canvas drew live '
+      reason: 'the ghosts\' view has to know the cel the canvas drew live '
           'BEFORE the step that makes it a ghost — mounted with that step, '
-          'or told nothing, it composes the cel you just drew a frame late',
+          'or told nothing, it reads the cel you just drew a frame late',
     );
   });
 }

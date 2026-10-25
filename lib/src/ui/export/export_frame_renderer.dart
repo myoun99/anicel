@@ -1238,7 +1238,7 @@ class ExportFrameRenderer {
     // the bottom CONTRIBUTION this baked a superimpose.
     final isStage = position.isBottomTrack;
     // The stage's paper is laid with its rows, in its picture, as playback
-    // lays it (`CanvasLayerStackView.paintPaper`).
+    // lays it (`FramePage.paintPaper`).
     final paper = isStage ? session.projectSettings.projectBackground : null;
     final picture = await _cutPicture(
       cut,

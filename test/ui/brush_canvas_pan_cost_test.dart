@@ -41,8 +41,8 @@ void main() {
   ///    builder is a callback invoked from it, so its call count IS the
   ///    rebuild count;
   ///  * `painters` records the `activeSurfacePainter` handed down on each of
-  ///    those builds, which is what `CanvasLayerStackView.shouldRepaint`
-  ///    compares BY IDENTITY.
+  ///    those builds, which is what the frame's picture view compares BY
+  ///    IDENTITY (`FramePictureView._sameLive`).
   Future<void> pumpPanel(
     WidgetTester tester, {
     required List<int> panelBuilds,
@@ -205,11 +205,14 @@ void main() {
   testWidgets('a panel rebuild hands the layer stack the SAME surface '
       'painter', (tester) async {
     // 🐛`_activeSurfacePainterFor` minted a fresh `BitmapSurfacePainter` on
-    // every call, and `CanvasLayerStackView.shouldRepaint` compares that
-    // field with `!identical(...)`. So the comparison could never answer
-    // false: ANY rebuild of the panel — a pan frame, a tool switch, an
-    // unrelated notify — re-composited the entire layer stack, paper,
-    // ghosts, group-buffer `saveLayer`s and all.
+    // every call, and the layer stack compared that field with
+    // `!identical(...)`. So the comparison could never answer false: ANY
+    // rebuild of the panel — a pan frame, a tool switch, an unrelated
+    // notify — re-composited the entire layer stack, paper, ghosts,
+    // group-buffer `saveLayer`s and all. ↩️It was
+    // `CanvasLayerStackView.shouldRepaint`; the frame's picture view asks
+    // it now (`FramePictureView._sameLive`), a fresh painter the frame
+    // stood again as it stands.
     //
     // ⚠️Not a pan-specific defect. The pan is one trigger; the blast radius
     // is every rebuild.

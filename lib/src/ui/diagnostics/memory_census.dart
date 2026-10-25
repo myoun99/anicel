@@ -232,16 +232,10 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     if (textures)
       MemoryCensusItem(
         id: 'layerImages',
-        bytes: sum(
-          (session) =>
-              session.renderCaches.layerFrameImageCache.estimatedBytes +
-              // An export run's row pictures, held on this line while the
-              // run goes (F-289-Q21) — layer images too, the full ones.
-              session.playbackRig.playbackCache.lentBytes,
-        ),
-        detail: sum(
-          (session) => session.renderCaches.layerFrameImageCache.pinnedBytes,
-        ),
+        // An export run's row pictures, held on this line while the run goes
+        // (F-289-Q21). ↩️The canvas's row images beside them, until no
+        // screen drew a row's image (one-picture-per-frame ②-5b-1).
+        bytes: sum((session) => session.playbackRig.playbackCache.lentBytes),
       ),
     MemoryCensusItem(
       id: 'brushTips',

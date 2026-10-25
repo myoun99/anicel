@@ -55,7 +55,6 @@ class PlaybackCacheBudget implements PictureRoom {
   PlaybackCacheBudgetEnforcer get _playbackCacheBudgetEnforcer =>
       _enforcer ??= PlaybackCacheBudgetEnforcer(
         pictures: _renderCaches.framePictureStore,
-        layerImages: _renderCaches.layerFrameImageCache,
         maxBytes:
             _debugMaxBytes ?? _allowedMaxBytes ?? playbackCacheBudgetBytes,
       );

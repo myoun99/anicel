@@ -38,6 +38,7 @@ import '../../helpers/cel_text_tool_harness.dart';
 import '../../helpers/key_chords.dart';
 import '../../helpers/panel_finders.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// Who the box carries: the row the canvas edits, alone; that row and
 /// another across a frame range (F-329), the other floating in a slot of
@@ -199,7 +200,7 @@ void main() {
 
   FramePictureView canvasOf(WidgetTester tester) =>
       tester.widget<FramePictureView>(
-        inMainCanvas(find.byType(FramePictureView)),
+        theFramesPicture(within: mainCanvasPanel()),
       );
 
   /// The level of the view's pyramid the stack composes at.
@@ -223,12 +224,13 @@ void main() {
   /// (Vulkan, 10-24) the multisampled raster blended them — at 1:1 a
   /// landing read grey 64 on nine pixels the box had carried black.
   Future<Uint8List> composite(WidgetTester tester) async {
-    final paint = inMainCanvas(
-      find.descendant(
-        of: find.byType(FramePictureView),
-        matching: find.byType(CustomPaint),
-      ),
-    ).evaluate().firstWhere((e) => (e.widget as CustomPaint).painter != null);
+    final paint = find
+        .descendant(
+          of: theFramesPicture(within: mainCanvasPanel()),
+          matching: find.byType(CustomPaint),
+        )
+        .evaluate()
+        .firstWhere((e) => (e.widget as CustomPaint).painter != null);
     final size = (paint.renderObject! as RenderBox).size;
     final dpr = tester.view.devicePixelRatio;
     final recorder = ui.PictureRecorder();
@@ -717,7 +719,7 @@ void main() {
     await settle(tester);
     expect(
       tester
-          .getRect(inMainCanvas(find.byType(FramePictureView)))
+          .getRect(theFramesPicture(within: mainCanvasPanel()))
           .contains(onScreen(tester, page.width + 29.0, c.dy + 30)),
       isTrue,
       reason: '⛔fixture: what lands past the page is on the screen',

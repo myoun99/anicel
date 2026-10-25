@@ -249,9 +249,9 @@ typedef CanvasUnderlayBuilder =
 
 /// What floats on the canvas while a box is open, for the composite to draw
 /// where each belongs: the float of the row this canvas edits, in that
-/// row's slot ([CanvasLayerStackView.floatOverlay]) — and the cels a lift
-/// holds beside it, a folder's rows or a range's, each in its own row
-/// ([CanvasLayerStackView.liftedRows], I-37 · F-329).
+/// row's slot (`LiveRows.floatOverlay`) — and the cels a lift holds beside
+/// it, a folder's rows or a range's, each in its own row
+/// (`LiveRows.liftedRows`, I-37 · F-329).
 typedef CanvasFloats = ({
   SelectionFloatOverlay liveRow,
   Map<BrushFrameKey, LiftedCel> liftedRows,
@@ -698,10 +698,10 @@ class BrushCanvasPanel extends StatefulWidget {
   ///
   /// ⛔Built by the STATE, not here, and memoized — see
   /// `_BrushCanvasPanelState._activeSurfacePainter`. This used to mint a
-  /// fresh instance per call and `CanvasLayerStackView.shouldRepaint`
-  /// compares the field with `!identical(...)`, so the comparison could
-  /// never answer false and every rebuild of this panel re-composited the
-  /// whole stack.
+  /// fresh instance per call and the stack's `shouldRepaint` compared the
+  /// field with `!identical(...)` (↩️as `FramePictureView`'s live rows are
+  /// compared now, `_sameLive`), so the comparison could never answer false
+  /// and every rebuild of this panel re-composited the whole stack.
   ({BitmapSurface surface, BrushFrameKey key, String fx})?
   _activeSurfaceIdentityFor(BrushFrameEditingCoordinator coordinator) {
     if (activeStrokeOverlayModel == null) {
@@ -1269,10 +1269,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// The MERGED-mode surface painter, kept ALIVE across rebuilds.
   ///
-  /// 🐛It was rebuilt on every call, and `CanvasLayerStackView` gates the
-  /// entire stack composite on `!identical(oldDelegate.activeSurfacePainter,
-  /// activeSurfacePainter)`. A fresh instance every build makes that test
-  /// unconditionally true, so ANY rebuild of this panel — a pan frame, a
+  /// 🐛It was rebuilt on every call, and the stack gated its entire
+  /// composite on `!identical(oldDelegate.activeSurfacePainter,
+  /// activeSurfacePainter)` — as `FramePictureView` now stands its live rows
+  /// again on the same test (`_sameLive`). A fresh instance every build makes
+  /// that test unconditionally true, so ANY rebuild of this panel — a pan
+  /// frame, a
   /// tool switch, an unrelated notify — redrew the paper, every layer, the
   /// onion ghosts and a `saveLayer` per group buffer. Measured: ten
   /// rebuilds, ten distinct painters.

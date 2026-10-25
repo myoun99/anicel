@@ -815,15 +815,20 @@ class _InteractiveCanvasBuild {
         children: [
           picture,
           // ⛔Standing with no ghost too: the cel the canvas drew live is read
-          // off the widget the next build replaces ([CanvasLayerStackView.
-          // drawnLive]) — mounted with the step, the ghosts' stack would
-          // show the cel you just drew a frame late.
-          _ghostsOver(
-            session,
-            ghosts,
-            viewport,
-            drawnLive: standing ? _celsDrawnLive(nodes) : const {},
-          ),
+          // off the widget the next build replaces ([FramePictureView.
+          // drawnLive]) — mounted with the step, the ghosts' view would show
+          // the cel you just drew a frame late. ↩️Mounted in a run too, with
+          // nothing drawn live, while the ghosts were stacked from their
+          // rows' images, which a stack of none made nothing of; a picture
+          // view is asked its frame at every step of the run.
+          if (standing)
+            _ghostsOver(
+              session,
+              cut,
+              ghosts,
+              viewport,
+              drawnLive: _celsDrawnLive(nodes),
+            ),
         ],
       ),
     );
@@ -843,25 +848,43 @@ class _InteractiveCanvasBuild {
   /// 🚨THE ONION GHOSTS LIE OVER THE FRAME'S ONE PICTURE — over its paper
   /// and every row, at their tint and opacity as before
   /// (one-picture-per-frame-Q1 = a, 유저 2026-10-24 「한 장 위에 얹는다」),
-  /// each drawn from its row's image, and a scrub shows them as it crosses
-  /// frames. ↩️They sat directly UNDER the active drawing, inside the folder
-  /// and adjustment around it — and, for a day, in what clips to a base
-  /// (I-92) — placed by `stackNodesWithGhosts`: no room for that between
-  /// the rows of one picture, so a ghost is not cut by a clip's base either.
+  /// and a scrub shows them as it crosses frames.
+  ///
+  /// 🚨THE GHOSTS ARE ONE PICTURE TOO, made and drawn as the frame's is
+  /// ([FramePictureView]): composed once at the canvas's own resolution,
+  /// whatever the zoom, and laid through the view as the frame's picture is
+  /// — the paper left to the picture under them. A pan or a zoom composes
+  /// nothing again; a step makes the next ghosts' picture at once, drawn as
+  /// they stand meanwhile. ↩️They were stacked from their rows' images,
+  /// asked at the display's level — a half or a quarter of each row kept
+  /// per zoom — and composed again into a buffer at each paint, until those
+  /// were the last pictures kept per zoom (②-5b-1, 유저 2026-10-25
+  /// 「원본기준으로 해서 쓸데없는 소재 없애고 거기서 극한 최적화 해야지」).
+  ///
+  /// ↩️They sat directly UNDER the active drawing, inside the folder and
+  /// adjustment around it — and, for a day, in what clips to a base (I-92)
+  /// — placed by `stackNodesWithGhosts`: no room for that between the rows
+  /// of one picture, so a ghost is not cut by a clip's base either.
   Widget _ghostsOver(
     EditorSessionManager session,
+    Cut cut,
     List<CanvasLayerImageRequest> ghosts,
     CanvasViewport viewport, {
     required Set<BrushFrameKey> drawnLive,
-  }) => CanvasLayerStackView(
+  }) => FramePictureView(
+    run: (
+      landings: session.playbackRig.prerenderScheduler.landings,
+      pictures: session.playbackRig.framePictures,
+    ),
+    picture: (
+      cut: cut,
+      frameIndex: session.currentFrameIndex,
+      paintPaper: false,
+    ),
     nodes: [for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost)],
-    imageCache: session.renderCaches.layerFrameImageCache,
-    canvasSize: _canvasSize,
-    pasteboardReach: session.repository.requireProject().pasteboardReach,
     viewport: viewport,
-    // The frame's picture under them holds its paper.
-    paintPaper: false,
-    paperBackground: session.projectSettings.projectBackground,
+    laysWhatItMisses: true,
+    wholeFrames: false,
     drawnLive: drawnLive,
   );
 

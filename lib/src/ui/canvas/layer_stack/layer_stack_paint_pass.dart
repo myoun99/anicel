@@ -6,6 +6,7 @@ typedef _SurfaceRowPaint = ({
   LayerBlendMode blendMode,
   LayerPlacement? placement,
   List<ResolvedLayerEffect> effects,
+  int? tint,
 });
 
 /// What one SURFACE row's paint reads — the live row's, or a row a folder's
@@ -97,31 +98,6 @@ class _LayerStackPaintPass {
 
   final _LayerStackPainter _painter;
 
-  /// How THIS view samples artwork — the T21 / D14 display law, asked once
-  /// so the walk cannot disagree with the buffer.
-  ///
-  /// 🚨★★★SAMPLING IS A PROPERTY OF THE DISPLAY, NOT OF THE LAYER (유저 확정
-  /// T21, 2026-08-13: 「줌이 정한다 — 확대는 `none`, 축소는 필터, 액티브인지는
-  /// 안 묻는다」; the whole law and its reasons are in
-  /// [filterQualityForDisplayScale]).
-  ///
-  /// ⛔The buffered route has read it since it was written. The WALK — the
-  /// safety net past the buffer cap — was still handing every cached image
-  /// a flat `low`, which filtered a MAGNIFIED view. Two routes sampling
-  /// differently is the T21 defect wearing a different hat: the artwork
-  /// changed depending on which one the frame happened to take.
-  ///
-  /// The active layer's TILES draw through `BitmapSurfacePainter` at `none`
-  /// on purpose — a tile is filtered with no neighbours to sample, so `low`
-  /// there buys a seam at every tile boundary — and below 100% they reach
-  /// the buffer as LEVEL TILES (4c, [TilePyramid]): exact box means drawn
-  /// 1:1 in the level's pixels, so the layer being drawn on and the layers
-  /// around it are the same picture at every zoom. Only the LIVE stroke's
-  /// overlay tiles still meet the recorder's scale directly, for the
-  /// frames of the stroke.
-  ui.FilterQuality get _displayQuality =>
-      filterQualityForDisplayScale(_displayScale);
-
   /// Device pixels per artwork pixel ([displayScaleOf]) — the one quantity
   /// the display law, its edge, the sampling phase and a self-rasterising
   /// group's raster scale all read.
@@ -129,32 +105,15 @@ class _LayerStackPaintPass {
       displayScaleOf(_painter.viewport.zoom, _painter.devicePixelRatio);
 
   /// The display law's edge ([displayEdgeAntiAliased]) for this paint's
-  /// view: the walk's paper rect cuts the canvas's edge by the same rule.
+  /// view: the paper rect cuts the canvas's edge by the same rule, inside
+  /// the buffer and on the walk alike — the buffer is at the canvas's own
+  /// resolution, and its blit is cut by it ([drawOnTheDisplay]).
+  ///
+  /// ↩️Below 100% the buffer was composed at the display's level and its
+  /// paper cut by the residual the level was reduced by, until nothing drew
+  /// at a level (one-picture-per-frame ②-5a · ②-5b-1).
   bool get _displayEdgeAntiAliased =>
       displayEdgeAntiAliased(_painter.viewport, _painter.devicePixelRatio);
-
-  /// The level the display buffer is composed at this paint
-  /// ([displayLevelOf]): 0 at or above 100%, where the buffer is at canvas
-  /// resolution and its bytes are what they always were; below, the
-  /// artwork halved this many times, so the buffer is the screen's size
-  /// (to within a factor of two) and not the visible canvas's. Always 0
-  /// for a frame drawn as its picture will show it
-  /// ([_LayerStackPainter.composedAtTheDisplayLevel]).
-  int get _level => _painter.composedAtTheDisplayLevel
-      ? displayLevelOf(_displayScale)
-      : 0;
-
-  /// One buffer pixel in canvas pixels at [_level].
-  double get _levelStep => (1 << _level).toDouble();
-
-  /// The display law's edge for the paper inside the buffer, cut by the
-  /// residual the level is reduced by — the buffer's blit's own
-  /// ([drawOnTheDisplay]).
-  bool get _bufferEdgeAntiAliased => displayEdgeAntiAliased(
-    _painter.viewport,
-    _painter.devicePixelRatio,
-    level: _level,
-  );
 
   // One paint's geometry: set by [paint] before the walk below reads it.
   // The page rect, the on-screen part of the pasteboard and the content the
@@ -416,10 +375,6 @@ class _LayerStackPaintPass {
         rect,
         viewport: _painter.viewport,
         devicePixelRatio: _painter.devicePixelRatio,
-        // The residual, not the device scale: below 100% the buffer is a
-        // level, and this blit reduces it by (0.5, 1] — `none` where the
-        // level lands 1:1 (안 1, 2026-09-16).
-        level: _level,
       );
     } finally {
       // ⚠️Safe HERE and nowhere earlier: the draw above put the image into
@@ -490,7 +445,9 @@ class _LayerStackPaintPass {
   /// the same layer drawn as an image covers, where the view can see it.
   ///
   /// 🚨★★★THE IMAGE ROW'S RECT, BY THE IMAGE ROW'S QUESTION (F-243). A
-  /// cached row lays down its ink alone only where that is exact
+  /// row drawn as an image — the camera's, so the export's (↩️the playback
+  /// cache's too, until ②-5b-1) — lays down its ink alone only where that is
+  /// exact
   /// ([inkCropDrawsTheSame]) and otherwise its whole image, the page
   /// included; this asks the same. 🔬On Impeller Vulkan an advanced blend
   /// rounds by the area it blends through: rastered to its ink, a multiply
@@ -625,7 +582,6 @@ class _LayerStackPaintPass {
     // nested-folder-buffers-read-past-the-view).
     within: within,
     extentOf: (row) => switch (row) {
-      _PaintImage(:final extent) => extent,
       _PaintActiveSurface() => _activeSurfaceExtent(),
       // What a row beside the live one draws — its surface, and a lift's
       // float — as the live row's extent is measured
@@ -634,7 +590,6 @@ class _LayerStackPaintPass {
       _PaintPaper() => _canvasRect,
     },
     placementOf: (row) => switch (row) {
-      _PaintImage(:final placement) => placement,
       final _SurfaceRow surface => surface.placement,
       _PaintPaper() => null,
     },
@@ -653,13 +608,8 @@ class _LayerStackPaintPass {
       // Poses apply at composite time — the stack shows the same picture
       // playback composes (route parity).
       final nodePlacement = switch (node) {
-        CompositeLeaf(payload: _PaintImage(:final placement)) => placement,
         CompositeLeaf(payload: _SurfaceRow(:final placement)) => placement,
         // A row's letters lie where the row does (I-65).
-        CompositeCelNumber(
-          on: CompositeLeaf(payload: _PaintImage(:final placement)),
-        ) =>
-          placement,
         CompositeCelNumber(
           on: CompositeLeaf(payload: _SurfaceRow(:final placement)),
         ) =>
@@ -701,8 +651,6 @@ class _LayerStackPaintPass {
               _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
             case CompositeLeaf(payload: final _SurfaceRow row):
               _paintSurfaceRow(canvas, _slotOf(row), row.paint, rasterScale);
-            case CompositeLeaf(payload: final _PaintImage image):
-              _paintImageNode(canvas, image, rasterScale);
           }
         },
       );
@@ -830,7 +778,6 @@ class _LayerStackPaintPass {
           _paintNodes(into, backdrop, scale, bounds),
       paintSource: (into, scale) =>
           _paintNodes(into, [source], scale, bounds),
-      sourceAsIs: _rowAsItIs(source),
       blendMode: blendMode,
       shownWithin: _shownWithin,
     );
@@ -861,28 +808,6 @@ class _LayerStackPaintPass {
     );
   }
 
-  /// The row a blend composes as the row's own image, where it is one
-  /// ([drawBlendOverBackdrop]'s `sourceAsIs`): a cel or a cached image in
-  /// one piece, painting normal at full strength with nothing on it — and
-  /// only while the display buffer is composed, where its draw would lay it
-  /// texel for texel too ([_paintImageNode]'s `texelScale`). The walk on the
-  /// screen samples it as the zoom says, which a texel is not.
-  ImagePiece? _rowAsItIs(CompositeNode<_PaintRow> source) => switch (source) {
-    CompositeLeaf(
-      payload: _PaintImage(
-        pieces: [final piece],
-        placement: null,
-        opacity: 1.0,
-        blendMode: LayerBlendMode.normal,
-        tint: null,
-        effects: [],
-      ),
-    )
-        when _composingTheBuffer =>
-      piece,
-    _ => null,
-  };
-
   /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
   /// F-329): drawn straight onto the canvas when its paint can ride the
   /// draws, through one buffer when it cannot (an outset effect,
@@ -893,7 +818,7 @@ class _LayerStackPaintPass {
     _SurfaceRowPaint paint,
     double rasterScale,
   ) {
-    final (:opacity, :blendMode, :effects, placement: _) = paint;
+    final (:opacity, :blendMode, :effects, :tint, placement: _) = paint;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
     // viewport-transformed, so only the content body runs.
@@ -916,7 +841,13 @@ class _LayerStackPaintPass {
     // rows below it independently — overlapping coverage inside one
     // row would then darken at the seams. One buffer, one blend, is
     // the same answer [CompositeGroup] already gives for a folder.
-    final activePlan = resolveCompositeEffectPlan(effects);
+    // Onion-skin Colors mode: the ghost CONVERTS fully to the tint — every
+    // drawn pixel takes the tint's RGB, only alpha survives (TVPaint's look,
+    // R11-①; modulate kept light artwork un-tinted). The paint alpha still
+    // fades the whole ghost. Folded into the same matrix as the row's colour
+    // effects (I-8-Q5: the ghost shows what the screen shows), as
+    // [drawPosedLayerImage] folds it for a row's image.
+    final activePlan = resolveCompositeEffectPlan(effects, tint: tint);
     final activeEffects = activePlan.finalPaint;
     final activePaint = layerCompositePaint(
       opacity: opacity,
@@ -986,10 +917,13 @@ class _LayerStackPaintPass {
         slot.painter.paintContentInto(
           into,
           layerPaint: ridingPaint,
-          // 4c: into a level buffer the committed tiles are drawn as level
-          // tiles, 1:1 in the buffer's own pixels ([TilePyramid]); the
-          // safety-net walk (rasterScale = the device scale) draws the
-          // level its residual leaves.
+          // Into the buffer — at the canvas's own resolution — the committed
+          // tiles are drawn 1:1, at `none` on purpose: a tile is filtered
+          // with no neighbours to sample, so `low` there buys a seam at
+          // every tile boundary. The safety-net walk (rasterScale = the
+          // device scale) draws below 100% the LEVEL TILES its residual
+          // leaves (4c, [TilePyramid]): exact box means, 1:1 in the level's
+          // pixels — one-picture-per-frame ②-5b-2's to retire.
           level: displayLevelOf(rasterScale),
           // 🚨TS1: the selection's FLOAT belongs here, right on top of
           // the surface it was lifted out of and UNDER everything
@@ -1073,78 +1007,12 @@ class _LayerStackPaintPass {
     }
   }
 
-  /// A cel or a cached row image, drawn into a canvas at [rasterScale]; the
-  /// pose is applied by the wrap around the walk, so the draw itself is
-  /// unposed.
-  void _paintImageNode(Canvas canvas, _PaintImage node, double rasterScale) {
-    final _PaintImage(
-      :pieces,
-      :extent,
-      :laidBack,
-      :placement,
-      :opacity,
-      :blendMode,
-      :tint,
-      :effects,
-    ) = node;
-    // Dest = the image's WORLD rect: where its pixels belong — the ink
-    // alone, or the whole content, off-canvas artwork of non-active layers
-    // included ([extent]). The placement is already applied by the wrap
-    // above, which this node shares with the live surface — hence
-    // placement: null here rather than a second save/restore around the
-    // same matrix.
-    drawPosedLayerImage(
-      canvas,
-      pieces: pieces,
-      extent: extent,
-      placement: null,
-      opacity: opacity,
-      blendMode: blendMode,
-      effects: effects,
-      // The canvas is an aligned raster at [rasterScale] only while the
-      // display buffer is composed — the buffer itself, a sub-tree raster in
-      // it, the backdrop raster on its grid — and a pose wrapped round this
-      // draw (invisible from in here) transforms it. The walk draws onto the
-      // screen: never a texel copy.
-      texelScale: _composingTheBuffer && placement == null ? rasterScale : null,
-      // 🚨THE ZOOM DECIDES, HERE TOO (T21 / D14). This used to be a
-      // flat `low` — 「the same sampling every non-active layer has
-      // always taken on this route」 — and that is exactly half of
-      // the law: it filtered a REDUCED view, which is right, and it
-      // also filtered a MAGNIFIED one, which is not. 유저 확정
-      // (T21): 「줌이 정한다 — 확대는 `none`, 축소는 필터, 액티브인지는
-      // 안 묻는다」.
-      //
-      // The buffered route above has read [filterQualityForDisplayScale]
-      // since it was written; this WALK is the fallback it leaves
-      // behind (rotation/flip — and, until the knee's flat projection
-      // went on 2026-09-16, an active layer that projection refused),
-      // and a fallback that samples differently is a second answer to
-      // the same question.
-      filterQuality: _displayQuality,
-      // Onion-skin Colors mode: the ghost CONVERTS fully to the
-      // tint — every drawn pixel takes the tint's RGB, only alpha
-      // survives (TVPaint's look, R11-①; modulate kept light
-      // artwork un-tinted). The paint alpha still fades the whole
-      // ghost.
-      tint: tint,
-      // The held image's own: the buffer composed again — every paint of a
-      // view that moves — lays a crop's whole back once, not per compose.
-      laidBack: laidBack,
-    );
-  }
-
   /// The paper, [intoTheBuffer] or straight onto the screen (the walk).
   void _paintPaperInto(Canvas into, {required bool intoTheBuffer}) {
     if (!_painter.paintPaper) {
       return;
     }
-    // #15: inside a LEVEL buffer the paper yields one buffer pixel to the
-    // reduced resample ([paperRectAtLevel]) — and so does a film's, which
-    // lays its paper with its rows as this buffer does.
-    final rect = intoTheBuffer
-        ? paperRectAtLevel(_canvasRect, _level)
-        : _canvasRect;
+    final rect = _canvasRect;
     if (rect.isEmpty) {
       return;
     }
@@ -1152,11 +1020,9 @@ class _LayerStackPaintPass {
       into,
       rect,
       _painter.paperBackground,
-      // The display law's edge (F-67-paper-edge): inside the buffer, cut
-      // by the residual the buffer is blitted with, on the buffer's own
-      // pixels; on screen — the walk — by the device scale, on the
-      // screen's.
-      antiAlias: intoTheBuffer ? _bufferEdgeAntiAliased : _displayEdgeAntiAliased,
+      // The display law's edge (F-67-paper-edge): on the buffer's own
+      // pixels inside it, on the screen's on the walk.
+      antiAlias: _displayEdgeAntiAliased,
       pixelRatio: intoTheBuffer ? 1 : _painter.devicePixelRatio,
     );
   }
@@ -1203,9 +1069,9 @@ class _LayerStackPaintPass {
     _paintNodes(into, _rootNodes, rasterScale, _visibleCanvasRect);
   }
 
-  /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
-  /// display's level below 100% ([_level]) — or null when the stack should
-  /// just paint itself onto the screen.
+  /// Rasterises [_paintContent] over [bounds] at CANVAS resolution, whatever
+  /// the zoom — or null when the stack should just paint itself onto the
+  /// screen.
   ///
   /// Null is not a failure: an empty viewport (nothing on screen yet) and a
   /// buffer too large to be worth allocating are both cases where the
@@ -1226,24 +1092,26 @@ class _LayerStackPaintPass {
     // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
     // pair that disagree by a fraction of a pixel would resample the buffer
     // a second time and undo the point of having it.
-    final rect = wholeLevelPixelsOutward(bounds, _level);
-    final width = (rect.width / _levelStep).round();
-    final height = (rect.height / _levelStep).round();
+    final rect = wholeLevelPixelsOutward(bounds, 0);
+    final width = rect.width.round();
+    final height = rect.height.round();
     if (width <= 0 || height <= 0) {
       return null;
     }
     if (width > _LayerStackPainter._maxBufferSide ||
         height > _LayerStackPainter._maxBufferSide) {
       // 🚨THE SAFETY NET, AND NOTHING ELSE (유저 결정 2026-09-16: 「안전망만
-      // 존재하면 문제없고」). Below 100% the buffer is a level, at most 4×
-      // the screen, so it reaches the cap only on a window wider than
-      // 8192·2 device pixels; at or above 100% only on one wider than the
-      // cap itself. There the direct walk draws — T21 territory, every
-      // layer resampled separately, which the walk was before any buffer
-      // existed and is always correct. The knee that used to compose a
-      // screen-scale buffer here (ⓔ 5단계, 2026-08-16 → 2026-09-16) is
-      // gone: it cost 488MB and 300ms a stroke batch on a large page, and
-      // the level buffer answers every view it answered, sharper.
+      // 존재하면 문제없고」). The buffer is the canvas in view at its own
+      // resolution, so it reaches the cap where more than 8192 canvas
+      // pixels a side are in view. There the direct walk draws — T21
+      // territory, every layer resampled separately, which the walk was
+      // before any buffer existed and is always correct. The knee that used
+      // to compose a screen-scale buffer here (ⓔ 5단계, 2026-08-16 →
+      // 2026-09-16) is gone: it cost 488MB and 300ms a stroke batch on a
+      // large page. ↩️Below 100% the buffer was a level, at most 4× the
+      // screen, until nothing drew at a level (one-picture-per-frame ②-5a ·
+      // ②-5b-1): what draws here is a frame — or its ghosts — as it stands
+      // until its picture is there.
       debugCappedFallbacks += 1;
       return null;
     }
@@ -1255,11 +1123,8 @@ class _LayerStackPaintPass {
     // what it did), until a standing canvas showed the frame's one picture
     // and patched its strokes into that (one-picture-per-frame ②-5a,
     // 2026-10-25): what composes here now is a frame as it stands where a
-    // stroke's patch is still on its way, and the onion ghosts.
-    assert(() {
-      debugLastBufferLevel = _level;
-      return true;
-    }());
+    // stroke's patch is still on its way — or ghosts whose picture is not
+    // there yet.
     _shownWithin = rect.intersect(_visibleCanvasRect);
     final recorder = ui.PictureRecorder();
     labProbe(
@@ -1267,7 +1132,7 @@ class _LayerStackPaintPass {
       () => _paintContent(
         _bufferCanvas(recorder, rect),
         intoTheBuffer: true,
-        rasterScale: 1 / _levelStep,
+        rasterScale: 1,
       ),
     );
     _shownWithin = null;
@@ -1278,21 +1143,16 @@ class _LayerStackPaintPass {
     return (image: image, rect: rect);
   }
 
-  /// A canvas onto the buffer over [rect], in the buffer's own pixels:
-  /// canvas pixels at level 0, 2^level canvas pixels below 100% — one
-  /// scale, then the translate, so every draw (the paper, the level images)
-  /// lands 1:1. Bounded by those pixels, so a draw into it can ask what it
-  /// can land on (`drawPosedLayerImage`, a picture in pieces).
-  Canvas _bufferCanvas(ui.PictureRecorder recorder, Rect rect) =>
-      Canvas(
-          recorder,
-          Rect.fromLTWH(
-            0,
-            0,
-            (rect.width / _levelStep).roundToDouble(),
-            (rect.height / _levelStep).roundToDouble(),
-          ),
-        )
-        ..scale(1 / _levelStep)
-        ..translate(-rect.left, -rect.top);
+  /// A canvas onto the buffer over [rect], in the buffer's own pixels —
+  /// canvas pixels — so every draw lands 1:1. Bounded by those pixels, so a
+  /// draw into it can ask what it can land on.
+  Canvas _bufferCanvas(ui.PictureRecorder recorder, Rect rect) => Canvas(
+    recorder,
+    Rect.fromLTWH(
+      0,
+      0,
+      rect.width.roundToDouble(),
+      rect.height.roundToDouble(),
+    ),
+  )..translate(-rect.left, -rect.top);
 }

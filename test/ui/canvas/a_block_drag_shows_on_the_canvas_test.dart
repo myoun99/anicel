@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/repaint_strays.dart';
 import '../timeline/timeline_cell_probe.dart';
+import '../../helpers/a_canvas_standing_on_a_frame.dart';
 
 /// One cell along the timeline, at the zoom a cut opens at (F-403).
 const _aCell = Offset(TimelineZoomLimits.referencePixelsPerFrame, 0);
@@ -131,7 +132,7 @@ void main() {
 
   /// The stack the canvas has MOUNTED — the frame its picture is of.
   FramePictureView mountedStack(WidgetTester tester) =>
-      tester.widget<FramePictureView>(find.byType(FramePictureView));
+      tester.widget<FramePictureView>(theFramesPicture());
 
   List<CanvasStackRow> mountedRows(WidgetTester tester) => [
     for (final node in preorderNodes(mountedStack(tester).nodes))

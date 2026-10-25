@@ -48,7 +48,6 @@ import 'package:anicel/src/models/dirty_region.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -418,7 +417,7 @@ void main() {
   testWidgets('on the activation frame the tiles draw themselves', (
     tester,
   ) async {
-    // A file-backed cel shown as a cached image, then promoted with a tile
+    // A file-backed cel shown as it is stored, then promoted with a tile
     // cache that knows none of its fresh tile objects — the frame the
     // first-activation stand-in used to exist for; every tile pictures
     // itself inside this paint now (2026-09-17).
@@ -441,18 +440,10 @@ void main() {
       key: BitmapSurface(canvasSize: celSize, tileSize: tileSize, tiles: tiles),
     });
     final imageCache = LayerFrameImageCache(frameStore: store);
-    final prepared = await tester.runAsync(
-      () => imageCache.prepare(
-        key: key,
-        canvasSize: celSize,
-        quality: PlaybackQuality.full,
-        sourceEffects: const [],
-      ),
-    );
     expect(
-      prepared,
+      imageCache.storedSurfaceOrNull(key, canvasSize: celSize),
       isNotNull,
-      reason: 'fixture: the inactive route has an image',
+      reason: 'fixture: the inactive route has the cel',
     );
 
     Future<void> pumpStack({
