@@ -1144,7 +1144,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
             // than one builder), so the assignment stays and only the
             // construction moved.
             _rangeGesture = _rangeGestures.rangeGestureFor(entries);
-            _laneRange = _rangeGestures.laneRangeFor(entries);
+            _laneRange = _rangeGestures.laneRangeFor(
+              entries,
+              band: _rangeGesture,
+            );
             // The DRAWN columns: the band brackets what is on screen, and a
             // silhouette column standing in the drawing section belongs
             // inside that bracket.

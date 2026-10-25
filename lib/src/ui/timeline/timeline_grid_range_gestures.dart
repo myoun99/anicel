@@ -83,8 +83,13 @@ class TimelineGridRangeGestures {
 
   /// The lane-family drag callbacks for this pass, or null when the host
   /// wired none. Same display-row slice and the same hooks as the cells
-  /// family above — one law, both axes.
-  TimelineLaneRangeCallbacks? laneRangeFor(List<TimelineDisplayRow> rows) {
+  /// family above — one law, both axes — and [band], the cells family's
+  /// bundle of the same pass ([rangeGestureFor]), whose band a lane press
+  /// moves (H20).
+  TimelineLaneRangeCallbacks? laneRangeFor(
+    List<TimelineDisplayRow> rows, {
+    required TimelineRangeGestureCallbacks? band,
+  }) {
     final hostLaneRange = hooks().laneRange;
     return hostLaneRange == null
         ? null
@@ -93,6 +98,7 @@ class TimelineGridRangeGestures {
             rangeHooks: hooks().rangeHooks,
             dragRows: dragRows,
             dragEdges: dragEdges,
+            band: band,
             onGripTaken: pin?.take,
             onGripReleased: pin?.release,
           );

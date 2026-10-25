@@ -858,7 +858,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
     // ([rowsWithSilhouette] says why).
     final drawnRows = rowsWithSilhouette(rows, widget.hooks.dragPreview?.value);
     final rangeGesture = _rangeGestures.rangeGestureFor(rows);
-    final laneRange = _rangeGestures.laneRangeFor(rows);
+    final laneRange = _rangeGestures.laneRangeFor(rows, band: rangeGesture);
     // ⛔The gestures above take the REAL rows: nothing can be selected,
     // dragged or edited on a row that does not exist yet.
 

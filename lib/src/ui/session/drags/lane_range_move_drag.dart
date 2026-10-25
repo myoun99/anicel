@@ -17,6 +17,35 @@ import '../lane_homes.dart';
 typedef LaneValuesWrite =
     LaneEdit? Function(LaneEditSubject subject, LaneKeyValues values);
 
+/// THE lane keys' move: [row]'s keys [span] holds on [laneIds], each moved
+/// to the frame [to] gives it on its lane, home by home — ONE rigid group,
+/// so a home whose landing is blocked blocks the move, and a home with no
+/// key moving rides along. Null when blocked; empty where nothing moves.
+///
+/// 🚨H20: a drag on the lanes and a band's move carrying its swept lanes
+/// both move keys by this ([LaneRangeMoveDrag], `FrameRangeMoveDrag`).
+LaneEdit? laneSpanKeysMovedOn(
+  LaneEditSubject row, {
+  required List<String> laneIds,
+  required TimelineLaneSelection span,
+  required int Function(String laneId, int frame) to,
+}) {
+  var blocked = false;
+  T? moved<T>(LaneHome<T> home) {
+    if (!home.keyedOnWhere(
+      (laneId, frame) => span.contains(frame) && to(laneId, frame) != frame,
+    )) {
+      return null;
+    }
+    final next = home.moved(span, to);
+    blocked = blocked || next == null;
+    return next;
+  }
+
+  final edit = rowLaneHomesEdited(row, rowLaneHomes(row, laneIds), moved);
+  return blocked ? null : edit;
+}
+
 /// The lane-key range MOVE drag (UI-R23 #3 part 2).
 ///
 /// Every spanned lane's ranged keys shift together by the same delta — one
@@ -129,9 +158,11 @@ class LaneRangeMoveDrag {
         (stretch == null ? frame : frameStretched(stretch, frame)) +
             frameDelta;
     final written = values == null ? null : _write(_subject, values);
-    final moved = _movedBy(
+    final moved = laneSpanKeysMovedOn(
       written == null ? _subject : _subject.after(written),
-      to,
+      laneIds: _laneIds,
+      span: _selectionBefore,
+      to: to,
     );
     if (moved == null) {
       // Blocked landing: the last valid preview and outline HOLD.
@@ -153,31 +184,6 @@ class LaneRangeMoveDrag {
     _shifted = edit;
     _preview.value = shown;
     _rideSelection((frame) => to(_selectionBefore.laneId, frame), landings);
-  }
-
-  /// [row]'s span of keys, each moved to the frame [to] gives it on its
-  /// lane, home by home: ONE rigid group, so a home whose landing is
-  /// blocked blocks the move, and a home with no key moving rides along.
-  /// Null when blocked; empty where nothing moves.
-  LaneEdit? _movedBy(
-    LaneEditSubject row,
-    int Function(String laneId, int frame) to,
-  ) {
-    var blocked = false;
-    T? moved<T>(LaneHome<T> home) {
-      if (!home.keyedOnWhere(
-        (laneId, frame) =>
-            _selectionBefore.contains(frame) && to(laneId, frame) != frame,
-      )) {
-        return null;
-      }
-      final next = home.moved(_selectionBefore, to);
-      blocked = blocked || next == null;
-      return next;
-    }
-
-    final edit = rowLaneHomesEdited(row, rowLaneHomes(row, _laneIds), moved);
-    return blocked ? null : edit;
   }
 
   /// The step's selection ride: the outline follows the span's ends where

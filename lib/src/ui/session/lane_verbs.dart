@@ -2274,16 +2274,7 @@ class LaneVerbs {
   List<TimelineLaneSelection> _bandLaneSpans() {
     final inCut = _selection.frameRangeSelection.value;
     if (inCut != null) {
-      return _laneSpansOver(
-        // A band no drag swept — a move's landing — names its layer rows
-        // alone, the camera's among them.
-        inCut.rows.isNotEmpty
-            ? inCut.rows
-            : [for (final id in inCut.spanLayerIds) LayerRowAddress(id)],
-        inCut.startIndex,
-        inCut.endIndexExclusive,
-        frameIsGlobal: false,
-      );
+      return _laneSpansOfCutBand(inCut);
     }
     final onTrack = _selection.trackFrameRangeSelection.value;
     if (onTrack != null) {
@@ -2296,6 +2287,38 @@ class LaneVerbs {
     }
     return const [];
   }
+
+  /// The cut's [band] as its lane rows' spans, on each row's own axis.
+  List<TimelineLaneSelection> _laneSpansOfCutBand(
+    TimelineFrameRangeSelection band,
+  ) => _laneSpansOver(
+    // A band no drag swept names its layer rows alone, the camera's among
+    // them.
+    band.rows.isNotEmpty
+        ? band.rows
+        : [for (final id in band.spanLayerIds) LayerRowAddress(id)],
+    band.startIndex,
+    band.endIndexExclusive,
+    frameIsGlobal: false,
+  );
+
+  /// 🚨H20 — the LANES a move of the cut's [band] carries: its lane rows as
+  /// the one Delete reads them ([bandLanesToDelete]) — the camera row, its
+  /// transform header, among them — each settled as every verb over a span
+  /// settles it ([_laneVerbScope]), and only those holding a key there.
+  ///
+  /// 유저 (2026-08-23): 「fx랑 블록이랑 같이 움직이게할거면 둘다 유저가
+  /// 선택하게 할거니까 … 선택한 곳만 움직이게하라고」 — and 08-12's 「선택 객체
+  /// 하나가 종류 섞인 행들을 담고, 각 동사가 행 종류별로 알아서 처리」.
+  /// ↩️A band moved only its blocks, and the camera's keys by a resolver of
+  /// their own: a band over a layer and its lanes left the keys behind, and
+  /// a lane pressed inside it moved the keys alone.
+  List<BandLane> bandLanesRiding(TimelineFrameRangeSelection band) => [
+    for (final span in _laneSpansOfCutBand(band))
+      if (_laneVerbScope(span) case final scope?
+          when rowLaneHomesKeyedWhere(scope.homes, span.contains))
+        (row: scope.layer, span: span, laneIds: scope.targets),
+  ];
 
   /// The lanes among [rows], gathered per layer in display order, over
   /// [start]..[endExclusive] as each layer's own lanes key it.
@@ -2498,6 +2521,14 @@ typedef _LaneRangeKey = ({
   PropertyKey<Object?> key,
   bool canRove,
   bool takesSides,
+});
+
+/// A layer's lanes a band holds ([LaneVerbs.bandLanesRiding]): the row the
+/// verbs resolve, its span of keys, and the lanes a verb over it acts on.
+typedef BandLane = ({
+  Layer row,
+  TimelineLaneSelection span,
+  List<String> laneIds,
 });
 
 /// What a verb over a span settles first ([LaneVerbs._laneVerbScope]).

@@ -356,8 +356,7 @@ void main() {
       ),
     );
 
-    // The block ride's two halves, as the drag hands them over.
-    session.camera.showCameraKeysDragPreview(shifted);
+    // The block ride, as the drag hands it over.
     session.dragPreview.value = BlockMoveDragPreview(
       previewLayers: const {},
       cameraCutId: cutId,
@@ -367,7 +366,6 @@ void main() {
     await tester.pump();
 
     expect(shown().center.x, before.center.x + 40);
-    session.camera.showCameraKeysDragPreview(null);
     session.dragPreview.value = null;
     await tester.pumpAndSettle();
     expect(shown().center.x, before.center.x);

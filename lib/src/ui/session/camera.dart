@@ -21,10 +21,7 @@ import 'active_cut_edits.dart';
 import 'cut_under_playhead.dart';
 import 'session_roles.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show
-        TimelineDragPreview,
-        laneEditInFlight,
-        timelineDragPreviewCarriedCamera;
+    show TimelineDragPreview, timelineDragPreviewCameraTrackFor;
 
 /// The CAMERA — the frame size, the pose at a frame, the keyframes and the
 /// track that holds them, the instruction set and the block preview — as its
@@ -326,18 +323,18 @@ class Camera {
   ///
   /// …and a length change in flight — a trim (I-73-camera-row-Q4) or an
   /// O.L's edge (Q7): the key on the cut's last frame moves with it under
-  /// the hand ([timelineDragPreviewCarriedCamera]).
+  /// the hand (`timelineDragPreviewCarriedCamera`).
+  ///
+  /// ↩️A block ride's track was handed in here by the drag, a channel of
+  /// its own beside the preview that already carried it; it rides that
+  /// preview alone now (H20), read as the storyboard's lanes read it.
   TransformTrack? get activeCutCameraTrack {
     final cut = _project.activeCutOrNull;
-    final preview = _dragPreview.value;
-    final edit = laneEditInFlight(preview);
-    if (cut != null && edit?.cameraCutId == cut.id) {
-      return edit!.cameraTrack;
+    if (cut == null) {
+      return null;
     }
-    final carried = cut == null
-        ? null
-        : timelineDragPreviewCarriedCamera(preview, cut.id);
-    return _cameraKeysDragPreview ?? carried?.track ?? cut?.camera.track;
+    return timelineDragPreviewCameraTrackFor(_dragPreview.value, cut.id) ??
+        cut.camera.track;
   }
 
   /// The path the active cut's camera takes (I-89 ④), its frames [frameSize]
@@ -384,20 +381,4 @@ class Camera {
     CameraPath? path,
   })?
   _path;
-
-  /// The in-flight camera-key preview the cell resolution consults
-  /// (exposureStateForLayer): the camera row's cells follow the drag
-  /// without the repository moving.
-  ///
-  /// The very track the block-ride commit lands, so the preview can never
-  /// promise a landing the release won't keep. ↩️It was the pose facade's
-  /// map, turned into a track here the way that commit turned it
-  /// (`CutCamera(keyframes:)`) — the form that made keys nobody set
-  /// (F-309).
-  TransformTrack? _cameraKeysDragPreview;
-
-  /// The block-ride drag hands its shifted track in here per move and
-  /// clears it (null) on release — the one writer outside this object.
-  void showCameraKeysDragPreview(TransformTrack? shifted) =>
-      _cameraKeysDragPreview = shifted;
 }

@@ -100,11 +100,16 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
 /// a cells anchor would report (유저: 「선택범위는 어떤 레이어를 건너든
 /// 자유롭게, 규칙 두지 말 것」). Inside the group the host's lane-span path
 /// keeps the drag, unchanged. One law, both axes.
+///
+/// [band] is the cells family's bundle the same grid built
+/// ([timelineGridRangeCallbacks]): a press inside its band on a lane row is
+/// the band's move (H20).
 TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
   required TimelineLaneRangeHooks hostLaneRange,
   required TimelineFrameRangeHooks? rangeHooks,
   required List<TimelineDisplayRow> Function() dragRows,
   required TimelineRowEdges Function() dragEdges,
+  TimelineRangeGestureCallbacks? band,
   void Function(TimelineRowAddress row)? onGripTaken,
   void Function(TimelineRowAddress row)? onGripReleased,
 }) {
@@ -196,6 +201,7 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
     onMoveCancel: hostLaneRange.onMoveCancel,
     onGripTaken: onGripTaken,
     onGripReleased: onGripReleased,
+    band: band,
   );
 }
 

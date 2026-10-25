@@ -3018,7 +3018,7 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     changes: this,
     controllers: activeCutControllers,
-    camera: camera,
+    laneVerbs: laneVerbs,
     folders: folders,
     rangeSelections: rangeSelections,
     rowSpans: rowSpans,

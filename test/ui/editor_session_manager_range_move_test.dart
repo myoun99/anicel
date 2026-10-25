@@ -51,7 +51,7 @@ void main() {
           retime: s,
           dragPreview: s.dragPreview,
           blockMove: blockMoveCommandsOf(s),
-          camera: s.camera,
+          laneVerbs: s.laneVerbs,
           transitions: s.transitions,
           trackSe: s.trackSe,
         ),

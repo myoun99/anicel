@@ -8,8 +8,6 @@ import '../../../models/block_row_swap.dart';
 import '../../../models/camera_instruction.dart';
 import '../../../models/cel_bank_lanes.dart';
 import '../../../models/cel_rekey.dart';
-import '../../../models/cut.dart';
-import '../../../models/cut_camera.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/frame_id.dart';
 import '../../../models/key_range_move.dart';
@@ -24,28 +22,24 @@ import '../../../models/timeline_frame_range.dart';
 import '../../../models/timeline_repeat.dart';
 import '../../../models/timeline_row_address.dart';
 import '../../../models/track_frame_range.dart';
-import '../../../models/transform_track.dart';
 import '../../../services/command.dart';
 import '../../../services/commands/track_transition_commands.dart';
-import '../../../services/commands/update_cut_camera_command.dart';
 import '../../../services/commands/update_layer_timeline_command.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import '../../timeline/timeline_section_policy.dart';
-import '../../timeline/transform_lane_editing.dart'
-    show transformTrackWithLaneSpanKeysShifted;
-import '../../timeline/transform_lane_policy.dart'
-    show transformLaneDisplayOrder;
 import '../active_cut_controllers.dart';
-import '../camera.dart';
 import '../block_move_commands.dart';
 import '../folder_bands.dart' show folderBandsFollowing;
 import '../folders_and_attachments.dart';
+import '../lane_edit_subject.dart' show LaneEdit;
+import '../lane_verbs.dart';
 import '../range_selections.dart';
 import '../row_spans.dart';
 import '../session_roles.dart';
 import '../track_se_display.dart';
 import '../transition_range_hold.dart';
 import '../transitions.dart';
+import 'lane_range_move_drag.dart' show laneSpanKeysMovedOn;
 
 /// The rows a rigid multi-row step can hop across: the display rows the
 /// pointer travels, the drawing lattice and the track-SE lattice.
@@ -83,14 +77,13 @@ typedef MultiRowStep = ({
   MultiRowLattices lattices,
 });
 
-/// The frame-axis riders shifted with a move: the camera's track with its
-/// keys shifted (null when no camera row rides), the transition's events
-/// by row, and each row riding as BLOCKS as the row its shifted blocks make
-/// — a DIRECTION row (R27: its spans are its blocks, so they ride as
-/// blocks) and the rows a FOLDER row of the span holds (F-311,
-/// [rowsHeldByFolderRowsOf]).
+/// The frame-axis riders shifted with a move: the band's lanes with their
+/// keys moved ([LaneRide]), the transition's events by row, and each row
+/// riding as BLOCKS as the row its shifted blocks make — a DIRECTION row
+/// (R27: its spans are its blocks, so they ride as blocks) and the rows a
+/// FOLDER row of the span holds (F-311, [rowsHeldByFolderRowsOf]).
 typedef FrameAxisRiders = ({
-  TransformTrack? camera,
+  List<LaneRide> lanes,
   Map<LayerId, Map<int, InstructionEvent>> instructions,
   Map<LayerId, Layer> blockRiders,
 });
@@ -98,10 +91,15 @@ typedef FrameAxisRiders = ({
 /// No rider moves: a PURE row hop (frameDelta 0) leaves every key where
 /// it is, so the riders simply hold.
 const FrameAxisRiders noRiders = (
-  camera: null,
+  lanes: [],
   instructions: {},
   blockRiders: {},
 );
+
+/// A lane the band holds, as a step leaves it: the row the lane verbs
+/// resolve ([BandLane]) and its keys moved — landed through that row's own
+/// lane commit, which writes each family where it lives.
+typedef LaneRide = ({Layer row, LaneEdit edit});
 
 /// A TRANSITION row riding a frame-range move: the GLOBAL row as it stood
 /// at begin, and the starts of the spans that move — the ones the
@@ -110,15 +108,17 @@ const FrameAxisRiders noRiders = (
 /// rail are not the frames the selection covers.
 typedef TransitionRider = ({Layer row, Set<int> starts});
 
-/// The KEY sources a frame-range move carries (P3b-2): the camera's track
-/// (with the camera row's id), the rows that ride as BLOCKS — the DIRECTION
-/// rows that own spans in the range, joined at [FrameRangeMoveDrag.begin]
-/// by the rows a folder row holds — and the transition rows.
+/// The KEY sources a frame-range move carries (P3b-2): the rows that ride
+/// as BLOCKS — the DIRECTION rows that own spans in the range, joined at
+/// [FrameRangeMoveDrag.begin] by the rows a folder row holds — and the
+/// transition rows.
 ///
 /// ↩️`blockRiders` was `instructionSources` while only a direction row rode
 /// this way; a folder's rows are no instruction (F-311).
+/// ↩️The camera's track rode here too, by a resolver of its own; it is the
+/// camera row's transform header, so it rides as the band's lanes do
+/// ([LaneVerbs.bandLanesRiding], H20).
 typedef KeySources = ({
-  ({TransformTrack before, LayerId layerId})? camera,
   List<Layer> blockRiders,
   List<TransitionRider> transitionRiders,
 });
@@ -302,17 +302,15 @@ List<TransitionRider> _transitionRidersOf(
       (row: owner.transitionLayer, starts: starts),
 ];
 
-/// KEY sources (P3b-2, #2 second half): camera keys, instruction
-/// spans AND the layers' own transform-track keys (P3c, #13) inside
-/// the selection move with the blocks — same delta, one rigid group.
-/// SYNCED attach mirrors stay PASSENGERS (P3b-1): the base's slide
-/// carries them by derivation.
+/// KEY sources (P3b-2, #2 second half): instruction spans inside the
+/// selection move with the blocks — same delta, one rigid group. SYNCED
+/// attach mirrors stay PASSENGERS (P3b-1): the base's slide carries them
+/// by derivation.
 KeySources _castKeySources(
   TimelineFrameRangeSelection selection, {
   required ProjectAccess project,
   required Transitions transitions,
 }) {
-  ({TransformTrack before, LayerId layerId})? camera;
   final blockRiders = <Layer>[];
   bool anyKeyIn(Iterable<int> keys) => keys.any(
     (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
@@ -322,13 +320,6 @@ KeySources _castKeySources(
     if (layer == null) {
       continue;
     }
-    if (layer.kind == LayerKind.camera) {
-      final track = project.activeCutOrNull?.camera.track;
-      if (track != null && anyKeyIn(track.keyedFrames)) {
-        camera = (before: track, layerId: id);
-      }
-      continue;
-    }
     if (layer.kind == LayerKind.instruction &&
         anyKeyIn(layer.instructions.keys)) {
       blockRiders.add(layer);
@@ -336,8 +327,9 @@ KeySources _castKeySources(
     // UI-R23 #3: a frame-range selection NO LONGER carries the layer's
     // own transform keys — frame selection ⊥ transform keys. The
     // transform lanes own their keys through their own lane-scoped
-    // selection domain; camera keys and instruction spans (a camera /
-    // instruction row's OWN content) still ride below.
+    // selection domain. ↩️H20: they ride where the band swept their lane
+    // rows, as rows of their own ([LaneVerbs.bandLanesRiding]) — and the
+    // camera's, its row being its transform header.
   }
   // The TRANSITION row rides as the storyboard's does (C1), on the global
   // row, with the spans the selection holds — its marks here are a
@@ -363,11 +355,7 @@ KeySources _castKeySources(
           case final heads when heads.isNotEmpty)
         (row: row, starts: heads),
   ];
-  return (
-    camera: camera,
-    blockRiders: blockRiders,
-    transitionRiders: transitionRiders,
-  );
+  return (blockRiders: blockRiders, transitionRiders: transitionRiders);
 }
 
 /// The rows a FOLDER row of [span] holds, as the riders its block is
@@ -443,7 +431,7 @@ typedef FrameRangeMoveRoles = ({
   RetimeLaw retime,
   ValueNotifier<TimelineDragPreview?> dragPreview,
   BlockMoveCommands blockMove,
-  Camera camera,
+  LaneVerbs laneVerbs,
   Transitions transitions,
   TrackSeDisplay trackSe,
 });
@@ -476,7 +464,7 @@ class FrameRangeMoveDrag {
     required LayerId? grabLayerId,
     required ({Layer layer, int groupStart})? singleRow,
     required List<({Layer commit, int offset})>? multiSources,
-    required ({TransformTrack before, LayerId layerId})? cameraKeys,
+    required List<BandLane> laneRiders,
     required List<Layer>? blockRiders,
     required List<TransitionRider> transitionRiders,
     _AttachTrade? attachTrade,
@@ -488,15 +476,18 @@ class FrameRangeMoveDrag {
        _retime = roles.retime,
        _dragPreview = roles.dragPreview,
        _blockMove = roles.blockMove,
-       _camera = roles.camera,
+       _laneVerbs = roles.laneVerbs,
        _transitions = roles.transitions,
        _trackSe = roles.trackSe,
        _selectionBefore = selectionBefore,
        _trackSelectionBefore = trackSelectionBefore,
+       _laneTailBefore = trackSelectionBefore == null
+           ? roles.selection.laneRangeSelection.value
+           : null,
        _grabbedRow = grabLayerId,
        _singleRow = singleRow,
        _multiSources = multiSources,
-       _cameraKeys = cameraKeys,
+       _laneRiders = laneRiders,
        _blockRiders = blockRiders,
        _transitionRiders = transitionRiders,
        _attachTrade = attachTrade,
@@ -542,7 +533,7 @@ class FrameRangeMoveDrag {
       grabLayerId: grabLayerId,
       singleRow: null,
       multiSources: sources,
-      cameraKeys: null,
+      laneRiders: const [],
       blockRiders: null,
       transitionRiders: transitionRiders,
     );
@@ -571,21 +562,26 @@ class FrameRangeMoveDrag {
       return null;
     }
     final keys = _keySourcesOf(span, roles, rangeSelections);
+    final lanes = roles.laneVerbs.bandLanesRiding(span);
     final singleRowId = _singleRowOf(span, keys, roles.project);
     final multiSource = singleRowId == null;
     final subjects = singleRowId == null
         ? _multiSourceSubjects(
             span,
             keys,
+            lanesRide: lanes.isNotEmpty,
             trackSe: roles.trackSe,
             rangeSelections: rangeSelections,
           )
         : _singleRowSubjects(
-            singleRowId,
-            span,
-            project: roles.project,
-            rowSpans: rowSpans,
-          );
+                singleRowId,
+                span,
+                project: roles.project,
+                rowSpans: rowSpans,
+              ) ??
+              // The row moves no block here, and its lanes still go: a
+              // slide of nothing but them (H20 — each row as it holds).
+              (lanes.isEmpty ? null : (singleRow: null, multiSources: []));
     final attachTrade = _attachTradeOf(span, roles.project);
     if (subjects == null) {
       return singleRowId == null
@@ -605,7 +601,7 @@ class FrameRangeMoveDrag {
       grabLayerId: grabLayerId ?? span.layerId,
       singleRow: subjects.singleRow,
       multiSources: subjects.multiSources,
-      cameraKeys: multiSource ? keys.camera : null,
+      laneRiders: lanes,
       blockRiders: multiSource && keys.blockRiders.isNotEmpty
           ? keys.blockRiders
           : null,
@@ -628,7 +624,6 @@ class FrameRangeMoveDrag {
       transitions: roles.transitions,
     );
     return (
-      camera: cast.camera,
       blockRiders: [
         ...cast.blockRiders,
         ...rowsHeldByFolderRowsOf(
@@ -651,6 +646,11 @@ class FrameRangeMoveDrag {
   /// one row selected twice, so it runs the code a selection of the base
   /// alone runs — the two cannot come to land differently. Mirrors selected
   /// without a base are no row at all, and have no single row either.
+  ///
+  /// 🚨H20: nor are a band's LANES a source of their own. They ride whichever
+  /// path its blocks take ([_lanesShiftedBy]), so a row swept with its lanes
+  /// moves its block by the very code the row alone does — selecting more
+  /// must not change how the block lands.
   static LayerId? _singleRowOf(
     TimelineFrameRangeSelection span,
     KeySources keys,
@@ -661,9 +661,7 @@ class FrameRangeMoveDrag {
         if (_seatRowOf(project, id) == id) id,
     ];
     final carriesKeys =
-        keys.camera != null ||
-        keys.blockRiders.isNotEmpty ||
-        keys.transitionRiders.isNotEmpty;
+        keys.blockRiders.isNotEmpty || keys.transitionRiders.isNotEmpty;
     return ownRows.length != 1 ||
             carriesKeys ||
             project.isTrackSeLayerId(ownRows.single)
@@ -677,10 +675,12 @@ class FrameRangeMoveDrag {
   /// group.
   ///
   /// Null when the span moves nothing — a span of nothing but SYNCED attach
-  /// rows among them ([_tradingMirrors]).
+  /// rows among them ([_tradingMirrors]) — and none of its lanes ride
+  /// ([lanesRide]).
   static _MoveSubjects? _multiSourceSubjects(
     TimelineFrameRangeSelection span,
     KeySources keys, {
+    required bool lanesRide,
     required TrackSeDisplay trackSe,
     required RangeSelections rangeSelections,
   }) {
@@ -709,7 +709,7 @@ class FrameRangeMoveDrag {
       }
     }
     if (sources.isEmpty &&
-        keys.camera == null &&
+        !lanesRide &&
         keys.blockRiders.isEmpty &&
         keys.transitionRiders.isEmpty) {
       return null;
@@ -750,7 +750,7 @@ class FrameRangeMoveDrag {
       grabLayerId: grabLayerId ?? span.layerId,
       singleRow: null,
       multiSources: const [],
-      cameraKeys: null,
+      laneRiders: const [],
       blockRiders: null,
       transitionRiders: const [],
       attachTrade: attachTrade,
@@ -797,7 +797,7 @@ class FrameRangeMoveDrag {
   final RetimeLaw _retime;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final BlockMoveCommands _blockMove;
-  final Camera _camera;
+  final LaneVerbs _laneVerbs;
   final Transitions _transitions;
 
   /// The move's subject span as it stood at drag start, stated in the axis
@@ -880,24 +880,26 @@ class FrameRangeMoveDrag {
   /// the whole shape of the step at begin, and no step may switch rails.
   final List<({Layer commit, int offset})>? _multiSources;
 
-  /// KEY sources riding the range move (P3b-2, #2 second half): the
-  /// camera's track as it stood at begin WITH the camera row's id — its
-  /// keys shift with the same delta the blocks slide.
+  /// The LANES the band swept, riding the move ([LaneVerbs.bandLanesRiding],
+  /// H20): each one's keys go the frames its blocks go, on their own lane,
+  /// by the lanes' own move ([laneSpanKeysMovedOn]) — the camera row's among
+  /// them, its row being its transform header.
   ///
   /// 🗣️F-309 (유저 2026-10-06): 「존재하지 않는 키를 새로 만들어서 이동함.
   /// 떼도 커밋되있음. 멋대로 키를 만들어내지 않도록, 있는 키만 움직이도록
-  /// 근본/구조적 해결」. ↩️The keys rode as the POSE FACADE's map — one
-  /// whole pose a frame that any lane keys — and landed through
+  /// 근본/구조적 해결」. ↩️The camera's keys rode as the POSE FACADE's map —
+  /// one whole pose a frame that any lane keys — and landed through
   /// `CutCamera(keyframes:)`, which rebuilds every lane from those poses:
   /// a frame that keyed Position alone came back keyed on Scale and
-  /// Rotation too, a hold came back linear and a key's name was gone. The
-  /// track rides as it is now, and the lanes' own range move shifts it
-  /// ([_shiftFrameAxisRiders]).
-  ///
-  /// ⛔ONE field for the pair: the snapshot is meaningless without the row
-  /// it came from, and the preview's marker layer used to reach for the id
-  /// with a `!` because two fields could not say so.
-  final ({TransformTrack before, LayerId layerId})? _cameraKeys;
+  /// Rotation too, a hold came back linear and a key's name was gone.
+  /// ↩️Then the cut's track rode as it was, shifted by the lanes' law but
+  /// resolved, previewed and landed by this drag's own camera code.
+  final List<BandLane> _laneRiders;
+
+  /// The lane selection a mixed sweep stood beside the band (R27 #14) — the
+  /// same frames, the lanes of the band's own layer — as it was at begin;
+  /// null where none stood. It rides the band's frames ([_liveSpan]).
+  final TimelineLaneSelection? _laneTailBefore;
 
   /// The rows riding the move as BLOCKS, as they stood at begin
   /// ([KeySources]): along the frame axis by the move's delta, across no
@@ -925,7 +927,9 @@ class FrameRangeMoveDrag {
   /// step leaves the last valid plan in place (UI-R23 #10).
   MultiRowRangeMovePlan? _multiRowPlan;
 
-  TransformTrack? _cameraShifted;
+  /// The lanes as the last valid step left them ([_publishStep]) — what the
+  /// release lands beside its blocks.
+  List<LaneRide> _lanesShifted = const [];
 
   Map<LayerId, Map<int, InstructionEvent>>? _instructionShifted;
 
@@ -968,7 +972,10 @@ class FrameRangeMoveDrag {
   set _liveSpan(TimelineFrameRangeSelection? span) {
     final before = _trackSelectionBefore;
     if (before == null) {
-      _selection.frameRangeSelection.value = span;
+      _selection.frameRangeSelection.value = span == null
+          ? null
+          : _withSweptRows(span);
+      _rideLaneTail(span);
       return;
     }
     if (span == null) {
@@ -979,18 +986,71 @@ class FrameRangeMoveDrag {
     // names its OWN track (the select path's law — re-keying to
     // [SelectionAccess.selectedTrackId] here hid the band for the whole
     // drag on any other track and left the landed selection keyed to the
-    // wrong one), and a non-layer row in a mixed span is not something
-    // the layer-stated span can re-derive.
+    // wrong one), and the band's non-layer rows ([_rowsLanded]).
     _selection.trackFrameRangeSelection.value = TrackFrameRangeSelection(
       trackId: before.trackId,
       anchorRow: LayerRowAddress(span.layerId),
-      rows: [
-        for (final id in span.spanLayerIds) LayerRowAddress(id),
-        for (final row in before.rows)
-          if (row is! LayerRowAddress) row,
-      ],
+      rows: _rowsLanded(span, before.rows),
       startFrame: span.startIndex,
       endFrameExclusive: span.endIndexExclusive,
+    );
+  }
+
+  /// The rows [span] lands on: its layer rows, and every other row the band
+  /// was swept over ([swept]) — a non-layer row in a mixed span is not
+  /// something the layer-stated span can re-derive, and a lane's keys go the
+  /// frames on their own row (H20), so the row stays in the band.
+  static List<TimelineRowAddress> _rowsLanded(
+    TimelineFrameRangeSelection span,
+    List<TimelineRowAddress> swept,
+  ) => [
+    for (final id in span.spanLayerIds) LayerRowAddress(id),
+    for (final row in swept)
+      if (row is! LayerRowAddress) row,
+  ];
+
+  /// [span] on the rows it lands on ([_rowsLanded]) — as it is where it
+  /// names them already, and where the band was swept over layer rows
+  /// alone: a band reads those off its layers
+  /// ([TimelineFrameRangeSelection.coversRow]).
+  ///
+  /// ↩️H20 (유저 2026-08-23) found the four move paths publishing without
+  /// the rows, and stopped the lanes being read as covered by inheritance;
+  /// the rows the band was swept over were still dropped at every step, so
+  /// a band moved with its lanes stood on its layer rows alone.
+  TimelineFrameRangeSelection _withSweptRows(
+    TimelineFrameRangeSelection span,
+  ) {
+    final swept = _selectionBefore.rows;
+    if (span.rows.isNotEmpty || swept.every((row) => row is LayerRowAddress)) {
+      return span;
+    }
+    return TimelineFrameRangeSelection(
+      layerId: span.layerId,
+      startIndex: span.startIndex,
+      endIndexExclusive: span.endIndexExclusive,
+      layerIds: span.layerIds,
+      rows: _rowsLanded(span, swept),
+    );
+  }
+
+  /// The lane selection a mixed sweep stood beside the band
+  /// ([_laneTailBefore]), on the frames [span] went to: its lanes are the
+  /// band's own, and their keys go the band's frames on them (H20). ⛔Two
+  /// selections stand together only there ([RangeSelections.claimSelection]),
+  /// so a lane selection live at begin is that one.
+  void _rideLaneTail(TimelineFrameRangeSelection? span) {
+    final tail = _laneTailBefore;
+    if (tail == null || span == null) {
+      return;
+    }
+    final shift = span.startIndex - _selectionBefore.startIndex;
+    _selection.laneRangeSelection.value = TimelineLaneSelection(
+      layerId: tail.layerId,
+      laneId: tail.laneId,
+      startIndex: tail.startIndex + shift,
+      endIndexExclusive: tail.endIndexExclusive + shift,
+      laneIds: tail.laneIds,
     );
   }
 
@@ -1017,10 +1077,8 @@ class FrameRangeMoveDrag {
 
     void followOutline() {
       _multiPlans = null;
-      _cameraShifted = null;
       _instructionShifted = null;
       _rowsShifted = null;
-      _camera.showCameraKeysDragPreview(null);
       _slideSelectionOutline(
         selection,
         landedLayerId: targetLayerId,
@@ -1044,7 +1102,8 @@ class FrameRangeMoveDrag {
         rangeEndIndexExclusive: selection.endIndexExclusive + offset,
         frameDelta: frameDelta,
       );
-      if (plan == null) {
+      final lanes = plan == null ? null : _lanesShiftedBy(frameDelta);
+      if (plan == null || lanes == null) {
         keepLastValid();
         return true;
       }
@@ -1060,15 +1119,18 @@ class FrameRangeMoveDrag {
       // the cross-row drop live through the same one gate.
       final sourceForms = _trackSe.previewFormsOf(plan.sourceAfter);
       final targetForms = _trackSe.previewFormsOf(plan.targetAfter);
-      _dragPreview.value = BlockMoveDragPreview(
-        previewLayers: {
-          selection.layerId: sourceForms.shown,
-          targetLayerId: targetForms.shown,
-        },
-        previewGlobalLayers: {
-          selection.layerId: ?sourceForms.global,
-          targetLayerId: ?targetForms.global,
-        },
+      _publishStep(
+        BlockMoveDragPreview(
+          previewLayers: {
+            selection.layerId: sourceForms.shown,
+            targetLayerId: targetForms.shown,
+          },
+          previewGlobalLayers: {
+            selection.layerId: ?sourceForms.global,
+            targetLayerId: ?targetForms.global,
+          },
+        ),
+        lanes,
       );
       followOutline();
       return true;
@@ -1092,24 +1154,28 @@ class FrameRangeMoveDrag {
         landing: _swapsOn(targetLayer.id),
         cutFrameCount: _project.activeCutFrameCount,
       );
-      if (plan == null) {
+      final lanes = plan == null ? null : _lanesShiftedBy(frameDelta);
+      if (plan == null || lanes == null) {
         keepLastValid();
         return true;
       }
       _directionRowChange = (plan: plan, source: sourceLayer);
       final drawn = _project.activeCutDrawnFrameCount;
-      _dragPreview.value = BlockMoveDragPreview(
-        previewLayers: _withFolderBands({
-          selection.layerId: rederiveRunBehaviors(
-            plan.sourceAfter,
-            drawnFrameCount: drawn,
-          ),
-          targetLayerId: rederiveRunBehaviors(
-            plan.targetAfter!,
-            drawnFrameCount: drawn,
-          ),
-        }),
-        rekeys: plan.rekeys,
+      _publishStep(
+        BlockMoveDragPreview(
+          previewLayers: _withFolderBands({
+            selection.layerId: rederiveRunBehaviors(
+              plan.sourceAfter,
+              drawnFrameCount: drawn,
+            ),
+            targetLayerId: rederiveRunBehaviors(
+              plan.targetAfter!,
+              drawnFrameCount: drawn,
+            ),
+          }),
+          rekeys: plan.rekeys,
+        ),
+        lanes,
       );
       followOutline();
       return true;
@@ -1357,7 +1423,7 @@ class FrameRangeMoveDrag {
     //
     // · The camera and instruction rows (the transition included, via its
     //   display clone) are frame-axis riders — WHO rides was decided at
-    //   begin ([_cameraKeys], [_blockRiders] and [_transitionRiders],
+    //   begin ([_laneRiders], [_blockRiders] and [_transitionRiders],
     //   the same answers the plain slide consumes). Re-deriving them here is
     //   the copy that silently dropped the TRANSITION on rigid steps (C④):
     //   its clone's kind matched no arm, so the spans snapped home the
@@ -1481,8 +1547,8 @@ class FrameRangeMoveDrag {
     return (plan: plan, sePlan: sePlan);
   }
 
-  /// The frame-axis riders shifted by [frameDelta] — the camera keys when
-  /// a camera row rides, and every instruction source's events — or null
+  /// The frame-axis riders shifted by [frameDelta] — the band's lanes
+  /// ([_lanesShiftedBy]), and every instruction source's events — or null
   /// when a rider cannot shift, which voids the whole move (P3b-2: KEY
   /// sources join the all-or-nothing contract). WHO rides was decided at
   /// begin; the plain slide and the rigid row hop both ask here.
@@ -1490,29 +1556,9 @@ class FrameRangeMoveDrag {
     TimelineFrameRangeSelection selection,
     int frameDelta,
   ) {
-    final cameraKeys = _cameraKeys;
-    TransformTrack? cameraShifted;
-    if (cameraKeys != null) {
-      // THE lanes' range move, over every lane of the row: the law a drag
-      // on the Transform header runs ([LaneRangeMoveDrag]). A key moves on
-      // the lane it is on and nothing is made where nothing was.
-      cameraShifted = transformTrackWithLaneSpanKeysShifted(
-        cameraKeys.before,
-        laneIds: transformLaneDisplayOrder,
-        rangeStartIndex: selection.startIndex,
-        rangeEndIndexExclusive: selection.endIndexExclusive,
-        frameDelta: frameDelta,
-      );
-      // …and none of them out of the cut (🗣️I-73-camera-row-Q2), the
-      // lanes' own move asks the same ([cameraWriteKeepsKeysIn]).
-      if (cameraShifted == null ||
-          !cameraWriteKeepsKeysIn(
-            cameraKeys.before,
-            cameraShifted,
-            drawnFrameCount: _project.activeCutDrawnFrameCount,
-          )) {
-        return null;
-      }
+    final lanes = _lanesShiftedBy(frameDelta);
+    if (lanes == null) {
+      return null;
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
     // A direction row's spans are its blocks (R27): they ride as the
@@ -1544,9 +1590,104 @@ class FrameRangeMoveDrag {
       instructionShifted[row.id] = shifted;
     }
     return (
-      camera: cameraShifted,
+      lanes: lanes,
       instructions: instructionShifted,
       blockRiders: rowsShifted,
+    );
+  }
+
+  /// Every lane the band holds ([_laneRiders]) with its keys [frameDelta]
+  /// frames on, by the lanes' own move ([laneSpanKeysMovedOn]) — or null
+  /// when one cannot go: a landing blocked, or one its home will not take
+  /// (a camera key put out of its cut, 🗣️I-73-camera-row-Q2). The move
+  /// holds there, as it does for a block that cannot land: one rigid group.
+  /// A lane none of whose keys moves rides along as nothing.
+  List<LaneRide>? _lanesShiftedBy(int frameDelta) {
+    final rides = <LaneRide>[];
+    for (final (:row, :span, :laneIds) in _laneRiders) {
+      final subject = _laneVerbs.laneEditSubjectOf(row);
+      final edit = laneSpanKeysMovedOn(
+        subject,
+        laneIds: laneIds,
+        span: span,
+        to: (_, frame) => frame + frameDelta,
+      );
+      if (edit == null) {
+        return null;
+      }
+      if (edit.isEmpty) {
+        continue;
+      }
+      if (subject.preview(edit) == null) {
+        return null;
+      }
+      rides.add((row: row, edit: edit));
+    }
+    return rides;
+  }
+
+  /// Publishes a valid step: [blocks] with its [lanes] riding
+  /// ([_withLanesRiding]), and those lanes kept for the release — the one
+  /// door every landing step's preview goes through, so what the hand sees
+  /// is what the release lands.
+  void _publishStep(BlockMoveDragPreview blocks, List<LaneRide> lanes) {
+    _lanesShifted = lanes;
+    _dragPreview.value = _withLanesRiding(blocks, lanes);
+  }
+
+  /// [blocks] with every lane ride's keys where the step put them: each
+  /// riding row shown as both leave it — its blocks where [blocks] has them,
+  /// its keys as its own lane edit shows them ([LaneEditSubject.preview]) —
+  /// and a V track's chain and the cut's camera beside them, where those
+  /// are the lanes' homes. The camera's marker comes as a lane edit's
+  /// does, a FRESH clone per step (the P3b-2 contract — B4-①: a step
+  /// handing the repository's instance over froze the camera's markers).
+  BlockMoveDragPreview _withLanesRiding(
+    BlockMoveDragPreview blocks,
+    List<LaneRide> lanes,
+  ) {
+    if (lanes.isEmpty) {
+      return blocks;
+    }
+    final shown = {...blocks.previewLayers};
+    final global = {...blocks.previewGlobalLayers};
+    final trackEffects = {...?blocks.previewTrackEffects};
+    var camera = (
+      cutId: blocks.cameraCutId,
+      track: blocks.cameraTrack,
+      marker: blocks.cameraMarkerLayer,
+    );
+    for (final (:row, :edit) in lanes) {
+      // The row as the step left its blocks: its global form for a
+      // track-owned row, the one form of any other.
+      final moved = global[row.id] ?? shown[row.id] ?? row;
+      switch (_laneVerbs.laneEditSubjectOf(moved).preview(edit)) {
+        case LaneEditPreview(row: final edited?, :final globalRow):
+          shown[edited.id] = edited;
+          if (globalRow != null) {
+            global[edited.id] = globalRow;
+          }
+        case LaneEditPreview(trackId: final id?, trackEffects: final fx?):
+          trackEffects[id] = fx;
+        case LaneEditPreview(
+          cameraCutId: final cutId?,
+          cameraTrack: final track?,
+          :final cameraMarkerLayer,
+        ):
+          camera = (cutId: cutId, track: track, marker: cameraMarkerLayer);
+        case _:
+          break;
+      }
+    }
+    return BlockMoveDragPreview(
+      previewLayers: shown,
+      rekeys: blocks.rekeys,
+      picturesMoved: blocks.picturesMoved,
+      previewGlobalLayers: global,
+      previewTrackEffects: trackEffects.isEmpty ? null : trackEffects,
+      cameraCutId: camera.cutId,
+      cameraTrack: camera.track,
+      cameraMarkerLayer: camera.marker,
     );
   }
 
@@ -1579,68 +1720,52 @@ class FrameRangeMoveDrag {
     MultiRowRangeMovePlan? sePlan,
     FrameAxisRiders riders,
   ) {
-    final cameraShifted = riders.camera;
     final instructionShifted = riders.instructions;
     _multiRowPlan = plan;
     _multiSeRowPlan = sePlan;
     _multiPlans = null;
     _seRowChange = null;
     _directionRowChange = null;
-    _cameraShifted = cameraShifted;
     _instructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
     _rowsShifted = riders.blockRiders.isEmpty ? null : riders.blockRiders;
-    _camera.showCameraKeysDragPreview(cameraShifted);
     final sePreviews = {
       for (final MapEntry(key: id, value: row)
           in sePlan?.layersAfter.entries ?? const <MapEntry<LayerId, Layer>>[])
         id: _trackSe.previewFormsOf(row),
       ..._transitionPreviewForms(instructionShifted),
     };
-    _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: _withFolderBands({
-        if (plan != null)
-          for (final entry in plan.layersAfter.entries)
+    _publishStep(
+      BlockMoveDragPreview(
+        previewLayers: _withFolderBands({
+          if (plan != null)
+            for (final entry in plan.layersAfter.entries)
+              entry.key: rederiveRunBehaviors(
+                entry.value,
+                drawnFrameCount: _project.activeCutDrawnFrameCount,
+              ),
+          for (final entry in sePreviews.entries) entry.key: entry.value.shown,
+          // R27 #8: the frame-axis riders preview in place — a block rider
+          // as the row its shifted blocks make (a DIRECTION row: its spans
+          // are its blocks; a folder's rows: F-311).
+          // A riding TRANSITION is in [sePreviews] above, in the SE rows'
+          // two forms.
+          for (final entry in riders.blockRiders.entries)
             entry.key: rederiveRunBehaviors(
               entry.value,
               drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
-        for (final entry in sePreviews.entries) entry.key: entry.value.shown,
-        // R27 #8: the frame-axis riders preview in place — a block rider
-        // as the row its shifted blocks make (a DIRECTION row: its spans
-        // are its blocks; a folder's rows: F-311).
-        // A riding TRANSITION is in [sePreviews] above, in the SE rows'
-        // two forms.
-        for (final entry in riders.blockRiders.entries)
-          entry.key: rederiveRunBehaviors(
-            entry.value,
-            drawnFrameCount: _project.activeCutDrawnFrameCount,
-          ),
-      }),
-      rekeys: plan?.rekeys ?? const [],
-      // C2: the SE passengers' global forms, for the storyboard strips.
-      previewGlobalLayers: {
-        for (final entry in sePreviews.entries) entry.key: ?entry.value.global,
-      },
-      cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,
-      cameraTrack: cameraShifted,
-      // A FRESH CLONE per step (the P3b-2 contract) — the gate compares
-      // identities, and the repository instance trips nothing (B4-①: the
-      // multi-row rigid path was the one place still handing it over raw,
-      // so a union drag spanning rows froze the camera's markers).
-      cameraMarkerLayer: _cameraMarkerLayer(cameraShifted),
+        }),
+        rekeys: plan?.rekeys ?? const [],
+        // C2: the SE passengers' global forms, for the storyboard strips.
+        previewGlobalLayers: {
+          for (final entry in sePreviews.entries)
+            entry.key: ?entry.value.global,
+        },
+      ),
+      riders.lanes,
     );
-  }
-
-  /// The camera row's marker clone for a step that shifted [cameraShifted]
-  /// — null when no camera rides.
-  Layer? _cameraMarkerLayer(TransformTrack? cameraShifted) {
-    final cameraKeys = _cameraKeys;
-    if (cameraShifted == null || cameraKeys == null) {
-      return null;
-    }
-    return _project.layerById(cameraKeys.layerId)?.copyWith();
   }
 
   /// Plans the SE passengers of a multi-row rigid move (R26 #2): every
@@ -1692,7 +1817,7 @@ class FrameRangeMoveDrag {
     _directionRowChange = null;
     _multiRowPlan = null;
     _multiSeRowPlan = null;
-    _cameraShifted = null;
+    _lanesShifted = const [];
     _instructionShifted = null;
     _rowsShifted = null;
     _dropPreviewChannels();
@@ -1712,7 +1837,6 @@ class FrameRangeMoveDrag {
   /// does not clear them — this is the one piece of forgetting the object
   /// cannot do by dying.
   void _dropPreviewChannels() {
-    _camera.showCameraKeysDragPreview(null);
     _dragPreview.value = null;
   }
 
@@ -1782,13 +1906,17 @@ class FrameRangeMoveDrag {
     }
     final source = singleRow.layer;
     final plan = _singleRowPlan(source, pointedAt, frameDelta);
-    if (plan == null) {
+    // The band's lanes go the frames its group went (H20), on their own row.
+    final lanes = plan == null
+        ? null
+        : _lanesShiftedBy(plan.destinationStartIndex - singleRow.groupStart);
+    if (plan == null || lanes == null) {
       // UI-R23 #10: a blocked / incompatible landing HOLDS the last valid
       // preview, outline and plan — the move stops at the last legal spot
       // and resumes on a legal return (no snap-back to the origin).
       return;
     }
-    _publishSingleRowMove(plan, source, singleRow.groupStart);
+    _publishSingleRowMove(plan, source, singleRow.groupStart, lanes);
   }
 
   /// Whether this step belongs to the picture trade (F-330): on the same
@@ -1928,27 +2056,32 @@ class FrameRangeMoveDrag {
     return target;
   }
 
-  /// Publishes a single-row [plan]: the plan itself, the preview layers,
-  /// and the selection moved to where the group landed.
+  /// Publishes a single-row [plan]: the plan itself, the preview layers
+  /// with the band's [lanes] riding, and the selection moved to where the
+  /// group landed.
   void _publishSingleRowMove(
     DrawingBlockMovePlan plan,
     Layer source,
     int groupStart,
+    List<LaneRide> lanes,
   ) {
     _plan = plan;
-    _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: _withFolderBands({
-        plan.sourceAfter.id: rederiveRunBehaviors(
-          plan.sourceAfter,
-          drawnFrameCount: _project.activeCutDrawnFrameCount,
-        ),
-        if (plan.targetAfter != null)
-          plan.targetAfter!.id: rederiveRunBehaviors(
-            plan.targetAfter!,
+    _publishStep(
+      BlockMoveDragPreview(
+        previewLayers: _withFolderBands({
+          plan.sourceAfter.id: rederiveRunBehaviors(
+            plan.sourceAfter,
             drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
-      }),
-      rekeys: plan.rekeys,
+          if (plan.targetAfter != null)
+            plan.targetAfter!.id: rederiveRunBehaviors(
+              plan.targetAfter!,
+              drawnFrameCount: _project.activeCutDrawnFrameCount,
+            ),
+        }),
+        rekeys: plan.rekeys,
+      ),
+      lanes,
     );
     _slideSelectionOutline(
       _selectionBefore,
@@ -2005,7 +2138,6 @@ class FrameRangeMoveDrag {
     }
     final instructionShifted = riders.instructions;
     _multiPlans = plans.isEmpty ? null : plans;
-    _cameraShifted = riders.camera;
     _instructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
@@ -2042,7 +2174,7 @@ class FrameRangeMoveDrag {
     // step the keys could not take; the block went to 3 and the keys
     // stayed at 2 and 9).
     if (aRowHopWasLast) {
-      _cameraShifted = null;
+      _lanesShifted = const [];
       _instructionShifted = null;
       _rowsShifted = null;
     }
@@ -2184,15 +2316,13 @@ class FrameRangeMoveDrag {
 
   /// Publishes a valid slide step: every plan's commit form (windowed for
   /// the track-SE rows), the shifted instruction rows and a riding
-  /// transition in the same two forms, and the camera keys on their own
-  /// channel.
+  /// transition in the same two forms, and the band's lanes
+  /// ([_publishStep]).
   void _publishSlidePreview(
     List<DrawingBlockMovePlan> plans,
     FrameAxisRiders riders,
   ) {
-    final cameraShifted = riders.camera;
     final instructionShifted = riders.instructions;
-    _camera.showCameraKeysDragPreview(cameraShifted);
     final previewLayers = <LayerId, Layer>{};
     // C2 (2026-08-17): the GLOBAL forms ride the same preview — the
     // storyboard's track-global SE strips resolve THIS map, exactly as
@@ -2229,12 +2359,12 @@ class FrameRangeMoveDrag {
         previewGlobalLayers[entry.key] = global;
       }
     }
-    _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: _withFolderBands(previewLayers),
-      previewGlobalLayers: previewGlobalLayers,
-      cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,
-      cameraTrack: cameraShifted,
-      cameraMarkerLayer: _cameraMarkerLayer(cameraShifted),
+    _publishStep(
+      BlockMoveDragPreview(
+        previewLayers: _withFolderBands(previewLayers),
+        previewGlobalLayers: previewGlobalLayers,
+      ),
+      riders.lanes,
     );
   }
 
@@ -2251,6 +2381,19 @@ class FrameRangeMoveDrag {
     if (_releaseIsTheTrades(shown, landedSelection)) {
       return;
     }
+    _project.historyManager.runAsOneStep('Move frame range', () {
+      _commitBlocks(landedSelection);
+      // The band's lanes land AFTER its blocks, each through its row's own
+      // lane commit: a block move writes its rows whole (`replaceLayer`),
+      // and a key written before it would go with the row it replaced.
+      for (final (:row, :edit) in _lanesShifted) {
+        _laneVerbs.laneEditSubjectOf(row).commit(edit, 'Move frame range');
+      }
+    });
+  }
+
+  /// The release's blocks, by the path the drag's steps took.
+  void _commitBlocks(TimelineFrameRangeSelection? landedSelection) {
     // ROW-CHANGE commits (P3b-4): the planned pair replaces both rows in
     // one composite undo; the selection follows the landing row.
     if (_seRowChange != null) {
@@ -2272,8 +2415,8 @@ class FrameRangeMoveDrag {
     final multiSources = _multiSources;
     if (multiSources != null) {
       // Cross-layer slide commit (UI-R18 #1) + key shifts (P3b-2): one
-      // composite undo across blocks, camera keys and instruction spans.
-      // (UI-R23 #3: the layer transform track no longer rides the slide.)
+      // composite undo across blocks and instruction spans — the band's
+      // lanes beside them ([commit]).
       _commitMultiSourceMove(multiSources, landedSelection);
       return;
     }
@@ -2340,7 +2483,6 @@ class FrameRangeMoveDrag {
     List<({Layer commit, int offset})> multiSources,
     TimelineFrameRangeSelection? landedSelection,
   ) {
-    final cut = _project.activeCutOrNull;
     final multiPlans = _multiPlans;
     final commands = <Command>[
       if (multiPlans != null)
@@ -2353,7 +2495,7 @@ class FrameRangeMoveDrag {
               drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
           ),
-      ..._riderCommands(cut),
+      ..._riderCommands(),
     ];
     if (!_commitRangeMoveCommands(commands, landedSelection)) {
       return;
@@ -2362,15 +2504,15 @@ class FrameRangeMoveDrag {
     _changes.notifyChanged();
   }
 
-  /// R27 #8: the frame-axis riders (camera keys, instruction spans)
-  /// land in the SAME undo step as the rigid row move — through the
-  /// ONE two-armed projection the plain slide commits with, so a
-  /// riding TRANSITION lands too (C④: this branch used to carry a
-  /// cut-gated copy with the transition arm missing).
-  List<Command> _riderCommands(Cut? cut) {
+  /// R27 #8: the frame-axis riders (instruction spans, block riders) land
+  /// in the SAME undo step as the rigid row move — through the ONE
+  /// two-armed projection the plain slide commits with, so a riding
+  /// TRANSITION lands too (C④: this branch used to carry a cut-gated copy
+  /// with the transition arm missing). The band's lanes land beside them
+  /// ([commit]).
+  List<Command> _riderCommands() {
     final instructionShifted = _instructionShifted;
     final rowsShifted = _rowsShifted;
-    final cameraShifted = _cameraShifted;
     return [
       if (instructionShifted != null)
         ..._instructionShiftCommands(instructionShifted),
@@ -2388,25 +2530,18 @@ class FrameRangeMoveDrag {
                 drawnFrameCount: _project.activeCutDrawnFrameCount,
               ),
             ),
-      if (cameraShifted != null && cut != null)
-        UpdateCutCameraCommand(
-          repository: _project.repository,
-          cutId: cut.id,
-          camera: CutCamera.fromTrack(cameraShifted),
-          description: 'Move camera keys',
-        ),
     ];
   }
 
   /// Executes a range move's [commands] as ONE undo step and leaves the
   /// selection on the frames where they landed. False when there was
-  /// nothing to commit — the selection goes back to where the drag
-  /// started and the caller stops.
+  /// nothing to commit, the band's lanes included ([_lanesShifted]) — the
+  /// selection goes back to where the drag started and the caller stops.
   bool _commitRangeMoveCommands(
     List<Command> commands,
     TimelineFrameRangeSelection? landedSelection,
   ) {
-    if (commands.isEmpty) {
+    if (commands.isEmpty && _lanesShifted.isEmpty) {
       _liveSpan = _selectionBefore;
       return false;
     }
@@ -2421,7 +2556,7 @@ class FrameRangeMoveDrag {
     final commands = <Command>[];
     commands.addAll(_seRowMoveCommands(_multiSeRowPlan));
     commands.addAll(_multiRowLayerCommands(multiRowPlan));
-    commands.addAll(_riderCommands(cut));
+    commands.addAll(_riderCommands());
     if (cut != null && (multiRowPlan?.rekeys.isNotEmpty ?? false)) {
       commands.add(_blockMove.celRekeyCommand(cut, multiRowPlan!.rekeys));
     }

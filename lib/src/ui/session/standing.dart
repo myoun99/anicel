@@ -1071,7 +1071,9 @@ class Standing {
         // panel became the row the OTHER panel came back to. The timeline's
         // lanes stand through [_standOnTimelineLane] now; this is the rail's.
         //
-        // R5 #12: the CELL range goes (see [_standOnTimelineLane]).
+        // R5 #12: the CELL range goes. ⚠️The timeline's lanes stopped
+        // dropping it here once a band could hold them ([_standOnTimelineLane],
+        // H20); the rail's band holds no lane row yet.
         _selection.clearFrameRangeSelection();
         if (storeStoryboardRow(row)) {
           _changes.notifyChanged();
@@ -1094,16 +1096,15 @@ class Standing {
   /// remember: coming back to that panel restores the lane rather than
   /// dropping to the layer it hangs under.
   ///
-  /// R5 #12: and the CELL range goes. A frame range is drawn on a LAYER row,
-  /// so standing on a property is always leaving the row it belongs to — but
-  /// [selectLayer] runs first on this path and keeps a range whose layer has
-  /// not changed, which left the band sitting on the cells while the subject
-  /// was a lane. Nothing draws a frame range from a lane, so this can never
-  /// drop one mid-drag.
+  /// R5 #12 — a press outside the cell range drops it — is [standOnRow]'s
+  /// guard (T10), as on every row. ↩️This arm dropped the range as well,
+  /// whatever the press: a range was drawn on LAYER rows alone then, so a
+  /// lane was always outside it. A sweep reaches into the lanes now (R27
+  /// #14), and that clear took the band a press inside it was about to
+  /// move (H20, 🧪2026-10-25).
   void _standOnTimelineLane(LaneRowAddress lane) {
     _working.value = WorkingPanel.timeline;
     _seatLayer(lane.layerId, row: lane);
-    _selection.clearFrameRangeSelection();
   }
 
   /// The row each cut was last worked on, replayed on the way back in
