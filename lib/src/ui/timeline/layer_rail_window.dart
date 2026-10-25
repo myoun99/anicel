@@ -32,6 +32,7 @@ import 'memo_token.dart' show KeptPiece;
 import 'timeline_grid_metrics.dart';
 import '../input/control_press_claim.dart';
 import '../input/pan_slide.dart';
+import '../theme/app_theme.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -622,6 +623,7 @@ class TimelineSecondsToggleCorner extends KeptPiece {
       child: ControlPressClaim(
         onPressed: () => onChanged(!showSeconds),
         child: InkWell(
+          mouseCursor: AppCursors.press,
           onTap: silentPress(() => onChanged(!showSeconds)),
           child: SizedBox(
             width: width,

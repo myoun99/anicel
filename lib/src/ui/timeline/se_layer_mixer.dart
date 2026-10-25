@@ -235,6 +235,7 @@ class _MixToggle extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: onPressed,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: ValueKey<String>(keyValue),
           customBorder: AppShapes.container(AppShapes.wellRadius),
           onTap: silentPress(onPressed),

@@ -3157,6 +3157,7 @@ class _RailGroupButton extends StatelessWidget {
               child: ControlPressClaim(
                 onPressed: onPressed,
                 child: InkWell(
+                  mouseCursor: AppCursors.press,
                   onTap: silentPress(onPressed),
                   // The pair sizes itself to one button cell, so a group that
                   // wears a face is the same square as every other.

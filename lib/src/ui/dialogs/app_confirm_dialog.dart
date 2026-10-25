@@ -8,6 +8,7 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../input/control_press_claim.dart';
 import 'dialog_verb.dart';
+import '../theme/app_theme.dart';
 
 /// The "answer a question" window: a sentence and the ways out of it.
 ///
@@ -165,6 +166,7 @@ class _DetailsDisclosureState extends State<DetailsDisclosure> {
       mainAxisSize: MainAxisSize.min,
       children: [
         ControlPressClaim(onPressed: () => setState(() => _open = !_open), child: InkWell(
+          mouseCursor: AppCursors.press,
           key: const ValueKey<String>('app-notice-details-toggle'),
           onTap: silentPress(() => setState(() => _open = !_open)),
           child: Row(

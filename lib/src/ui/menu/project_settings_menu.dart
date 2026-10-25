@@ -281,6 +281,7 @@ class _ChoiceRow extends StatelessWidget {
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(onTap),
         customBorder: AppShapes.control(AppShapes.controlSmall),
         child: SizedBox(

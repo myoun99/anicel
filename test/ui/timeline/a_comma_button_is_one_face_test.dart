@@ -61,6 +61,7 @@ Widget _newComma({
 ThemeData _askingTheme() => buildAppTheme().copyWith(
   textButtonTheme: TextButtonThemeData(
     style: ButtonStyle(
+      mouseCursor: AppCursors.press,
       shape: WidgetStatePropertyAll(AppShapes.container(0)),
       foregroundColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.disabled)
@@ -287,14 +288,15 @@ void main() {
 
       expect(now.size, old.size);
       expect(now.intrinsics, old.intrinsics);
-      // 🔧The one part that changes, on purpose: the TextButton showed the
-      // arrow on a desktop (M3's `adaptiveClickable`), and every other
-      // button on the bar shows the hand ([CommaButton]).
-      expect(old.cursor, SystemMouseCursors.basic);
+      // Both point with the hand: the face resolves [AppCursors], the
+      // TextButton reads it from the theme (board
+      // `frame-panels-build-in-one-frame-Q2`, 「손가락으로 통일」) — it
+      // showed the arrow until then, M3's `adaptiveClickable`.
+      expect(now.cursor, old.cursor);
       expect(
         now.cursor,
         enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
-        reason: 'the hand, as the icon buttons beside it',
+        reason: 'the hand, as every press in the app',
       );
       // The node a screen reader meets says what the button's did — a
       // button, live or dead, its word, pressed by a tap. ⚠️It also says

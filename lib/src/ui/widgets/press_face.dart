@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../input/control_press_claim.dart';
+import '../theme/app_theme.dart' show AppCursors;
 import 'app_tooltip.dart';
 
 /// What a light face's spec says of the one it replaces ([PressFace.respec]).
@@ -117,8 +118,7 @@ mixin PressFace on RenderBox, PressClaim, SummonsTooltip
   // ── hover and press ────────────────────────────────────────────────
 
   @override
-  MouseCursor get cursor =>
-      pressEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic;
+  MouseCursor get cursor => AppCursors.pressWhen(live: pressEnabled);
 
   @override
   PointerEnterEventListener? get onEnter => _onEnter;

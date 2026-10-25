@@ -1070,6 +1070,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       child: ControlPressClaim(
         onPressed: widget.onPressed,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           onTap: silentPress(widget.onPressed),
           // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
           // sill. It wears the body's own fill and rounds only the corners

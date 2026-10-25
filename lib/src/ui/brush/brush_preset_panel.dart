@@ -20,7 +20,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../panels/editor_panel_frame.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
 import '../widgets/axis_bar_gesture.dart' show OwningMultiDragGestureRecognizer;
@@ -1393,6 +1393,7 @@ class _BrushGroupTab extends StatelessWidget {
       color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
       shape: AppShapes.container(AppShapes.wellRadius),
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>(keyValue),
         // The switch rides the raw pointer (R10) — see the wrapper below.
         // The InkWell keeps a no-op tap so its ripple and its semantics
@@ -1486,6 +1487,7 @@ class _GroupIconPicker extends StatelessWidget {
       return ControlPressClaim(
         onPressed: onTap,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: ValueKey<String>(keyValue),
           onTap: silentPress(onTap),
           customBorder: AppShapes.container(AppShapes.wellRadius),
@@ -1634,6 +1636,7 @@ class _BrushPresetRow extends StatelessWidget {
         color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
         shape: AppShapes.container(AppShapes.windowRadius),
         child: InkWell(
+          mouseCursor: AppCursors.press,
           // Key kept from the former chip UI so existing flows/tests hold.
           key: ValueKey<String>('brush-preset-chip-${preset.id.value}'),
           customBorder: AppShapes.container(AppShapes.windowRadius),

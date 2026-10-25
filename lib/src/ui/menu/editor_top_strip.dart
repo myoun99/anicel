@@ -1222,6 +1222,7 @@ class _ProjectTab extends StatelessWidget {
           child: ControlPressClaim(
             onPressed: press,
             child: InkWell(
+              mouseCursor: AppCursors.press,
               key: ValueKey<String>('project-tab-$index'),
               customBorder: shape,
               onTap: silentPress(press),

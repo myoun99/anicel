@@ -117,6 +117,7 @@ class ColorSwatchButton extends StatelessWidget {
         child: ControlPressClaim(
           onPressed: () => _open(anchorContext),
           child: InkWell(
+            mouseCursor: AppCursors.press,
             key: ValueKey<String>(keyValue),
             customBorder: const CircleBorder(),
             onTap: silentPress(() => _open(anchorContext)),

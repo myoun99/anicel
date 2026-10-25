@@ -1039,6 +1039,7 @@ class _HoverReporter extends StatelessWidget {
       // A finger has no hover, so a tap does the same thing. ⛔Not a second
       // behaviour — the same call, reached the only way a finger can.
       child: ControlPressClaim(onPressed: () => _report(context), child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(() => _report(context)),
         // 🚨And it STAYS lit while its child is up. Hover cannot say this:
         // by the time the submenu is open the pointer has moved off the
@@ -1217,6 +1218,7 @@ class _SubmenuLayer extends StatelessWidget {
                                 ? () => onPicked(item)
                                 : null,
                             child: InkWell(
+                              mouseCursor: AppCursors.press,
                               key: ValueKey<String>(item.keyValue),
                               onTap: silentPress(
                                 item.enabled ? () => onPicked(item) : null,
@@ -1393,6 +1395,7 @@ class PanelFlyoutTrigger extends StatelessWidget {
     final Widget button = Material(
       color: Colors.transparent,
       child: ControlPressClaim(onPressed: () => showPanelFlyout(context, entries: entriesBuilder()), child: InkWell(
+        mouseCursor: AppCursors.press,
         // `customBorder` and not `borderRadius`: the splash is a corner like
         // any other and takes the app's superellipse, so this widget adds
         // nothing to the circular-corner debt (`app_shapes_coverage_test`,
@@ -1535,6 +1538,7 @@ class PanelFlyoutButton extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: enabled ? open : null,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           customBorder: PanelFlyoutChip.shape,
           // Null, not a no-op: an `InkWell` with a null callback stops
           // splashing and stops taking hover, so the button reads shut to

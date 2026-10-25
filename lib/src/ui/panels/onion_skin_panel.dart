@@ -333,6 +333,7 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
       child: ControlPressClaim(
         onPressed: press,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: ValueKey<String>(
             'onion-peg-switch-${before ? 'before' : 'after'}-${index + 1}',
           ),

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../widgets/app_window.dart';
 import 'dialog_verb.dart';
 import '../text/app_strings.dart';
@@ -241,6 +241,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                   ControlPressClaim(
                     onPressed: () => setState(() => _iconKey = entry.key),
                     child: InkWell(
+                      mouseCursor: AppCursors.press,
                       key: ValueKey<String>('instruction-icon-${entry.key}'),
                       onTap: silentPress(
                         () => setState(() => _iconKey = entry.key),
@@ -282,6 +283,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                 ControlPressClaim(
                   onPressed: () => setState(() => _colorValue = null),
                   child: InkWell(
+                    mouseCursor: AppCursors.press,
                     key: const ValueKey<String>('instruction-color-default'),
                     onTap: silentPress(
                       () => setState(() => _colorValue = null),
@@ -311,6 +313,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                   ControlPressClaim(
                     onPressed: () => setState(() => _colorValue = color),
                     child: InkWell(
+                      mouseCursor: AppCursors.press,
                       key: ValueKey<String>(
                         'instruction-color-${color.toRadixString(16)}',
                       ),
@@ -355,6 +358,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
                   ControlPressClaim(
                     onPressed: () => setState(() => _markType = entry.key),
                     child: InkWell(
+                      mouseCursor: AppCursors.press,
                       key: ValueKey<String>(
                         'instruction-mark-${entry.key.jsonValue}',
                       ),

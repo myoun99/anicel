@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/set_toggle.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/content_scrollbar.dart';
+import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 
 /// THE shell a tool's settings section wears inside the tool settings panel.
@@ -172,6 +173,7 @@ class ToolSettingsGroupHeader extends StatelessWidget {
           ControlPressClaim(
             onPressed: fold.onToggle,
             child: InkWell(
+              mouseCursor: AppCursors.press,
               onTap: silentPress(fold.onToggle),
               child: Row(
                 children: [

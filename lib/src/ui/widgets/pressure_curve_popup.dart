@@ -488,6 +488,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
               ControlPressClaim(
                 onPressed: draft.enabled ? () => _reset(source) : null,
                 child: InkWell(
+                  mouseCursor: AppCursors.press,
                   key: ValueKey<String>('curve-reset-${source.name}'),
                   onTap: silentPress(
                     draft.enabled ? () => _reset(source) : null,

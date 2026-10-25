@@ -440,7 +440,7 @@ class _ExpandButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor: AppCursors.pressWhen(live: enabled),
       onEnter: (_) => onHoverChanged(true),
       onExit: (_) => onHoverChanged(false),
       // 🚨The caret is a control like the button beside it — the pill bar

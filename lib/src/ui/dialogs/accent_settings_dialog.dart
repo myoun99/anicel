@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
 import '../../models/app_accents.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../text/app_strings.dart';
 import '../widgets/settings_rows.dart';
 import '../input/control_press_claim.dart';
@@ -108,6 +108,7 @@ class _AccentRow extends StatelessWidget {
               ControlPressClaim(
                 onPressed: () => onChanged(preset),
                 child: InkWell(
+                  mouseCursor: AppCursors.press,
                   key: ValueKey<String>(
                     '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
                   ),

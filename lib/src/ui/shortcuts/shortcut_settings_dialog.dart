@@ -26,6 +26,7 @@ import 'shortcut_shelf.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
+import '../theme/app_theme.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
 /// shelved by where each key's button stands ([ShortcutShelf]),
@@ -623,7 +624,11 @@ const double _step = layerLaneToggleSlotWidth;
 /// · touch) keeps its own press: the deepest claim wins.
 Widget _foldRow(VoidCallback toggle, Widget row) => ControlPressClaim(
   onPressed: toggle,
-  child: InkWell(onTap: silentPress(toggle), child: row),
+  child: InkWell(
+    mouseCursor: AppCursors.press,
+    onTap: silentPress(toggle),
+    child: row,
+  ),
 );
 
 /// The fold of [bundle] — the app's one twirl, showing it ([_foldRow] is

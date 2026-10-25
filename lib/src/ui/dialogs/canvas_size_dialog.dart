@@ -9,7 +9,7 @@ import 'size_fields_row.dart';
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart' show halfWidthInt;
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import 'app_confirm_dialog.dart';
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
@@ -241,6 +241,7 @@ class _AnchorGrid extends StatelessWidget {
                   ControlPressClaim(
                     onPressed: () => onSelected(anchor),
                     child: InkWell(
+                      mouseCursor: AppCursors.press,
                       key: ValueKey<String>(
                         'canvas-size-anchor-${anchor.name}',
                       ),

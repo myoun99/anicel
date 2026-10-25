@@ -16,7 +16,7 @@ import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/timeline_row_address.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
@@ -453,6 +453,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
             on ? 'off' : 'on',
           ),
           child: InkWell(
+            mouseCursor: AppCursors.press,
             key: ValueKey<String>(
               '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
             ),
@@ -1261,6 +1262,7 @@ class _NavigatorButton extends StatelessWidget {
     return ControlPressClaim(
       onPressed: enabled ? onTap : null,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: buttonKey,
         onTap: silentPress(enabled ? onTap : null),
         child: SizedBox(

@@ -8,7 +8,7 @@ import '../text/app_strings.dart';
 import '../widgets/anchored_popup.dart';
 import 'brush_tip_preview.dart';
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/instant_tap_region.dart';
 import 'brush_preset_reorder_grid.dart' show BrushPresetReorderGrid;
@@ -180,6 +180,7 @@ class _TipSwatch extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: onTap,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: ValueKey<String>(keyValue),
           onTap: silentPress(onTap),
           customBorder: AppShapes.container(AppShapes.wellRadius),
@@ -520,6 +521,7 @@ class _PickerCell extends StatelessWidget {
         child: ControlPressClaim(
           onPressed: onTap,
           child: InkWell(
+            mouseCursor: AppCursors.press,
             key: ValueKey<String>(keyValue),
             onTap: silentPress(onTap),
             customBorder: AppShapes.container(AppShapes.wellRadius),
@@ -569,6 +571,7 @@ class _TurnCell extends StatelessWidget {
           color: _cellFill(colorScheme, selected: selected),
           shape: AppShapes.container(AppShapes.wellRadius),
           child: InkWell(
+            mouseCursor: AppCursors.press,
             key: ValueKey<String>('brush-tip-turn-at-$index'),
             // Its ripple only — the press is [InstantTapRegion]'s.
             onTap: silentPress(onTap),

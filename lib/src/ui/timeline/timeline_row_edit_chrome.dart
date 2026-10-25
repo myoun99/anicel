@@ -34,6 +34,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../repaint_props.dart';
 import 'memo_token.dart';
+import '../theme/app_theme.dart' show AppCursors;
 
 /// One pointer target in a dense row's edit chrome. Its [rect] is the
 /// row-local hit area — the same rect the painter draws inside, so there is
@@ -1281,7 +1282,7 @@ class _TimelineRowEditChromeLayerState
         continue;
       }
       return switch (target) {
-        TimelineRowRunTagTarget() => SystemMouseCursors.click,
+        TimelineRowRunTagTarget() => AppCursors.pressWhen(live: true),
         _ =>
           _horizontal
               ? SystemMouseCursors.resizeColumn

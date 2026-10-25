@@ -28,9 +28,10 @@ import '../widgets/keyboard_press.dart';
 /// was the bar's odd one out twice: it showed the arrow — M3's
 /// `adaptiveClickable`, which is the arrow on a desktop — where every icon
 /// button and name cell beside it shows the hand (the icon button's since
-/// 2026-09-10, `a57e2566f`); and held down, its `InkWell` laid the press's
-/// layer over the hover's, where an icon button shows the press's alone.
-/// The face does what its neighbours do. The rim of a state layer is
+/// 2026-09-10, `a57e2566f`; every press's since 2026-10-25, `AppCursors`);
+/// and held down, its `InkWell` laid the press's layer over the hover's,
+/// where an icon button shows the press's alone. The face does what its
+/// neighbours do. The rim of a state layer is
 /// anti-aliased a hair differently too (the shape filled as itself, not
 /// traced as a path) — at most 5 of 255, measured.
 ///

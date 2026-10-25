@@ -406,6 +406,7 @@ class Pill extends StatelessWidget {
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(onTap),
         child: Container(
           padding: fills ? _sharePadding : _pillPadding,

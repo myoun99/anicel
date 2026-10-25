@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart' show ControlPressClaim;
 import '../shortcuts/editor_shortcut_scope.dart' show ShortcutTooltip;
-import '../theme/app_theme.dart' show AppColors;
+import '../theme/app_theme.dart' show AppColors, AppCursors;
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
@@ -401,7 +401,7 @@ class _ToolSettingActionState extends State<ToolSettingAction> {
     final button = ControlPressClaim(
       onPressed: widget.onPressed,
       child: MouseRegion(
-        cursor: live ? SystemMouseCursors.click : MouseCursor.defer,
+        cursor: AppCursors.pressWhen(live: live),
         onEnter: (_) => setState(() => _hovering = true),
         onExit: (_) => setState(() => _hovering = false),
         child: Semantics(

@@ -317,6 +317,7 @@ class AppWindow extends StatelessWidget {
     final selected = index == selectedTab;
     final accent = theme.colorScheme.primary;
     return ControlPressClaim(onPressed: !tab.enabled || selected ? null : tab.onSelected, child: InkWell(
+      mouseCursor: AppCursors.press,
       key: tab.tabKey,
       onTap: silentPress(!tab.enabled || selected ? null : tab.onSelected),
       child: Container(
