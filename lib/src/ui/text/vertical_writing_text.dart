@@ -413,7 +413,11 @@ class VerticalWritingText extends LeafRenderObjectWidget {
     return Size(natural.width, natural.height + endInset * 2);
   }
 
-  _VerticalWritingPainter _painterIn(BuildContext context) =>
+  /// What paints the column where [context] shows it, at whatever size it is
+  /// painted in — what a box that lays its columns itself (a label plate)
+  /// paints each with. It repaints its listeners when a word it drew from a
+  /// stand-in has its bake land ([RepaintOnWordBakes]).
+  CustomPainter painterIn(BuildContext context) =>
       _VerticalWritingPainter(
         text: text,
         style: _styleIn(context),
@@ -437,7 +441,7 @@ class VerticalWritingText extends LeafRenderObjectWidget {
       RenderVerticalWriting(
         text: text,
         textDirection: Directionality.maybeOf(context),
-        painter: _painterIn(context),
+        painter: painterIn(context),
         preferredSize: naturalSizeIn(context),
       );
 
@@ -449,7 +453,7 @@ class VerticalWritingText extends LeafRenderObjectWidget {
     renderObject
       ..text = text
       ..textDirection = Directionality.maybeOf(context)
-      ..painter = _painterIn(context)
+      ..painter = painterIn(context)
       ..preferredSize = naturalSizeIn(context);
   }
 }

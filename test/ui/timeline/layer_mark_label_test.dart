@@ -10,14 +10,16 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
-import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show
+        LayerMarkPlate,
         LayerSectionBandCell,
+        LayerTakeText,
         layerMarkColor,
         layerMarkSlotWidth,
         layerProcessAbbrev,
         layerReviseAbbrev;
+import 'package:anicel/src/ui/timeline/layer_plate_words.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineTextOnColor;
@@ -42,6 +44,28 @@ Layer _layer(String id, LayerKind kind, {LayerMark mark = LayerMark.none}) {
     timeline: const {},
   );
 }
+
+/// The colour plate's box under the control named [name].
+RenderLabelPlate _plateOf(WidgetTester tester, String name) =>
+    tester.renderObject<RenderLabelPlate>(
+      find.descendant(
+        of: find.named(name),
+        matching: find.byType(LayerMarkPlate),
+      ),
+    );
+
+/// The take's box under the control named [name].
+RenderTakeText _takeOf(WidgetTester tester, String name) =>
+    tester.renderObject<RenderTakeText>(
+      find.descendant(
+        of: find.named(name),
+        matching: find.byType(LayerTakeText),
+      ),
+    );
+
+/// [rect], in [box]'s own space, where the screen shows it.
+Rect _onScreen(RenderBox box, Rect rect) =>
+    MatrixUtils.transformRect(box.getTransformTo(null), rect);
 
 Widget _panel({TimelineOrientation orientation = TimelineOrientation.horizontal}) {
   final layers = [
@@ -131,15 +155,8 @@ void main() {
     // ⚠️`.first`: a labelled row draws TWO columns now (공정 + 수정), and
     // both wear the same ink by construction — the plate hands one colour
     // to every column it writes.
-    TextStyle? styleUnder(String name) {
-      final label = tester.widgetList<VerticalWritingText>(
-        find.descendant(
-          of: find.named(name),
-          matching: find.byType(VerticalWritingText),
-        ),
-      ).first;
-      return label.style;
-    }
+    TextStyle? styleUnder(String name) =>
+        _plateOf(tester, name).words.first.style;
 
     // The ink is the LAW's answer, not a constant: whatever
     // timelineTextOnColor says for this plate is what the label wears.
@@ -162,13 +179,15 @@ void main() {
     await tester.pumpWidget(_panel());
 
     expect(
-      find.descendant(
-        of: find.named('timeline-layer-mark-plain'),
-        matching: find.byType(VerticalWritingText),
-      ),
-      findsNothing,
+      _plateOf(tester, 'timeline-layer-mark-plain').words,
+      isEmpty,
       reason: 'the paper colour has no name to announce; the plate alone '
           'keeps the tap target discoverable',
+    );
+    expect(
+      _plateOf(tester, 'timeline-layer-mark-a').words,
+      isNotEmpty,
+      reason: '⚠️대조군 — a labelled plate writes its name',
     );
     // The plate itself is still there — the click logic is untouched (⑤).
     expect(
@@ -250,20 +269,22 @@ void _takeLabelPlate() {
     await tester.pumpWidget(_panel());
     // 유저 2026-08-27: 「테이크라벨은 **배경 삭제**해. 그러고 글자만 심플하게
     // **레이어이름처럼 디자인 통일**해서」.
+    // The take's box ([RenderTakeText]) paints its word and nothing under
+    // it — the pixels are pinned against the old clip-and-centre in
+    // a_label_plate_is_one_box_test; here, that the take IS that box and
+    // wears no plate.
     expect(
       find.descendant(
         of: find.named('timeline-layer-take-a'),
-        matching: find.byType(ColoredBox),
+        matching: find.byType(LayerMarkPlate),
       ),
       findsNothing,
       reason: '🚨색 라벨은 채워진 플레이트지만 테이크는 아니다',
     );
+    expect(_takeOf(tester, 'timeline-layer-take-a').word.text, isNotEmpty);
     expect(
-      find.descendant(
-        of: find.named('timeline-layer-mark-a'),
-        matching: find.byType(ColoredBox),
-      ),
-      findsWidgets,
+      _plateOf(tester, 'timeline-layer-mark-a').fill.a,
+      greaterThan(0),
       reason: '⚠️대조군 — 색 라벨은 여전히 칠해진다. 이 단언이 없으면 위의 '
           '단언은 「둘 다 안 칠해진다」로도 통과한다',
     );
@@ -488,36 +509,18 @@ void _submenuFollowsTheHover() {
 void _stageComesFirst() {
   testWidgets('레일에서는 공정이 왼쪽, 수정이 오른쪽', (tester) async {
     await tester.pumpWidget(_panel());
-    final texts = tester
-        .widgetList<VerticalWritingText>(
-          find.descendant(
-            of: find.named('timeline-layer-mark-a'),
-            matching: find.byType(VerticalWritingText),
-          ),
-        )
-        .toList();
+    final plate = _plateOf(tester, 'timeline-layer-mark-a');
+    final texts = [for (final word in plate.words) word.text];
     expect(texts, hasLength(2), reason: '동화 + 동검 두 칼럼');
 
-    final first = tester.getRect(
-      find.descendant(
-        of: find.named('timeline-layer-mark-a'),
-        matching: find.byWidget(texts.first),
-      ),
-    );
-    final second = tester.getRect(
-      find.descendant(
-        of: find.named('timeline-layer-mark-a'),
-        matching: find.byWidget(texts.last),
-      ),
-    );
     // 🚨언어를 명시한다: 축약어도 번역을 타므로(유저 2026-08-28 「프로그램
     // 언어에따라 로컬라이즈」) 기본 영어에서는 IB·IBC 가 나온다.
-    expect(texts.first.text, layerProcessAbbrev(LayerProcess.inbetween),
+    expect(texts.first, layerProcessAbbrev(LayerProcess.inbetween),
         reason: '공정이 먼저 그려진다');
-    expect(texts.last.text, layerReviseAbbrev(LayerRevise.inbetweenCheck));
+    expect(texts.last, layerReviseAbbrev(LayerRevise.inbetweenCheck));
     expect(
-      first.left,
-      lessThan(second.left),
+      plate.wordRectOf(0).left,
+      lessThan(plate.wordRectOf(1).left),
       reason: '🚨공정이 **왼쪽**에 온다 — 레이어 영역은 좌→우로 읽는다',
     );
   });
@@ -526,24 +529,21 @@ void _stageComesFirst() {
 /// 🚨★★★글자가 자기 칸을 **양쪽으로** 꽉 채운다. 유저 2026-08-28: 「2글자로
 /// 작감이면 작감 **위 아래에 글자가 남거든**? … 글자 늘려서 꽉 채우게 하면
 /// 멋있을거같아」 → 이어서 「**옆으로도 자기 영역 내에서 꽉 채우게** 하고싶어」.
-/// 🚨★★★글자가 자기 칸을 **양쪽으로** 꽉 채운다. 유저 2026-08-28: 「2글자로
-/// 작감이면 작감 **위 아래에 글자가 남거든**? … 글자 늘려서 꽉 채우게 하면
-/// 멋있을거같아」 → 이어서 「**옆으로도 자기 영역 내에서 꽉 채우게** 하고싶어」.
 ///
-/// 🚨★★★계측기 주의: [FittedBox] **자체**를 재면 안 된다. 그 상자는 `Expanded`
+/// 🚨★★★계측기 주의: `FittedBox` **자체**를 재면 안 됐다. 그 상자는 `Expanded`
 /// 가 준 칸을 `fit` 이 무엇이든 늘 채우므로, `BoxFit.fill` 을 `scaleDown` 으로
 /// 바꿔도 초록이었다(실제로 뮤테이션이 살아남았다). **그려진 글자**를 재야
-/// 늘어났는지 알 수 있다 — `getRect` 는 조상의 변환을 반영한다.
+/// 늘어났는지 알 수 있다.
+///
+/// ★판이 이제 글자를 스스로 그린다(2026-10-25, 카드
+/// frame-panels-build-in-one-frame): 여기서 재는 것은 판의 칠하기가 글자를
+/// 늘려 놓는 바로 그 자리([RenderLabelPlate.wordRectOf])다. 그 자리에 **정말
+/// 늘어나 그려지는지**는 옛 조합과 픽셀로 맞춘다(a_label_plate_is_one_box_test).
 void _glyphsFillTheirArea() {
-  Rect glyphRect(WidgetTester tester, String plateName, int index) => tester
-      .getRect(
-        find
-            .descendant(
-              of: find.named(plateName),
-              matching: find.byType(VerticalWritingText),
-            )
-            .at(index),
-      );
+  Rect glyphRect(WidgetTester tester, String plateName, int index) {
+    final plate = _plateOf(tester, plateName);
+    return _onScreen(plate, plate.wordRectOf(index));
+  }
 
   testWidgets('테이크 글자는 늘리지 않는다 — 유저 2026-08-28: 「그냥 평범하게」', (
     tester,
@@ -553,14 +553,8 @@ void _glyphsFillTheirArea() {
     final slot = tester.getRect(
       find.named('timeline-layer-take-a'),
     );
-    final glyphs = tester.getRect(
-      find
-          .descendant(
-            of: find.named('timeline-layer-take-a'),
-            matching: find.byType(VerticalWritingText),
-          )
-          .first,
-    );
+    final take = _takeOf(tester, 'timeline-layer-take-a');
+    final glyphs = _onScreen(take, take.wordRect);
 
     // ⛔자리는 그대로 예약하되(없다가 생기는 UI 금지) 글자는 자기 크기다.
     expect(glyphs.height, lessThan(slot.height - 2));
@@ -615,13 +609,13 @@ void _glyphsFillTheirArea() {
       find.named('xsheet-layer-mark-a'),
     );
     // 유저: 「x시트는 **가로쓰기 가로표기**로 위에 LO 아래에 작감」 — so the
-    // sheet draws plain [Text], not the rail's upright column.
-    final glyphs = find.descendant(
-      of: find.named('xsheet-layer-mark-a'),
-      matching: find.byType(Text),
+    // sheet lays its words across, not the rail's upright column.
+    expect(
+      _plateOf(tester, 'xsheet-layer-mark-a').words,
+      everyElement(isA<LyingPlateWords>()),
     );
-    final stage = tester.getRect(glyphs.first);
-    final revise = tester.getRect(glyphs.at(1));
+    final stage = glyphRect(tester, 'xsheet-layer-mark-a', 0);
+    final revise = glyphRect(tester, 'xsheet-layer-mark-a', 1);
 
     expect(stage.width, closeTo(plate.width, 0.5));
     expect(revise.width, closeTo(plate.width, 0.5));

@@ -37,39 +37,45 @@ class TickText extends LeafRenderObjectWidget {
   final TextStyle style;
 
   @override
-  RenderTickText createRenderObject(BuildContext context) =>
-      RenderTickText(ticks: ticks, words: words, type: _typeIn(context));
+  RenderTickText createRenderObject(BuildContext context) => RenderTickText(
+    ticks: ticks,
+    words: words,
+    type: textLineTypeIn(context, style),
+  );
 
   @override
   void updateRenderObject(BuildContext context, RenderTickText renderObject) {
     renderObject
-      ..type = _typeIn(context)
+      ..type = textLineTypeIn(context, style)
       ..ticks = ticks
       ..words = words;
   }
-
-  /// What a `Text` of [style] would be set in here.
-  TickTextType _typeIn(BuildContext context) {
-    final ambient = DefaultTextStyle.of(context);
-    var style = ambient.style.merge(this.style);
-    if (MediaQuery.boldTextOf(context)) {
-      style = style.merge(const TextStyle(fontWeight: FontWeight.bold));
-    }
-    return (
-      style: style,
-      scaler: MediaQuery.textScalerOf(context),
-      direction: Directionality.of(context),
-      locale: Localizations.maybeLocaleOf(context),
-      heightBehavior:
-          ambient.textHeightBehavior ??
-          DefaultTextHeightBehavior.maybeOf(context),
-    );
-  }
 }
 
-/// Everything a [RenderTickText] sets its words in — equal while nothing
-/// that sets them would change.
-typedef TickTextType = ({
+/// What a `Text` of [style] would be set in where [context] shows it — over
+/// the ambient [DefaultTextStyle], at the context's text scale, in its
+/// direction and locale. A line a box sets itself ([TickText], a label
+/// plate's word laid across) is set in this, so it reads as a `Text` would.
+TextLineType textLineTypeIn(BuildContext context, TextStyle style) {
+  final ambient = DefaultTextStyle.of(context);
+  var merged = ambient.style.merge(style);
+  if (MediaQuery.boldTextOf(context)) {
+    merged = merged.merge(const TextStyle(fontWeight: FontWeight.bold));
+  }
+  return (
+    style: merged,
+    scaler: MediaQuery.textScalerOf(context),
+    direction: Directionality.of(context),
+    locale: Localizations.maybeLocaleOf(context),
+    heightBehavior:
+        ambient.textHeightBehavior ??
+        DefaultTextHeightBehavior.maybeOf(context),
+  );
+}
+
+/// Everything a line is set in ([textLineTypeIn]) — equal while nothing
+/// that sets it would change.
+typedef TextLineType = ({
   TextStyle style,
   TextScaler scaler,
   TextDirection direction,
@@ -77,23 +83,26 @@ typedef TickTextType = ({
   TextHeightBehavior? heightBehavior,
 });
 
+/// [text] set as one line in [type], not yet laid out.
+TextPainter textLineIn(String text, TextLineType type) => TextPainter(
+  text: TextSpan(text: text, style: type.style),
+  textScaler: type.scaler,
+  textDirection: type.direction,
+  locale: type.locale,
+  textHeightBehavior: type.heightBehavior,
+);
+
 /// The render object of [TickText].
 class RenderTickText extends RenderBox {
   RenderTickText({
     Listenable? ticks,
     required String Function() words,
-    required TickTextType type,
+    required TextLineType type,
   }) : _ticks = ticks,
        _words = words,
        _type = type,
        _data = words() {
-    _line = TextPainter(
-      text: TextSpan(text: _data, style: type.style),
-      textScaler: type.scaler,
-      textDirection: type.direction,
-      locale: type.locale,
-      textHeightBehavior: type.heightBehavior,
-    );
+    _line = textLineIn(_data, type);
   }
 
   late final TextPainter _line;
@@ -145,9 +154,9 @@ class RenderTickText extends RenderBox {
     }
   }
 
-  TickTextType _type;
-  TickTextType get type => _type;
-  set type(TickTextType value) {
+  TextLineType _type;
+  TextLineType get type => _type;
+  set type(TextLineType value) {
     if (value == _type) {
       return;
     }

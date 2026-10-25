@@ -30,6 +30,8 @@ import 'berth_row.dart';
 import 'memo_token.dart' show KeptPiece;
 import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
+import '../widgets/tick_text.dart' show textLineTypeIn;
+import 'layer_plate_words.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -1324,7 +1326,19 @@ List<PanelFlyoutEntry> layerTakeFlyoutEntries({
 /// The colour plate alone, read-only: [LayerMarkChip]'s left half without
 /// its trigger. The export window's layer list draws the rail's own plate
 /// here (유저 2026-09-09: 「타임라인 아이콘이나 뭐나 싹 다 그대로 재사용」).
-class LayerMarkPlate extends StatelessWidget {
+///
+/// A6 (2026-08-17): the circle became the label PLATE — the full slot,
+/// edge to edge (「패딩 절대 금지」), square corners, with the colour NAME
+/// standing upright inside it (「가로쓰기 세로표시」). The click logic above
+/// is untouched; only this face changed.
+///
+/// ★ONE BOX ([RenderLabelPlate]): the plate fills, splits and writes itself,
+/// taking the words to write and the fill to write them on rather than
+/// knowing what a mark is. ↩️It was this widget building a plate widget
+/// building a fill around a clip around a row of stretched columns — four
+/// to twelve elements a plate, on every rail row, paid on every panel
+/// reopen (card frame-panels-build-in-one-frame, 2026-10-25).
+class LayerMarkPlate extends LeafRenderObjectWidget {
   const LayerMarkPlate({
     super.key,
     required this.mark,
@@ -1338,36 +1352,93 @@ class LayerMarkPlate extends StatelessWidget {
   final bool isVisible;
   final Axis axis;
 
-  @override
-  Widget build(BuildContext context) {
-    // 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
-    //
-    // 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
-    // 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
-    // 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
-    // 읽는걸 기준으로** 설계하고있어」.
-    //
-    // ⚠️The first reading (stage on the right, from Japanese vertical
-    // writing) was right about the writing and wrong about the SURFACE:
-    // the rail is a left-to-right column of names, and one label reading
-    // the other way would be the exception.
-    //
-    // ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
-    // 살리고싶어서」 — two columns keep the plate as short as one. The sheet
-    // stacks instead, because there the plate is wide and short.
-    return _LabelPlate(
-      // ⚠️0.45 is the rail's own 「off」 alpha — the same one the onion and
-      // fx icons wear — so a hidden layer reads as off in one language
-      // rather than in three.
-      fill: !isVisible
-          ? layerMarkColor(mark).withValues(alpha: AppColors.offAlpha)
-          : layerMarkColor(mark),
-      columns: [
-        layerMarkChipText(mark).process,
-        layerMarkChipText(mark).revise,
-      ],
-      axis: axis,
+  /// The same type the section band's tag wears, one column over.
+  static const double _fontSize = 9;
+
+  /// 🔒**w400 으로 확정**(유저 2026-08-28: 「일단 정했어. 얇은거. 400으로
+  /// 가고싶어」). 고르는 동안은 설정이었다.
+  ///
+  /// 🧪실기 실측(유저): **100~500 은 얇고, 600~800 은 굵고, 900 은 엄청
+  /// 굵다.** ⚠️번들 폰트에 Regular 와 Bold 뿐이니 두 단계일 것이라던 내
+  /// 예측은 **틀렸다** — 900 에서 Skia 가 합성 볼드를 얹는다. 파일 목록만
+  /// 보고 렌더러의 답을 예측한 대가다.
+  ///
+  /// ⛔The glyphs are drawn STRAIGHT, with whatever anti-aliasing Skia
+  /// gives them. A `ColorFiltered` alpha step used to sit over them — the
+  /// 「쌩2치화」 round — and why it went is written on
+  /// `AppAccentSettings`, beside the weight that used to be a setting too.
+  static const FontWeight _fontWeight = FontWeight.w400;
+
+  /// ⑳ every plate is FILLED, `none` included — it is the paper colour
+  /// rather than a hole in the rail.
+  ///
+  /// ⚠️0.45 is the rail's own 「off」 alpha — the same one the onion and
+  /// fx icons wear — so a hidden layer reads as off in one language
+  /// rather than in three.
+  Color get _fill => !isVisible
+      ? layerMarkColor(mark).withValues(alpha: AppColors.offAlpha)
+      : layerMarkColor(mark);
+
+  /// The words the plate writes, in its reading order, inked by the frame
+  /// blocks' own luminance law ([timelineTextOnColor], #1109) — 유저:
+  /// 「프레임이름/코마숫자/색라벨은 다 같은 색상의 바탕 위에 올라가는
+  /// 텍스트니까 **셋 다 같은 로직**」. An empty one is not written: `none`
+  /// writes nothing (the paper colour has no name to announce; the plate
+  /// itself keeps the tap target discoverable), and a stage with no
+  /// correction writes one word over the whole plate.
+  ///
+  /// 🚨★★★THE STAGE COMES FIRST — left on the rail, top on the sheet.
+  ///
+  /// 유저 2026-08-27 corrected an earlier call of theirs: 「LO작감시 왼쪽에
+  /// 작감 오른쪽에 LO 오는데, 그게아니라 **평범하게 왼쪽에 LO 오른쪽에
+  /// 작감** 오도록. 이유는 지금 **레이어영역 자체가 왼쪽부터 오른쪽으로
+  /// 읽는걸 기준으로** 설계하고있어」.
+  ///
+  /// ⚠️The first reading (stage on the right, from Japanese vertical
+  /// writing) was right about the writing and wrong about the SURFACE:
+  /// the rail is a left-to-right column of names, and one label reading
+  /// the other way would be the exception.
+  ///
+  /// ⛔Not stacked as two rows on the rail: 「띠가 지금 가로로 얇은거를
+  /// 살리고싶어서」 — two columns keep the plate as short as one. The sheet
+  /// stacks instead, because there the plate is wide and short.
+  ///
+  /// 🚨★★★ONE LAW, BOTH RAILS. 유저 2026-08-27: 「x시트 **로직적으로 통일**
+  /// 하는거 절대잊지말고」 — so the split, the fill and the order are decided
+  /// HERE once and the axis is the only thing that differs. The x-sheet used
+  /// to run its own `BoxFit.scaleDown` branch, which is exactly how it kept
+  /// missing whatever the rail had just learned.
+  List<PlateWords> _wordsIn(BuildContext context) {
+    final style = TextStyle(
+      fontSize: _fontSize,
+      fontWeight: _fontWeight,
+      height: SectionBandZone.lineHeight,
+      color: timelineTextOnColor(_fill),
     );
+    final (:process, :revise) = layerMarkChipText(mark);
+    return [
+      for (final text in [process, revise])
+        if (text.isNotEmpty)
+          plateWordsIn(context, text: text, axis: axis, style: style),
+    ];
+  }
+
+  @override
+  RenderLabelPlate createRenderObject(BuildContext context) =>
+      RenderLabelPlate(
+        fill: _fill,
+        words: _wordsIn(context),
+        axis: axis,
+        textDirection: Directionality.maybeOf(context),
+      );
+
+  @override
+  void updateRenderObject(BuildContext context, RenderLabelPlate renderObject) {
+    renderObject
+      ..fill = _fill
+      ..words = _wordsIn(context)
+      ..axis = axis
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -1404,15 +1475,6 @@ class LayerMarkPlates extends StatelessWidget {
   );
 }
 
-/// A6 (2026-08-17): the circle became the label PLATE — the full slot,
-/// edge to edge (「패딩 절대 금지」), square corners, with the colour NAME
-/// standing upright inside it (「가로쓰기 세로표시」). The click logic above
-/// is untouched; only this face changed.
-/// 🚨★★★ONE PLATE, TWO LABELS. The colour label and the take label are the
-/// same face — 유저 2026-08-27: 「색 라벨이랑 **같은 디자인**으로」 — so this
-/// takes the columns to write and the fill to write them on rather than
-/// knowing what a mark is. A second widget that merely looked the same
-/// would be a copy of a face that is deliberately identical.
 /// 한 칸의 글자를 그 레일이 읽는 방향으로 세운다.
 ///
 /// 🚨★★★ONE PLACE decides this. The colour plate and the take chip sit side
@@ -1425,168 +1487,54 @@ class LayerMarkPlates extends StatelessWidget {
 /// The caller brings its own [style]: the plate takes its ink from the block
 /// colour and the take chip from the layer name, and that is a real
 /// difference — the direction is not.
-Widget layerPlateGlyphs({
+PlateWords plateWordsIn(
+  BuildContext context, {
   required String text,
   required Axis axis,
   required TextStyle style,
-}) => axis == Axis.horizontal
-    ? VerticalWritingText(
-        text: text,
-        latinForm: VerticalLatinForm.upright,
-        lineHeight: SectionBandZone.lineHeight,
-        // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks
-        // rather than ellipsising. 시아게 is three glyphs where the rest are
-        // two, and this is what lets it sit in the same plate.
-        overflow: VerticalTextOverflow.pack,
-        minFontSize: 4,
-        style: style,
-      )
-    // 🚨THE SAME LAW ACROSS THE PLATE (text-scale-sheet-plates, 유저
-    // 2026-09-25: 「판은 그대로, 글자를 판에 맞춰 줄인다(레일과 같은 법)」):
-    // the plate keeps its 14 and the words shrink into it — evenly, and only
-    // past it — as the rail's `pack` above shrinks them down the column. At
-    // 2× the take's T1 stood 18 tall on the sheet's plate and was cut top
-    // and bottom.
-    : FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          text,
-          maxLines: 1,
-          // 🚨★★★THE GLYPH CARRIES NO LEADING OF ITS OWN — on the sheet as on
-          // the rail. 유저 2026-09-17 (F-160): 「x시트의 색 라벨, LO만 글자가
-          // 아래로 치우쳐져있고 용지는 살짝 위로 … 타임라인이랑 다른거있나?
-          // 다른거있으면 법 통일하고 제대로 중앙에오도록」.
-          //
-          // There was one difference, and it was this line. The rail's painter
-          // lays every glyph at `height: 1.0` and lets the CELL be the leading
-          // ([paintVerticalText]); the sheet kept the caller's 1.15. A line box
-          // that tall seats its ink by each FONT's ascent and descent, and a
-          // Korean label is two fonts — BIZ UDPGothic draws `LO`, Nanum Gothic
-          // draws 용지 — so the two sat at different heights in one plate.
-          //
-          // 🧪Measured with the app's faces loaded (the test binding's own box
-          // font hides this completely): on the sheet `LO` sat 1.26px below
-          // the Hangul labels on a 14px plate; on the rail, 0.25px. At 1.0 the
-          // sheet reads 0.25px as well. The take text lays its glyphs through
-          // here too, so it is the same law for both plates.
-          style: style.copyWith(height: 1.0),
-        ),
-      );
-
-class _LabelPlate extends StatelessWidget {
-  const _LabelPlate({
-    required this.fill,
-    required this.columns,
-    required this.axis,
-  });
-
-  final Color fill;
-
-  /// What each vertical column writes, LEFT to RIGHT. Empty strings draw
-  /// nothing and still hold the slot.
-  final List<String> columns;
-
-  final Axis axis;
-
-  /// The same type the section band's tag wears, one column over.
-  /// The same type the section band's tag wears, one column over.
-  static const double _fontSize = 9;
-
-  /// 🔒**w400 으로 확정**(유저 2026-08-28: 「일단 정했어. 얇은거. 400으로
-  /// 가고싶어」). 고르는 동안은 설정이었다.
-  ///
-  /// 🧪실기 실측(유저): **100~500 은 얇고, 600~800 은 굵고, 900 은 엄청
-  /// 굵다.** ⚠️번들 폰트에 Regular 와 Bold 뿐이니 두 단계일 것이라던 내
-  /// 예측은 **틀렸다** — 900 에서 Skia 가 합성 볼드를 얹는다. 파일 목록만
-  /// 보고 렌더러의 답을 예측한 대가다.
-  static const FontWeight _fontWeight = FontWeight.w400;
-
-  @override
-  Widget build(BuildContext context) {
-    // ⑳ still holds: every plate is FILLED, `none` included — it is the
-    // paper colour rather than a hole in the rail. SizedBox.expand
-    // fills the row's height on a horizontal rail and the header's width
-    // on the sheet's vertical one; the slot provides the other extent.
-    //
-    // ⛔The glyphs are drawn STRAIGHT, with whatever anti-aliasing Skia
-    // gives them. A `ColorFiltered` alpha step used to sit here — the
-    // 「쌩2치화」 round — and why it went is written on
-    // [AppAccentSettings], beside the weight that used to be a setting too.
-    return SizedBox.expand(
-      child: ColoredBox(color: fill, child: _label(fill)),
-    );
-  }
-
-  /// The colour name, inked by the frame blocks' own luminance law
-  /// ([timelineTextOnColor], #1109). Two plates stay bare: the sheet's
-  /// vertical header (the slot is 14px TALL there — no column to stack
-  /// glyphs in) and `none` (the paper colour has no name to announce; the
-  /// plate itself keeps the tap target discoverable).
-  /// 🚨★★★TWO COLUMNS, THE STAGE ON THE RIGHT. 유저 2026-08-27: 「세로로 LO가
-  /// **오른쪽**에 있고 왼쪽에 세로로 작감 이렇게 있는게 맞을거같은데. **LO가
-  /// 오른쪽인건 일본 세로쓰기가 오른쪽에서 왼쪽으로 읽으니까**」.
-  ///
-  /// ⛔Not stacked as two rows (LO above, 작감 below): 「띠가 지금 가로로
-  /// 얇은거를 살리고싶어서」 — the band is [timelineLayerRowHeight] and stays
-  /// that height. Two columns keep the plate as short as one.
-  ///
-  /// The ink is the frame blocks' own — 유저: 「프레임이름/코마숫자/색라벨은
-  /// 다 같은 색상의 바탕 위에 올라가는 텍스트니까 **셋 다 같은 로직**」.
-  Widget? _label(Color fill) {
-    final shown = columns.where((text) => text.isNotEmpty).toList();
-    if (shown.isEmpty) {
-      return null;
-    }
-    // 🚨★★★ONE LAW, BOTH RAILS. 유저 2026-08-27: 「x시트 **로직적으로 통일**
-    // 하는거 절대잊지말고」 — so the split, the fill and the order are decided
-    // HERE once and the axis is the only thing that differs. The x-sheet used
-    // to run its own `BoxFit.scaleDown` branch, which is exactly how it kept
-    // missing whatever the rail had just learned.
-    //
-    // 🚨★★★EACH COLUMN FILLS ITS OWN AREA, BOTH WAYS. 유저 2026-08-28:
-    // 「2글자로 작감이면 작감 **위 아래에 글자가 남거든**? 이거 그냥 **글자
-    // 늘려서 꽉 채우게** 하면 멋있을거같아 … **옆으로도 자기 영역 내에서 꽉
-    // 채우게** 하고싶어」.
-    //
-    // ⚠️`BoxFit.fill`, not `scaleDown`: the glyphs are STRETCHED to the box
-    // rather than scaled inside it, so two characters and four fill the same
-    // plate. That is also what makes the old 4px overflow impossible —
-    // nothing is sized by its natural extent any more.
-    //
-    // ⛔[Expanded] splits the plate EVENLY, so 공정 and 수정 own half each and
-    // neither pushes the other. With one column it takes the whole plate.
-    return ClipRect(
-      child: Flex(
-        // The rail reads left→right, the sheet top→bottom: 유저 2026-08-27
-        // 「x시트는 가로쓰기 가로표기로 **위에 LO 아래에 작감**」, and on the
-        // rail 「평범하게 **왼쪽에 LO 오른쪽에 작감**」. Same list, laid the
-        // way each surface is read.
-        direction: axis,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final text in shown)
-            Expanded(
-              child: FittedBox(fit: BoxFit.fill, child: _glyphs(text, fill)),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// One column's characters, through the shared decision.
-  Widget _glyphs(String text, Color fill) => layerPlateGlyphs(
-    text: text,
-    axis: axis,
-    style: TextStyle(
-      fontSize: _fontSize,
-      // ⚠️번들 폰트에는 Regular 와 Bold 만 있다 — 100~900 중 어느 값을 줘도
-      // Flutter 는 그 둘 중 가까운 쪽으로 떨어뜨린다.
-      fontWeight: _fontWeight,
-      height: SectionBandZone.lineHeight,
-      color: timelineTextOnColor(fill),
+}) => switch (axis) {
+  Axis.horizontal => StoodPlateWords(
+    VerticalWritingText(
+      text: text,
+      latinForm: VerticalLatinForm.upright,
+      lineHeight: SectionBandZone.lineHeight,
+      // 「길면 글자 축소 허용」 — a long abbreviation packs and shrinks
+      // rather than ellipsising. 시아게 is three glyphs where the rest are
+      // two, and this is what lets it sit in the same plate.
+      overflow: VerticalTextOverflow.pack,
+      minFontSize: 4,
+      style: style,
     ),
-  );
-}
+    context,
+  ),
+  // 🚨THE SAME LAW ACROSS THE PLATE (text-scale-sheet-plates, 유저
+  // 2026-09-25: 「판은 그대로, 글자를 판에 맞춰 줄인다(레일과 같은 법)」):
+  // the plate keeps its 14 and the words shrink into it — evenly, and only
+  // past it — as the rail's `pack` above shrinks them down the column. At
+  // 2× the take's T1 stood 18 tall on the sheet's plate and was cut top
+  // and bottom.
+  Axis.vertical => LyingPlateWords(
+    text,
+    // 🚨★★★THE GLYPH CARRIES NO LEADING OF ITS OWN — on the sheet as on
+    // the rail. 유저 2026-09-17 (F-160): 「x시트의 색 라벨, LO만 글자가
+    // 아래로 치우쳐져있고 용지는 살짝 위로 … 타임라인이랑 다른거있나?
+    // 다른거있으면 법 통일하고 제대로 중앙에오도록」.
+    //
+    // There was one difference, and it was this line. The rail's painter
+    // lays every glyph at `height: 1.0` and lets the CELL be the leading
+    // ([paintVerticalText]); the sheet kept the caller's 1.15. A line box
+    // that tall seats its ink by each FONT's ascent and descent, and a
+    // Korean label is two fonts — BIZ UDPGothic draws `LO`, Nanum Gothic
+    // draws 용지 — so the two sat at different heights in one plate.
+    //
+    // 🧪Measured with the app's faces loaded (the test binding's own box
+    // font hides this completely): on the sheet `LO` sat 1.26px below
+    // the Hangul labels on a 14px plate; on the rail, 0.25px. At 1.0 the
+    // sheet reads 0.25px as well. The take text lays its glyphs through
+    // here too, so it is the same law for both plates.
+    textLineTypeIn(context, style.copyWith(height: 1.0)),
+  ),
+};
 
 /// 🚨★★★ 유저 #1 (2026-08-14): 「액티브 레이어가 아닌 다른 레이어의 버튼
 /// 누르면 작동안함 … 레이어에 있는 **모든 버튼이나 편집이** 그럼」.
@@ -1675,37 +1623,52 @@ class RailSwipeColumnPointer extends DragVerbClaim {
 /// 🚨유저 2026-08-27: 「테이크라벨은 **배경 삭제**해. 그러고 글자만 심플하게
 /// **레이어이름처럼 디자인 통일**해서 흰색계열」.
 ///
-/// ⛔So it does NOT reuse [_LabelPlate]: a plate is a filled slot, and this
+/// ⛔So it does NOT reuse [LayerMarkPlate]: a plate is a filled slot, and this
 /// is writing on the rail. What it reuses instead is the thing it was told
 /// to match — [layerRowNameStyle], the very style the layer's name is set
 /// in, so the two stay one decision. A copied `TextStyle` here would be the
 /// second place to edit the day that style changes.
-class LayerTakeText extends StatelessWidget {
+///
+/// ★ONE BOX ([RenderTakeText]): the take sets, places and says its word
+/// itself. ↩️It was a clip around a centring box around the word's own box,
+/// built by a widget of its own — four elements on every rail row, paid on
+/// every panel reopen (card frame-panels-build-in-one-frame, 2026-10-25).
+class LayerTakeText extends LeafRenderObjectWidget {
   const LayerTakeText({super.key, required this.mark, required this.axis});
 
   final LayerMark mark;
   final Axis axis;
 
-  @override
-  Widget build(BuildContext context) {
-    final style = layerRowNameStyle(context).copyWith(
+  /// ⛔NOT stretched. 유저 2026-08-28: 「테이크 글자는 이전처럼 flex하지말고
+  /// **그냥 평범하게** 하자」 — the colour plate fills its slot because the
+  /// fill IS the label there; T1 is just a number and reads better at its
+  /// own size, in the middle of its slot.
+  ///
+  /// ⚠️The writing direction still comes from [plateWordsIn]: standing the
+  /// glyphs up on the rail and laying them across on the sheet is the
+  /// shared decision, and only the FILL was ever this chip's own choice.
+  PlateWords _wordIn(BuildContext context) => plateWordsIn(
+    context,
+    text: mark.takeText,
+    axis: axis,
+    style: layerRowNameStyle(context).copyWith(
       fontSize: 9,
       fontWeight: FontWeight.bold,
       height: SectionBandZone.lineHeight,
-    );
-    return ClipRect(
-      // ⛔NOT stretched. 유저 2026-08-28: 「테이크 글자는 이전처럼 flex하지말고
-      // **그냥 평범하게** 하자」 — the colour plate fills its slot because the
-      // fill IS the label there; T1 is just a number and reads better at its
-      // own size.
-      //
-      // ⚠️The writing direction still comes from [layerPlateGlyphs]: standing
-      // the glyphs up on the rail and laying them across on the sheet is the
-      // shared decision, and only the FILL was ever this chip's own choice.
-      child: Center(
-        child: layerPlateGlyphs(text: mark.takeText, axis: axis, style: style),
-      ),
-    );
+    ),
+  );
+
+  @override
+  RenderTakeText createRenderObject(BuildContext context) => RenderTakeText(
+    word: _wordIn(context),
+    textDirection: Directionality.maybeOf(context),
+  );
+
+  @override
+  void updateRenderObject(BuildContext context, RenderTakeText renderObject) {
+    renderObject
+      ..word = _wordIn(context)
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 

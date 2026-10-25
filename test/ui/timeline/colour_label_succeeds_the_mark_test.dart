@@ -437,7 +437,8 @@ void _oneDecidesTheWritingDirection() {
       // ⚠️축으로 **갈라지는** 곳만 센다. 섹션 밴드의 ACTION·SE·CAM 은 축과
       // 무관하게 늘 서 있으므로 같은 결정이 아니다 — 그것까지 세면 래칫이
       // 남의 기능을 붙잡고 「사본이다」라고 말한다.
-      if (!source[i].contains('axis == Axis.')) {
+      if (!source[i].contains('axis == Axis.') &&
+          !source[i].contains('switch (axis)')) {
         continue;
       }
       final window = source.skip(i).take(9).join(' ');
@@ -450,7 +451,7 @@ void _oneDecidesTheWritingDirection() {
       hasLength(1),
       reason:
           '⛔세로쓰기를 두 곳에서 만들면 그게 사본이다. 공용 결정은 '
-          '`layerPlateGlyphs` — 줄: $builders',
+          '`plateWordsIn` — 줄: $builders',
     );
   });
 }

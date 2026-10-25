@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerMarkPlate, LayerTakeText;
+import 'package:anicel/src/ui/timeline/layer_plate_words.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../../helpers/app_faces.dart';
-import '../../helpers/words_cut_off.dart';
 import '../../helpers/named_finders.dart';
 
 /// 🚨text-scale-sheet-plates (유저 2026-09-25, answering
@@ -58,6 +59,10 @@ void main() {
     return layer.id.value;
   }
 
+  /// [rect], in [box]'s own space, where the screen shows it.
+  Rect onScreen(RenderBox box, Rect rect) =>
+      MatrixUtils.transformRect(box.getTransformTo(null), rect);
+
   for (final scale in [1.0, 1.5, 2.0]) {
     testWidgets('at $scale× the take\'s words stand inside the sheet\'s '
         'plate, uncut — shrunk only past it', (tester) async {
@@ -69,21 +74,20 @@ void main() {
         matching: find.named('xsheet-layer-take-$layerId'),
       );
       expect(plate, findsOneWidget, reason: 'LIVENESS — the sheet shows it');
-      final take = find.descendant(of: plate, matching: find.text('T1'));
-      expect(take, findsOneWidget, reason: 'LIVENESS — the take is written');
-
-      expect(wordsCutOff(plate), isEmpty);
-      expect(wordsCutAcross(plate), isEmpty);
+      final take = tester.renderObject<RenderTakeText>(
+        find.descendant(of: plate, matching: find.byType(LayerTakeText)),
+      );
+      expect(take.word.text, 'T1', reason: 'LIVENESS — the take is written');
 
       final room = tester.getRect(plate);
-      final written = tester.getRect(take);
+      final written = onScreen(take, take.wordRect);
       expect(written.top, greaterThanOrEqualTo(room.top - 0.5));
       expect(written.bottom, lessThanOrEqualTo(room.bottom + 0.5));
       expect(written.left, greaterThanOrEqualTo(room.left - 0.5));
       expect(written.right, lessThanOrEqualTo(room.right + 0.5));
 
       // Shrunk only past the plate: at 1× the words are their own size.
-      final own = tester.renderObject<RenderParagraph>(take).size;
+      final own = take.word.natural;
       final shown = written.height / own.height;
       if (scale == 1.0) {
         expect(shown, closeTo(1, 0.001), reason: '1× fits — nothing shrinks');
@@ -102,14 +106,14 @@ void main() {
         matching: find.named('xsheet-layer-mark-$layerId'),
       );
       expect(plate, findsOneWidget, reason: 'LIVENESS — the sheet shows it');
-      final words = find.descendant(of: plate, matching: find.byType(Text));
-      expect(words, findsWidgets, reason: 'LIVENESS — the stage is written');
+      final box = tester.renderObject<RenderLabelPlate>(
+        find.descendant(of: plate, matching: find.byType(LayerMarkPlate)),
+      );
+      expect(box.words, isNotEmpty, reason: 'LIVENESS — the stage is written');
 
-      expect(wordsCutOff(plate), isEmpty);
-      expect(wordsCutAcross(plate), isEmpty);
       final room = tester.getRect(plate);
-      for (final word in words.evaluate()) {
-        final written = tester.getRect(find.byWidget(word.widget));
+      for (final (index, _) in box.words.indexed) {
+        final written = onScreen(box, box.wordRectOf(index));
         expect(written.top, greaterThanOrEqualTo(room.top - 0.5));
         expect(written.bottom, lessThanOrEqualTo(room.bottom + 0.5));
       }
