@@ -718,11 +718,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
         direction: axis,
         children: [
           // The letters as long as they are: the ground past them is the
-          // name's too, a double click there the label's.
+          // name's too, a double click there the label's. ↩️A Flex of one
+          // Flexible stood here, which lays its one child exactly as this
+          // does — an element more on every row, on every panel reopen
+          // (card frame-panels-build-in-one-frame, 2026-10-25).
           Expanded(
-            child: Flex(
-              direction: axis,
-              children: [Flexible(child: _nameText(context))],
+            child: Align(
+              alignment: centerStartAlong(axis),
+              child: _nameText(context),
             ),
           ),
           ?_linkBadge(colorScheme),

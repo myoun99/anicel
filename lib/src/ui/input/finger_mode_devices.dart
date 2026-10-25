@@ -22,7 +22,12 @@ import '../../models/app_input_settings.dart';
 /// mounted anew (finger-mode-reaches-canvas-handles). Listening here
 /// rebuilds the detectors and nothing under them — [builder] hands each
 /// one the child it already had.
-class FingerModeDevices extends StatelessWidget {
+///
+/// ★It listens ITSELF. ↩️It built a `ValueListenableBuilder` that did the
+/// listening — two elements where one does, under every row's drag and
+/// every cell's edit pan, paid on every panel reopen (card
+/// frame-panels-build-in-one-frame, 2026-10-25).
+class FingerModeDevices extends StatefulWidget {
   /// The timeline's edit pans ([AppInput.timelineEditPanDevices]).
   const FingerModeDevices.timelineEditPan({super.key, required this.builder})
     : _devices = _timelineEditPan;
@@ -44,9 +49,25 @@ class FingerModeDevices extends StatelessWidget {
   static Set<PointerDeviceKind>? _tool() => AppInput.toolPointerDevices;
 
   @override
+  State<FingerModeDevices> createState() => _FingerModeDevicesState();
+}
+
+class _FingerModeDevicesState extends State<FingerModeDevices> {
+  @override
+  void initState() {
+    super.initState();
+    AppInput.settings.addListener(_moved);
+  }
+
+  @override
+  void dispose() {
+    AppInput.settings.removeListener(_moved);
+    super.dispose();
+  }
+
+  void _moved() => setState(() {});
+
+  @override
   Widget build(BuildContext context) =>
-      ValueListenableBuilder<AppInputSettings>(
-        valueListenable: AppInput.settings,
-        builder: (context, _, _) => builder(context, _devices()),
-      );
+      widget.builder(context, widget._devices());
 }

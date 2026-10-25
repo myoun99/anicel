@@ -75,21 +75,25 @@ Color railSelectedRowColor(ColorScheme colorScheme) =>
 /// painted by [SectionBandZone] overlaying the whole section run, so
 /// S1·S2-style neighbours read as ONE vertical sub-zone exactly like the
 /// old gutter bracket, just inside the rows.
-class LayerSectionBandCell extends StatelessWidget {
-  const LayerSectionBandCell({super.key, this.axis = Axis.horizontal});
+///
+/// ★It IS the box — the slot along [axis], all the room the other way —
+/// rather than a widget building a box around a box that fills: one
+/// element where three stood, in every row of every rail, paid on every
+/// panel reopen (card frame-panels-build-in-one-frame, 2026-10-25).
+class LayerSectionBandCell extends SizedBox {
+  const LayerSectionBandCell({super.key, this.axis = Axis.horizontal})
+    : super(
+        width: axis == Axis.horizontal
+            ? layerSectionLabelSlotWidth
+            : double.infinity,
+        height: axis == Axis.horizontal
+            ? double.infinity
+            : layerSectionLabelSlotWidth,
+      );
 
   /// The rail's own direction — the slot's extent is measured along it, and
   /// the cell fills the other way (R10 R6).
   final Axis axis;
-
-  @override
-  Widget build(BuildContext context) {
-    return alongBox(
-      axis,
-      layerSectionLabelSlotWidth,
-      child: const SizedBox.expand(),
-    );
-  }
 }
 
 /// One section's vertical zone over the rows' reserved band slots — the
