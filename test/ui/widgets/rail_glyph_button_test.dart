@@ -785,36 +785,39 @@ void main() {
   // The mark's and the take's plates (I-57 ①): the plate draws itself, and
   // the ONE render object around it is the button a [RailGlyphButton] is.
   group('a pressed PLATE is the same press', () {
-    Widget plate({required VoidCallback onRow, required VoidCallback onPick}) =>
-        SizedBox(
-          width: 300,
-          child: GestureDetector(
-            key: const ValueKey<String>('row'),
-            behavior: HitTestBehavior.opaque,
-            onTap: onRow,
-            child: Row(
-              children: [
-                const SizedBox(width: 100, height: 40),
-                RailFlyoutTrigger(
-                  name: 'plate',
-                  tooltip: 'Plate tip',
-                  semanticLabel: 'Plate',
-                  entriesBuilder: () => [
-                    PanelFlyoutItem(
-                      keyValue: 'plate-pick',
-                      label: 'Pick',
-                      onSelected: onPick,
-                    ),
-                  ],
-                  child: const ColoredBox(
-                    color: Colors.white,
-                    child: SizedBox(width: 30, height: 20),
-                  ),
+    Widget plate({
+      required VoidCallback onRow,
+      required VoidCallback onPick,
+      String pick = 'plate-pick',
+    }) => SizedBox(
+      width: 300,
+      child: GestureDetector(
+        key: const ValueKey<String>('row'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onRow,
+        child: Row(
+          children: [
+            const SizedBox(width: 100, height: 40),
+            RailFlyoutTrigger(
+              name: 'plate',
+              tooltip: 'Plate tip',
+              semanticLabel: 'Plate',
+              entriesBuilder: () => [
+                PanelFlyoutItem(
+                  keyValue: pick,
+                  label: 'Pick',
+                  onSelected: onPick,
                 ),
               ],
+              child: const ColoredBox(
+                color: Colors.white,
+                child: SizedBox(width: 30, height: 20),
+              ),
             ),
-          ),
-        );
+          ],
+        ),
+      ),
+    );
 
     testWidgets('🚨a tap opens the shared list through the claim — and does '
         'NOT also tap the row around it', (tester) async {
@@ -883,14 +886,31 @@ void main() {
       // The face, which is the claim (2026-10-25) — and the plate's own two
       // (a colour and a box) under it.
       expect(renderObjects, lessThanOrEqualTo(3));
-      final trigger = tester.element(find.byType(RailFlyoutTrigger));
-      final children = <Element>[];
-      trigger.visitChildren(children.add);
       expect(
-        children.single.widget,
-        isA<RailPlateButton>(),
-        reason: 'nothing stands between the trigger and its plate button',
+        tester.element(find.byType(RailFlyoutTrigger)),
+        isA<RenderObjectElement>().having(
+          (trigger) => trigger.renderObject,
+          'its box',
+          isA<RenderRailPlateFace>(),
+        ),
+        reason: 'the trigger is its plate button — no element stands over it',
       );
+    });
+
+    testWidgets('a host that hands the door a new list: a press opens the '
+        'new one, as a fresh door would', (tester) async {
+      var picks = 0;
+      await pump(tester, plate(onRow: () {}, onPick: () {}));
+      await pump(
+        tester,
+        plate(onRow: () {}, onPick: () => picks += 1, pick: 'plate-new'),
+      );
+      await tester.tap(byName('plate'));
+      await tester.pumpAndSettle();
+      expect(byKey('plate-pick'), findsNothing, reason: 'not the old list');
+      await tester.tap(byKey('plate-new'));
+      await tester.pumpAndSettle();
+      expect(picks, 1, reason: 'the new list, with the new press');
     });
   });
 

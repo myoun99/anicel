@@ -1425,42 +1425,27 @@ class PanelFlyoutTrigger extends StatelessWidget {
 ///
 /// A CLEAR plate — the blend chip, a [PanelFlyoutChip] — showed its hover
 /// ink, so it hands the face the ink's shape ([hoverShape]).
-class RailFlyoutTrigger extends StatelessWidget {
+///
+/// ★It IS the plate button, opening its list from where it stands.
+/// ↩️It was a widget that built one — an element more on every mark, take
+/// and blend chip of every rail row, paid on every panel reopen (card
+/// frame-panels-build-in-one-frame, 2026-10-25).
+class RailFlyoutTrigger extends RailPlateButton {
   const RailFlyoutTrigger({
     super.key,
-    required this.name,
-    required this.tooltip,
+    required super.name,
+    required super.tooltip,
     required this.entriesBuilder,
-    required this.child,
-    this.semanticLabel,
-    this.hoverShape,
-  });
+    required super.child,
+    super.semanticLabel,
+    super.hoverShape,
+  }) : super(onPressed: null);
 
-  /// What a finder calls the [RailPlateButton], the box the user sees and
-  /// presses — a name, as a [RailGlyphButton.name] is and for its
-  /// reason.
-  final String name;
-  final String tooltip;
   final List<PanelFlyoutEntry> Function() entriesBuilder;
 
-  /// The plate.
-  final Widget child;
-
-  /// What a screen reader calls it.
-  final String? semanticLabel;
-
-  /// [RailPlateButton.hoverShape].
-  final ShapeBorder? hoverShape;
-
   @override
-  Widget build(BuildContext context) => RailPlateButton(
-    name: name,
-    tooltip: tooltip,
-    onPressed: () => showPanelFlyout(context, entries: entriesBuilder()),
-    semanticLabel: semanticLabel,
-    hoverShape: hoverShape,
-    child: child,
-  );
+  VoidCallback pressIn(BuildContext context) =>
+      () => showPanelFlyout(context, entries: entriesBuilder());
 }
 
 /// A labeled flyout trigger ('Layer', 'Frame', 'Cut'): compact bordered

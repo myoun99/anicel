@@ -717,7 +717,7 @@ class RailPlateButton extends SingleChildRenderObjectWidget
 
   /// What a press does — the pointer's, through the claim, and a screen
   /// reader's activation, which the claim never hears. Null is a dead
-  /// plate.
+  /// plate, unless the plate answers a press where it stands ([pressIn]).
   final VoidCallback? onPressed;
 
   /// What a screen reader calls it.
@@ -749,9 +749,15 @@ class RailPlateButton extends SingleChildRenderObjectWidget
       ..wearPlace(context);
   }
 
+  /// What a press does where this plate stands: [onPressed], for a plate
+  /// whose press needs no place — a list's door opens its list from here
+  /// ([RailFlyoutTrigger]).
+  @protected
+  VoidCallback? pressIn(BuildContext context) => onPressed;
+
   RailPlateSpec _specIn(BuildContext context) => RailPlateSpec(
     tooltip: tooltip,
-    onPressed: onPressed,
+    onPressed: pressIn(context),
     semanticLabel: semanticLabel,
     textDirection: Directionality.of(context),
     triggerMode: AppTooltipLook.triggerModeIn(context),

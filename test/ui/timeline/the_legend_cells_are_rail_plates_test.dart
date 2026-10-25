@@ -64,10 +64,10 @@ Widget _legend({
 );
 
 /// The plate face a legend cell keyed [key] is — the keyed widget itself
-/// where the plate button is the cell.
+/// where the plate button is the cell (a list's door IS one — a subclass).
 Finder _faceOf(String key) => find.descendant(
   of: find.byKey(ValueKey<String>(key)),
-  matching: find.byType(RailPlateButton),
+  matching: find.byWidgetPredicate((w) => w is RailPlateButton),
   matchRoot: true,
 );
 
@@ -93,7 +93,7 @@ void main() {
     ]) {
       expect(_faceOf(cell), findsOneWidget, reason: '$cell is a plate');
       expect(
-        tester.widget<RailPlateButton>(_faceOf(cell)).onPressed,
+        tester.renderObject<RenderRailPlateFace>(_faceOf(cell)).onPress,
         isNotNull,
         reason: '$cell presses',
       );
@@ -124,7 +124,10 @@ void main() {
     await tester.pumpWidget(_legend());
 
     final eye = tester.widget<RailPlateButton>(_faceOf('legend-eye'));
-    expect(eye.onPressed, isNull);
+    expect(
+      tester.renderObject<RenderRailPlateFace>(_faceOf('legend-eye')).onPress,
+      isNull,
+    );
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('legend-eye')),
