@@ -40,19 +40,23 @@ PaperEditing paperEditingKit(EditorSessionManager session) {
   );
 }
 
-/// The shell's key road as a test lays it: the editor's bindings, and the
+/// The shell's key road as a test lays it: the editor's bindings, the
 /// actions that came down it, in order — an undo and a redo taken as the
-/// shell takes them, on [session].
-({EditorKeyRoad road, List<String> invoked}) recordingKeyRoad(
-  EditorSessionManager session,
-) {
+/// shell takes them, on [session] — and every key the held keys were asked
+/// about.
+({EditorKeyRoad road, List<String> invoked, List<KeyEvent> held})
+recordingKeyRoad(EditorSessionManager session) {
   final bindings = EditorShortcutBindings();
   addTearDown(bindings.dispose);
   final invoked = <String>[];
+  final held = <KeyEvent>[];
   return (
     road: (
       bindings: bindings,
-      onHoldKey: (_) => KeyEventResult.ignored,
+      onHoldKey: (event) {
+        held.add(event);
+        return KeyEventResult.ignored;
+      },
       invoke: (actionId) {
         invoked.add(actionId);
         switch (actionId) {
@@ -64,5 +68,6 @@ PaperEditing paperEditingKit(EditorSessionManager session) {
       },
     ),
     invoked: invoked,
+    held: held,
   );
 }

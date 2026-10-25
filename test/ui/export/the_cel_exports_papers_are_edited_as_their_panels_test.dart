@@ -285,7 +285,7 @@ void main() {
   ) async {
     final session = film();
     addTearDown(session.dispose);
-    final (:road, :invoked) = recordingKeyRoad(session);
+    final (:road, :invoked, held: _) = recordingKeyRoad(session);
     await pumpCels(
       tester,
       session,
@@ -314,7 +314,7 @@ void main() {
       'editor\'s own panels stands behind it', (tester) async {
     final session = film();
     addTearDown(session.dispose);
-    final (:road, :invoked) = recordingKeyRoad(session);
+    final (:road, :invoked, held: _) = recordingKeyRoad(session);
     await pumpCels(
       tester,
       session,
@@ -382,6 +382,21 @@ void main() {
       reason: 'premise: the film is the one it was',
     );
     expect(tester.exportPreviewDocument!.look, isNot(before));
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🚨the cut the window is built around is read again when the '
+      'film changes under it — the Image tab names its file for the cut as '
+      'it is now', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session);
+    await press(tester, 'export-tab-image');
+    expect(tester.exportPreviewName, startsWith('301'), reason: 'premise');
+
+    session.cutVerbs.renameCuts({cutId: '302'});
+    await tester.pump();
+    expect(tester.exportPreviewName, startsWith('302'));
     session.playbackRig.prerenderScheduler.cancel();
   });
 

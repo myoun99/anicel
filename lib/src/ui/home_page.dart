@@ -407,6 +407,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _showPanelsToShortcuts() =>
       _shortcuts.setPanelActions(panelActionsOf(_panelsMenu.entries));
 
+  /// A language switch builds the shell again: the words read as it is
+  /// built — a dock's tab names among them — are the new language's.
+  ///
+  /// ↩️The key layer built it again: it made the whole editor anew for
+  /// every change of the bindings, and a switch renames the panels' rows
+  /// ([_showPanelsToShortcuts]) — so did a brush added to the library. The
+  /// layer is one widget the export window lays too, and hands its child
+  /// through (I-127).
+  void _relabel() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   /// The top strip as it is on screen — and as a KEY presses it: a menu
   /// row's action is pressed among this same strip's rows
   /// ([EditorTopStrip.menuRows]), so a key and its row cannot be handed
@@ -498,6 +512,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     unawaited(_shortcuts.restore());
     _panelsMenu.addListener(_showPanelsToShortcuts);
     AppText.settings.addListener(_showPanelsToShortcuts);
+    AppText.settings.addListener(_relabel);
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
       _paletteService?.loadOrDefaults().then((palette) {
@@ -944,6 +959,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
     AppText.settings.removeListener(_showPanelsToShortcuts);
+    AppText.settings.removeListener(_relabel);
     _brushKeys.dispose();
     _shortcuts.dispose();
     _flipHud.dispose();

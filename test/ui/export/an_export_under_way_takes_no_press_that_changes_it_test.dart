@@ -88,13 +88,15 @@ typedef _Taker = ({Element holder, String key, String also, String said});
 
 /// The export window under test: its state, how many times it has handed
 /// its files over, the answer that lets the hand-over held go, what it
-/// edits the papers with and the editor's actions its keys reached.
+/// edits the papers with, the editor's actions its keys reached and the
+/// keys the editor's held keys were asked about.
 typedef _Window = ({
   ExportDialogState state,
   int Function() handedOver,
   void Function() release,
   PaperEditing editing,
   List<String> invoked,
+  List<KeyEvent> held,
 });
 
 /// 🚨WHILE AN EXPORT IS UNDER WAY, THE WINDOW TAKES NO PRESS BUT ONE THAT
@@ -547,7 +549,7 @@ void main() {
     final s = session();
     addTearDown(s.dispose);
     final editing = paperEditingKit(s);
-    final (:road, :invoked) = recordingKeyRoad(s);
+    final (:road, :invoked, held: keysHeld) = recordingKeyRoad(s);
     await tester.binding.setSurfaceSize(const Size(2000, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -571,6 +573,7 @@ void main() {
       release: () => held.complete(FolderGrant.granted(path: temp.path)),
       editing: editing,
       invoked: invoked,
+      held: keysHeld,
     );
   }
 
@@ -739,6 +742,7 @@ void main() {
     expect(find.byType(TimesheetInkLayer), findsNothing);
     await pressKeys();
     expect(window.invoked, isEmpty);
+    expect(window.held, isEmpty, reason: 'no key is held to a tool either');
 
     await tester.runAsync(() async {
       window.release();
@@ -748,5 +752,6 @@ void main() {
     expect(find.byType(TimesheetInkLayer), findsOneWidget);
     await pressKeys();
     expect(window.invoked, [EditorActionIds.toolEraser, EditorActionIds.undo]);
+    expect(window.held, isNotEmpty);
   });
 }
