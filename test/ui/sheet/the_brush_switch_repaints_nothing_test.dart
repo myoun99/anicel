@@ -1,3 +1,6 @@
+@Tags(['impeller'])
+library;
+
 import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -5,6 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/sync_image_upload.dart' show pictureOfUploads;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -73,6 +77,20 @@ import '../../helpers/settle_async.dart';
 /// stroke has set rendering again, asynchronously. The pictures stay live
 /// until the store owes none, so the frame the conte is switched off in is
 /// its live one: nothing of a print from before the stroke ever shows.
+///
+/// ⚠️ON THE IMPELLER TESTER (`flutter test --enable-impeller`, the
+/// `impeller` tag's batch), the engine every build ships but old Android's
+/// (renderer-backend-per-platform); on Skia the handwriting's pin skips
+/// (`pictureOfUploads`, the door's word for the engine). Below 100% a sheet's
+/// window draws each tile from its picture's chain with the display's
+/// filter (one-picture-per-frame ②-5b-2), and the envelope's fits at
+/// 99.98% on a 1.25 screen — bilinear. 🔬Measured 2026-10-25: the print and
+/// the live window draw the same picture through the same matrix with the
+/// same paint (each logged), and the tester's Skia composes the two apart
+/// by 1/255 at a pixel over the photo and at several over the bare paper;
+/// on Impeller they are 0 apart, all 13 here. ↩️It ran on Skia until then:
+/// the tiles were drawn nearest between 50% and 100%, whole texels that
+/// round alike whatever composes them.
 void main() {
   const screen = ValueKey<String>('screen');
   late EditorSessionManager session;
@@ -402,7 +420,7 @@ void main() {
           reason: 'device pixels the brush switch changed, first at '
               '${on.unlike(off)}',
         );
-      });
+      }, skip: !pictureOfUploads);
     }
 
     testWidgets('${sheet.sheet}: with the brush on, a photo shows on its '
