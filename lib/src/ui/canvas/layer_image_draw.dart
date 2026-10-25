@@ -32,7 +32,7 @@ import '../../models/layer_effect.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/import/cel_picture.dart'
     show isPastTheSide, pictureSideLimitIfMeasured;
-import 'display_resample.dart' show rectOutwardOnGrid;
+import 'display_resample.dart' show levelsReadAt, rectOutwardOnGrid;
 import 'image_pieces.dart';
 import 'raster_picture.dart';
 import 'subtree_image_composite.dart';
@@ -351,17 +351,12 @@ ui.Rect _seenBy(ui.Canvas canvas, double rasterScale) {
 }
 
 /// How many levels of a picture's mip chain a draw onto [canvas] reads —
-/// [texels] texels a canvas pixel, at [rasterScale]: none where it is not
-/// reduced, and otherwise down to the one past the level its reduction
-/// lands at, the two a sampler blends between.
+/// [texels] texels a canvas pixel, at [rasterScale] ([levelsReadAt]).
 int _levelsReadBy(ui.Canvas canvas, double rasterScale, double texels) {
   final m = canvas.getTransform();
-  final scale =
-      math.sqrt((m[0] * m[5] - m[1] * m[4]).abs()) * rasterScale / texels;
-  if (scale >= 1) {
-    return 0;
-  }
-  return (math.log(1 / scale) / math.ln2).floor() + 1;
+  return levelsReadAt(
+    math.sqrt((m[0] * m[5] - m[1] * m[4]).abs()) * rasterScale / texels,
+  );
 }
 
 /// How many texels a canvas pixel is in [pieces] — one scale for them all,

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -126,6 +127,45 @@ ui.Rect rectOutwardOnGrid(
     down(bounds.top, origin.dy),
     up(bounds.right, origin.dx),
     up(bounds.bottom, origin.dy),
+  );
+}
+
+/// How many levels of a picture's mip chain a draw at [displayScale] —
+/// device pixels per canvas pixel ([displayScaleOf]) — reads: none where it
+/// is not reduced, and otherwise down to the one past the level its
+/// reduction lands at, the two a sampler blends between.
+///
+/// ⚠️Down to one level at any reduction, `low` included: Impeller on
+/// Vulkan reads a picture's chain under `low` too (GLES does not —
+/// one-picture-per-frame ②-5b-2 착지 줄의 🔬).
+int levelsReadAt(double displayScale) => displayScale >= 1
+    ? 0
+    : (math.log(1 / displayScale) / math.ln2).floor() + 1;
+
+/// [rect] grown by what a display at [displayScale] reads past it — a
+/// texel of the deepest level it reads ([levelsReadAt]) — out to whole
+/// texels of that level ([wholeLevelPixelsOutward]): a picture of the
+/// frame over it holds, at every level the display reads, the texels the
+/// frame's one picture holds there, and a device pixel inside [rect] reads
+/// nothing past it.
+///
+/// 🚨What lets a frame drawn as it stands under a clip show, inside the
+/// clip, what its one picture shows (F-465, 유저 2026-10-25: 「줌 75%에서는
+/// 발생 안하는거같고, 50%에서는 매번」 — a stroke's step at 50% framed in a
+/// grey line for a frame). Cut at the clip, the buffer's edge was a
+/// texel boundary the picture does not have: its pixel half covered over
+/// what lies under the view, and the pixels inside it sampled off a chain
+/// laid on another grid.
+///
+/// ⛔Not grown where the display reads no level (100% and up): nothing
+/// past [rect] is read there, and 🔬a canvas pixel more laid a line of
+/// what lies under the view along a stroke's patch at 150% on the
+/// Impeller tester, where there was none (2026-10-25).
+ui.Rect rectTheDisplayReads(ui.Rect rect, double displayScale) {
+  final levels = levelsReadAt(displayScale);
+  return wholeLevelPixelsOutward(
+    levels == 0 ? rect : rect.inflate((1 << levels).toDouble()),
+    levels,
   );
 }
 

@@ -198,7 +198,16 @@ class _LayerStackPaintPass {
     // walk the full stack into a clip that discards every op). The
     // intersection is empty in both, nothing intersects the screen, and
     // drawing nothing is pixel-identical on it.
-    _visibleCanvasRect = pasteboardRect.intersect(visibleRect);
+    //
+    // 🚨Grown by what the display reads past it ([rectTheDisplayReads]):
+    // the buffer is resampled as the frame's one picture is, so it holds
+    // what the picture holds a texel past the view and lies on the grid of
+    // the levels read. ↩️Cut at the view, a stroke's step drawn as it
+    // stands under its patch's clip framed the patch in a grey line at
+    // 50% and shifted the ink inside it off the picture's chain (F-465).
+    _visibleCanvasRect = pasteboardRect.intersect(
+      rectTheDisplayReads(visibleRect, _displayScale),
+    );
     if (_visibleCanvasRect.isEmpty) {
       canvas.restore();
       return;
@@ -1108,8 +1117,10 @@ class _LayerStackPaintPass {
     }
     // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
     // pair that disagree by a fraction of a pixel would resample the buffer
-    // a second time and undo the point of having it.
-    final rect = wholeLevelPixelsOutward(bounds, 0);
+    // a second time and undo the point of having it. Whole texels of every
+    // level the display reads, too: the buffer's chain halves on the grid
+    // the frame's one picture's does ([rectTheDisplayReads]).
+    final rect = wholeLevelPixelsOutward(bounds, levelsReadAt(_displayScale));
     final width = rect.width.round();
     final height = rect.height.round();
     if (width <= 0 || height <= 0) {

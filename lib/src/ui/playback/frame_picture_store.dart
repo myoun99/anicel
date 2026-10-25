@@ -13,6 +13,32 @@ import 'frame_picture_gpu.dart';
 /// `BlendMode.src` until they land, then gone from [FramePicture.landing].
 typedef LandingPatch = ({ui.Rect rect, ui.Image image});
 
+/// The [from] rect of [image] drawn into the [to] rect of a raster.
+typedef PictureRead = ({ui.Image image, ui.Rect from, ui.Rect to});
+
+/// Each of [reads] — a later one in place of an earlier — recorded for one
+/// raster, under `FilterQuality.medium`: drawn at 1/2^k a side so, the GPU
+/// samples the image's own level k — the engine's halving, the one the
+/// picture's chain was made with — so a patch's levels are the very code
+/// of the levels round it, on any backend (measured on the Surface Pro
+/// 11: the levels it replaced, byte for byte, 2026-10-24). Drawn 1:1 on
+/// whole pixels, it is a copy.
+///
+/// ★ONE recording for every raster made of a picture and its patches: the
+/// store's levels, and a screen's landing patches as they will show
+/// (`FramePictureView`, F-465).
+ui.Picture picturedReads(List<PictureRead> reads) {
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  final paint = ui.Paint()
+    ..filterQuality = ui.FilterQuality.medium
+    ..blendMode = ui.BlendMode.src;
+  for (final (:image, :from, :to) in reads) {
+    canvas.drawImageRect(image, from, to, paint);
+  }
+  return recorder.endRecording();
+}
+
 /// A frame as its compositor gives it to [FramePictureStore.lay]: [draw]
 /// draws it in world coordinates over all of [extent] as the canvas's
 /// display buffer holds it — the paper and every row, and clear wherever
@@ -635,7 +661,7 @@ class FramePictureStore<K extends Object> {
   Future<({ui.Image? image, List<RunSpan> spans})> _run(
     List<({ui.Image image, int level, int x, int y, int count})> sources,
   ) async {
-    final reads = <({ui.Image image, ui.Rect from, ui.Rect to})>[];
+    final reads = <PictureRead>[];
     final spans = <RunSpan>[];
     var at = 0;
     for (final (:image, :level, :x, :y, :count) in sources) {
@@ -661,28 +687,9 @@ class FramePictureStore<K extends Object> {
     return (image: await _readAt(reads, _runWidth, rows), spans: spans);
   }
 
-  /// Each of [reads] — the [from] rect of an image drawn into its [to] rect,
-  /// a later one in place of an earlier — in one [width] x [height] raster,
-  /// under `FilterQuality.medium`: drawn at 1/2^k a side so, the GPU
-  /// samples the image's own level k — the engine's halving, the one the
-  /// picture's chain was made with — so a patch's levels are the very code
-  /// of the levels round it, on any backend (measured on the Surface Pro
-  /// 11: the levels it replaced, byte for byte, 2026-10-24).
-  Future<ui.Image> _readAt(
-    List<({ui.Image image, ui.Rect from, ui.Rect to})> reads,
-    int width,
-    int height,
-  ) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    final paint = ui.Paint()
-      ..filterQuality = ui.FilterQuality.medium
-      ..blendMode = ui.BlendMode.src;
-    for (final (:image, :from, :to) in reads) {
-      canvas.drawImageRect(image, from, to, paint);
-    }
-    return _rendered(recorder.endRecording(), width, height);
-  }
+  /// Each of [reads] in one [width] x [height] raster ([picturedReads]).
+  Future<ui.Image> _readAt(List<PictureRead> reads, int width, int height) =>
+      _rendered(picturedReads(reads), width, height);
 
   /// [recorded] rastered, and let go of — rendered or not.
   Future<ui.Image> _rendered(ui.Picture recorded, int width, int height) async {
@@ -833,7 +840,7 @@ int _yOf(FramePicture picture, LandingPatch landing) =>
 
 /// The reads that lay [image] halved to [width] x [height] into a run from
 /// texel [at] on: one a row, and one more each time a row wraps.
-Iterable<({ui.Image image, ui.Rect from, ui.Rect to})> _rowsOf(
+Iterable<PictureRead> _rowsOf(
   ui.Image image,
   int width,
   int height,

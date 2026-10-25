@@ -165,6 +165,116 @@ final class _DrawnAsItStands {
   final List<_Patching> patching = [];
 }
 
+/// What of an image is drawn where: [src] of [image] over [rect].
+typedef _Laid = ({ui.Rect rect, ui.Image image, ui.Rect src});
+
+/// A picture's landing patches ([FramePicture.landing]) as a display that
+/// reads the picture's chain shows them ([levelsReadAt]): each over as far
+/// as the display reads past it ([rectTheDisplayReads]), from an image of
+/// the picture with the patches up to it laid in at 100%, as far again —
+/// a chain halved over what the picture's own will hold once the patch is
+/// in every level of it. Where the display reads no level the patch is
+/// drawn as it is: nothing past it is read, nor any chain.
+///
+/// 🚨F-465 (유저 2026-10-25: 「그려져있는 스트로크가 진해졌다가
+/// 돌아왔다가」): drawn by its own chain, a patch read its edge where the
+/// picture's chain reads past it, and the picture beside it read the
+/// patch's place from levels holding what the rows were. 🔬Line art under
+/// a stroke's step at 50% on a 1.0 screen showed up to 40/255 lighter
+/// (63 → 103), 60 at 25%, until the levels landed after the stroke.
+final class _LandingAsItWillBe {
+  final Map<LandingPatch, ({int levels, _Laid laid})> _made = {};
+
+  /// [picture]'s landing patches, in their order, as they show over
+  /// [image] — the view's handle on it — at [displayScale].
+  List<_Laid> of(FramePicture picture, ui.Image image, double displayScale) {
+    final landing = picture.landing;
+    final levels = levelsReadAt(displayScale);
+    _made.removeWhere((patch, made) {
+      final gone = made.levels != levels || !landing.contains(patch);
+      if (gone) {
+        _letGoOf(patch, made.laid);
+      }
+      return gone;
+    });
+    return [
+      for (final (index, patch) in landing.indexed)
+        (_made[patch] ??= (
+          levels: levels,
+          laid: _laidOf(
+            picture,
+            image,
+            landing.take(index + 1).toList(),
+            displayScale,
+          ),
+        )).laid,
+    ];
+  }
+
+  /// Lets go of every image made here.
+  void forget() {
+    _made.forEach((patch, made) => _letGoOf(patch, made.laid));
+    _made.clear();
+  }
+
+  static void _letGoOf(LandingPatch patch, _Laid laid) {
+    if (!identical(laid.image, patch.image)) {
+      laid.image.dispose();
+    }
+  }
+
+  /// The last of [upTo] as it shows: over what the display reads past it,
+  /// from [image] with every one of [upTo] laid in at 100% as far again.
+  static _Laid _laidOf(
+    FramePicture picture,
+    ui.Image image,
+    List<LandingPatch> upTo,
+    double displayScale,
+  ) {
+    final patch = upTo.last;
+    if (levelsReadAt(displayScale) == 0) {
+      return (
+        rect: patch.rect,
+        image: patch.image,
+        src: _whole(patch.image),
+      );
+    }
+    final rect = rectTheDisplayReads(
+      patch.rect,
+      displayScale,
+    ).intersect(picture.extent);
+    final read = rectTheDisplayReads(
+      rect,
+      displayScale,
+    ).intersect(picture.extent);
+    final recorded = picturedReads([
+      (
+        image: image,
+        from: read.shift(-picture.extent.topLeft),
+        to: Offset.zero & read.size,
+      ),
+      for (final laid in upTo)
+        (
+          image: laid.image,
+          from: _whole(laid.image),
+          to: laid.rect.shift(-read.topLeft),
+        ),
+    ]);
+    try {
+      return (
+        rect: rect,
+        image: recorded.toImageSync(read.width.round(), read.height.round()),
+        src: rect.shift(-read.topLeft),
+      );
+    } finally {
+      recorded.dispose();
+    }
+  }
+
+  static ui.Rect _whole(ui.Image image) =>
+      Offset.zero & Size(image.width.toDouble(), image.height.toDouble());
+}
+
 class _FramePictureViewState extends State<FramePictureView> {
   /// The key of the frame shown — its picture, held for this view by the
   /// store; or the frame as it stands.
@@ -212,6 +322,9 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   /// What of the frame is drawn as it stands over the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
+
+  /// The picture shown's landing patches as this view shows them.
+  final _LandingAsItWillBe _landingShown = _LandingAsItWillBe();
 
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
@@ -275,6 +388,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     widget.run.landings.removeListener(_landed);
     _letGo(_store);
     _repaint.dispose();
+    _landingShown.forget();
     super.dispose();
   }
 
@@ -649,6 +763,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         // no row is a page the pen may be drawing on.
         asItStands: _live ?? _asItStands,
         standing: _standing,
+        landingShown: _landingShown,
         catchUp: _catchUp,
         patchedBy: _live,
         viewport: widget.viewport,
@@ -665,6 +780,7 @@ class _FramePicturePainter extends CustomPainter {
     required this.shown,
     required this.asItStands,
     required this.standing,
+    required this.landingShown,
     required this.catchUp,
     required this.patchedBy,
     required this.viewport,
@@ -682,6 +798,9 @@ class _FramePicturePainter extends CustomPainter {
   /// patches are on their way into it, by [patchedBy] until their texels
   /// are in.
   final _DrawnAsItStands standing;
+
+  /// [shown]'s landing patches as the display shows them.
+  final _LandingAsItWillBe landingShown;
 
   /// Puts what the live rows moved into [standing] before it is read
   /// ([_FramePictureViewState._catchUp]).
@@ -742,13 +861,19 @@ class _FramePicturePainter extends CustomPainter {
   /// [rects], world rects, where the screen shows them — on the grid
   /// [applyViewportTransform] lays the picture on — or null where there are
   /// none.
+  ///
+  /// 🚨Each grown by what the display reads past it ([rectTheDisplayReads]):
+  /// zoomed out, a pixel beside a patch reads the picture's texels inside
+  /// it, which hold what the rows were until the patch lands. ↩️Cut at the
+  /// patch, the picture beside it read the ink the step had moved (F-465).
   ui.Path? _onScreen(List<ui.Rect> rects) {
     if (rects.isEmpty) {
       return null;
     }
+    final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
     final world = ui.Path();
     for (final rect in rects) {
-      world.addRect(rect);
+      world.addRect(rectTheDisplayReads(rect, scale));
     }
     return world.transform(
       viewportTransformMatrix(
@@ -769,16 +894,27 @@ class _FramePicturePainter extends CustomPainter {
   /// where its extent lies, the world outside it its colour, and every
   /// patch still landing over it with `BlendMode.src` — the image and its
   /// patches in a layer of their own, so a patch's clear texels cut
-  /// through the picture alone.
+  /// through the picture alone — each as the display shows it
+  /// ([_LandingAsItWillBe]).
   void _paintPicture(Canvas canvas, FramePicture picture, ui.Image image) {
     _paintOutside(canvas, picture.extent, picture.outside);
-    final landing = picture.landing;
+    final landing = landingShown.of(
+      picture,
+      image,
+      displayScaleOf(viewport.zoom, devicePixelRatio),
+    );
     if (landing.isNotEmpty) {
       canvas.saveLayer(picture.extent, Paint());
     }
     _lay(canvas, image, picture.extent);
-    for (final patch in landing) {
-      _lay(canvas, patch.image, patch.rect, blendMode: BlendMode.src);
+    for (final laid in landing) {
+      _lay(
+        canvas,
+        laid.image,
+        laid.rect,
+        src: laid.src,
+        blendMode: BlendMode.src,
+      );
     }
     if (landing.isNotEmpty) {
       canvas.restore();
@@ -789,11 +925,12 @@ class _FramePicturePainter extends CustomPainter {
     Canvas canvas,
     ui.Image image,
     Rect at, {
+    Rect? src,
     BlendMode blendMode = BlendMode.srcOver,
   }) => drawOnTheDisplay(
     canvas,
     image,
-    Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+    src ?? Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
     at,
     viewport: viewport,
     devicePixelRatio: devicePixelRatio,

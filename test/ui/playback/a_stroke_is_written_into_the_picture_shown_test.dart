@@ -39,7 +39,14 @@ import '../../helpers/settle_async.dart';
 /// one picture, and until the patch's texels are in, that rect is drawn as
 /// it stands — by the walk ALONE. What the screen shows while the step lands,
 /// once it has landed, and drawn as it stands whole is one picture, pixel for
-/// pixel, through a pan, a zoom and a device's ratio.
+/// pixel, through a pan, a zoom in and out and a device's ratio.
+///
+/// 🚨Zoomed out, the display reads past a patch, and the picture's chain
+/// (F-465, 유저 2026-10-25: 「50%에서는 매번」 — a stroke's step framed in a
+/// grey line for a frame, and the ink under it 「진해졌다가 돌아왔다가」):
+/// what the step is drawn by while it lands reaches past it by what the
+/// display reads there, and once it has, it shows by the chain the
+/// picture's own will hold.
 ///
 /// The ink is translucent and no paper lies under it, so a rect drawn as it
 /// stands OVER the picture shows its ink twice.
@@ -175,6 +182,11 @@ void main() {
   final views = {
     'panned': CanvasViewport(panX: 8, panY: 4),
     'at 200%': CanvasViewport(zoom: 2, panX: -6, panY: -10),
+    // Bilinear on a 1.0 screen, the chain at 50% and 25% — and on a 1.5
+    // screen the chain at 25% alone.
+    'at 75%': CanvasViewport(zoom: 0.75, panX: 8, panY: 4),
+    'at 50%': CanvasViewport(zoom: 0.5, panX: 8, panY: 4),
+    'at 25%': CanvasViewport(zoom: 0.25, panX: 8, panY: 4),
   };
   const ratios = [1.0, 1.5];
 
