@@ -1630,7 +1630,7 @@ class PanelFlyoutChip extends StatelessWidget {
       color: enabled ? ink : ink.withValues(alpha: 0.4),
       fontWeight: fontWeight,
     );
-    final Widget text = vertical
+    final text = vertical
         ? VerticalWritingText(text: label, style: labelStyle)
         : Text(
             label,
