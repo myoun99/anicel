@@ -24,9 +24,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart'
     show FlipHudAxis;
-import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerAttachArrowCell;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
@@ -34,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 
 /// 🗣️I-73 (유저 2026-10-08): 「콘티행도 동일하게 하고싶으니까 어태치
 /// 접기펼치기버튼등 동일하게 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어
@@ -143,43 +142,20 @@ void main() {
   Future<EditorSessionManager> pumpPanel(
     WidgetTester tester,
     Project project, {
-    TimelineRowFilter Function()? rowFilter,
+    TimelineRowFilter rowFilter = TimelineRowFilter.none,
     StoryboardRowsChannel? rowsChannel,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 760));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(initialProject: project);
     addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          // The tab's own subscription, as the workspace mounts it: the
-          // session, and the folds — which are no session notify.
-          body: ListenableBuilder(
-            listenable: Listenable.merge([
-              session,
-              session.railView.collapsedAttachBaseIds,
-            ]),
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              rowFilter: rowFilter?.call() ?? TimelineRowFilter.none,
-              rowsChannel: rowsChannel,
-              collapsedAttachBaseIds:
-                  session.railView.collapsedAttachBaseIds.value,
-              onToggleAttachGroup: SessionRowButtonPresses(
-                session,
-              ).toggleGroupFold,
-            ),
-          ),
-        ),
-      ),
+    // The filter as set — the session's, without the chip's own hand-off.
+    session.railView.rowFilter.value = rowFilter;
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1400, 760),
+      pixelsPerFrame: 12,
+      rowsChannel: rowsChannel,
     );
-    await tester.pumpAndSettle();
     return session;
   }
 
@@ -376,7 +352,7 @@ void main() {
       await pumpPanel(
         tester,
         film(aMark: conteMark),
-        rowFilter: () => filter,
+        rowFilter: filter,
       );
       expect(label('conte'), findsOneWidget);
       expect(key('storyboard-conte-row-t1'), findsOneWidget);
@@ -386,7 +362,7 @@ void main() {
       await pumpPanel(
         tester,
         film(aMark: conteMark),
-        rowFilter: () => filter,
+        rowFilter: filter,
       );
       expect(label('conte'), findsNothing);
       expect(key('storyboard-conte-row-t1'), findsNothing);
@@ -396,7 +372,7 @@ void main() {
       await pumpPanel(
         tester,
         film(aMark: conteMark),
-        rowFilter: () => filter,
+        rowFilter: filter,
       );
       expect(label('conte'), findsOneWidget, reason: 'LIVENESS: its own chip');
     });
@@ -504,7 +480,7 @@ void main() {
       await pumpPanel(
         tester,
         film(withRiders: true, aMark: conteMark),
-        rowFilter: () => TimelineRowFilter.none.toggledMark(conteMark),
+        rowFilter: TimelineRowFilter.none.toggledMark(conteMark),
       );
 
       expect(label('conte'), findsOneWidget);

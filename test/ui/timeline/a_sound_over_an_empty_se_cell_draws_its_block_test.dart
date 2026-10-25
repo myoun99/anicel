@@ -18,6 +18,7 @@ import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/named_finders.dart';
@@ -112,6 +113,7 @@ void main() {
                   listenable: session,
                   builder: (context, _) => TimelineTabHost(
                     session: session,
+                    rail: TabRailWiring.of(session),
                     orientation: TimelineOrientation.horizontal,
                     onOrientationChanged: (_) {},
                     pixelsPerFrame: 48,

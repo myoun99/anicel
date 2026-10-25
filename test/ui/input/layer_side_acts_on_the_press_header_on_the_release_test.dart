@@ -7,9 +7,9 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/input/control_press_claim.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🚨★★★THE RULE, PINNED ON REAL WIDGETS (유저 확정 2026-08-30):
 ///
@@ -41,33 +41,22 @@ void main() {
   setUp(debugClearValueControlPointers);
   tearDown(debugClearValueControlPointers);
 
-  Widget host(EditorSessionManager session) => MaterialApp(
-    home: Scaffold(
-      body: ListenableBuilder(
-        listenable: session,
-        builder: (context, _) => TimelineTabHost(
-          session: session,
-          orientation: TimelineOrientation.vertical,
-          onOrientationChanged: (_) {},
-          pixelsPerFrame: 24,
-          onPixelsPerFrameChanged: (_) {},
-          showSeconds: false,
-          onShowSecondsChanged: (_) {},
-        ),
-      ),
-    ),
-  );
+  Future<void> host(WidgetTester tester, EditorSessionManager session) =>
+      pumpTimelineHostOn(
+        tester,
+        session,
+        surface: const Size(1400, 900),
+        orientation: TimelineOrientation.vertical,
+        pixelsPerFrame: 24,
+      );
 
   testWidgets('a LAYER-side button has already acted by the time it is '
       'released', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await tester.pumpWidget(host(session));
-    await tester.pumpAndSettle();
+    await host(tester, session);
 
     final layerId = session.activeLayerId!;
     final before = session.onionSkin.isLayerOnionSkinEnabled(layerId);
@@ -97,14 +86,11 @@ void main() {
   });
 
   testWidgets('a HEADER button waits for the release', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    await tester.pumpWidget(host(session));
-    await tester.pumpAndSettle();
+    await host(tester, session);
 
     // The legend's own flyout: pressing it opens a menu, which is a thing
     // the tree can be asked about without reaching into the session.

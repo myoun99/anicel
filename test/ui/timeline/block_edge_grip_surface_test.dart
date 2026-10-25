@@ -20,9 +20,7 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
@@ -361,29 +359,7 @@ void main() {
 
   testWidgets('with thumbnails OFF there is no picture under an edge — the '
       'bands over the plate are all it stands on', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 800));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final manager = EditorSessionManager(initialProject: _project());
-    addTearDown(manager.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(brightness: Brightness.dark),
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager,
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    await pumpStoryboardHost(tester, _project(), pixelsPerFrame: 12);
 
     final painter = timelineRowChromePainter(
       tester,

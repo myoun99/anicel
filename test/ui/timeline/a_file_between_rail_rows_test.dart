@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 import '../../helpers/named_finders.dart';
 
@@ -213,6 +214,7 @@ void main() {
             listenable: session,
             builder: (context, _) => TimelineTabHost(
               session: session,
+              rail: TabRailWiring.of(session),
               orientation: orientation,
               onOrientationChanged: (_) {},
               pixelsPerFrame: 48,
@@ -539,6 +541,7 @@ void main() {
         home: Scaffold(
           body: TimelineTabHost(
             session: s,
+            rail: TabRailWiring.of(s),
             orientation: TimelineOrientation.horizontal,
             onOrientationChanged: (_) {},
             pixelsPerFrame: 48,

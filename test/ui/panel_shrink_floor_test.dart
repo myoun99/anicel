@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -87,6 +88,7 @@ void main() {
     onPixelsPerFrameChanged: (_) {},
     showSeconds: false,
     onShowSecondsChanged: (_) {},
+    rail: TabRailWiring.of(session),
   );
 
   Widget xsheet(EditorSessionManager session) =>
@@ -99,6 +101,7 @@ void main() {
     showSeconds: false,
     onShowSecondsChanged: (_) {},
     thumbnails: null,
+    rail: TabRailWiring.of(session),
   );
 
   Rect rectOf(WidgetTester tester, String key) =>

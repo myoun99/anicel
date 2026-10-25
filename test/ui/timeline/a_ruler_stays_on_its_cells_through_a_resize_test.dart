@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 /// F-95 — a ruler stays on its cells through a resize.
 ///
@@ -335,6 +336,7 @@ void main() {
                   listenable: session,
                   builder: (context, _) => StoryboardTabHost(
                     session: session,
+                    rail: TabRailWiring.of(session),
                     pixelsPerFrame: 24,
                     onPixelsPerFrameChanged: (_) {},
                     showSeconds: false,

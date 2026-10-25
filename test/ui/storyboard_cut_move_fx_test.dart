@@ -6,54 +6,31 @@ import 'package:anicel/src/models/camera_instruction.dart'
     show InstructionEvent;
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
 import '../helpers/named_finders.dart';
-import '../helpers/storyboard_twirls.dart';
+import '../helpers/storyboard_host.dart';
 
 /// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when
 /// the TRACK carries fx transform keys (R4: track-owned lanes) — with the
 /// Transform strips twirled open too (the state the keys get authored in).
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
-    // The rail matches the timeline's — 372 in UI-R5, 434 since the user
-    // unified the two widths (2026-08-04), 443 since the OPAC column
-    // widened (2026-09-25) — so the default 800px surface
-    // would push the second cut's block off screen.
-    await tester.binding.setSurfaceSize(const Size(1400, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     final manager = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     manager.cutVerbs.createCut();
     addTearDown(manager.dispose);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager.frameSeekCommitted,
-            builder: (context, _) => withStoryboardTwirls(
-              manager,
-              (twirls) => StoryboardTabHost(
-                session: manager,
-                expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-                onToggleLayerLanes: twirls.onToggleLayerLanes,
-                expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-                onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-                pixelsPerFrame: 12,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
-      ),
+    // The rail matches the timeline's — 372 in UI-R5, 434 since the user
+    // unified the two widths (2026-08-04), 443 since the OPAC column
+    // widened (2026-09-25) — so the default 800px surface
+    // would push the second cut's block off screen.
+    await pumpStoryboardHostOn(
+      tester,
+      manager,
+      surface: const Size(1400, 600),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return manager;
   }
 

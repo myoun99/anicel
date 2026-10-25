@@ -22,8 +22,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart'
     show createCameraLayer;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
-import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
@@ -42,10 +40,12 @@ import '../../helpers/row_folds.dart';
 /// 거기 서있게됨」. The hand-off picked B-1 blind, and the rail's exemption
 /// for the active attach row put it on the screen.
 ///
-/// Every door runs through the real app: the twirl, the legend's filter and
+/// Every door runs through the real tab: the twirl, the legend's filter and
 /// section menus, the verbs the buttons call. Each pin names the source of a
 /// landing and the reason a row is off the screen — the matrix, not the one
-/// symptom.
+/// symptom. ↩️The filter's and the sections' doors opened the app, being
+/// the workspace's verbs; they are the tab's own now (`TabRailWiring`,
+/// tests-hand-roll-the-tab-hosts-Q1 b).
 const _cut = CutId('cut');
 const _a = LayerId('a');
 const _b = LayerId('b');
@@ -107,17 +107,6 @@ Project _project(
 /// 800 × 600 laid it — the standing is the session's, its rows the panel's.
 Future<EditorSessionManager> _open(WidgetTester tester, Project project) =>
     pumpTimelineHost(tester, project, surface: const Size(640, 320));
-
-/// The app — where the legend's sections and filter are the workspace's
-/// verbs.
-Future<EditorSessionManager> _openApp(
-  WidgetTester tester,
-  Project project,
-) async {
-  await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
-  await tester.pumpAndSettle();
-  return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
-}
 
 Finder _row(LayerId id) =>
     find.named('timeline-layer-row-${id.value}');
@@ -215,7 +204,7 @@ void main() {
         'the screen', (tester) async {
       const red = LayerMark(process: LayerProcess.layout);
       const blue = LayerMark(process: LayerProcess.conte);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project([
           _drawing('red-a', mark: red),
@@ -240,7 +229,7 @@ void main() {
     ) async {
       const red = LayerMark(process: LayerProcess.layout);
       const blue = LayerMark(process: LayerProcess.conte);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project([
           _drawing('red-a', mark: red),
@@ -265,7 +254,7 @@ void main() {
         'hides', (tester) async {
       const red = LayerMark(process: LayerProcess.layout);
       const blue = LayerMark(process: LayerProcess.conte);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project([
           _drawing('red-a', mark: red),
@@ -296,7 +285,7 @@ void main() {
       const track = TrackId('track');
       Layer se(int slot, LayerMark mark) =>
           createTrackSeLayer(trackId: track, slot: slot).copyWith(mark: mark);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project(
           [_drawing('red-a', mark: red)],
@@ -322,7 +311,7 @@ void main() {
         'on a shown one', (tester) async {
       const red = LayerMark(process: LayerProcess.layout);
       const blue = LayerMark(process: LayerProcess.conte);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project(
           [_drawing('red-a', mark: red), _drawing('blue-x', mark: blue)],
@@ -420,7 +409,7 @@ void main() {
   group('① the rail\'s own view changes hand the standing on', () {
     testWidgets('hiding the section you stand in', (tester) async {
       final camera = createCameraLayer(cutId: _cut);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project([_drawing('a'), camera]),
       );
@@ -438,7 +427,7 @@ void main() {
     ) async {
       const red = LayerMark(process: LayerProcess.layout);
       const blue = LayerMark(process: LayerProcess.conte);
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project([
           _drawing('red-a', mark: red),
@@ -509,7 +498,7 @@ void main() {
     testWidgets('a new row in a hidden section shows the section', (
       tester,
     ) async {
-      final session = await _openApp(tester, _project([_drawing('a')]));
+      final session = await _open(tester, _project([_drawing('a')]));
       await _pick(tester, 'legend-sections', 'legend-section-camera');
 
       session.layerStack.addLayerOfKind(LayerKind.instruction);
@@ -525,7 +514,7 @@ void main() {
         'you are on — the section opening does not hand it off', (
       tester,
     ) async {
-      final session = await _openApp(
+      final session = await _open(
         tester,
         _project([
           _drawing('a', mark: const LayerMark(process: LayerProcess.layout)),

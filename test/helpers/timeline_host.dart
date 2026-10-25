@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -12,18 +12,16 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
 /// THE TIMELINE TAB AS THE WORKSPACE HOSTS IT (`workspace_tabs.dart`), with
-/// nothing of the app around it: [project] opened in a session, the rows'
-/// twirls, attach folds and header graphs the session's own (`RailView`)
-/// and pressed through its presses, the grid turned by its own ⇄ from
-/// [orientation], at the zoom the workspace opens at, its axes where the
-/// project keeps them, a Scale lane linked by the transform tool as the app
-/// opens it. The session goes with the tab, as the app's goes with its
-/// page — so what it left running is stopped before the test's end looks
-/// for it.
+/// nothing of the app around it: [project] opened in a session, the rail
+/// wired to it as the workspace wires it (`TabRailWiring`), the grid turned
+/// by its own ⇄ from [orientation], at the zoom the workspace opens at, a
+/// Scale lane linked by the transform tool as the app opens it. The session
+/// goes with the tab, as the app's goes with its page — so what it left
+/// running is stopped before the test's end looks for it.
 ///
-/// The workspace's own verbs are not here — a section's button, the row
-/// filter, a per-cut zoom, the onion panel's reveal: a contract the APP
-/// wires keeps a test that opens the app.
+/// The workspace's own verbs are not here — a per-cut zoom, the onion
+/// panel's reveal, a file placed from the pool: a contract the APP wires
+/// keeps a test that opens the app.
 ///
 /// 📏heavy-tests-timeline (2026-10-25): a timeline test opened the app and
 /// pulled the dock up for room — most of each one's two to four seconds,
@@ -95,9 +93,6 @@ Future<Widget> _timelineTab(
       extent.dispose();
     }
   });
-  final rail = session.railView;
-  final views = session.panelViews;
-  final presses = SessionRowButtonPresses(session);
   Widget tab(BuildContext context, Widget? _) => TimelineTabHost(
     session: session,
     orientation: turned.value,
@@ -109,23 +104,12 @@ Future<Widget> _timelineTab(
     onShowSecondsChanged: (_) {},
     timelineRailExtent: railExtents[LayerRailId.timeline],
     xsheetRailExtent: railExtents[LayerRailId.xsheet],
-    timelineFrameAxisOffset: views.frameAxisOffsets[LayerRailId.timeline],
-    xsheetFrameAxisOffset: views.frameAxisOffsets[LayerRailId.xsheet],
-    timelineLayerAxisOffset: views.layerAxisOffsets[LayerRailId.timeline],
-    xsheetLayerAxisOffset: views.layerAxisOffsets[LayerRailId.xsheet],
-    expandedLaneLayerIds: rail.expandedLaneLayerIds.value,
-    onToggleLayerLanes: presses.toggleLanes,
-    expandedLaneGroupKeys: rail.expandedLaneGroupKeys.value,
-    onToggleLaneGroupKey: presses.toggleLaneGroup,
-    laneGraphs: rail.laneGraphs.value,
-    laneGraphVerbs: presses.laneGraphVerbs,
-    hiddenSections: rail.hiddenSections.value,
-    rowFilter: rail.rowFilter.value,
-    collapsedAttachBaseIds: rail.collapsedAttachBaseIds.value,
-    onToggleAttachGroup: presses.toggleGroupFold,
+    rail: TabRailWiring.of(session),
     transformOptions: transformTool,
   );
   return MaterialApp(
+    // A tab is its session's, as the conte's helper keys it.
+    key: ObjectKey(session),
     // The app's theme, as `main.dart` lays it over the workspace: it is
     // what keeps a press inkless (`splashFactory`), among the rest.
     theme: buildAppTheme(),
@@ -134,7 +118,11 @@ Future<Widget> _timelineTab(
       body: SizedBox.expand(
         child: TickLayer.host(
           child: ListenableBuilder(
-            listenable: Listenable.merge([session, turned, rail.drawn]),
+            listenable: Listenable.merge([
+              session,
+              turned,
+              session.railView.drawn,
+            ]),
             builder: tab,
           ),
         ),

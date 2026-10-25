@@ -256,9 +256,6 @@ class _WorkspaceRail {
     );
   }
 
-  void _toggleLaneGroup(String groupKey) =>
-      SessionRowButtonPresses(_state.widget.session).toggleLaneGroup(groupKey);
-
   /// Putting a panel somewhere OPENS that somewhere.
   ///
   /// A rail group can be closed, and a panel placed into a closed one is a

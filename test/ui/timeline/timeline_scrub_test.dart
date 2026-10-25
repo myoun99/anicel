@@ -16,16 +16,15 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/the_classic_rail.dart';
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// The ruler-scrub performance invariant (R4): drag moves ride the cursor
 /// path — per-move frames go to the scrub callback WITHOUT a session
@@ -242,27 +241,14 @@ layers: layers,
       var notifies = 0;
       manager.addListener(() => notifies += 1);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            // The HomePage-style wrapper: a session notify rebuilds the
-            // host — exactly what scrub moves must avoid.
-            body: ListenableBuilder(
-              listenable: manager,
-              builder: (context, _) => TimelineTabHost(
-                session: manager,
-                orientation: TimelineOrientation.horizontal,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 48,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
+      // The workspace's wrapper: a session notify rebuilds the host —
+      // exactly what scrub moves must avoid.
+      await pumpTimelineHostOn(
+        tester,
+        manager,
+        surface: const Size(800, 600),
+        pixelsPerFrame: 48,
       );
-      await tester.pumpAndSettle();
       await standTheClassicRail(tester);
       notifies = 0;
 
@@ -454,27 +440,12 @@ layers: layers,
       var notifies = 0;
       manager.addListener(() => notifies += 1);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: Listenable.merge([
-                manager,
-                manager.editingFrameCursor,
-              ]),
-              builder: (context, _) => StoryboardTabHost(
-                session: manager,
-                pixelsPerFrame: 8,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
+      await pumpStoryboardHostOn(
+        tester,
+        manager,
+        surface: const Size(800, 600),
+        pixelsPerFrame: 8,
       );
-      await tester.pumpAndSettle();
       notifies = 0;
 
       final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
@@ -523,29 +494,15 @@ layers: layers,
       var notifies = 0;
       manager.addListener(() => notifies += 1);
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            // The workspace-style wrapper: session notifies AND cursor
-            // moves rebuild the host (the playhead follows scrubs live).
-            body: ListenableBuilder(
-              listenable: Listenable.merge([
-                manager,
-                manager.editingFrameCursor,
-              ]),
-              builder: (context, _) => StoryboardTabHost(
-                session: manager,
-                pixelsPerFrame: 12,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-                thumbnails: null,
-              ),
-            ),
-          ),
-        ),
+      // ↩️The wrapper here rebuilt the host on every cursor move too, and
+      // called that the workspace's — whose merge never held the cursor:
+      // the playhead rides its own channel.
+      await pumpStoryboardHostOn(
+        tester,
+        manager,
+        surface: const Size(800, 600),
+        pixelsPerFrame: 12,
       );
-      await tester.pumpAndSettle();
       notifies = 0;
 
       final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));

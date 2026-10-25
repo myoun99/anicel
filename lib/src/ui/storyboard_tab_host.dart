@@ -24,16 +24,15 @@ import 'brush/transform_tool_options.dart';
 import 'editor_session_manager.dart';
 import 'range_move_asking_first.dart';
 import 'session/session_legend_callbacks.dart';
+import 'session/panel_view_memory.dart';
 import 'session/session_row_button_presses.dart';
+import 'session/tab_rail_wiring.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
-import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
-import 'timeline/timeline_section_policy.dart' show TimelineSection;
-import 'timeline/lane_graph.dart' show LaneGraphVerbs, LaneGraphsView;
-import 'timeline/layer_rail_window.dart' show LayerRailExtent;
+import 'timeline/layer_rail_window.dart' show LayerRailExtent, LayerRailId;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart'
@@ -63,66 +62,27 @@ class StoryboardTabHost extends StatefulWidget {
     required this.showSeconds,
     required this.onShowSecondsChanged,
     this.railExtent,
-    this.frameAxisOffset,
-    this.layerAxisOffset,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     this.onResizeTrackLanes,
     required this.thumbnails,
-    this.rowFilter = TimelineRowFilter.none,
-    this.onSetRowFilter,
-    this.hiddenSections = const {},
-    this.onToggleSection,
-    this.collapsedAttachBaseIds = const {},
-    this.onToggleAttachGroup,
+    required this.rail,
     this.onRevealOnionSkinPanel,
-    this.expandedLaneLayerIds = const {},
-    this.onToggleLayerLanes,
-    this.expandedLaneGroupKeys = const {},
-    this.onToggleLaneGroupKey,
-    this.laneGraphs = LaneGraphsView.none,
-    this.laneGraphVerbs,
     this.rowsChannel,
     this.transformOptions,
   });
 
-  /// The legend's row filter, shared with the timeline and the sheet
-  /// (R5 #9). Null [onSetRowFilter] leaves the chips inert.
-  final TimelineRowFilter rowFilter;
-  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
-
-  /// The hidden SE and camera sections, shared with the timeline — the same
-  /// toggles, from the same legend menu (F-199).
-  final Set<TimelineSection> hiddenSections;
-  final ValueChanged<TimelineSection>? onToggleSection;
-
-  /// The folded attach groups, shared with the timeline — the same set and
-  /// the same verb ([TimelineTabHost.collapsedAttachBaseIds]): the conte
-  /// row's twirl folds the attach rows riding it (I-73).
-  final Set<LayerId> collapsedAttachBaseIds;
+  /// The rail's view and its verbs, shared with the timeline — the same
+  /// wiring ([TimelineTabHost.rail]): the legend's row filter (R5 #9), the
+  /// hidden SE and camera sections (F-199), the folded attach groups the
+  /// conte row's twirl folds (I-73), the twirled-down lanes and their
+  /// groups (I-73 ④ⓔ), the header graphs — a graph opened here is open on
+  /// the timeline's rail, and the other way round (I-89 ①).
+  final TabRailWiring rail;
 
   /// The workspace's onion-panel reveal, as the timeline's legend opens it
   /// ([TimelineTabHost.onRevealOnionSkinPanel]). Null hides the legend
   /// entry.
   final VoidCallback? onRevealOnionSkinPanel;
-  final ValueChanged<LayerId>? onToggleAttachGroup;
-
-  /// The rows' twirled-down lanes, shared with the timeline — the same set
-  /// and the same verb ([TimelineTabHost.expandedLaneLayerIds]): the camera
-  /// row's twirl opens its lanes here as on the timeline's rail (I-73 ④ⓔ).
-  final Set<LayerId> expandedLaneLayerIds;
-  final ValueChanged<LayerId>? onToggleLayerLanes;
-
-  /// …and the lane GROUPS twirled open in them, the same set and verb
-  /// ([TimelineTabHost.expandedLaneGroupKeys]): a conte row's groups twirl
-  /// here as on the timeline's rail (I-73 ④ⓔ).
-  final Set<String> expandedLaneGroupKeys;
-  final ValueChanged<String>? onToggleLaneGroupKey;
-
-  /// …and the header graphs standing open over them, the same state and
-  /// verbs ([TimelineTabHost.laneGraphs]): a graph opened here is open on
-  /// the timeline's rail, and the other way round (I-89 ①).
-  final LaneGraphsView laneGraphs;
-  final LaneGraphVerbs? laneGraphVerbs;
 
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
@@ -168,15 +128,6 @@ class StoryboardTabHost extends StatefulWidget {
   /// switch AND a restart).
   final LayerRailExtent? railExtent;
 
-  /// Where the storyboard's frame axis stands — held above the panel beside
-  /// [railExtent] so it outlives a fold (F-143), and the project's, saved
-  /// with it (F-267). Null = the panel's own.
-  final ValueNotifier<double>? frameAxisOffset;
-
-  /// Where the storyboard's rows are scrolled to — the project's too
-  /// (F-267). Null = nobody keeps it.
-  final ValueNotifier<double>? layerAxisOffset;
-
   /// The V rows' shared height, owned above the tabs so it survives a tab
   /// switch like the zoom does. ⛔No steppers any more (B7, 유저 2026-08-17):
   /// the bar's push/pull height pair is deleted, and its one writer is the
@@ -204,6 +155,10 @@ class StoryboardTabHost extends StatefulWidget {
 
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
+
+  /// Where the storyboard's axes stand — the project's, saved with it
+  /// (F-267), and held above the panel so a fold keeps them (F-143).
+  PanelViewMemory get _axes => _session.panelViews;
 
   /// The rows' buttons as a press asks them — the timeline rail's own
   /// wiring, spread over the row selection when the pressed row is in it.
@@ -705,17 +660,17 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 listenable: _session.voiceRecording.voiceRecordPreviewLane,
                 builder: (context, _) => StoryboardPanel(
                   project: _session.repository.requireProject(),
-                  rowFilter: widget.rowFilter,
-                  hiddenSections: widget.hiddenSections,
-                  onToggleSection: widget.onToggleSection,
-                  collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-                  onToggleAttachGroup: widget.onToggleAttachGroup,
-                  expandedLaneLayerIds: widget.expandedLaneLayerIds,
-                  onToggleLayerLanes: widget.onToggleLayerLanes,
-                  expandedLaneGroupKeys: widget.expandedLaneGroupKeys,
-                  onToggleLaneGroupKey: widget.onToggleLaneGroupKey,
-                  laneGraphs: widget.laneGraphs,
-                  laneGraphVerbs: widget.laneGraphVerbs,
+                  rowFilter: widget.rail.rowFilter,
+                  hiddenSections: widget.rail.hiddenSections,
+                  onToggleSection: widget.rail.toggleSection,
+                  collapsedAttachBaseIds: widget.rail.collapsedAttachBaseIds,
+                  onToggleAttachGroup: widget.rail.toggleAttachGroup,
+                  expandedLaneLayerIds: widget.rail.expandedLaneLayerIds,
+                  onToggleLayerLanes: widget.rail.toggleLayerLanes,
+                  expandedLaneGroupKeys: widget.rail.expandedLaneGroupKeys,
+                  onToggleLaneGroupKey: widget.rail.toggleLaneGroup,
+                  laneGraphs: widget.rail.laneGraphs,
+                  laneGraphVerbs: widget.rail.laneGraphVerbs,
                   laneGraphsNow: () => _session.railView.laneGraphs.value,
                   seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
                   dragPreview: _session.dragPreview,
@@ -800,8 +755,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   showSeconds: widget.showSeconds,
                   onShowSecondsChanged: widget.onShowSecondsChanged,
                   railExtent: widget.railExtent,
-                  frameAxisOffset: widget.frameAxisOffset,
-                  layerAxisOffset: widget.layerAxisOffset,
+                  frameAxisOffset:
+                      _axes.frameAxisOffsets[LayerRailId.storyboard],
+                  layerAxisOffset:
+                      _axes.layerAxisOffsets[LayerRailId.storyboard],
                   projectFrameRate: _session.projectSettings.projectFrameRate,
                   // The strip's edges preview live and commit ONE undo on
                   // release, like the timeline's comma drags. Which verb a
@@ -1101,8 +1058,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   ),
                   legend: sessionLegendCallbacks(
                     _session,
-                    rowFilter: widget.rowFilter,
-                    onSetRowFilter: widget.onSetRowFilter,
+                    rowFilter: widget.rail.rowFilter,
+                    onSetRowFilter: widget.rail.setRowFilter,
                     // The onion column's door, with the conte rows' onion
                     // (F-443, 유저 2026-10-23: 「이거는 자리차지하고
                     // 레전드행에도 버튼있는거 감수」) — as the timeline's.

@@ -7,6 +7,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 /// MEASUREMENT for the scoped-notify round (R27 #20 / #7, R28 #4).
 ///
@@ -76,6 +77,7 @@ void main() {
             listenable: session,
             builder: (context, _) => TimelineTabHost(
               session: session,
+              rail: TabRailWiring.of(session),
               orientation: TimelineOrientation.horizontal,
               onOrientationChanged: (_) {},
               pixelsPerFrame: zoom?.value ?? 24,
@@ -580,6 +582,7 @@ void main() {
               listenable: session,
               builder: (context, _) => TimelineTabHost(
                 session: session,
+                rail: TabRailWiring.of(session),
                 orientation: TimelineOrientation.horizontal,
                 onOrientationChanged: (_) {},
                 pixelsPerFrame: zoom.value,

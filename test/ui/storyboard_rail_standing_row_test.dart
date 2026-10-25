@@ -7,8 +7,9 @@ import 'package:anicel/src/models/layer_section_defaults.dart'
     show seLayerIdForTrack;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+
+import '../helpers/storyboard_host.dart';
 
 /// The legend's filter on the storyboard rail (R5 #9), and the one row it
 /// never hides: the row you are STANDING on — the timeline's rule, for the
@@ -20,37 +21,21 @@ void main() {
     required TimelineRowFilter rowFilter,
     required void Function(EditorSessionManager) arrange,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
     final manager = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
     addTearDown(manager.dispose);
     arrange(manager);
+    // The filter as set — the session's, without the chip's own hand-off
+    // of the stand: the row you stand on is what this asks about.
+    manager.railView.rowFilter.value = rowFilter;
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: Listenable.merge([
-              manager,
-              manager.frameSeekCommitted,
-            ]),
-            builder: (context, _) => StoryboardTabHost(
-              session: manager,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-              rowFilter: rowFilter,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      manager,
+      surface: const Size(1400, 600),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
     return manager;
   }
 
@@ -91,7 +76,7 @@ void main() {
   testWidgets('the V row failing the fx chip hides — unless it is the row '
       'you stand on', (tester) async {
     late String track;
-    await pumpHost(
+    final manager = await pumpHost(
       tester,
       rowFilter: const TimelineRowFilter(fxOnly: true),
       arrange: (manager) {
@@ -108,10 +93,6 @@ void main() {
       reason: 'the track has fx OFF and nobody stands on its row',
     );
 
-    final manager = tester
-        .state<State<StoryboardTabHost>>(find.byType(StoryboardTabHost))
-        .widget
-        .session;
     manager.selectTrackRow(manager.selectedTrackId);
     await tester.pumpAndSettle();
     expect(

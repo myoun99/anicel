@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 /// What ONE step of a cut-length drag costs, on each surface that shows it.
 ///
@@ -106,6 +107,7 @@ void main() {
             listenable: session,
             builder: (context, _) => StoryboardTabHost(
               session: session,
+              rail: TabRailWiring.of(session),
               pixelsPerFrame: 12,
               onPixelsPerFrameChanged: (_) {},
               showSeconds: false,
@@ -145,6 +147,7 @@ void main() {
             listenable: timelineSession,
             builder: (context, _) => TimelineTabHost(
               session: timelineSession,
+              rail: TabRailWiring.of(timelineSession),
               orientation: TimelineOrientation.horizontal,
               onOrientationChanged: (_) {},
               pixelsPerFrame: zoom.value,

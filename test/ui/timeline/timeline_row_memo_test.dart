@@ -4,11 +4,10 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/track_se_display.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// UI-R20 #4 (the "selecting a layer got slow" regression): the sparse
 /// rows (camera, SE) must reuse their cached row INSTANCES across
@@ -20,34 +19,8 @@ TrackSeDisplay trackSeDisplayOf(EditorSessionManager session) =>
     session.trackSe;
 
 void main() {
-  Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final manager = EditorSessionManager(
-      initialProject: createDefaultProject(),
-    );
-    addTearDown(manager.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: manager,
-            builder: (context, _) => TimelineTabHost(
-              session: manager,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    return manager;
-  }
+  Future<EditorSessionManager> pumpHost(WidgetTester tester) =>
+      pumpTimelineHost(tester, createDefaultProject(), pixelsPerFrame: 24);
 
   testWidgets('camera and SE rows keep their widget INSTANCES across an '
       'unrelated layer selection (memo hit)', (tester) async {

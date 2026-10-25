@@ -6,10 +6,9 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 import '../helpers/named_finders.dart';
-import '../helpers/storyboard_twirls.dart';
+import '../helpers/storyboard_host.dart';
 
 /// F-102's two HOSTS. Both panels key an SE row through `LaneVerbs`, and each
 /// tells the verbs which axis its frames are on: the timeline's rail speaks
@@ -98,30 +97,12 @@ void main() {
     );
     addTearDown(session.dispose);
     final cut2Start = _keyInCut1ThenStandInCut2(session);
-    await tester.binding.setSurfaceSize(const Size(1600, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: withStoryboardTwirls(
-            session,
-            (twirls) => StoryboardTabHost(
-              session: session,
-              expandedLaneLayerIds: twirls.expandedLaneLayerIds,
-              onToggleLayerLanes: twirls.onToggleLayerLanes,
-              expandedLaneGroupKeys: twirls.expandedLaneGroupKeys,
-              onToggleLaneGroupKey: twirls.onToggleLaneGroupKey,
-              pixelsPerFrame: 12,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(1600, 1200),
+      pixelsPerFrame: 12,
     );
-    await tester.pumpAndSettle();
 
     final se = session.activeTrack.seLayers.first.id.value;
     await _tapVisible(tester, find.named('storyboard-lane-toggle-$se'));

@@ -31,11 +31,11 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerVisibilityToggleButton;
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/storyboard_host.dart';
 import '../../helpers/timeline_host.dart';
 
 void main() {
@@ -386,9 +386,7 @@ Future<EditorSessionManager> _timeline(WidgetTester tester) =>
     );
 
 /// The storyboard tab over three tracks, each with one S row.
-Future<EditorSessionManager> _storyboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1400, 800));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+Future<EditorSessionManager> _storyboard(WidgetTester tester) {
   Track track(String id) => Track(
     id: TrackId(id),
     name: id,
@@ -418,34 +416,17 @@ Future<EditorSessionManager> _storyboard(WidgetTester tester) async {
       ),
     ],
   );
-  final s = EditorSessionManager(
-    initialProject: Project(
+  return pumpStoryboardHost(
+    tester,
+    Project(
       id: const ProjectId('sweep'),
       name: 'Sweep',
       createdAt: DateTime.utc(2026, 9, 25),
       tracks: [track('t1'), track('t2'), track('t3')],
     ),
+    surface: const Size(1400, 800),
+    pixelsPerFrame: 12,
   );
-  addTearDown(s.dispose);
-  await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: ListenableBuilder(
-          listenable: s,
-          builder: (context, _) => StoryboardTabHost(
-            session: s,
-            pixelsPerFrame: 12,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-            thumbnails: null,
-          ),
-        ),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  return s;
 }
 
 List<bool> _eyes(EditorSessionManager s, List<String> ids) => [

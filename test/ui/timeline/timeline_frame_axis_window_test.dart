@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/session/tab_rail_wiring.dart';
 
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -109,6 +110,7 @@ void main() {
             listenable: session,
             builder: (context, _) => TimelineTabHost(
               session: session,
+              rail: TabRailWiring.of(session),
               orientation: orientation,
               onOrientationChanged: (_) {},
               pixelsPerFrame: zoom.value,

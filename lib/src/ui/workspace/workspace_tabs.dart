@@ -1005,35 +1005,7 @@ class _WorkspaceTabs {
               },
               timelineRailExtent: _state._railExtents[LayerRailId.timeline],
               xsheetRailExtent: _state._railExtents[LayerRailId.xsheet],
-              timelineFrameAxisOffset:
-                  _state._frameAxisOffsets[LayerRailId.timeline],
-              xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
-              timelineLayerAxisOffset:
-                  _state._layerAxisOffsets[LayerRailId.timeline],
-              xsheetLayerAxisOffset:
-                  _state._layerAxisOffsets[LayerRailId.xsheet],
-              expandedLaneLayerIds:
-                  _state.widget.session.railView.expandedLaneLayerIds.value,
-              onToggleLayerLanes: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleLanes,
-              expandedLaneGroupKeys:
-                  _state.widget.session.railView.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
-              laneGraphs: _state.widget.session.railView.laneGraphs.value,
-              laneGraphVerbs: SessionRowButtonPresses(
-                _state.widget.session,
-              ).laneGraphVerbs,
-              hiddenSections:
-                  _state.widget.session.railView.hiddenSections.value,
-              onToggleSection: _state._toggleTimelineSection,
-              rowFilter: _state.widget.session.railView.rowFilter.value,
-              onSetRowFilter: _state._setTimelineRowFilter,
-              collapsedAttachBaseIds:
-                  _state.widget.session.railView.collapsedAttachBaseIds.value,
-              onToggleAttachGroup: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleGroupFold,
+              rail: TabRailWiring.of(_state.widget.session),
               // The legend's "open onion panel" (UI-R17 #5): already open
               // = the panel flashes in place (the common reveal logic).
               onRevealOnionSkinPanel: () =>
@@ -1095,39 +1067,15 @@ class _WorkspaceTabs {
               ),
               // R5 #9: ONE filter across the surfaces — the same state the
               // timeline and the sheet read, so a chip set on one is set
-              // wherever the legend appears.
-              rowFilter: _state.widget.session.railView.rowFilter.value,
-              onSetRowFilter: _state._setTimelineRowFilter,
-              // F-199: the sections too — hidden and toggled with the
-              // timeline's.
-              hiddenSections:
-                  _state.widget.session.railView.hiddenSections.value,
-              onToggleSection: _state._toggleTimelineSection,
-              // And the attach folds — the timeline's own set and verb.
-              collapsedAttachBaseIds:
-                  _state.widget.session.railView.collapsedAttachBaseIds.value,
-              onToggleAttachGroup: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleGroupFold,
+              // wherever the legend appears. And so the sections (F-199),
+              // the attach folds, the lane twirls (I-73 ④ⓔ — the camera
+              // row's head is the timeline's camera row, and turns its lanes
+              // there too) and the header graphs (I-89 ①): the timeline's
+              // own wiring.
+              rail: TabRailWiring.of(_state.widget.session),
               // And the legend's onion panel door, as the timeline's (F-443).
               onRevealOnionSkinPanel: () =>
                   _state._revealPanel(EditorWorkspace.onionSkinTabId),
-              // And the lane twirls (I-73 ④ⓔ) — the camera row's head is the
-              // timeline's camera row, and turns its lanes there too.
-              expandedLaneLayerIds:
-                  _state.widget.session.railView.expandedLaneLayerIds.value,
-              onToggleLayerLanes: SessionRowButtonPresses(
-                _state.widget.session,
-              ).toggleLanes,
-              expandedLaneGroupKeys:
-                  _state.widget.session.railView.expandedLaneGroupKeys.value,
-              onToggleLaneGroupKey: _state._rail._toggleLaneGroup,
-              // And the header graphs (I-89 ①): the timeline's state and its
-              // verbs, so a graph opened on either rail is open on both.
-              laneGraphs: _state.widget.session.railView.laneGraphs.value,
-              laneGraphVerbs: SessionRowButtonPresses(
-                _state.widget.session,
-              ).laneGraphVerbs,
               pixelsPerFrame: _state._storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: _state._setStoryboardZoom,
               onZoomFit: _state._fitStoryboardZoom,
@@ -1136,8 +1084,6 @@ class _WorkspaceTabs {
                 _state._showSecondsDisplay.value = show;
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
-              frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
-              layerAxisOffset: _state._layerAxisOffsets[LayerRailId.storyboard],
               // ⛔No steppers any more (B7): the V rows' splitter is the
               // height's one writer, and it asks the NOTIFIER, not the value
               // this build took — a drag's steps outrun the rebuilds.

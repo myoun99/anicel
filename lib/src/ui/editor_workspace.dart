@@ -11,7 +11,6 @@ import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../services/flutter_test_run.dart';
-import '../core/set_toggle.dart';
 import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
@@ -78,7 +77,7 @@ import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
-import 'session/session_row_button_presses.dart';
+import 'session/tab_rail_wiring.dart';
 import 'session/text_clipboard.dart' show CanvasTextHand, TextCopy;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
@@ -179,8 +178,6 @@ import 'timeline/property_lane_model.dart'
         indexOfDisplayRow;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
-import 'timeline/timeline_row_filter.dart';
-import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
 import 'panels/onion_skin_panel.dart';
 import 'panels/tool_size_preset_panel.dart';
@@ -1081,32 +1078,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
       widget.session.panelViews.frameAxisOffsets;
 
-  /// Where each frame grid's LAYER axis is scrolled to — the project's as
-  /// well, and saved with it (F-267).
-  Map<String, ValueNotifier<double>> get _layerAxisOffsets =>
-      widget.session.panelViews.layerAxisOffsets;
-
-  // The lane twirl and the group fold are pressed through
-  // `SessionRowButtonPresses` — a press inside the row selection folds every
-  // selected row (I-32).
-
   // The hidden sections, the row filter, the folded attach groups and the
   // lane twirls are the SESSION's (`RailView`, F-169 and I-7): the standing
-  // law reads them, and the layer ids they name are the project's.
-
-  void _toggleTimelineSection(TimelineSection section) {
-    final hiddenSections = widget.session.railView.hiddenSections;
-    hiddenSections.value = toggledSet(hiddenSections.value, section);
-    // F-169: hiding the section you stand in hands the standing on.
-    widget.session.standing.keepStandingShown();
-  }
-
-  void _setTimelineRowFilter(TimelineRowFilter filter) {
-    widget.session.railView.rowFilter.value = filter;
-    // UI-R6 #3: a non-passing active layer moves to the nearest passing
-    // layer above it (instead of lingering through the exemption).
-    widget.session.standing.keepStandingShown(filterSparesStanding: false);
-  }
+  // law reads them, and the layer ids they name are the project's. A tab
+  // takes them, and their verbs, as `TabRailWiring` — the one wiring
+  // (tests-hand-roll-the-tab-hosts-Q1 b, 2026-10-25) — whose twirl and
+  // group fold are pressed through `SessionRowButtonPresses`: a press inside
+  // the row selection folds every selected row (I-32).
 
   /// The TWO viewers (R4 §6-h, second one 유저 확정 2026-08-12): the one
   /// that lies on the floor to be looked at large, and the one that sits

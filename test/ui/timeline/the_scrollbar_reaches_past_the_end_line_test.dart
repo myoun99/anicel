@@ -7,7 +7,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -16,6 +15,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+
+import '../../helpers/storyboard_host.dart';
 
 /// 🚨F-174 (유저 2026-09-21): 「컷길이 엔드라인에 딱 맞추면 스크롤 쭉 해도
 /// 엔드라인 안보이고 룰러 살짝 움직여야 엔드라인 보이니까, 스크롤바는
@@ -216,8 +217,6 @@ void main() {
     required int cutFrames,
     required int gapFrames,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(900, 600));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -228,24 +227,12 @@ void main() {
     );
     session.repository.updateTrailingFrames(gapFrames);
     const pixelsPerFrame = 24.0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => StoryboardTabHost(
-              session: session,
-              pixelsPerFrame: pixelsPerFrame,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      session,
+      surface: const Size(900, 600),
+      pixelsPerFrame: pixelsPerFrame,
     );
-    await tester.pumpAndSettle();
     final viewport = find.byKey(
       const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
     );

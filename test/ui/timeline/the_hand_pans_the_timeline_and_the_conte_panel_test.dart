@@ -7,9 +7,9 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/canvas/canvas_view_hold.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_tab_host.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
+
+import '../../helpers/storyboard_host.dart';
+import '../../helpers/timeline_host.dart';
 
 /// 🗣️R26 #34 (유저 2026-07-20): 「팬이 발동하는 숏컷(현 기본값인 2핑거
 /// 드래그나 휠클릭)의 경우, 타임라인에서는 팬으로 작동하도록 로직공통화」 —
@@ -32,29 +32,13 @@ void main() {
     return s;
   }
 
-  Future<void> pumpTimeline(WidgetTester tester, EditorSessionManager s) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => TimelineTabHost(
-              session: s,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-  }
+  Future<void> pumpTimeline(WidgetTester tester, EditorSessionManager s) =>
+      pumpTimelineHostOn(
+        tester,
+        s,
+        surface: const Size(1200, 700),
+        pixelsPerFrame: 24,
+      );
 
   ScrollPosition rows(WidgetTester tester) => tester
       .state<ScrollableState>(
@@ -143,26 +127,12 @@ void main() {
 
   testWidgets('the conte panel pans the same way', (tester) async {
     final s = tallSession();
-    await tester.binding.setSurfaceSize(const Size(500, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => StoryboardTabHost(
-              session: s,
-              pixelsPerFrame: 40,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-              thumbnails: null,
-            ),
-          ),
-        ),
-      ),
+    await pumpStoryboardHostOn(
+      tester,
+      s,
+      surface: const Size(500, 700),
+      pixelsPerFrame: 40,
     );
-    await tester.pumpAndSettle();
     final strip = find.byKey(
       const ValueKey<String>('storyboard-timeline-horizontal-viewport'),
     );
