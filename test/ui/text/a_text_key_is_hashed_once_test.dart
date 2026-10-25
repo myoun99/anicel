@@ -21,7 +21,7 @@ var _spanHashes = 0;
 
 /// A style that counts its hashes.
 class _CountedStyle extends TextStyle {
-  const _CountedStyle({super.fontSize, super.color});
+  const _CountedStyle({super.fontSize});
 
   @override
   int get hashCode {
