@@ -57,6 +57,12 @@ void main() {
 
     expect(ghosts.nodes, isEmpty, reason: '⛔premise: no onion skin is on');
     expect(
+      ghosts.picture.paintPaper,
+      isFalse,
+      reason: 'the frame\'s picture under them holds its paper — laid over '
+          'it, the ghosts\' paper would hide the frame',
+    );
+    expect(
       ghosts.drawnLive,
       {drawnLive.single},
       reason: 'the ghosts\' view has to know the cel the canvas drew live '

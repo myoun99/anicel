@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/core/tree_nodes.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -15,6 +19,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
@@ -314,6 +319,55 @@ void main() {
     expect(keyOf(ghosted(0xFFFF0000)), red);
     expect(keyOf(ghosted(null)), isNot(red));
     expect(keyOf(ghosted(0xFF0000FF)), isNot(red));
+  });
+
+  test('an onion ghost is drawn in its tint — the colour the key parts it '
+      'by', () async {
+    final blue = BitmapSurface(
+      canvasSize: page.canvasSize,
+      tileSize: 8,
+      tiles: {
+        for (var x = 0; x < 3; x += 1)
+          for (var y = 0; y < 2; y += 1)
+            TileCoord(x: x, y: y): BitmapTile(
+              size: 8,
+              pixels: Uint8List.fromList([
+                for (var i = 0; i < 8 * 8; i += 1) ...[0, 0, 0xFF, 0xFF],
+              ]),
+            ),
+      },
+    );
+    Future<List<int>> drawnAt(int? tint) async {
+      final recorder = ui.PictureRecorder();
+      stackedFrameOf(
+        [
+          CompositeLeaf<CanvasStackRow>(
+            CanvasLayerImageRequest(
+              frameKey: cel('ghost'),
+              opacity: 1,
+              tint: tint,
+            ),
+          ),
+        ],
+        page: (
+          canvasSize: page.canvasSize,
+          pasteboardReach: page.pasteboardReach,
+          paintPaper: false,
+          paperBackground: page.paperBackground,
+        ),
+        surfaceOf: (_) => blue,
+      ).drawing.draw(ui.Canvas(recorder));
+      final picture = recorder.endRecording();
+      final image = await picture.toImage(24, 16);
+      picture.dispose();
+      final bytes = await image.toByteData();
+      image.dispose();
+      const at = (8 * 24 + 12) * 4;
+      return bytes!.buffer.asUint8List(at, 4);
+    }
+
+    expect(await drawnAt(null), [0, 0, 0xFF, 0xFF], reason: '⛔premise');
+    expect(await drawnAt(0xFFFF0000), [0xFF, 0, 0, 0xFF]);
   });
 
   group('a session\'s stacks', () {
