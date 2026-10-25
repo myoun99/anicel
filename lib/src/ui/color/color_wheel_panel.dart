@@ -4,9 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/segment_share.dart' show nearestOnSegment;
-import '../input/control_press_claim.dart' show DragVerbClaim;
 import '../repaint_props.dart';
-import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
+import '../widgets/owning_axis_grip.dart';
 
 /// Krita/CSP-style color wheel: a hue ring around a saturation/value
 /// TRIANGLE that rotates with the hue (its full-saturation corner rides
@@ -275,36 +274,27 @@ class _ColorWheelState extends State<ColorWheel> {
         // the claim at the press, and a pan that takes the arena on its
         // first movement. ↩️A plain pan waited for its slop, and a fast pull
         // let the panels' scroller reach its own first.
-        return DragVerbClaim(
-          behavior: HitTestBehavior.opaque,
-          child: RawGestureDetector(
-            behavior: HitTestBehavior.opaque,
-            gestures: <Type, GestureRecognizerFactory>{
-              OwningPanGestureRecognizer:
-                  GestureRecognizerFactoryWithHandlers<
-                    OwningPanGestureRecognizer
-                  >(OwningPanGestureRecognizer.new, (recognizer) {
-                    recognizer.onDown = (details) {
-                      _activeRegion = ColorWheelGeometry(
-                        size,
-                        hue: widget.hsv.hue,
-                      ).regionAt(details.localPosition);
-                      _apply(details.localPosition, size);
-                    };
-                    // The move that wins the arena is reported here, not as
-                    // an update.
-                    recognizer.onStart = (details) =>
-                        _apply(details.localPosition, size);
-                    recognizer.onUpdate = (details) =>
-                        _apply(details.localPosition, size);
-                    recognizer.onEnd = (_) =>
-                        _activeRegion = ColorWheelRegion.none;
-                    recognizer.onCancel = () =>
-                        _activeRegion = ColorWheelRegion.none;
-                  }),
-            },
-            child: CustomPaint(painter: _ColorWheelPainter(hsv: widget.hsv)),
-          ),
+        // Both halves are [OwningAxisGrip]'s, a handle dragged both ways.
+        return OwningAxisGrip(
+          axis: null,
+          configure: (recognizer) {
+            recognizer.onDown = (details) {
+              _activeRegion = ColorWheelGeometry(
+                size,
+                hue: widget.hsv.hue,
+              ).regionAt(details.localPosition);
+              _apply(details.localPosition, size);
+            };
+            // The move that wins the arena is reported here, not as an
+            // update.
+            recognizer.onStart = (details) =>
+                _apply(details.localPosition, size);
+            recognizer.onUpdate = (details) =>
+                _apply(details.localPosition, size);
+            recognizer.onEnd = (_) => _activeRegion = ColorWheelRegion.none;
+            recognizer.onCancel = () => _activeRegion = ColorWheelRegion.none;
+          },
+          child: CustomPaint(painter: _ColorWheelPainter(hsv: widget.hsv)),
         );
       },
     );

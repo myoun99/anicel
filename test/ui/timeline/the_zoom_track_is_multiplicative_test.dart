@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/ui/input/control_press_claim.dart';
+import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 void main() {
   Finder trackOf() => find.descendant(
     of: find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-    matching: find.byType(DragVerbClaim),
+    matching: find.byType(OwningAxisGrip),
   );
 
   Future<List<double>> pump(

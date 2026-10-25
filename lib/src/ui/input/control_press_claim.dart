@@ -655,11 +655,22 @@ class DragVerbClaim extends SingleChildRenderObjectWidget {
 
 /// [DragVerbClaim]'s box — one, where a widget and its `Listener` were two
 /// ([ControlPressClaim]'s 「ONE BOX」).
-class RenderDragVerbClaim extends RenderProxyBoxWithHitTestBehavior {
+class RenderDragVerbClaim extends RenderProxyBoxWithHitTestBehavior
+    with HoldsDragVerb {
   RenderDragVerbClaim({required super.behavior});
+}
 
+/// [DragVerbClaim]'s claim, for a box that is the claim and its drag's
+/// holder at once (`OwningAxisGrip`) — one spelling of when the claim
+/// stands and when it falls.
+///
+/// It runs after whatever the box itself does with the event: a recogniser
+/// offered the down in the same box is offered it first, as one a level
+/// deeper was.
+mixin HoldsDragVerb on RenderBox {
   @override
   void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    super.handleEvent(event, entry);
     switch (event) {
       // Claimed HERE because hit-test dispatch runs deepest-first, so the
       // claim is already standing by the time anything above is offered the

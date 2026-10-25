@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/ui/input/control_press_claim.dart'
-    show DragVerbClaim;
+import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
@@ -284,7 +283,7 @@ void main() {
       final track = tester.getRect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-          matching: find.byType(DragVerbClaim),
+          matching: find.byType(OwningAxisGrip),
         ),
       );
       // The track is multiplicative: where a zoom sits along it.

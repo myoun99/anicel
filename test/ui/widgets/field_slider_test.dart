@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
-import 'package:anicel/src/ui/input/control_press_claim.dart';
+import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/ground_ink_writing.dart';
 
@@ -19,7 +19,7 @@ void main() {
   /// bar, and this is how.
   Finder trackOf(Key key) => find.descendant(
     of: find.byKey(key),
-    matching: find.byType(DragVerbClaim),
+    matching: find.byType(OwningAxisGrip),
   );
   const trackWidth = 200.0;
 

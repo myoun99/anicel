@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/widgets.dart';
 
 import '../input/control_press_claim.dart';
+import '../input/recognizer_box.dart';
 import 'axis_bar_gesture.dart';
 
 /// A GRIP that owns its press: the claim and the eager recogniser, together.
@@ -37,14 +38,22 @@ import 'axis_bar_gesture.dart';
 /// way — it did not: its span mounted a plain one-axis drag, and a pull
 /// across the lane scrolled the timeline, as the cut end's did. Both wear
 /// this now, as the splitter does.
-class OwningAxisGrip extends StatelessWidget {
+///
+/// ↩️(2026-10-25, card frame-panels-build-in-one-frame) The bar, the
+/// scrubbable number, the colour wheel and the pressure curve each wrote the
+/// pair by hand — a [DragVerbClaim] over a `RawGestureDetector` of one
+/// `Owning*` recogniser — and wear this now. It is ONE render object
+/// ([RecognizerBox] with [HoldsDragVerb]), where the claim and the detector
+/// were five elements.
+class OwningAxisGrip extends RecognizerBox<DragGestureRecognizer> {
   const OwningAxisGrip({
     super.key,
     required this.axis,
-    required this.configure,
-    this.child,
-    this.behavior = HitTestBehavior.opaque,
-  });
+    required void Function(DragGestureRecognizer recognizer)? configure,
+    super.child,
+    HitTestBehavior behavior = HitTestBehavior.opaque,
+  }) : _verb = configure,
+       _behavior = behavior;
 
   /// The axis the grip's VALUE follows. A cross-axis drag still holds the
   /// pointer and changes nothing, which is what 「you are operating this
@@ -53,46 +62,50 @@ class OwningAxisGrip extends StatelessWidget {
   final Axis? axis;
 
   /// What the drag does — the caller's, exactly as `DragVerbClaim`'s note
-  /// says: a splitter moves an edge, an exposure grip moves a comma.
-  final void Function(DragGestureRecognizer recognizer) configure;
-
-  final Widget? child;
+  /// says: a splitter moves an edge, an exposure grip moves a comma. Null
+  /// while the control is disabled: the press is still claimed — it landed
+  /// on a control — and nothing is offered it.
+  final void Function(DragGestureRecognizer recognizer)? _verb;
 
   /// Opaque by default: a grip is mostly empty space and still has to be
   /// claimable.
-  final HitTestBehavior behavior;
+  final HitTestBehavior _behavior;
 
   @override
-  Widget build(BuildContext context) {
-    return DragVerbClaim(
-      behavior: behavior,
-      child: RawGestureDetector(
-        behavior: behavior,
-        gestures: <Type, GestureRecognizerFactory>{
-          if (axis == null)
-            OwningPanGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  OwningPanGestureRecognizer
-                >(() => OwningPanGestureRecognizer(debugOwner: this), configure)
-          else if (axis == Axis.horizontal)
-            OwningHorizontalDragGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  OwningHorizontalDragGestureRecognizer
-                >(
-                  () => OwningHorizontalDragGestureRecognizer(debugOwner: this),
-                  configure,
-                )
-          else
-            OwningVerticalDragGestureRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  OwningVerticalDragGestureRecognizer
-                >(
-                  () => OwningVerticalDragGestureRecognizer(debugOwner: this),
-                  configure,
-                ),
-        },
-        child: child,
-      ),
-    );
-  }
+  HitTestBehavior get behavior => _behavior;
+
+  @override
+  bool get offers => _verb != null;
+
+  /// The recogniser's type, as a [RawGestureDetector]'s factory was keyed:
+  /// a grip whose axis changes is handed a new one.
+  Type get _kind => switch (axis) {
+    null => OwningPanGestureRecognizer,
+    Axis.horizontal => OwningHorizontalDragGestureRecognizer,
+    Axis.vertical => OwningVerticalDragGestureRecognizer,
+  };
+
+  @override
+  DragGestureRecognizer makeRecognizer() => switch (axis) {
+    null => OwningPanGestureRecognizer(debugOwner: this),
+    Axis.horizontal => OwningHorizontalDragGestureRecognizer(debugOwner: this),
+    Axis.vertical => OwningVerticalDragGestureRecognizer(debugOwner: this),
+  };
+
+  @override
+  bool fits(DragGestureRecognizer recognizer) =>
+      recognizer.runtimeType == _kind;
+
+  @override
+  void configure(DragGestureRecognizer recognizer) => _verb!(recognizer);
+
+  @override
+  RenderRecognizerBox<DragGestureRecognizer> createRenderObject(
+    BuildContext context,
+  ) => _RenderOwningAxisGrip()..wear(this);
 }
+
+/// The grip's ONE box: the recogniser offered the down, then the claim
+/// ([HoldsDragVerb]) — the order the claim and the detector under it kept.
+class _RenderOwningAxisGrip extends RenderRecognizerBox<DragGestureRecognizer>
+    with HoldsDragVerb {}

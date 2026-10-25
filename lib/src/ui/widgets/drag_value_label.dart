@@ -13,6 +13,7 @@ import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'axis_bar_gesture.dart';
 import 'field_slider.dart';
 import 'inline_numeric_field.dart';
+import 'owning_axis_grip.dart';
 import 'value_hands.dart';
 
 /// A NUMBER YOU OPERATE, by hands that each do ONE thing (UI-R18 #21, the
@@ -453,35 +454,20 @@ class _DragValueLabelState extends State<DragValueLabel> {
         onPointerSignal: widget.enabled
             ? (event) => handleWheelUnlessScrolling(event, context, _wheel)
             : null,
-        child: DragVerbClaim(
-          behavior: HitTestBehavior.opaque,
-          child: RawGestureDetector(
-            key: ValueKey<String>(widget.keyValue),
-            behavior: HitTestBehavior.opaque,
-            gestures: widget.enabled
-                ? <Type, GestureRecognizerFactory>{
-                    OwningHorizontalDragGestureRecognizer:
-                        GestureRecognizerFactoryWithHandlers<
-                          OwningHorizontalDragGestureRecognizer
-                        >(
-                          () => OwningHorizontalDragGestureRecognizer(
-                            debugOwner: this,
-                          ),
-                          (recognizer) {
-                            // From the press: the first pixel is the
-                            // scrub's.
-                            recognizer.dragStartBehavior =
-                                DragStartBehavior.down;
-                            recognizer.onStart = _dragStarted;
-                            recognizer.onUpdate = _dragUpdated;
-                            recognizer.onEnd = (_) => _scrubOver();
-                            recognizer.onCancel = _scrubOver;
-                          },
-                        ),
-                  }
-                : const <Type, GestureRecognizerFactory>{},
-            child: face,
-          ),
+        child: OwningAxisGrip(
+          key: ValueKey<String>(widget.keyValue),
+          axis: Axis.horizontal,
+          configure: widget.enabled
+              ? (recognizer) {
+                  // From the press: the first pixel is the scrub's.
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = _dragStarted;
+                  recognizer.onUpdate = _dragUpdated;
+                  recognizer.onEnd = (_) => _scrubOver();
+                  recognizer.onCancel = _scrubOver;
+                }
+              : null,
+          child: face,
         ),
       ),
     );

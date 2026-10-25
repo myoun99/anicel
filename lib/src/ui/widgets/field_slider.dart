@@ -15,9 +15,9 @@ import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import '../timeline/memo_token.dart' show Kept, keptWhileSame;
-import 'axis_bar_gesture.dart';
 import 'ground_ink_writing.dart';
 import 'inline_numeric_field.dart';
+import 'owning_axis_grip.dart';
 import 'superellipse_clip.dart';
 import 'value_hands.dart';
 import '../repaint_props.dart';
@@ -1009,30 +1009,12 @@ class _FieldSliderState extends State<FieldSlider> {
       // scrolling included. These recognisers take the arena on the FIRST
       // movement instead of at a slop, so no ancestor scrollable is ever in
       // a position to take the gesture away — see [axis_bar_gesture].
-      child: RawGestureDetector(
-        behavior: HitTestBehavior.opaque,
-        gestures: _vertical
-            ? <Type, GestureRecognizerFactory>{
-                OwningVerticalDragGestureRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                      OwningVerticalDragGestureRecognizer
-                    >(
-                      () =>
-                          OwningVerticalDragGestureRecognizer(debugOwner: this),
-                      _configureDrag,
-                    ),
-              }
-            : <Type, GestureRecognizerFactory>{
-                OwningHorizontalDragGestureRecognizer:
-                    GestureRecognizerFactoryWithHandlers<
-                      OwningHorizontalDragGestureRecognizer
-                    >(
-                      () => OwningHorizontalDragGestureRecognizer(
-                        debugOwner: this,
-                      ),
-                      _configureDrag,
-                    ),
-              },
+      // T11: this press is the slider's — the claim and the recogniser in
+      // one box ([OwningAxisGrip]). ↩️They were written here by hand, a
+      // [DragVerbClaim] over a detector, as the splitter wore the pair.
+      child: OwningAxisGrip(
+        axis: widget.axis,
+        configure: _configureDrag,
         child: bar,
       ),
     );
@@ -1046,20 +1028,15 @@ class _FieldSliderState extends State<FieldSlider> {
       slider: true,
       label: widget.label,
       value: valueText,
-      // T11: this press is the slider's. The claim is [DragVerbClaim] now —
-      // the same four lines used to sit here, in the splitter and in the
-      // rail's swipe column, three copies of one law.
-      child: DragVerbClaim(
-        child: Listener(
-          // What is left here is the WHEEL. The raw travel this used to
-          // track went with the workaround that read it.
-          //
-          // H23: registered rather than handled, so the notch this bar takes
-          // is not also taken by the canvas layer above it.
-          onPointerSignal: (event) =>
-              handleWheelUnlessScrolling(event, context, _handleWheel),
-          child: bar,
-        ),
+      child: Listener(
+        // What is left here is the WHEEL. The raw travel this used to
+        // track went with the workaround that read it.
+        //
+        // H23: registered rather than handled, so the notch this bar takes
+        // is not also taken by the canvas layer above it.
+        onPointerSignal: (event) =>
+            handleWheelUnlessScrolling(event, context, _handleWheel),
+        child: bar,
       ),
     );
     return _withHands(claimed);

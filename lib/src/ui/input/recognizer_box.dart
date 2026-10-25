@@ -30,6 +30,15 @@ abstract class RecognizerBox<T extends GestureRecognizer>
   /// nothing, and the box is the child's box only.
   bool get offers => true;
 
+  /// Whether [recognizer], made for an earlier build, is still the kind
+  /// this build offers. False makes a new one, as [RawGestureDetector] does
+  /// when the type its factory is keyed by changes.
+  bool fits(T recognizer) => true;
+
+  /// Where the box takes a press its child does not — a
+  /// [RawGestureDetector]'s `behavior`.
+  HitTestBehavior get behavior => HitTestBehavior.deferToChild;
+
   /// The tap a screen reader's activation runs — what [RawGestureDetector]
   /// gives a tap recognizer — or null for none.
   VoidCallback? get semanticTap => null;
@@ -47,16 +56,19 @@ abstract class RecognizerBox<T extends GestureRecognizer>
 
 /// [RecognizerBox]'s render object: the press offered on the down, as the
 /// listener of a [RawGestureDetector] offers it, and the screen reader's tap.
-class RenderRecognizerBox<T extends GestureRecognizer> extends RenderProxyBox {
+class RenderRecognizerBox<T extends GestureRecognizer>
+    extends RenderProxyBoxWithHitTestBehavior {
   T? _recognizer;
   VoidCallback? _semanticTap;
 
   void wear(RecognizerBox<T> box) {
+    behavior = box.behavior;
+    if (_recognizer case final kept? when !box.offers || !box.fits(kept)) {
+      kept.dispose();
+      _recognizer = null;
+    }
     if (box.offers) {
       box.configure(_recognizer ??= box.makeRecognizer());
-    } else {
-      _recognizer?.dispose();
-      _recognizer = null;
     }
     final semanticTap = box.offers ? box.semanticTap : null;
     final hadTap = _semanticTap != null;
