@@ -268,5 +268,77 @@ void main() {
       oldCache.dispose();
       newCache.dispose();
     });
+
+    testWidgets('an image let go before the cache is swapped is released on '
+        'the cache that pinned it, in the build after', (tester) async {
+      final store = storeWithStrokes(['frame-a', 'frame-b']);
+      final oldCache = LayerFrameImageCache(frameStore: store);
+      final newCache = LayerFrameImageCache(frameStore: store);
+      await tester.runAsync(() async {
+        for (final cache in [oldCache, newCache]) {
+          for (final frameId in ['frame-a', 'frame-b']) {
+            await cache.prepare(
+              key: keyFor(frameId),
+              canvasSize: canvasSize,
+              quality: PlaybackQuality.full,
+              sourceEffects: const [],
+            );
+          }
+        }
+      });
+
+      Future<void> pumpWith(LayerFrameImageCache cache) => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 8,
+              height: 8,
+              child: CanvasLayerStackView(
+                nodes: [
+                  for (final frameId in ['frame-a', 'frame-b'])
+                    CompositeLeaf<CanvasStackRow>(
+                      CanvasLayerImageRequest(
+                        frameKey: keyFor(frameId),
+                        opacity: 1,
+                      ),
+                    ),
+                ],
+                imageCache: cache,
+                canvasSize: canvasSize,
+                viewport: CanvasViewport(),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await pumpWith(oldCache);
+      await tester.pumpAndSettle();
+      expect(oldCache.pinnedBytes, 2 * 8 * 8 * 4);
+
+      // frame-b becomes a copy of frame-a's very surface: the view holds
+      // a's picture under b too, and lets go of what it held for b — out of
+      // any build, so it waits for the next one, pinned on the old cache.
+      store.storeCopiedSurface(
+        keyFor('frame-b'),
+        store.bakedSurfaceOrNull(keyFor('frame-a'))!,
+        source: keyFor('frame-a'),
+      );
+      // That build swaps the cache: the pins of what the view holds move,
+      // and what it let go is released where it was pinned — on the new
+      // cache it would be a release of a pin that cache never saw, and
+      // the old one would keep it for ever.
+      await pumpWith(newCache);
+      await tester.pumpAndSettle();
+      expect(oldCache.pinnedBytes, 0);
+
+      // Balanced to the end: unmount releases on the new cache exactly what
+      // it holds there (an unbalanced release asserts in debug).
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      expect(newCache.pinnedBytes, 0);
+      oldCache.dispose();
+      newCache.dispose();
+    });
   });
 }

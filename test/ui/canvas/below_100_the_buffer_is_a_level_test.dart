@@ -179,6 +179,7 @@ void main() {
     // paper yields its outer level pixel (#15, `_paintPaperInto`), so the
     // edge ring is not paper and is not this test's question.
     const logicalSize = Size(8, 4);
+    debugLastBufferLevel = null;
     await tester.pumpWidget(
       stackAt(
         viewport: CanvasViewport(zoom: 0.25, panX: -4, panY: -2),
@@ -189,10 +190,18 @@ void main() {
     await tester.pumpAndSettle();
     final bytes = await paintBytes(tester, painterOf(tester), logicalSize);
 
-    // ↩️The buffer's level and the bytes it held were read off the
-    // canvas's buffer cache, until nothing kept a buffer
-    // (one-picture-per-frame ②-5a): what each pixel reads tells a level
-    // from the two ways of getting it wrong.
+    // The stack the onion ghosts are drawn in composes at the display's
+    // level — the pixels below cannot tell: the quarter image they draw
+    // is already each block's mean. ↩️The level was read off the canvas's
+    // buffer cache, until nothing kept a buffer (one-picture-per-frame
+    // ②-5a).
+    expect(
+      debugLastBufferLevel,
+      2,
+      reason: '25% is level 2: the buffer is the screen\'s size',
+    );
+    // What each pixel reads tells a level from the two ways of getting it
+    // wrong.
     for (var i = 0; i < bytes.length; i += 4) {
       expect(bytes[i + 3], 255, reason: 'pixel ${i ~/ 4} is opaque');
       expect(

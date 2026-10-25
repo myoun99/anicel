@@ -166,6 +166,24 @@ void main() {
     return bytes!;
   }
 
+  /// Paints what the stack's painter on screen draws NOW — a recording only:
+  /// a disposed image it still holds fails the draw.
+  void paintNow(WidgetTester tester) {
+    final painter = tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(CanvasLayerStackView),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .where((paint) => paint.painter != null)
+        .first
+        .painter!;
+    final recorder = ui.PictureRecorder();
+    painter.paint(Canvas(recorder, Offset.zero & viewSize), viewSize);
+    recorder.endRecording().dispose();
+  }
+
   /// Blue columns on the row through the middle of the cel at [zoom].
   int blueColumns(Uint8List rgba, double zoom) {
     var n = 0;
@@ -306,12 +324,15 @@ void main() {
       walk: false,
     );
     expect(
-      await settleAsync(
-        tester,
-        () =>
-            images.handed.isNotEmpty &&
-            !identical(images.handed.last.image, images.handed.first.image),
-      ),
+      await settleAsync(tester, () {
+        // Painted at every turn, as a sibling repainting the layer paints
+        // it: between the settle and the build it asks for, the painter on
+        // screen still draws with the clone the settle replaced — which
+        // may not go before that build.
+        paintNow(tester);
+        return images.handed.isNotEmpty &&
+            !identical(images.handed.last.image, images.handed.first.image);
+      }),
       isTrue,
       reason: 'fixture: the stack was handed a second handle — the snapshot '
           'that settled in place of the deferred image',

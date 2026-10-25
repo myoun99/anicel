@@ -18,13 +18,16 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import '../../helpers/the_frame_as_it_stands.dart';
 
-/// 🚨★★★THE ACTIVE LAYER AT A LEVEL IS ITS TILES HALVED (render round 4c,
-/// 2026-09-16). Below 100% the display buffer is a level, and until 4c the
-/// active layer's tiles were the one thing in it still reduced by nearest
-/// under the recorder's scale. Now the committed tiles reach a level
-/// buffer as LEVEL TILES ([TilePyramid]) — each an exact box mean of its
-/// block, drawn 1:1 in the buffer's pixels — so the layer being drawn on
-/// and the layers around it are the same picture at every zoom.
+/// 🚨★★★THE ACTIVE LAYER ZOOMED OUT IS THE MEAN OF ITS BLOCKS, NEVER
+/// NEAREST (render round 4c, 2026-09-16) — so the layer being drawn on and
+/// the layers around it are the same picture at every zoom.
+///
+/// ↩️Until 4c the active layer's tiles were the one thing in the level
+/// buffer still reduced by nearest under the recorder's scale; 4c drew them
+/// into it as LEVEL TILES ([TilePyramid]), each an exact box mean of its
+/// block. Since 2026-10-25 the frame drawn as it stands is composed at its
+/// own resolution, as its one picture is (`composedAtTheDisplayLevel`), and
+/// the blit reduces it: this pins that the mean holds on that road.
 ///
 /// The fixture is the cel from `below_100_the_buffer_is_a_level_test` as
 /// the ACTIVE layer: 64×32, an opaque black column every four pixels, every
@@ -147,7 +150,7 @@ void main() {
   }
 
   testWidgets('at 25% every pixel of the active layer is the mean of its '
-      '4×4 block — a level tile, not nearest', (tester) async {
+      '4×4 block, not nearest', (tester) async {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
@@ -174,9 +177,9 @@ void main() {
       expect(
         bytes[i],
         inInclusiveRange(189, 193),
-        reason: 'pixel ${i ~/ 4}: one column in four is ink, so the level '
-            'tile reads 191 — 0 or 255 is a tile drawn by nearest under '
-            'the recorder\'s scale',
+        reason: 'pixel ${i ~/ 4}: one column in four is ink, so the mean '
+            'reads 191 — 0 or 255 is a tile drawn by nearest under the '
+            'recorder\'s scale',
       );
     }
   });
@@ -195,7 +198,8 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetDevicePixelRatio);
     // 16 × 10 tiles → 8 × 5 = 40 level-1 blocks. COLD: no tile has a
-    // picture, so the paint makes all 160 of them and the 40 level tiles.
+    // picture, so the paint makes all 160 of them (↩️and, at a level, the
+    // 40 level tiles).
     const wide = CanvasSize(width: 128, height: 80);
     final surface = BitmapSurface(
       canvasSize: wide,
@@ -263,8 +267,8 @@ void main() {
       return data!.buffer.asUint8List();
     }))!;
     // Every EVEN device x covers canvas x = 2·dx and 2·dx + 1, and 2·dx is
-    // a multiple of four: one ink column of the two. A level tile reads
-    // the mean (127); nearest reads the column itself (0).
+    // a multiple of four: one ink column of the two. The mean reads 127;
+    // nearest reads the column itself (0).
     var mean = 0;
     final nearest = <String>[];
     for (var y = 2; y < 38; y += 1) {
