@@ -514,8 +514,10 @@ typedef SheetInkPrintView = ({
 /// showing, or with no ink) clipped where its frame clips the view
 /// ([sheetInkWindowsShown]), laid as wide as the layer lays it, and drawn
 /// by the brush view's own painter at the window's ink viewport — its
-/// snap, its levels, its sampling. The brush switch only mounts the views;
-/// it does not change a pixel. ↩️It drew the surface's whole raster in
+/// snap, its sampling (reduced, each tile from its picture's chain —
+/// ↩️from level tiles until one-picture-per-frame ②-5b-2). The brush
+/// switch only mounts the views; it does not change a pixel. ↩️It drew the
+/// surface's whole raster in
 /// paper space, `medium`-filtered and snapped with the PAGE's view: the
 /// ink went soft and slid by up to a pixel as the switch was flipped.
 ///

@@ -2,8 +2,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 /// A source of one level picture: an image and where its halved self lands
-/// in the level — the origin for a cel's single image, a quadrant for each
-/// of the four pictures under a level tile.
+/// in the level — the origin for a single image. ↩️A quadrant for each of
+/// the four pictures under a level tile too, until one-picture-per-frame
+/// ②-5b-2.
 typedef LevelSource = ({ui.Image image, ui.Offset at});
 
 /// One level of the display's pyramid: the picture that draws each of
@@ -20,13 +21,19 @@ typedef LevelSource = ({ui.Image image, ui.Offset at});
 /// same bytes everywhere. Deeper levels are made from the level above, one
 /// halving at a time.
 ///
-/// ONE PLACE for every level still made — a surface's level tiles
-/// (`TilePyramid`, 4c), a landing's preview at its level and the camera's
-/// halvings: the same halving, so they cannot drift by a rounding. The
-/// caller rasterises: `toImageSync` where the level is needed in the frame
-/// (a tile's), `toImage` where a frame of latency is fine. ↩️The cel images'
-/// levels (`LayerFrameImageCache`) were made here too, until no screen drew
-/// a row's image (one-picture-per-frame ②-5b-1).
+/// 🔬2026-10-25 (Flutter 3.47.4 — the real Windows app's OpenGLES and the
+/// test runner's Vulkan): a `toImageSync` render DOES carry the whole
+/// chain, the same bytes as `toImage` at every scale; it is an UPLOAD
+/// (`decodeImageFromPixelsSync`) that carries none (`chained_picture.dart`).
+///
+/// ONE PLACE for every level still made — the camera's halvings
+/// (one-picture-per-frame ②-5b-3's to retire). The caller rasterises:
+/// `toImageSync` where the level is needed in the frame, `toImage` where a
+/// frame of latency is fine. ↩️The cel images' levels
+/// (`LayerFrameImageCache`) were made here too, until no screen drew a
+/// row's image (②-5b-1); and a surface's level tiles (`TilePyramid`, 4c)
+/// and a landing's preview at its level, until a reduced screen drew the
+/// tiles' own pictures from their chains (②-5b-2).
 ui.Picture halvingPicture(Iterable<LevelSource> sources) {
   final recorder = ui.PictureRecorder();
   drawHalvings(ui.Canvas(recorder), sources);

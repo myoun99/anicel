@@ -24,8 +24,9 @@ import '../../helpers/the_frame_as_it_stands.dart';
 ///
 /// ↩️Until 4c the active layer's tiles were the one thing in the level
 /// buffer still reduced by nearest under the recorder's scale; 4c drew them
-/// into it as LEVEL TILES ([TilePyramid]), each an exact box mean of its
-/// block. Since 2026-10-25 the frame drawn as it stands is composed at its
+/// into it as LEVEL TILES (`TilePyramid`, until ②-5b-2), each an exact box
+/// mean of its block. Since 2026-10-25 the frame drawn as it stands is
+/// composed at its
 /// own resolution, as its one picture is (`StackedFrame.paintOnScreen`), and
 /// the blit reduces it: this pins that the mean holds on that road.
 ///

@@ -10,7 +10,6 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../brush/brush_stroke_preview_cache.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/tile_pyramid.dart';
 import '../editor_session_manager.dart';
 import '../text/word_bake.dart';
 import '../timeline/timeline_grid_tile_store.dart';
@@ -256,14 +255,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // every decoded tile, alive as long as its tile is — the picture on
     // screen and, through the tiles it keeps, the undo history's. The
     // share had no row and read as engine overhead (C-ipad-crash,
-    // 2026-09-11). Since 4c (2026-09-16) the row also holds the LEVEL
-    // TILES — the same pictures halved for a zoomed-out screen
-    // ([TilePyramid]), screen-bounded, and let go with the paints that
-    // stop asking for them.
+    // 2026-09-11). A picture a screen draws reduced carries its mip chain,
+    // a third more, and is counted with it (`pictureBytesOf`). ↩️From 4c
+    // (2026-09-16) the row also held the LEVEL TILES — the same pictures
+    // halved for a zoomed-out screen — until one-picture-per-frame ②-5b-2.
     if (textures)
       MemoryCensusItem(
         id: 'tileImages',
-        bytes: BitmapTileImageCache.liveImageBytes + TilePyramid.liveBytes,
+        bytes: BitmapTileImageCache.liveImageBytes,
       ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest

@@ -27,6 +27,7 @@ import '../../services/cel_surface_as_shown.dart'
     show celStraightTileAsShown, celTileAsShown;
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_tile_image_cache.dart';
+import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
 
 /// Mutable state of the in-progress stroke overlay.
@@ -459,6 +460,26 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       _tileImageRevisions[coord] = revision;
     }
     notifyListeners();
+  }
+
+  /// [coord]'s picture as a screen drawing it REDUCED samples it — carrying
+  /// the engine's chain ([chainedPictureOf]), remade IN ITS PLACE where it
+  /// carries none, at the stroke revision it represents: pen-up hands the
+  /// very picture the screen showed to the committed tile. Null where
+  /// nothing is pictured at [coord].
+  ///
+  /// The painter is not told: at 100% it is the same picture. ⚠️A screen
+  /// that measures the live row by its pictures (`LiveSurfaceTokens`) sees
+  /// the coordinate change once and patches the same bytes once.
+  ui.Image? chainedTileImageAt(TileCoord coord) {
+    final image = _tileImages[coord];
+    if (image == null || carriesChain(image)) {
+      return image;
+    }
+    final chained = chainedPictureOf(image);
+    DeferredImageDisposer.instance.retire(image);
+    _tileImages[coord] = chained;
+    return chained;
   }
 
   /// Takes the picture for [coord] IF it represents [revision] —

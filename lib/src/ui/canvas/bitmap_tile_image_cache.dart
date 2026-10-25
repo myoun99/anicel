@@ -6,6 +6,7 @@ import '../../core/sync_image_upload.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../models/bitmap_tile.dart';
 import '../../native/qa_native_engine.dart';
+import 'chained_picture.dart';
 import 'deferred_image_disposal.dart';
 import 'pictured_tiles.dart';
 
@@ -68,15 +69,15 @@ class BitmapTileImageCache {
   /// 🚨C-ipad-crash (2026-09-11): on a phone these are GPU textures, and
   /// the census had no row for them, so the whole share read as engine
   /// overhead. Taken in [_hold] and let go in [_release], the only two
-  /// places either happens.
+  /// places either happens — a picture's chain with it ([pictureBytesOf]).
   static int get liveImageBytes => _liveImageBytes;
   static int _liveImageBytes = 0;
 
   static void _hold(ui.Image image) =>
-      _liveImageBytes += image.width * image.height * 4;
+      _liveImageBytes += pictureBytesOf(image);
 
   static void _release(ui.Image image) {
-    _liveImageBytes -= image.width * image.height * 4;
+    _liveImageBytes -= pictureBytesOf(image);
     DeferredImageDisposer.instance.retire(image);
   }
 
@@ -100,6 +101,21 @@ class BitmapTileImageCache {
     final image = pictureOfTile(tile);
     _own(tile, image);
     return image;
+  }
+
+  /// [tile]'s picture as a screen drawing it REDUCED samples it — carrying
+  /// the engine's chain ([chainedPictureOf]): the one it has where that
+  /// carries one, else that one remade with it IN ITS PLACE. Still one
+  /// picture a tile; a tile only ever drawn at 100% never pays the chain.
+  ui.Image chainedPictureFor(BitmapTile tile) {
+    final held = pictureFor(tile);
+    if (carriesChain(held)) {
+      return held;
+    }
+    final chained = chainedPictureOf(held);
+    releasePicture(tile);
+    _own(tile, chained);
+    return chained;
   }
 
   /// A fresh picture of [tile]'s bytes through the door — the caller's to

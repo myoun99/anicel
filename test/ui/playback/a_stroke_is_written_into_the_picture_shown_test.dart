@@ -26,7 +26,6 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -186,7 +185,6 @@ void main() {
         tester.view.devicePixelRatio = ratio;
         addTearDown(tester.view.resetDevicePixelRatio);
         final lineage = 'a-stroke-step-$name-$ratio';
-        addTearDown(() => TilePyramid.instance.drop(lineage));
         final cels = storeWithTheCel();
         final images = LayerFrameImageCache(frameStore: cels);
         addTearDown(images.dispose);
@@ -301,7 +299,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const lineage = 'a-step-past-the-picture';
-    addTearDown(() => TilePyramid.instance.drop(lineage));
     final cels = storeWithTheCel();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
@@ -382,7 +379,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const lineage = 'a-step-while-it-moves';
-    addTearDown(() => TilePyramid.instance.drop(lineage));
     final cels = storeWithTheCel();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
@@ -555,7 +551,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const lineage = 'a-stroke-lands-under-another-screen';
-    addTearDown(() => TilePyramid.instance.drop(lineage));
     final cels = storeWithTheCel();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);
@@ -714,7 +709,6 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetDevicePixelRatio);
     const lineage = 'a-stroke-lands';
-    addTearDown(() => TilePyramid.instance.drop(lineage));
     final cels = storeWithTheCel();
     final images = LayerFrameImageCache(frameStore: cels);
     addTearDown(images.dispose);

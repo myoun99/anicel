@@ -37,7 +37,6 @@ import 'package:anicel/src/services/viewport_transform_matrix.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/stage_planes_painter.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 import 'package:anicel/src/ui/playback/camera_shot.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
@@ -84,10 +83,13 @@ void main() {
   const viewSize = Size(80, 48);
   const fill = [0x10, 0x20, 0x30, 0xFF];
   // Where the cel holds no ink: the paper — or its absence — shows there.
-  // On every level's grid down to an eighth, so no level pixel mixes ink
-  // and hole: a mixed one rounds apart between a cel's whole image and its
+  // ↩️On every level's grid down to an eighth, so no level pixel mixed ink
+  // and hole: a mixed one rounded apart between a cel's whole image and its
   // tiles' pyramid at an eighth (1/255 — the halving's two draws,
-  // level-halving-rounds-apart), which is not a road's difference.
+  // level-halving-rounds-apart) while the canvas standing still drew its
+  // live row from level tiles — until both roads drew the frame's one
+  // picture (one-picture-per-frame ②-3) and no level tile was left
+  // (②-5b-2).
   const hole = Rect.fromLTRB(16, 8, 32, 24);
   // Past the canvas every road shows this one colour — the editing
   // canvas's pasteboard, the camera's apron and letterbox, the film's
@@ -388,7 +390,6 @@ void main() {
     final store = storeWithTheCel(reach: reach);
     final images = LayerFrameImageCache(frameStore: store);
     addTearDown(images.dispose);
-    addTearDown(() => TilePyramid.instance.drop(lineage));
     final view = CanvasViewport(zoom: zoom);
 
     final standing = roadOf(images, paper: paper);

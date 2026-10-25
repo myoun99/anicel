@@ -16,8 +16,9 @@ Offset tileOriginOffset(PlacedTile placed) =>
 
 /// Where the tile at [coord] on a [tileSize] grid has its top-left corner
 /// in canvas space — the product itself, for a draw that has a coordinate
-/// and a grid but no tile: a LEVEL TILE stands for a block of tiles and is
-/// drawn at the block's origin on the block's grid (4c, 2026-09-16).
+/// and a grid but no tile: the live stroke's picture of a coordinate it
+/// holds no tile at. ↩️A level tile, drawn at its block's origin on the
+/// block's grid, too (4c, 2026-09-16), until one-picture-per-frame ②-5b-2.
 Offset tileCoordOriginOffset(TileCoord coord, int tileSize) => Offset(
   (coord.x * tileSize).toDouble(),
   (coord.y * tileSize).toDouble(),

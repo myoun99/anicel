@@ -277,7 +277,7 @@ class _InkOutOfSight extends BitmapSurfacePainter {
   void paintContentInto(
     Canvas canvas, {
     Paint? layerPaint,
-    int level = 0,
+    double scale = 1,
     RowFloat? float,
   }) {
     canvas.drawRect(

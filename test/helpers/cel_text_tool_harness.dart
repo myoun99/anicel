@@ -269,19 +269,20 @@ Future<List<int>> canvasPixel(WidgetTester tester, int x, int y) async {
 }
 
 /// What the canvas DRAWS for the cel under the tool over [region] of the
-/// canvas, at [level] — 100% at 0, half that at each level up — as raw
+/// canvas, at 1/2^[level] — 100% at 0, half that at each step — as raw
 /// RGBA: [canvasPixel]'s draw, of a whole region.
 Future<Uint8List> canvasRaster(
   WidgetTester tester,
   Rect region, {
   int level = 0,
 }) async {
+  final scale = 1 / (1 << level);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)
-    ..scale(1 / (1 << level))
+    ..scale(scale)
     ..translate(-region.left, -region.top)
     ..clipRect(region);
-  _canvasPainter(tester).paintContentInto(canvas, level: level);
+  _canvasPainter(tester).paintContentInto(canvas, scale: scale);
   final picture = recorder.endRecording();
   final image = picture.toImageSync(
     region.width.toInt() >> level,

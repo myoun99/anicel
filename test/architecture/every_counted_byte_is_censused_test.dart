@@ -410,7 +410,6 @@ const _imageHolders = <String, String>{
   'lib/src/ui/timeline/timeline_grid_tile_store.dart → _entries':
       'counted:tileImageBytes',
   // … holdings counted all along, by a counter of their own file …
-  'lib/src/ui/canvas/tile_pyramid.dart → tiles': 'counted:liveBytes',
   'lib/src/ui/playback/frame_picture_store.dart → _entries':
       'counted:estimatedBytes',
   'lib/src/ui/widgets/static_raster.dart → census': 'counted:censusBytes',

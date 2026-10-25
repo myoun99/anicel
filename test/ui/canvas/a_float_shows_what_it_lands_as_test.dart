@@ -12,7 +12,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/landing_preview.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
-import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
+import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 
 /// 🚨★★★F-240 — WHILE IT FLOATS, IT SHOWS WHAT IT LANDS AS, AT EVERY ZOOM.
 ///
@@ -20,23 +20,24 @@ import 'package:anicel/src/ui/canvas/tile_pyramid.dart';
 /// 괜찮은데 50%에서 변형중에 필터 없음으로 보임 … 변형중에도 필터 통일적용하도록
 /// 근본/구조적 해결」.
 ///
-/// Below 100% a landed cel shows as level tiles, each level pixel the mean of
-/// a 2×2 block. A float laid over those tiles 1:1 at `none` was sampled one
-/// pixel in two instead, so the picture changed the moment it landed. Here
-/// the SAME surface paint is asked twice: once holding the float (while it
-/// floats), once holding a cel whose tiles are what 100% showed with the
-/// float on it (after it lands) — and at 50% and 25% the two must be the
-/// same bytes. The cel and the float are opaque high-frequency patterns, so
-/// nearest sampling and the mean disagree nearly everywhere; the scene
-/// proves it can tell them apart before it is trusted.
+/// Reduced, a landed cel shows as its tiles' pictures drawn by the display's
+/// filter from their chains. A float laid over those tiles at `none` was
+/// sampled one pixel in two instead, so the picture changed the moment it
+/// landed. Here the SAME surface paint is asked twice: once holding the
+/// float (while it floats), once holding a cel whose tiles are what 100%
+/// showed with the float on it (after it lands) — and at 50% and 25% the
+/// two must be the same bytes. The cel and the float are opaque
+/// high-frequency patterns, so nearest sampling and the mean disagree nearly
+/// everywhere; the scene proves it can tell them apart before it is trusted.
 ///
-/// ⚠️WHERE IT IS EXACT (measured 2026-09-30): the test runner's Skia and the
-/// real Windows app (Impeller GLES) — 0 pixels apart, all six cases. On
-/// Impeller Vulkan (`--enable-impeller`) it is RED by 1/255 at 2–12 pixels:
-/// the floating region is halved as one image and the landed cel tile by
-/// tile, and Vulkan's halving drifts with the size of what it halves (board
-/// `halving-rounds-differently-per-engine`). The old draw was 133–168/255
-/// off on the same scene there.
+/// ↩️⚠️WHERE IT WAS EXACT while a landed cel showed as level tiles
+/// (measured 2026-09-30, until one-picture-per-frame ②-5b-2): the test
+/// runner's Skia and the real Windows app (Impeller GLES) — 0 pixels apart,
+/// all six cases. On Impeller Vulkan (`--enable-impeller`) it was RED by
+/// 1/255 at 2–12 pixels: the floating region was halved as one image and the
+/// landed cel tile by tile, and Vulkan's halving drifts with the size of
+/// what it halves (board `halving-rounds-differently-per-engine`). The old
+/// draw was 133–168/255 off on the same scene there.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -88,22 +89,23 @@ void main() {
     return done.future;
   }
 
-  /// [painter]'s content at [level], the float laid through the surface
-  /// pass — or, [floatOnTop], drawn over it 1:1 at `none` afterwards, the
-  /// way the stack did before F-240.
+  /// [painter]'s content at 1/2^[level], the float laid through the surface
+  /// pass — or, [floatOnTop], drawn over it at `none` afterwards, the way
+  /// the stack did before F-240.
   Future<ui.Image> paint(
     BitmapSurfacePainter painter, {
     required int level,
     LandingPreview? float,
     bool floatOnTop = false,
   }) async {
+    final scale = 1 / (1 << level);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder)
-      ..scale(1 / (1 << level))
+      ..scale(scale)
       ..clipRect(const ui.Rect.fromLTWH(0, 0, width * 1.0, height * 1.0));
     painter.paintContentInto(
       canvas,
-      level: level,
+      scale: scale,
       float: floatOnTop || float == null
           ? null
           : (preview: float, canvasToRow: null),
@@ -204,7 +206,7 @@ void main() {
         surface: BitmapSurfacePainter(
           surface: lift,
           showTransparentBackground: false,
-          lineage: TilePyramid.noLineage,
+          lineage: TilePictureBudget.noLineage,
         ),
         surfaceOffset: CanvasPoint(x: 5, y: 3),
         clip: const ui.Rect.fromLTWH(9, 7, 27, 19),

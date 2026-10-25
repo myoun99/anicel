@@ -17,7 +17,7 @@ import '../../services/cel_surface_as_shown.dart';
 import '../../services/cel_text_laying.dart' show celTextPlatesOver;
 import 'bitmap_surface_painter.dart';
 import 'landing_preview.dart';
-import 'tile_pyramid.dart' show TilePyramid;
+import 'tile_picture_budget.dart' show TilePictureBudget;
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart' show ByList;
@@ -305,17 +305,19 @@ BitmapSurfacePainter _keyedFloatPainter(
 /// that row's own space by the painter it floats over, so it brings no
 /// paper and is nobody's cel.
 ///
-/// Nobody's cel: its level tiles live in the pyramid's one scope for floats
-/// ([TilePyramid.noLineage]). Not a scope of its own — the pyramid keeps
-/// eight, and a session of transforms would push out the
-/// `(layerId, frameId)` scopes the brush depends on.
+/// Nobody's cel: what it shows is counted under the picture budget's one
+/// scope for floats ([TilePictureBudget.noLineage]). ↩️The level pyramid
+/// filed a float's level tiles under it too — one scope, not one a float,
+/// for the pyramid kept eight and a session of transforms would have
+/// pushed out the brush's — until nothing drew a level tile
+/// (one-picture-per-frame ②-5b-2).
 BitmapSurfacePainter floatPainter(
   BitmapSurface surface,
   List<ResolvedLayerEffect> keys,
 ) => BitmapSurfacePainter(
   surface: celSurfaceAsShown(surface, keys),
   showTransparentBackground: false,
-  lineage: TilePyramid.noLineage,
+  lineage: TilePictureBudget.noLineage,
 );
 
 /// Whether [stamp] holds a pixel neither clear nor opaque — asked once of

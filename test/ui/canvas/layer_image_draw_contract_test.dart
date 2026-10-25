@@ -309,7 +309,14 @@ void main() {
 /// bake's backdrop blit went with the buffer kept from paint to paint, and
 /// the level blocks drawn from a seed (`_drawSeeded`) with the seed: a
 /// canvas that stands shows the frame's one picture.
-const int _knownRawDraws = 27;
+/// **28** on 2026-10-25 (one-picture-per-frame ②-5b-2, 유저 D7-2-Q2
+/// 「배율이 어떻든 항상 원본 한장」): +1 in canvas/chained_picture — a tile's
+/// picture drawn 1:1 into a render, which the engine gives its mip chain,
+/// so a screen drawing the tile reduced samples it as it samples a frame's
+/// one picture (an upload carries no chain). The 1:1 blit class, owning
+/// `FilterQuality.none` on its own Paint. The level tiles it replaces drew
+/// nothing raw — they were halvings (`level_image.dart`).
+const int _knownRawDraws = 28;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

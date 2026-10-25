@@ -921,10 +921,11 @@ class _LayerStackPaintPass {
           // tiles are drawn 1:1, at `none` on purpose: a tile is filtered
           // with no neighbours to sample, so `low` there buys a seam at
           // every tile boundary. The safety-net walk (rasterScale = the
-          // device scale) draws below 100% the LEVEL TILES its residual
-          // leaves (4c, [TilePyramid]): exact box means, 1:1 in the level's
-          // pixels — one-picture-per-frame ②-5b-2's to retire.
-          level: displayLevelOf(rasterScale),
+          // device scale) draws them reduced by the display's filter, from
+          // their pictures' chains. ↩️It drew level tiles — exact box means,
+          // 1:1 in the level's pixels (4c) — until one-picture-per-frame
+          // ②-5b-2.
+          scale: rasterScale,
           // 🚨TS1: the selection's FLOAT belongs here, right on top of
           // the surface it was lifted out of and UNDER everything
           // above that row. Drawn inside this slot's clip and its

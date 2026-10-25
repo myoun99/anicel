@@ -45,7 +45,10 @@ import '../../models/canvas_viewport.dart';
 /// at most 2 between them — the engine's chain IS the halvings — at the
 /// cost of any image draw. Over half a bilinear window still holds every
 /// texel, and `medium` would only blend in the level under it. An image
-/// with no chain (a `toImageSync` tile's) samples `medium` as `low` does.
+/// with no chain samples `medium` as `low` does — 🔬not a `toImageSync`
+/// render, which carries one (2026-10-25), but a door's upload: a tile's
+/// picture drawn reduced is drawn from one remade with its chain
+/// (`chained_picture.dart`).
 ui.FilterQuality filterQualityForDisplayScale(double scale) => scale <= 0.5
     ? ui.FilterQuality.medium
     : scale < 1
