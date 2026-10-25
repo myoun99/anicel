@@ -1,29 +1,46 @@
+import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/timeline_coverage.dart'
-    show coveringDrawingBlockAt, hasBreakdownDotAt;
+    show breakdownMarkAt, coveringDrawingBlockAt;
 
 /// What one timeline cell shows under the unified timeline model.
 ///
 /// `uncovered` cells are empty timesheet cells (rendered with the "X"
-/// glyph on cel layers); marks keep the visual of the space they sit in
-/// (block body or empty cell) plus the ● glyph, and never form blocks.
+/// glyph on cel layers); a held cell carrying a block's in-between dot
+/// keeps the block's paper and wears the dot's mark ([mark]).
+///
+/// ↩️A `markUncovered` stood beside them for the free-floating dots the
+/// block-owned ones retired (UI-R9 #8); nothing made it any more.
 enum TimelineCellExposureState {
   uncovered,
   drawingStart,
   held,
-  markHeld,
-  markUncovered;
+
+  /// A held cell whose dot wears mark 1, the hollow ○ (I-130).
+  markOneHeld,
+
+  /// A held cell whose dot wears mark 2, the filled ●.
+  markTwoHeld;
+
+  /// A held cell carrying [mark].
+  static TimelineCellExposureState markHeld(InbetweenMark mark) =>
+      switch (mark) {
+        InbetweenMark.one => markOneHeld,
+        InbetweenMark.two => markTwoHeld,
+      };
+
+  /// The in-between mark the cell wears, or null.
+  InbetweenMark? get mark => switch (this) {
+    markOneHeld => InbetweenMark.one,
+    markTwoHeld => InbetweenMark.two,
+    uncovered || drawingStart || held => null,
+  };
 
   /// Part of a drawing block's covered run (start, hold, or a mark inside
   /// the hold).
-  bool get isCovered =>
-      this == TimelineCellExposureState.drawingStart ||
-      this == TimelineCellExposureState.held ||
-      this == TimelineCellExposureState.markHeld;
+  bool get isCovered => this != TimelineCellExposureState.uncovered;
 
-  bool get isMark =>
-      this == TimelineCellExposureState.markHeld ||
-      this == TimelineCellExposureState.markUncovered;
+  bool get isMark => mark != null;
 }
 
 /// Whether an empty run STARTS at a cell in [current] state, given the
@@ -60,12 +77,11 @@ TimelineCellExposureState timelineOwnCelsStateAt(Layer layer, int frameIndex) {
   if (coveringDrawingBlockAt(layer.timeline, frameIndex) == null) {
     return TimelineCellExposureState.uncovered;
   }
-  // Block-owned dots live on held cells only (offsets 1..length-1), so
-  // markUncovered is never produced anymore — the enum value survives
-  // solely for exhaustive switches over legacy-visual states.
-  return hasBreakdownDotAt(layer.timeline, frameIndex)
-      ? TimelineCellExposureState.markHeld
-      : TimelineCellExposureState.held;
+  // Block-owned dots live on held cells only (offsets 1..length-1).
+  return switch (breakdownMarkAt(layer.timeline, frameIndex)) {
+    final mark? => TimelineCellExposureState.markHeld(mark),
+    null => TimelineCellExposureState.held,
+  };
 }
 
 /// The name of the cel [layer]'s own block shows at [frameIndex] — the

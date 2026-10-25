@@ -29,8 +29,8 @@ import 'transform_track.dart';
 
 /// A cel layer. Its single [timeline] map records everything authored on
 /// the frame axis: drawing block starts (frame + explicit hold length),
-/// each carrying its own inbetween-dot offsets
-/// ([TimelineExposure.breakdownOffsets]). Emptiness has no entry —
+/// each carrying its own inbetween dots
+/// ([TimelineExposure.breakdownMarks]). Emptiness has no entry —
 /// uncovered cells are the timesheet "X" cells. There is no separate marks
 /// map, no blank entry type, and no standalone mark entry.
 class Layer {
@@ -968,7 +968,7 @@ class _RawTimelineItem {
     this.ghostOf,
     this.startEdge = TimelineRunEdgeMark.none,
     this.endEdge = TimelineRunEdgeMark.none,
-    this.breakdownOffsets = const [],
+    this.breakdownMarks = const {},
     this.memo,
     this.instruction,
   });
@@ -979,7 +979,7 @@ class _RawTimelineItem {
   final TimelineRunEdgeGhost? ghostOf;
   final TimelineRunEdgeMark startEdge;
   final TimelineRunEdgeMark endEdge;
-  final List<int> breakdownOffsets;
+  final Map<int, InbetweenMark> breakdownMarks;
 
   /// The block's memo. [TimelineExposure.toJson] writes it, so a decoder
   /// that skipped the key silently threw away every memo the user typed
@@ -1035,11 +1035,7 @@ SplayTreeMap<int, _RawTimelineItem> _rawTimelineItems(Object? json) {
       ghostOf: TimelineRunEdgeGhost.fromJsonOrNull(exposureJson['ghostOf']),
       startEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['startEdge']),
       endEdge: TimelineRunEdgeMark.fromJsonOrNone(exposureJson['endEdge']),
-      breakdownOffsets: [
-        for (final offset
-            in exposureJson['breakdown'] as List<dynamic>? ?? const [])
-          offset as int,
-      ],
+      breakdownMarks: TimelineExposure.breakdownMarksFromJson(exposureJson),
       memo: exposureJson['memo'] == null
           ? null
           : ExposureMemo.fromJson(
@@ -1096,9 +1092,9 @@ TimelineExposure _exposureFromRawItem(
     startEdge: authored ? item.startEdge : TimelineRunEdgeMark.none,
     endEdge: authored ? item.endEdge : TimelineRunEdgeMark.none,
   );
-  if (item.breakdownOffsets.isNotEmpty) {
-    // copyWith normalizes (sorts, dedupes, clamps to the length).
-    exposure = exposure.copyWith(breakdownOffsets: item.breakdownOffsets);
+  if (item.breakdownMarks.isNotEmpty) {
+    // copyWith normalizes (sorts, clamps to the length).
+    exposure = exposure.copyWith(breakdownMarks: item.breakdownMarks);
   }
   // Ghosts never carry a memo ([TimelineExposure]'s contract): they
   // are rederived on every edit, so a memo there would not survive

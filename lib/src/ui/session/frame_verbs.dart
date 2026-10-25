@@ -577,10 +577,12 @@ class FrameVerbs {
         kind: layer.kind,
       ),
       TimelineCellExposureState.held => celNumber ?? '',
-      TimelineCellExposureState.markHeld =>
-        celNumber == null ? inbetweenMark : '$celNumber $inbetweenMark',
+      TimelineCellExposureState.markOneHeld ||
+      TimelineCellExposureState.markTwoHeld =>
+        celNumber == null
+            ? exposureState.mark!.glyph
+            : '$celNumber ${exposureState.mark!.glyph}',
       TimelineCellExposureState.uncovered => 'X',
-      TimelineCellExposureState.markUncovered => inbetweenMark,
     };
   }
 }

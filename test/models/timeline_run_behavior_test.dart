@@ -241,7 +241,7 @@ void main() {
         0: const TimelineExposure.drawing(
           FrameId('a'),
           length: 3,
-          breakdownOffsets: [1, 2],
+          breakdownMarks: {1: InbetweenMark.two, 2: InbetweenMark.two},
           endEdge: repeatMark,
         ),
       },

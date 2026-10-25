@@ -537,7 +537,7 @@ void main() {
     }
 
     s.exposureVerbs.blankExposureAtCurrentFrame();
-    s.layerMarks.toggleMarkAtCurrentFrame();
+    s.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     s.clipboard.cutRunAtCurrentFrame();
     s.pasteIndependentFrameAtCurrentFrame();
     s.pasteLinkedFrameAtCurrentFrame();

@@ -622,7 +622,8 @@ void expectTimelineActionTooltips() {
   // 'Add', 'Blank / X' and 'Mark ●'.
   expect(find.tooltipSaying('New Frame'), findsOneWidget);
   expect(find.tooltipSaying('Clear'), findsOneWidget);
-  expect(find.tooltipSaying('In-between Mark'), findsOneWidget);
+  expect(find.tooltipSaying('In-between Mark 1'), findsOneWidget);
+  expect(find.tooltipSaying('In-between Mark 2'), findsOneWidget);
   expect(find.tooltipSaying('Decrease Exposure'), findsNothing);
   expect(find.tooltipSaying('Increase Exposure'), findsNothing);
 }
@@ -634,6 +635,10 @@ Future<void> expectTimelineActionKeys(WidgetTester tester) async {
   );
   expect(
     find.byKey(const ValueKey<String>('blank-exposure-button')),
+    findsOneWidget,
+  );
+  expect(
+    find.byKey(const ValueKey<String>('toggle-mark-one-button')),
     findsOneWidget,
   );
   expect(

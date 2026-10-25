@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
+import '../../models/frame.dart' show InbetweenMark;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../sliced_value_listenable_builder.dart';
@@ -956,13 +957,24 @@ class TimelineActionToolbar extends StatelessWidget {
                 onPressed: () => toggleAutoCreateFrameOnDraw(session),
               ),
             ),
+            // 🗣️I-130 (유저 2026-10-25): 「기존 중간나누기 버튼 왼쪽에
+            // 중간나누기 마크1 버튼 신설」 — ○ mark 1, then ● mark 2.
+            _iconButton(
+              key: const ValueKey<String>('toggle-mark-one-button'),
+              tooltip: editorActionLabel(EditorActionIds.frameToggleMarkOne),
+              shortcuts: const [EditorActionIds.frameToggleMarkOne],
+              icon: Icons.circle_outlined,
+              onPressed: panelContext.canToggleMark
+                  ? () => panelContext.toggleMark(InbetweenMark.one)
+                  : null,
+            ),
             _iconButton(
               key: const ValueKey<String>('toggle-mark-button'),
-              tooltip: editorActionLabel(EditorActionIds.frameToggleMark),
-              shortcuts: const [EditorActionIds.frameToggleMark],
+              tooltip: editorActionLabel(EditorActionIds.frameToggleMarkTwo),
+              shortcuts: const [EditorActionIds.frameToggleMarkTwo],
               icon: Icons.circle,
               onPressed: panelContext.canToggleMark
-                  ? panelContext.toggleMark
+                  ? () => panelContext.toggleMark(InbetweenMark.two)
                   : null,
             ),
             // 🗣️I-58-Q1 (유저 2026-10-18): 「토글은 지금 자리, 새 버튼만 ●

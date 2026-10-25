@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_splice.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 
 /// 🚨T2·T3 — the ONE splice, at the model level.
 ///
@@ -34,7 +35,11 @@ void main() {
         0: const TimelineExposure.drawing(
           FrameId('A'),
           length: 6,
-          breakdownOffsets: [1, 3, 5],
+          breakdownMarks: {
+            1: InbetweenMark.two,
+            3: InbetweenMark.two,
+            5: InbetweenMark.two,
+          },
         ),
       };
 
@@ -137,7 +142,11 @@ void main() {
             0: const TimelineExposure.drawing(
               FrameId('A'),
               length: 6,
-              breakdownOffsets: [1, 3, 5],
+              breakdownMarks: {
+                1: InbetweenMark.two,
+                3: InbetweenMark.two,
+                5: InbetweenMark.two,
+              },
             ),
           },
           index: 3,

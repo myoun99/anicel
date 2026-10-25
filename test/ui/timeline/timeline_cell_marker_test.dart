@@ -7,7 +7,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/frame.dart'
-    show InbetweenMark, breakdownMark, unnamedDrawingMark;
+    show InbetweenMark, unnamedDrawingMark;
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -132,12 +132,12 @@ void main() {
       timelineCellWritesNothing,
     );
     expect(
-      _marker(LayerKind.animation, TimelineCellExposureState.markHeld),
-      _mark(breakdownMark),
+      _marker(LayerKind.animation, TimelineCellExposureState.markTwoHeld),
+      _mark(InbetweenMark.two),
     );
     expect(
-      _marker(LayerKind.animation, TimelineCellExposureState.markUncovered),
-      _mark(breakdownMark),
+      _marker(LayerKind.animation, TimelineCellExposureState.markOneHeld),
+      _mark(InbetweenMark.one),
     );
   });
 
@@ -149,9 +149,10 @@ void main() {
     ).mark;
     final dot = _marker(
       LayerKind.animation,
-      TimelineCellExposureState.markHeld,
+      TimelineCellExposureState.markTwoHeld,
     ).mark;
-    expect(head, InbetweenMark.one);
-    expect(dot, InbetweenMark.one);
+    // ↩️The mark the quote calls 마크1 is mark 2 since I-130 swapped the names.
+    expect(head, InbetweenMark.two);
+    expect(dot, InbetweenMark.two);
   });
 }

@@ -50,21 +50,10 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // The session's reading of a drawing row's cells
-  // (`ExposureVerbs.exposureStateForLayer`), line for line.
-  TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
-    if (frameIndex >= 0 && (layer.timeline[frameIndex]?.isDrawing ?? false)) {
-      return TimelineCellExposureState.drawingStart;
-    }
-    final held =
-        frameIndex >= 0 &&
-        coveringDrawingBlockAt(layer.timeline, frameIndex) != null;
-    if (held && hasBreakdownDotAt(layer.timeline, frameIndex)) {
-      return TimelineCellExposureState.markHeld;
-    }
-    return held
-        ? TimelineCellExposureState.held
-        : TimelineCellExposureState.uncovered;
-  }
+  // (`ExposureVerbs.exposureStateForLayer`).
+  // ↩️It was spelled out here line for line; it is the one the session asks
+  // (I-130).
+  const stateFor = timelineOwnCelsStateAt;
 
   // The cels are named short and long, and one is unnamed (a mark).
   const names = ['1', '12', 'A', 'B3', 'Background', '', '240'];
@@ -220,10 +209,13 @@ void main() {
           FrameId('c${random.nextInt(names.length)}'),
           length: length,
           ghostOf: ghost,
-          breakdownOffsets: [
+          // Both marks, since a ring and a disc are two ops on a tile.
+          breakdownMarks: {
             if (length > 2 && ghost == null && random.nextBool())
-              1 + random.nextInt(length - 1),
-          ],
+              1 + random.nextInt(length - 1): random.nextBool()
+                  ? InbetweenMark.one
+                  : InbetweenMark.two,
+          },
         );
         at += length + (random.nextInt(3) == 0 ? 1 + random.nextInt(3) : 0);
       }
@@ -274,9 +266,9 @@ void main() {
           edited[pick.key] = TimelineExposure.drawing(
             pick.value.frameId!,
             length: length,
-            breakdownOffsets: pick.value.breakdownOffsets.isEmpty && length > 1
-                ? [length - 1]
-                : const [],
+            breakdownMarks: pick.value.breakdownMarks.isEmpty && length > 1
+                ? {length - 1: InbetweenMark.one}
+                : const {},
           );
         default: // A ghost comes or goes.
           edited.addAll(layer.timeline);

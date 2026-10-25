@@ -3,8 +3,7 @@ import 'camera_moves.dart';
 import 'camera_work_marks.dart' show cameraKeyLabel;
 import 'cut.dart';
 import 'cut_id.dart';
-import 'frame.dart'
-    show DrawingHead, InbetweenMark, breakdownMark, drawingHeadOf;
+import 'frame.dart' show DrawingHead, InbetweenMark, drawingHeadOf;
 import 'frame_id.dart';
 import 'key_range_move.dart' show transformKeyAgreedNames;
 import 'layer.dart';
@@ -707,8 +706,8 @@ class TimesheetDocument {
 
   /// Derives one layer's column cells from the unified timeline model:
   /// drawing starts carry the cel number, covered rows hold, block-owned
-  /// inbetween dots (breakdownOffsets) show ● on their held rows, and the
-  /// FIRST row of each uncovered run inside the playback range gets the X
+  /// inbetween dots (breakdownMarks) show their marks on their held rows, and
+  /// the FIRST row of each uncovered run inside the playback range gets the X
   /// (same rule as the timeline grids). Public as [timesheetLayerCells]
   /// so the drag preview overlay derives one column from a preview layer
   /// without rebuilding the document (UI-R9 #7).
@@ -895,7 +894,7 @@ class _LayerCellsPass {
   final List<TimesheetCell> cells;
 
   /// Drawing coverage straight from the timeline entries; the block's
-  /// breakdown offsets overlay their held rows as ● cells. GHOST chains
+  /// breakdown marks overlay their held rows as mark cells. GHOST chains
   /// print simplified (UI-R10 #6/#11): repeat = the notation repeat word
   /// once + a guide line, END holds print nothing, FRONT holds print the
   /// held cel on their first row only — the timeline keeps the expanded
@@ -928,14 +927,14 @@ class _LayerCellsPass {
   }
 
   /// A covered row after a drawing's head: the block's in-between dot where
-  /// it has one ([breakdownMark]), a plain hold elsewhere.
+  /// it has one, wearing its own [mark] (I-130), a plain hold elsewhere.
   static TimesheetCell _coveredRow({
-    required bool breakdown,
+    required InbetweenMark? mark,
     required int spanLength,
     required int spanOffset,
   }) => TimesheetCell(
-    breakdown ? TimesheetCellKind.mark : TimesheetCellKind.held,
-    mark: breakdown ? breakdownMark : null,
+    mark == null ? TimesheetCellKind.held : TimesheetCellKind.mark,
+    mark: mark,
     spanLength: spanLength,
     spanOffset: spanOffset,
   );
@@ -1046,7 +1045,7 @@ class _LayerCellsPass {
 
   /// Front hold: the cel moves to the first row FOR REAL (UI-R12 #17) —
   /// one run from here through the anchor block's last frame, held
-  /// straight across the authored position (breakdown ● keep their
+  /// straight across the authored position (breakdown marks keep their
   /// absolute rows).
   void _writeFrontHold(
     int start,
@@ -1070,10 +1069,7 @@ class _LayerCellsPass {
     for (var row = start + 1; row < mergedEndExclusive; row += 1) {
       final blockOffset = row - chainEndExclusive;
       cells[row] = _coveredRow(
-        breakdown:
-            block != null &&
-            blockOffset >= 0 &&
-            block.hasBreakdownAt(blockOffset),
+        mark: blockOffset < 0 ? null : block?.breakdownMarks[blockOffset],
         spanLength: runLength,
         spanOffset: row - start,
       );
@@ -1207,7 +1203,7 @@ class _LayerCellsPass {
       // the ACTION hold bar per the exposure-bar setting (drawn from the
       // (N+1)th comma of N+ holds only).
       cells[row] = _coveredRow(
-        breakdown: exposure.hasBreakdownAt(row - start),
+        mark: exposure.breakdownMarks[row - start],
         spanLength: spanLength,
         spanOffset: row - start,
       );

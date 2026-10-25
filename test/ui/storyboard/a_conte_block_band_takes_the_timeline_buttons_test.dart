@@ -114,6 +114,7 @@ void main() {
         'shared-paste-independent-button': timeline.canPasteIndependentFrame,
         'shared-paste-linked-button': timeline.canPasteLinkedFrame,
         'blank-exposure-button': timeline.canBlankExposure,
+        'toggle-mark-one-button': timeline.canToggleMark,
         'toggle-mark-button': timeline.canToggleMark,
         'mark-every-button': timeline.canMarkEvery,
         'shared-unlink-button': timeline.canUnlink,

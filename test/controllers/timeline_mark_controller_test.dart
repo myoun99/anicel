@@ -42,7 +42,10 @@ void main() {
       final fixture = _fixture(_markedTestLayer());
       fixture.controller.selectFrameIndex(1);
 
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
       var layer = _latestLayer(fixture.repository);
       expect(layer.timeline[0]!.breakdownOffsets, const [1]);
       expect(layer.timeline.keys, [0]);
@@ -52,10 +55,35 @@ void main() {
         isTrue,
       );
 
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
       layer = _latestLayer(fixture.repository);
       expect(layer.timeline[0]!.breakdownOffsets, isEmpty);
       expect(layer.frames, hasLength(1));
+    });
+
+    test('🗣️I-130: a cell wears ONE mark — its own button takes it off, the '
+        'other button puts the other mark on in its place', () {
+      // ⚠️I-130-Q1 asks the user; this is its recommended reading (a).
+      final fixture = _fixture(_markedTestLayer());
+      fixture.controller.selectFrameIndex(1);
+      void press(InbetweenMark mark) => fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: mark,
+      );
+      Map<int, InbetweenMark> marks() =>
+          _latestLayer(fixture.repository).timeline[0]!.breakdownMarks;
+
+      press(InbetweenMark.one);
+      expect(marks(), {1: InbetweenMark.one});
+      press(InbetweenMark.two);
+      expect(marks(), {1: InbetweenMark.two});
+      press(InbetweenMark.one);
+      expect(marks(), {1: InbetweenMark.one});
+      press(InbetweenMark.one);
+      expect(marks(), isEmpty);
     });
 
     test('dots are allowed on held cells only: no block starts, no empty '
@@ -113,18 +141,27 @@ void main() {
 
       // Toggling where it's disallowed is a no-op.
       fixture.controller.selectFrameIndex(0);
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
       expect(_latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
           isEmpty);
       fixture.controller.selectFrameIndex(4);
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
       expect(_latestLayer(fixture.repository).timeline.keys, [0]);
     });
 
     test('dots never affect blocks, canvas resolution, or block length', () {
       final fixture = _fixture(_markedTestLayer());
       fixture.controller.selectFrameIndex(1);
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
 
       final layer = _latestLayer(fixture.repository);
       // Dot inside the hold: the covering frame still shows.
@@ -146,7 +183,10 @@ void main() {
       final fixture = _fixture(_markedTestLayer(), historyManager: history);
       fixture.controller.selectFrameIndex(2);
 
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
       expect(
         _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
         const [2],
@@ -164,7 +204,10 @@ void main() {
         const [2],
       );
 
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
       expect(
         _latestLayer(fixture.repository).timeline[0]!.breakdownOffsets,
         isEmpty,

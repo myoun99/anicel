@@ -395,6 +395,7 @@ void main() {
 
     for (final keyValue in const [
       'blank-exposure-button',
+      'toggle-mark-one-button',
       'toggle-mark-button',
       'shared-cut-button',
       'shared-copy-button',

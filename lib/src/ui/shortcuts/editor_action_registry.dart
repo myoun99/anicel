@@ -829,7 +829,10 @@ abstract final class EditorActionIds {
   /// bind a key to and nothing for a custom rail slot to point at.
   static const frameNewDrawing = 'frame-new-drawing';
   static const frameBlankExposure = 'frame-blank-exposure';
-  static const frameToggleMark = 'frame-toggle-mark';
+  /// I-130's two in-between marks: ○ mark 1, ● mark 2 — the ● keeping the
+  /// id it had as the one mark, so a key bound to it stays on it.
+  static const frameToggleMarkOne = 'frame-toggle-mark-one';
+  static const frameToggleMarkTwo = 'frame-toggle-mark';
   static const frameMarkEvery = 'frame-mark-every';
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
@@ -1854,9 +1857,18 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),
+  // 🗣️I-130 (유저 2026-10-25): 「기존 중간나누기 버튼 왼쪽에 중간나누기
+  // 마크1 버튼 신설」 — ○ before ●, as their buttons stand. No key was said
+  // for it. ↩️The ● read 'In-between Mark' while it was the one mark.
   const EditorActionDefinition(
-    id: EditorActionIds.frameToggleMark,
-    label: 'In-between Mark',
+    id: EditorActionIds.frameToggleMarkOne,
+    label: 'In-between Mark 1',
+    shelf: ShortcutShelf.framePill,
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameToggleMarkTwo,
+    label: 'In-between Mark 2',
     shelf: ShortcutShelf.framePill,
     defaultActivators: [],
   ),

@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 
 /// ADD FRAME inside a block DIVIDES it (user's rule 2026-07-27):
 /// `1-----` pressed on the third frame reads `1--o--` afterwards, the new
@@ -147,7 +148,7 @@ void main() {
     test('dots ride inside the block they time', () {
       final session = threeBlocks();
       session.selectFrameIndex(3);
-      session.layerMarks.toggleMarkAtCurrentFrame();
+      session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
       expect(timelineOf(session)[0]!.breakdownOffsets, [3]);
 
       session.selectFrameIndex(0);
@@ -240,9 +241,9 @@ void main() {
     final session = sessionWithHeldBlock();
     // Dots at offsets 1 and 4 of the [0,6) block.
     session.selectFrameIndex(1);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     session.selectFrameIndex(4);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(timelineOf(session)[0]!.breakdownOffsets, [1, 4]);
 
     session.selectFrameIndex(2);

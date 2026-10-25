@@ -604,10 +604,14 @@ final class _BaseRow extends _Row {
           out[block.start] = TimelineExposure.drawing(
             frameId,
             length: block.end - block.start,
-            breakdownOffsets: {
+            // Every Clip Studio mark reads as mark 2, the ● there was
+            // before I-130 — which of the two each is, is
+            // I-130-csp-import's.
+            breakdownMarks: {
               for (final label in track.labels)
-                if (label > head && label < end) label - head,
-            }.toList(),
+                if (label > head && label < end)
+                  label - head: InbetweenMark.two,
+            },
           );
         }
       }

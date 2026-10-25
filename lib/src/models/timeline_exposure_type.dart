@@ -1,6 +1,6 @@
 /// What a timeline index records: a drawing (a cel block start with an
 /// explicit length). Inbetween dots live INSIDE drawing entries as
-/// `TimelineExposure.breakdownOffsets` — there is no standalone mark
+/// `TimelineExposure.breakdownMarks` — there is no standalone mark
 /// entry.
 ///
 /// Emptiness is NOT a timeline entry: cells not covered by any drawing

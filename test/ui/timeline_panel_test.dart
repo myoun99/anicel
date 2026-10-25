@@ -320,15 +320,15 @@ void main() {
       _panel(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.markHeld
+            ? TimelineCellExposureState.markTwoHeld
             : TimelineCellExposureState.uncovered,
       ),
     );
 
-    expect(timelineCellModel(tester, 'layer-1', 0).mark, breakdownMark);
+    expect(timelineCellModel(tester, 'layer-1', 0).mark, InbetweenMark.two);
     expect(
       timelineCellModel(tester, 'layer-1', 0).semanticsLabel,
-      'inbetween mark',
+      'inbetween mark 2',
     );
   });
 

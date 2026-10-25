@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart' show BuildContext, Listenable;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame.dart' show InbetweenMark;
 import '../../models/pill_subject.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -87,8 +88,10 @@ abstract class ToolbarPanelContext {
   bool get canBlankExposure;
   void blankExposure();
 
+  /// The press of [mark]'s button — ○ mark 1 and ● mark 2 (I-130), one
+  /// gate for the two.
   bool get canToggleMark;
-  void toggleMark();
+  void toggleMark(InbetweenMark mark);
 
   /// The ● every n koma down a block, from its head (I-58) — the
   /// selection's blocks, else the block under this panel's cursor.
@@ -567,7 +570,8 @@ class TimelineToolbarPanelContext
   bool get canToggleMark => session.layerMarks.canToggleMarkAtCurrentFrame;
 
   @override
-  void toggleMark() => session.layerMarks.toggleMarkAtCurrentFrame();
+  void toggleMark(InbetweenMark mark) =>
+      session.layerMarks.toggleMarkAtCurrentFrame(mark);
 
   @override
   bool get canMarkEvery => session.layerMarks.canMarkEvery;
@@ -893,7 +897,7 @@ class StoryboardToolbarPanelContext
   bool get canToggleMark => _timelinesCells?.canToggleMark ?? false;
 
   @override
-  void toggleMark() => _timelinesCells?.toggleMark();
+  void toggleMark(InbetweenMark mark) => _timelinesCells?.toggleMark(mark);
 
   @override
   bool get canMarkEvery => _timelinesCells?.canMarkEvery ?? false;

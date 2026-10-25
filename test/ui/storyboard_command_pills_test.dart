@@ -82,6 +82,7 @@ void main() {
     for (final keyValue in [
       'new-frame-button',
       'blank-exposure-button',
+      'toggle-mark-one-button',
       'toggle-mark-button',
       'set-comma-1-button',
       'set-comma-n-button',

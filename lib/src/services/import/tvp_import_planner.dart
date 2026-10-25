@@ -148,7 +148,12 @@ TvpImportPlan planTvpImport({
       timeline[block.start] = TimelineExposure.drawing(
         frameId,
         length: block.length,
-        breakdownOffsets: block.breakdownOffsets,
+        // Every TVPaint mark reads as mark 2, the ● there was before
+        // I-130 — which of the two each is, is I-130-csp-import's.
+        breakdownMarks: {
+          for (final offset in block.breakdownOffsets)
+            offset: InbetweenMark.two,
+        },
       );
     }
 

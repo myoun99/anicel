@@ -185,7 +185,7 @@ void main() {
       'marked whole, and all marked are cleared', () {
     final session = rig();
     standOn(session, idA, 4);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(marksAt(session, idA, 0), [4], reason: '⛔전제');
 
     standOn(session, idA, 1);
@@ -395,9 +395,14 @@ void main() {
       reason: '● 바로 오른쪽 — and the toggle keeps its place before the ●: '
           '$order',
     );
+    // 🗣️I-130: 「기존 중간나누기 버튼 왼쪽에 중간나누기 마크1 버튼 신설」.
+    expect(
+      order.indexOf('toggle-mark-one-button'),
+      order.indexOf('toggle-mark-button') - 1,
+    );
     expect(
       order.indexOf('auto-frame-toggle-button'),
-      order.indexOf('toggle-mark-button') - 1,
+      order.indexOf('toggle-mark-one-button') - 1,
     );
 
     standOn(session, idA, 1);
@@ -461,6 +466,32 @@ void main() {
     await typeAndApply(tester, '2');
 
     expect(marksAt(session, idA, 0), [7, 9]);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🗣️I-130: a key recorded for the ○ or the ● presses that '
+      'button', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 3);
+    EditorShortcutScope.peek(tester.element(find.byType(EditorWorkspace)))!
+      ..setActivators(EditorActionIds.frameToggleMarkOne, const [
+        SingleActivator(LogicalKeyboardKey.keyK),
+      ])
+      ..setActivators(EditorActionIds.frameToggleMarkTwo, const [
+        SingleActivator(LogicalKeyboardKey.keyJ),
+      ]);
+    await tester.pump();
+    Map<int, InbetweenMark> worn() => session.layers
+        .firstWhere((layer) => layer.id == idA)
+        .timeline[0]!
+        .breakdownMarks;
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyK);
+    await tester.pumpAndSettle();
+    expect(worn(), {3: InbetweenMark.one});
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
+    await tester.pumpAndSettle();
+    expect(worn(), {3: InbetweenMark.two});
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

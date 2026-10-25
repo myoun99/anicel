@@ -27,19 +27,23 @@ import '../helpers/source_ledger.dart';
 /// share a GLYPH: the unnamed head printed ● as its name while the dot inside
 /// a block was a mark, so every surface drew them apart — the sheet at two
 /// sizes. Now there are TWO names — what an unnamed drawing wears and the dot
-/// inside a block — for ONE value, mark 1 of `InbetweenMark`, and the ● is
-/// that mark written as TEXT, spelled once in the home. The hollow ○ is
-/// spelled nowhere: mark 2 arrives as a second value of the enum.
+/// inside a block — for ONE value of `InbetweenMark`, and the ● is that mark
+/// written as TEXT, spelled once in the home.
+///
+/// 🚨★★AND THERE ARE TWO MARKS (I-130). 유저 2026-10-25: 「지금의 속이 찬
+/// 점을 마크2, 속이 빈 그냥 선으로 된 원을 마크1 … 일단은 모양이 다를뿐인
+/// 같은 중간나누기임」. The hollow ○ came back as the second value, mark 1;
+/// the unnamed head keeps the filled ●, which is mark 2 now. ↩️Until then the
+/// ● was mark 1 and the ○ was spelled nowhere.
 ///
 /// ⛔SO THIS SCANS SOURCE: copies that agree today all pass a behaviour
-/// test. The glyph spelled outside the home, a
+/// test. Either glyph spelled outside the home, a
 /// `frameName == null || frameName.isEmpty` anywhere, or the unnamed mark
 /// named anywhere but the home — a surface deciding for itself that a drawing
 /// with no number wears it — has started the next copy.
 void main() {
   const home = 'lib/src/models/frame.dart';
-  const mark = '●';
-  const retired = '○';
+  const marks = ['●', '○'];
 
   /// The one other ● in lib, and why it is not the mark.
   const notTheMark = <String, String>{
@@ -76,33 +80,36 @@ void main() {
         'DrawingHead drawingHeadOf(String? name, {required LayerKind kind})',
       ),
     );
-    final spelled = [
-      for (final (_, code) in codeLines(File(home)))
-        if (code.contains(mark)) code,
-    ];
-    expect(
-      spelled,
-      hasLength(1),
-      reason: 'the scan below assumes the one mark is spelled here, once',
-    );
+    for (final mark in marks) {
+      final spelled = [
+        for (final (_, code) in codeLines(File(home)))
+          if (code.contains(mark)) code,
+      ];
+      expect(
+        spelled,
+        hasLength(1),
+        reason: 'the scan below assumes $mark is spelled here, once',
+      );
+    }
     expect(
       text,
-      contains('const InbetweenMark unnamedDrawingMark = InbetweenMark.one;'),
+      contains('const InbetweenMark unnamedDrawingMark = InbetweenMark.two;'),
       reason:
           '🚨유저: 「중간나누기 마크1로서 작동했으면」 — the unnamed drawing '
-          'wears mark 1 itself, as data, not a glyph of its own',
+          'wears a mark itself, as data, not a glyph of its own; the ● it '
+          'wore is mark 2 since I-130',
     );
+    expect(text, contains("InbetweenMark.one => '○'"));
     expect(
       text,
-      contains('InbetweenMark.one => inbetweenMark'),
-      reason: 'and mark 1 written as text is the one ●',
+      contains("InbetweenMark.two => '●'"),
+      reason: 'each mark written as text is its one glyph',
     );
   });
 
-  test('nobody else spells the mark, nobody spells the retired one, nobody '
-      'asks whether a frame name is empty, and nobody else hands a drawing '
-      'the unnamed mark — and the ledger names only files that still spell '
-      'a ● of their own', () {
+  test('nobody else spells a mark, nobody asks whether a frame name is '
+      'empty, and nobody else hands a drawing the unnamed mark — and the '
+      'ledger names only files that still spell a mark of their own', () {
     final offenders = <String>[];
     final spellers = <String, List<int>>{};
     var scanned = 0;
@@ -110,11 +117,8 @@ void main() {
       scanned += 1;
       final path = libPath(file);
       for (final (line, code) in codeLines(file)) {
-        if (path != home && code.contains(mark)) {
+        if (path != home && marks.any(code.contains)) {
           (spellers[path] ??= []).add(line);
-        }
-        if (code.contains(retired)) {
-          offenders.add('$path:$line spells the retired hollow mark');
         }
         if (blankNameCheck.hasMatch(code)) {
           offenders.add('$path:$line asks frameName.isEmpty');
@@ -130,9 +134,7 @@ void main() {
     expect(
       offenders,
       isEmpty,
-      reason:
-          'ask drawingHeadOf / celNumberOrMark / inbetweenMark — 유저: '
-          '「당장은 제거」 for ○',
+      reason: 'ask drawingHeadOf / celNumberOrMark / InbetweenMark.glyph',
     );
     // Asked of the code the scan reads, a comment cut off: a ● only a
     // comment of a ledgered file still names is no ● of its own.
@@ -140,9 +142,10 @@ void main() {
       spellers.keys,
       notTheMark.keys,
       unledgered:
-          'these spell the mark — ask drawingHeadOf / celNumberOrMark / '
-          'inbetweenMark',
-      paidOff: 'these no longer spell ● — take their lines out of the ledger',
+          'these spell a mark — ask drawingHeadOf / celNumberOrMark / '
+          'InbetweenMark.glyph',
+      paidOff:
+          'these no longer spell a mark — take their lines out of the ledger',
       hits: spellers,
     );
   });

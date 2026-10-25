@@ -4,13 +4,14 @@
 ///
 /// A drawing entry at `s` with length `n` covers `[s, s + n)`; every
 /// timeline entry is a drawing (inbetween dots live INSIDE entries as
-/// [TimelineExposure.breakdownOffsets]). Everything else is empty
+/// [TimelineExposure.breakdownMarks]). Everything else is empty
 /// (rendered as "X" cells). Lookups use the SplayTreeMap navigation
 /// methods (lastKeyBefore / firstKeyAfter), so a query costs O(log n).
 library;
 
 import 'dart:collection';
 
+import 'frame.dart' show InbetweenMark;
 import 'frame_id.dart';
 import 'timeline_exposure.dart';
 
@@ -150,17 +151,14 @@ int? previousUnitStartBefore(
   return unitStartAt(timeline, unitStart - 1);
 }
 
-/// Whether a block-owned inbetween dot (중간나누기 ●) renders at
-/// [frameIndex]: the covering block carries a breakdown offset there.
-bool hasBreakdownDotAt(
+/// The block-owned inbetween dot (중간나누기 ○ ●) that renders at
+/// [frameIndex] — the mark the covering block carries there — or null.
+InbetweenMark? breakdownMarkAt(
   SplayTreeMap<int, TimelineExposure> timeline,
   int frameIndex,
 ) {
   final block = coveringDrawingBlockAt(timeline, frameIndex);
-  if (block == null) {
-    return false;
-  }
-  return block.entry.hasBreakdownAt(frameIndex - block.startIndex);
+  return block?.entry.breakdownMarks[frameIndex - block.startIndex];
 }
 
 /// One past the last authored cell: the maximum drawing block end. Zero

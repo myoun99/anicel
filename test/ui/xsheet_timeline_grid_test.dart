@@ -271,24 +271,11 @@ void main() {
       ),
     );
 
-    expect(_xsheetMark(tester, 'layer-2', 2), breakdownMark);
+    expect(_xsheetMark(tester, 'layer-2', 2), InbetweenMark.two);
     expect(
       timelineCellModel(tester, 'layer-2', 2, prefix: 'xsheet').semanticsLabel,
-      'inbetween mark',
+      'inbetween mark 2',
     );
-  });
-
-  testWidgets('shows inbetween mark on blank held cell', (tester) async {
-    await tester.pumpWidget(
-      _grid(
-        exposureStateForLayer: (layer, frameIndex) =>
-            layer.id == const LayerId('layer-2') && frameIndex == 2
-            ? TimelineCellExposureState.markUncovered
-            : TimelineCellExposureState.uncovered,
-      ),
-    );
-
-    expect(_xsheetMark(tester, 'layer-2', 2), breakdownMark);
   });
 
   testWidgets('empty cells stay blank', (tester) async {
@@ -354,7 +341,7 @@ void main() {
       ),
     );
 
-    expect(_xsheetMark(tester, 'layer-2', 2), breakdownMark);
+    expect(_xsheetMark(tester, 'layer-2', 2), InbetweenMark.two);
   });
 
   testWidgets('marks only the active current cell as selected', (tester) async {
@@ -419,7 +406,7 @@ void main() {
       _grid(
         exposureStateForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
-            ? TimelineCellExposureState.markHeld
+            ? TimelineCellExposureState.markTwoHeld
             : TimelineCellExposureState.uncovered,
         frameNameForLayer: (layer, frameIndex) =>
             layer.id == const LayerId('layer-1') && frameIndex == 0
@@ -427,7 +414,7 @@ void main() {
             : null,
       ),
     );
-    expect(_xsheetMark(tester, 'layer-1', 0), breakdownMark);
+    expect(_xsheetMark(tester, 'layer-1', 0), InbetweenMark.two);
   });
 
   testWidgets('held exposure run renders as one vertical block', (
@@ -647,7 +634,7 @@ const _dotAtTwo = {
   1: TimelineExposure.drawing(
     FrameId('frame-2'),
     length: 3,
-    breakdownOffsets: [1],
+    breakdownMarks: {1: InbetweenMark.two},
   ),
 };
 

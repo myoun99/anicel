@@ -609,7 +609,8 @@ void main() {
           .tooltip;
       expect(tooltip('new-frame-button'), 'New Frame (Shift+I)');
       expect(tooltip('blank-exposure-button'), 'Clear');
-      expect(tooltip('toggle-mark-button'), 'In-between Mark');
+      expect(tooltip('toggle-mark-one-button'), 'In-between Mark 1');
+      expect(tooltip('toggle-mark-button'), 'In-between Mark 2');
       expect(tooltip('mark-every-button'), 'Auto-add In-between Marks');
     });
   });

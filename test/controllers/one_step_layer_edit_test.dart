@@ -15,6 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../helpers/dots_at.dart';
 
 /// Characterisation of the controller's THREE shared edit shapes, pinned
 /// before they were folded into one body each (round 8, clone pairs
@@ -70,7 +71,7 @@ void main() {
       h.controller.setMarksForFrames({
         _a: [1, 2],
         _b: [3],
-      }, marked: true);
+      }, mark: InbetweenMark.two);
 
       expect(h.timeline(_a)[0]!.breakdownOffsets, [1, 2]);
       expect(h.timeline(_b)[0]!.breakdownOffsets, [3]);
@@ -116,7 +117,7 @@ void main() {
       h.controller.blankSpansForLayers({_b: (start: 5, endExclusive: 6)});
       h.controller.setMarksForFrames({
         _b: [1],
-      }, marked: false);
+      }, mark: null);
       h.controller.retimeBlocksForLayers({
         _b: {0: 2},
       });
@@ -133,7 +134,7 @@ void main() {
       h.controller.blankSpansForLayers({_a: (start: 0, endExclusive: 4)});
       h.controller.setMarksForFrames({
         _b: [1],
-      }, marked: true);
+      }, mark: InbetweenMark.two);
 
       expect(h.timeline(_a), isEmpty);
       expect(h.timeline(_b)[0]!.breakdownOffsets, [1]);
@@ -145,7 +146,7 @@ void main() {
       final h = _Harness(a: {0: _drawing('a', 3)}, b: {0: _drawing('b', 3)});
 
       h.controller.selectFrameIndex(0); // a block HEAD: both gates refuse.
-      h.controller.toggleMarkForLayer(layerId: _a);
+      h.controller.toggleMarkForLayer(layerId: _a, mark: InbetweenMark.two);
       h.controller.cutExposureForLayer(layerId: _b);
 
       expect(h.timeline(_a), {0: _drawing('a', 3)});
@@ -160,7 +161,7 @@ void main() {
       );
 
       h.controller.selectFrameIndex(2);
-      h.controller.toggleMarkForLayer(layerId: _a);
+      h.controller.toggleMarkForLayer(layerId: _a, mark: InbetweenMark.two);
       h.controller.cutExposureForLayer(layerId: _b);
 
       expect(h.timeline(_a), {
@@ -180,7 +181,7 @@ void main() {
       );
 
       h.controller.selectFrameIndex(2); // cut-local 2 = global 12.
-      h.controller.toggleMarkForLayer(layerId: _se);
+      h.controller.toggleMarkForLayer(layerId: _se, mark: InbetweenMark.two);
       expect(h.seLayer.timeline[10]!.breakdownOffsets, [2]);
 
       h.controller.selectFrameIndex(3); // global 13.
@@ -214,7 +215,7 @@ TimelineExposure _drawing(String frameId, int length, {List<int>? dots}) {
   return TimelineExposure.drawing(
     FrameId(frameId),
     length: length,
-    breakdownOffsets: dots ?? const [],
+    breakdownMarks: dotsAt(dots ?? const []),
   );
 }
 

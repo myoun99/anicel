@@ -100,6 +100,7 @@ Future<void> _collapse(WidgetTester tester) async {
 const _barButtons = <String>[
   'new-frame-button',
   'blank-exposure-button',
+  'toggle-mark-one-button',
   'toggle-mark-button',
   'shared-copy-button',
   'shared-paste-linked-button',

@@ -5,6 +5,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import '../helpers/dots_at.dart';
 
 /// 🚨F-48 — **싱크 어태치는 중간나누기 점도 나른다.**
 ///
@@ -27,7 +28,11 @@ void main() {
     name: 'B',
     frames: [Frame(id: baseCel, duration: 4, strokes: const [])],
     timeline: {
-      0: TimelineExposure.drawing(baseCel, length: 4, breakdownOffsets: dots),
+      0: TimelineExposure.drawing(
+        baseCel,
+        length: 4,
+        breakdownMarks: dotsAt(dots),
+      ),
     },
   );
 

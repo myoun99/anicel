@@ -15,6 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../helpers/dots_at.dart';
 
 /// Comma edge shifts. The TRAILING edge pushes: glued chains ride along
 /// preserving their commas, separated blocks absorb the empty ("X") gap
@@ -211,7 +212,7 @@ TimelineExposure _drawing(String frameId, int length, {List<int>? dots}) {
   return TimelineExposure.drawing(
     FrameId(frameId),
     length: length,
-    breakdownOffsets: dots ?? const [],
+    breakdownMarks: dotsAt(dots ?? const []),
   );
 }
 

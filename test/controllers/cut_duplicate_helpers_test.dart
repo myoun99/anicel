@@ -100,7 +100,7 @@ void main() {
         const TimelineExposure.drawing(
           FrameId('frame-copy-a'),
           length: 3,
-          breakdownOffsets: [1],
+          breakdownMarks: {1: InbetweenMark.two},
         ),
       );
       expect(
@@ -453,7 +453,7 @@ Cut _sourceCut() {
           0: const TimelineExposure.drawing(
             FrameId('frame-a'),
             length: 3,
-            breakdownOffsets: [1],
+            breakdownMarks: {1: InbetweenMark.two},
           ),
           5: const TimelineExposure.drawing(FrameId('frame-b'), length: 2),
           7: const TimelineExposure.drawing(FrameId('frame-a'), length: 1),

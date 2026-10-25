@@ -117,7 +117,7 @@ void main() {
     sweep(session, ids, from: 1, toExclusive: 3);
 
     expect(session.layerMarks.canToggleMarkForSelection, isTrue);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
 
     for (final id in ids) {
       expect(
@@ -132,7 +132,7 @@ void main() {
   test('several swept frames in ONE block all survive the same press', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 4);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(
       marksOf(session, ids.first),
       [1, 2, 3],
@@ -146,12 +146,12 @@ void main() {
     final (session, ids) = rig();
     // Mark frame 1 of the first row alone, through the band.
     sweep(session, [ids.first], from: 1, toExclusive: 2);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(marksOf(session, ids.first), [1]);
 
     // Now sweep 1..3 across both rows: the band is MIXED.
     sweep(session, ids, from: 1, toExclusive: 3);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     for (final id in ids) {
       expect(
         marksOf(session, id),
@@ -165,19 +165,43 @@ void main() {
   test('an all-marked band clears', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 3);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(marksOf(session, ids.first), [1, 2]);
 
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     for (final id in ids) {
       expect(marksOf(session, id), isEmpty, reason: 'the second press clears');
+    }
+  });
+
+  test('🗣️I-130: a band of the other mark goes over to the pressed one, and '
+      'a band all of the pressed one clears', () {
+    // ⚠️I-130-Q1 asks the user; this is its recommended reading (a).
+    final (session, ids) = rig();
+    Map<int, InbetweenMark> wornBy(LayerId id) =>
+        session.layers.firstWhere((l) => l.id == id).timeline[0]!
+            .breakdownMarks;
+    sweep(session, ids, from: 1, toExclusive: 3);
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
+
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.one);
+    for (final id in ids) {
+      expect(
+        wornBy(id),
+        {1: InbetweenMark.one, 2: InbetweenMark.one},
+        reason: 'every ● under the band is not a ○, so the band fills ○',
+      );
+    }
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.one);
+    for (final id in ids) {
+      expect(wornBy(id), isEmpty);
     }
   });
 
   test('one press is ONE undo', () {
     final (session, ids) = rig();
     sweep(session, ids, from: 1, toExclusive: 3);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(marksOf(session, ids.first), [1, 2]);
     expect(marksOf(session, ids[1]), [1, 2]);
 
@@ -208,7 +232,7 @@ void main() {
           'drag never moves the active layer, so the swept row and the '
           'active row are routinely different ones',
     );
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     for (final id in ids) {
       expect(marksOf(session, id), isEmpty);
     }
@@ -221,7 +245,7 @@ void main() {
     session.clearFrameRangeSelection();
 
     expect(session.layerMarks.canToggleMarkAtCurrentFrame, isTrue);
-    session.layerMarks.toggleMarkAtCurrentFrame();
+    session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two);
     expect(marksOf(session, ids.first), [2]);
     expect(
       marksOf(session, ids[1]),

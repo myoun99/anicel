@@ -4,7 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart'
-    show breakdownMark, unnamedDrawingMark;
+    show InbetweenMark, unnamedDrawingMark;
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 
@@ -228,10 +228,10 @@ void main() {
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expectCellMark('default-layer-1', 1, breakdownMark);
+      expectCellMark('default-layer-1', 1, InbetweenMark.two);
       expect(
         selectedCellStateLabel(tester),
-        'inbetween mark',
+        'inbetween mark 2',
         reason: '⛔전제: the held cell really carries a dot',
       );
 

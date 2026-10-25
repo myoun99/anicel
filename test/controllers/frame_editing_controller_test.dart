@@ -200,7 +200,10 @@ void main() {
       final fixture = _fixture(_editingLayer(markIndex: 4));
       fixture.controller.selectFrameIndex(4);
 
-      fixture.controller.toggleMarkForLayer(layerId: const LayerId('layer'));
+      fixture.controller.toggleMarkForLayer(
+        layerId: const LayerId('layer'),
+        mark: InbetweenMark.two,
+      );
 
       final layer = _latestLayer(fixture.repository);
       expect(layer.timeline.containsKey(4), isFalse);
@@ -259,7 +262,7 @@ Layer _editingLayer({int? markIndex}) {
   if (markIndex != null) {
     final start = timeline.keys.lastWhere((key) => key <= markIndex);
     timeline[start] = timeline[start]!.copyWith(
-      breakdownOffsets: [markIndex - start],
+      breakdownMarks: {markIndex - start: InbetweenMark.two},
     );
   }
   return Layer(

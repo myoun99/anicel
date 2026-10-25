@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_window.dart';
+import '../../helpers/dots_at.dart';
 
 /// 🗣️I-73 (유저 2026-10-08): 「v행 아래에 콘티행 만들어서 거기서」 · 「콘티행도
 /// 동일하게 하고싶으니까」 — the storyboard draws the cuts' conte layers as
@@ -48,7 +49,7 @@ void main() {
       TimelineExposure.drawing(
         FrameId(id),
         length: length,
-        breakdownOffsets: dots,
+        breakdownMarks: dotsAt(dots),
       );
 
   Layer conte(
@@ -274,7 +275,7 @@ void main() {
             0: TimelineExposure.drawing(
               const FrameId('a1'),
               length: 10,
-              breakdownOffsets: const [3],
+              breakdownMarks: {3: InbetweenMark.two},
               memo: const ExposureMemo.empty().copyWith(actionMemo: 'runs'),
             ),
           }),
@@ -451,7 +452,7 @@ void main() {
           TimelineCellExposureState.uncovered, // 1
           TimelineCellExposureState.drawingStart, // 2
           TimelineCellExposureState.held, // 3
-          TimelineCellExposureState.markHeld, // 4: offset 2
+          TimelineCellExposureState.markTwoHeld, // 4: offset 2
           TimelineCellExposureState.held, // 5
           TimelineCellExposureState.uncovered, // 6
           TimelineCellExposureState.uncovered, // 7

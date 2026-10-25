@@ -436,7 +436,7 @@ void main() {
           0: const TimelineExposure.drawing(
             FrameId('a-f1'),
             length: 2,
-            breakdownOffsets: [1],
+            breakdownMarks: {1: InbetweenMark.two},
           ),
           6: const TimelineExposure.drawing(FrameId('a-f1'), length: 1),
         },

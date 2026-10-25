@@ -5,53 +5,39 @@ import 'layer_kind.dart';
 import 'se_line_type.dart';
 import 'stroke.dart';
 
-/// The in-between division mark (中割) written as TEXT — mark 1's glyph
-/// ([InbetweenMark.glyph]), for both of its uses: a drawing without a cel
-/// number, and the dot inside a block.
+/// THE in-between marks (中割) as DATA — what a cell carries, not a glyph it
+/// prints: two marks, one in-between. 🗣️I-130 (유저 2026-10-25): 「지금의
+/// 속이 찬 점을 마크2, 속이 빈 그냥 선으로 된 원을 마크1. 이 순서는 토에이
+/// 디지털 타임시트, 클튜를 기반으로 확인했음 … 현재로서 두 마크가 다른
+/// 기능한다거나 그런건없음. 일단은 모양이 다를뿐인 같은 중간나누기임」.
 ///
-/// 🚨★★F-149 (유저 2026-09-16): 「프레임 이름 없는 기본 상태도 중간나누기
-/// 마크(속이 빈 동그라미)고, 중간나누기 마크(속이 찬 동그라미)도 중간나누기
-/// 마크인건 맞는데, 중간나누기 설정은 2개로 두고싶지만, 일단 이름 없는
-/// 기본상태를 속이 찬 동그라미로 통일적용. 추후 두번째 중간나누기
-/// 마크(속이 빈)를 활용할지도 모르겠지만 당장은 제거」.
-///
-/// ⇒ ONE glyph here. The hollow ○ the unnamed drawing printed until F-149
-/// is retired; the second mark 유저 has in mind arrives as a second
-/// [InbetweenMark] (2026-09-24), with a glyph of its own.
-const String inbetweenMark = '●';
-
-/// THE in-between marks as DATA — what a cell carries, not a glyph it prints.
-///
-/// 🗣️유저 2026-09-24: 「데이터적으로도 같은 취급시키는거 맞지? 중간나누기
-/// 마크1로서 작동했으면하는데. 마크2는 토에이 타임시트에 속이 빈 동그라미가
-/// 있어서 그게 될 예정이고, 아무튼 중간나누기는 마크1이랑 마크2 두개로
-/// 나눌예정」. ↩️F-149 had made the two share a GLYPH only: a drawing with no
-/// cel number printed [inbetweenMark] as its name, while the dot inside a
-/// block was a mark — so every surface drew the two apart, the sheet at two
-/// sizes. They are one mark now, [one], from the model up; mark 2 (the Toei
-/// sheet's hollow ○) arrives as a second value here.
+/// ↩️유저 2026-09-24 had named them the other way round — 「중간나누기
+/// 마크1로서 작동했으면 … 마크2는 토에이 타임시트에 속이 빈 동그라미」 — and
+/// until I-130 there was the one value, the filled ●. ↩️F-149 (유저
+/// 2026-09-16: 「일단 이름 없는 기본상태를 속이 찬 동그라미로 통일적용. 추후
+/// 두번째 중간나누기 마크(속이 빈)를 활용할지도 모르겠지만 당장은 제거」)
+/// retired the hollow ○ the unnamed drawing printed; it is back as mark 1.
 enum InbetweenMark {
-  /// Mark 1 — the filled ●.
-  one;
+  /// Mark 1 — the hollow ○, a line round it.
+  one,
+
+  /// Mark 2 — the filled ●.
+  two;
 
   /// The mark written as TEXT — a file name, a menu, a notice. Surfaces that
-  /// draw draw its shape instead.
+  /// draw draw its shape instead. The one place either glyph is spelled.
   String get glyph => switch (this) {
-    InbetweenMark.one => inbetweenMark,
+    InbetweenMark.one => '○',
+    InbetweenMark.two => '●',
   };
 }
 
 /// The mark a drawing without a cel number wears where the number would
-/// stand — mark 1, the same mark as the dot inside a block (유저
-/// 2026-09-24), on the sheet, the timeline, the flip HUD, the storyboard and
-/// in a save's notice — on every row but one whose picture is the layer
-/// ([drawingHeadOf]).
-const InbetweenMark unnamedDrawingMark = InbetweenMark.one;
-
-/// The mark the dot inside a block wears (its breakdown offsets) — mark 1,
-/// the same mark as [unnamedDrawingMark]. The mark-2 round is where a block
-/// says which.
-const InbetweenMark breakdownMark = InbetweenMark.one;
+/// stand — mark 2, the filled ● (F-149), drawn as the dot inside a block is
+/// (유저 2026-09-24), on the sheet, the timeline, the flip HUD, the
+/// storyboard and in a save's notice — on every row but one whose picture
+/// is the layer ([drawingHeadOf]).
+const InbetweenMark unnamedDrawingMark = InbetweenMark.two;
 
 /// What a drawing's head wears where its block starts: a [word] — its cel
 /// number — or, with none, a [mark].

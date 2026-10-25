@@ -562,15 +562,15 @@ Color timelineCellPaper(
   // UI-R21 #2: empty cells paint NOTHING — the ground under them is the
   // grid sheet's (I-44: the host colour, the active-row wash), so the cell
   // substrate carries no per-row state at all.
-  TimelineCellExposureState.uncovered ||
-  TimelineCellExposureState.markUncovered => Colors.transparent,
+  TimelineCellExposureState.uncovered => Colors.transparent,
   // ⑲ (user, 2026-08-12): 「블록 모드의 프레임블록은 레이어 색라벨 색을
   // 그대로 따라간다 (…) 그냥 블록의 고정 하얀색을 레이어 색라벨
   // 따라가도록」. START and HELD were two names for one number and stay
   // that way — a run is one sheet of paper, and only its seams differ.
   TimelineCellExposureState.drawingStart ||
   TimelineCellExposureState.held ||
-  TimelineCellExposureState.markHeld => paper,
+  TimelineCellExposureState.markOneHeld ||
+  TimelineCellExposureState.markTwoHeld => paper,
 };
 
 /// 🪦**`timelineRowLabelSplash` · `timelineRowLabelHighlight` stood here.**

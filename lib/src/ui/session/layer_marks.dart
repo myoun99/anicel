@@ -1,4 +1,5 @@
 import '../../models/attached_layer_resolve.dart';
+import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
@@ -95,10 +96,12 @@ class LayerMarks {
     ),
   );
 
-  void toggleMarkAtCurrentFrame() {
+  /// The press of [mark]'s button (I-130: ○ is mark 1, ● mark 2) — on the
+  /// band's cells, else the active row's cell under the playhead.
+  void toggleMarkAtCurrentFrame(InbetweenMark mark) {
     final banded = _markableFramesForSelection();
     if (banded.isNotEmpty) {
-      _toggleMarksOf(banded);
+      _toggleMarksOf(banded, mark);
       return;
     }
     final layer = _selection.activeLayer;
@@ -106,19 +109,23 @@ class LayerMarks {
       return;
     }
 
-    _controllers.timelineController.toggleMarkForLayer(layerId: layer.id);
+    _controllers.timelineController.toggleMarkForLayer(
+      layerId: layer.id,
+      mark: mark,
+    );
     _changes.notifyChanged();
   }
 
-  /// The ●'s law over many cells — what a press that toggles [frames] does
-  /// to them, as ONE undo step. SET them one way, never toggle each: a mix
-  /// would invert under the hand and hand back the complement of what was
-  /// there. All marked → clear; anything unmarked → mark them all.
-  void _toggleMarksOf(Map<LayerId, List<int>> frames) {
+  /// A mark's law over many cells — what a press of [mark] that toggles
+  /// [frames] does to them, as ONE undo step. SET them one way, never toggle
+  /// each: a mix would invert under the hand and hand back the complement
+  /// of what was there. All wearing [mark] → clear; anything else → [mark]
+  /// on them all.
+  void _toggleMarksOf(Map<LayerId, List<int>> frames, InbetweenMark mark) {
     final timeline = _controllers.timelineController;
     timeline.setMarksForFrames(
       frames,
-      marked: !timeline.bandFramesAreAllMarked(frames),
+      mark: timeline.bandFramesAreAllMarked(frames, mark) ? null : mark,
     );
     _changes.notifyChanged();
   }
@@ -213,6 +220,9 @@ class LayerMarks {
   /// 🗣️F-402 (유저 2026-10-19): 「중간나누기 마크는 토글이기 때문에 마크가
   /// 존재하는 곳은 토글규칙에 따라서 마크 삭제」. ↩️It only added, keeping
   /// every mark the cells carried (I-58 「추가」).
+  ///
+  /// ⚠️It lays mark 2, the ● it laid before I-130 — which mark it lays is
+  /// I-130-Q2, still open.
   void markEvery(int every) {
     if (every < 1) {
       return;
@@ -221,7 +231,7 @@ class LayerMarks {
     if (frames.isEmpty) {
       return;
     }
-    _toggleMarksOf(frames);
+    _toggleMarksOf(frames, InbetweenMark.two);
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {

@@ -99,12 +99,12 @@ void main() {
             0: const TimelineExposure.drawing(
               FrameId('A1'),
               length: 6,
-              breakdownOffsets: [2, 4],
+              breakdownMarks: {2: InbetweenMark.two, 4: InbetweenMark.two},
             ),
             6: const TimelineExposure.drawing(
               FrameId('A2'),
               length: 6,
-              breakdownOffsets: [3],
+              breakdownMarks: {3: InbetweenMark.two},
             ),
           },
         ),
@@ -125,13 +125,13 @@ void main() {
             0: const TimelineExposure.drawing(
               FrameId('A1'),
               length: 4,
-              breakdownOffsets: [2],
+              breakdownMarks: {2: InbetweenMark.two},
             ),
             4: const TimelineExposure.drawing(
               FrameId('A1'),
               length: 4,
               ghostOf: endRepeatGhost,
-              breakdownOffsets: [2],
+              breakdownMarks: {2: InbetweenMark.two},
             ),
           },
         ),
@@ -156,7 +156,7 @@ void main() {
             0: const TimelineExposure.drawing(
               FrameId('A1'),
               length: 4,
-              breakdownOffsets: [2],
+              breakdownMarks: {2: InbetweenMark.two},
             ),
           },
         ),

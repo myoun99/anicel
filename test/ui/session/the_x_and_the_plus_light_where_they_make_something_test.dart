@@ -6,6 +6,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 
 /// F-107 — the frame pill's X and ＋ light only where their press makes
 /// something.
@@ -230,7 +231,11 @@ void main() {
       session.selectFrameIndex(8);
 
       expect(session.layerMarks.canToggleMarkAtCurrentFrame, isTrue);
-      expectLands(session, id, session.layerMarks.toggleMarkAtCurrentFrame);
+      expectLands(
+        session,
+        id,
+        () => session.layerMarks.toggleMarkAtCurrentFrame(InbetweenMark.two),
+      );
     });
 
     test('mark every n koma (I-58)', () {

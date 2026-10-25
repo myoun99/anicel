@@ -534,7 +534,7 @@ void main() {
                 0: const TimelineExposure.drawing(
                   FrameId('f1'),
                   length: 3,
-                  breakdownOffsets: [1],
+                  breakdownMarks: {1: InbetweenMark.two},
                 ),
               },
             ),
@@ -549,8 +549,8 @@ void main() {
       expect(cells[1].spanOffset, 1, reason: 'dot rows keep their span data');
       expect(
         cells[1].mark,
-        breakdownMark,
-        reason: 'the dot wears mark 1 — the mark an unnamed head wears',
+        InbetweenMark.two,
+        reason: 'the dot wears mark 2 — the mark an unnamed head wears',
       );
       expect(cells[2].mark, isNull);
       expect(cells[2].kind, TimesheetCellKind.held);
@@ -561,6 +561,35 @@ void main() {
         reason: 'one X per empty run',
       );
       expect(cells[4].spanOffset, 1, reason: 'counted from the X (F-430)');
+    });
+
+    test('🗣️I-130: a dot wearing mark 1 shows its ○ on its held row', () {
+      final document = _document(
+        _cut(
+          layers: [
+            _layer(
+              'A',
+              frames: [
+                Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+              ],
+              timeline: {
+                0: const TimelineExposure.drawing(
+                  FrameId('f1'),
+                  length: 3,
+                  breakdownMarks: {2: InbetweenMark.one},
+                ),
+              },
+            ),
+          ],
+          duration: 3,
+        ),
+      );
+
+      final cells = _firstActionColumn(document).cells;
+      expect(cells[1].mark, isNull);
+      expect(cells[2].kind, TimesheetCellKind.mark);
+      expect(cells[2].mark, InbetweenMark.one);
+      expect(cells[2].spanOffset, 2);
     });
 
     test('SE columns carry the name/dialogue label and never mark X runs', () {

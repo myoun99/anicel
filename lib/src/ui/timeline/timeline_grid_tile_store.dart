@@ -20,6 +20,7 @@ import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import '../quiet_turns.dart';
 import 'axis_turn.dart' show endAlong, offsetAlong, startAlong;
+import 'inbetween_mark_painter.dart' show inbetweenMarkRingWidth;
 import 'timeline_frame_window.dart';
 import '../text/laid_out_glyph.dart';
 import 'timeline_grid_tile_ops.dart';
@@ -1211,6 +1212,7 @@ class TimelineGridTileStore {
             height: place.size.height * dpr,
           ),
           timelineGridPackRgba(painter.foregroundInkFor(model)),
+          devicePixelRatio: dpr,
         );
         continue;
       }
@@ -1342,12 +1344,27 @@ class TimelineGridTileStore {
     TimelineGridTileOpWriter writer,
     InbetweenMark mark,
     Rect disc,
-    int rgba,
-  ) {
+    int rgba, {
+    required double devicePixelRatio,
+  }) {
+    // A rounded rect as round as it is narrow: the disc, and the stadium a
+    // narrowed one is.
     switch (mark) {
       case InbetweenMark.one:
-        // A rounded rect as round as it is narrow: the disc, and the
-        // stadium a narrowed one is.
+        writer.rrectRing(
+          (
+            x: disc.left,
+            y: disc.top,
+            width: disc.width,
+            height: disc.height,
+            radius: disc.shortestSide / 2,
+            cornerMask: 15,
+          ),
+          lineWidth: inbetweenMarkRingWidth * devicePixelRatio,
+          openMask: 0,
+          rgba: rgba,
+        );
+      case InbetweenMark.two:
         writer.rrectFill(
           disc.left,
           disc.top,

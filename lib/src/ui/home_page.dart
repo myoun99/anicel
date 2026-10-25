@@ -11,6 +11,7 @@ import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
 import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
+import '../models/frame.dart' show InbetweenMark;
 import '../models/project.dart';
 import '../models/working_panel.dart';
 import '../native/device_battery.dart';
@@ -1141,10 +1142,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // makes no cut where it has no place for one.
       case EditorActionIds.cutNew:
         newCutPress(_session)?.call();
-      case EditorActionIds.frameToggleMark:
+      // I-130: ○ and ● by key — their buttons' presses.
+      case EditorActionIds.frameToggleMarkOne:
         final panel = _workingPanel;
         if (panel.canToggleMark) {
-          panel.toggleMark();
+          panel.toggleMark(InbetweenMark.one);
+        }
+      case EditorActionIds.frameToggleMarkTwo:
+        final panel = _workingPanel;
+        if (panel.canToggleMark) {
+          panel.toggleMark(InbetweenMark.two);
         }
       // I-58: the ● every n koma — its button's window, on the panel being
       // worked in.

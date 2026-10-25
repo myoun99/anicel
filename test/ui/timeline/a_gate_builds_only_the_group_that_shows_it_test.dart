@@ -319,6 +319,7 @@ void main() {
         'new-frame-button',
         'blank-exposure-button',
         'auto-frame-toggle-button',
+        'toggle-mark-one-button',
         'toggle-mark-button',
         'mark-every-button',
       }),

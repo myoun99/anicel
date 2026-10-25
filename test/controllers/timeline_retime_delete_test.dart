@@ -15,6 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import '../helpers/dots_at.dart';
 
 /// UI-R17: the bulk retime (1/2/3/4/N comma set + bulk edge drags) and
 /// the selection-delete controller cores.
@@ -176,7 +177,7 @@ TimelineExposure _drawing(String frameId, int length, {List<int>? dots}) {
   return TimelineExposure.drawing(
     FrameId(frameId),
     length: length,
-    breakdownOffsets: dots ?? const [],
+    breakdownMarks: dotsAt(dots ?? const []),
   );
 }
 
