@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'laid_out_glyph.dart';
@@ -316,7 +317,14 @@ VerticalTextCell verticalGlyphCell(String glyph) => VerticalTextCell(
 /// Replaces the old `UprightVerticalText`, whose name was the bug: it
 /// stacked every character upright, so `ー` stayed a horizontal bar in the
 /// section band while the timesheet had rotated it since UI-R13 #3.
-class VerticalWritingText extends StatelessWidget {
+///
+/// ★ONE BOX ([RenderVerticalWriting]): the column paints, sizes and says
+/// itself, as a built block word does (`RenderTimelineBuiltWord`).
+/// ↩️It was a `Semantics` over an `ExcludeSemantics` over a `CustomPaint`,
+/// built by a widget of its own — four elements for every upright word on
+/// a rail row, paid on every panel reopen (card
+/// frame-panels-build-in-one-frame, 2026-10-25).
+class VerticalWritingText extends LeafRenderObjectWidget {
   const VerticalWritingText({
     super.key,
     required this.text,
@@ -405,35 +413,87 @@ class VerticalWritingText extends StatelessWidget {
     return Size(natural.width, natural.height + endInset * 2);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final resolved = _styleIn(context);
+  _VerticalWritingPainter _painterIn(BuildContext context) =>
+      _VerticalWritingPainter(
+        text: text,
+        style: _styleIn(context),
+        lineHeight: lineHeight,
+        minFontSize: minFontSize,
+        tateChuYokoDigits: tateChuYokoDigits,
+        latinForm: latinForm,
+        mainAlignment: mainAlignment,
+        overflow: overflow,
+        endInset: endInset,
+        inks: inks,
+      );
 
-    return Semantics(
-      label: text,
-      child: ExcludeSemantics(
-        // An INTRINSIC size, not `SizedBox.expand`: a loose host (the
-        // section band's Center) gets the column's natural extent, a tight
-        // one gets clamped down and the fit packs to it, and an UNBOUNDED
-        // one no longer throws — `SectionBandZone` passes a null extent and
-        // is saved today only by the Positioned around it.
-        child: CustomPaint(
-          size: naturalSizeIn(context),
-          painter: _VerticalWritingPainter(
-            text: text,
-            style: resolved,
-            lineHeight: lineHeight,
-            minFontSize: minFontSize,
-            tateChuYokoDigits: tateChuYokoDigits,
-            latinForm: latinForm,
-            mainAlignment: mainAlignment,
-            overflow: overflow,
-            endInset: endInset,
-            inks: inks,
-          ),
-        ),
-      ),
-    );
+  // An INTRINSIC size, not `SizedBox.expand`: a loose host (the section
+  // band's Center) gets the column's natural extent, a tight one gets
+  // clamped down and the fit packs to it, and an UNBOUNDED one no longer
+  // throws — `SectionBandZone` passes a null extent and is saved today only
+  // by the Positioned around it.
+  @override
+  RenderVerticalWriting createRenderObject(BuildContext context) =>
+      RenderVerticalWriting(
+        text: text,
+        textDirection: Directionality.maybeOf(context),
+        painter: _painterIn(context),
+        preferredSize: naturalSizeIn(context),
+      );
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderVerticalWriting renderObject,
+  ) {
+    renderObject
+      ..text = text
+      ..textDirection = Directionality.maybeOf(context)
+      ..painter = _painterIn(context)
+      ..preferredSize = naturalSizeIn(context);
+  }
+}
+
+/// A column that paints itself, takes its natural size and says its [text]
+/// to a screen reader — the one box a [VerticalWritingText] stands for.
+///
+/// ★It says the text on the node above it, as the `Semantics` it replaces
+/// did: no node of its own, its painter carrying none.
+class RenderVerticalWriting extends RenderCustomPaint {
+  RenderVerticalWriting({
+    required String text,
+    required TextDirection? textDirection,
+    required super.painter,
+    required super.preferredSize,
+  }) : _text = text,
+       _textDirection = textDirection;
+
+  String _text;
+  String get text => _text;
+  set text(String value) {
+    if (value == _text) {
+      return;
+    }
+    _text = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  TextDirection? _textDirection;
+  TextDirection? get textDirection => _textDirection;
+  set textDirection(TextDirection? value) {
+    if (value == _textDirection) {
+      return;
+    }
+    _textDirection = value;
+    markNeedsSemanticsUpdate();
+  }
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    config
+      ..label = _text
+      ..textDirection = _textDirection;
   }
 }
 
