@@ -7,6 +7,7 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/frame.dart' show unnamedDrawingMark;
 
+import 'helpers/room_for_the_pills.dart';
 import 'helpers/timeline_host.dart';
 import 'helpers/vertical_text_finder.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
@@ -14,14 +15,16 @@ import 'ui/timeline/timeline_cell_probe.dart';
 import 'helpers/home_page_probes.dart';
 import 'helpers/named_finders.dart';
 
-/// The timeline tab alone ([pumpTimelineHost]) on the project the app opens,
-/// as its window of 800 × 600 laid it — the rows, their kinds and the bar
-/// that adds and turns them are the tab's.
+/// The timeline tab alone ([pumpTimelineHost]) on the project the app opens
+/// — the rows, their kinds and the bar that adds and turns them are the
+/// tab's — with room for its pills. ↩️It stood as the app's window of
+/// 800 × 600 laid it, where the pills have 34px now
+/// ([timelineTabWithRoomForItsPills]).
 Future<void> _open(WidgetTester tester) async {
   await pumpTimelineHost(
     tester,
     newUntitledProject(),
-    surface: const Size(640, 320),
+    surface: timelineTabWithRoomForItsPills,
   );
 }
 
