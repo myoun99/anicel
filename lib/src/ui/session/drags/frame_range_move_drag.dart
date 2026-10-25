@@ -1014,11 +1014,18 @@ class FrameRangeMoveDrag {
   /// was swept over ([swept]) — a non-layer row in a mixed span is not
   /// something the layer-stated span can re-derive, and a lane's keys go the
   /// frames on their own row (H20), so the row stays in the band.
+  ///
+  /// A band whose rows held no block lands on no layer row: the span the
+  /// steps state names a layer all the same (no
+  /// [TimelineFrameRangeSelection.layerIds] reads as its `layerId` alone),
+  /// and a band of the V row's cuts and lanes came down holding the lanes'
+  /// carrier as cells.
   static List<TimelineRowAddress> _rowsLanded(
     TimelineFrameRangeSelection span,
     List<TimelineRowAddress> swept,
   ) => [
-    for (final id in span.spanLayerIds) LayerRowAddress(id),
+    if (swept.isEmpty || swept.any((row) => row.blockLayerId != null))
+      for (final id in span.spanLayerIds) LayerRowAddress(id),
     for (final row in swept)
       if (row is! LayerRowAddress) row,
   ];

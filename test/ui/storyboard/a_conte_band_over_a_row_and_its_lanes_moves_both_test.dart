@@ -122,10 +122,15 @@ final _s2Row = find.byKey(const ValueKey<String>('storyboard-se-row-0-2'));
 final _position = find.byKey(
   const ValueKey<String>('storyboard-se-lane-row-0-1-position'),
 );
+final _vRow = find.byKey(const ValueKey<String>('storyboard-track-row-t'));
 final _vLane = find.byKey(
   ValueKey<String>(
     'storyboard-track-lane-row-0-${effectLaneId(_fx, _brightness)}',
   ),
+);
+final _vLaneRow = LaneRowAddress(
+  const LayerId('v-track:t'),
+  effectLaneId(_fx, _brightness),
 );
 
 /// The conte with S1's Transform lanes open.
@@ -151,10 +156,15 @@ Offset _at(WidgetTester tester, Finder strip, int frame) => Offset(
   tester.getCenter(strip).dy,
 );
 
-/// A mouse sweep from [from]'s cell 4 to [to]'s cell 7.
-Future<void> _sweep(WidgetTester tester, Finder from, Finder to) async {
+/// A mouse sweep from [from]'s cell [start] to [to]'s cell 7.
+Future<void> _sweep(
+  WidgetTester tester,
+  Finder from,
+  Finder to, {
+  int start = 4,
+}) async {
   final mouse = await tester.startGesture(
-    _at(tester, from, 4),
+    _at(tester, from, start),
     kind: PointerDeviceKind.mouse,
   );
   await mouse.moveBy(const Offset(_cell, 0));
@@ -299,31 +309,27 @@ void main() {
     expect(_positionKeys(session), [5, 7]);
   });
 
+  testWidgets('a band that holds no whole sound still carries the keys its '
+      'lane holds', (tester) async {
+    final session = await _openS1Lanes(tester);
+    await _sweep(tester, _s1Row, _position, start: 6);
+    expect(session.trackFrameRangeSelection.value?.startFrame, 6);
+
+    await _carry(tester, _position);
+
+    expect(_sounds(session, _s1), [4], reason: 'its sound was not in it');
+    expect(_positionKeys(session), [5, 9]);
+  });
+
   testWidgets('a band from S1\'s cells down into the V row\'s fx lane, '
       'dragged by that lane, carries the fx keys with the sound', (
     tester,
   ) async {
-    final session = await pumpStoryboardHost(
-      tester,
-      _project(),
-      surface: const Size(1400, 900),
-      pixelsPerFrame: _cell,
-    );
-    await tester.tap(find.named('storyboard-track-lane-toggle-t'));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.named(
-        'storyboard-lane-group-toggle-v-track:t-${effectGroupLaneId(_fx)}',
-      ),
-    );
-    await tester.pumpAndSettle();
+    final session = await _openVLanes(tester);
     await _sweep(tester, _s1Row, _vLane);
     expect(
       session.trackFrameRangeSelection.value?.spanRows,
-      contains(LaneRowAddress(
-        const LayerId('v-track:t'),
-        effectLaneId(_fx, _brightness),
-      )),
+      contains(_vLaneRow),
       reason: 'premise: the band holds the fx lane',
     );
 
@@ -332,4 +338,43 @@ void main() {
     expect(_sounds(session, _s1), [6]);
     expect(_vKeys(session), [7, 9]);
   });
+
+  testWidgets('a band from the V row\'s cells into its fx lane holds no '
+      'sound, and dragged by the lane carries the fx keys alone', (
+    tester,
+  ) async {
+    final session = await _openVLanes(tester);
+    await _sweep(tester, _vRow, _vLane);
+    final rows = session.trackFrameRangeSelection.value?.spanRows;
+    expect(rows, containsAllInOrder([const TrackRowAddress(_track), _vLaneRow]));
+
+    await _carry(tester, _vLane);
+
+    expect(_vKeys(session), [7, 9]);
+    expect(_sounds(session, _s1), [4]);
+    expect(
+      session.trackFrameRangeSelection.value?.spanRows,
+      rows,
+      reason: 'over the rows it held — no S row joins it',
+    );
+  });
+}
+
+/// The conte with the V row's fx lane open.
+Future<EditorSessionManager> _openVLanes(WidgetTester tester) async {
+  final session = await pumpStoryboardHost(
+    tester,
+    _project(),
+    surface: const Size(1400, 900),
+    pixelsPerFrame: _cell,
+  );
+  await tester.tap(find.named('storyboard-track-lane-toggle-t'));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.named(
+      'storyboard-lane-group-toggle-v-track:t-${effectGroupLaneId(_fx)}',
+    ),
+  );
+  await tester.pumpAndSettle();
+  return session;
 }
