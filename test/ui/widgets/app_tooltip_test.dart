@@ -320,64 +320,83 @@ void main() {
     expect(await pressesUnder(AppTooltip(message: '', child: box(0))), 1);
   });
 
-  testWidgets('only the innermost tooltip answers a hover — another tooltip '
-      'or a button inside it', (tester) async {
-    Widget outer(Widget inner) => MaterialApp(
-      theme: buildAppTheme(),
-      home: Scaffold(
-        body: Center(
-          child: AppTooltip(
-            message: 'outer',
-            child: SizedBox(
-              key: const ValueKey<String>('outer'),
-              width: 200,
-              height: 60,
-              child: Align(alignment: Alignment.centerRight, child: inner),
+  testWidgets("only the innermost tooltip answers a hover, as Flutter's nest "
+      '— another tooltip inside it, or a button', (tester) async {
+    Widget scene(Widget Function(String, Widget) tip, Widget inner) =>
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: tip(
+                'outer',
+                SizedBox(
+                  key: const ValueKey<String>('outer'),
+                  width: 200,
+                  height: 60,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: KeyedSubtree(
+                      key: const ValueKey<String>('inner'),
+                      child: inner,
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    );
-    Future<List<String>> shownOver(Widget inner, Offset Function() at) async {
-      await tester.pumpWidget(outer(inner));
+        );
+    Offset overInner() =>
+        tester.getCenter(find.byKey(const ValueKey<String>('inner')));
+    Offset overOuter() =>
+        tester.getTopLeft(find.byKey(const ValueKey<String>('outer'))) +
+        const Offset(10, 30);
+
+    // From outside onto the inner one, out onto the outer, and back in.
+    Future<List<List<String>>> walk(Widget app) async {
+      await tester.pumpWidget(app);
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       await mouse.addPointer(location: Offset.zero);
-      await mouse.moveTo(at());
-      await settleTooltip(tester);
-      final shown = [
-        for (final words in ['outer', 'inner'])
-          if (find.text(words).evaluate().isNotEmpty) words,
-      ];
+      final shown = <List<String>>[];
+      for (final at in [overInner, overOuter, overInner]) {
+        await mouse.moveTo(at());
+        await settleTooltip(tester);
+        shown.add([
+          for (final words in ['outer', 'inner'])
+            if (shows(tester, words)) words,
+        ]);
+      }
       await mouse.removePointer();
       await settleTooltip(tester);
       return shown;
     }
 
-    Offset leftOfTheOuter() =>
-        tester.getTopLeft(find.byKey(const ValueKey('outer'))) +
-        const Offset(10, 30);
-    final nested = AppTooltip(message: 'inner', child: box(1));
-    expect(
-      await shownOver(
-        nested,
-        () => tester.getCenter(find.byKey(const ValueKey('box-1'))),
-      ),
-      ['inner'],
-    );
-    expect(await shownOver(nested, leftOfTheOuter), ['outer']);
+    const innerBox = SizedBox(width: 24, height: 24);
+    Widget flutters(String message, Widget child) =>
+        Tooltip(message: message, child: child);
+    Widget ours(String message, Widget child) =>
+        AppTooltip(message: message, child: child);
 
-    final button = AppIconButton(
-      keyValue: 'inner-button',
-      tooltip: 'inner',
-      icon: const Icon(Icons.close),
-      onPressed: () {},
-    );
-    expect(
-      await shownOver(
-        button,
-        () => tester.getCenter(find.tooltipSaying('inner')),
-      ),
+    final theirs = await walk(scene(flutters, flutters('inner', innerBox)));
+    expect(theirs, [
       ['inner'],
+      ['outer'],
+      ['inner'],
+    ], reason: "premise: Flutter's tooltips nest so");
+    expect(await walk(scene(ours, ours('inner', innerBox))), theirs);
+    expect(
+      await walk(
+        scene(
+          ours,
+          AppIconButton(
+            keyValue: 'inner-button',
+            tooltip: 'inner',
+            icon: const Icon(Icons.close),
+            onPressed: () {},
+          ),
+        ),
+      ),
+      theirs,
+      reason: 'a light face inside stands innermost as a tooltip does',
     );
   });
 
