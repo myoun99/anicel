@@ -5,6 +5,8 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart'
+    show folderStructureProblem;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -153,6 +155,36 @@ void main() {
         ],
         ['ORG', 'r'],
       );
+    });
+
+    test('a folder takes along the attach rows of a base it holds, standing '
+        'outside it — and selected beside it, they are its', () {
+      final session = _session([
+        _row('x'),
+        _row('under', rides: 'base', side: AttachedPlacement.below),
+        _row('base', inside: 'F'),
+        _row('F', kind: LayerKind.folder),
+        _row('y'),
+      ]);
+      expect(
+        folderStructureProblem(session.requireActiveCut.layers),
+        isNull,
+        reason: '⛔전제: a stack the cut may hold',
+      );
+
+      expect(
+        [
+          for (final row in rowsOf(session).rowsHeldBy([const LayerId('F')]))
+            row.id.value,
+        ],
+        ['base', 'under'],
+      );
+      _select(session, ['F', 'under']);
+      expect(rowsOf(session).deletableSelectedLayerIds(), [
+        const LayerId('F'),
+      ]);
+      rowsOf(session).deleteSelectedLayers();
+      expect(_stack(session), ['x', 'y']);
     });
 
     test('a row named beside what it holds is not listed twice', () {
