@@ -61,6 +61,11 @@ const _mayNameTheSession = <String, String>{
       'that draw rails (the timeline tab, the storyboard tab) and by the SE '
       'mixer their speaker opens, for the length of a press — the session '
       'never constructs it or keeps one.',
+  'tab_rail_wiring.dart':
+      'The rail\'s view and its verbs WIRED from a session into a tab host '
+      '— made by the workspace for the two tabs it builds, read when made, '
+      'like the presses it hands on (tests-hand-roll-the-tab-hosts-Q1 b, '
+      '2026-10-25). The session never constructs it or keeps one.',
 };
 
 /// What `SessionInternals` carried: the MEASURED remainder of the
