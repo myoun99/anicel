@@ -222,6 +222,73 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  // I-127: the export window takes the editor's undo, so the film changes
+  // under the renderers its preview keeps.
+  testWidgets('🚨a renderer draws a cut as it is NOW — the cut changed '
+      'under it is drawn changed, not as it was first drawn', (tester) async {
+    await tester.runAsync(() async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.createDrawingAtCurrentFrame();
+      final layer = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation,
+      );
+      final frame = layer.frames.single;
+      final cut = session.requireActiveCut;
+      BrushFrameEditingCoordinator(
+        initialFrameKey: session.brushFrameKeyForCut(cut, layer.id, frame.id),
+        frameStore: session.renderCaches.brushFrameStore,
+        sessionStore: BrushFrameEditSessionStore(canvasSize: cut.canvasSize),
+        historyPolicy: const BrushHistoryPolicy(),
+      ).commitSourceStroke(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: 4, y: 4),
+            color: 0xFF000000,
+            size: 4,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
+      final renderer = ExportFrameRenderer(
+        session: session,
+        layerFx: ExportLayerFx.on,
+      );
+
+      Future<int> strokeRedChannel() async {
+        final now = session.requireActiveCut;
+        final image = await renderer.renderComposite(
+          ExportFrameTask(cut: now, frameIndex: 0),
+          ExportSizeMode.canvas,
+        );
+        final bytes = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        image.dispose();
+        return bytes!.getUint8((4 * now.canvasSize.width + 4) * 4);
+      }
+
+      expect(await strokeRedChannel(), lessThan(128), reason: 'premise');
+      // The layer's FX now blank it at frame 0.
+      session.laneVerbs.updateLayerTransformTrack(
+        layer.id,
+        TransformTrack.empty().copyWith(
+          opacity: PropertyTrack<double>().withKey(0, 0),
+        ),
+      );
+      expect(await strokeRedChannel(), 255);
+      renderer.dispose();
+    });
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('R6: a delivery CEL is raw artwork — the effect chain obeys '
       'the same fx gates the composite does', (tester) async {
     await tester.runAsync(() async {

@@ -83,6 +83,9 @@ class SheetCanvasPanel extends StatefulWidget {
     this.bottomBarHostToken,
     this.fitFocusRect,
     this.unframedFit,
+    this.documentName,
+    this.documentAbsent = false,
+    this.oneToOneOnPill = false,
     required this.viewLimit,
     this.book,
     this.strokeHold,
@@ -125,6 +128,15 @@ class SheetCanvasPanel extends StatefulWidget {
   /// What a view nobody has framed yet is fitted to
   /// ([BrushCanvasPanel.unframedFit]) — the conte's page in its book.
   final Rect? unframedFit;
+
+  /// The FILE the sheet is written to, and whether it is not
+  /// ([BrushCanvasPanel.documentName]), with the file's 1:1 on the pill
+  /// ([BrushCanvasPanel.oneToOneOnPill]): a sheet's page in the export
+  /// window is the file it writes (I-127). A paper panel shows no file, so
+  /// it hands none.
+  final String? documentName;
+  final bool documentAbsent;
+  final bool oneToOneOnPill;
 
   /// The sheet's paper, where the view stops ([BrushCanvasPanel.viewLimit],
   /// F-201). ⚠️Required, so a sheet cannot forget to say it: null only
@@ -172,8 +184,9 @@ class SheetCanvasPanel extends StatefulWidget {
   /// now, one word, and every sheet starts with it off.
   ///
   /// [keyPrefix] names the sheet it sits on (`timesheet`, `conte`,
-  /// `envelope`). Null shows no switch — a host with no way to flip it.
-  final ({bool allowed, ValueChanged<bool> onChanged, String keyPrefix})?
+  /// `envelope`). Null shows no switch — a host with no way to flip it; a
+  /// null [onChanged] stands it off in its place ([sheetBrushSwitch]).
+  final ({bool allowed, ValueChanged<bool>? onChanged, String keyPrefix})?
   brushSwitch;
 
   /// The sheet's strata, laid over the SNAPPED viewport — the view as the
@@ -305,6 +318,9 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
           : (widget.bottomBarHostToken, widget.brushSwitch?.allowed),
       fitFocusRect: _onPaper(widget.fitFocusRect),
       unframedFit: _onPaper(widget.unframedFit),
+      documentName: widget.documentName,
+      documentAbsent: widget.documentAbsent,
+      oneToOneOnPill: widget.oneToOneOnPill,
       viewLimit: _onPaper(widget.viewLimit),
       book: _bookOnPaper,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,

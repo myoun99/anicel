@@ -68,6 +68,7 @@ import 'project_settings_menu.dart';
 import '../session/project_file_door.dart'
     show SaveAsked, StagedArchive;
 import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_key_funnel.dart' show EditorKeyRoad;
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/panel_actions.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
@@ -93,6 +94,7 @@ class EditorTopStrip extends StatelessWidget {
     required this.onCloseProject,
     required this.panelsMenu,
     this.door,
+    this.keyRoad,
     this.brushTool,
     this.colorBackground,
     this.colorPalette,
@@ -116,6 +118,11 @@ class EditorTopStrip extends StatelessWidget {
   /// (F-282) — the workspace's, which holds what it hands files to. Null
   /// leaves the two rows dim (focused tests).
   final WorkspaceDoorCommands? door;
+
+  /// The road the shell's keys run down — handed to the export window,
+  /// which edits the sheets' papers under the same keys (I-127). Null
+  /// leaves the window deaf to them (focused tests).
+  final EditorKeyRoad? keyRoad;
 
   /// The active tool's settings. The size and opacity bars ride the strip's
   /// right end (프로크리·카리페그 배치) because they are values you set
@@ -468,6 +475,8 @@ class EditorTopStrip extends StatelessWidget {
                   builder: (context) => ExportDialog(
                     session: session,
                     settingsStore: AppExportSettingsStore(),
+                    keys: keyRoad,
+                    paperEditing: door?.paperEditing,
                   ),
                 ),
               );

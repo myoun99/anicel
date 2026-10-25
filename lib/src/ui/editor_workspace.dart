@@ -128,6 +128,7 @@ import 'conte/conte_picture_ink.dart';
 import 'conte/conte_tab_host.dart';
 import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
+import 'sheet/paper_editing.dart';
 import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_cut_blocks_painter.dart'
@@ -1296,6 +1297,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       openFiles: () => unawaited(_pickAndOpen()),
       openFolder: () => unawaited(_pickFolderAndOpen()),
       openHanded: (handed) => unawaited(_door.open(context, handed)),
+      paperEditing: () {
+        final tool = widget.brushTool;
+        return tool == null ? null : _views.paperEditingWith(tool);
+      },
     );
     widget.flipHud?.bind(this, _flipHud.flipHudSnapshot);
     for (final slot in _viewerSlots.values) {

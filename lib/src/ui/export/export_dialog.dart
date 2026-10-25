@@ -59,8 +59,15 @@ import 'export_cels_selection.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
+import '../brush/sheet_canvas_panel.dart' show sheetBrushSwitch;
+import '../sheet/paper_editing.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_key_funnel.dart';
+import '../sliced_value_listenable_builder.dart';
 import '../timeline/layer_label_controls.dart';
+import '../timeline/memo_token.dart' show ByIdentity;
 import '../timeline/timeline_cell_style.dart' show timelineTextOnColor;
+import 'export_paper_panel.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 import 'export_cut_grid.dart';
@@ -119,9 +126,20 @@ class ExportDialog extends StatefulWidget {
     this.videoExportService = const VideoExportService(),
     this.settingsStore,
     this.formatAvailability,
+    this.keys,
+    this.paperEditing,
   });
 
   final EditorSessionManager session;
+
+  /// The shell's keys ([EditorKeyRoad]) — the window's route is no child of
+  /// the shell, so it lays them round itself. Null hears none (most tests).
+  final EditorKeyRoad? keys;
+
+  /// What the Cels tab's timesheet pages and cut envelopes are written on
+  /// with — the panels' own ink and switches, and the tool in hand (I-127).
+  /// Null shows them as the pictures their files are.
+  final PaperEditing? paperEditing;
 
   /// Injectable for tests: stands in for whichever system window the door
   /// opens — the folder window, or the save window of a lone file.
@@ -283,21 +301,43 @@ class ExportDialogState extends State<ExportDialog> {
   /// barrier, where a notice would be said to nobody.
   final CursorNoticeController _notices = CursorNoticeController();
   int _contePosition = 0;
-  // Sheet documents are chunky to derive; the modal dialog memoizes per
-  // cut IDENTITY (the film cannot change under an open dialog).
-  final Map<CutId, (Cut, TimesheetDocument, TimesheetDocumentLayout)>
+  // Sheet documents are chunky to derive — memoized per cut, on the
+  // project's IDENTITY too: a sheet reads where its cut starts on the track.
+  final Map<
+    CutId,
+    (Object, Cut, TimesheetDocument, TimesheetDocumentLayout)
+  >
   _sheetDocs = {};
-  // The conte sheet reads the WHOLE project — memoized on its identity
-  // (the film cannot change under an open dialog).
+  // The conte sheet reads the WHOLE project — memoized on its identity.
   (Object, ConteSheetSource, List<ContePageLayout>)? _conteSheetCache;
 
   EditorSessionManager get _session => widget.session;
 
-  /// R27 #31: the cut this window is built around, resolved ONCE (the film
-  /// cannot change under a modal dialog). Null = the project has no cuts
-  /// at all, and the window degrades to an empty state instead of taking
-  /// the app down with a `requireActiveCut` throw.
+  /// R27 #31: the cut this window is built around — read again by its id
+  /// whenever the film changes under the window ([_heardFilm]). Null = the
+  /// project has no cuts at all, and the window degrades to an empty state
+  /// instead of taking the app down with a `requireActiveCut` throw.
+  ///
+  /// ↩️Resolved once, on 「the film cannot change under a modal dialog」 —
+  /// until the window took the editor's undo and the papers' typing
+  /// (I-127, 유저 2026-10-25: 「물론 언두도 가능」).
   Cut? _anchorCut;
+
+  /// The film as this window hears it: a project that is another one.
+  late final SlicedListenable<Object> _filmNews = SlicedListenable(
+    _session,
+    () => ByIdentity(_session.repository.requireProject()),
+  );
+
+  /// The film changed under the window: the cut it is built around is
+  /// read again — the one under the playhead where it is gone — and every
+  /// page and plan is read off the project that is now.
+  void _heardFilm() => setState(() {
+    final anchor = _anchorCut;
+    _anchorCut =
+        (anchor == null ? null : _session.cutById(anchor.id)) ??
+        frameUnderThePlayhead(_session)?.cut;
+  });
 
   @override
   void initState() {
@@ -327,6 +367,7 @@ class ExportDialogState extends State<ExportDialog> {
           .withSpec(_specs.cels.copyWith(scope: ExportScopeKind.project));
     }
     _syncControllersFromSpecs();
+    _filmNews.addListener(_heardFilm);
     unawaited(_restoreFromStore());
   }
 
@@ -350,6 +391,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   @override
   void dispose() {
+    _filmNews.dispose();
     _progress.dispose();
     _sequenceFileController.dispose();
     _imageFileController.dispose();
@@ -925,10 +967,13 @@ class ExportDialogState extends State<ExportDialog> {
     return 0;
   }
 
-  (Cut, TimesheetDocument, TimesheetDocumentLayout) _sheetDocFor(Cut cut) {
+  (TimesheetDocument, TimesheetDocumentLayout) _sheetDocFor(Cut cut) {
+    final project = _session.repository.requireProject();
     final cached = _sheetDocs[cut.id];
-    if (cached != null && identical(cached.$1, cut)) {
-      return cached;
+    if (cached != null &&
+        identical(cached.$1, project) &&
+        identical(cached.$2, cut)) {
+      return (cached.$3, cached.$4);
     }
     final document = cutSheetDocument(
       _session,
@@ -936,14 +981,13 @@ class ExportDialogState extends State<ExportDialog> {
       cutStartFrame: _trackStartOf(cut),
     );
     final layout = TimesheetDocumentLayout(document: document);
-    final entry = (cut, document, layout);
-    _sheetDocs[cut.id] = entry;
-    return entry;
+    _sheetDocs[cut.id] = (project, cut, document, layout);
+    return (document, layout);
   }
 
   /// How many pages [cut]'s timesheet stands on — the plan lists a file a
   /// page ([buildExportCelGroupPlan]).
-  int _sheetPagesOf(Cut cut) => _sheetDocFor(cut).$2.pages.length;
+  int _sheetPagesOf(Cut cut) => _sheetDocFor(cut).$1.pages.length;
 
   /// The page of its cut's timesheet [sheet] is, as the page renderer takes
   /// it. The sheet's digital file has no picture of its own: its block
@@ -1120,7 +1164,7 @@ class ExportDialogState extends State<ExportDialog> {
     CanvasSize? outputSize,
     Set<SheetPaintLayer>? layers,
   }) async {
-    final (_, document, layout) = _sheetDocFor(task.cut);
+    final (document, layout) = _sheetDocFor(task.cut);
     final page = layout.pageRect(task.pageIndex);
     final windows = [
       for (final window in timesheetInkWindows(
@@ -1573,7 +1617,7 @@ class ExportDialogState extends State<ExportDialog> {
       );
     }
     return (
-      size: _sheetDocFor(page.of).$3.paperPixelSize,
+      size: _sheetDocFor(page.of).$2.paperPixelSize,
       look: 'sheet:$owner:${page.page}:${face.fontFamily}',
       render: (size) =>
           _renderSheetPage(_sheetPageTask(page), face: face, outputSize: size),
@@ -3036,6 +3080,36 @@ class ExportDialogState extends State<ExportDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final keys = widget.keys;
+    final window = _window(context);
+    return keys == null
+        ? window
+        : EditorKeyFunnel(
+            road: keys,
+            // The run under way owns the film it writes.
+            enabled: !_isExporting,
+            admits: (actionId) => _keyAdmitted(keys, actionId),
+            // The window's own scope, under the funnel: with nothing in it
+            // focused, the scope is the focus a key starts from — and a
+            // field let go of hands it back here, not to the route's.
+            child: FocusScope(autofocus: true, child: window),
+          );
+  }
+
+  /// Which of the shell's keys reach the window: a tool or a brush pressed,
+  /// undo and redo — what the papers are edited under (I-127, 유저
+  /// 2026-10-25: 「도구 단축키 통해서 변경하든 변경가능하게 … 물론 언두도
+  /// 가능」) — and the held keys, which press a tool for as long as they are
+  /// held. A key of the editor's panels or menus stands behind the window.
+  static bool _keyAdmitted(EditorKeyRoad keys, String actionId) {
+    final definition = keys.bindings.definitionFor(actionId);
+    return definition?.toolPress != null ||
+        definition?.brushPress != null ||
+        actionId == EditorActionIds.undo ||
+        actionId == EditorActionIds.redo;
+  }
+
+  Widget _window(BuildContext context) {
     final theme = Theme.of(context);
     if (_anchorCut == null) {
       return _noCutsDialog(context);
@@ -3419,18 +3493,7 @@ class ExportDialogState extends State<ExportDialog> {
                   side: BorderSide(color: theme.dividerColor),
                 ),
               ),
-              child: ExportPreviewPanel(
-                session: _session,
-                document: _previewDocument(),
-                page: _previewPage(),
-                onPage: _turnPreviewTo,
-                nothingToShow: _nothingToWriteText(),
-                // The Sequence tab trims; no other does.
-                range: _tab == ExportTab.sequence ? _sequenceRange() : null,
-                fileName: file.name,
-                fileAbsent: file.absent,
-                enabled: !_isExporting,
-              ),
+              child: _previewPanel(file),
             ),
           ),
           // The Cels tab's list stands under its preview (유저 2026-10-06:
@@ -3441,6 +3504,81 @@ class ExportDialogState extends State<ExportDialog> {
           ],
         ],
       ),
+    );
+  }
+
+  /// The file under the window's hand, in its panel: a page of a cut's
+  /// papers as its panel edits it ([ExportPaperPanel], I-127), any other
+  /// file as its picture ([ExportPreviewPanel]) — drawn again when the
+  /// history moves, which an undo pressed in the window does.
+  Widget _previewPanel(({String? name, bool absent}) file) {
+    final editing = widget.paperEditing;
+    final paper = editing == null ? null : _paperShown();
+    if (editing != null && paper != null) {
+      return ExportPaperPanel(
+        session: _session,
+        editing: editing,
+        paper: paper,
+        fileName: file.name,
+        fileAbsent: file.absent,
+        enabled: !_isExporting,
+      );
+    }
+    final history = _session.historyManager;
+    return SlicedListenableBuilder<int>(
+      listenable: history,
+      slice: () => history.revision,
+      builder: (context, revision) => ExportPreviewPanel(
+        session: _session,
+        document: _previewDocument()?.lookingAlso(revision),
+        page: _previewPage(),
+        onPage: _turnPreviewTo,
+        nothingToShow: _nothingToWriteText(),
+        // The Sequence tab trims; no other does.
+        range: _tab == ExportTab.sequence ? _sequenceRange() : null,
+        fileName: file.name,
+        fileAbsent: file.absent,
+        enabled: !_isExporting,
+        // A drawing among the papers keeps their brush switch's place,
+        // standing off: nothing writes on a cel here.
+        bottomBarLeading: [
+          if (editing != null && _tab == ExportTab.cels)
+            sheetBrushSwitch(
+              allowed: false,
+              onChanged: null,
+              keyPrefix: 'export-cel',
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The page of a cut's papers the Cels list stands on, as it is ruled —
+  /// null on a drawing, and on every other tab.
+  ExportPaper? _paperShown() {
+    if (_tab != ExportTab.cels) {
+      return null;
+    }
+    final (cut: _, :pages, :at) = _celPages();
+    if (pages.isEmpty) {
+      return null;
+    }
+    final sheet = pages[math.max(0, at)];
+    if (sheet is! ExportDocumentSheet) {
+      return null;
+    }
+    if (sheet.kind == ExportCelKind.envelope) {
+      final task = _envelopeTask(sheet);
+      return ExportEnvelopePage(
+        owner: task.owner.id,
+        layout: task.layout,
+        source: task.source,
+      );
+    }
+    return ExportTimesheetPage(
+      cutId: sheet.of.id,
+      layout: _sheetDocFor(sheet.of).$2,
+      page: sheet.page,
     );
   }
 

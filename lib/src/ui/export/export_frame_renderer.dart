@@ -346,8 +346,11 @@ class ExportFrameRenderer {
       session.movieCels.hydrate(cut, frameIndex);
 
   /// Cuts whose FX-stripped view has already been built (memoized: the
-  /// stream renders the same cut for many frames).
-  final Map<CutId, Cut> _fxStrippedByCut = {};
+  /// stream renders the same cut for many frames) — keyed by the cut
+  /// ITSELF: the film can change under the window a renderer lives in
+  /// (I-127 — its undo), and a cut changed is another cut. ↩️Keyed by its
+  /// id, a preview drew the cut as it was when first drawn.
+  final Expando<Cut> _fxStrippedByCut = Expando<Cut>('fx-stripped cut');
 
   /// The cut as this RENDER should see it: every row as the window's
   /// 레이어 FX keeps it ([layerAsOutput] — the choice expressed as DATA,
@@ -363,11 +366,8 @@ class ExportFrameRenderer {
     if (layerFx == null && !keepsRowsApart) {
       return cut;
     }
-    return _fxStrippedByCut.putIfAbsent(
-      cut.id,
-      () => cut.copyWith(
-        layers: [for (final layer in cut.layers) _layerForRender(layer)],
-      ),
+    return _fxStrippedByCut[cut] ??= cut.copyWith(
+      layers: [for (final layer in cut.layers) _layerForRender(layer)],
     );
   }
 

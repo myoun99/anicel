@@ -103,6 +103,18 @@ class _WorkspaceDocumentViews {
   /// The ink both viewers write on the files the project carries (I-114).
   late ViewerInkController _viewerInk;
 
+  /// What a window edits the sheets' papers with (I-127): their own ink and
+  /// switches, under the tool in hand [tool].
+  PaperEditing paperEditingWith(ValueListenable<BrushToolState> tool) => (
+    tool: tool,
+    timesheetInk: _timesheetInk,
+    timesheetBrushAllowed: _timesheetBrushAllowed,
+    envelopeInk: _envelopeInk,
+    envelopeBrushAllowed: _envelopeBrushAllowed,
+    imageFor: _sheetImages.imageFor,
+    imageRepaint: _sheetImages,
+  );
+
   /// Makes the ink controllers over [session]'s stores, and the sheets'
   /// images over its media — the workspace's door for the project coming
   /// on screen.
