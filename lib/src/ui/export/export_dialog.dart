@@ -95,7 +95,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show ImportWarningWords;
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../widgets/cursor_notice.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/transport_bar.dart' show TransportRange;
@@ -3366,6 +3366,7 @@ class ExportDialogState extends State<ExportDialog> {
               _persist();
             },
             child: InkWell(
+              mouseCursor: AppCursors.press,
               key: const ValueKey<String>('export-presets-collapse'),
               onTap: silentPress(() {
                 setState(() => _presetsOpen = false);
@@ -4374,6 +4375,7 @@ class ExportDialogState extends State<ExportDialog> {
               _persist();
             },
             child: InkWell(
+              mouseCursor: AppCursors.press,
               key: const ValueKey<String>('export-queue-collapse'),
               onTap: silentPress(() {
                 setState(() => _queueOpen = false);

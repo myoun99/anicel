@@ -500,6 +500,7 @@ class _ImportFileTableState extends State<ImportFileTable> {
     return ControlPressClaim(
       onPressed: tap,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>('import-row-${row.name}${row.extension}'),
         onTap: silentPress(tap),
         child: Container(
@@ -609,6 +610,7 @@ class _HeaderButton extends StatelessWidget {
     return ControlPressClaim(
       onPressed: open,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>('import-column-${column.id}'),
         onTap: silentPress(open),
         child: Padding(
@@ -689,6 +691,7 @@ class _OptionCell extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: press,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: key,
           // The app's own corner, not a circular one: a cell is a well cut
           // into the row, and every well in this app wears the same shape.
@@ -811,6 +814,7 @@ class _PopupRow extends StatelessWidget {
     return ControlPressClaim(
       onPressed: tap,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>(keyValue),
         onTap: silentPress(tap),
         child: Container(

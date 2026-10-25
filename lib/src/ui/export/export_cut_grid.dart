@@ -4,7 +4,7 @@ import '../../models/cut_id.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 import '../repaint_props.dart';
 
 /// One grid cell: the cut — or the 겸용 group — it stands for. [ids] toggle
@@ -92,6 +92,7 @@ class _ExportCutGridState extends State<ExportCutGrid> {
                   ? widget.onAllIncluded
                   : null,
               child: InkWell(
+                mouseCursor: AppCursors.press,
                 key: const ValueKey<String>('export-cut-grid-all'),
                 onTap: silentPress(
                   widget.enabled && anyExcluded ? widget.onAllIncluded : null,
@@ -213,6 +214,7 @@ class _CutCell extends StatelessWidget {
     return ControlPressClaim(
       onPressed: enabled ? onTap : null,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(enabled ? onTap : null),
         child: CustomPaint(
           painter: selected

@@ -17,19 +17,6 @@ import 'package:anicel/src/ui/widgets/command_pill.dart';
 import '../../tool/source_brackets.dart';
 import '../helpers/dart_sources.dart';
 
-/// Folders whose `InkWell`s are another lane's to change, with why — and
-/// how many still say nothing, so a fix there shrinks this by hand.
-const _notYet = <String, (String, int)>{
-  'lib/src/ui/export/': (
-    "the save lane's (서피스11 저장) — handed over 2026-10-25",
-    16,
-  ),
-  'lib/src/ui/import/': (
-    "the save lane's (서피스11 저장) — handed over 2026-10-25",
-    4,
-  ),
-};
-
 /// Each `InkWell(` / `InkResponse(` in [source] whose own arguments name no
 /// `mouseCursor`, by line of [source] with its comments taken out.
 Iterable<int> _silentInks(String source) sync* {
@@ -72,17 +59,11 @@ const _control = ValueKey<String>('control');
 void main() {
   test('every InkWell names its cursor — no theme reaches one', () {
     final silent = <String>[];
-    final waiting = <String, int>{for (final folder in _notYet.keys) folder: 0};
     for (final file in dartFilesUnder('lib')) {
       final path = libPath(file);
-      final lines = _silentInks(file.readAsStringSync()).toList();
-      if (lines.isEmpty) continue;
-      final folder = _notYet.keys.where(path.startsWith).firstOrNull;
-      if (folder != null) {
-        waiting[folder] = waiting[folder]! + lines.length;
-        continue;
+      for (final line in _silentInks(file.readAsStringSync())) {
+        silent.add('$path:$line');
       }
-      silent.addAll([for (final line in lines) '$path:$line']);
     }
     expect(
       silent,
@@ -91,9 +72,6 @@ void main() {
           'an InkWell shows the arrow on a desktop unless it says otherwise '
           '— `mouseCursor: AppCursors.press`',
     );
-    expect(waiting, {
-      for (final MapEntry(:key, :value) in _notYet.entries) key: value.$2,
-    }, reason: 'fixed one there? take it off _notYet');
   });
 
   test('the hand is spelled once — in AppCursors', () {

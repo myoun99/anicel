@@ -72,6 +72,7 @@ class ExportAccordion extends StatelessWidget {
           ControlPressClaim(
             onPressed: onToggle,
             child: InkWell(
+              mouseCursor: AppCursors.press,
               onTap: silentPress(onToggle),
               child: Container(
                 color: AppColors.washUp.withValues(alpha: 0.5),
@@ -140,6 +141,7 @@ class ExportResetChip extends StatelessWidget {
     return ControlPressClaim(
       onPressed: enabled ? onPressed : null,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         onTap: silentPress(enabled ? onPressed : null),
         customBorder: AppShapes.container(AppShapes.wellRadius),
         child: Container(

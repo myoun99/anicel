@@ -7,7 +7,7 @@ import '../../models/layer_mark.dart';
 import '../canvas/guide_overlay.dart' show guideColorOf;
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show AppColors, AppShapes;
+import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../timeline/layer_label_controls.dart';
 import '../timeline/layer_rail_columns.dart';
 import '../timeline/timeline_block_word.dart';
@@ -443,6 +443,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     return ControlPressClaim(
       onPressed: standOn,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>('export-cels-stand-$idValue'),
         onTap: silentPress(standOn),
         child: Align(
@@ -563,6 +564,7 @@ class ExportCelBlock extends StatelessWidget {
       child: ControlPressClaim(
         onPressed: onPressed,
         child: InkWell(
+          mouseCursor: AppCursors.press,
           key: ValueKey<String>('export-cels-block-$idValue'),
           onTap: silentPress(onPressed),
           child: Container(
@@ -932,6 +934,7 @@ class ExportStepButton extends StatelessWidget {
     return ControlPressClaim(
       onPressed: onPressed,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>(keyValue),
         onTap: silentPress(onPressed),
         customBorder: AppShapes.container(AppShapes.wellRadius),

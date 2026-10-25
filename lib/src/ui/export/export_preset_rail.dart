@@ -7,7 +7,7 @@ import '../dialogs/app_prompt_dialog.dart';
 import 'export_settings_modules.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
-import '../theme/app_theme.dart' show AppShapes;
+import '../theme/app_theme.dart' show AppCursors, AppShapes;
 
 /// The left drawer: per-tab presets (자동 규칙만). Selection highlight is
 /// value equality against the live spec — editing any knob visibly
@@ -88,6 +88,7 @@ class ExportPresetRail extends StatelessWidget {
               ControlPressClaim(
                 onPressed: enabled ? onSaveCurrent : null,
                 child: InkWell(
+                  mouseCursor: AppCursors.press,
                   key: const ValueKey<String>('export-preset-save-current'),
                   onTap: silentPress(enabled ? onSaveCurrent : null),
                   customBorder: AppShapes.container(AppShapes.wellRadius),
@@ -153,6 +154,7 @@ class _PresetEntry extends StatelessWidget {
     return ControlPressClaim(
       onPressed: enabled ? onApply : null,
       child: InkWell(
+        mouseCursor: AppCursors.press,
         key: ValueKey<String>('export-preset-${preset.id.value}'),
         onTap: silentPress(enabled ? onApply : null),
         customBorder: AppShapes.container(AppShapes.wellRadius),
@@ -197,6 +199,7 @@ class _PresetEntry extends StatelessWidget {
               ControlPressClaim(
                 onPressed: enabled ? onDelete : null,
                 child: InkWell(
+                  mouseCursor: AppCursors.press,
                   key: ValueKey<String>(
                     'export-preset-delete-${preset.id.value}',
                   ),
