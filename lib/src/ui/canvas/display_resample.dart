@@ -28,8 +28,9 @@ import '../../models/canvas_viewport.dart';
 ///    filter pass.
 ///
 /// [scale] is the scale of the resample in question: [displayScaleOf] for
-/// a canvas-resolution image, [displayResidualOf] for the display buffer's
-/// blit below 100%, which hands the screen a level, not the artwork.
+/// a canvas-resolution image — every image the display is handed.
+/// ↩️Below 100% the display buffer's blit handed the screen a level, read
+/// by the residual it was reduced by, until one-picture-per-frame ②-5b.
 ///
 /// ⚠️This only MEANS anything if there is one resample to apply it to.
 /// Applied per layer it would still be N resamples that merely agree with
@@ -73,101 +74,44 @@ ui.FilterQuality filterQualityForDisplayScale(double scale) => scale <= 0.5
 /// device 200%: an iPad at 140% on screen got `low`, mush on a magnified
 /// view. 유저 09-16: 「표시배율 100%부터는 필터가 걸리면안되」. One quantity,
 /// `zoom × ratio`, now decides the filter, the edge, the sampling phase
-/// (`samplingPhaseFor`), the level ([displayLevelOf]) and the scale a
+/// (`samplingPhaseFor`) and the scale a
 /// self-rasterising group draws at — a second spelling of the product
 /// anywhere is a copy.
 double displayScaleOf(double zoom, double devicePixelRatio) =>
     zoom.abs() * devicePixelRatio;
 
-/// 🚨★★★BELOW 100% THE DISPLAY IS FED FROM A LEVEL (render round,
-/// 2026-09-16 — 유저 결정 통합안 + 안 1 「선명」).
-///
-/// One composite image, one blit, stays the law at every zoom. What
-/// changes below 100% is what that image IS: not the artwork at canvas
-/// resolution reduced by the whole device scale in one bilinear pass —
-/// which undersamples past 2× and shimmers — but the artwork HALVED this
-/// many times (each halving an exact 2×2 box), reduced by the residual
-/// [displayResidualOf] in (0.5, 1]. Every level pixel then lies inside one
-/// bilinear window of the screen, and the buffer is at most 4× the
-/// screen's pixels (2× on average) instead of the visible canvas's.
-///
-/// 안 1 over 속도 우선 (a residual in (0.5, 1] over [0.5, 1)·2): the same
-/// images, a third fewer buffer pixels on the other side, a few
-/// milliseconds apart — 유저: 「선명이 좋은데, 애초에 메모리 딱히
-/// 안커지는데?」. Levels are IMAGES only — no reduced pixel store beside
-/// the tiles — so a level costs its picture and nothing else.
-///
-/// At or above 100% the level is 0 and the buffer's bytes are what they
-/// always were (유저: 「표시배율 100%부터는 필터가 걸리면안되」).
-///
-/// Capped at [maxDisplayLevel]: past it the residual falls under 0.5 and
-/// the blit undersamples, which is the reduction the display had
-/// everywhere before levels existed — an extreme zoom-out over a giant
-/// pasteboard, and no worse than the day before.
-int displayLevelOf(double scale) {
-  var level = 0;
-  var residual = scale.abs();
-  while (residual <= 0.5 && level < maxDisplayLevel) {
-    residual *= 2;
-    level += 1;
-  }
-  return level;
-}
+// ↩️🚨★★★BELOW 100% THE DISPLAY WAS FED FROM A LEVEL (render round,
+// 2026-09-16 — 유저 결정 통합안 + 안 1 「선명」, 유저 「선명이 좋은데,
+// 애초에 메모리 딱히 안커지는데?」): the artwork halved, each halving an exact
+// 2×2 box, reduced by a residual in (0.5, 1], so every level pixel lay
+// inside one bilinear window of the screen. It went with every picture
+// made per zoom (one-picture-per-frame ②-5a · ②-5b, 유저 D7-2-Q2 「배율이
+// 어떻든 항상 원본 한장」): a picture's own mip chain IS those halvings —
+// 🔬0 bytes apart at 1/2, 1/4 and 1/8 on the Surface Pro 11 — so the
+// screen reduces the one picture at canvas resolution
+// ([filterQualityForDisplayScale]) and no level is made.
 
-/// The deepest level the display composes at: 1/16 of the artwork.
-const int maxDisplayLevel = 4;
-
-/// The scale the display's ONE resample actually applies to what it is
-/// handed: the level image ([displayLevelOf]) reduced by this residual —
-/// in (0.5, 1] under [maxDisplayLevel] — or, at level 0, the
-/// canvas-resolution image by the device scale itself.
+/// [bounds] grown out to whole texels of mip [level] — canvas pixels at
+/// level 0, 2^[level] canvas pixels at [level] — the grid a picture's chain
+/// is made on: a region on it holds whole texels of every level down to
+/// [level], so a patch widened to it halves exactly (`FramePictureStore`).
+/// At level 0 it is the canvas's own pixel grid.
 ///
-/// This, not the device scale, is what the blit's
-/// [filterQualityForDisplayScale] and [displayEdgeAntiAliased] read: at
-/// exactly 50% the level-1 image lands 1:1 on device pixels and samples
-/// `none`, sharp; at 45% it is reduced by 0.9 and samples `low`.
-double displayResidualOf(double scale) =>
-    scale.abs() * (1 << displayLevelOf(scale));
-
-/// [bounds] grown out to whole pixels of [level] — canvas pixels at level 0,
-/// 2^[level] canvas pixels below 100% — the grid the display buffer is made
-/// on. A raster on this grid lands 1:1 on a level buffer's pixels whichever
-/// of the two rects is larger, and a region on it halves [level] times into
-/// whole level pixels. It is also what makes a carry exact: two buffers of
-/// one level are offset by whole buffer pixels.
+/// ↩️It was the grid the display buffer was made on below 100%, a level's,
+/// until one-picture-per-frame ②-5b.
 ui.Rect wholeLevelPixelsOutward(ui.Rect bounds, int level) =>
     rectOutwardOnGrid(bounds, 1.0 / (1 << level));
-
-/// The paper under rows reduced to [level] ([displayLevelOf]) on the canvas
-/// [canvasRect]: the canvas's own rect at level 0, one level pixel in below.
-///
-/// #15 — inside a LEVEL buffer the paper yields one buffer pixel to the
-/// reduced resample: paper and ink are rasterised at level resolution
-/// where the canvas's edge can fall inside a level pixel, and a paper
-/// that ended on that pixel's far side would show past ink that is a
-/// box-filtered half there — the 1px bright ring the device saw below
-/// ~30% under the knee's scaled recording (the same mechanism, the same
-/// one-buffer-pixel answer). At level 0 the canvas edge is whole and the
-/// paper is the exact canvas rect.
-///
-/// A canvas under two level pixels a side has nothing left to yield: the
-/// paper stays whole rather than vanishing.
-ui.Rect paperRectAtLevel(ui.Rect canvasRect, int level) {
-  if (level == 0) {
-    return canvasRect;
-  }
-  final yielded = canvasRect.deflate((1 << level).toDouble());
-  return yielded.isEmpty ? canvasRect : yielded;
-}
 
 /// [bounds] grown out to the grid of [scale] cells per canvas unit counted
 /// from [origin] — the smallest rect on that grid that holds [bounds].
 ///
-/// 🚨ONE snap for every raster grid: a display level's, the pyramid's from a
-/// surface's content origin, a sub-tree image's at its device scale — three
-/// copies of it once. It multiplies by the scale and divides back, which is
-/// exact whenever the scale is a power of two, so every level grid lands to
-/// the bit where the copy that divided by the level's step put it.
+/// 🚨ONE snap for every raster grid: a mip level's
+/// ([wholeLevelPixelsOutward]), a sub-tree image's at its device scale, a
+/// tile's — copies of it once (↩️a display level's and the pyramid's from a
+/// surface's content origin among them, until one-picture-per-frame ②-5b).
+/// It multiplies by the scale and divides back, which is exact whenever the
+/// scale is a power of two, so every level grid lands to the bit where the
+/// copy that divided by the level's step put it.
 ui.Rect rectOutwardOnGrid(
   ui.Rect bounds,
   double scale, {
@@ -209,23 +153,21 @@ ui.Rect rectOutwardOnGrid(
 /// rotated view's edges are diagonals, so anti-aliasing stays there. A
 /// flip is axis-aligned and changes nothing.
 ///
-/// [level] is the level the image being cut was composed at
-/// ([displayLevelOf]): the buffer's blit and the paper inside a level
-/// buffer are reduced by the residual, not the device scale, and at
-/// exactly 50% that residual is 1 — nearest, and the edge is cut on the
-/// grid like any 1:1 view's. Level 0 (the default) is the device scale
-/// itself: the walk, and playback's canvas-resolution composite.
+/// The image being cut is at canvas resolution — every one the display is
+/// handed — so the scale it is reduced by is the device scale itself.
+/// ↩️An image composed at a level was reduced by the residual instead, and
+/// at exactly 50% that residual was 1 — nearest, the edge cut on the grid
+/// like any 1:1 view's — until one-picture-per-frame ②-5b.
 ///
 /// An edge this answers false for is cut by moving it ONTO the grid
 /// ([cutOnThePixelGrid]), not by asking the engine not to blend it.
 bool displayEdgeAntiAliased(
   CanvasViewport viewport,
-  double devicePixelRatio, {
-  int level = 0,
-}) =>
+  double devicePixelRatio,
+) =>
     viewport.rotationDegrees != 0 ||
     filterQualityForDisplayScale(
-          displayScaleOf(viewport.zoom, devicePixelRatio) * (1 << level),
+          displayScaleOf(viewport.zoom, devicePixelRatio),
         ) !=
         ui.FilterQuality.none;
 
@@ -276,11 +218,10 @@ ui.Rect displayEdgeRect(
 }) => antiAlias ? rect : cutOnThePixelGrid(canvas, rect, pixelRatio);
 
 /// [image]'s [src] laid over [dst] as the display lays an image it is
-/// handed: one composed at [level] ([displayLevelOf]) — 0 for one at
-/// canvas resolution — of the world [viewport] shows on a screen of
-/// [devicePixelRatio], under the canvas's transform. It samples by the
-/// scale the draw resamples it by ([filterQualityForDisplayScale]) and cuts
-/// its edge by the same law ([displayEdgeAntiAliased]).
+/// handed: one at canvas resolution of the world [viewport] shows on a
+/// screen of [devicePixelRatio], under the canvas's transform. It samples
+/// by the scale the draw resamples it by ([filterQualityForDisplayScale])
+/// and cuts its edge by the same law ([displayEdgeAntiAliased]).
 ///
 /// 🚨ONE BLIT for every image the display lays over the view — the
 /// canvas's display buffer, and a frame's one picture (`FramePictureView`):
@@ -292,17 +233,16 @@ void drawOnTheDisplay(
   ui.Rect dst, {
   required CanvasViewport viewport,
   required double devicePixelRatio,
-  int level = 0,
   ui.BlendMode blendMode = ui.BlendMode.srcOver,
 }) {
   final filterQuality = filterQualityForDisplayScale(
-    displayScaleOf(viewport.zoom, devicePixelRatio) * (1 << level),
+    displayScaleOf(viewport.zoom, devicePixelRatio),
   );
   // The image's edge IS the canvas's edge on screen, cut by the same law
   // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
   // view it is one more texel boundary, decided by pixel centres, not a
   // blended line.
-  if (displayEdgeAntiAliased(viewport, devicePixelRatio, level: level)) {
+  if (displayEdgeAntiAliased(viewport, devicePixelRatio)) {
     canvas.drawImageRect(
       image,
       src,

@@ -19,6 +19,8 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/canvas/display_resample.dart'
+    show filterQualityForDisplayScale;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/sheet_painting.dart';
@@ -30,11 +32,14 @@ import 'package:anicel/src/ui/sheet_painting.dart';
 ///
 /// A panel's picture — the print a conte cell shows while the brush is off
 /// — is reduced as the canvas's display reduces the same cut beside it
-/// while the brush is on: halved a 2×2 box mean at a time, and only what is
-/// left of the reduction filtered as the display filters it.
+/// while the brush is on: its one picture at canvas resolution, read from
+/// its own mip chain with the display's filter. ↩️Halved a 2×2 box mean at
+/// a time, and only what was left of the reduction filtered, while the
+/// display drew below 100% from a level — until one-picture-per-frame
+/// ②-5b-3.
 void main() {
   // One tile exactly: the composed image IS the canvas rect, the case the
-  // legacy draw at the origin is kept for — which a level must not take.
+  // legacy draw at the origin is kept for.
   const canvas = CanvasSize(width: 128, height: 128);
   const size = 128;
 
@@ -144,23 +149,65 @@ void main() {
     );
   });
 
-  testWidgets('what the levels leave at a pixel a texel is laid texel for '
-      'pixel — a picture a canvas pixel off the grid is not blurred by a '
-      'filter the display would not use', (tester) async {
-    // Four columns inked, four clear: the second level alternates whole
-    // and clear, and the region's one-pixel step puts every output pixel
-    // a quarter of a texel off it.
+  testWidgets('a picture a canvas pixel off the grid is the display\'s '
+      'reduction there — read from the picture\'s own chain at that phase, '
+      'with the filter the display uses', (tester) async {
+    // Four columns inked, four clear, and the region's one-pixel step puts
+    // every output pixel a quarter of a level's texel off it.
+    bool inked(int x) => (x ~/ 4).isEven;
     final row = await pictureRow(
       tester,
-      inked: (x) => (x ~/ 4).isEven,
+      inked: inked,
       width: 32,
       region: const ui.Rect.fromLTWH(1, 0, 128, 72),
     );
+    // The display's draw of the same ink: its one picture at canvas
+    // resolution, a quarter, a canvas pixel to the left.
+    final shown = (await tester.runAsync(() async {
+      final ink = ui.PictureRecorder();
+      final into = ui.Canvas(ink);
+      for (var x = 0; x < size; x += 1) {
+        if (inked(x)) {
+          into.drawRect(
+            ui.Rect.fromLTWH(x.toDouble(), 0, 1, size.toDouble()),
+            ui.Paint()..color = const ui.Color(0xFF000000),
+          );
+        }
+      }
+      final inkPicture = ink.endRecording();
+      final picture = await inkPicture.toImage(size, size);
+      inkPicture.dispose();
+      final reduced = ui.PictureRecorder();
+      ui.Canvas(reduced)
+        ..scale(0.25)
+        ..translate(-1, 0)
+        ..drawImage(
+          picture,
+          ui.Offset.zero,
+          ui.Paint()..filterQuality = filterQualityForDisplayScale(0.25),
+        );
+      final reducedPicture = reduced.endRecording();
+      final image = await reducedPicture.toImage(32, 18);
+      reducedPicture.dispose();
+      picture.dispose();
+      final bytes = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!;
+      image.dispose();
+      return [
+        for (var x = 0; x < 32; x += 1)
+          bytes.getUint8((9 * 32 + x) * 4 + 3),
+      ];
+    }))!;
     expect(
-      row.take(30),
-      everyElement(anyOf(lessThanOrEqualTo(2), greaterThanOrEqualTo(253))),
-      reason: 'whole or clear, as the level has them',
+      shown.toSet().length,
+      greaterThan(2),
+      reason: 'LIVENESS: off the grid the display blends the columns',
     );
+    expect(row, shown);
+    // ↩️Whole or clear, as a level had them: the print was laid texel for
+    // pixel from the halved picture, while the display drew below 100%
+    // from a level — until one-picture-per-frame ②-5b-3.
   });
 
   test('the print is laid into its shot with the display\'s own filter for '

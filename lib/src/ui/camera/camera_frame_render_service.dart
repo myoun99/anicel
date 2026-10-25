@@ -22,11 +22,10 @@ import '../../services/viewport_transform_matrix.dart'
 import '../canvas/display_resample.dart';
 import '../canvas/image_pieces.dart';
 import '../canvas/layer_image_draw.dart';
-import '../canvas/level_image.dart';
 import '../canvas/paper_background.dart' show paintProjectPaper;
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
-import '../playback/camera_shot.dart' show outlineAtLevel, shotClipOnScreen;
+import '../playback/camera_shot.dart' show outlineThrough, shotClipOnScreen;
 import '../text/cel_number_paint.dart';
 
 /// Test hatch: every row composed whole — what the byte-for-byte pins
@@ -66,34 +65,41 @@ class CameraFrameRenderService {
   /// work or the cut's guides are laid over it (CAM, I-89-Q18; I-105).
   ///
   /// 🚨★★★EVERY RENDER REDUCES AS THE CANVAS'S DISPLAY DOES
-  /// ([displayLevelOf]): each row's image halved, a 2×2 box mean a time,
-  /// until what is left of the reduction is over half ([displayResidualOf]),
-  /// which the draw takes with the display's own filter
-  /// ([filterQualityForDisplayScale]). A panel's picture asked for it first
-  /// — the print a conte cell shows beside the canvas's live composite of
-  /// the same cut (F-215, 유저 2026-09-30: 「축소시 이거 캔버스랑
+  /// ([filterQualityForDisplayScale]): each row's picture at canvas
+  /// resolution, reduced by the GPU from its own mip chain at the display's
+  /// filter — as a frame's one picture is (one-picture-per-frame, 유저
+  /// D7-2-Q2 「배율이 어떻든 항상 원본 한장」). A panel's picture asked for it
+  /// first — the print a conte cell shows beside the canvas's live composite
+  /// of the same cut (F-215, 유저 2026-09-30: 「축소시 이거 캔버스랑
   /// 같은규칙으로 안티low 필터같은거 동일적용한거맞나?」) — and the
   /// exports since (유저 2026-10-13, card video-export-speed-Q2: 「캔버스
-  /// 규칙으로」): a film is what playback shows. ↩️The rest drew with one
-  /// bilinear step down to a quarter and less, which samples 2×2 of each
-  /// 4×4 and lets a line a pixel wide vanish between them (🔬10-13: at a
-  /// camera zoom of 0.42 — the user's film runs at 0.42–0.52 — such a line
-  /// went missing ten pixels and more at a stretch).
+  /// 규칙으로」): a film is what playback shows. ↩️Each row's image was
+  /// halved, a 2×2 box mean a time, until what was left of the reduction was
+  /// over half, while the canvas's display did so — until ②-5b-3. ↩️Before
+  /// that the rest drew with one bilinear step down to a quarter and less,
+  /// which samples 2×2 of each 4×4 and lets a line a pixel wide vanish
+  /// between them (🔬10-13: at a camera zoom of 0.42 — the user's film runs
+  /// at 0.42–0.52 — such a line went missing ten pixels and more at a
+  /// stretch); a chain is that 2×2 mean, level by level.
   ///
   /// [cutTo] cuts the picture at that canvas's edge where the projection
   /// lays it — the film shows no pasteboard (「페이스트보드는 포함 안
   /// 시킴」) — as playback cuts it ([shotClipOnScreen]): out to the whole
-  /// pixels around where the rows end on their level's grid
-  /// ([outlineAtLevel]), so the cut takes nothing of a pixel they cover in
-  /// part. Only the rows and [paper]: [overlayPass] is laid over the cut.
+  /// pixels around where the rows end, the canvas's own edge
+  /// ([outlineThrough]), so the cut takes nothing of a pixel they cover in
+  /// part. ↩️On their level's grid while the rows were halved (until
+  /// one-picture-per-frame ②-5b-3). Only the rows and [paper]:
+  /// [overlayPass] is laid over the cut.
   ///
-  /// [paper] is laid under the rows on [cutTo]'s canvas as the canvas lays
-  /// its paper with its rows ([paperRectAtLevel]) — a stage's, as playback
-  /// lays it (`CanvasTrackStackView._unit`). ↩️A film laid it under the
-  /// picture to the canvas's edge, where rows reduced to a level end in a
-  /// pixel they cover in part, and the paper showed white through it — the
-  /// line playback had too (playback-picture-is-not-the-canvas-picture,
-  /// 유저 10-13: 「끝에 흰 선」).
+  /// [paper] is laid under the rows on [cutTo]'s canvas, as the canvas lays
+  /// its paper with its rows — a stage's, as playback lays it
+  /// (`CanvasTrackStackView._unit`) — yielding the pixel the canvas's edge
+  /// falls inside to the rows ([_paperYieldingToTheRows]). ↩️A film laid
+  /// it under the picture to the canvas's edge, where rows reduced to a
+  /// level end in a pixel they cover in part, and the paper showed white
+  /// through it — the line playback had too
+  /// (playback-picture-is-not-the-canvas-picture, 유저 10-13: 「끝에 흰
+  /// 선」).
   ///
   /// [rows] keeps the rows' pictures from one render to the next — a video
   /// run's (F-289-Q21). Each row's picture is asked of it, and what it
@@ -144,7 +150,6 @@ class CameraFrameRenderService {
     // and a `Canvas` will not tell anyone. Rotation preserves scale, so the
     // projection's zoom is the whole answer.
     final cameraRasterScale = (previewScale * pose.zoom).abs();
-    final level = displayLevelOf(cameraRasterScale);
     // 🚨A ROW IS COMPOSED AS ITS INK ALONE ONLY WHERE IT IS LAID DOWN TEXEL
     // FOR TEXEL — `inkCropDrawsTheSame`, asked of this route. ↩️The playback
     // cache asked it of its rows too, until it kept no row image
@@ -205,40 +210,32 @@ class CameraFrameRenderService {
             // compose only rasters a bigger rect when pasteboard tiles
             // exist, so a project that never parks artwork pays nothing.
             //
-            // At [level]: the row is the picture the render draws, so a row
-            // kept between renders is kept halved, and halved once.
-            Future<PositionedSurfaceImage> compose() async {
-              // Non-null without shouldAbort (on-demand render, never
-              // abandoned).
-              //
-              // Somebody waits for every render made here — an export's
-              // frame, a panel's picture — so a tile with no picture gets
-              // one at once ([MissingTilePictures.madeAtOnce]).
-              final composed = (await composePositionedSurfaceImage(
-                layer.surface,
-                reuse: BitmapTileImageCache.instance,
-                missing: MissingTilePictures.madeAtOnce,
-                over:
-                    rowsAsInk &&
-                        inkCropDrawsTheSame(
-                          placement: layer.placement,
-                          effects: layer.effects,
-                        )
-                    ? surfaceInkWorldRect(layer.surface)
-                    : null,
-              ))!;
-              if (level == 0) {
-                return composed;
-              }
-              try {
-                return await _halved(composed, level);
-              } finally {
-                composed.pieces.disposeAll();
-              }
-            }
+            // At canvas resolution, whatever the camera's zoom: the row is
+            // the picture the render draws, reduced from its own chain.
+            // ↩️It was halved to the display's level, and kept so between
+            // renders, until one-picture-per-frame ②-5b-3.
+            //
+            // Non-null without shouldAbort (on-demand render, never
+            // abandoned). Somebody waits for every render made here — an
+            // export's frame, a panel's picture — so a tile with no picture
+            // gets one at once ([MissingTilePictures.madeAtOnce]).
+            Future<PositionedSurfaceImage> compose() async =>
+                (await composePositionedSurfaceImage(
+                  layer.surface,
+                  reuse: BitmapTileImageCache.instance,
+                  missing: MissingTilePictures.madeAtOnce,
+                  over:
+                      rowsAsInk &&
+                          inkCropDrawsTheSame(
+                            placement: layer.placement,
+                            effects: layer.effects,
+                          )
+                      ? surfaceInkWorldRect(layer.surface)
+                      : null,
+                ))!;
 
             if (kept != null) {
-              layerImages[layer] = await kept.of(layer.surface, level, compose);
+              layerImages[layer] = await kept.of(layer.surface, compose);
             } else {
               final composed = await compose();
               madeHere.addAll(composed.pieces);
@@ -263,9 +260,7 @@ class CameraFrameRenderService {
 
     await composeImages(tree);
 
-    final leafQuality = filterQualityForDisplayScale(
-      displayResidualOf(cameraRasterScale),
-    );
+    final leafQuality = filterQualityForDisplayScale(cameraRasterScale);
 
     final frame = Rect.fromLTWH(
       0,
@@ -326,14 +321,16 @@ class CameraFrameRenderService {
         return;
       }
       final view = viewportOfSimilarity(projection);
+      // The edge the display gives its paper, seen through this
+      // projection — on the output's own pixels.
+      final antiAlias = view == null || displayEdgeAntiAliased(view, 1);
       paintProjectPaper(
         canvas,
-        paperRectAtLevel(cutTo!.canvasRect, level),
+        antiAlias
+            ? _paperYieldingToTheRows(cutTo!.canvasRect, cameraRasterScale)
+            : cutTo!.canvasRect,
         stage,
-        // The edge a level buffer gives its paper, seen through this
-        // projection — on the output's own pixels.
-        antiAlias:
-            view == null || displayEdgeAntiAliased(view, 1, level: level),
+        antiAlias: antiAlias,
         pixelRatio: 1,
       );
     }
@@ -489,16 +486,15 @@ class CameraFrameRenderService {
               // its cap lays a crop back.
               texelScale: texelCopy ? rasterScale : null,
               filterQuality: leafQuality,
-              // ⚠️And the image a texel a canvas pixel: a level
-              // ([displayLevelOf]) spans the canvas at half and less, and
-              // laid at the origin it would draw at that size.
-              drawAtOriginWhen: (worldRect, image) =>
+              // ↩️It asked the image to be a texel a canvas pixel as well,
+              // while a level spanned the canvas at half and less — until
+              // one-picture-per-frame ②-5b-3: every row is at canvas
+              // resolution now.
+              drawAtOriginWhen: (worldRect, _) =>
                   worldRect.left == 0 &&
                   worldRect.top == 0 &&
                   worldRect.width == canvasSize.width &&
-                  worldRect.height == canvasSize.height &&
-                  image.width == canvasSize.width &&
-                  image.height == canvasSize.height,
+                  worldRect.height == canvasSize.height,
             );
         }
       }
@@ -507,7 +503,7 @@ class CameraFrameRenderService {
     canvas.save();
     if (cutTo != null) {
       final cut = shotClipOnScreen(
-        outlineAtLevel(cutTo.canvasRect, level: level, toScreen: projection),
+        outlineThrough(cutTo, projection),
         // An output pixel is the device's.
         1,
       );
@@ -544,6 +540,26 @@ class CameraFrameRenderService {
   }
 }
 
+/// The paper under rows drawn through a camera whose edge is anti-aliased,
+/// on the canvas [canvasRect]: one output pixel in from the canvas's edge
+/// — [scale] output pixels a canvas pixel — or the whole canvas where that
+/// leaves nothing, so a small one does not vanish.
+///
+/// #15 — the paper yields the pixel the canvas's edge falls inside to the
+/// rows: the two drawn there each anti-aliased on its own, a paper that
+/// ended on that pixel's far side showed past ink covering it in part —
+/// the 1px bright ring the device saw below ~30%, and the film's white
+/// line (playback-picture-is-not-the-canvas-picture, 유저 10-13 「끝에 흰
+/// 선」). The canvas lays its paper INTO the frame's one picture under its
+/// rows, so its own yields nothing. ↩️It yielded a level pixel, under rows
+/// halved to the level (`paperRectAtLevel`), and nothing at canvas
+/// resolution — until every row was drawn at canvas resolution and reduced
+/// on the output's pixels (one-picture-per-frame ②-5b-3).
+Rect _paperYieldingToTheRows(Rect canvasRect, double scale) {
+  final yielded = canvasRect.deflate(1 / scale);
+  return yielded.isEmpty ? canvasRect : yielded;
+}
+
 /// What a camera render's tree paints: one of its rows, or the ground they
 /// are laid on ([onUnderlay]).
 sealed class _CameraRow {
@@ -563,14 +579,13 @@ final class _CameraGround extends _CameraRow {
 /// Where a render's row pictures come from when they are kept between
 /// renders ([CameraFrameRenderService.renderThroughCamera]'s `rows`).
 ///
-/// [of] hands back the picture [surface] composes to at [level]
-/// ([displayLevelOf]) — one kept from an earlier render, or [compose]'s —
-/// and it is the keeper's either way. It may be the ink alone
-/// ([laidTexelForTexel]).
+/// [of] hands back the picture [surface] composes to — one kept from an
+/// earlier render, or [compose]'s — and it is the keeper's either way. It
+/// may be the ink alone ([laidTexelForTexel]). ↩️It was asked at a level,
+/// a picture a halving, until one-picture-per-frame ②-5b-3.
 abstract interface class RowPictures {
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
-    int level,
     Future<PositionedSurfaceImage> Function() compose,
   );
 
@@ -579,49 +594,4 @@ abstract interface class RowPictures {
   /// to be drawn, which would pay that raster at every draw
   /// ([drawPosedLayerImage]).
   bool get laidTexelForTexel;
-}
-
-/// [composed] with its image halved [level] times over the same canvas
-/// rect — each time the exact mean of a 2×2 block of the one above
-/// ([halvingPicture]), as the display's own levels are made — piece by
-/// piece: no 2×2 block lies across two ([piecesOver]). The images it passes
-/// through are let go of; [composed]'s own are its owner's, and the ones it
-/// hands back are the caller's.
-Future<PositionedSurfaceImage> _halved(
-  PositionedSurfaceImage composed,
-  int level,
-) async {
-  final pieces = <ImagePiece>[];
-  try {
-    for (final piece in composed.pieces) {
-      pieces.add((
-        image: await _halvedImage(piece.image, level),
-        worldRect: piece.worldRect,
-      ));
-    }
-  } on Object {
-    pieces.disposeAll();
-    rethrow;
-  }
-  return PositionedSurfaceImage(pieces: pieces, worldRect: composed.worldRect);
-}
-
-/// [whole] halved [level] times ([_halved]); [whole] stays its owner's.
-Future<ui.Image> _halvedImage(ui.Image whole, int level) async {
-  var image = whole;
-  for (var step = 0; step < level; step += 1) {
-    final size = halvedSize(image.width, image.height);
-    final picture = halvingPicture([(image: image, at: ui.Offset.zero)]);
-    final ui.Image halved;
-    try {
-      halved = await picture.toImage(size.width, size.height);
-    } finally {
-      picture.dispose();
-    }
-    if (!identical(image, whole)) {
-      image.dispose();
-    }
-    image = halved;
-  }
-  return image;
 }

@@ -11,6 +11,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
+import 'package:anicel/src/ui/canvas/chained_picture.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/cel_text_fixture.dart' show textOf;
@@ -134,17 +135,18 @@ void main() {
       reason: 'premise: past the wall on both sides ($over)',
     );
     var uploads = 0;
+    ui.Image? uploaded;
     Future<ui.Image> counted(
       Uint8List rgba, {
       required int width,
       required int height,
       int? targetWidth,
       int? targetHeight,
-    }) {
+    }) async {
       uploads += 1;
       debugRawRgbaUploader = null;
       try {
-        return uploadRawRgba(
+        return uploaded = await uploadRawRgba(
           rgba,
           width: width,
           height: height,
@@ -163,6 +165,19 @@ void main() {
     ))!;
     expect(debugComposesFromBytes, 1);
     expect(uploads, 1, reason: 'made from its bytes, and uploaded');
+    // 🎯A render of the upload, as every other compose hands back a render:
+    // drawn reduced through a camera, a row is sampled from its own chain,
+    // and on Impeller an upload carries none (one-picture-per-frame ②-5b-3).
+    expect(
+      carriesChain(fromBytes.image),
+      isTrue,
+      reason: 'handed back with its mip chain',
+    );
+    expect(
+      uploaded!.debugDisposed,
+      isTrue,
+      reason: 'the upload let go once it is drawn into its render',
+    );
     debugRastersPastTheWall = true;
     final rastered = (await composePositionedSurfaceImage(
       surface,

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -12,7 +11,6 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/dirty_region.dart';
 import '../../models/pasteboard_bounds.dart';
-import '../../models/playback_quality.dart';
 import '../../models/tile_coord.dart';
 import '../../models/tiles_covering.dart';
 import '../../core/dev_profile.dart';
@@ -24,7 +22,7 @@ import '../../services/import/cel_picture.dart'
     show pictureSideLimit, pictureSideLimitIfMeasured;
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import 'bitmap_tile_image_cache.dart';
-import 'display_resample.dart';
+import 'chained_picture.dart';
 import 'image_pieces.dart';
 import 'raster_picture.dart';
 import 'surface_region_picture.dart';
@@ -101,34 +99,16 @@ ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
 }
 
 /// The part of [surfaceContentWorldRect] that holds the stored tiles —
-/// where every pixel of the composed image that is not transparent sits.
+/// where every pixel of the composed image that is not transparent sits:
+/// the tiles' rect, which the content holds.
 ///
-/// On the halving grid of the whole image: the tiles' rect pushed out to
-/// multiples of 2^[PlaybackQuality.deepestLevel] counted from the content's
-/// origin, and cut back to the content. So at every level of the display's
-/// pyramid its edges fall on whole texels of the whole content's level, and
-/// the part of that level it covers can be cut out as it is.
-ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
-  final content = surfaceContentWorldRect(surface);
-  final tiles = tileCoordsWorldRect(
-    _tilesShownBy(surface).keys,
-    surface.tileSize,
-  );
-  if (tiles == null) {
-    return content;
-  }
-  final grid = rectOutwardOnGrid(
-    tiles,
-    1.0 / (1 << PlaybackQuality.deepestLevel),
-    origin: content.topLeft,
-  );
-  return ui.Rect.fromLTRB(
-    grid.left,
-    grid.top,
-    math.min(content.right, grid.right),
-    math.min(content.bottom, grid.bottom),
-  );
-}
+/// ↩️It was pushed out to multiples of 4 counted from the content's
+/// origin (the deepest playback level), so that at every level of the
+/// display's pyramid its edges fell on whole texels of the whole content's
+/// level — until no picture was halved (one-picture-per-frame ②-5b-3).
+ui.Rect surfaceInkWorldRect(BitmapSurface surface) =>
+    tileCoordsWorldRect(_tilesShownBy(surface).keys, surface.tileSize) ??
+    surfaceContentWorldRect(surface);
 
 /// How an asynchronous compose makes the pictures of the tiles that have
 /// none. Either way a picture is a block's ([tileBlocksOf]), comes through
@@ -194,7 +174,7 @@ const Duration tilePictureRun = Duration(milliseconds: 2);
 int Function()? debugTilePictureClock;
 
 /// How many composes set out from their tiles' bytes
-/// ([_composedFromBytes], [_composedFromBytesNow]) — a test's count.
+/// ([_composedFromBytes]) — a test's count.
 @visibleForTesting
 int debugComposesFromBytes = 0;
 
@@ -495,8 +475,8 @@ Iterable<TileBlock> _blocksOver(BitmapSurface shown, ui.Rect over) =>
 /// ([BitmapSurface.laidBounds], F-374-Q8).
 ///
 /// ⚠️NOT WHETHER A COMPOSE'S RECT REACHES PAST IT: a cel's tiles poke past
-/// the wall where they straddle it, and so does its ink pushed out to the
-/// halving grid ([surfaceInkWorldRect]) — nothing lies there, and such a
+/// the wall where they straddle it, and so does their ink rect
+/// ([surfaceInkWorldRect]) — nothing lies there, and such a
 /// cel rasters as it always did. Read off the rect, a stroke near a small
 /// picture's wall took the bytes road (a conte's cell,
 /// `a_conte_stroke_keeps_to_the_cell_it_starts_in_test`).
@@ -622,6 +602,11 @@ Future<ui.Image?> _composedFromBytes(
 /// [premultiplied] — [bytes]'s pixels — uploaded, unless [shouldAbort]
 /// stands it down first; or [rastered] when the upload comes back another
 /// size than [bytes] is.
+///
+/// Handed back as a render of the upload, which the engine gives its mip
+/// chain ([chainedPictureOf]) — the picture every other compose hands back
+/// is a render too: a camera's render draws a row reduced from its own
+/// chain, and an upload carries none (one-picture-per-frame ②-5b-3).
 Future<ui.Image?> _uploadedOrRastered(
   Uint8List premultiplied,
   _BytesFill bytes,
@@ -637,7 +622,12 @@ Future<ui.Image?> _uploadedOrRastered(
     height: bytes.height,
   );
   if (image.width == bytes.width && image.height == bytes.height) {
-    return image;
+    try {
+      return chainedPictureOf(image);
+    } finally {
+      // Safe once drawn into the render: the draw holds its own claim.
+      image.dispose();
+    }
   }
   image.dispose();
   return rastered();

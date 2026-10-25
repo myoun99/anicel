@@ -21,6 +21,7 @@
 /// layer-level sampling policy.
 library;
 
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
@@ -247,6 +248,7 @@ void drawPosedLayerImage(
           rasterScale,
         ).inflate(resolveCompositeEffectPlan(effects).outsetPixels),
         extent: extent,
+        levels: _levelsReadBy(canvas, rasterScale, _texelsOf(pieces)),
         draw: draw,
       );
     },
@@ -271,6 +273,15 @@ typedef _Stored = ({ui.Image image, ui.Rect worldRect, ui.Rect extent});
 /// reads the texels the whole image would hand it. It is the same lay
 /// [_wholeOf] makes of a crop.
 ///
+/// Drawn reduced, the part is out to the grid of the [levels] of its mip
+/// chain the draw reads ([_levelsReadBy]), from the whole's corner: a level
+/// texel of the part then averages the texels the whole's own averages.
+/// ↩️It was out to whole texels only while every row a camera reduced was
+/// halved before it was drawn — a level drawn over half — until rows were
+/// drawn at canvas resolution from their chains (one-picture-per-frame
+/// ②-5b-3). 🔬Off that grid at half, the part drew up to 6/255 apart from
+/// the whole.
+///
 /// A part longer on a side than the engine holds — a picture shrunk on a
 /// canvas that sees more of it than that, or a canvas that does not say
 /// what it sees — is drawn piece by piece ([debugPiecesDrawnApart]). Every
@@ -281,6 +292,7 @@ void _drawInPieces(
   List<ImagePiece> pieces, {
   required ui.Rect seen,
   required ui.Rect extent,
+  required int levels,
   required void Function(_Stored stored) draw,
 }) {
   final texels = _texelsOf(pieces);
@@ -290,7 +302,7 @@ void _drawInPieces(
   }
   final part = rectOutwardOnGrid(
     window.intersect(extent),
-    texels,
+    texels / (1 << levels),
     origin: pieces.first.worldRect.topLeft,
   ).intersect(extent);
   final side = pictureSideLimitIfMeasured;
@@ -336,6 +348,20 @@ ui.Rect _seenBy(ui.Canvas canvas, double rasterScale) {
     clip.right / rasterScale,
     clip.bottom / rasterScale,
   );
+}
+
+/// How many levels of a picture's mip chain a draw onto [canvas] reads —
+/// [texels] texels a canvas pixel, at [rasterScale]: none where it is not
+/// reduced, and otherwise down to the one past the level its reduction
+/// lands at, the two a sampler blends between.
+int _levelsReadBy(ui.Canvas canvas, double rasterScale, double texels) {
+  final m = canvas.getTransform();
+  final scale =
+      math.sqrt((m[0] * m[5] - m[1] * m[4]).abs()) * rasterScale / texels;
+  if (scale >= 1) {
+    return 0;
+  }
+  return (math.log(1 / scale) / math.ln2).floor() + 1;
 }
 
 /// How many texels a canvas pixel is in [pieces] — one scale for them all,

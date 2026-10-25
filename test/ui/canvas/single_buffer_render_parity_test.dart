@@ -332,70 +332,11 @@ void main() {
       );
     });
 
-    test(
-      'below 100% the display is fed from a level: halved until the residual '
-      'lies in (0.5, 1] (안 1 「선명」, 2026-09-16)',
-      () {
-        expect(displayLevelOf(1), 0);
-        expect(displayLevelOf(1.5), 0);
-        expect(displayLevelOf(0.75), 0, reason: 'one bilinear window away');
-        expect(displayLevelOf(0.51), 0);
-        expect(
-          displayLevelOf(0.5),
-          1,
-          reason: 'exactly half: the level lands 1:1',
-        );
-        expect(displayLevelOf(0.45), 1);
-        expect(displayLevelOf(0.26), 1);
-        expect(displayLevelOf(0.25), 2);
-        expect(displayLevelOf(0.13), 2);
-        expect(displayLevelOf(0.125), 3);
-        expect(displayLevelOf(1 / 32), maxDisplayLevel, reason: 'capped');
-        expect(displayLevelOf(0.01), maxDisplayLevel, reason: 'capped');
-        expect(displayLevelOf(-0.45), 1, reason: 'a flip is not a reduction');
-      },
-    );
-
-    test('the residual is what the one blit reduces by — in (0.5, 1] under '
-        'the cap, the device scale itself at level 0', () {
-      expect(displayResidualOf(0.45), moreOrLessEquals(0.9));
-      expect(displayResidualOf(0.5), 1.0);
-      expect(displayResidualOf(0.25), 1.0);
-      expect(displayResidualOf(0.26), moreOrLessEquals(0.52));
-      expect(displayResidualOf(0.7), 0.7);
-      expect(displayResidualOf(2), 2);
-      expect(
-        displayResidualOf(0.01),
-        moreOrLessEquals(0.16),
-        reason: 'past the cap the blit undersamples, as it always did',
-      );
-      for (var scale = 1 / 16; scale < 1; scale *= 1.0137) {
-        final residual = displayResidualOf(scale);
-        expect(residual, greaterThan(0.5), reason: 'scale $scale');
-        expect(residual, lessThanOrEqualTo(1), reason: 'scale $scale');
-      }
-    });
-
-    test('the blit samples the RESIDUAL: exactly 50% is a level landing 1:1 '
-        '(none), 45% is a level reduced by 0.9 (low)', () {
-      expect(
-        filterQualityForDisplayScale(displayResidualOf(0.5)),
-        ui.FilterQuality.none,
-      );
-      expect(
-        filterQualityForDisplayScale(displayResidualOf(0.45)),
-        ui.FilterQuality.low,
-      );
-      expect(
-        displayEdgeAntiAliased(CanvasViewport(zoom: 0.5), 1, level: 1),
-        isFalse,
-        reason: 'the level-1 image lands 1:1: its edge is cut on the grid',
-      );
-      expect(
-        displayEdgeAntiAliased(CanvasViewport(zoom: 0.45), 1, level: 1),
-        isTrue,
-      );
-    });
+    // ↩️'below 100% the display is fed from a level', 'the residual is what
+    // the one blit reduces by' and 'the blit samples the RESIDUAL' pinned
+    // the levels (안 1 「선명」, 2026-09-16) — gone with every picture made
+    // per zoom (one-picture-per-frame ②-5b): the one picture at canvas
+    // resolution is reduced from its own chain, by the device scale.
 
     test(
       'the scale is the DEVICE scale, zoom × ratio — rotation and flips do '

@@ -319,7 +319,11 @@ void main() {
 /// halvings (`level_image.dart`). −1 in surface_paint/surface_paint_pass —
 /// F-240's region, drawn reduced, is a render per tile drawn as a tile is
 /// (`_drawImageAtTile`), no longer one blit of the region.
-const int _knownRawDraws = 27;
+/// **26** on 2026-10-25 (one-picture-per-frame ②-5b-3, 유저 Q3 「메인 PC
+/// 브러시/렌더링이 전부」): −1 in canvas/level_image — the file went with
+/// the camera's halvings: a row drawn through the camera reduced is drawn
+/// from its own chain, as the canvas draws its one picture.
+const int _knownRawDraws = 26;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

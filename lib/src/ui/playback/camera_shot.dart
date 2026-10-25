@@ -10,12 +10,7 @@ import '../../models/pasteboard_bounds.dart'
     show PasteboardBounds, PasteboardReach;
 import '../../models/project_background.dart';
 import '../canvas/display_resample.dart'
-    show
-        displayEdgeAntiAliased,
-        displayLevelOf,
-        displayScaleOf,
-        rectOutwardOnGrid,
-        wholeLevelPixelsOutward;
+    show displayEdgeAntiAliased, rectOutwardOnGrid;
 import '../canvas/outline_clipper.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -229,7 +224,7 @@ List<Offset>? pictureOutlineOnScreen(
     ? null
     : convexIntersection(
         cameraFrameOnScreen(view, shot.frameSize, devicePixelRatio),
-        outlineOnScreen(canvasSize.canvasRect, shot.frameView, devicePixelRatio),
+        outlineOnScreen(canvasSize, shot.frameView, devicePixelRatio),
       );
 
 /// The camera's frame where the panel's [view] lays it on a screen of
@@ -239,42 +234,38 @@ List<Offset> cameraFrameOnScreen(
   CanvasViewport view,
   CanvasSize frameSize,
   double devicePixelRatio,
-) => outlineOnScreen(frameSize.canvasRect, view, devicePixelRatio);
+) => outlineOnScreen(frameSize, view, devicePixelRatio);
 
-/// [rect]'s corners where [view] paints it ([outlineAtLevel]) — the pan
+/// [size]'s canvas where [view] paints it ([outlineThrough]) — the pan
 /// snapped as every canvas-space painter snaps it ([renderSnappedViewport]),
-/// so an outline cut by these lands on the edge the painter drew — at the
-/// level the display draws at.
+/// so an outline cut by these lands on the edge the painter drew.
 List<Offset> outlineOnScreen(
-  Rect rect,
+  CanvasSize size,
   CanvasViewport view,
   double devicePixelRatio,
-) => outlineAtLevel(
-  rect,
-  level: displayLevelOf(displayScaleOf(view.zoom, devicePixelRatio)),
-  toScreen: viewportTransformMatrix(
-    renderSnappedViewport(view, devicePixelRatio),
-  ),
+) => outlineThrough(
+  size,
+  viewportTransformMatrix(renderSnappedViewport(view, devicePixelRatio)),
 );
 
-/// [rect]'s corners through [toScreen], out to the grid of [level] first
-/// ([wholeLevelPixelsOutward]), where a picture of [rect] reduced to that
-/// level ends: a level pixel its edge cuts part-way is drawn whole,
-/// box-filtered from the part inside — a run cut on [rect] itself thinned
-/// what the canvas standing still shows of it
-/// (playback-picture-is-not-the-canvas-picture), and so did a film.
-List<Offset> outlineAtLevel(
-  Rect rect, {
-  required int level,
-  required Matrix4 toScreen,
-}) {
-  final drawn = wholeLevelPixelsOutward(rect, level);
+/// The corners of [size]'s canvas through [toScreen] — on whole canvas
+/// pixels, where a picture of it ends.
+///
+/// ↩️A rect, out to the grid of the level the display drew at first
+/// (`wholeLevelPixelsOutward`), where a picture reduced to that level
+/// ended — a run cut on the rect itself thinned what the canvas standing
+/// still showed of it (playback-picture-is-not-the-canvas-picture), and so
+/// did a film — until every picture was drawn at canvas resolution
+/// (one-picture-per-frame ②-5b-3). At canvas resolution that grid is the
+/// canvas's own, and what is cut here is a canvas or a camera's frame.
+List<Offset> outlineThrough(CanvasSize size, Matrix4 toScreen) {
+  final rect = size.canvasRect;
   return [
     for (final corner in [
-      drawn.topLeft,
-      drawn.topRight,
-      drawn.bottomRight,
-      drawn.bottomLeft,
+      rect.topLeft,
+      rect.topRight,
+      rect.bottomRight,
+      rect.bottomLeft,
     ])
       MatrixUtils.transformPoint(toScreen, corner),
   ];

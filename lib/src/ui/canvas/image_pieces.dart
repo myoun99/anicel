@@ -27,12 +27,14 @@ typedef ImagePiece = ({ui.Image image, ui.Rect worldRect});
 /// [over]'s corner, each the longest power of two inside [side] across (the
 /// last of a row or a column what is left), row by row.
 ///
-/// ★A POWER OF TWO, so the camera's halvings halve a piece as they halve
-/// the whole (`_halved`): each 2×2 block lies inside one piece, and a
-/// piece's inner edges are even — halved by one texture draw, as a tile is
-/// (`drawHalvings`). ↩️A rect of a level's own texels (`texelsPerUnit`) was
-/// cut here too, for the display's halved row images, until no row image
-/// was made (one-picture-per-frame ②-5b-1).
+/// ★A POWER OF TWO, so a piece's own mip chain halves it as the whole's
+/// would: each 2^k×2^k block a level averages lies inside one piece, and a
+/// piece's inner edges are even. ↩️So the camera's halvings (`_halved`,
+/// `drawHalvings`) halved a piece as they halved the whole, until the
+/// camera drew every row from its chain (one-picture-per-frame ②-5b-3).
+/// ↩️A rect of a level's own texels (`texelsPerUnit`) was cut here too, for
+/// the display's halved row images, until no row image was made
+/// (one-picture-per-frame ②-5b-1).
 List<ui.Rect> piecesOver(ui.Rect over, {required int side}) {
   if (over.width <= side && over.height <= side) {
     return [over];

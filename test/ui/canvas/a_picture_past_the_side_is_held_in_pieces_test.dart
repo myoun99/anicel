@@ -515,8 +515,10 @@ void main() {
         };
 
     // Each sees across a cut, and less of the cel than the side holds: at
-    // the camera's own size, at half (its pieces halved one by one), and
-    // turned.
+    // the camera's own size, at half (each piece read from its own chain),
+    // and turned. ↩️At half it saw 112 × 64 of the cel, which fit the side
+    // halved — its pieces halved one by one — until every row was drawn at
+    // canvas resolution (one-picture-per-frame ②-5b-3).
     final cameras =
         <String, ({CameraView view, CanvasSize? output, bool turns})>{
           'square over a part': (
@@ -525,8 +527,15 @@ void main() {
             turns: false,
           ),
           'square at half': (
-            view: cameraViewOver(const ui.Rect.fromLTWH(32, 16, 112, 64)),
-            output: const CanvasSize(width: 56, height: 32),
+            view: cameraViewOver(const ui.Rect.fromLTWH(92, 48, 40, 24)),
+            output: const CanvasSize(width: 20, height: 12),
+            turns: false,
+          ),
+          // Between two levels of the chain: a sampler blends the first and
+          // the second.
+          'square at two fifths': (
+            view: cameraViewOver(const ui.Rect.fromLTWH(92, 48, 40, 25)),
+            output: const CanvasSize(width: 16, height: 10),
             turns: false,
           ),
           'turned': (
@@ -607,7 +616,6 @@ final class _Deferred implements RowPictures {
   @override
   Future<PositionedSurfaceImage> of(
     BitmapSurface surface,
-    int level,
     Future<PositionedSurfaceImage> Function() compose,
   ) async {
     final made = await compose();
