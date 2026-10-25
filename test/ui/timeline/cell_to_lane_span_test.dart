@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
@@ -42,7 +43,7 @@ void main() {
     test('row delta 0 stays on the anchor layer, with no lane', () {
       final head = resolveSelectionSpanHead(
         rows: rowsWithLanes(),
-        sourceLayerId: const LayerId('layer-a'),
+        source: const LayerRowAddress(LayerId('layer-a')),
         rowDelta: 0,
       )!;
       expect(head.layerId, const LayerId('layer-a'));
@@ -56,7 +57,7 @@ void main() {
       for (var step = 1; step <= transformLaneDisplayOrder.length; step += 1) {
         final head = resolveSelectionSpanHead(
           rows: rows,
-          sourceLayerId: const LayerId('layer-a'),
+          source: const LayerRowAddress(LayerId('layer-a')),
           rowDelta: step,
         )!;
         expect(
@@ -75,7 +76,7 @@ void main() {
     test('past the lane group the next LAYER row reports no lane', () {
       final head = resolveSelectionSpanHead(
         rows: rowsWithLanes(),
-        sourceLayerId: const LayerId('layer-a'),
+        source: const LayerRowAddress(LayerId('layer-a')),
         rowDelta: transformLaneDisplayOrder.length + 1,
       )!;
       expect(head.layerId, const LayerId('layer-b'));

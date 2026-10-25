@@ -69,6 +69,7 @@ import '../timeline/timeline_drag_preview.dart'
         timelineDragPreviewGlobalLayerFor;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
+import 'drags/lane_range_move_drag.dart' show laneIdsAMoveCarries;
 import 'lane_edit_subject.dart';
 import 'lane_homes.dart';
 import 'row_written_by_id.dart';
@@ -2304,8 +2305,8 @@ class LaneVerbs {
 
   /// 🚨H20 — the LANES a move of the cut's [band] carries: its lane rows as
   /// the one Delete reads them ([bandLanesToDelete]) — the camera row, its
-  /// transform header, among them — each settled as every verb over a span
-  /// settles it ([_laneVerbScope]), and only those holding a key there.
+  /// transform header, among them — on the row a lane verb resolves, each
+  /// carrying what a drag on those lanes would ([laneIdsAMoveCarries]).
   ///
   /// 유저 (2026-08-23): 「fx랑 블록이랑 같이 움직이게할거면 둘다 유저가
   /// 선택하게 할거니까 … 선택한 곳만 움직이게하라고」 — and 08-12's 「선택 객체
@@ -2315,9 +2316,15 @@ class LaneVerbs {
   /// a lane pressed inside it moved the keys alone.
   List<BandLane> bandLanesRiding(TimelineFrameRangeSelection band) => [
     for (final span in _laneSpansOfCutBand(band))
-      if (_laneVerbScope(span) case final scope?
-          when rowLaneHomesKeyedWhere(scope.homes, span.contains))
-        (row: scope.layer, span: span, laneIds: scope.targets),
+      if (laneVerbLayerFor(span.layerId) case final row?
+          when !isAttachedLayer(row))
+        if (laneIdsAMoveCarries(
+              laneEditSubjectOf(row),
+              span,
+              laneVerbTargets: laneVerbTargets,
+            )
+            case final laneIds?)
+          (row: row, span: span, laneIds: laneIds),
   ];
 
   /// The lanes among [rows], gathered per layer in display order, over
@@ -2524,7 +2531,7 @@ typedef _LaneRangeKey = ({
 });
 
 /// A layer's lanes a band holds ([LaneVerbs.bandLanesRiding]): the row the
-/// verbs resolve, its span of keys, and the lanes a verb over it acts on.
+/// verbs resolve, its span of keys, and the lanes a move of it carries.
 typedef BandLane = ({
   Layer row,
   TimelineLaneSelection span,

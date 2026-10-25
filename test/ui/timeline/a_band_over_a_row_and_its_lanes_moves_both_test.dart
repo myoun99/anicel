@@ -22,6 +22,8 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart'
     show offsetAlong, partAcross, partAlong;
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart'
+    show BlockMoveDragPreview;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import '../../helpers/named_finders.dart';
@@ -44,6 +46,7 @@ import '../../helpers/timeline_host.dart';
 /// where they went.
 const _a = LayerId('a');
 const _b = LayerId('b');
+const _c = LayerId('c');
 const _cell = TimelineZoomLimits.referencePixelsPerFrame;
 const _position = LaneRowAddress(_a, 'position');
 
@@ -73,8 +76,9 @@ Layer _layer(LayerId id, {bool keyed = false, bool exposed = true}) => Layer(
 );
 
 /// B, empty, stands right before A (above it on the rail) — no lane row
-/// between them. Their drawings are named apart, so a carry asks nothing
-/// (F-413).
+/// between them — and C, empty, before B, where a carry onto B lands when
+/// its rows are counted from anywhere but the row pressed. Their drawings
+/// are named apart, so a carry asks nothing (F-413).
 Project _project() => Project(
   id: const ProjectId('p'),
   name: 'P',
@@ -90,7 +94,11 @@ Project _project() => Project(
           duration: 12,
           canvasSize: const CanvasSize(width: 64, height: 64),
           camera: CutCamera.empty(),
-          layers: [_layer(_a, keyed: true), _layer(_b, exposed: false)],
+          layers: [
+            _layer(_a, keyed: true),
+            _layer(_b, exposed: false),
+            _layer(_c, exposed: false),
+          ],
         ),
       ],
     ),
@@ -154,8 +162,14 @@ Future<_Grid> _sweptBand(WidgetTester tester, Axis axis) async {
   return (session: session, axis: axis, cells: cells, lane: lane, at: at);
 }
 
-/// A press at [from], carried to [to] a cell at a time, and let go.
-Future<void> _carry(WidgetTester tester, Offset from, Offset to) async {
+/// A press at [from], carried to [to] a cell at a time, [held] read there,
+/// and let go.
+Future<void> _carry(
+  WidgetTester tester,
+  Offset from,
+  Offset to, {
+  void Function()? held,
+}) async {
   final hand = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
   await tester.pump();
   final travel = to - from;
@@ -163,9 +177,16 @@ Future<void> _carry(WidgetTester tester, Offset from, Offset to) async {
     await hand.moveTo(from + travel * (step / 4));
     await tester.pump();
   }
+  held?.call();
   await hand.up();
   await tester.pumpAndSettle();
 }
+
+Finder _cellsOf(Axis axis, LayerId id) => find.named(
+  axis == Axis.horizontal
+      ? 'timeline-row-${id.value}-cells'
+      : 'xsheet-column-${id.value}-cells',
+);
 
 List<int> _blocksOf(EditorSessionManager session, LayerId id) =>
     session.commitLayerById(id)!.timeline.keys.toList();
@@ -186,7 +207,19 @@ void main() {
         expect(s.laneRangeSelection.value?.startIndex, 0);
 
         final row = onLane ? g.lane : g.cells;
-        await _carry(tester, g.at(row, 1), g.at(row, 3));
+        await _carry(
+          tester,
+          g.at(row, 1),
+          g.at(row, 3),
+          // The drag shows both going, not the press's kind alone.
+          held: () {
+            final shown = s.dragPreview.value;
+            expect(shown, isA<BlockMoveDragPreview>());
+            final a = (shown! as BlockMoveDragPreview).previewLayers[_a]!;
+            expect(a.timeline.keys, [2]);
+            expect(a.transformTrack.position.keys.keys, [2, 4]);
+          },
+        );
 
         expect(_blocksOf(s, _a), [2]);
         expect(_keysOf(s), [2, 4]);
@@ -202,31 +235,31 @@ void main() {
         expect(_keysOf(s), [0, 2]);
       });
     }
-    // ⚖️Mine, while 「a-lane-press-clears-a-mixed-run-Q1」 waits: the board's
-    // recommended answer, which is also what the riders of a hop already do
-    // (R27 #8) — the block takes the row, the keys keep their lane and go
-    // the frames.
-    testWidgets('on the ${axis == Axis.horizontal ? 'rail' : 'sheet'}, a '
-        'band carried onto another row takes its block there and its keys '
-        'along their own lane', (tester) async {
-      final g = await _sweptBand(tester, axis);
-      final s = g.session;
-      final b = find.named(
-        axis == Axis.horizontal
-            ? 'timeline-row-b-cells'
-            : 'xsheet-column-b-cells',
-      );
+    // 🗣️「a-lane-press-clears-a-mixed-run-Q1」 (유저 2026-10-25): 「블록은 다른
+    // 행으로, 키는 제 레인에서 프레임으로만」 — what the riders of a hop
+    // already did (R27 #8).
+    for (final onLane in [true, false]) {
+      final grid = axis == Axis.horizontal ? 'rail' : 'sheet';
+      final pressed = onLane ? 'a lane cell' : 'a layer cell';
+      testWidgets('on the $grid, a band carried by $pressed onto another '
+          'row takes its block there and its keys along their own lane — '
+          'the rows counted from the row pressed', (tester) async {
+        final g = await _sweptBand(tester, axis);
+        final s = g.session;
+        final row = onLane ? g.lane : g.cells;
 
-      await _carry(tester, g.at(g.cells, 1), g.at(b, 3));
+        await _carry(tester, g.at(row, 1), g.at(_cellsOf(axis, _b), 3));
 
-      expect(_blocksOf(s, _b), [2]);
-      expect(_blocksOf(s, _a), isEmpty);
-      expect(_keysOf(s), [2, 4]);
-      final band = s.frameRangeSelection.value!;
-      expect((band.startIndex, band.endIndexExclusive), (2, 5));
-      expect(band.coversRow(const LayerRowAddress(_b)), isTrue);
-      expect(band.coversRow(const LayerRowAddress(_a)), isFalse);
-      expect(band.coversRow(_position), isTrue);
-    });
+        expect(_blocksOf(s, _b), [2]);
+        expect(_blocksOf(s, _c), isEmpty);
+        expect(_blocksOf(s, _a), isEmpty);
+        expect(_keysOf(s), [2, 4]);
+        final band = s.frameRangeSelection.value!;
+        expect((band.startIndex, band.endIndexExclusive), (2, 5));
+        expect(band.coversRow(const LayerRowAddress(_b)), isTrue);
+        expect(band.coversRow(const LayerRowAddress(_a)), isFalse);
+        expect(band.coversRow(_position), isTrue);
+      });
+    }
   }
 }

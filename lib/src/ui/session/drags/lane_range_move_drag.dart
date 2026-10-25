@@ -46,6 +46,29 @@ LaneEdit? laneSpanKeysMovedOn(
   return blocked ? null : edit;
 }
 
+/// The lanes a MOVE of [span] carries on [row] — every lane it spans, a
+/// group header standing for its members ([laneVerbTargets]) — or null
+/// when it holds no key there, so nothing would move.
+///
+/// 🚨H20: a drag on the lanes and a band carrying its swept lanes ask this
+/// alike. ⚠️Not the lane verbs' scope: the camera row keys and deletes on
+/// the three lanes it draws, while its keys on the other two — an imported
+/// camera keys its Anchor Point — go with a move all the same (F-309).
+List<String>? laneIdsAMoveCarries(
+  LaneEditSubject row,
+  TimelineLaneSelection span, {
+  required List<String> Function(
+    List<String> spanLaneIds, {
+    List<LayerEffect> effects,
+  })
+  laneVerbTargets,
+}) {
+  final laneIds = laneVerbTargets(span.spanLaneIds, effects: row.effects);
+  return rowLaneHomesKeyedWhere(rowLaneHomes(row, laneIds), span.contains)
+      ? laneIds
+      : null;
+}
+
 /// The lane-key range MOVE drag (UI-R23 #3 part 2).
 ///
 /// Every spanned lane's ranged keys shift together by the same delta — one
@@ -120,14 +143,12 @@ class LaneRangeMoveDrag {
     required ValueNotifier<TimelineLaneSelection?> selectionChannel,
     required LaneValuesWrite write,
   }) {
-    final laneIds = laneVerbTargets(
-      selection.spanLaneIds,
-      effects: subject.effects,
+    final laneIds = laneIdsAMoveCarries(
+      subject,
+      selection,
+      laneVerbTargets: laneVerbTargets,
     );
-    if (!rowLaneHomesKeyedWhere(
-      rowLaneHomes(subject, laneIds),
-      selection.contains,
-    )) {
+    if (laneIds == null) {
       return null;
     }
     return LaneRangeMoveDrag._(

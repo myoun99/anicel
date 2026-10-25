@@ -565,23 +565,23 @@ class FrameRangeMoveDrag {
     final lanes = roles.laneVerbs.bandLanesRiding(span);
     final singleRowId = _singleRowOf(span, keys, roles.project);
     final multiSource = singleRowId == null;
-    final subjects = singleRowId == null
-        ? _multiSourceSubjects(
-            span,
-            keys,
-            lanesRide: lanes.isNotEmpty,
-            trackSe: roles.trackSe,
-            rangeSelections: rangeSelections,
-          )
-        : _singleRowSubjects(
+    final subjects =
+        (singleRowId == null
+            ? _multiSourceSubjects(
+                span,
+                keys,
+                trackSe: roles.trackSe,
+                rangeSelections: rangeSelections,
+              )
+            : _singleRowSubjects(
                 singleRowId,
                 span,
                 project: roles.project,
                 rowSpans: rowSpans,
-              ) ??
-              // The row moves no block here, and its lanes still go: a
-              // slide of nothing but them (H20 — each row as it holds).
-              (lanes.isEmpty ? null : (singleRow: null, multiSources: []));
+              )) ??
+        // The band moves no block, and its lanes still go: a slide of
+        // nothing but them (H20 — each row as it holds).
+        (lanes.isEmpty ? null : (singleRow: null, multiSources: []));
     final attachTrade = _attachTradeOf(span, roles.project);
     if (subjects == null) {
       return singleRowId == null
@@ -675,12 +675,10 @@ class FrameRangeMoveDrag {
   /// group.
   ///
   /// Null when the span moves nothing — a span of nothing but SYNCED attach
-  /// rows among them ([_tradingMirrors]) — and none of its lanes ride
-  /// ([lanesRide]).
+  /// rows among them ([_tradingMirrors]).
   static _MoveSubjects? _multiSourceSubjects(
     TimelineFrameRangeSelection span,
     KeySources keys, {
-    required bool lanesRide,
     required TrackSeDisplay trackSe,
     required RangeSelections rangeSelections,
   }) {
@@ -709,7 +707,6 @@ class FrameRangeMoveDrag {
       }
     }
     if (sources.isEmpty &&
-        !lanesRide &&
         keys.blockRiders.isEmpty &&
         keys.transitionRiders.isEmpty) {
       return null;

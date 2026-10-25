@@ -148,7 +148,10 @@ class TimelineRangeMoveRowResolver {
 
   List<TimelineDisplayRow> rows = const [];
   TimelineRangeMoveCallbacks? session;
-  LayerId? _sourceLayerId;
+
+  /// The row the move in flight was pressed on — where its row steps are
+  /// counted from.
+  TimelineRowAddress? _source;
 
   /// [TimelineRangeMoveCallbacks.holds], of the layer the row a drag
   /// started on belongs to — the reading the move's begin makes of it.
@@ -157,39 +160,42 @@ class TimelineRangeMoveRowResolver {
     return layerId != null && (session?.holds(layerId) ?? false);
   }
 
-  bool begin(LayerId layerId) {
+  /// Begins the move of the layer [row] belongs to — a lane row answers
+  /// with its layer ([TimelineRowAddress.owningLayerId]).
+  bool begin(TimelineRowAddress row) {
     final callbacks = session;
-    if (callbacks == null) {
+    final layerId = row.owningLayerId;
+    if (callbacks == null || layerId == null) {
       return false;
     }
     final accepted = callbacks.onBegin(layerId);
-    _sourceLayerId = accepted ? layerId : null;
+    _source = accepted ? row : null;
     return accepted;
   }
 
   void update(int frameDelta, int rowDelta) {
     final callbacks = session;
-    final sourceLayerId = _sourceLayerId;
-    if (callbacks == null || sourceLayerId == null) {
+    final source = _source;
+    if (callbacks == null || source == null) {
       return;
     }
     callbacks.onUpdate(
       frameDelta: frameDelta,
       targetLayerId: resolveBlockMoveTargetLayer(
         rows: rows,
-        sourceLayerId: sourceLayerId,
+        source: source,
         rowDelta: rowDelta,
       ),
     );
   }
 
   void end() {
-    _sourceLayerId = null;
+    _source = null;
     session?.onEnd();
   }
 
   void cancel() {
-    _sourceLayerId = null;
+    _source = null;
     session?.onCancel();
   }
 }
@@ -324,15 +330,6 @@ class _TimelineFrameRangeGestureLayerState
   _RangeDragMode _mode = _RangeDragMode.none;
   int _anchorIndex = 0;
 
-  /// D42: what the edge auto-pan has scrolled since the press, per axis.
-  /// SELECT is position-based and `localPosition` rides the pointer-down
-  /// hit-test transform — it does not see content scrolled after the down,
-  /// so the applied deltas are ADDED to it before the frame/cross reads.
-  /// Plain fields, no setState: this layer has nothing to lay out or
-  /// paint.
-  double _scrolledMain = 0;
-  double _scrolledCross = 0;
-
   /// Whether this press already dropped the range on its DOWN (R5 #12), so
   /// the release below does not say the same thing a second time.
   bool _clearedOnDown = false;
@@ -448,8 +445,6 @@ class _TimelineFrameRangeGestureLayerState
       case _RangeDragMode.move:
         _moveStep(
           details,
-          scrolledMain: _scrolledMain,
-          scrolledCross: _scrolledCross,
           acrossRows: true,
           onStep: widget.callbacks.onMoveUpdate,
         );
@@ -841,11 +836,6 @@ class _TimelineLaneRangeGestureLayerState
   /// it is this lane selection's own, or no move.
   TimelineRangeGestureCallbacks? _bandMoving;
 
-  /// D42: the edge auto-pan's applied scroll since the press (see the
-  /// cells layer's fields — the same staleness, the same fold).
-  double _scrolledMain = 0;
-  double _scrolledCross = 0;
-
   // Lane rows are not memoized (their bands rebuild on every host pass), so
   // this layer keeps the plain scalars — the live-geometry treatment buys
   // nothing where the widget rebuilds anyway.
@@ -975,8 +965,6 @@ class _TimelineLaneRangeGestureLayerState
         final band = _bandMoving;
         _moveStep(
           details,
-          scrolledMain: _scrolledMain,
-          scrolledCross: _scrolledCross,
           acrossRows: band != null,
           onStep: (frames, rows) => band == null
               ? widget.callbacks.onMoveUpdate(frames)
@@ -1156,6 +1144,15 @@ mixin _RangeDragFirstStep {
   /// The row's extent across it.
   double get _dragRowExtent;
 
+  /// D42: what the edge auto-pan has scrolled since the press, per axis.
+  /// SELECT is position-based and `localPosition` rides the pointer-down
+  /// hit-test transform — it does not see content scrolled after the down,
+  /// so the applied deltas are ADDED to it before the frame/cross reads.
+  /// Plain fields, no setState: neither layer has anything to lay out or
+  /// paint.
+  double _scrolledMain = 0;
+  double _scrolledCross = 0;
+
   int _frameAt(Offset localPosition);
 
   bool _pressedInSelection(int frame);
@@ -1212,7 +1209,7 @@ mixin _RangeDragFirstStep {
   }
 
   /// A MOVE step: [details] joined to the travel since the press and to
-  /// what the edge auto-pan has scrolled ([scrolledMain], [scrolledCross]),
+  /// what the edge auto-pan has scrolled ([_scrolledMain], [_scrolledCross]),
   /// handed to [onStep] as the frames and rows the move now stands from
   /// where it began — when either changed. Without [acrossRows] its rows
   /// stay 0: a lane selection's keys go along their own lane alone.
@@ -1223,22 +1220,20 @@ mixin _RangeDragFirstStep {
   /// application.
   void _moveStep(
     DragUpdateDetails details, {
-    required double scrolledMain,
-    required double scrolledCross,
     required bool acrossRows,
     required void Function(int frames, int rows) onStep,
   }) {
     _mainDelta += partAlong(_dragAxis, details.delta);
     _crossDelta += partAcross(_dragAxis, details.delta);
     final frames = commaDragFrameDelta(
-      accumulatedDelta: _mainDelta + scrolledMain,
+      accumulatedDelta: _mainDelta + _scrolledMain,
       frameCellExtent: _dragCellExtent,
     );
     // R27 #12: the row axis has a deadband — a horizontal sweep's wobble
     // must not hand the step to the row-change path.
     final rows = acrossRows
         ? timelineRowStepDelta(
-            accumulatedDelta: _crossDelta + scrolledCross,
+            accumulatedDelta: _crossDelta + _scrolledCross,
             rowExtent: _dragRowExtent,
           )
         : 0;

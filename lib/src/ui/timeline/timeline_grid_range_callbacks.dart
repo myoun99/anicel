@@ -56,7 +56,7 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
           ? null
           : resolveSelectionSpanHead(
               rows: rows,
-              sourceLayerId: layerId,
+              source: row,
               rowDelta: headRowDelta,
             );
       rangeHooks.onSelectUpdate(
@@ -76,12 +76,10 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
     onTapClear: (_) => rangeHooks.onClear(),
     rowHolds: rangeMove.holdsRow,
     // A lane row begins the move of the layer it belongs to — the
-    // fallback [LaneRowAddress] documents. Refusing here is what made
-    // "grab the band on an fx row" do nothing at all.
-    onMoveBegin: (row, _) {
-      final layerId = row.owningLayerId;
-      return layerId != null && rangeMove.begin(layerId);
-    },
+    // fallback [LaneRowAddress] documents — and its rows count from it.
+    // Refusing here is what made "grab the band on an fx row" do nothing
+    // at all.
+    onMoveBegin: (row, _) => rangeMove.begin(row),
     onMoveUpdate: rangeMove.update,
     onMoveEnd: rangeMove.end,
     onMoveCancel: rangeMove.cancel,

@@ -3646,7 +3646,7 @@ TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
         frameDelta,
         resolveBlockMoveTargetLayer(
           rows: rows,
-          sourceLayerId: layer.id,
+          source: row,
           rowDelta: rowDelta,
         ),
       ),
