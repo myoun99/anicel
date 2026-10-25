@@ -1,4 +1,3 @@
-import 'app_tooltip.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 
@@ -7,7 +6,9 @@ import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import 'app_icon_button.dart';
 import 'grip_band.dart';
+import 'keyboard_press.dart';
 import 'panel_flyout.dart';
+import 'rail_glyph_button.dart';
 
 /// THE grammar of the frame panels' command bar (유저 확정, 2026-08-10):
 ///
@@ -179,7 +180,22 @@ class PillDivider extends StatelessWidget {
 /// [label] writes the name out (컷 · 레이어 · 프레임 — 유저 확정: 아이콘 말고
 /// 텍스트); [icon] is for the two nouns whose name is already a symbol
 /// everywhere (FX, settings). Exactly one of them.
-class PillNameCell extends StatelessWidget {
+///
+/// 🪶ONE FACE (card frame-panels-build-in-one-frame, 2026-10-25): the cell
+/// was a claim, a [Material], an [InkWell] and a tooltip — ~30 elements, and
+/// a tab wears four, built again whenever it is shown. It is a plate now
+/// ([RailPlateButton]): one render object that is the claim, the hover, the
+/// tooltip, the cursor and the node, with the keyboard's focus above it
+/// ([KeyboardPress]). ⛔Nothing on the screen changes — the hover and the
+/// focus are the [InkWell]'s colours in its shape, the word sits in the
+/// [Material]'s text style (`a_name_cell_is_one_face_test`).
+///
+/// 🔧Enter and Space OPEN the menu now, and so does a screen reader's
+/// press. The [InkWell] took the focus and answered both with a tap that
+/// did nothing — the menu was the claim's, which hears only a pointer —
+/// while every icon button beside it answers them (board `F-450-Q1`:
+/// 「통일 — 아이콘 버튼도 Enter · Space 로 눌린다」).
+class PillNameCell extends StatefulWidget {
   const PillNameCell({
     super.key,
     required this.keyValue,
@@ -213,10 +229,35 @@ class PillNameCell extends StatelessWidget {
   static const double _outerInset = 1;
 
   @override
+  State<PillNameCell> createState() => _PillNameCellState();
+}
+
+class _PillNameCellState extends State<PillNameCell> with KeyboardPress {
+  @override
+  VoidCallback get keyboardPress => _open;
+
+  // 🚨A NAME CELL WITH NOTHING TO SHOW OPENS NOTHING. `showMenu` asserts on
+  // an empty list, so a pill whose last menu item is retired used to crash
+  // on the press rather than simply having no menu — which is a hard
+  // failure for a soft situation, and it is the noun's own name the user
+  // pressed.
+  //
+  // The entries are built to ask rather than assumed empty: several of them
+  // are gated per state, so "empty right now" is a live answer.
+  void _open() {
+    final entries = widget.entriesBuilder();
+    if (entries.isEmpty) {
+      return;
+    }
+    unawaited(showPanelFlyout(context, entries: entries));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final label = this.label;
+    final label = widget.label;
+    final height = CommandPill.heightIn(context) - 4;
     final Widget content = label == null
-        ? Icon(icon, size: 16, color: AppColors.textDim)
+        ? Icon(widget.icon, size: 16, color: AppColors.textDim)
         : Text(
             label,
             maxLines: 1,
@@ -224,49 +265,41 @@ class PillNameCell extends StatelessWidget {
             style: const TextStyle(fontSize: 11.5, color: AppColors.text),
           );
     // 🚨A name cell is a control: a press that lands here is its own,
-    // scroll included ([ControlPressClaim]).
-    final cell = ControlPressClaim(
-      onPressed: () {
-        final entries = entriesBuilder();
-        if (entries.isEmpty) {
-          return;
-        }
-        unawaited(showPanelFlyout(context, entries: entries));
-      },
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          key: ValueKey<String>(keyValue),
-          // `customBorder`, not a hand-typed `borderRadius`: the splash has to
-          // wear the app's control shape like everything else, and a literal
-          // radius here is what `app_shapes_coverage_test` exists to catch.
-          customBorder: AppShapes.control(CommandPill.heightIn(context) - 4),
-          // 🚨A NAME CELL WITH NOTHING TO SHOW OPENS NOTHING. `showMenu`
-          // asserts on an empty list, so a pill whose last menu item is
-          // retired used to crash on the press rather than simply having no
-          // menu — which is a hard failure for a soft situation, and it is
-          // the noun's own name the user pressed.
-          //
-          // The entries are built to ask rather than assumed empty: several of
-          // them are gated per state, so "empty right now" is a live answer.
-          onTap: () {},
-          child: Container(
-            height: CommandPill.heightIn(context) - 4,
-            constraints: const BoxConstraints(minWidth: 24),
-            alignment: Alignment.center,
-            padding: EdgeInsets.symmetric(
-              horizontal:
-                  (label == null ? iconBreath : textBreath) - _outerInset,
+    // scroll included — the plate IS its claim ([PressClaim]).
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: PillNameCell._outerInset,
+      ),
+      child: keyboardReaches(
+        RailPlateButton(
+          key: ValueKey<String>(widget.keyValue),
+          name: widget.keyValue,
+          tooltip: widget.tooltip ?? '',
+          onPressed: _open,
+          focus: keyboardFocus,
+          // The app's control shape, as the [InkWell]'s `customBorder` wore
+          // it — never a hand-typed radius (`app_shapes_coverage_test`).
+          hoverShape: AppShapes.control(height),
+          // The [Material] the cell stood on SET the words' style — the
+          // theme's body text — rather than leaving the bar's.
+          child: DefaultTextStyle(
+            style: Theme.of(context).textTheme.bodyMedium!,
+            child: Container(
+              height: height,
+              constraints: const BoxConstraints(minWidth: 24),
+              alignment: Alignment.center,
+              padding: EdgeInsets.symmetric(
+                horizontal:
+                    (label == null
+                        ? PillNameCell.iconBreath
+                        : PillNameCell.textBreath) -
+                    PillNameCell._outerInset,
+              ),
+              child: content,
             ),
-            child: content,
           ),
         ),
       ),
-    );
-    final tooltip = this.tooltip;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: _outerInset),
-      child: tooltip == null ? cell : AppTooltip(message: tooltip, child: cell),
     );
   }
 }

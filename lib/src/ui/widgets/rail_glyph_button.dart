@@ -519,7 +519,9 @@ class RenderRailGlyphFace extends RenderBox
 /// A CLEAR plate — an edge and a word, the blend chip's — let that ink show:
 /// the hover, the one ink the app keeps (its theme turns the splash and the
 /// held fill off, F-132 · F-138). Such a face paints it, UNDER the plate as
-/// the [InkWell] drew it ([RailPlateSpec.hoverShape]).
+/// the [InkWell] drew it ([RailPlateSpec.hoverShape]) — and, where the
+/// keyboard reaches the plate ([RailPlateSpec.focus]), the focus the
+/// [InkWell] drew there too.
 class RenderRailPlateFace extends RenderProxyBox
     with PressClaim, SummonsTooltip, PressFace {
   RenderRailPlateFace({
@@ -546,13 +548,44 @@ class RenderRailPlateFace extends RenderProxyBox
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    if (_spec.hoverShape case final shape? when hovered && _spec.enabled) {
-      context.canvas.drawPath(
-        shape.getOuterPath(offset & size, textDirection: _spec.textDirection),
-        Paint()..color = _spec.hoverInk,
-      );
+    if (_spec.hoverShape case final shape?) {
+      // The [InkWell]'s two highlights, each in its own colour; the same
+      // hue over itself, so their order says nothing. Each is painted as an
+      // `InkHighlight` paints it inside its `Material` — the box clipped to
+      // the material, then to the shape, filled with its alpha in whole
+      // bytes — so the rim is anti-aliased as it was.
+      final inks = [
+        if (_spec.focus == IconButtonFocus.shown) _spec.focusInk,
+        if (hovered && _spec.enabled) _spec.hoverInk,
+      ];
+      if (inks.isNotEmpty) {
+        final box = offset & size;
+        final canvas = context.canvas
+          ..save()
+          ..clipRect(box)
+          ..clipPath(
+            shape.getOuterPath(box, textDirection: _spec.textDirection),
+          );
+        for (final ink in inks) {
+          canvas.drawRect(
+            box,
+            Paint()..color = ink.withAlpha((ink.a * 255).round()),
+          );
+        }
+        canvas.restore();
+      }
     }
     super.paint(context, offset);
+  }
+
+  @override
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    // The focus is said HERE rather than by `Focus`, as the glyph face says
+    // it ([RenderRailGlyphFace]) — for a plate the keyboard reaches.
+    if (_spec.focus case final focus?) {
+      config.isFocused = focus != IconButtonFocus.away;
+    }
   }
 
   @override
@@ -586,6 +619,8 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
     required this.triggerMode,
     required this.hoverShape,
     required this.hoverInk,
+    required this.focus,
+    required this.focusInk,
   });
 
   final String tooltip;
@@ -602,6 +637,13 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   /// takes it.
   final Color hoverInk;
 
+  /// Where the keyboard's focus is, for a plate the keyboard reaches
+  /// ([RailPlateButton.focus]) — null for a rail's, which takes none.
+  final IconButtonFocus? focus;
+
+  /// The focus's colour: the theme's, as an [InkWell] takes it.
+  final Color focusInk;
+
   bool get enabled => onPressed != null;
 
   /// The plate lays itself out — the face is its size.
@@ -613,6 +655,9 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   bool paintsAs(RailPlateSpec other) =>
       other.hoverShape == hoverShape &&
       other.hoverInk == hoverInk &&
+      (other.focus == IconButtonFocus.shown) ==
+          (focus == IconButtonFocus.shown) &&
+      other.focusInk == focusInk &&
       other.enabled == enabled &&
       other.textDirection == textDirection;
 
@@ -620,6 +665,7 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
   bool operator ==(Object other) =>
       other is RailPlateSpec &&
       paintsAs(other) &&
+      other.focus == focus &&
       other.tooltip == tooltip &&
       other.onPressed == onPressed &&
       other.semanticLabel == semanticLabel &&
@@ -634,6 +680,8 @@ final class RailPlateSpec implements FaceSpec<RailPlateSpec> {
     triggerMode,
     hoverShape,
     hoverInk,
+    focus,
+    focusInk,
   );
 }
 
@@ -658,6 +706,7 @@ class RailPlateButton extends SingleChildRenderObjectWidget
     required Widget super.child,
     this.semanticLabel,
     this.hoverShape,
+    this.focus,
   });
 
   /// What a finder calls this plate — a name, as a [RailGlyphButton.name]
@@ -678,6 +727,11 @@ class RailPlateButton extends SingleChildRenderObjectWidget
   /// [InkWell] drew where the plate let it show ([RenderRailPlateFace]).
   /// Null for an opaque plate.
   final ShapeBorder? hoverShape;
+
+  /// Where the keyboard's focus is, for a plate the keyboard reaches — a
+  /// toolbar's name cell, whose [KeyboardPress] stands above this. Null for
+  /// a rail's plate, which takes no focus at all (board `F-450-Q2`).
+  final IconButtonFocus? focus;
 
   @override
   RenderRailPlateFace createRenderObject(BuildContext context) =>
@@ -703,6 +757,8 @@ class RailPlateButton extends SingleChildRenderObjectWidget
     triggerMode: AppTooltipLook.triggerModeIn(context),
     hoverShape: hoverShape,
     hoverInk: Theme.of(context).hoverColor,
+    focus: focus,
+    focusInk: Theme.of(context).focusColor,
   );
 }
 
