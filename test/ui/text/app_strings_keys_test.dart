@@ -609,6 +609,8 @@ void main() {
     'exVectorPdf': (s) => s.exVectorPdf,
     'exFxOn': (s) => s.exFxOn,
     'exFxOff': (s) => s.exFxOff,
+    'exFxBasic': (s) => s.exFxBasic,
+    'exFxBasicOnly': (s) => s.exFxBasicOnly,
     'exTabSequence': (s) => s.exTabSequence,
     'exSizeCamera': (s) => s.exSizeCamera,
     'exSizeCanvas': (s) => s.exSizeCanvas,

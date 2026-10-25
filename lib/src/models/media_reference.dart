@@ -29,6 +29,9 @@ import 'transform_track.dart';
 /// 전용fx만들어서 거기서 오프셋 관리」. I-68-Q1: 「레이어의 fx버튼 꺼도 그 자리
 /// 유지되고 출력시에도 fx 적용 해제되있어도 유지됨」 — so it is not an effect
 /// the switches bypass: the picture is laid at it when its pixels are made.
+/// 🗣️I-65-Q6 (유저 2026-10-25): 「참조 fx 도 끈다(정말 날 것)」 — an output's
+/// 끔 lays the picture where its pixels are laid ([laid], `layerAsOutput`);
+/// 기본만 켬 keeps it. ↩️The output half of I-68-Q1 kept it whatever.
 /// 10-10 (chat): 「담는값은 변형도구랑 같은거 공유 … 변형으로 크기 줄였으면
 /// 같은값만큼 다른용지도 줄어들게 … 해상도가 달라도 같은크기로 겹치지않게 …
 /// 배치된 값, 원본값 유지」 — a transform's values (the picture's centre on

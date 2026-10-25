@@ -299,7 +299,7 @@ void main() {
             'export-format-file',
             'export-naming-base-field',
             'export-scope-project',
-            'export-apply-fx-toggle-ring',
+            'export-apply-fx-basic',
             'export-transport-play',
             'export-transport-in-step-up',
           ],
@@ -326,7 +326,7 @@ void main() {
           offers: [
             'export-file-name-field',
             'export-format-file',
-            'export-image-fx-toggle-ring',
+            'export-image-fx-off',
             'export-transport-play',
           ],
         ),
@@ -359,7 +359,7 @@ void main() {
             'export-cel-suffix-field',
             'export-tsformat-file',
             'export-envelope-paper-sheet',
-            'export-cels-apply-fx-toggle-ring',
+            'export-cels-apply-fx-basic',
           ],
         ),
         'the Conte Sheet tab': (

@@ -266,7 +266,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   // The preview's renderers key on (FX, ground, rows kept apart): each
   // changes what a frame looks like (EX4; a PSD's — I-117-Q2).
-  final Map<(bool, int, bool), ExportFrameRenderer> _previewRenderers = {};
+  final Map<(ExportLayerFx, int, bool), ExportFrameRenderer> _previewRenderers = {};
   late ExportFormatAvailability _availability;
   bool _ownsAvailability = false;
   int _sequencePosition = 0;
@@ -375,15 +375,15 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   ExportFrameRenderer _previewRendererFor({
-    required bool applyLayerFx,
+    required ExportLayerFx layerFx,
     required ExportFormatSelection format,
   }) {
     final bgKey = _groundKeyOf(format);
     return _previewRenderers.putIfAbsent(
-      (applyLayerFx, bgKey, format.keepsRowsApart),
+      (layerFx, bgKey, format.keepsRowsApart),
       () => ExportFrameRenderer(
         session: _session,
-        applyLayerFx: applyLayerFx,
+        layerFx: layerFx,
         keepsRowsApart: format.keepsRowsApart,
         background: bgKey == -1 ? const ui.Color(0x00000000) : ui.Color(bgKey),
       ),
@@ -1408,7 +1408,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final format = spec.format;
     final renderer = _previewRendererFor(
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: format,
     );
     // The video run burns the SE name tags in (videoRun);
@@ -1420,7 +1420,7 @@ class ExportDialogState extends State<ExportDialog> {
       subject: (ExportTab.sequence, spec.scope),
       look: (
         spec.sizeMode,
-        spec.applyLayerFx,
+        spec.layerFx,
         _groundKeyOf(format),
         withNameTags,
       ),
@@ -1446,14 +1446,14 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.image;
     final cut = _activeCut;
     final renderer = _previewRendererFor(
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: spec.format,
     );
     return ExportPreviewDocument(
       subject: ExportTab.image,
       look: (
         spec.sizeMode,
-        spec.applyLayerFx,
+        spec.layerFx,
         _groundKeyOf(spec.format),
         spec.format.keepsRowsApart,
       ),
@@ -1529,7 +1529,7 @@ class ExportDialogState extends State<ExportDialog> {
     if (sheet is ExportCelSheet) {
       final renderer = _previewRendererFor(
         // The preview shows what the export writes — same switch.
-        applyLayerFx: spec.applyLayerFx,
+        layerFx: spec.layerFx,
         format: spec.format,
       );
       return (
@@ -1538,7 +1538,7 @@ class ExportDialogState extends State<ExportDialog> {
           sheet.look,
           sizeMode: spec.sizeMode.jsonValue,
           backgroundKey: _groundKeyOf(spec.format),
-          applyLayerFx: spec.applyLayerFx,
+          layerFx: spec.layerFx,
         ),
         render: (size) => renderer.renderCelGroup(
           sheet.look,
@@ -2640,7 +2640,7 @@ class ExportDialogState extends State<ExportDialog> {
     final plan = _sequencePlanForRun(video: true);
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: format,
       alphaVideo: alphaVideo,
     );
@@ -2697,7 +2697,7 @@ class ExportDialogState extends State<ExportDialog> {
     final plan = _sequencePlanForRun(video: false);
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: spec.format,
     );
     final run = renderer.stillRun(plan, spec.sizeMode);
@@ -2758,7 +2758,7 @@ class ExportDialogState extends State<ExportDialog> {
     // is a position an artist can choose rather than a law.
     final renderer = ExportFrameRenderer.forFormat(
       session: _session,
-      applyLayerFx: spec.applyLayerFx,
+      layerFx: spec.layerFx,
       format: spec.format,
     );
     final face = _documentFace;
@@ -3598,9 +3598,9 @@ class ExportDialogState extends State<ExportDialog> {
           ),
         ),
       _fxAccordion(
-        keyValue: 'export-apply-fx-toggle',
-        applyLayerFx: spec.applyLayerFx,
-        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        keyPrefix: 'export-apply-fx',
+        layerFx: spec.layerFx,
+        onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
       ),
     ];
   }
@@ -3626,9 +3626,9 @@ class ExportDialogState extends State<ExportDialog> {
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
       _fxAccordion(
-        keyValue: 'export-image-fx-toggle',
-        applyLayerFx: spec.applyLayerFx,
-        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        keyPrefix: 'export-image-fx',
+        layerFx: spec.layerFx,
+        onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
       ),
     ];
   }
@@ -4043,15 +4043,15 @@ class ExportDialogState extends State<ExportDialog> {
         // The v10 grid (Timesheet와 공용 부품): checks save with the project.
         child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
       ),
-      // ✅THE SWITCH THE OTHER TABS ALREADY HAD. This tab used to force FX
-      // off with no way to say otherwise (see [CelsExportSpec.applyLayerFx]);
-      // 유저 2026-08-27 made it a choice. Same accordion, same toggle row,
+      // ✅THE CHOICE THE OTHER TABS ALREADY HAD. This tab used to force FX
+      // off with no way to say otherwise (see [CelsExportSpec.layerFx]);
+      // 유저 2026-08-27 made it a choice. Same accordion, same choice row,
       // same key prefix as the Sequence and Image tabs — one control, three
       // places, rather than a fourth idea of what this question looks like.
       _fxAccordion(
-        keyValue: 'export-cels-apply-fx-toggle',
-        applyLayerFx: spec.applyLayerFx,
-        onChanged: (value) => _updateSpec(spec.copyWith(applyLayerFx: value)),
+        keyPrefix: 'export-cels-apply-fx',
+        layerFx: spec.layerFx,
+        onChanged: (fx) => _updateSpec(spec.copyWith(layerFx: fx)),
       ),
     ];
   }
@@ -4240,42 +4240,50 @@ class ExportDialogState extends State<ExportDialog> {
     child: child,
   );
 
-  /// The layer-fx switch every raster tab offers — 유저 2026-08-27 made it
+  /// The layer-fx choice every raster tab offers — 유저 2026-08-27 made it
   /// a choice on the Cels tab too, so it is one control on three tabs.
+  /// [keyPrefix] stays each tab's own: the keys name their tab.
   ///
-  /// ⛔THE PREVIEW CLEAR IS PART OF THE SWITCH. Flipping fx changes what
-  /// renders, and a tab that flipped the spec without clearing would keep
-  /// showing the picture the OTHER setting made. [keyValue] stays each
-  /// tab's own: the keys name their tab.
-  ///
+  /// 🗣️I-65-Q3 (유저 2026-10-25): 「출력창 fx 타입 세개 만들자. 켬, 기본만
+  /// 켬, 끔」 — what each keeps is [layerAsOutput]'s. ↩️A switch, on or off.
   /// 🗣️F-395 (유저 2026-10-18): 「다른곳에 fx적용있으면 마찬가지인데 글이 너무
   /// 설명적임. 레이어 FX 라는 텍스트만으로 충분」 — ONE word on every tab.
   /// ↩️Two tabs' label carried a help line in brackets.
   ExportAccordion _fxAccordion({
-    required String keyValue,
-    required bool applyLayerFx,
-    required void Function(bool applyLayerFx) onChanged,
-  }) => ExportAccordion(
-    title: AppText.strings.exOptions,
-    summary: applyLayerFx ? AppText.strings.exFxOn : AppText.strings.exFxOff,
-    expansion: _expansion('options'),
-    child: SettingsSwitchRow(
-      tileKey: ValueKey<String>(keyValue),
-      label: AppText.strings.exApplyLayerFx,
-      value: applyLayerFx,
-      onChanged: _isExporting
-          ? null
-          : (value) {
-              onChanged(value);
-            },
-    ),
-  );
+    required String keyPrefix,
+    required ExportLayerFx layerFx,
+    required ValueChanged<ExportLayerFx> onChanged,
+  }) {
+    final strings = AppText.strings;
+    return ExportAccordion(
+      title: strings.exOptions,
+      summary: switch (layerFx) {
+        ExportLayerFx.on => strings.exFxOn,
+        ExportLayerFx.basic => strings.exFxBasic,
+        ExportLayerFx.off => strings.exFxOff,
+      },
+      expansion: _expansion('options'),
+      child: ExportChoiceRow<ExportLayerFx>(
+        label: strings.exApplyLayerFx,
+        keyPrefix: keyPrefix,
+        values: ExportLayerFx.values,
+        selected: layerFx,
+        keyOf: (fx) => fx.jsonValue,
+        labelOf: (fx) => switch (fx) {
+          ExportLayerFx.on => strings.commonOn,
+          ExportLayerFx.basic => strings.exFxBasicOnly,
+          ExportLayerFx.off => strings.commonOff,
+        },
+        onSelect: onChanged,
+        enabledFor: (_) => !_isExporting,
+      ),
+    );
+  }
 
   /// A toggle row bound to the tab's spec: DEAD while an export runs, and
   /// a change writes the spec [write] answers. Six rows wrote that binding
   /// out; a run in flight owns the spec, so one place says it — the same
-  /// law [_pill] states for the pills. [_fxAccordion]'s row is not this: its
-  /// preview clear is part of the switch.
+  /// law [_pill] states for the pills.
   SettingsSwitchRow _specToggle({
     required String keyValue,
     required String label,

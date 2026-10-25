@@ -761,9 +761,11 @@ Layer _fxCarrierOf(Cut cut, Layer layer) => isAttachedLayer(layer)
 ///
 /// 🗣️F-374 (유저 2026-10-17): 「참조fx도 똑같이 fx로서 법 통일. 지금 움직여도
 /// 키 안생긴다거나」 — the fx keys, and a picture laid once stands at each
-/// frame where its keys say. No switch reaches it, as none reaches where the
-/// file was laid (I-68-Q1: 「레이어의 fx버튼 꺼도 그 자리 유지되고 출력시에도
-/// fx 적용 해제되있어도 유지됨」).
+/// frame where its keys say. No switch of the row reaches it, as none
+/// reaches where the file was laid (I-68-Q1: 「레이어의 fx버튼 꺼도 그 자리
+/// 유지되고 출력시에도 fx 적용 해제되있어도 유지됨」) — an output's 끔 does,
+/// handing the plan a reference that stands where it is laid (I-65-Q6
+/// 「참조 fx 도 끈다(정말 날 것)」, `layerAsOutput`). ↩️None reached it.
 LayerPlacement? referenceMoveAt(Layer layer, int frameIndex) {
   final reference = layer.mediaReference;
   if (reference == null) {
@@ -987,6 +989,26 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
   return base == null ? null : (carrier: base, base: base);
 }
 
+/// The effect chain [layer] wears in [cut]: its own — or, for an attach
+/// row, its base's short of the links only their own row wears
+/// ([EffectKind.staysOnItsRow]: the cel number). Empty for a row that paints
+/// nothing of its own ([_paintingRowOf]).
+///
+/// ⛔ONE answer for every route that lays a row's picture — the composite,
+/// a file that keeps the rows apart, the delivery cel (I-65-Q4).
+List<LayerEffect> chainWornBy(Cut cut, Layer layer) {
+  final painting = _paintingRowOf(cut, layer);
+  return painting == null ? const [] : _wornChain(layer, painting.carrier);
+}
+
+List<LayerEffect> _wornChain(Layer layer, Layer carrier) =>
+    carrier.id == layer.id
+    ? carrier.effects
+    : [
+        for (final effect in carrier.effects)
+          if (!effect.kind.staysOnItsRow) effect,
+      ];
+
 /// What [layer] draws at [frameIndex] in [cut], shown or not: the cel it
 /// exposes there — none where it exposes none — and how: its OWN strength,
 /// its own blend, where it lies under every folder above it, and the chain
@@ -1023,7 +1045,7 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
         frameIndex: frameIndex,
       ),
       effects: resolveLayerEffectsAt(
-        effects: painting.carrier.effects,
+        effects: _wornChain(layer, painting.carrier),
         frameIndex: frameIndex,
       ),
     ),
@@ -1082,14 +1104,14 @@ CutFrameCompositeRow? _resolveLayerNode(
   final frame = _celOf(layer, painting.base, frameIndex);
 
   // R6: effects ride the FX carrier exactly like the pose and the
-  // animated opacity — an attach row wears its base's chain, and the
-  // carrier's fx switch bypasses it.
+  // animated opacity — an attach row wears its base's chain, short of its
+  // cel number ([chainWornBy]), and the carrier's fx switch bypasses it.
   // R8: NOT gated on fxEnabled — that switch is the TRANSFORM group's.
   // Each effect carries its own ([LayerEffect.enabled]) and the master
   // writes them all, so gating here too would make the row switch reach
   // effects it had not turned off.
   final effects = resolveLayerEffectsAt(
-    effects: fxCarrier.effects,
+    effects: _wornChain(layer, fxCarrier),
     frameIndex: frameIndex,
   );
   // The placement is [layerPlacementAt]'s: the same own part, under the

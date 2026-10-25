@@ -126,6 +126,21 @@ enum EffectKind {
   /// auto naming reads, the kinds whose drawings are named by number).
   bool get drawsItsOwnPicture => this == EffectKind.celNumber;
 
+  /// Whether an output that keeps only the BASIC fx keeps this kind
+  /// (`ExportLayerFx.basic`, `layerAsOutput`).
+  ///
+  /// 🗣️I-65-Q3 (유저 2026-10-25): 「기본만 켬은 지금까지 말햇던 셀번호나
+  /// 참조fx같은것만 키고 트랜스폼 포함해서 나머지 끄는것」. The reference fx is
+  /// the row's, not a link of this chain ([Layer.mediaReference]).
+  bool get isBasic => this == EffectKind.celNumber;
+
+  /// Whether only the row that carries this link wears it — an attach row
+  /// wears its base's chain short of it (`chainWornBy`).
+  ///
+  /// 🗣️I-65-Q4 (유저 2026-10-25): 「fx 를 단 행만 적는다 — 어태치는 번호 없이
+  /// 나머지 fx 만 입는다」.
+  bool get staysOnItsRow => this == EffectKind.celNumber;
+
   String toJson() => jsonValue;
 
   static EffectKind fromJson(Object? json) {

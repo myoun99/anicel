@@ -1375,6 +1375,8 @@ enum AppStrings {
   String get exVectorPdf => _s('exVectorPdf');
   String get exFxOn => _s('exFxOn');
   String get exFxOff => _s('exFxOff');
+  String get exFxBasic => _s('exFxBasic');
+  String get exFxBasicOnly => _s('exFxBasicOnly');
 
   /// The rails: the tab names the presets say, the render queue and its jobs,
   /// the cut grid, and why a format cannot be picked here.
@@ -2712,6 +2714,8 @@ enum AppStrings {
     'exVectorPdf': 'Vector PDF',
     'exFxOn': 'FX on',
     'exFxOff': 'FX off',
+    'exFxBasic': 'Basic FX only',
+    'exFxBasicOnly': 'Basic only',
     'exTabSequence': 'Sequence',
     'exSizeCamera': 'Camera',
     'exSizeCanvas': 'Canvas',
@@ -4261,6 +4265,8 @@ enum AppStrings {
     'exVectorPdf': 'ベクターPDF',
     'exFxOn': 'FXオン',
     'exFxOff': 'FXオフ',
+    'exFxBasic': 'FX基本のみ',
+    'exFxBasicOnly': '基本のみ',
     'exTabSequence': '連番',
     'exSizeCamera': 'カメラ',
     'exSizeCanvas': 'キャンバス',
@@ -5932,6 +5938,8 @@ enum AppStrings {
     'exVectorPdf': '벡터 PDF',
     'exFxOn': 'FX 켬',
     'exFxOff': 'FX 끔',
+    'exFxBasic': 'FX 기본만',
+    'exFxBasicOnly': '기본만 켬',
     'exTabSequence': '시퀀스',
     'exSizeCamera': '카메라',
     'exSizeCanvas': '캔버스',
@@ -7726,6 +7734,8 @@ enum AppStrings {
     'exVectorPdf': 'PDF vectoriel',
     'exFxOn': 'FX activés',
     'exFxOff': 'FX désactivés',
+    'exFxBasic': 'FX de base seuls',
+    'exFxBasicOnly': 'Base seule',
     'exTabSequence': 'Séquence',
     'exSizeCamera': 'Caméra',
     'exSizeCanvas': 'Canevas',
@@ -9334,6 +9344,8 @@ enum AppStrings {
     'exVectorPdf': '矢量 PDF',
     'exFxOn': 'FX 开',
     'exFxOff': 'FX 关',
+    'exFxBasic': 'FX 仅基础',
+    'exFxBasicOnly': '仅基础',
     'exTabSequence': '序列',
     'exSizeCamera': '摄影机',
     'exSizeCanvas': '画布',

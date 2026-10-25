@@ -14,7 +14,10 @@ import 'transform_lane_policy.dart' show transformPropertyLanes;
 /// 안둠 … 레이어의 fx버튼 꺼도 그 자리 유지되고 출력시에도 fx 적용
 /// 해제되있어도 유지됨 … 비슷한 다른 fx도 있었던것도같은데 있으면 통일」 —
 /// the SE row's name tag is that other one (`se_name_tag_lane_policy.dart`):
-/// a field the row simply HAS, with no switch to bypass it.
+/// a field the row simply HAS, with no switch to bypass it. 🗣️I-65-Q6 (유저
+/// 2026-10-25): 「참조 fx 도 끈다(정말 날 것)」 — the output half moved: the
+/// export window's 끔 turns it off (`layerAsOutput`). The header still has
+/// no switch.
 ///
 /// Its values are the transform tool's (10-10: 「담는값은 변형도구랑 같은거
 /// 공유」) — Position, Scale, Rotation, in the transform lanes' own words —

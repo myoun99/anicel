@@ -13,6 +13,7 @@ import '../../models/project_background.dart';
 import '../../models/cut_id.dart';
 import '../../models/drawing_guide.dart' show DrawingGuide;
 import '../../models/export_format_selection.dart';
+import '../../models/export_spec.dart' show ExportLayerFx;
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/import/import_warning.dart'
@@ -28,6 +29,7 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../models/composite_tree.dart';
 import '../../services/cel_numbered_row.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../../services/layer_as_output.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show
@@ -108,7 +110,7 @@ class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
     CameraFrameRenderService? renderService,
-    this.applyLayerFx = true,
+    this.layerFx,
     this.keepsRowsApart = false,
     ui.Color background = exportFrameGround,
   }) : renderService =
@@ -125,11 +127,11 @@ class ExportFrameRenderer {
   ExportFrameRenderer.forFormat({
     required EditorSessionManager session,
     required ExportFormatSelection format,
-    required bool applyLayerFx,
+    required ExportLayerFx layerFx,
     bool alphaVideo = false,
   }) : this(
          session: session,
-         applyLayerFx: applyLayerFx,
+         layerFx: layerFx,
          keepsRowsApart: format.keepsRowsApart,
          background: (alphaVideo || (format.isStill && format.wantsAlpha))
              ? const ui.Color(0x00000000)
@@ -141,11 +143,15 @@ class ExportFrameRenderer {
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;
 
-  /// The export dialog's 'Apply layer FX' toggle: true (default) exports
-  /// WYSIWYG with playback (per-layer fx switches respected); false
-  /// bypasses EVERY layer's FX — raw cels at their static opacity, no
-  /// transforms. The cut fade and the camera work are cut-level and stay.
-  final bool applyLayerFx;
+  /// What the export window's 레이어 FX keeps of the rows
+  /// ([layerAsOutput]) — or null for a picture of the SCREEN, which no
+  /// window asks about (the storyboard's panels, the conte's cells): every
+  /// row's own switches read as they stand — ⚠️whether those still look at
+  /// the heads is asked as [[I-65-Q9]]. The cut's fade and camera work
+  /// are cut-level and stay either way — the camera row's switch and the V
+  /// row's as the screen holds them. ⚠️Whether an output still looks at
+  /// those two heads is asked as [[I-65-Q8]].
+  final ExportLayerFx? layerFx;
 
   /// Whether the frames drawn here go into a file that keeps the cut's rows
   /// apart — a PSD ([frameRows]). Its picture is then the one those rows
@@ -332,21 +338,18 @@ class ExportFrameRenderer {
   /// stream renders the same cut for many frames).
   final Map<CutId, Cut> _fxStrippedByCut = {};
 
-  /// The cut as this RENDER should see it. With [applyLayerFx] on — the
-  /// default, and what the video/PNG paths use — that is the cut itself, so
-  /// the render is WYSIWYG with playback down to the rows' own fx switches.
-  ///
-  /// With it OFF (the cel exports: "cels stay raw artwork") every row's
-  /// transform switch and every effect's switch read false, which is the
-  /// master toggle expressed as DATA. Cheaper to reason about than an
-  /// override threaded through the plan, and impossible for another route
-  /// to forget: the plan renders exactly the cut it is given.
+  /// The cut as this RENDER should see it: every row as the window's
+  /// 레이어 FX keeps it ([layerAsOutput] — the choice expressed as DATA,
+  /// cheaper to reason about than an override threaded through the plan,
+  /// and impossible for another route to forget: the plan renders exactly
+  /// the cut it is given), or the cut itself for a picture of the screen
+  /// ([layerFx] null).
   ///
   /// For a file that keeps the rows apart ([keepsRowsApart]), the effects
   /// of every row that paints nothing of its own — a folder, an adjustment
-  /// row — read off the same way: the file has no row to hold them.
+  /// row — read off as well: the file has no row to hold them.
   Cut _cutForRender(Cut cut) {
-    if (applyLayerFx && !keepsRowsApart) {
+    if (layerFx == null && !keepsRowsApart) {
       return cut;
     }
     return _fxStrippedByCut.putIfAbsent(
@@ -359,16 +362,18 @@ class ExportFrameRenderer {
 
   /// [layer] as [_cutForRender] hands it to the plan.
   Layer _layerForRender(Layer layer) {
-    if (!applyLayerFx) {
-      return layer.copyWith(
-        transformEnabled: false,
-        effects: _switchedOff(layer.effects),
-      );
-    }
-    return layer.kind.paintsArtwork
-        ? layer
-        : layer.copyWith(effects: _switchedOff(layer.effects));
+    final output = _asOutput(layer);
+    return keepsRowsApart && !output.kind.paintsArtwork
+        ? output.copyWith(effects: _switchedOff(output.effects))
+        : output;
   }
+
+  /// [layer] as the window's 레이어 FX keeps it — itself for a picture of
+  /// the screen.
+  Layer _asOutput(Layer layer) => switch (layerFx) {
+    final fx? => layerAsOutput(layer, fx),
+    null => layer,
+  };
 
   static List<LayerEffect> _switchedOff(List<LayerEffect> effects) => [
     for (final effect in effects) effect.copyWith(enabled: false),
@@ -588,9 +593,8 @@ class ExportFrameRenderer {
         if (layer.kind.filtersBelow)
           unsupportedLayerKind(layer.name)
         else if (layer.kind.groupsLayers &&
-            applyLayerFx &&
             resolveFolderEffectsAt(
-              folder: layer,
+              folder: _asOutput(layer),
               frameIndex: task.frameIndex,
             ).isNotEmpty)
           layerEffectsNotApplied(layer.name),
@@ -675,11 +679,10 @@ class ExportFrameRenderer {
     );
   }
 
-  /// [task]'s composite tree. The rows' own fx switches apply here too (AE
-  /// semantics: the layer fx switch affects the render) — WYSIWYG with
-  /// playback. They live on the layers now (R8), so the dialog's 'Apply
-  /// layer FX' master toggle is expressed by rendering an FX-STRIPPED VIEW
-  /// of the cut rather than by threading an override through the plan.
+  /// [task]'s composite tree, of the cut as this render sees it
+  /// ([_cutForRender]): the window's 레이어 FX is expressed by rendering
+  /// that VIEW of the cut rather than by threading an override through the
+  /// plan.
   List<CompositeNode<CutFrameCompositeLayer>> _nodesFor(
     ExportFrameTask task,
   ) => planCutFrameCompositeTree(
@@ -991,9 +994,12 @@ class ExportFrameRenderer {
       cut.id,
       task.frameIndex,
     );
-    // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
-    // R8 ("a bypass that vanished on reload while a per-effect bypass
+    // The V row's fx MASTER reaches the OUTPUT, as every fx switch did
+    // since R8 ("a bypass that vanished on reload while a per-effect bypass
     // survived" is exactly what R8 refused). It gates the effect chain.
+    // ⚠️A row's own switches no longer reach it (I-65-Q5 「출력은 머리를 안
+    // 본다」, [layerAsOutput]); whether this one still does is asked as
+    // [[I-65-Q8]].
     final trackFxEnabled = session.effectsAndFx.isCutFxEnabled(cut.id);
     // No track fade: the transition row's ramp lands in
     // [_canvasSpaceTransitionFrame] above, on the frames it actually covers,
@@ -1439,20 +1445,17 @@ class ExportFrameRenderer {
         layer: layer,
         frame: frame,
         surface: surface,
-        // R6: the members' EFFECTS ride the same fx gates every other
-        // route uses — the dialog's master toggle and the row's own fx
-        // switch.
+        // R6: the members' EFFECTS are the chain each row wears in its cut
+        // ([chainWornBy] — an attached row its base's, short of the cel
+        // number), as the tab's 레이어 FX keeps it ([chainAsOutput]) — the
+        // one answer every tab reads.
         //
-        // The cel tab's master toggle used to be a hardcoded false ("cels
-        // stay raw artwork"); 유저 2026-08-27 made it the tab's own switch,
-        // defaulting ON — see [CelsExportSpec.applyLayerFx]. An artist who
-        // wants raw line art back turns it off, which is what the other
-        // tabs always allowed. Blend and static opacity are display
-        // properties and stay either way.
+        // The cel tab's FX used to be a hardcoded false ("cels stay raw
+        // artwork"); 유저 2026-08-27 made it the tab's own choice,
+        // defaulting ON — see [CelsExportSpec.layerFx]. Blend and static
+        // opacity are display properties and stay whatever it is.
         effects: resolveLayerEffectsAt(
-          // Each effect's own switch (R8) gates it from here — but for a
-          // cel number's.
-          effects: _deliveredChainOf(layer.effects),
+          effects: _outputChainOf(chainWornBy(cut, layer)),
           frameIndex: firstExposure,
         ),
       ));
@@ -1478,23 +1481,13 @@ class ExportFrameRenderer {
     );
   }
 
-  /// The chain a delivered cel's row wears of [effects]: the whole chain
-  /// where the tab's FX is on, none of it where it is off — and a cel
-  /// number's link either way, on or off.
-  ///
-  /// 🗣️I-65-Q2 메모 (유저 2026-10-24): 「이 셀번호 fx는 다른 곳에서도 fx
-  /// 관계없이 내보내는 fx있던거같은데, 그런거처럼 fx체크해제해도 셀출력시
-  /// 내보냄」 — the reference fx is that other one (I-68-Q1: 「출력시에도 fx
-  /// 적용 해제되있어도 유지됨」). ⚠️Both switches — the tab's FX and the
-  /// link's own — are my reading of 「fx 체크」, asked as [[I-65-Q3]]
-  /// (recommended a).
-  List<LayerEffect> _deliveredChainOf(List<LayerEffect> effects) => [
-    for (final effect in effects)
-      if (effect.kind.drawsItsOwnPicture)
-        effect.copyWith(enabled: true)
-      else if (applyLayerFx)
-        effect,
-  ];
+  /// [chain] as the window's 레이어 FX keeps it — itself for a picture of
+  /// the screen ([_asOutput]).
+  List<LayerEffect> _outputChainOf(List<LayerEffect> chain) =>
+      switch (layerFx) {
+        final fx? => chainAsOutput(chain, fx),
+        null => chain,
+      };
 
   /// [row] — a row of its cel — as the tree of a cel lays it with [paint]:
   /// its leaf, or the group its cel number makes of it ([celNumberedRow]).

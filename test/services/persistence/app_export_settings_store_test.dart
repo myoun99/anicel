@@ -32,7 +32,7 @@ void main() {
         const ExportPreset(
           id: ExportPresetId('p1'),
           name: '러시 체크 MP4',
-          spec: SequenceExportSpec(applyLayerFx: false),
+          spec: SequenceExportSpec(layerFx: ExportLayerFx.off),
         ),
         const ExportPreset(
           id: ExportPresetId('p2'),

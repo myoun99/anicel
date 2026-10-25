@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/core/tree_nodes.dart' show preorderNodes;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -178,6 +179,40 @@ void main() {
     final [row as _Leaf, first as _Number] = inner.children;
     expect(identical(first.on, row), isTrue);
     expect(identical(second.on, row), isTrue);
+  });
+
+  // 🗣️I-65-Q4 (유저 2026-10-24): 「fx 를 단 행만 적는다 — 어태치는 번호 없이
+  // 나머지 fx 만 입는다」.
+  test('a row attached to the numbered one wears the rest of its chain, and '
+      'no number', () {
+    final base = drawing(effects: [blur('before'), number('n'), blur('after')]);
+    final attach = Layer(
+      id: const LayerId('b'),
+      name: 'A影',
+      frames: base.frames,
+      timeline: base.timeline,
+      attachedToLayerId: base.id,
+      // Its own exposures — a synced row needs links to its base's cels.
+      attachedMode: AttachedMode.free,
+    );
+    final cut = cutOf(base).copyWith(layers: [base, attach]);
+    final worn = resolveLayerEffectsAt(
+      effects: chainWornBy(cut, attach),
+      frameIndex: 0,
+    );
+    expect(kindsOf(worn), ['blur', 'blur']);
+    expect(chainWornBy(cut, base), base.effects);
+    final nodes = planCutFrameCompositeTree(
+      cut: cut,
+      frameIndex: 0,
+      surfaceResolver: (_, _) => surface,
+    );
+    // The number is the base's: one group, and the attached row a leaf.
+    expect(nodes.whereType<_Group>(), hasLength(1));
+    final rider = nodes.whereType<_Leaf>().single;
+    expect(kindsOf(rider.payload.effects), ['blur', 'blur']);
+    final drawn = layerDrawingAt(cut: cut, layer: attach, frameIndex: 0)!;
+    expect(kindsOf(drawn.render.effects), ['blur', 'blur']);
   });
 
   test('a number switched off writes nothing — the row is its leaf', () {

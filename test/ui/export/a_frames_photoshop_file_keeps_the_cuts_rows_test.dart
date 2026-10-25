@@ -215,7 +215,7 @@ void main() {
 
   ImageExportSpec psdSpec({
     ExportChannels channels = ExportChannels.rgba,
-    bool applyLayerFx = true,
+    ExportLayerFx layerFx = ExportLayerFx.on,
   }) => ImageExportSpec(
     format: ExportFormatSelection(
       kind: ExportMediaKind.still,
@@ -223,7 +223,7 @@ void main() {
       channels: channels,
     ),
     sizeMode: ExportSizeMode.canvas,
-    applyLayerFx: applyLayerFx,
+    layerFx: layerFx,
   );
 
   /// [session]'s frame written as [spec] says — the image tab's own call —
@@ -459,7 +459,7 @@ void main() {
         layerEffectsNotApplied('G'),
       ]);
       expect(
-        (await written(session, psdSpec(applyLayerFx: false))).$2,
+        (await written(session, psdSpec(layerFx: ExportLayerFx.off))).$2,
         [unsupportedLayerKind('FX')],
         reason: 'the folder\'s effect is off for every file then',
       );
@@ -467,7 +467,7 @@ void main() {
         ExportFrameRenderer.forFormat(
           session: session,
           format: const ExportFormatSelection(kind: ExportMediaKind.still),
-          applyLayerFx: true,
+          layerFx: ExportLayerFx.on,
         ).leftOutOfRows(frameOf(session)),
         isEmpty,
       );

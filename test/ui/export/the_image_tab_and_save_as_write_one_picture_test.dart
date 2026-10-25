@@ -85,7 +85,7 @@ void main() {
         ExportFrameRenderer.forFormat(
           session: session,
           format: format,
-          applyLayerFx: true,
+          layerFx: ExportLayerFx.on,
           alphaVideo: alphaVideo,
         ).renderService.background;
 
@@ -229,7 +229,7 @@ void main() {
       expect(File('${folder.path}/frame.png').existsSync(), isFalse);
     });
 
-    testWidgets('the tab\'s FX switch reaches the picture: off, a row its FX '
+    testWidgets('the tab\'s FX reaches the picture: off, a row its FX '
         'hide is drawn raw', (tester) async {
       drawOnCurrentFrame(session);
       final layer = session.requireActiveCut.layers.firstWhere(
@@ -242,8 +242,8 @@ void main() {
           opacity: PropertyTrack<double>().withKey(0, 0),
         ),
       );
-      Future<int> dabAlpha({required bool applyLayerFx}) async {
-        final name = 'fx-$applyLayerFx.png';
+      Future<int> dabAlpha(ExportLayerFx fx) async {
+        final name = 'fx-${fx.jsonValue}.png';
         final alpha = await tester.runAsync(() async {
           await writeFrameImage(
             session,
@@ -251,7 +251,7 @@ void main() {
             ImageExportSpec(
               format: const ExportFormatSelection(kind: ExportMediaKind.still),
               sizeMode: ExportSizeMode.canvas,
-              applyLayerFx: applyLayerFx,
+              layerFx: fx,
             ),
             (
               directory: folder.path,
@@ -275,8 +275,8 @@ void main() {
         return alpha!;
       }
 
-      expect(await dabAlpha(applyLayerFx: true), 0);
-      expect(await dabAlpha(applyLayerFx: false), greaterThan(0));
+      expect(await dabAlpha(ExportLayerFx.on), 0);
+      expect(await dabAlpha(ExportLayerFx.off), greaterThan(0));
     });
   });
 

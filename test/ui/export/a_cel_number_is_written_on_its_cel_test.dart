@@ -12,6 +12,7 @@ import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_spec.dart' show ExportLayerFx;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -49,8 +50,9 @@ import '../../helpers/placement_reading.dart';
 /// 🗣️I-65 (유저 2026-10-24): a CEL NUMBER is written over its row's
 /// picture where the row lies — it moves with the layer's transform (Q2 a:
 /// 「그림과 함께 움직인다」) — and, 「납품 셀에도 셀번호 적는 거야」 (08-07),
-/// into the delivered cel even with the FX off (Q2 메모: 「fx체크해제해도
-/// 셀출력시 내보냄」).
+/// into the delivered cel under the tab's 켬 and 기본만 켬 (I-65-Q3).
+/// ↩️Q2 메모 wrote it under the FX off too (「fx체크해제해도 셀출력시
+/// 내보냄」); Q3 made 끔 turn every fx off, the number with them.
 void main() {
   const canvas = CanvasSize(width: 320, height: 240);
   const cutId = CutId('cut');
@@ -351,9 +353,19 @@ void main() {
   });
 
   group('in the delivered cel', () {
-    /// A cut whose row wears [effects], its one drawing a black pixel in the
-    /// paper's corner — a cel with no artwork is not written.
+    const attachId = LayerId('b');
+
+    /// A cut whose row wears [effects] — with a row attached to it beside
+    /// it — each drawing a black pixel in the paper's corner: a cel with no
+    /// artwork is not written.
     EditorSessionManager sessionOf(List<LayerEffect> effects) {
+      final attach = Layer(
+        id: attachId,
+        name: 'A影',
+        frames: [drawing],
+        timeline: {0: TimelineExposure.drawing(drawing.id, length: 4)},
+        attachedToLayerId: layerId,
+      );
       final session = EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('project'),
@@ -369,7 +381,11 @@ void main() {
                   name: 'CUT',
                   duration: 4,
                   canvasSize: canvas,
-                  layers: [row(effects), createCameraLayer(cutId: cutId)],
+                  layers: [
+                    row(effects),
+                    attach,
+                    createCameraLayer(cutId: cutId),
+                  ],
                 ),
               ],
             ),
@@ -381,32 +397,35 @@ void main() {
       const tile = 256;
       final pixels = Uint8List(tile * tile * 4)..[3] = 255;
       final cut = session.requireActiveCut;
-      session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
-        key: session.brushFrameKeyForCut(cut, layerId, drawing.id),
-        previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
-            .putTiles([
-              (
-                coord: TileCoord(x: 0, y: 0),
-                tile: BitmapTile(size: tile, pixels: pixels),
-              ),
-            ]),
-      );
+      for (final id in [layerId, attachId]) {
+        session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
+          key: session.brushFrameKeyForCut(cut, id, drawing.id),
+          previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
+              .putTiles([
+                (
+                  coord: TileCoord(x: 0, y: 0),
+                  tile: BitmapTile(size: tile, pixels: pixels),
+                ),
+              ]),
+        );
+      }
       return session;
     }
 
-    /// The cel of [effects]'s row, the tab's FX [applyLayerFx]: its straight
-    /// RGBA.
+    /// The cel of row [of] — its base wearing [effects] — written with the
+    /// tab's FX [fx]: its straight RGBA.
     Future<Uint8List> celOf(
       List<LayerEffect> effects, {
-      bool applyLayerFx = true,
+      ExportLayerFx fx = ExportLayerFx.on,
+      LayerId of = layerId,
     }) async {
       final session = sessionOf(effects);
       final cut = session.requireActiveCut;
-      final layer = cut.layers.firstWhere((layer) => layer.id == layerId);
+      final layer = cut.layers.firstWhere((layer) => layer.id == of);
       final image =
           await ExportFrameRenderer(
             session: session,
-            applyLayerFx: applyLayerFx,
+            layerFx: fx,
             background: const ui.Color(0x00000000),
           ).renderCelGroup(
             ExportCelGroupTask(
@@ -440,27 +459,55 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('with the tab\'s FX off the number is still written — and '
-        'the rest of the chain is not', (tester) async {
+    // 🗣️I-65-Q3 (유저 2026-10-25): 「켬, 기본만 켬, 끔. 켬이랑 끔은 지금처럼
+    // 전부 켜고 끄는거고, 기본만 켬은 … 셀번호나 참조fx같은것만 키고
+    // 트랜스폼 포함해서 나머지 끄는것」.
+    testWidgets('켬 writes the whole chain, 기본만 켬 the number alone, 끔 none '
+        'of it', (tester) async {
       await tester.runAsync(() async {
+        final numbered = await celOf([number]);
+        final both = await celOf([number, blur]);
+        expect(both, isNot(numbered), reason: '켬 blurs it');
         expect(
-          await celOf([number, blur], applyLayerFx: false),
+          await celOf([number, blur], fx: ExportLayerFx.basic),
+          numbered,
+        );
+        expect(
+          await celOf([number, blur], fx: ExportLayerFx.off),
+          await celOf(const []),
+        );
+      });
+      await tester.pumpAndSettle();
+    });
+
+    // 🗣️I-65-Q5 (유저 2026-10-25): 「출력은 머리를 안 본다」 — 「셀도 똑같이
+    // 머리 비지블 꺼도 출력리스트에 뜸으로 통일」.
+    testWidgets('a link whose own switch is off is written as one that is on', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final heads = [
+          number.copyWith(enabled: false),
+          blur.copyWith(enabled: false),
+        ];
+        expect(await celOf(heads), await celOf([number, blur]));
+        expect(
+          await celOf(heads, fx: ExportLayerFx.basic),
           await celOf([number]),
         );
       });
       await tester.pumpAndSettle();
     });
 
-    // ⚠️The number's own switch is my reading of 「fx 체크」 too — asked as
-    // I-65-Q3 (recommended a: both).
-    testWidgets('with the number\'s own switch off it is still written', (
-      tester,
-    ) async {
+    // 🗣️I-65-Q4 (유저 2026-10-24): 「fx 를 단 행만 적는다 — 어태치는 번호 없이
+    // 나머지 fx 만 입는다」.
+    testWidgets('a row attached to the numbered one wears the rest of its '
+        'chain, and no number', (tester) async {
       await tester.runAsync(() async {
-        expect(
-          await celOf([number.copyWith(enabled: false)]),
-          await celOf([number]),
-        );
+        final attached = await celOf([number, blur], of: attachId);
+        expect(redOf(attached, canvas.width).count, 0);
+        expect(attached, await celOf([blur], of: attachId));
+        expect(attached, isNot(await celOf(const [], of: attachId)));
       });
       await tester.pumpAndSettle();
     });
