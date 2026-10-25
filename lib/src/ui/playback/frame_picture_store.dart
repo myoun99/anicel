@@ -430,20 +430,19 @@ class FramePictureStore<K extends Object> {
   /// 🔬One copy out a write (D7-2, 2026-10-24): the levels go out end to end
   /// in one raster ([_run]); its 1,000–28,000 rows rastered in 4–144 ms on
   /// the Surface Pro 11 and held no frame doing it — the copy out did.
+  ///
+  /// 🔬ONE SUBMISSION, THE RASTERS FIRST (F-465, 2026-10-26): ↩️the base
+  /// went to the GPU on its own and was waited on before the levels under
+  /// it were rastered — five waits a batch. Both in one, measured in turn
+  /// in one run (120 steps, 1080p and 4K, 100% and fitted, 12 runs each;
+  /// a step's p50 / p90 into its picture, late frames summed): the Surface
+  /// Pro 11 (120 Hz) 13.1 / 20.9 ms and 136 late → 10.6 / 16.9 ms and 85,
+  /// the main PC (144 Hz) 4.0 / 6.2 ms and 1 → 3.9 / 6.2 ms and 1. ⛔Not
+  /// answered at the submission rather than its completion: fastest on the
+  /// main PC (3.0 ms), but 190 late on the Surface. ⛔Not the deepest level
+  /// or the patch rastered at once (`toImageSync`): later on both.
   Future<bool> _written(_Entry<K> entry, List<_Texels> batch) async {
     final picture = entry.picture;
-    final held = entry.held!;
-    final based = await _gpu.writeBase(held, [
-      for (final patch in batch)
-        (
-          source: patch.image,
-          x: _xOf(picture, patch.rect),
-          y: _yOf(picture, patch.rect),
-        ),
-    ]);
-    if (!based || entry.gone) {
-      return based;
-    }
     final patched = entry.patchedLevels;
     final below = entry.levels - 1 - patched;
     final deepest = below > 0 ? await _deepestPatchedLevel(entry, batch) : null;
@@ -461,13 +460,22 @@ class FramePictureStore<K extends Object> {
     ]);
     deepest?.dispose();
     final image = run.image;
-    if (image == null) {
-      return true;
-    }
     try {
-      return entry.gone || await _gpu.writeLevels(held, image, run.spans);
+      return entry.gone ||
+          await _gpu.write(
+            entry.held!,
+            [
+              for (final patch in batch)
+                (
+                  source: patch.image,
+                  x: _xOf(picture, patch.rect),
+                  y: _yOf(picture, patch.rect),
+                ),
+            ],
+            image == null ? null : (run: image, spans: run.spans),
+          );
     } finally {
-      image.dispose();
+      image?.dispose();
     }
   }
 
@@ -515,7 +523,7 @@ class FramePictureStore<K extends Object> {
   /// The halvings 1 to `count` of each of [sources], their texels end to
   /// end, row after row, wrapping at [_runWidth] — as one copy out of the
   /// GPU gives them back and as a level is written from it, row after row
-  /// ([FramePictureGpu.writeLevels]) — in one raster ([_readAt]); with the
+  /// ([FramePictureGpu.write]) — in one raster ([_readAt]); with the
   /// [RunSpan] that lays each halving where its source lies, at `level`
   /// and (`x`, `y`), halved. No image where there is no halving at all.
   /// Exact where the sides halve evenly; under that, the GPU's own reading

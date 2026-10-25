@@ -192,11 +192,7 @@ class WritesNeverLand extends RendersHeld {
   }
 
   @override
-  Future<bool> writeBase(Object held, List<BaseWrite> writes) =>
-      Completer<bool>().future;
-
-  @override
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) =>
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
       Completer<bool>().future;
 }
 
@@ -215,12 +211,8 @@ class WritesLand extends RendersHeld {
   int levelsOf(Object held) => _gpu.levelsOf(held);
 
   @override
-  Future<bool> writeBase(Object held, List<BaseWrite> writes) =>
-      _gpu.writeBase(held, writes);
-
-  @override
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) =>
-      _gpu.writeLevels(held, run, spans);
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
+      _gpu.write(held, base, levels);
 }
 
 /// Why this runner cannot write into a frame's picture, or null when it can.

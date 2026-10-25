@@ -1519,11 +1519,7 @@ class _RastersInTurn implements FramePictureGpu {
   int levelsOf(Object held) => 1;
 
   @override
-  Future<bool> writeBase(Object held, List<BaseWrite> writes) =>
-      throw UnsupportedError('holds no texture');
-
-  @override
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) =>
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
       throw UnsupportedError('holds no texture');
 }
 

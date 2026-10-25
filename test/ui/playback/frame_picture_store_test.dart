@@ -70,12 +70,15 @@ void main() {
       final laid = store.lay('b', over(picture.extent));
       expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
       expect(gpu.bases.single.map(_baseDescribed), [(0, 8, 8, 8, 8)]);
-      gpu.releaseWrite();
-      expect(await pollUntil(() => gpu.levelWrites.isNotEmpty), isTrue);
+      expect(
+        gpu.levelWrites,
+        hasLength(1),
+        reason: 'the base and the levels under it in one write',
+      );
       expect(
         store.peek('a'),
         same(picture),
-        reason: 'the base is in, the levels under it are not',
+        reason: 'the write is on its way, not done',
       );
       expect(store.peek('b'), isNull);
       gpu.releaseWrite();
@@ -183,7 +186,7 @@ void main() {
     });
 
     test('that render while a batch is written go in together, the base '
-        'and the levels under it in one write each', () async {
+        'and the levels under it in one write', () async {
       final gpu = _RecordingGpu()..holdWrites = true;
       final store = FramePictureStore<String>(gpu: gpu);
       await _layed(store, 'a', 1024);
@@ -405,29 +408,8 @@ void main() {
       store.dispose();
     });
 
-    test('of a picture let go while its base is written is never read for '
-        'the levels under it, nor written there', () async {
-      final gpu = _RecordingGpu()..holdWrites = true;
-      final store = FramePictureStore<String>(gpu: gpu);
-      await _layed(store, 'a', 1024);
-      store.patch(
-        from: 'a',
-        to: 'a',
-        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
-        draw: fill,
-      );
-      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
-      final rendered = gpu.rendered.length;
-      store.dispose();
-      gpu.releaseWrite();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await pumpEventQueue();
-      expect(gpu.levelWrites, isEmpty);
-      expect(gpu.rendered, hasLength(rendered));
-    });
-
-    test('of a picture let go while its levels are drawn is not written '
-        'there', () async {
+    test('of a picture let go while the levels under its base are drawn is '
+        'not written at all', () async {
       final gpu = _RecordingGpu();
       final store = FramePictureStore<String>(gpu: gpu);
       await _layed(store, 'a', 1024);
@@ -444,9 +426,8 @@ void main() {
       expect(
         await pollUntil(() => gpu.recorded.length == asked + 2),
         isTrue,
-        reason: '⛔premise: its base is written, a level under it drawn',
+        reason: '⛔premise: a level under its base drawn',
       );
-      expect(gpu.bases, hasLength(1));
       store.dispose();
       for (var render = 0; render < 2; render += 1) {
         gpu.releaseRender();
@@ -454,7 +435,7 @@ void main() {
         await pumpEventQueue();
       }
       expect(gpu.recorded, hasLength(asked + 3), reason: '⛔premise: its run');
-      expect(gpu.levelWrites, isEmpty);
+      expect(gpu.bases, isEmpty);
     });
 
     test('or move still on its way when its picture is let go answers once '
@@ -651,15 +632,12 @@ class _RecordingGpu implements FramePictureGpu {
   }
 
   @override
-  Future<bool> writeBase(Object held, List<BaseWrite> writes) {
-    bases.add(writes);
-    return _written();
-  }
-
-  @override
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) {
-    levelWrites.add((run: (run.width, run.height), spans: spans));
-    runs.add(run.toByteData());
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
+    bases.add(base);
+    if (levels case (:final run, :final spans)) {
+      levelWrites.add((run: (run.width, run.height), spans: spans));
+      runs.add(run.toByteData());
+    }
     return _written();
   }
 

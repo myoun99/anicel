@@ -12,6 +12,10 @@ typedef BaseWrite = ({ui.Image source, int x, int y});
 /// ([x], [y]) of that level.
 typedef RunSpan = ({int start, int width, int height, int x, int y, int level});
 
+/// The writes into a frame picture's levels under the base: [run]'s texels
+/// copied out of the GPU once, each of [spans] laid from them.
+typedef LevelWrites = ({ui.Image run, List<RunSpan> spans});
+
 /// What a [FramePictureStore] asks of the GPU — the one seam between its
 /// logic and `flutter_gpu`, so the logic is proven on any runner and the
 /// writes on one with Impeller ([FlutterGpuFramePictures]).
@@ -30,14 +34,11 @@ abstract interface class FramePictureGpu {
   /// to one texel.
   int levelsOf(Object held);
 
-  /// Lays [writes] into [held]'s base level, in order, and answers once the
-  /// GPU has done them — after which every draw of the image sees them.
-  Future<bool> writeBase(Object held, List<BaseWrite> writes);
-
-  /// Copies [run]'s texels out of the GPU once and lays each of [spans]
-  /// from them into [held]'s levels, in order; answers once the GPU has
-  /// done them.
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans);
+  /// Lays [base] into [held]'s base level and then [levels] into the
+  /// levels under it, each in order, in ONE submission, and answers once
+  /// the GPU has done them all — after which every draw of the image sees
+  /// them.
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels);
 }
 
 /// [FramePictureGpu] on `flutter_gpu`.
@@ -68,36 +69,40 @@ class FlutterGpuFramePictures implements FramePictureGpu {
   int levelsOf(Object held) => (held as gpu.Texture).mipLevelCount;
 
   @override
-  Future<bool> writeBase(Object held, List<BaseWrite> writes) {
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
     final target = held as gpu.Texture;
     final context = gpu.gpuContext;
     final commands = context.createCommandBuffer();
-    for (final (:source, :x, :y) in writes) {
+    for (final (:source, :x, :y) in base) {
       commands.copyTextureToTexture(
         gpu.TextureRegion(gpu.Texture.fromImage(context, source)),
         gpu.TextureDestinationRegion(target, x: x, y: y),
       );
     }
+    if (levels != null) {
+      _writeLevels(context, commands, target, levels);
+    }
     return _submitted(commands);
   }
 
-  @override
-  Future<bool> writeLevels(Object held, ui.Image run, List<RunSpan> spans) {
-    final target = held as gpu.Texture;
-    final context = gpu.gpuContext;
-    final source = gpu.Texture.fromImage(context, run);
+  static void _writeLevels(
+    gpu.GpuContext context,
+    gpu.CommandBuffer commands,
+    gpu.Texture target,
+    LevelWrites levels,
+  ) {
+    final source = gpu.Texture.fromImage(context, levels.run);
     final bytes = source.getMipLevelSizeInBytes(0);
     final perTexel = bytes ~/ (source.width * source.height);
     final buffer = context.createDeviceBuffer(
       gpu.StorageMode.devicePrivate,
       bytes,
     );
-    final commands = context.createCommandBuffer()
-      ..copyTextureToBuffer(
-        gpu.TextureRegion(source),
-        gpu.BufferView(buffer, offsetInBytes: 0, lengthInBytes: bytes),
-      );
-    for (final (:start, :width, :height, :x, :y, :level) in spans) {
+    commands.copyTextureToBuffer(
+      gpu.TextureRegion(source),
+      gpu.BufferView(buffer, offsetInBytes: 0, lengthInBytes: bytes),
+    );
+    for (final (:start, :width, :height, :x, :y, :level) in levels.spans) {
       commands.copyBufferToTexture(
         gpu.BufferView(
           buffer,
@@ -114,7 +119,6 @@ class FlutterGpuFramePictures implements FramePictureGpu {
         ),
       );
     }
-    return _submitted(commands);
   }
 
   static Future<bool> _submitted(gpu.CommandBuffer commands) {
