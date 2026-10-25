@@ -192,7 +192,7 @@ String? resolveInGroupHeadLane({
 /// the anchor lane's index and the index of the row [rowDelta] away,
 /// clamped to the ends and stepped back toward the anchor over
 /// address-less rows (the storyboard's audio strip takes space but cannot
-/// be a head — the [_railRowAtCrossOffset] rule). Null when the delta is
+/// be a head — the rail's `_sweptOver` rule). Null when the delta is
 /// zero, the list is empty, or the anchor lane is not drawn.
 ({int anchorIndex, int headIndex})? _laneDragHeadIndex(
   List<TimelineRowAddress?> rows,
@@ -233,7 +233,7 @@ List<String> laneBoxLanesOf(List<LaneRowAddress> rows) => [
 /// [TimelineDisplayRow]s: the storyboard rail holds a TRACK row (no Layer
 /// to wrap) and an address-less audio strip (null — it takes space but
 /// cannot be a head; the walk steps back toward the anchor over it, the
-/// [_railRowAtCrossOffset] rule).
+/// rail's `_sweptOver` rule).
 ({TimelineRowAddress head, List<TimelineRowAddress> spanRows})?
 resolveLaneSpanEscalationOverAddresses({
   required List<TimelineRowAddress?> rows,

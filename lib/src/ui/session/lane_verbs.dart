@@ -2303,10 +2303,11 @@ class LaneVerbs {
     frameIsGlobal: false,
   );
 
-  /// 🚨H20 — the LANES a move of the cut's [band] carries: its lane rows as
+  /// 🚨H20 — the LANES a move of the live band carries: its lane rows as
   /// the one Delete reads them ([bandLanesToDelete]) — the camera row, its
   /// transform header, among them — on the row a lane verb resolves, each
-  /// carrying what a drag on those lanes would ([laneIdsAMoveCarries]).
+  /// carrying what a drag on those lanes would ([laneIdsAMoveCarries]). The
+  /// cut's band and the storyboard's track band alike ([_bandLaneSpans]).
   ///
   /// 유저 (2026-08-23): 「fx랑 블록이랑 같이 움직이게할거면 둘다 유저가
   /// 선택하게 할거니까 … 선택한 곳만 움직이게하라고」 — and 08-12's 「선택 객체
@@ -2314,8 +2315,8 @@ class LaneVerbs {
   /// ↩️A band moved only its blocks, and the camera's keys by a resolver of
   /// their own: a band over a layer and its lanes left the keys behind, and
   /// a lane pressed inside it moved the keys alone.
-  List<BandLane> bandLanesRiding(TimelineFrameRangeSelection band) => [
-    for (final span in _laneSpansOfCutBand(band))
+  List<BandLane> bandLanesRiding() => [
+    for (final span in _bandLaneSpans())
       if (laneVerbLayerFor(span.layerId) case final row?
           when !isAttachedLayer(row))
         if (laneIdsAMoveCarries(

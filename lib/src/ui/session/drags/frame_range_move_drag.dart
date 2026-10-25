@@ -214,6 +214,10 @@ int _commitOffsetFor(
 /// ([TimelineRowAddress.blockLayerId]); a lane row holds its keys, never
 /// its layer's sounds (유저 H20: 「선택한 곳만 움직이게하라고」). The anchor
 /// is the drag's own row when that is one of them, else the first of them.
+/// A band whose rows hold no block — the V row's cuts and its lanes — keeps
+/// its rows and names the layer of the first lane: its lanes are what a
+/// move of it carries ([LaneVerbs.bandLanesRiding]), as the cut's band of
+/// lanes alone does.
 TimelineFrameRangeSelection? _spanOfTrackSelection(
   TrackFrameRangeSelection? live,
 ) {
@@ -227,7 +231,17 @@ TimelineFrameRangeSelection? _spanOfTrackSelection(
   ];
   final anchorLayerId = live.anchorRow.blockLayerId;
   if (blockIds.isEmpty) {
-    return null;
+    final lanesOf = [
+      for (final row in live.spanRows) ?row.owningLayerId,
+    ].firstOrNull;
+    return lanesOf == null
+        ? null
+        : TimelineFrameRangeSelection(
+            layerId: lanesOf,
+            startIndex: live.startFrame,
+            endIndexExclusive: live.endFrameExclusive,
+            rows: live.spanRows,
+          );
   }
   return TimelineFrameRangeSelection(
     layerId: blockIds.contains(anchorLayerId) ? anchorLayerId! : blockIds.first,
@@ -519,7 +533,10 @@ class FrameRangeMoveDrag {
       project: roles.project,
       transitions: roles.transitions,
     );
-    if (sources.isEmpty && transitionRiders.isEmpty) {
+    // H20: the band's lanes ride here as on the cut's axis — and a band
+    // that moves no block still moves them.
+    final lanes = roles.laneVerbs.bandLanesRiding();
+    if (sources.isEmpty && transitionRiders.isEmpty && lanes.isEmpty) {
       return null;
     }
     final span = _spanOfTrackSelection(live);
@@ -533,7 +550,7 @@ class FrameRangeMoveDrag {
       grabLayerId: grabLayerId,
       singleRow: null,
       multiSources: sources,
-      laneRiders: const [],
+      laneRiders: lanes,
       blockRiders: null,
       transitionRiders: transitionRiders,
     );
@@ -562,7 +579,7 @@ class FrameRangeMoveDrag {
       return null;
     }
     final keys = _keySourcesOf(span, roles, rangeSelections);
-    final lanes = roles.laneVerbs.bandLanesRiding(span);
+    final lanes = roles.laneVerbs.bandLanesRiding();
     final singleRowId = _singleRowOf(span, keys, roles.project);
     final multiSource = singleRowId == null;
     final subjects =

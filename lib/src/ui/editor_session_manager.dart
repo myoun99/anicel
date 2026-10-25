@@ -1063,11 +1063,13 @@ class EditorSessionManager extends ChangeNotifier
     required int headGlobalFrame,
     TrackId? trackId,
     TimelineRowAddress? headRow,
+    List<TimelineRowAddress> spanRows = const [],
   }) => rangeSelections.updateStoryboardCutSelectionByFrame(
     anchorGlobalFrame: anchorGlobalFrame,
     headGlobalFrame: headGlobalFrame,
     trackId: trackId,
     headRow: headRow,
+    spanRows: spanRows,
   );
   @override
   void clearStoryboardCutSelection() =>

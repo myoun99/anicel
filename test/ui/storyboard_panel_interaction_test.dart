@@ -433,6 +433,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 dragSteps.add((trackId, anchorGlobalFrame, headGlobalFrame));
               },
@@ -506,6 +507,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 heads.add(headRow);
               },
@@ -560,6 +562,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -626,6 +629,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) => selectDrags += 1,
           onClear: () => selection.value = null,
         ),
@@ -700,6 +704,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {},
           onClear: () {
             clears += 1;
@@ -747,6 +752,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {},
           onClear: () => selection.value = null,
         ),
@@ -1787,6 +1793,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -1851,6 +1858,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {
                 cutDrags.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -1936,6 +1944,7 @@ void main() {
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
                 TimelineRowAddress? headRow,
+                List<TimelineRowAddress> spanRows = const [],
               }) {},
           onClear: () => selection.value = null,
         ),

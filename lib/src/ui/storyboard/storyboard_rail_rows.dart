@@ -307,6 +307,25 @@ class _StoryboardRailRows {
         TimelineDisplayRow.layer(layer, layerIndex: slot),
   ];
 
+  /// The rows a band's move on [track]'s S rows walks: [_seRowsInDisplayOrder]
+  /// with the lanes the rail draws under each — a lane lands its band on its
+  /// own S row ([resolveBlockMoveTargetLayer]), so the walk still crosses no
+  /// row whose blocks are not sounds.
+  ///
+  /// 🚨H20: a band pressed on a LANE counts its row steps from that lane, as
+  /// the timeline's does, so the lanes are rows of the walk. The S row a band
+  /// is pressed on counts them too: they are rows the pointer crosses.
+  List<TimelineDisplayRow> _seMoveRows(Track track) {
+    final seIds = {
+      for (final row in _seRowsInDisplayOrder(track)) row.layer.id,
+    };
+    return [
+      for (final slot in _trackGroupRowGeometry(track))
+        if (slot.display case final row? when seIds.contains(row.layer.id))
+          row,
+    ];
+  }
+
   /// The S slots the rail SHOWS for [track], top slot first — the order the
   /// rail draws them (slot 0 sits just above the V row) — with the legend's
   /// filter applied ([_filterAllowsSeRow]).
@@ -1631,7 +1650,10 @@ class _StoryboardRailRows {
   /// The group's rows in VISUAL order with their heights — mirrored from
   /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
   /// row kind must land in both, or the band drifts off its rows.
-  /// R9 #25 — the rail row a select-drag's pointer is over.
+  /// R9 #25 — what a select-drag pressed on [anchorRow] has swept: the
+  /// rail row its pointer is over, and every row from the anchor's to it
+  /// in the order this rail DRAWS them, lanes and all — the slice the
+  /// timeline's grids hand over ([resolveSelectionSpanOverAddresses]).
   ///
   /// [crossOffset] is the pointer's cross-axis distance from the ANCHOR
   /// row's top (negative above it), handed up raw by the shared gesture.
@@ -1643,31 +1665,60 @@ class _StoryboardRailRows {
   /// V row 28–160, audio 36, transform 26), which is why the old scalar
   /// "offset ÷ my own height" worked everywhere else and failed here.
   ///
+  /// 🚨H20 (유저 2026-08-23: 「둘다 유저가 선택하게」): a lane is a row a
+  /// span ends on and holds, as on the timeline. ↩️The head skipped the
+  /// lane strips and the session cut the span out of its own rows, which
+  /// name no lane: a sweep from an S row's cells down its lanes held the
+  /// S row alone, and a press on a lane it seemed to cover started a
+  /// selection of its own (conte-sweep-leaves-the-lanes-out, 🧪10-25).
+  ///
   /// 🚨Asked at the drag, of the track [trackId] names as the panel holds
   /// it THEN ([_trackNamed]): a kept row drags with the lookup it was
   /// built with.
-  TimelineRowAddress? _railRowAtCrossOffset({
-    required TrackId trackId,
-    required TimelineRowAddress anchorRow,
-    required double crossOffset,
-  }) {
+  _RailSweepAt _railSweepOn(TrackId trackId) => (anchorRow, crossOffset) {
     final track = _trackNamed(trackId);
     if (track == null) {
       return null;
     }
     final geometry = _trackGroupRowGeometry(track);
-    final rows = [for (final slot in geometry) slot.row];
-    final anchorIndex = rows.indexOf(anchorRow);
-    if (anchorIndex < 0) {
+    // An Audio strip takes up space but cannot BE a selection head.
+    final swept = _sweptOver(
+      [for (final slot in geometry) slot.row ?? slot.laneRow],
+      [for (final slot in geometry) slot.height],
+      anchor: anchorRow,
+      crossOffset: crossOffset,
+    );
+    if (swept == null) {
       return null;
     }
-    // Audio and lane strips take up space but cannot BE a selection head.
-    return rows[_addressedRowAt(
-      rows,
-      [for (final slot in geometry) slot.height],
-      anchorIndex: anchorIndex,
-      crossOffset: crossOffset,
-    )];
+    return (
+      head: swept.head,
+      spanRows: resolveSelectionSpanOverAddresses(
+        rows: swept.rows,
+        anchor: anchorRow,
+        rowDelta: swept.rowDelta,
+      ),
+    );
+  };
+
+  /// The track band's bundle on [lane] of [track] — the S rows' cells' own
+  /// ([_storyboardBandCallbacks]), handed to the lane's strip as its band:
+  /// a press inside the band on a lane is the band's move (H20). Null where
+  /// this rail selects no band.
+  TimelineRangeGestureCallbacks? _bandOnLane(
+    Track track,
+    LaneRowAddress lane,
+  ) {
+    final select = _state.widget.seSelect;
+    return select == null
+        ? null
+        : _storyboardBandCallbacks(
+            layerId: lane.layerId,
+            laneId: lane.laneId,
+            select: select,
+            railSweepAt: _railSweepOn(track.id),
+            rows: _seMoveRows(track),
+          );
   }
 
   /// The ROW SELECTION over this rail, as the timeline's rail draws it —
@@ -1715,26 +1766,21 @@ class _StoryboardRailRows {
   /// ([_trackGroupRowGeometry]): a row here is as tall as its kind, so the
   /// pressed row's own height cannot count the rest (F-322). A slot nobody
   /// stands on — the Audio lane, an S slot with no layer — hands the span on
-  /// to the nearest row toward the anchor, as [_railRowAtCrossOffset] does.
+  /// to the nearest row toward the anchor, as the cells' sweep does
+  /// ([_sweptOver]).
   int Function(double offset) selectRowDeltaFrom(TimelineRowAddress anchor) =>
       (offset) {
         final slots = [
           for (final track in _state.widget.project.tracks)
             ..._trackGroupRowGeometry(track),
         ];
-        final addresses = [for (final slot in slots) _standingAddressOf(slot)];
-        final anchorAt = addresses.indexOf(anchor);
-        if (anchorAt < 0) {
-          return 0;
-        }
-        final head = addresses[_addressedRowAt(
-          addresses,
-          [for (final slot in slots) slot.height],
-          anchorIndex: anchorAt,
-          crossOffset: offset,
-        )];
-        final rows = addresses.nonNulls.toList();
-        return rows.indexOf(head!) - rows.indexOf(anchor);
+        return _sweptOver(
+              [for (final slot in slots) _standingAddressOf(slot)],
+              [for (final slot in slots) slot.height],
+              anchor: anchor,
+              crossOffset: offset,
+            )?.rowDelta ??
+            0;
       };
 
   /// Where a pointer [offset] from the top of [anchor]'s label stands, in
@@ -1821,15 +1867,20 @@ class _StoryboardRailRows {
   /// on them began on ([_laneSweepOver]), and the sweep stays in their
   /// group — it names one cut's layer in the cut's own frames, which no
   /// row of the track's axis shares.
+  ///
+  /// [band] is the track band's bundle on the ONE lane the strip draws
+  /// ([_bandOnLane]), as the timeline's grids hand theirs (H20).
   TimelineLaneRangeCallbacks? _laneGestureCallbacksFor(
     Track track, {
     LayerId? projection,
+    TimelineRangeGestureCallbacks? band,
   }) {
     final host = _state.widget.laneRange;
     if (host == null) {
       return null;
     }
     return TimelineLaneRangeCallbacks(
+      band: band,
       selection: host.selection,
       onSelectUpdate:
           (layerId, laneId, anchorIndex, headIndex, headCrossOffset) {
@@ -2730,11 +2781,7 @@ class _StoryboardRailRows {
           standingCutId: _state._standing.standingCutOn(track),
           windowBucket: _state._horizontalWindowBucket,
           viewportWidth: _state._stripViewportWidth,
-          railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-            trackId: track.id,
-            anchorRow: anchorRow,
-            crossOffset: crossOffset,
-          ),
+          railSweepAt: _railSweepOn(track.id),
           showSeconds: _state.widget.showSeconds,
           projectFrameRate: _state.widget.projectFrameRate,
           linkedCutIds: _state.widget.linkedCutIds,
@@ -2939,15 +2986,11 @@ class _StoryboardRailRows {
     double width,
     TimelineScale scale,
   ) {
-    final seRowsInDisplayOrder = _seRowsInDisplayOrder(track);
+    final moveRows = _seMoveRows(track);
     final heights = _state._rowHeights;
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
-      railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
-        trackId: track.id,
-        anchorRow: anchorRow,
-        crossOffset: crossOffset,
-      ),
-      seRowsInDisplayOrder: seRowsInDisplayOrder,
+      railSweepAt: _railSweepOn(track.id),
+      moveRows: moveRows,
       trackIndex: index,
       slot: slot,
       layer: layer,
@@ -3051,7 +3094,13 @@ class _StoryboardRailRows {
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
           laneEdit: laneEdit,
-          laneRange: laneRange,
+          laneRange: _laneGestureCallbacksFor(
+            track,
+            band: _bandOnLane(
+              track,
+              LaneRowAddress(carrier.id, row.lane!.laneId),
+            ),
+          ),
         ),
       ),
     ));
@@ -3134,7 +3183,10 @@ class _StoryboardRailRows {
           height: height,
           timelineScale: scale,
           projectFrameRate: _state.widget.projectFrameRate,
-          laneRange: laneRange,
+          laneRange: _laneGestureCallbacksFor(
+            track,
+            band: _bandOnLane(track, LaneRowAddress(layer.id, lane.laneId)),
+          ),
           audioLane: _state.widget.audioLane,
           audioPeaksFor: _state.widget.audioPeaksFor,
         ),
@@ -3206,26 +3258,38 @@ final class _TrackStrip {
   int get hashCode => Object.hashAll(entries);
 }
 
-/// The row a pointer [crossOffset] from the top of [anchorIndex]'s row
-/// stands over, in a table of rows [heights] tall — walked back toward the
-/// anchor past rows [addresses] names none for (an Audio lane, a strip that
-/// cannot be a span's head), so a drag that ends on one reaches as far as it
-/// legibly can rather than collapsing to nothing. The anchor's own row is
-/// always named.
-int _addressedRowAt(
+/// Where a sweep pressed on [anchor] has reached, the pointer [crossOffset]
+/// from the top of its row, in a table of rows [heights] tall: the row it
+/// stands over ([head]) — walked back toward the anchor past rows
+/// [addresses] names none for (an Audio lane, a slot nobody stands on), so
+/// a drag that ends on one reaches as far as it legibly can rather than
+/// collapsing to nothing — and how many of the NAMED rows ([rows]) lie
+/// from the anchor's to it. Null when the anchor is not in the table.
+({List<TimelineRowAddress> rows, TimelineRowAddress head, int rowDelta})?
+_sweptOver(
   List<TimelineRowAddress?> addresses,
   List<double> heights, {
-  required int anchorIndex,
+  required TimelineRowAddress anchor,
   required double crossOffset,
 }) {
-  var head = rowIndexForCrossOffset(
+  final anchorIndex = addresses.indexOf(anchor);
+  if (anchorIndex < 0) {
+    return null;
+  }
+  var at = rowIndexForCrossOffset(
     crossOffset: crossOffset,
     anchorIndex: anchorIndex,
     heights: heights,
   );
-  final towardAnchor = head >= anchorIndex ? -1 : 1;
-  while (head != anchorIndex && addresses[head] == null) {
-    head += towardAnchor;
+  final towardAnchor = at >= anchorIndex ? -1 : 1;
+  while (at != anchorIndex && addresses[at] == null) {
+    at += towardAnchor;
   }
-  return head;
+  final head = addresses[at]!;
+  final rows = addresses.nonNulls.toList();
+  return (
+    rows: rows,
+    head: head,
+    rowDelta: rows.indexOf(head) - rows.indexOf(anchor),
+  );
 }

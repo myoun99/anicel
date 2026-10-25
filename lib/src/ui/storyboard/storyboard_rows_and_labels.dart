@@ -971,12 +971,7 @@ class _StoryboardRowsAndLabels {
       onEditSpan: _state.widget.onEditTransitionSpan,
       // The SE rows' selection bundle, unchanged: one rail, one range verb.
       select: _state.widget.seSelect,
-      railRowAt: (anchorRow, crossOffset) =>
-          _state._railRows._railRowAtCrossOffset(
-            trackId: track.id,
-            anchorRow: anchorRow,
-            crossOffset: crossOffset,
-          ),
+      railSweepAt: _state._railRows._railSweepOn(track.id),
     );
     // The SE strips' gate, as is: a grip or a move publishes the row's two
     // forms on the one channel, and this strip — the track axis — draws the

@@ -398,6 +398,7 @@ class RangeSelections {
     required int headGlobalFrame,
     TrackId? trackId,
     TimelineRowAddress? headRow,
+    List<TimelineRowAddress> spanRows = const [],
   }) {
     final row = trackId ?? _selection.selectedTrackId;
     updateTrackRangeSelection(
@@ -406,6 +407,7 @@ class RangeSelections {
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
       headRow: headRow,
+      spanRows: spanRows,
     );
   }
 
@@ -428,10 +430,10 @@ class RangeSelections {
     final anchorIndex = railRows.indexOf(anchorRow);
     final List<TimelineRowAddress> spanned;
     if (spanRows.isNotEmpty) {
-      // C②: the escalated lane-anchor form — the span IS the display
-      // slice the panel handed over (lane rows included; the session's
-      // model-only rail list cannot name them, the same reason the
-      // timeline's spanRows channel exists).
+      // The span IS the display slice the panel handed over — every drag
+      // the rail makes, from a lane (C②) or from a row's cells (H20) —
+      // lane rows included: the session's model-only rail list cannot
+      // name them, the same reason the timeline's spanRows channel exists.
       spanned = spanRows;
     } else if (anchorIndex < 0 || railRows.length < 2) {
       spanned = [anchorRow];

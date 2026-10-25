@@ -1071,9 +1071,12 @@ class Standing {
         // panel became the row the OTHER panel came back to. The timeline's
         // lanes stand through [_standOnTimelineLane] now; this is the rail's.
         //
-        // R5 #12: the CELL range goes. ⚠️The timeline's lanes stopped
-        // dropping it here once a band could hold them ([_standOnTimelineLane],
-        // H20); the rail's band holds no lane row yet.
+        // R5 #12: the CELL range goes — the CUT's band; the rail's own is
+        // the track's, which holds its lanes (H20) and is not touched here.
+        // ⚠️The timeline's lanes stopped dropping it once a band could hold
+        // them ([_standOnTimelineLane]). The rail's still drop it: the
+        // camera row's press stands through here without [standOnRow]'s T10
+        // guard (the host's `_pressCameraCut`), so this is its one drop.
         _selection.clearFrameRangeSelection();
         if (storeStoryboardRow(row)) {
           _changes.notifyChanged();
