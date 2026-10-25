@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -10,6 +12,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show createTrackTransitionLayer, transitionLayerIdForTrack;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -57,9 +61,14 @@ void main() {
     layers: [conte],
   );
 
-  /// Cuts `a` and `b`, each with a conte shown as [conteShown] says, and an
-  /// S row with one block, shown as [seShown] says.
-  Project film({bool conteShown = true, bool seShown = true}) => Project(
+  /// Cuts `a` and `b`, each with a conte shown as [conteShown] says, an S
+  /// row with one block, shown as [seShown] says, and an O.L on the
+  /// transition row, shown as [transitionShown] says.
+  Project film({
+    bool conteShown = true,
+    bool seShown = true,
+    bool transitionShown = true,
+  }) => Project(
     id: const ProjectId('eyes'),
     name: 'Eyes',
     createdAt: DateTime.utc(2026, 10, 25),
@@ -67,6 +76,12 @@ void main() {
       Track(
         id: trackId,
         name: 'V1',
+        transitionLayer: createTrackTransitionLayer(trackId).copyWith(
+          isVisible: transitionShown,
+          instructions: const {
+            8: InstructionEvent(instructionId: 'ol', length: 5),
+          },
+        ),
         seLayers: [
           Layer(
             id: const LayerId('s1'),
@@ -117,18 +132,11 @@ void main() {
           reason: '@$frame — cut ${frame < 12 ? 'a' : 'b'}',
         );
       }
-      final labels =
-          tester
-                  .widget<CustomPaint>(
-                    find.byKey(
-                      ValueKey<String>(
-                        'storyboard-run-labels-${trackConteRowId(trackId)}',
-                      ),
-                    ),
-                  )
-                  .foregroundPainter!
-              as TimelineRowRunLabelsPainter;
-      expect(labels.shown, conteShown, reason: 'its numbers, as its blocks');
+      expect(
+        runLabels(tester, '${trackConteRowId(trackId)}').shown,
+        conteShown,
+        reason: 'its numbers, as its blocks',
+      );
     });
   }
 
@@ -147,6 +155,46 @@ void main() {
         tester.widget<SePaperSpan>(span).paper,
         seShown ? label : off(label, under: ground),
       );
+      expect(
+        runLabels(tester, 's1').shown,
+        seShown,
+        reason: 'its numbers, as its blocks',
+      );
+    });
+  }
+
+  for (final transitionShown in [true, false]) {
+    testWidgets('the transition row\'s paper is its colour label in its '
+        'look — ${transitionShown ? 'shown' : 'hidden'}', (tester) async {
+      await pumpStoryboardHost(tester, film(transitionShown: transitionShown));
+
+      final row = transitionLayerIdForTrack(trackId);
+      final span = find.descendant(
+        of: find.byKey(
+          ValueKey<String>('storyboard-transition-paper-$row-8'),
+        ),
+        matching: find.byType(SePaperSpan),
+      );
+      final label = layerMarkColor(createTrackTransitionLayer(trackId).mark);
+      final ground = TimelineGridLaw.maybeOf(tester.element(span))?.ground;
+      expect(
+        tester.widget<SePaperSpan>(span).paper,
+        transitionShown ? label : off(label, under: ground),
+      );
+      expect(
+        runLabels(tester, '$row').shown,
+        transitionShown,
+        reason: 'its numbers, as its blocks',
+      );
     });
   }
 }
+
+/// The painter that numbers row [rowId]'s blocks in the conte panel.
+TimelineRowRunLabelsPainter runLabels(WidgetTester tester, String rowId) =>
+    tester
+            .widget<CustomPaint>(
+              find.byKey(ValueKey<String>('storyboard-run-labels-$rowId')),
+            )
+            .foregroundPainter!
+        as TimelineRowRunLabelsPainter;

@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/rail_eyes.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -170,6 +171,22 @@ void main() {
     );
     expect(eye.icon, Icons.visibility);
     expect(eye.iconColor?.a, closeTo(AppColors.offAlpha, 0.001));
+    // Its blocks wear it too (I-129: 「레이어 비지블 껐을때, 블록도 그걸
+    // 표시하고싶음」).
+    final blocks = tester.widgetList<CustomPaint>(
+      find.descendant(
+        of: overlay,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint &&
+              widget.painter is TimelineRowCellsPainter,
+        ),
+      ),
+    );
+    expect(blocks, isNotEmpty, reason: 'CONTROL: the folded row has blocks');
+    for (final row in blocks) {
+      expect((row.painter! as TimelineRowCellsPainter).shown, isFalse);
+    }
   });
 
   for (final orientation in TimelineOrientation.values) {
