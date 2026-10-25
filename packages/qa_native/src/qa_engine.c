@@ -5494,8 +5494,9 @@ static void qa_resample_rows(
         // Sample, count, and if the count came back TIED, sample again at
         // twice the rate. A tie is nearly always the grid's fault rather
         // than the geometry's; only tied pixels pay for the refinement,
-        // and a tie that survives the cap is a real one and falls through
-        // to the token met first. See the Dart reference.
+        // and a tie that survives the cap falls through to the token met
+        // first - not because it is an exact half (traced, they were
+        // 55/45). See the Dart reference.
         int32_t nx = samples_x;
         int32_t ny = samples_y;
         int32_t slots = 0;

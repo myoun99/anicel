@@ -854,11 +854,11 @@ void resampleRgbaReferenceInto({
         // art is a fraction of one edge, and the whole sweep says one
         // doubling is all of it — see [kResampleRefineLimit].
         //
-        // Ties that survive the cap are the real ones — a feature covering
-        // EXACTLY half, where no sample count will separate the two — and
-        // those fall through to the token met first, in a fixed scan
-        // order, which is what keeps the result identical on every
-        // platform and at every worker count.
+        // A tie that survives the cap falls through to the token met first,
+        // in a fixed scan order, which is what keeps the result identical
+        // on every platform and at every worker count. ⚠️Not because it is
+        // an exact half: traced, the surviving ties were 55/45
+        // ([kResampleRefineLimit]).
         var nx = samplesX;
         var ny = samplesY;
         var slots = 0;
