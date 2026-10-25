@@ -319,6 +319,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   @override
   Widget buildKept(BuildContext context) {
     final shown = trackConteRowShown(trackId, layoutEntries, seat: seat);
+    final headShown = _headShown();
     final stripGesture = _stripGesture();
     final stripEdges = this.stripEdges;
     final stripSelect = this.stripSelect;
@@ -332,10 +333,15 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
       height: height,
       child: Stack(
         children: [
-          _cells(context, shown),
+          _cells(context, shown, headShown: headShown),
           // Each panel's length at its end — the timeline row's own print
           // (F-228), over the paper and under everything that answers.
-          _runLabels(context, shown),
+          _runLabels(
+            context,
+            shown,
+            shown: headShown,
+            celContent: _celContent(shown),
+          ),
           // Where each cut begins — the projection rows' dashed line, the
           // camera row's own ([StoryboardCutStartsPainter]).
           _StoryboardCutStarts(
@@ -400,7 +406,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
   /// first cell of every empty run (the timesheet's X), and here a stretch
   /// with no block is not an empty drawing — it is a cut with no conte
   /// layer, which wears its button, or a gap, where there is no cut at all.
-  Widget _cells(BuildContext context, Layer shown) {
+  Widget _cells(BuildContext context, Layer shown, {required bool headShown}) {
     // I-44: the HOST's ground and lines, stated once by its law — as the
     // timeline's rows read them.
     final law = TimelineGridLaw.maybeOf(context);
@@ -428,6 +434,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               blockFrameLines: law?.blockFrameLines ?? false,
               framesPerSecond: law?.framesPerSecond ?? 0,
               celContent: _celContent(shown),
+              shown: headShown,
               // Baked as the timeline's rows are, in a world no live cut
               // moves (TimelineTileRasterSource.followsTheLiveCut).
               tileStore: TimelineGridTileStore.instance,
@@ -440,6 +447,21 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
         ),
       ),
     );
+  }
+
+  /// Whether the row's eye shows its blocks (I-129): its HEAD's, as the
+  /// folders of the head's cut gate it ([railEyesOf]) — the row wears its
+  /// head's eye as it wears its head's colour label ([trackConteRowShown]).
+  /// One eye answers for every cut's blocks because a track's conte lays
+  /// ONE head on its row in every cut, the eye with it ([ConteHead], F-343
+  /// — 유저 2026-10-08: 「이거만 눈이랑 불투명도조차 링크하도록. 그거마저
+  /// 머리로서 하나로되도록 통일」).
+  bool _headShown() {
+    final head = conteHeadAt([
+      for (final entry in layoutEntries) entry.cut,
+    ], seat);
+    return head == null ||
+        railEyesOf([head.row], stack: head.cut.layers)[head.row.id]!.shown;
   }
 
   /// The timeline's unworked-block tint (R26 #44) on this row's blocks,

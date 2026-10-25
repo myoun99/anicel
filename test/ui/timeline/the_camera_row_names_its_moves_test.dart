@@ -66,8 +66,8 @@ void main() {
       expect(lane.stretchWords.single.word, 'pan');
     });
 
-    test('its word rides a span from the first key\'s cell through the '
-        'next\'s, between the line and the marks', () {
+    testWidgets('its word rides a span from the first key\'s cell through the '
+        'next\'s, between the line and the marks', (tester) async {
       final spans = timelineUnionKeyMarkerSpans(
         keyPrefix: 'timeline',
         layer: layer,
@@ -86,12 +86,29 @@ void main() {
         word.placement,
         const TimelineFrameSpanPlacement(startIndex: 2, endIndexExclusive: 9),
       );
-      final name = (word.child as IgnorePointer).child! as TimelineSpanName;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Column(
+            children: [
+              for (final span in spans.take(2))
+                SizedBox(width: 168, height: 28, child: span.child),
+            ],
+          ),
+        ),
+      );
+      final name = tester.widget<TimelineSpanName>(
+        find.byType(TimelineSpanName),
+      );
       expect((name.text, name.axis), ('PAN', Axis.horizontal));
       // In the keys' own colour, the row's colour label (유저 2026-10-12:
       // 「너무 연해서 있는지도몰랏어. 키 색(즉 색라벨 색)이랑 똑같이」).
-      final line = spans[0].child as TimelineLaneKeysLine;
-      expect(name.ink, line.color);
+      expect(
+        find.descendant(
+          of: find.byType(TimelineLaneKeysLine),
+          matching: find.byType(CustomPaint),
+        ),
+        paints..line(color: name.ink),
+      );
       final termInk = timelineInstructionInk(
         CameraInstructionSet.standard.defById('pan'),
       );

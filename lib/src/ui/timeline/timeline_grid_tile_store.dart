@@ -646,6 +646,7 @@ class TimelineGridTileStore {
       paperGround: painter.paperGround,
       blockFrameLines: painter.blockFrameLines,
       framesPerSecond: painter.framesPerSecond,
+      shown: painter.shown,
       image: rastered.image,
       ink: emitted.ink,
     );
@@ -1521,6 +1522,7 @@ class _TileEntry {
     required this.paperGround,
     required this.blockFrameLines,
     required this.framesPerSecond,
+    required this.shown,
     required this.image,
     required this.ink,
   });
@@ -1562,7 +1564,10 @@ class _TileEntry {
 
   /// The paper and lines `_raster` laid down — read in the same block as
   /// [celContentRevision]. Every pixel the content answers can reach is in
-  /// here: the ink over it asks the exposure, never the content.
+  /// here, or moves with it: the ink over it asks the content only through
+  /// its block's state, and an empty block's grey words come with its
+  /// ground for paper (I-129) — never a word changed on a paper that did
+  /// not.
   final TimelineRowSubstrate substrate;
 
   final TextStyle baseTextStyle;
@@ -1580,6 +1585,11 @@ class _TileEntry {
   final bool blockFrameLines;
   final int framesPerSecond;
 
+  /// Whether the row was shown — a folder's flip hides its rows without
+  /// making a new layer of any of them, so it is no fact of the layer's
+  /// (I-129).
+  final bool shown;
+
   final ui.Image image;
 
   /// The ink `_raster` baked over [substrate] — read in the same pass.
@@ -1593,8 +1603,8 @@ class _TileEntry {
   /// ([_showsSameCellsAs]) — it still shows the row when the span would
   /// bake the same now, and it takes the new revision and layer instead of
   /// a raster. [inkNow] is the span's ink as it would bake now; it is asked
-  /// only when the layer moved, for the content answers reach the paper
-  /// alone — the ink asks the exposure, never the content.
+  /// only when the layer moved, for what the content answers move in the
+  /// ink moves the paper with it ([substrate]).
   ///
   /// 🚨THE REVISION IS ONE NUMBER FOR THE WHOLE TIMELINE (F-166). It bumps
   /// when the pen goes down or up and on every committed stroke, so every
@@ -1656,7 +1666,9 @@ class _TileEntry {
   }
 
   static bool _sameSubstrate(TimelineRowSubstrate a, TimelineRowSubstrate b) =>
-      listEquals(a.paper, b.paper) && listEquals(a.lines, b.lines);
+      listEquals(a.paper, b.paper) &&
+      listEquals(a.lines, b.lines) &&
+      listEquals(a.rings, b.rings);
 
   static bool _sameInk(_TileInk a, _TileInk b) =>
       listEquals(a.ops, b.ops) && listEquals(a.glyphs, b.glyphs);
@@ -1698,6 +1710,7 @@ class _TileEntry {
         paperGround == painter.paperGround &&
         blockFrameLines == painter.blockFrameLines &&
         framesPerSecond == painter.framesPerSecond &&
+        shown == painter.shown &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
         this.devicePixelRatio == devicePixelRatio;
   }
@@ -1828,7 +1841,38 @@ TimelineRowSubstrate timelineGridEmitSubstrate(
       timelineGridPackRgba(line.color),
     );
   }
+  for (final ring in substrate.rings) {
+    _emitRing(writer, ring.rect.shift(toLocal), ring, devicePixelRatio);
+  }
   return substrate;
+}
+
+/// [ring] as tile ops, laid over [local] — its rect, tile-local.
+void _emitRing(
+  TimelineGridTileOpWriter writer,
+  Rect local,
+  TimelineRowRing ring,
+  double devicePixelRatio,
+) {
+  final corner = _cornerOf(ring.radius);
+  final open = ring.open;
+  writer.rrectRing(
+    (
+      x: local.left * devicePixelRatio,
+      y: local.top * devicePixelRatio,
+      width: local.width * devicePixelRatio,
+      height: local.height * devicePixelRatio,
+      radius: corner.radius * devicePixelRatio,
+      cornerMask: corner.mask,
+    ),
+    lineWidth: ring.width * devicePixelRatio,
+    openMask:
+        (open.left ? TimelineGridTileOp.sideLeft : 0) |
+        (open.top ? TimelineGridTileOp.sideTop : 0) |
+        (open.right ? TimelineGridTileOp.sideRight : 0) |
+        (open.bottom ? TimelineGridTileOp.sideBottom : 0),
+    rgba: timelineGridPackRgba(ring.color),
+  );
 }
 
 /// A piece's corners as the op stream states them. Every rounded corner

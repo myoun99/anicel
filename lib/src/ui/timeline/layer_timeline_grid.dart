@@ -48,7 +48,6 @@ import '../input/two_axis_drag.dart';
 import 'timeline_grid_shell.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_layer_controls_row.dart';
-import 'rail_eyes.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_row_edges.dart';
@@ -868,6 +867,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
       controllers: [_horizontalScrollController, _verticalScrollController],
+      layers: widget.layers,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final viewportHeight = constraints.hasBoundedHeight

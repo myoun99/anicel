@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/an_se_row.dart';
+
 /// R4 improvement 2 — the SE span visual must never throw the striped
 /// RenderFlex overflow: long names scale down into the name box, and a span
 /// narrower than the box keeps it and narrows it instead (F-93).
@@ -24,6 +26,7 @@ void main() {
             width: width,
             height: height,
             child: SeSpanVisual(
+              layer: anSeRow(),
               axis: axis,
               frames: 1,
               dialogue: 'せりふのテキスト',

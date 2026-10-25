@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/timeline/rail_eyes.dart';
 import 'package:anicel/src/ui/timeline/stylus_glide_stop.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_shell.dart';
@@ -13,6 +17,19 @@ void main() {
     tester,
   ) async {
     late BuildContext inner;
+    final folder = Layer(
+      id: const LayerId('f'),
+      name: 'F',
+      kind: LayerKind.folder,
+      frames: const [],
+      isVisible: false,
+    );
+    final member = Layer(
+      id: const LayerId('m'),
+      name: 'M',
+      frames: const [],
+      folderId: const LayerId('f'),
+    );
     final controller = ScrollController();
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -20,6 +37,7 @@ void main() {
         home: TimelineGridShell(
           ground: const Color(0xFF123456),
           framesPerSecond: 30,
+          layers: [folder, member],
           controllers: [controller],
           child: Builder(
             builder: (context) {
@@ -35,6 +53,14 @@ void main() {
     expect(law, isNotNull, reason: 'the law is published above the tree');
     expect(law!.ground, const Color(0xFF123456));
     expect(law.framesPerSecond, 30);
+
+    // 🗣️I-129: the rows' eyes reach the frame rows as the rail's do — a
+    // row whose own eye is on, hidden by the folder above it.
+    expect(
+      RailEyes.of(inner, member),
+      (on: true, hiddenAbove: true),
+      reason: 'the eyes are published above the tree, folders gating them',
+    );
 
     expect(find.byType(StylusGlideStop), findsOneWidget);
     expect(

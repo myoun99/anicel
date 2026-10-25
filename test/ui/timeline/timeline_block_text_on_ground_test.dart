@@ -15,6 +15,10 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineGridGroundOver;
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
@@ -70,10 +74,12 @@ void main() {
     revision: CelContentRevision.everyRow(ValueNotifier<int>(0)),
   );
 
-  /// F-24: the labels painter takes no cel-content source any more — its
-  /// ink is the block's, whatever the block holds.
+  /// F-24: the labels' ink is the block's — as the block looks, empty and
+  /// hidden alike (I-129).
   TimelineRowRunLabelsPainter labelsPainter({
     LayerMark mark = LayerMark.none,
+    TimelineCelContentSource? celContent,
+    Color? paperGround,
   }) => TimelineRowRunLabelsPainter(
     baseTextStyle: const TextStyle(fontSize: 14),
     layer: blockLayer(mark: mark),
@@ -84,11 +90,14 @@ void main() {
     crossAxisExtent: crossExtent,
     showSeconds: false,
     countingBase: 24,
+    celContent: celContent,
+    paperGround: paperGround,
   );
 
   TimelineRowCellsPainter cellsPainter({
     LayerMark mark = LayerMark.none,
     TimelineCelContentSource? celContent,
+    Color? paperGround,
   }) => TimelineRowCellsPainter(
     layer: blockLayer(mark: mark),
     geometry: testFrameGeometry(
@@ -98,6 +107,7 @@ void main() {
     crossAxisExtent: crossExtent,
     exposureStateForLayer: stateFor,
     celContent: celContent,
+    paperGround: paperGround,
     colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
     baseTextStyle: const TextStyle(fontSize: 12, color: Color(0xFF000000)),
   );
@@ -250,45 +260,37 @@ void main() {
     );
   });
 
-  testWidgets('🚨F-24: over an EMPTY-CEL purple block on the dark lane the '
-      'number stays DARK — a block\'s writing is the block\'s ink', (
-    tester,
-  ) async {
-    // ⚠️This test used to assert the opposite. The label went through the
-    // ground law, so on the 43%-alpha paper over the dark lane (composited
-    // luminance ~0.07) it flipped to white — while the cel NAME inside the
-    // same block stayed black, because the name has never used that law.
-    // One block, two pieces of writing, two colours.
+  test('🚨F-24: over an EMPTY purple block the number wears what the cel '
+      'name wears — a block\'s writing is the block\'s ink', () {
+    // ⚠️The label went through the ground law once, so on the empty block's
+    // paper over the dark lane it flipped to white — while the cel NAME
+    // inside the same block stayed black, because the name has never used
+    // that law. One block, two pieces of writing, two colours.
     //
     // 유저 2026-08-26: 「하고싶은건 **프레임이름이랑 통일**하고싶은것임.
     // 지금 프레임이름이 **항상 검정색**이니까 그거에 맞게. **검정숫자가 잘
     // 안보이는 경우는 그 통일한 상태에서 나중에 고려해서 바꿈**」 — the
     // contrast cost is known and taken, and the answer to it is to change
-    // the BLOCK, not to give its two writings different inks.
-    final blended = Color.alphaBlend(
-      timelineEmptyCelPaperColor(layerMarkColor(const LayerMark(process: LayerProcess.finish))),
-      AppColors.surface,
-    );
-    final data = await rasterize(
-      tester,
-      ground: AppColors.surface,
-      withBlocks: true,
-      mark: const LayerMark(process: LayerProcess.finish),
+    // the BLOCK, not to give its two writings different inks. ↩️I-129 changed
+    // the empty BLOCK (「텍스트는 … 외곽선이랑 동일한 회색으로」): both
+    // writings take its grey together.
+    const mark = LayerMark(process: LayerProcess.finish);
+    final cells = cellsPainter(
+      mark: mark,
       celContent: emptyCels(),
+      paperGround: AppColors.surface,
     );
-    final counts = sample(data, channelSum(blended));
-    expect(
-      counts.present,
-      greaterThanOrEqualTo(4),
-      reason: 'presence anchor: glyph pixels exist on the translucent paper',
+    final labels = labelsPainter(
+      mark: mark,
+      celContent: emptyCels(),
+      paperGround: AppColors.surface,
     );
-    expect(
-      counts.dark,
-      greaterThan(counts.light),
-      reason:
-          'the number keeps the block ink here — white is what the ground '
-          'law produced, and that is the flip the report was about',
+    final grey = timelineGridGroundOver(
+      under: AppColors.surface,
+      painted: timelineEmptyBlockGrey,
     );
+    expect(labels.inkFor(labels.runLabels().single), grey);
+    expect(cells.foregroundInkFor(cells.cellModelAt(0)), grey);
   });
 
   testWidgets('on the dark lane itself the shared paint entry lands solid '
@@ -372,53 +374,9 @@ void main() {
       }
     });
 
-    test('an empty cel\'s 43%-alpha blend is inked by the SAME law, and the '
-        'palette lands on both sides of it', () {
-      // ⛔This used to assert the outcome instead of the law: 「every
-      // COLORED mark flips to the light ink, and only the plain paper stays
-      // dark」. That was true of the eight mid-tone colours it was written
-      // against and stopped being true the moment the palette became the
-      // user's own — LO is WHITE and 총작 is near-white, so their 43%
-      // blends land ABOVE the crossover and correctly keep the dark ink.
-      //
-      // 🚨What must hold is that the blend goes through the one law, so
-      // that is what is measured. The counts below keep it from passing on
-      // a law that collapsed to a single answer.
-      var dark = 0;
-      var light = 0;
-      for (final mark in everyLayerMark()) {
-        final blend = Color.alphaBlend(
-          timelineEmptyCelPaperColor(layerMarkColor(mark)),
-          AppColors.surface,
-        );
-        final expected = timelineGroundIsLight(blend)
-            ? timelineTextOnLightGroundColor
-            : timelineTextOnDarkGroundColor;
-        expect(
-          timelineTextOnColor(blend),
-          expected,
-          reason:
-              '$mark empty-cel blend $blend, luminance '
-              '${blend.computeLuminance().toStringAsFixed(3)}',
-        );
-        if (expected == timelineTextOnLightGroundColor) {
-          dark += 1;
-        } else {
-          light += 1;
-        }
-      }
-      expect(
-        dark,
-        greaterThan(0),
-        reason: '🚨the pale end of the palette has to reach ABOVE the '
-            'crossover, or this test is one branch measuring itself',
-      );
-      expect(
-        light,
-        greaterThan(0),
-        reason: '🚨and the saturated end has to fall below it',
-      );
-    });
+    // 🪦「an empty cel's 43%-alpha blend is inked by the SAME law」 stood
+    // here: the blend went with R26 #44's paper — an empty block is laid in
+    // the ground it stands on now (I-129), which is a ground below.
 
     test('the crossover is the WCAG optimum: on every live ground the '
         'chosen ink has at least the contrast of the rejected one', () {
@@ -430,11 +388,6 @@ void main() {
 
       final grounds = <Color>[
         for (final mark in everyLayerMark()) layerMarkColor(mark),
-        for (final mark in everyLayerMark())
-          Color.alphaBlend(
-            timelineEmptyCelPaperColor(layerMarkColor(mark)),
-            AppColors.surface,
-          ),
         AppColors.surface,
         AppColors.backdrop,
         AppColors.washUp,

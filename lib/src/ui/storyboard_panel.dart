@@ -68,7 +68,7 @@ import 'timeline/timeline_cut_end_handle.dart'
     show EndLineGrip, timelineCutEndPreviewFrameCount;
 import 'timeline/layer_rail_columns.dart';
 import 'timeline/berth_row.dart' show BerthRow;
-import 'timeline/rail_eyes.dart' show RailEyes;
+import 'timeline/rail_eyes.dart' show RailEyeShown, RailEyes, railEyesOf;
 import 'timeline/rail_column_swipe.dart';
 import 'timeline/layer_rail_window.dart';
 import 'timeline/timeline_grid_frame.dart';
@@ -140,6 +140,7 @@ import 'timeline/layer_row_drag.dart'
         effectRowDragChip,
         layerRowDragChips,
         timelineRowAddressOfDragSubject;
+import 'timeline/timeline_block_look.dart' show timelineRowLookOf;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
@@ -181,11 +182,9 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
-        timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineSelectedFrameBorderColor,
-        timelineStandingWashDecorationAt,
-        timelineUnreadableCelPaperColor;
+        timelineStandingWashDecorationAt;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -3707,7 +3706,17 @@ mixin _StoryboardRowRunLabels {
   ProjectFrameRate get projectFrameRate;
   double get height;
 
-  Widget _runLabels(BuildContext context, Layer layer) => Positioned.fill(
+  /// [layer]'s lengths, each on its block as the row draws the block
+  /// (I-129): whether the row is [shown] — its own eye where nothing says —
+  /// and what its cels hold ([celContent]), onto the host's ground. What
+  /// the S and transition rows hold has no picture to lack, so none of
+  /// their blocks is empty.
+  Widget _runLabels(
+    BuildContext context,
+    Layer layer, {
+    bool? shown,
+    TimelineCelContentSource? celContent,
+  }) => Positioned.fill(
     child: IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
@@ -3721,6 +3730,9 @@ mixin _StoryboardRowRunLabels {
             baseTextStyle: DefaultTextStyle.of(context).style,
             windowBucket: windowBucket,
             viewportMainExtent: viewportWidth,
+            shown: shown ?? RailEyes.of(context, layer).shown,
+            celContent: celContent,
+            paperGround: TimelineGridLaw.maybeOf(context)?.ground,
           ),
         ),
       ),
@@ -3872,8 +3884,9 @@ class _StoryboardTransitionRow extends KeptPiece
               axis: Axis.horizontal,
               frameCellExtent: timelineScale.pixelsPerFrame,
               startFrame: entry.key,
-              // ⑲: the block is its layer's colour label.
-              paper: layerMarkColor(layer.mark),
+              // ⑲: the block is its layer's colour label — in its look
+              // (I-129).
+              paper: timelineRowLookOf(context, layer).paper!,
             ),
           ),
         ),
@@ -4258,17 +4271,17 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
       // no longer clip: the block may cross them), the writing on top.
       _contentLayer([
         for (final block in blocks)
-          if (_inWindow(block, window)) _paperSpan(block, layer, sounds),
+          if (_inWindow(block, window))
+            _paperSpan(context, block, layer, sounds),
         if (audioPeaksFor != null)
           ...timelineRowAudioOverlays(
+            context,
             layer: layer,
             frameStartIndex: window.startIndex,
             frameEndIndexExclusive: window.endIndexExclusive,
             axis: Axis.horizontal,
             frameRate: projectFrameRate,
             audioPeaksFor: audioPeaksFor,
-            // Ink on the paper spans, like the timeline SE rows.
-            color: timelineDrawingInkColor.withValues(alpha: 0.22),
             keyPrefix: 'storyboard',
           ),
       ]),
@@ -4606,8 +4619,10 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
 
   /// [block]'s paper: its layer's colour label (⑲) — red where a sound it
   /// carries cannot be played, as the timeline's block is
-  /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read.
+  /// (`LayerStack.soundCannotPlayAt`) and a cel that cannot be read — in
+  /// the block's look ([timelineRowLookOf], I-129).
   TimelineFrameSpan _paperSpan(
+    BuildContext context,
     TimelineDrawingBlock block,
     Layer layer,
     List<SeAudioSpan> sounds,
@@ -4629,9 +4644,7 @@ class _StoryboardSeRow extends KeptPiece with _StoryboardRowRunLabels {
           axis: Axis.horizontal,
           frameCellExtent: timelineScale.pixelsPerFrame,
           startFrame: block.startIndex,
-          paper: silent
-              ? timelineUnreadableCelPaperColor
-              : layerMarkColor(layer.mark),
+          paper: timelineRowLookOf(context, layer, unreadable: silent).paper!,
         ),
       ),
     );

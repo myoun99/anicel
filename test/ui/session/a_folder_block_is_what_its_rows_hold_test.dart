@@ -26,8 +26,8 @@ import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
 import 'package:anicel/src/ui/session/layer_stack.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show timelineGridGroundOver;
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -419,18 +419,16 @@ void main() {
       expect(
         painter.resolvedCellStyleFor(4).background,
         isNot(painter.resolvedCellStyleFor(1).background),
-        reason: 'one block, 0..6: white where a drew, grey past it',
+        reason: 'one block, 0..6: white where a drew, hollow past it',
       );
       expect(
         painter.resolvedCellStyleFor(4).background,
         painter.resolvedCellStyleFor(9).background,
       );
       expect(
-        painter.resolvedCellStyleFor(4).background,
-        timelineGridGroundOver(
-          under: null,
-          painted: timelineEmptyCelPaperColor(timelineDrawingHeldColor),
-        ),
+        painter.resolvedCellStyleFor(4).border,
+        timelineEmptyBlockGrey,
+        reason: 'the empty block\'s outline, over no known ground (I-129)',
       );
     });
 

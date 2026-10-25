@@ -326,38 +326,14 @@ typedef TimelineBlockWordSlot = ({
   double acrossAlignment,
 });
 
-/// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
-/// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
-/// 불투명도 낮추는 느낌… 투명감나게"). Against the dark lane the alpha
-/// resolves to a distinctly greyer, see-through paper, which the old
-/// near-white 0xFFD7D5D0 never managed. Painting a translucent colour
-/// costs the same as an opaque one, so this stays free.
-/// 🚨★★★THE ALPHA IS THE FACT; the colour is derived from the paper.
-///
-/// ⛔This used to be spelled `Color(0x6EE9E7E2)` — the default paper's RGB
-/// written a SECOND time, beside the paper itself. The two agreed only by
-/// coincidence, and 🧪F-64 proved it: moving the paper to LO's white left
-/// this one on the old grey, and three tests went red saying so.
-const double timelineEmptyCelAlpha = 0x6E / 0xFF;
-
-
-/// The empty-cel look of an arbitrary [paper] — the alpha above, applied to
-/// whatever colour the row's block is made of (⑲).
-///
-/// One statement rather than two: "no picture yet" is a TRANSPARENCY of the
-/// paper, so it has to be derived from the paper and not be a second colour
-/// that happens to match it.
-Color timelineEmptyCelPaperColor(Color paper) =>
-    paper.withValues(alpha: timelineEmptyCelAlpha);
-
 /// The paper of a block whose cel's picture data could not be read — the red
 /// the ruler's bar paints that cel's frames with (유저 2026-10-16,
 /// frame-picture-indicator-Q1 b: 「a + 그 셀이 있는 타임라인 칸에도 빨간
 /// 표시」).
 ///
-/// ⚠️Whole, not derived from the paper like the empty cel's: it is no state
-/// of the drawing but a fault, and the colour labels are pastels it must
-/// not be taken for.
+/// ⚠️Whole, not derived from the row's paper: it is no state of the drawing
+/// but a fault, and the colour labels are pastels it must not be taken for.
+/// Its block is never an empty one (`timelineFrameBlockLook`).
 const Color timelineUnreadableCelPaperColor = AppColors.danger;
 
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE

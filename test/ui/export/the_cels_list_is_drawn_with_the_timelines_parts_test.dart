@@ -30,6 +30,8 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
@@ -423,6 +425,12 @@ void main() {
         ),
       );
       expect(word.style.fontWeight, isNot(FontWeight.bold));
+      expect(
+        word.style.color,
+        timelineEmptyBlockGrey,
+        reason: 'I-129: 「텍스트는 … 외곽선이랑 동일한 회색으로」 — the one '
+            'empty-block grey the timeline\'s hollow blocks wear',
+      );
     }
   });
 

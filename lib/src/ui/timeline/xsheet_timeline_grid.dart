@@ -71,7 +71,6 @@ import 'timeline_layer_controls_row.dart';
 import '../layout/device_grid_scroll_controller.dart';
 import 'timeline_grid_hooks.dart';
 import 'timeline_grid_legend_rail.dart';
-import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
 import '../repaint_props.dart';
 import '../text/word_bake.dart' show RepaintOnWordBakes;
@@ -730,21 +729,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
                             entries,
                             geometry.columnEdges,
                           ),
-                          // The rail's eyes, turned on their side with it
-                          // — a folder's flip dims its members' eyes here
-                          // as it does there (F-185).
-                          child: RailEyes.forLayers(
-                            [
-                              for (final entry in entries)
-                                if (!entry.isLane) entry.layer,
-                            ],
-                            stack: widget.layers,
-                            child: _rowBerths.counting(
-                              Row(
-                                children: _headers.headers(
-                                  entries,
-                                  geometry.columnEdges,
-                                ),
+                          child: _rowBerths.counting(
+                            Row(
+                              children: _headers.headers(
+                                entries,
+                                geometry.columnEdges,
                               ),
                             ),
                           ),
@@ -1032,6 +1021,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid>
       ground: colorScheme.surfaceContainerHighest,
       framesPerSecond: _countingFps,
       controllers: [_frameScrollController, _layerScrollController],
+      layers: widget.layers,
       child: ValueListenableBuilder<double?>(
         valueListenable: _railExtent,
         builder: (context, _, _) => LayoutBuilder(

@@ -53,9 +53,25 @@ class TimelineRowCellModel {
 /// neighbouring cells blended their shared edge twice at a fractional zoom.
 ///
 /// [lines]: the frame lines across that paper, where the user shows them.
+///
+/// [rings]: the outlines of the blocks that wear one — an EMPTY block's
+/// (I-129), one piece per run as the paper is.
 typedef TimelineRowSubstrate = ({
   List<({Rect rect, Color color, BorderRadius? radius})> paper,
   List<({Rect rect, Color color})> lines,
+  List<TimelineRowRing> rings,
+});
+
+/// A block's outline over a run of its cells: [width] wide inside [rect],
+/// round where [radius] is. [open] names the sides it leaves open — where
+/// the block runs on past the run, into the cells another stretch of the
+/// row lays (a tile's span cuts it), which must not see a seam there.
+typedef TimelineRowRing = ({
+  Rect rect,
+  Color color,
+  BorderRadius? radius,
+  double width,
+  ({bool left, bool top, bool right, bool bottom}) open,
 });
 
 /// The hold ghost's glyph — the probe VALUE tests read from
@@ -122,6 +138,11 @@ abstract interface class TimelineTileRasterSource {
   /// The counting fps: a second boundary's line is the strongest, so with
   /// [blockFrameLines] on it is part of the look too.
   int get framesPerSecond;
+
+  /// Whether the row is shown ([RailEye.shown]) — a hidden row's blocks
+  /// wear the switched-off look (I-129). Baked into the tile, so it is part
+  /// of the look.
+  bool get shown;
 
   /// What this row's COVERAGE follows, when that is not the layer itself
   /// (㉘: a camera row's keys live on `cut.camera`).

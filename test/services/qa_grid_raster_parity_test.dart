@@ -81,7 +81,7 @@ void main() {
         // past-extent): clipping must agree exactly.
         final x = random.nextInt(tileWidth + 24) - 12;
         final y = random.nextInt(tileHeight + 24) - 12;
-        switch (random.nextInt(5)) {
+        switch (random.nextInt(6)) {
           case 0:
             writer.fillRect(
               x,
@@ -127,6 +127,22 @@ void main() {
               random.nextDouble() * 8,
               random.nextInt(16),
               randomRgba(random),
+            );
+          case 5:
+            // The ring (I-129): its inner box, its open sides and its
+            // tighter corners must agree to the byte as well.
+            writer.rrectRing(
+              (
+                x: x + random.nextDouble(),
+                y: y + random.nextDouble(),
+                width: 1 + random.nextInt(40) + random.nextDouble(),
+                height: 1 + random.nextInt(24) + random.nextDouble(),
+                radius: random.nextDouble() * 8,
+                cornerMask: random.nextInt(16),
+              ),
+              lineWidth: random.nextInt(4) + random.nextDouble(),
+              openMask: random.nextInt(16),
+              rgba: randomRgba(random),
             );
         }
       }
@@ -265,13 +281,48 @@ void main() {
     expect(native(unknown), -4);
     expect(reference(unknown), -4);
 
-    // The retired rounded-rect STROKE (6, 2026-09-24) is unknown to both —
-    // a stream that still asked for it fails on either side alike.
-    final retiredStroke = Int32List.fromList([
-      6, 0, 0, 256, 256, 0, 0, 256, -1, //
+    // ↩️6 was the retired rounded-rect STROKE's (2026-09-24) and is the
+    // RING's now (I-129): the old stroke's nine words are a ring cut short
+    // of its rgba, which fails on either side alike.
+    final truncatedRing = Int32List.fromList([
+      TimelineGridTileOp.rrectRing, 0, 0, 256, 256, 0, 0, 256, 0, //
     ]);
-    expect(native(retiredStroke), -4);
-    expect(reference(retiredStroke), -4);
+    expect(native(truncatedRing), -2);
+    expect(reference(truncatedRing), -2);
+  });
+
+  test('a ring paints the band its line is wide inside the box, leaves the '
+      'inside alone, and leaves an OPEN side open', () {
+    // A 12x8 box at (2, 2), square corners, a 1px line, its right side
+    // open — a block a tile's span cuts there.
+    final writer = TimelineGridTileOpWriter()
+      ..rrectRing(
+        (x: 2, y: 2, width: 12, height: 8, radius: 0, cornerMask: 0),
+        lineWidth: 1,
+        openMask: TimelineGridTileOp.sideRight,
+        rgba: 0xFF0000FF,
+      );
+    final ops = writer.build();
+    final pixels = Uint8List(16 * 12 * 4);
+    expect(
+      timelineGridRasterTileReference(
+        pixels: pixels,
+        tileWidth: 16,
+        tileHeight: 12,
+        backgroundRgba: 0,
+        ops: ops,
+      ),
+      0,
+    );
+    int alphaAt(int x, int y) => pixels[(y * 16 + x) * 4 + 3];
+    expect(alphaAt(2, 5), 255, reason: 'the left side is stroked');
+    expect(alphaAt(7, 2), 255, reason: 'the top side is stroked');
+    expect(alphaAt(7, 9), 255, reason: 'the bottom side is stroked');
+    expect(alphaAt(7, 5), 0, reason: 'the inside is left alone');
+    expect(alphaAt(3, 5), 0, reason: 'one pixel in from the line, nothing');
+    expect(alphaAt(13, 5), 0, reason: 'the open right side draws no line');
+    expect(alphaAt(13, 2), 255, reason: 'the top runs on to the open end');
+    expect(alphaAt(1, 5), 0, reason: 'nothing outside the box');
   });
 
   test('timelineGridPackRgba lays ARGB out as the op stream\'s little-endian '

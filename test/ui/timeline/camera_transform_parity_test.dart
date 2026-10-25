@@ -124,6 +124,15 @@ Finder _marker(LayerId layerId, String laneId, int frame) => find.byKey(
   ValueKey<String>('timeline-lane-key-${layerId.value}-$laneId-$frame'),
 );
 
+/// What [marker] paints — its fill is the colour it is drawn in.
+Finder _markPaint(Finder marker) =>
+    find.descendant(of: marker, matching: find.byType(CustomPaint));
+
+/// The colour label both fixture rows wear.
+final _finishLabel = layerMarkColor(
+  const LayerMark(process: LayerProcess.finish),
+);
+
 Future<void> _toggleLanes(WidgetTester tester, LayerId layerId) async {
   final toggle = find.named('timeline-lane-toggle-${layerId.value}');
   await tester.ensureVisible(toggle);
@@ -353,12 +362,8 @@ void main() {
       await _pump(tester, _project(camera: CutCamera.fromTrack(named)));
 
       expect(
-        tester
-            .widget<TimelineLaneKeyMarker>(
-              _marker(_camId, transformGroupHeaderLane.laneId, 4),
-            )
-            .color,
-        layerMarkColor(const LayerMark(process: LayerProcess.finish)),
+        _markPaint(_marker(_camId, transformGroupHeaderLane.laneId, 4)),
+        paints..path(color: _finishLabel),
         reason: '「유니언 키 색은 프레임블록이랑 마찬가지로 색라벨 그대로」',
       );
       expect(
@@ -386,10 +391,8 @@ void main() {
       await _expandTransformGroup(tester, _drawId);
 
       expect(
-        tester
-            .widget<TimelineLaneKeyMarker>(_marker(_drawId, 'position', 8))
-            .color,
-        layerMarkColor(const LayerMark(process: LayerProcess.finish)),
+        _markPaint(_marker(_drawId, 'position', 8)),
+        paints..path(color: _finishLabel),
       );
     });
   });

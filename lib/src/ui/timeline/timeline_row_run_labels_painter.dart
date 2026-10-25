@@ -6,7 +6,11 @@ import '../../models/layer.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../text/word_condensation.dart';
 import 'axis_turn.dart';
+import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_beat_lines.dart' show timelineRowPaperExtent;
+import 'timeline_block_look.dart'
+    show TimelineBlockRow, timelineFrameBlockLook;
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart'
@@ -83,12 +87,33 @@ class TimelineRowRunLabelsPainter extends CustomPainter
     this.axis = Axis.horizontal,
     this.windowBucket,
     this.viewportMainExtent = 0,
-    // F-24: the labels no longer ask what they are sitting on, so this
-    // painter no longer watches the cel-content revision either — the ink
-    // is the block's ink whatever the block holds.
-  }) : super(repaint: Listenable.merge([geometry, ?windowBucket]));
+    this.shown = true,
+    this.celContent,
+    this.paperGround,
+  }) : super(
+         repaint: Listenable.merge([
+           geometry,
+           ?windowBucket,
+           // Its OWN row's answers: a block that turns empty turns its
+           // number grey (I-129).
+           ?celContent?.revision.forRow(layer.id),
+         ]),
+       );
 
   final Layer layer;
+
+  /// Whether the row is shown ([RailEye.shown]), what its cels hold and what
+  /// stands behind it — what each number's block looks like, as the cells
+  /// painter draws it ([timelineFrameBlockLook], I-129). ↩️F-24 took the
+  /// labels off what they sit on — the ink is the block's own, as the cel
+  /// name's is — and that ink is the block's LOOK now, empty and hidden
+  /// alike.
+  final bool shown;
+  final TimelineCelContentSource? celContent;
+  final Color? paperGround;
+
+  TimelineBlockRow get _blockRow =>
+      (layer: layer, shown: shown, content: celContent, ground: paperGround);
 
   /// The row's scroll window, as its cells take it (UI-R15): a paint prints
   /// the labels of the blocks the window can show and repaints once per span
@@ -228,6 +253,18 @@ class TimelineRowRunLabelsPainter extends CustomPainter
     return labels;
   }
 
+  /// The ink [label] is printed in — the probe surface, as [runLabels] is.
+  ///
+  /// 🚨F-24: the block's OWN ink, the one the cel name inside the block
+  /// already wears — not the ground law. The number and the name sit on the
+  /// same paper and say so in the same colour: as the block looks (I-129).
+  Color inkFor(TimelineRunLabel label) => timelineFrameBlockLook(
+    _blockRow,
+    label.startIndex,
+    paper: layerMarkColor(layer.mark),
+    ink: labelStyle.color!,
+  ).ink;
+
   @override
   void paintWords(Canvas canvas, Size size) {
     final style = labelStyle;
@@ -266,11 +303,12 @@ class TimelineRowRunLabelsPainter extends CustomPainter
         growth: TimelineBlockWordGrowth.towardBlockStart,
         acrossAlignment: 1.0,
       );
-      final set = timelineWordSetOnto(label.text, style, slot.room.width);
+      final set = timelineWordSetOnto(
+        label.text,
+        style.copyWith(color: inkFor(label)),
+        slot.room.width,
+      );
       final layout = timelineBlockWordLayout(set.glyph.size, slot);
-      // 🚨F-24: the block's OWN ink, the one the cel name inside the block
-      // already wears — not the ground law. The number and the name sit on
-      // the same paper and now say so in the same colour.
       paintFittedText(canvas, set.glyph, layout.origin, layout.fit);
       canvas.restore();
     }
@@ -288,11 +326,15 @@ class TimelineRowRunLabelsPainter extends CustomPainter
         axis,
         ByIdentity(windowBucket),
         viewportMainExtent,
+        shown,
+        celContent?.hasContent,
+        celContent?.cannotRead,
+        celContent?.revision.value,
+        paperGround,
       );
-  // ⛔The cel-content comparison went with F-24. It was here because a
-  // moved revision was a moved GROUND (the empty-cel blend) and the ink
-  // read that ground; the ink is the block's own now, so what a block
-  // holds is no longer a reason to repaint its number.
+  // ↩️The cel-content comparison went with F-24 (the ink had read the
+  // empty-cel ground) and came back with I-129: what a block holds is its
+  // look, and its number wears that look.
 
   @override
   SemanticsBuilderCallback get semanticsBuilder => (size) {

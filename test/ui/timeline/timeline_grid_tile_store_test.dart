@@ -72,6 +72,7 @@ void main() {
     Color? paperGround,
     bool blockFrameLines = false,
     int framesPerSecond = 0,
+    bool shown = true,
     ValueListenable<int>? windowBucket,
     double viewportMainExtent = 0,
     int? Function(int frame)? stepsUntilShown,
@@ -93,6 +94,7 @@ void main() {
       paperGround: paperGround,
       blockFrameLines: blockFrameLines,
       framesPerSecond: framesPerSecond,
+      shown: shown,
     );
   }
 
@@ -568,6 +570,40 @@ void main() {
           'a fresh raster is baked for it',
     );
     expect(identical(fresh, first), isFalse);
+    expect(first.debugDisposed, isTrue, reason: 'the tile it replaced went');
+  });
+
+  // 🗣️I-129: a folder's flip hides its rows without making a new layer of
+  // any of them — the eye is no fact of the layer's, so the tile has to key
+  // on it of its own.
+  test('I-129: the row\'s eye is part of the look — hiding the row '
+      're-rasters the tile, and showing it as before keeps it', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final store = TimelineGridTileStore.instance;
+    final layer = blockLayer();
+    ui.Image? tile(TimelineRowCellsPainter painter) => store.tileFor(
+      painter: painter,
+      spanStartIndex: 0,
+      spanEndIndexExclusive: 4,
+      devicePixelRatio: 2.0,
+    );
+
+    final shown = painterFor(layer, store: store);
+    expect(tile(shown), isNull, reason: 'cold');
+    expect(await pollUntil(() => tile(shown) != null), isTrue);
+    final first = tile(shown)!;
+    expect(
+      tile(painterFor(layer, store: store, shown: true)),
+      same(first),
+      reason: 'the same eye is the same look',
+    );
+
+    final hidden = painterFor(layer, store: store, shown: false);
+    await pollUntil(() => !identical(tile(hidden), first));
+    expect(tile(hidden), isNotNull, reason: 'a fresh raster landed for it');
     expect(first.debugDisposed, isTrue, reason: 'the tile it replaced went');
   });
 

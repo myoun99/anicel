@@ -410,7 +410,7 @@ mixin _StoryboardProjectionKeys on Widget {
         key: ValueKey<String>('storyboard-$_keyName-line-${layer.id}'),
         axis: Axis.horizontal,
         cells: to + 1 - from,
-        color: layerMarkColor(layer.mark),
+        layer: layer,
         endsAtKey: last == to,
         crossFraction: _cameraRowLineAt(reach.lineAt(from)),
         // In box order: a track's spans never overlap, so a stretch shared

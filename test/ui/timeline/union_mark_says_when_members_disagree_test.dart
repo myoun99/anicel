@@ -3,13 +3,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/key_mark.dart';
 import 'package:anicel/src/models/key_range_move.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/key_mark_glyph.dart' show keyMarkPath;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
@@ -214,7 +220,13 @@ void main() {
   });
 
   group('what it draws', () {
-    const labelColor = Color(0xFF123456);
+    final row = Layer(
+      id: const LayerId('row'),
+      name: 'row',
+      frames: const [],
+      mark: const LayerMark(process: LayerProcess.finish),
+    );
+    final labelColor = layerMarkColor(row.mark);
 
     /// The marker's painting, at a 12px box unless [box] says otherwise —
     /// the mark's own 12-unit grid, so a point below is a point of the
@@ -237,7 +249,7 @@ void main() {
                   mark: mark,
                   axis: axis,
                   markerSize: box,
-                  color: labelColor,
+                  layer: row,
                   selected: selected,
                 ),
               ),

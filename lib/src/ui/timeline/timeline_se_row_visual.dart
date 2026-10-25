@@ -22,6 +22,7 @@ import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'se_crossing_mark_painter.dart';
+import 'timeline_block_look.dart' show timelineRowLookOf;
 import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
@@ -87,6 +88,7 @@ List<Widget> timelineRowSeLabelOverlays({
           ),
           child: SeSpanVisual(
             axis: axis,
+            layer: layer,
             frames: block.length + lead,
             dialogue: dialogue ?? '',
             seName: seName,
@@ -178,42 +180,58 @@ class _SeCrossingMarkPainter extends CustomPainter with RepaintOnProps {
 /// [leadInAtStart]: how far into its sound the block at frame 0 already is
 /// — the row spills in from an earlier cut (F-113). That block's strip is
 /// drawn from there, where the storyboard and playback place the sound.
-List<Widget> timelineRowAudioOverlays({
+///
+/// The strips are ink on the block ([timelineSeWaveformInk]), so they wear
+/// its look as its words do ([timelineRowLookOf], I-129) — the timeline's
+/// SE rows and the storyboard's S rows alike.
+List<Widget> timelineRowAudioOverlays(
+  BuildContext context, {
   required Layer layer,
   required int frameStartIndex,
   int frameEndIndexExclusive = 1 << 30,
   required Axis axis,
   required ProjectFrameRate frameRate,
   required AudioPeaks? Function(String filePath) audioPeaksFor,
-  required Color color,
   int leadInAtStart = 0,
   String keyPrefix = 'timeline',
-}) => [
-  for (final strip in seRowAudioStrips(
+}) {
+  final color = timelineRowLookOf(
+    context,
     layer,
-    window: (
-      startIndex: frameStartIndex,
-      endIndexExclusive: frameEndIndexExclusive,
-    ),
-    ink: (
-      axis: axis,
-      frameRate: frameRate,
-      audioPeaksFor: audioPeaksFor,
-      color: color,
-    ),
-    leadInAtStart: leadInAtStart,
-  ))
-    TimelineFrameSpan(
-      placement: TimelineFrameSpanPlacement(
-        startIndex: strip.startFrame,
-        endIndexExclusive: strip.endFrameExclusive,
+    ink: timelineSeWaveformInk,
+  ).ink;
+  return [
+    for (final strip in seRowAudioStrips(
+      layer,
+      window: (
+        startIndex: frameStartIndex,
+        endIndexExclusive: frameEndIndexExclusive,
       ),
-      child: KeyedSubtree(
-        key: ValueKey<String>('$keyPrefix-audio-clip-${strip.keyName}'),
-        child: strip.strip,
+      ink: (
+        axis: axis,
+        frameRate: frameRate,
+        audioPeaksFor: audioPeaksFor,
+        color: color,
       ),
-    ),
-];
+      leadInAtStart: leadInAtStart,
+    ))
+      TimelineFrameSpan(
+        placement: TimelineFrameSpanPlacement(
+          startIndex: strip.startFrame,
+          endIndexExclusive: strip.endFrameExclusive,
+        ),
+        child: KeyedSubtree(
+          key: ValueKey<String>('$keyPrefix-audio-clip-${strip.keyName}'),
+          child: strip.strip,
+        ),
+      ),
+  ];
+}
+
+/// The ink an SE block's waveform is drawn in on its paper.
+final Color timelineSeWaveformInk = timelineDrawingInkColor.withValues(
+  alpha: 0.22,
+);
 
 /// One sound's waveform strip on an SE row ([seRowAudioStrips]): the frames
 /// it covers, the name it is keyed by, and the strip.
@@ -625,6 +643,7 @@ class SeSpanVisual extends StatelessWidget {
   const SeSpanVisual({
     super.key,
     required this.axis,
+    required this.layer,
     required this.frames,
     required this.dialogue,
     this.seName,
@@ -633,6 +652,10 @@ class SeSpanVisual extends StatelessWidget {
   });
 
   final Axis axis;
+
+  /// The row the block stands on: the words on the block wear its look, as
+  /// a cel name on a drawing block does ([timelineRowLookOf], I-129).
+  final Layer layer;
 
   /// How many frames the block runs. The box over this is the live cell —
   /// what the block's corner reads — so the name's ground is cut to the
@@ -662,12 +685,17 @@ class SeSpanVisual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final seName = this.seName ?? '';
+    final ink = timelineRowLookOf(
+      context,
+      layer,
+      ink: timelineDrawingInkColor,
+    ).ink;
     final fit = _SeSpanFit(
       axis: axis,
       frames: frames,
       framesFreeBefore: framesFreeBefore,
       dialogue: dialogue,
-      style: dialogueFitStyle(context, color: timelineDrawingInkColor),
+      style: dialogueFitStyle(context, color: ink),
     );
     // The chip is the head frame's, and a window opens on a whole frame: one
     // opening past the head never shows it.
@@ -682,7 +710,7 @@ class SeSpanVisual extends StatelessWidget {
             child: DialogueFitText(
               text: dialogue,
               axis: axis,
-              color: timelineDrawingInkColor,
+              color: ink,
               shownFromPart: shownFrom <= 0 || frames <= 0
                   ? 0
                   : shownFrom / frames,
@@ -753,9 +781,9 @@ final class _SeSpanFit {
   /// 고정으로 텍스트만 두도록 … 만약 공간 부족해서 이름이 블록안으로 들어가는
   /// 상황에선 지금이랑 변함없이」 — before the block, white over the row; on
   /// its head, the block's ink over the tint, as it was. ⚠️The timesheet's
-  /// own writing stays as it is: 「타임시트랑 달라지지만 변경하고싶음」.
-  Color nameInk() =>
-      _outside ? timelineTextOnDarkGroundColor : timelineDrawingInkColor;
+  /// own writing stays as it is: 「타임시트랑 달라지지만 변경하고싶음」. On
+  /// its head it is the block's word, in the block's look ([style], I-129).
+  Color nameInk() => _outside ? timelineTextOnDarkGroundColor : style.color!;
 
   ({double chip, bool outside}) chipIn(Size size) {
     final across = extentAcross(axis, size);

@@ -4134,10 +4134,21 @@ enum {
   // with float sqrt - IEEE correctly-rounded, so bytes stay identical
   // across platforms.
   QA_GRID_OP_RRECT_FILL = 5,
-  // 6 was the rounded-rect STROKE - the per-cell block border's. D32/D38
-  // (2026-08-18) made that border transparent for good and the substrate
-  // rewrite of 2026-09-24 took the last branch that could ask for it, so
-  // it left the Dart writer, the Dart reference and this engine together.
+  // The rounded-rect RING (I-129, 2026-10-25: an EMPTY block's outline,
+  // the export Cels tab's hollow block on the timeline's blocks):
+  //   QA_GRID_OP_RRECT_RING   (6): x_q8, y_q8, w_q8, h_q8, radius_q8,
+  //                                corner_mask, line_q8, open_mask,
+  //                                rgba                      = 10 words
+  // The RRECT_FILL coverage of the box less that of the box line_q8 in
+  // from each side, its corners line_q8 tighter. open_mask bit0=left,
+  // bit1=top, bit2=right, bit3=bottom names the sides it leaves OPEN: a
+  // block a tile's span cuts runs on into the next tile, which must not
+  // see a seam there.
+  // <- 6 was the per-cell block border's STROKE once: D32/D38 (2026-08-18)
+  // made that border transparent for good, and it left the Dart writer,
+  // the Dart reference and this engine together with the substrate
+  // rewrite of 2026-09-24.
+  QA_GRID_OP_RRECT_RING = 6,
 };
 
 static inline void qa_grid_blend_span(
@@ -4233,40 +4244,146 @@ static inline double qa_grid_rrect_distance(
   return outside + inside - r;
 }
 
-// The RRECT_FILL raster loop: analytic-AA coverage 0.5 - d from the
-// rounded-box SDF, blended source-over per pixel.
-static void qa_grid_blend_rrect(
-    uint8_t* pixels,
-    int32_t tile_width,
-    int32_t tile_height,
+// A rounded box's coverage field: the box, its centre and halves, and each
+// corner's radius (0 = square) - RRECT_FILL's box, and both of a ring's.
+typedef struct {
+  double left;
+  double top;
+  double width;
+  double height;
+  double center_x;
+  double center_y;
+  double half_w;
+  double half_h;
+  double radius_tl;
+  double radius_tr;
+  double radius_bl;
+  double radius_br;
+} qa_grid_rrect_field;
+
+// The box (x, y, w, h) with [radius] on the corners [corner_mask] picks,
+// held to what the box can hold.
+static qa_grid_rrect_field qa_grid_rrect_field_of(
     double x,
     double y,
     double w,
     double h,
     double radius,
-    int32_t corner_mask,
-    uint32_t rgba) {
-  const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
-  if (color_a == 0 || w <= 0.0 || h <= 0.0) {
-    return;
-  }
-  const double half_w = w * 0.5;
-  const double half_h = h * 0.5;
-  double max_radius = half_w < half_h ? half_w : half_h;
+    int32_t corner_mask) {
+  qa_grid_rrect_field field;
+  field.left = x;
+  field.top = y;
+  field.width = w;
+  field.height = h;
+  field.half_w = w * 0.5;
+  field.half_h = h * 0.5;
+  field.center_x = x + field.half_w;
+  field.center_y = y + field.half_h;
+  const double max_radius =
+      field.half_w < field.half_h ? field.half_w : field.half_h;
   if (radius > max_radius) {
     radius = max_radius;
   }
-  const double radius_tl = (corner_mask & 1) != 0 ? radius : 0.0;
-  const double radius_tr = (corner_mask & 2) != 0 ? radius : 0.0;
-  const double radius_bl = (corner_mask & 4) != 0 ? radius : 0.0;
-  const double radius_br = (corner_mask & 8) != 0 ? radius : 0.0;
-  const double center_x = x + half_w;
-  const double center_y = y + half_h;
+  field.radius_tl = (corner_mask & 1) != 0 ? radius : 0.0;
+  field.radius_tr = (corner_mask & 2) != 0 ? radius : 0.0;
+  field.radius_bl = (corner_mask & 4) != 0 ? radius : 0.0;
+  field.radius_br = (corner_mask & 8) != 0 ? radius : 0.0;
+  return field;
+}
 
-  int32_t left = (int32_t)(x - 1.0);
-  int32_t top = (int32_t)(y - 1.0);
-  int32_t right = (int32_t)(x + w + 2.0);
-  int32_t bottom = (int32_t)(y + h + 2.0);
+// The box an RRECT_FILL or RRECT_RING op at [op] states: its x_q8, y_q8,
+// w_q8, h_q8, radius_q8 and corner_mask words.
+static qa_grid_rrect_field qa_grid_rrect_field_at(const int32_t* op) {
+  return qa_grid_rrect_field_of(
+      (double)op[1] / 256.0, (double)op[2] / 256.0, (double)op[3] / 256.0,
+      (double)op[4] / 256.0, (double)op[5] / 256.0, op[6]);
+}
+
+// A ring's inner corner: its outer corner [line] tighter, never below
+// square nor past what the inner box can hold.
+static inline double qa_grid_ring_inner_radius(
+    double outer,
+    double line,
+    double max_radius) {
+  double radius = outer - line;
+  if (radius < 0.0) {
+    radius = 0.0;
+  }
+  if (radius > max_radius) {
+    radius = max_radius;
+  }
+  return radius;
+}
+
+// The box a ring of [outer] leaves unpainted: [line] in from each side it
+// strokes and [line] + 2 past each side [open_mask] leaves open, its
+// corners [line] tighter.
+static qa_grid_rrect_field qa_grid_ring_inner_field(
+    const qa_grid_rrect_field* outer,
+    double line,
+    int32_t open_mask) {
+  const double past = line + 2.0;
+  const double left = outer->left + ((open_mask & 1) != 0 ? -past : line);
+  const double top = outer->top + ((open_mask & 2) != 0 ? -past : line);
+  const double right =
+      outer->left + outer->width - ((open_mask & 4) != 0 ? -past : line);
+  const double bottom =
+      outer->top + outer->height - ((open_mask & 8) != 0 ? -past : line);
+  qa_grid_rrect_field field;
+  field.left = left;
+  field.top = top;
+  field.width = right - left;
+  field.height = bottom - top;
+  field.half_w = field.width * 0.5;
+  field.half_h = field.height * 0.5;
+  field.center_x = left + field.half_w;
+  field.center_y = top + field.half_h;
+  const double max_radius =
+      field.half_w < field.half_h ? field.half_w : field.half_h;
+  field.radius_tl = qa_grid_ring_inner_radius(outer->radius_tl, line,
+                                              max_radius);
+  field.radius_tr = qa_grid_ring_inner_radius(outer->radius_tr, line,
+                                              max_radius);
+  field.radius_bl = qa_grid_ring_inner_radius(outer->radius_bl, line,
+                                              max_radius);
+  field.radius_br = qa_grid_ring_inner_radius(outer->radius_br, line,
+                                              max_radius);
+  return field;
+}
+
+// How much of the pixel centred at (cx, cy) [field] covers: analytic-AA
+// 0.5 - d from the rounded-box SDF, held to [0, 1].
+static inline double qa_grid_rrect_coverage(
+    const qa_grid_rrect_field* field,
+    double cx,
+    double cy) {
+  const double coverage = 0.5 - qa_grid_rrect_distance(
+      cx, cy, field->center_x, field->center_y, field->half_w,
+      field->half_h, field->radius_tl, field->radius_tr, field->radius_bl,
+      field->radius_br);
+  return coverage <= 0.0 ? 0.0 : coverage > 1.0 ? 1.0 : coverage;
+}
+
+// The RRECT_FILL and RRECT_RING raster loop: [outer]'s coverage less
+// [inner]'s (NULL for none), blended source-over per pixel.
+static void qa_grid_blend_rrect_band(
+    uint8_t* pixels,
+    int32_t tile_width,
+    int32_t tile_height,
+    const qa_grid_rrect_field* outer,
+    const qa_grid_rrect_field* inner,
+    uint32_t rgba) {
+  const int32_t color_a = (int32_t)(rgba >> 24) & 0xFF;
+  if (color_a == 0 || outer->width <= 0.0 || outer->height <= 0.0) {
+    return;
+  }
+  if (inner != NULL && (inner->half_w <= 0.0 || inner->half_h <= 0.0)) {
+    inner = NULL;
+  }
+  int32_t left = (int32_t)(outer->left - 1.0);
+  int32_t top = (int32_t)(outer->top - 1.0);
+  int32_t right = (int32_t)(outer->left + outer->width + 2.0);
+  int32_t bottom = (int32_t)(outer->top + outer->height + 2.0);
   if (left < 0) left = 0;
   if (top < 0) top = 0;
   if (right > tile_width) right = tile_width;
@@ -4278,14 +4395,13 @@ static void qa_grid_blend_rrect(
   for (int32_t py = top; py < bottom; py += 1) {
     uint8_t* dst = pixels + (((ptrdiff_t)py * tile_width + left) << 2);
     for (int32_t px = left; px < right; px += 1) {
-      const double d = qa_grid_rrect_distance(
-          (double)px + 0.5, (double)py + 0.5, center_x, center_y, half_w,
-          half_h, radius_tl, radius_tr, radius_bl, radius_br);
-      double coverage = 0.5 - d;
+      const double cx = (double)px + 0.5;
+      const double cy = (double)py + 0.5;
+      double coverage = qa_grid_rrect_coverage(outer, cx, cy);
+      if (coverage > 0.0 && inner != NULL) {
+        coverage -= qa_grid_rrect_coverage(inner, cx, cy);
+      }
       if (coverage > 0.0) {
-        if (coverage > 1.0) {
-          coverage = 1.0;
-        }
         const int32_t a = (int32_t)(coverage * (double)color_a + 0.5);
         qa_grid_blend_span(dst, 1, r, g, b, a);
       }
@@ -4357,13 +4473,25 @@ QA_EXPORT int32_t qa_grid_raster_tile(
       }
       case QA_GRID_OP_RRECT_FILL: {
         if (cursor + 8 > op_word_count) return -2;
-        qa_grid_blend_rrect(
-            pixels, tile_width, tile_height,
-            (double)ops[cursor + 1] / 256.0, (double)ops[cursor + 2] / 256.0,
-            (double)ops[cursor + 3] / 256.0, (double)ops[cursor + 4] / 256.0,
-            (double)ops[cursor + 5] / 256.0, ops[cursor + 6],
+        const qa_grid_rrect_field box = qa_grid_rrect_field_at(ops + cursor);
+        qa_grid_blend_rrect_band(
+            pixels, tile_width, tile_height, &box, NULL,
             (uint32_t)ops[cursor + 7]);
         cursor += 8;
+        break;
+      }
+      case QA_GRID_OP_RRECT_RING: {
+        if (cursor + 10 > op_word_count) return -2;
+        const double line = (double)ops[cursor + 7] / 256.0;
+        if (line > 0.0) {
+          const qa_grid_rrect_field box = qa_grid_rrect_field_at(ops + cursor);
+          const qa_grid_rrect_field hole =
+              qa_grid_ring_inner_field(&box, line, ops[cursor + 8]);
+          qa_grid_blend_rrect_band(
+              pixels, tile_width, tile_height, &box, &hole,
+              (uint32_t)ops[cursor + 9]);
+        }
+        cursor += 10;
         break;
       }
       case QA_GRID_OP_GLYPH: {

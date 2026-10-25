@@ -10,6 +10,7 @@ import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../timeline/layer_label_controls.dart';
 import '../timeline/layer_rail_columns.dart';
+import '../timeline/timeline_block_look.dart';
 import '../timeline/timeline_block_word.dart';
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_grid_metrics.dart'
@@ -598,26 +599,39 @@ class ExportCelBlock extends StatelessWidget {
   /// The timeline's own block corner, in the timeline's own form — a box
   /// rounded by the block law ([timelineBlockCornerRadiusAt]), as its
   /// selection band and its standing wash are.
-  BoxDecoration _paper(bool written) => BoxDecoration(
-    color: written ? layerMarkColor(mark) : null,
-    borderRadius: BorderRadius.all(
-      timelineBlockCornerRadiusAt(
-        cellExtent: ExportCelsBoard.blockWidth,
-        crossExtent: height,
+  BoxDecoration _paper(bool written) {
+    final look = _look(written);
+    final line = look.line;
+    return BoxDecoration(
+      color: look.paper,
+      borderRadius: BorderRadius.all(
+        timelineBlockCornerRadiusAt(
+          cellExtent: ExportCelsBoard.blockWidth,
+          crossExtent: height,
+        ),
       ),
-    ),
-    border: written
-        ? null
-        : Border.all(
-            color: shown
-                ? AppColors.accent
-                : timelineDrawingHeldColor.withValues(alpha: 0.28),
-          ),
+      border: line == null
+          ? null
+          : Border.all(
+              color: shown ? AppColors.accent : line,
+              width: timelineBlockLineWidth,
+            ),
+    );
+  }
+
+  /// The block as the timeline draws a frame block ([timelineBlockLook]):
+  /// a written one shown, one not written HOLLOW — the empty block's look,
+  /// which the timeline's empty blocks took from this one (I-129).
+  TimelineBlockLook _look(bool written) => timelineBlockLook(
+    written ? TimelineBlockState.shown : TimelineBlockState.empty,
+    paper: layerMarkColor(mark),
+    ink: timelineInBlockInk(),
   );
 
   /// What the block reads ([ExportCelSheet.word]) in the frame block's own
   /// print: one type whatever its length, narrowed into the block where it
-  /// runs long.
+  /// runs long — a hollow one's in its outline's grey (I-129: 「텍스트는 …
+  /// 외곽선이랑 동일한 회색으로」).
   Widget _word(BuildContext context, bool written) => TimelineBlockText(
     text: sheet.word,
     place: (
@@ -629,9 +643,7 @@ class ExportCelBlock extends StatelessWidget {
     ),
     style: timelineBlockWordStyle(
       DefaultTextStyle.of(context).style,
-      ink: written
-          ? timelineInBlockInk()
-          : Theme.of(context).colorScheme.onSurfaceVariant,
+      ink: _look(written).ink,
       fontSize: 12,
       bold: written,
     ),

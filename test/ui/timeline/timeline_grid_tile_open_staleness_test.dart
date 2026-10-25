@@ -216,7 +216,7 @@ void main() {
       format: ui.ImageByteFormat.rawRgba,
     ))!.buffer.asUint8List();
     // The pixels really were different worlds: the straddled tile
-    // carried the empty-cel tint (timelineEmptyCelPaperColor) over cells
+    // carried the empty block (its hollow look, I-129) over cells
     // 0..2, the healed one carries the full paper. This is the assertion
     // that pins "the resident tile was WRONG", not merely "old".
     expect(

@@ -23,6 +23,10 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineGridGroundOver;
+import 'package:anicel/src/ui/timeline/timeline_block_look.dart'
+    show timelineEmptyBlockGrey;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -37,14 +41,17 @@ import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 import '../../helpers/row_berths_in_order.dart';
 import 'timeline_frame_geometry_probe.dart';
 
-/// R26 #44: ACTION-section blocks whose cel holds no picture yet paint a
-/// slightly grayed paper — the painter's style resolution, the session's
-/// fact/token pair, and the row memo's token invalidation.
+/// I-129: ACTION-section blocks whose cel holds no picture yet are HOLLOW —
+/// the ground behind them, a grey outline — the painter's style resolution,
+/// the session's fact/token pair, and the row memo's token invalidation.
+/// ↩️R26 #44 laid them a paler paper.
 void main() {
-  // The DEFAULT paper's empty-cel look — the unlabelled row's paper through
-  // the one tint rule; the tests below pin that it never drifts from it.
-  final timelineEmptyCelBlockColor = timelineEmptyCelPaperColor(
-    timelineDrawingHeldColor,
+  // What the row stands on, and the grey an empty block is outlined in over
+  // it — the one look every empty block wears ([timelineBlockLook]).
+  const ground = Color(0xFF202124);
+  final emptyLine = timelineGridGroundOver(
+    under: ground,
+    painted: timelineEmptyBlockGrey,
   );
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -92,32 +99,40 @@ void main() {
             ),
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
+      paperGround: ground,
     );
   }
 
   group('painter style resolution', () {
-    test('an empty-cel block grays its WHOLE run (start + held); a block '
-        'with content and uncovered cells stay untouched', () {
+    test('an empty block is HOLLOW over its WHOLE run (start + held) — the '
+        'ground behind it, the grey outline; a block with content and '
+        'uncovered cells stay untouched', () {
       final painter = painterFor(
         twoBlockLayer(),
         // f1's block (cells 0-1) is unworked, f2's block (cell 2) has ink.
         celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
       );
 
-      expect(
-        painter.resolvedCellStyleFor(0).background,
-        timelineEmptyCelBlockColor,
-        reason: 'the empty block\'s start cell grays',
-      );
-      expect(
-        painter.resolvedCellStyleFor(1).background,
-        timelineEmptyCelBlockColor,
-        reason: 'the held cell follows its block',
-      );
+      for (final cell in [0, 1]) {
+        final style = painter.resolvedCellStyleFor(cell);
+        expect(
+          style.background,
+          ground,
+          reason:
+              'cell $cell: the ground behind it, not see-through — 「투명말고 '
+              '뒤의 바탕색으로 칠함」',
+        );
+        expect(style.border, emptyLine, reason: 'cell $cell: the outline');
+      }
       expect(
         painter.resolvedCellStyleFor(2).background,
         timelineDrawingStartColor,
         reason: 'a worked block keeps the plain paper',
+      );
+      expect(
+        painter.resolvedCellStyleFor(2).border,
+        Colors.transparent,
+        reason: 'and wears no outline',
       );
       expect(
         painter.resolvedCellStyleFor(5).background,
@@ -126,7 +141,7 @@ void main() {
       );
     });
 
-    test('no resolver = no tint (every block keeps the plain paper)', () {
+    test('no resolver = every block drawn (each keeps the plain paper)', () {
       final painter = painterFor(twoBlockLayer());
       expect(
         painter.resolvedCellStyleFor(0).background,
@@ -136,12 +151,13 @@ void main() {
 
     // 유저 2026-10-16 (frame-picture-indicator-Q1 b): 「a + 그 셀이 있는
     // 타임라인 칸에도 빨간 표시」.
-    test('🚨a block whose cel cannot be read is red — its WHOLE run, the '
-        'empty-cel grey included; the block beside it keeps its paper', () {
+    test('🚨a block whose cel cannot be read is red — its WHOLE run, never '
+        'taken for empty; the block beside it keeps its paper', () {
       final painter = painterFor(
         twoBlockLayer(),
         // f1's block (cells 0-1) cannot be read — and says it holds nothing,
-        // so red has to win over grey. Cell 5 is asked too, and is no block.
+        // so red has to win over hollow. Cell 5 is asked too, and is no
+        // block.
         celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
         celCannotBeReadForLayer: (layer, frameIndex) =>
             frameIndex < 2 || frameIndex == 5,
@@ -211,8 +227,11 @@ void main() {
       );
     });
 
-    test('the unworked-cel tint is the MARK at low opacity, not the old '
-        'grey', () {
+    // 🗣️I-129 (유저 2026-10-25): 「그림 없는 빈 블록이면 출력의 셀 탭에서
+    // 그림이 없는블록을 표시하는것처럼 회색 외곽선, 빈 바탕」. ↩️R26 #44 laid
+    // the MARK at low opacity, so a marked row's empty block was its mark.
+    test('an empty block is the same hollow whatever its row\'s mark — a '
+        'worked one keeps the full mark', () {
       final painter = painterFor(
         twoBlockLayer().copyWith(
           mark: const LayerMark(process: LayerProcess.conte),
@@ -220,33 +239,13 @@ void main() {
         celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
       );
 
-      final tinted = painter.resolvedCellStyleFor(0).background;
-      expect(
-        tinted,
-        timelineEmptyCelPaperColor(
-          layerMarkColor(const LayerMark(process: LayerProcess.conte)),
-        ),
-      );
-      // Derived from the paper, not a second colour beside it: same hue,
-      // the transparency is the only difference.
-      expect(
-        tinted.r,
-        layerMarkColor(const LayerMark(process: LayerProcess.conte)).r,
-      );
-      expect(tinted.a, lessThan(1));
+      final empty = painter.resolvedCellStyleFor(0);
+      expect(empty.background, ground);
+      expect(empty.border, emptyLine);
       expect(
         painter.resolvedCellStyleFor(2).background,
         layerMarkColor(const LayerMark(process: LayerProcess.conte)),
         reason: 'a worked block keeps the full mark',
-      );
-    });
-
-    test('and the unmarked row\'s tint is still the old constant', () {
-      // The regression the pair has to keep: nothing about an unlabelled
-      // layer moved.
-      expect(
-        timelineEmptyCelPaperColor(layerMarkColor(LayerMark.none)),
-        timelineEmptyCelBlockColor,
       );
     });
   });
@@ -731,8 +730,9 @@ void main() {
       await tester.pumpWidget(body());
       final first = painterOf();
       expect(
-        first.resolvedCellStyleFor(0).background,
-        timelineEmptyCelBlockColor,
+        first.resolvedCellStyleFor(0).border,
+        timelineEmptyBlockGrey,
+        reason: 'hollow — over no known ground, the grey itself',
       );
 
       // Same inputs = memo hit: the row (and its painter) is reused.
@@ -763,6 +763,7 @@ void main() {
         timelineDrawingStartColor,
         reason: 'the painter re-reads the fact it was told changed',
       );
+      expect(after.resolvedCellStyleFor(0).border, Colors.transparent);
       // Read LIVE off the same painter instance — a captured value would
       // leave the tile store baking against a stale key forever.
       expect(after.celContentRevision, 1);

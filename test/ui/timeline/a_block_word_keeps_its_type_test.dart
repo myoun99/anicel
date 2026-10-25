@@ -43,6 +43,7 @@ import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/an_se_row.dart';
 import '../../helpers/block_word_finder.dart';
 import 'timeline_frame_geometry_probe.dart';
 
@@ -623,7 +624,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const MaterialApp(
+      MaterialApp(
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
@@ -631,6 +632,7 @@ void main() {
               width: 12,
               height: rowExtent,
               child: SeSpanVisual(
+                layer: anSeRow(),
                 axis: Axis.horizontal,
                 frames: 1,
                 dialogue: '',

@@ -1,5 +1,7 @@
-import 'package:flutter/widgets.dart' show Axis, Color;
+import 'package:flutter/widgets.dart' show Axis;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 
 /// 🗣️유저 2026-10-08 (I-73): 「ol쪽 만나면 선을 뭔가 꺾어서 위로 향하게 해서
@@ -10,6 +12,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 ///
 /// A box ten cells of 24px long and 30px across.
 void main() {
+  final row = Layer(id: const LayerId('row'), name: 'row', frames: const []);
+
   List<({double along, double across})> course({
     List<TimelineKeysLineStep> steps = const [],
     double crossFraction = 0.5,
@@ -21,7 +25,7 @@ void main() {
     TimelineLaneKeysLine(
       axis: Axis.horizontal,
       cells: cells,
-      color: const Color(0xFF000000),
+      layer: row,
       startsAtKey: startsAtKey,
       endsAtKey: endsAtKey,
       crossFraction: crossFraction,
