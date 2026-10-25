@@ -205,11 +205,16 @@ void main() {
   testWidgets('🚨a film lays the V row\'s fx whatever its switch says — a '
       'picture of the screen keeps the switch', (tester) async {
     await tester.runAsync(() async {
-      final session = sessionOf(
+      final switchedOff = sessionOf(
         trackEffects: [brightness],
         trackFxEnabled: false,
       );
-      Future<int> redAtTheInk(ExportLayerFx? fx, ExportSizeMode mode) async {
+      final switchedOn = sessionOf(trackEffects: [brightness]);
+      Future<int> redAtTheInk(
+        EditorSessionManager session,
+        ExportLayerFx? fx,
+        ExportSizeMode mode,
+      ) async {
         final rgba = await bytesOf(
           await ExportFrameRenderer(session: session, layerFx: fx)
               .videoRun([
@@ -221,15 +226,20 @@ void main() {
       }
 
       for (final mode in ExportSizeMode.values) {
-        final bare = await redAtTheInk(null, mode);
+        final bare = await redAtTheInk(switchedOff, null, mode);
         expect(
           bare,
           closeTo(128, 2),
           reason: '$mode: the switch is off on the screen',
         );
+        expect(
+          await redAtTheInk(switchedOn, null, mode),
+          greaterThan(bare + 20),
+          reason: '$mode: the switch is on on the screen',
+        );
         for (final fx in ExportLayerFx.values) {
           expect(
-            await redAtTheInk(fx, mode),
+            await redAtTheInk(switchedOff, fx, mode),
             greaterThan(bare + 20),
             reason: '$mode, $fx: the chain brightens the ink',
           );
