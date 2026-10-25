@@ -38,6 +38,8 @@ import 'mark_under_a_pixel.dart';
 /// mask held only the dab's axis-aligned box, so a rotated tip lost
 /// whatever reached past it. ⛔Do not buy the speed back by baking at a
 /// lower resolution — that was measured too, and the grain went with it.
+/// 🚨★★★NOR IS A ROUND TIP, since 2026-10-25 — it is its profile
+/// ([resolveDab] has why), so a square is all this still bakes.
 ///
 /// Quantization (user-approved: stroke bytes may change vs the old
 /// direct-analytic path): size 1/4 px steps up to 64 px then ~1.1%
@@ -69,12 +71,13 @@ class BrushTipStampCache {
   int get residentBytes => _masks.held;
   int get entryCount => _masks.length;
 
-  /// Rewrites an analytic [raw] dab to its cached-stamp form: quantized
-  /// size, the prerendered mask, `angleDegrees: 0`, `roundness: 1` (both
-  /// baked into the mask). A dab that already carries a mask — a raster
-  /// tip, or one this cache resolved — and a stamp dab (lift/fill pixels)
-  /// pass through untouched, but for a size under a pixel
-  /// ([liftedToOnePixel] — every dab a stroke lays comes through here).
+  /// Rewrites an analytic [raw] dab to the form it is laid in: a round tip
+  /// quantized (below), a square to its prerendered mask with
+  /// `angleDegrees: 0` and `roundness: 1`. A dab that already carries a
+  /// mask — a raster tip, or one this cache resolved — and a stamp dab
+  /// (lift/fill pixels) pass through untouched, but for a size under a
+  /// pixel ([liftedToOnePixel] — every dab a stroke lays comes through
+  /// here).
   BrushDab resolveDab(BrushDab raw) {
     final dab = liftedToOnePixel(raw);
     if (dab.stamp != null || dab.tipMask != null) {
@@ -83,24 +86,27 @@ class BrushTipStampCache {
     final sizeQ = quantizeSizeStep(dab.size);
     final size = dequantizeSize(sizeQ);
     final hardnessQ = (dab.hardness.clamp(0.0, 1.0) * 128).round();
+    if (dab.tipShape == BrushTipShape.round) {
+      // 🚨★★★A ROUND TIP IS NOT BAKED — it is its profile, read along its
+      // radius ([RoundTipProfile]), and its pile beside it (board
+      // a-one-pixel-dab-drops-out-by-where-it-lies Q4, 2026-10-25): a stamp
+      // a texel a pixel, sampled bilinearly, blurred the profile a second
+      // time (measured there). What it is quantized by is what keys its
+      // profile; its roundness and angle turn the pixel into its space and
+      // are left as they are.
+      final hardness = hardnessQ / 128.0;
+      return size == dab.size && hardness == dab.hardness
+          ? dab
+          : dab.copyWith(size: size, hardness: hardness);
+    }
     final roundnessQ = (dab.roundness.clamp(0.0, 1.0) * 128).round().clamp(
       1,
       128,
     );
-    final round = dab.tipShape == BrushTipShape.round;
-    // A circle is the same stamp at every angle ([brushTipGeometry] turns
-    // only an ellipse), so its angle is not part of what the stamp is.
-    final angleQ = round && roundnessQ == 128
-        ? 0
-        : ((dab.angleDegrees.round() % 360) + 360) % 360;
-    // I-50: an analytic ROUND tip's stamp carries the anti-alias step's edge
-    // ([brushTipGeometry]), so the step is part of what the stamp is; every
-    // other tip's step applies after sampling, as before.
-    final bakedStep = round ? dab.antiAlias : null;
-    final step = bakedStep == null ? '' : '|${bakedStep.name}';
+    final angleQ = ((dab.angleDegrees.round() % 360) + 360) % 360;
     final key =
         '${resolvedIdPrefix}analytic:${dab.tipShape.name}'
-        '|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
+        '|$sizeQ|$hardnessQ|$roundnessQ|$angleQ';
 
     final mask = _masks.resolve(
       key,
@@ -111,7 +117,6 @@ class BrushTipStampCache {
         hardness: hardnessQ / 128.0,
         roundness: roundnessQ / 128.0,
         angleDegrees: angleQ.toDouble(),
-        bakedStep: bakedStep,
       ),
     );
 
@@ -154,8 +159,7 @@ class BrushTipStampCache {
   /// per-pixel path would compute at the canvas offset the consumer's
   /// sampler maps that texel to — so consuming the mask through the
   /// existing unrotated bilinear samplers reproduces the tip, with
-  /// rotation/roundness/hardness baked in — and, given [bakedStep], that
-  /// anti-alias step's edge (I-50).
+  /// rotation/roundness/hardness baked in.
   BrushTipMask _render({
     required String key,
     required BrushTipShape tipShape,
@@ -163,7 +167,6 @@ class BrushTipStampCache {
     required double hardness,
     required double roundness,
     required double angleDegrees,
-    required BrushAntiAlias? bakedStep,
   }) {
     final radius = size / 2.0;
     // ≈1 texel per canvas pixel, CAPPED for huge brushes (R21): a 1000px
@@ -183,7 +186,7 @@ class BrushTipStampCache {
       angleDegrees: angleDegrees,
       tipShape: tipShape,
       tipMask: null,
-      edgeWidth: bakedStep?.edgeWidth ?? 0.0,
+      edge: BrushAntiAlias.none.edge,
     ));
 
     // The consumer maps texel i to tip-space (canvas-offset) coordinates
@@ -205,11 +208,6 @@ class BrushTipStampCache {
         alpha[index] = (coverage * 255.0).round().clamp(0, 255);
       }
     }
-    return BrushTipMask(
-      id: key,
-      size: maskSize,
-      alpha: alpha,
-      edgeBaked: bakedStep != null,
-    );
+    return BrushTipMask(id: key, size: maskSize, alpha: alpha);
   }
 }

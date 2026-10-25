@@ -216,6 +216,10 @@ enum {
   // 高さ: the paper texture's height cuts the coverage instead of
   // multiplying it (BrushTextureMode.height, F-451). v53.
   QA_DAB_FLAG_TEXTURE_HEIGHT = 64,
+  // The tip holds an edge that does not pile (`tipHoldsAnEdge`): what of a
+  // pixel's coverage piles is read off round_pile, and the rest sets the
+  // level the stroke settles at there (qa_dab_source_alpha). v56.
+  QA_DAB_FLAG_EDGE_HELD = 128,
 };
 
 /* paperHeightBand (brush_stroke_blend.dart): how far above a dab's floor
@@ -294,8 +298,12 @@ typedef struct {
   double center_x;
   double center_y;
   double radius;
-  double hard_radius;
-  double edge_span;
+  /* An analytic round tip's profile (`RoundTipProfile`, v56): entries a
+     canvas pixel, nothing at or past round_reach, 1 at or within
+     round_inner. The tables are round_coverage and round_pile. */
+  double round_scale;
+  double round_reach;
+  double round_inner;
   double minor_radius;
   double tip_cos;
   double tip_sin;
@@ -372,6 +380,10 @@ typedef struct {
   // The table the dab lays its share through (qa_dab_even), or NULL where
   // it lays whole. v41.
   const double* evening;
+  // An analytic round tip's two tables (qa_round_profile_at), or NULL for
+  // any other tip. v56.
+  const double* round_coverage;
+  const double* round_pile;
 } qa_dab_spec;
 
 QA_EXPORT int32_t qa_dab_spec_sizeof(void) {
@@ -536,6 +548,22 @@ static inline double qa_dab_even(const double* table, double whole) {
   return low + (table[i + 1] - low) * (x - (double)i);
 }
 
+// 🚨★★★A ROUND TIP IS TWO RAMPS AND A PIXEL'S SQUARE, READ ALONG ITS RADIUS
+// (board a-one-pixel-dab-drops-out-by-where-it-lies Q4, 유저 2026-10-25
+// 「AA 가장자리는 쌓이지 않는다」). The law and its reasons are written once,
+// beside `RoundTipProfile` in round_tip_profile.dart, and THE TABLES ARE
+// THE LAW: Dart builds them, and this is `readAt`'s arithmetic, operation
+// by operation, so both kernels read the same numbers.
+static inline double qa_round_profile_at(
+    const double* table,
+    double scale,
+    double distance) {
+  const double x = distance * scale;
+  const int32_t i = (int32_t)x;
+  const double low = table[i];
+  return low + (table[i + 1] - low) * (x - (double)i);
+}
+
 // 🚨★★★A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (F-205, 유저 2026-09-28:
 // 「최대 100%로 해두더라도 필압 약하게하면 해당 선들 겹쳐도 필압에맞춰서
 // 10%만큼만 진해진다」). A dab raises what is under it TOWARDS its opacity,
@@ -562,22 +590,34 @@ static inline double qa_dab_even(const double* table, double whole) {
 // pixel already stands at the ceiling and the dab lays nothing.
 //
 // What the dab would lay whole goes through its share first (qa_dab_even).
+//
+// 🚨★★★AN EDGE SETTLES LOWER (board a-one-pixel-dab-drops-out-by-where-it-
+// lies Q4, 유저 2026-10-25 「AA 가장자리는 쌓이지 않는다」): where the tip's
+// coverage is part edge, [ceiling] — the share of it that does not pile
+// (`edgeCeiling`) — scales the level it settles at, and what it lays toward
+// it is the share that piles. At a ceiling of 1 both are the numbers above
+// to the bit; an erase keeps its multiplier.
 static inline double qa_dab_source_alpha(
     const qa_dab_spec* s,
     double coverage,
     double effective_opacity,
     double destination_alpha,
+    double ceiling,
     int erase) {
-  if (erase || s->dab_opacity >= 1.0) {
+  if (erase || (s->dab_opacity >= 1.0 && ceiling >= 1.0)) {
     const double whole = s->source_alpha_norm * effective_opacity * s->dab_flow;
     return s->evening == NULL ? whole : qa_dab_even(s->evening, whole);
   }
-  if (destination_alpha >= s->dab_opacity) {
+  const double settle = s->dab_opacity * ceiling;
+  if (destination_alpha >= settle) {
     return -1.0;
   }
-  const double whole = s->source_alpha_norm * coverage * s->dab_flow;
+  // The share that piles, no more than whole (`edgePiledShare`).
+  const double share = coverage / ceiling;
+  const double whole =
+      s->source_alpha_norm * (share < 1.0 ? share : 1.0) * s->dab_flow;
   return (s->evening == NULL ? whole : qa_dab_even(s->evening, whole)) *
-         (s->dab_opacity - destination_alpha) / (1.0 - destination_alpha);
+         (settle - destination_alpha) / (1.0 - destination_alpha);
 }
 
 // 🚨A STROKE PILES UP ON A 16-BIT PLANE (ABI 40; board
@@ -630,9 +670,9 @@ static inline int32_t qa_dab_store_own(
     wide[2] = (uint16_t)own[2];
     wide[3] = (uint16_t)wide_a;
   }
-  const uint8_t out_r = (uint8_t)own[3];
-  const uint8_t out_g = (uint8_t)own[4];
-  const uint8_t out_b = (uint8_t)own[5];
+  const uint8_t out_r = out_a == 0 ? 0 : (uint8_t)own[3];
+  const uint8_t out_g = out_a == 0 ? 0 : (uint8_t)own[4];
+  const uint8_t out_b = out_a == 0 ? 0 : (uint8_t)own[5];
   if (pixel[3] != (uint8_t)out_a || pixel[0] != out_r ||
       pixel[1] != out_g || pixel[2] != out_b) {
     pixel[0] = out_r;
@@ -689,6 +729,13 @@ static inline int32_t qa_dab_store(
     }
     out_a = qa_round_byte(out_alpha * 255.0);
     wide_a = qa_round_wide(out_alpha * 65535.0);
+    if (out_a == 0) {
+      // No colour under a zero alpha in the view (`StrokePixel.rounded`
+      // has why); the plane keeps its colour for the dabs that pile on.
+      out_r = 0;
+      out_g = 0;
+      out_b = 0;
+    }
   }
   if ((uint16_t)wide_r != wide[0] || (uint16_t)wide_g != wide[1] ||
       (uint16_t)wide_b != wide[2] || (uint16_t)wide_a != wide[3]) {
@@ -709,9 +756,13 @@ static inline int32_t qa_dab_store(
 }
 
 // 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
-// ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). Every canvas dab is a
-// prerendered tip mask (BrushTipStampCache) and most carry no dual or
-// texture mask, so this path is nearly all the brush work there is. Two
+// ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). A raster tip and a square
+// reach the kernel as a tip mask and most carry no dual or texture mask, so
+// this path is their brush work. ↩️A round tip rode it too, baked into a
+// mask (BrushTipStampCache), until it became its profile (v56): read
+// scalar off its two tables it costs 0.75–0.91 of what its mask did here
+// from 20px up, and about the same below (2026-10-25, measured through the
+// live rasterizer — and no bake, no upload). Two
 // doubles a register on both baselines (SSE2 / NEON): the four divisions a
 // pixel pays, and the sampling and alpha arithmetic around them, run for a
 // pair at once.
@@ -891,7 +942,7 @@ static int32_t qa_dab_blend_pairs(
           continue;
         }
         settled[i] = qa_dab_source_alpha(s, coverage[i], effective[i],
-                                         lanes_d[i], erase);
+                                         lanes_d[i], 1.0, erase);
         if (settled[i] < 0.0) {
           keep[i] = 0;
           settled[i] = 0.0;
@@ -1042,6 +1093,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
   const int aa_threshold = (flags & QA_DAB_FLAG_AA_THRESHOLD) != 0;
   const int texture_height = (flags & QA_DAB_FLAG_TEXTURE_HEIGHT) != 0;
   const double aa_contrast = s->aa_contrast;
+  const int edge_held = (flags & QA_DAB_FLAG_EDGE_HELD) != 0;
 #if defined(QA_DAB_PAIRS)
   const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
 #endif
@@ -1079,6 +1131,9 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 #endif
     for (; x < row_right; x += 1) {
       double coverage;
+      // What of it piles where the tip holds an edge (QA_DAB_FLAG_EDGE_HELD);
+      // unread everywhere else, where all of it piles.
+      double pile = 0.0;
       if (has_tip) {
         if (unrotated_tip) {
           const int32_t u_index = x - s->region_left;
@@ -1115,14 +1170,18 @@ QA_EXPORT int32_t qa_dab_blend_tile(
           }
           distance = sqrt(dx_squared + dy_squared);
         }
-        if (distance > s->radius) {
+        if (distance >= s->round_reach) {
           continue;
         }
-        if (distance <= s->hard_radius || s->edge_span <= 0.0) {
+        if (distance <= s->round_inner) {
           coverage = 1.0;
+          pile = 1.0;
         } else {
           coverage =
-              qa_clamp01(1.0 - ((distance - s->hard_radius) / s->edge_span));
+              qa_round_profile_at(s->round_coverage, s->round_scale, distance);
+          if (edge_held) {
+            pile = qa_round_profile_at(s->round_pile, s->round_scale, distance);
+          }
         }
         if (coverage <= 0.0) {
           continue;
@@ -1136,6 +1195,11 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       if (!qa_dab_edge(&coverage, aa_threshold, aa_contrast)) {
         continue;
       }
+      // 🚨★★★THE EDGE DOES NOT PILE (`edgeCeiling`, and the reasons beside
+      // the Dart kernel's own line): the share of the dab's opacity the
+      // stroke may come up to here.
+      const double ceiling =
+          edge_held && pile > coverage ? coverage / pile : 1.0;
 
       if (has_dual) {
         const double dual_sample = qa_sample_tiled_lattice(
@@ -1212,7 +1276,7 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       uint16_t* wide = tile_wide + at;
       const double destination_alpha = (double)wide[3] / 65535.0;
       const double source_alpha = qa_dab_source_alpha(
-          s, coverage, effective_opacity, destination_alpha, erase);
+          s, coverage, effective_opacity, destination_alpha, ceiling, erase);
       if (source_alpha < 0.0) {
         continue;
       }
@@ -6243,4 +6307,9 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v55: qa_audio_device_play returns the run it starts (it returned 1), and
 // qa_audio_device_stop_run silences unless another run holds the device -
 // a player's end stops only its own sound.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 55; }
+// v56: qa_dab_spec drops hard_radius and edge_span for an analytic round
+// tip's profile - round_scale, round_reach, round_inner and the tables
+// round_coverage and round_pile - and QA_DAB_FLAG_EDGE_HELD: a round tip is
+// its profile read along its radius (qa_round_profile_at), and its edge does
+// not pile (qa_dab_source_alpha's ceiling). Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 56; }

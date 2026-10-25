@@ -91,9 +91,9 @@ class BrushDabPlan {
     required this.centerX,
     required this.centerY,
     required this.tip,
-    required this.edgeSpan,
     required this.aaThreshold,
     required this.aaContrast,
+    required this.edgeHeld,
     required this.radiusSqSkip,
     required this.dabOpacity,
     required this.dabFlow,
@@ -152,7 +152,11 @@ class BrushDabPlan {
   /// depend on the tip as well as the step.
   final bool aaThreshold;
   final double aaContrast;
-  final double edgeSpan;
+
+  /// Whether the tip holds an EDGE that does not pile ([tipHoldsAnEdge]):
+  /// the pixel loop then asks what of the coverage piles ([tipPileAt]) and
+  /// lets the rest set the level the stroke settles at.
+  final bool edgeHeld;
 
   /// Conservative squared-distance cull for plain round tips: only pixels
   /// PROVABLY outside the radius skip the sqrt; anything within the float
@@ -267,10 +271,10 @@ class BrushDabPlan {
       centerX: centerX,
       centerY: centerY,
       tip: tip,
-      edgeSpan: radius - tip.hardRadius,
       aaThreshold: edge.threshold,
       aaContrast: edge.contrast,
-      radiusSqSkip: radius * radius * (1.0 + 1e-12),
+      edgeHeld: tipHoldsAnEdge(tip, edge),
+      radiusSqSkip: tip.reach * tip.reach * (1.0 + 1e-12),
       dabOpacity: dab.opacity,
       dabFlow: dab.flow,
       unrotatedTip: unrotatedTip,
@@ -496,8 +500,9 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     centerX: plan.centerX,
     centerY: plan.centerY,
     radius: plan.tip.radius,
-    hardRadius: plan.tip.hardRadius,
-    edgeSpan: plan.edgeSpan,
+    roundScale: plan.tip.profile?.scale ?? 0.0,
+    roundReach: plan.tip.reach,
+    roundInner: plan.tip.profile?.inner ?? 0.0,
     minorRadius: plan.tip.minorRadius,
     tipCos: plan.tip.tipCos,
     tipSin: plan.tip.tipSin,
@@ -521,6 +526,7 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
         (plan.tip.isEllipse ? QaNativeEngine.dabFlagEllipse : 0) |
         (plan.unrotatedTip ? QaNativeEngine.dabFlagTipUnrotated : 0) |
         (plan.aaThreshold ? QaNativeEngine.dabFlagAaThreshold : 0) |
+        (plan.edgeHeld ? QaNativeEngine.dabFlagEdgeHeld : 0) |
         (plan.textureMode == BrushTextureMode.height
             ? QaNativeEngine.dabFlagTextureHeight
             : 0),
@@ -559,6 +565,8 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     // Only the lattice path narrows its rows by the ink (ABI 39).
     tipRowInk: plan.unrotatedTip ? plan.tipMask!.inkedColumns : null,
     evening: plan.evening,
+    roundCoverage: plan.tip.profile?.coverage,
+    roundPile: plan.edgeHeld ? plan.tip.profile?.pile : null,
   );
 }
 
@@ -624,6 +632,7 @@ void blendDabTilesDart(
   final tileXEnd = plan.tileXEnd;
   final erase = plan.erase;
   final evening = plan.evening;
+  final edgeHeld = plan.edgeHeld;
   // The dab's colour on the 16-bit plane (`qa_dab_over_own_colour`).
   final ownR = sourceR * 257;
   final ownG = sourceG * 257;
@@ -687,6 +696,17 @@ void blendDabTilesDart(
             continue;
           }
         }
+
+        // 🚨★★★THE EDGE DOES NOT PILE (board a-one-pixel-dab-drops-out-by-
+        // where-it-lies Q4, 유저 2026-10-25 「AA 가장자리는 쌓이지 않는다」):
+        // of what the tip covers here only its PILE adds up where dabs
+        // overlap ([tipPileAt]); the rest is its edge, and sets how high the
+        // stroke may come here — this share of the dab's opacity. Over
+        // nothing a dab lays its coverage, as it always did; a line's
+        // cross-section is one dab's. 1 where all of it piles.
+        final ceiling = edgeHeld
+            ? edgeCeiling(coverage, tipPileAt(tip, x + 0.5 - centerX, dy))
+            : 1.0;
 
         // Dual-brush texture: a second tiled mask multiplies the coverage.
         if (dualMask != null) {
@@ -756,17 +776,23 @@ void blendDabTilesDart(
         // Opacity 1 (or an erase) is the old grouping,
         // ((a/255) * (dab.opacity * coverage)) * flow. What the dab would
         // lay whole goes through its share first (`stampShareOf`).
+        // Its edge's [ceiling] scales the level it settles at, and what it
+        // lays toward it is the share that piles; at a ceiling of 1 both
+        // are F-205's numbers to the bit.
         final double sourceAlpha;
-        if (erase || dabOpacity >= 1.0) {
+        if (erase || (dabOpacity >= 1.0 && ceiling >= 1.0)) {
           final whole = sourceAlphaNorm * effectiveOpacity * dabFlow;
           sourceAlpha = evening == null ? whole : evenedLaid(evening, whole);
-        } else if (destinationAlpha >= dabOpacity) {
-          continue;
         } else {
-          final whole = sourceAlphaNorm * coverage * dabFlow;
+          final settle = dabOpacity * ceiling;
+          if (destinationAlpha >= settle) {
+            continue;
+          }
+          final whole =
+              sourceAlphaNorm * edgePiledShare(coverage, ceiling) * dabFlow;
           sourceAlpha =
               (evening == null ? whole : evenedLaid(evening, whole)) *
-              (dabOpacity - destinationAlpha) /
+              (settle - destinationAlpha) /
               (1.0 - destinationAlpha);
         }
 
@@ -844,6 +870,12 @@ void blendDabTilesDart(
           }
           outA = (outAlpha * 255.0).round().clamp(0, 255);
           wideA = (outAlpha * 65535.0).round().clamp(0, 65535);
+          if (outA == 0) {
+            // No colour under a zero alpha in the view (`StrokePixel.rounded`).
+            outR = 0;
+            outG = 0;
+            outB = 0;
+          }
         }
         if (wideR != wide[offset] ||
             wideG != wide[offset + 1] ||

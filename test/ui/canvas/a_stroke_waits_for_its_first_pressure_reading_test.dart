@@ -767,9 +767,8 @@ void main() {
 
         final press = results.single.first;
         expect((press.center.x, press.center.y), (4, 4));
-        // The tip-stamp cache bakes the turn into the dab's mask; the
-        // mask's key ends with it in whole degrees.
-        expect(_bakedAngle(press), '315');
+        // The dab is laid turned by it, in whole degrees round the circle.
+        expect(_laidAngle(press), 315);
       },
     );
 
@@ -831,7 +830,7 @@ void main() {
         _pen(pressureMax: 1, [_s(const Offset(10, 10), 0.5, 0)]),
       ]);
 
-      expect(_bakedAngle(results.single.single), '0');
+      expect(_laidAngle(results.single.single), 0);
     });
   });
 
@@ -1339,8 +1338,8 @@ void main() {
           ]),
         ]);
 
-        expect(_bakedAngle(results.first.first), '315');
-        expect(_bakedAngle(results.last.first), '45');
+        expect(_laidAngle(results.first.first), 315);
+        expect(_laidAngle(results.last.first), 45);
       },
     );
 
@@ -1650,10 +1649,10 @@ const double _pencilMax = 25 / 6;
 /// (1.0) is half pressure (유저 2026-09-27, `ipad-pencil-pressure-scale-Q1`).
 double _ipad(double force) => (force / 2.0).clamp(0.0, 1.0);
 
-/// The angle [dab]'s stamp was baked at — the sixth field of the stamp id
-/// (`tipstamp|tip|size|hardness|roundness|angle|…`). ↩️Read by its place, not
-/// as the id's tail: I-50 put the anti-alias step after it.
-String? _bakedAngle(BrushDab dab) => dab.tipMask?.id.split('|')[5];
+/// The angle [dab] is laid at, in whole degrees round the circle.
+/// ↩️Read off the stamp the tip-stamp cache baked the turn into, until a
+/// round tip stopped being baked (2026-10-25).
+int _laidAngle(BrushDab dab) => ((dab.angleDegrees.round() % 360) + 360) % 360;
 
 /// A stand-in force, as the user's inspector showed it on build 1064. The
 /// rule does not read the value — only that the press's force repeats — so

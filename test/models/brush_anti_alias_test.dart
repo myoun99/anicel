@@ -2,7 +2,7 @@
 //
 // 유저 2026-09-08, after drawing Clip Studio's G펜 at all four settings:
 // 「굵기 안바꾸고 가장자리만 조이는거였어」. ↩️I-50 (2026-09-30) split what a
-// step means by tip: an analytic round tip is GIVEN an edge [edgeWidth] wide
+// step means by tip: an analytic round tip is GIVEN an edge ([edge]) wide
 // inside its rim, every other tip keeps the contrast ladder. Which one a dab
 // takes, and what the ladder does to a coverage, is pinned with the law
 // itself (`brush_edge_law_test.dart`); here are the numbers it reads.
@@ -22,10 +22,11 @@ void main() {
     );
   });
 
-  test('the edge widths: 없음 gives none, and each step up is wider', () {
-    expect(BrushAntiAlias.none.edgeWidth, 0.0);
+  test('the edges: 없음 gives none, and each step up is wider', () {
+    expect(BrushAntiAlias.none.edge.width, 0.0);
+    expect(BrushAntiAlias.none.edge.inset, 0.0);
     final widths = [
-      for (final step in BrushAntiAlias.values) step.edgeWidth,
+      for (final step in BrushAntiAlias.values) step.edge.width,
     ];
     for (var i = 1; i < widths.length; i += 1) {
       expect(

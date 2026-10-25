@@ -1,8 +1,8 @@
 // WHAT A DAB'S COVERAGE GOES THROUGH AFTER ITS TIP IS SAMPLED.
 //
 // Two laws share the four steps (I-50, 유저 2026-09-30 「경도와 따로 — 단계마다
-// 고정 폭」): an analytic round tip already carries its edge — widened in its
-// ramp, or baked into its stamp — and takes its coverage as it is; every
+// 고정 폭」): an analytic round tip already carries its edge — in its
+// profile (`RoundTipProfile`) — and takes its coverage as it is; every
 // other tip keeps the contrast ladder, which tightens the edge WITHOUT
 // moving the half-coverage radius (유저 2026-09-08 「굵기 안바꾸고 가장자리만
 // 조이는거였어」). 없음 cuts at half coverage whatever the tip.
@@ -60,31 +60,28 @@ void main() {
       }
     });
 
-    test('its stamp carries the edge too, so a RESOLVED round dab takes its '
-        'coverage as it is', () {
+    test('a RESOLVED round dab is not baked — its edge stays in its profile, '
+        'and it takes its coverage as it is', () {
       final resolved = BrushTipStampCache().resolveDab(dab(BrushAntiAlias.low));
-      expect(resolved.tipMask!.edgeBaked, isTrue, reason: 'premise');
+      expect(resolved.tipMask, isNull, reason: 'premise');
       final law = brushDabEdgeLaw(resolved);
       expect(law.threshold, isFalse);
       expect(law.contrast, 1.0);
     });
 
-    test('a round tip is baked once per STEP — the step is part of the stamp',
+    test('a round tip has a profile per STEP — the step is part of the tip',
         () {
-      // One cache for both: were the step not in its key, the second dab
-      // would be handed the first one's stamp.
-      final cache = BrushTipStampCache();
-      final low = cache.resolveDab(dab(BrushAntiAlias.low)).tipMask!;
-      final high = cache.resolveDab(dab(BrushAntiAlias.high)).tipMask!;
-      expect(low.id, isNot(high.id));
-      expect(low.alpha, isNot(high.alpha));
+      final low = brushDabTipGeometry(dab(BrushAntiAlias.low)).profile!;
+      final high = brushDabTipGeometry(dab(BrushAntiAlias.high)).profile!;
+      expect(low, isNot(same(high)));
+      expect(low.coverage, isNot(high.coverage));
     });
 
     test('a raster tip keeps the ladder — resolved or not', () {
       for (final step in [BrushAntiAlias.low, BrushAntiAlias.medium]) {
         final raw = dab(step, tipMask: rasterTip);
         final resolved = BrushTipStampCache().resolveDab(raw);
-        expect(resolved.tipMask!.edgeBaked, isFalse, reason: 'premise');
+        expect(resolved.tipMask, same(rasterTip), reason: 'premise');
         expect(brushDabEdgeLaw(raw).contrast, step.contrast, reason: '$step');
         expect(
           brushDabEdgeLaw(resolved).contrast,
@@ -97,7 +94,7 @@ void main() {
     test('a square keeps the ladder — the step never widened its edge', () {
       final raw = dab(BrushAntiAlias.low, tipShape: BrushTipShape.square);
       final resolved = BrushTipStampCache().resolveDab(raw);
-      expect(resolved.tipMask!.edgeBaked, isFalse, reason: 'premise');
+      expect(resolved.tipMask, isNotNull, reason: 'premise');
       expect(brushDabEdgeLaw(raw).contrast, 4.0);
       expect(brushDabEdgeLaw(resolved).contrast, 4.0);
     });

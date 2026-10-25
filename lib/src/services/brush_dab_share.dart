@@ -9,7 +9,8 @@ import '../models/brush_dab.dart';
 /// 「엔진이 쌓임을 환산 — 크기와 무관하게(클튜처럼)」, Q2 「획을 정밀하게
 /// 쌓고, 환산은 커널에서 — 모든 브러시」).
 ///
-/// The interpolator lays dabs no closer than a pixel apart, so a big brush
+/// The interpolator lays dabs no closer than a pixel apart (a brush under
+/// ten pixels, a tenth of its size — [finestDabStep]), so a big brush
 /// laid far more of them across its width than a small one and piled up
 /// darker and harder-edged for it — one flow at size 10 and at size 160
 /// drew two different brushes. Clip Studio lays about one stamp per tenth of
@@ -30,13 +31,36 @@ import '../models/brush_dab.dart';
 /// ([eveningTableOf]).
 const int shareSteps = 1024;
 
+/// The stretch of a stroke one whole stamp of a brush [size] across stands
+/// for: a tenth of the size.
+double stampStepFor(double size) => size * 0.1;
+
+/// The finest step between two dabs of a brush [size] across: one stamp's
+/// ([stampStepFor]), not under a quarter of a pixel nor over one.
+///
+/// 🚨★★★(board a-one-pixel-dab-drops-out-by-where-it-lies Q4, 2026-10-25)
+/// A round tip's edge does not pile (`edgeCeiling`), so a thin line is as
+/// high at a pixel as the highest dab there lays it — and a 1px brush laid
+/// a pixel apart drew about half the ink of Clip Studio's (0.25–0.33 a
+/// column against 0.48–0.52, measured through the stroke path). Under ten
+/// pixels a whole-pixel step also laid fewer stamps than one a tenth of the
+/// size, each capped at one, so a small brush piled lighter than a large
+/// one — what Q1 above rules out.
+/// ⚠️A quarter of a pixel bounds the finest brushes to four dabs a pixel:
+/// finer drew no more ink (the 1px line 0.37 a column at half a pixel,
+/// 0.38 at a quarter).
+/// ↩️One pixel at every size from the T2 foundation (2026-07-02) on, 「to
+/// prevent excessive dab counts」.
+double finestDabStep(double size) =>
+    stampStepFor(size).clamp(0.25, 1.0).toDouble();
+
 /// [dab]'s share of one stamp per tenth of its size, in (0, 1].
 double stampShareOf(BrushDab dab) {
   final step = dab.pathStep;
   if (step == null) {
     return 1.0;
   }
-  final share = step / (dab.size * 0.1);
+  final share = step / stampStepFor(dab.size);
   if (share >= 1.0) {
     return 1.0;
   }

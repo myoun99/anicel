@@ -2,13 +2,14 @@ import 'dart:math' as math;
 
 import '../models/brush_dab.dart';
 import '../models/canvas_point.dart';
+import 'brush_dab_share.dart';
 import 'input/pen_readings.dart';
 
 /// Lightweight Brush T2 dab spacing/interpolation.
 ///
 /// This keeps input sampling independent from Flutter pointer types. The spacing
 /// interval is based on the materialized brush size and editor-session spacing
-/// ratio, clamped to at least one canvas unit to prevent excessive dab counts.
+/// ratio, never finer than [finestDabStep].
 class BrushDabInterpolator {
   const BrushDabInterpolator();
 
@@ -16,7 +17,7 @@ class BrushDabInterpolator {
     if (!brushSize.isFinite || brushSize <= 0 || !spacingRatio.isFinite) {
       return 1.0;
     }
-    return math.max(1.0, brushSize * spacingRatio);
+    return math.max(finestDabStep(brushSize), brushSize * spacingRatio);
   }
 
   List<BrushDab> interpolate({

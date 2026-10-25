@@ -1,22 +1,24 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/services/brush_dab_tip_geometry.dart';
 
-/// 🚨★★★THE STAMP CACHE **BAKES** THIS LAW, AND A STROKE PICKS THE BAKED
-/// ROUTE OR THE DIRECT ONE BY CACHE STATE ALONE.
+/// 🚨★★★ONE LAW FOR EVERY ROUTE THAT EVALUATES THE ANALYTIC TIP.
 ///
-/// Three routes evaluated the analytic tip: the coverage list (the commit
-/// oracle and the brush preview), the tile kernel, and the stamp cache that
-/// renders a tip ONCE into a mask. So a falloff changed in one place made
-/// the same brush paint two different edges depending on what happened to
-/// be cached. The coverage list and the cache call this law, and so does
-/// the tile kernel wherever it does not read an unrotated raster tip off
-/// its lattices — ↩️it wrote the law out a fourth time until 2026-10-23
-/// (board `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`);
-/// the commit parity suite pins it byte-exact against the oracle.
+/// Three routes evaluated it: the coverage list (the commit oracle and the
+/// brush preview), the tile kernel, and the stamp cache that rendered a tip
+/// ONCE into a mask — so a falloff changed in one place made the same brush
+/// paint two different edges depending on what happened to be cached. The
+/// coverage list and the tile kernel call this law — ↩️the tile kernel
+/// wrote it out a fourth time until 2026-10-23 (board
+/// `the-brush-kernel-turns-a-pixel-into-tip-space-in-two-places`) — and
+/// ↩️the stamp cache baked a round tip with it until 2026-10-25: a round
+/// tip is its profile now (`RoundTipProfile`), whose tables the C kernel
+/// reads too. The commit parity suite pins it byte-exact against the
+/// oracle.
 void main() {
   BrushTipNumbers round({
     double size = 20,
@@ -24,7 +26,12 @@ void main() {
     double roundness = 1,
     double angleDegrees = 0,
     BrushTipMask? tipMask,
-    double edgeWidth = 0,
+    BrushTipEdge edge = (
+      width: 0.0,
+      widthPerRadius: 0.0,
+      inset: 0.0,
+      insetReach: 1.0,
+    ),
   }) => (
     size: size,
     hardness: hardness,
@@ -32,7 +39,19 @@ void main() {
     angleDegrees: angleDegrees,
     tipShape: BrushTipShape.round,
     tipMask: tipMask,
-    edgeWidth: edgeWidth,
+    edge: edge,
+  );
+
+  /// An edge [width] wide at every radius.
+  BrushTipEdge flat(
+    double width, {
+    double inset = 0.0,
+    double insetReach = 1.0,
+  }) => (
+    width: width,
+    widthPerRadius: 0.0,
+    inset: inset,
+    insetReach: insetReach,
   );
 
   group('what the geometry decides once, before the pixel loop', () {
@@ -95,26 +114,40 @@ void main() {
     );
   });
 
+  // A round tip is two ramps and a pixel's square, read along its radius
+  // (board a-one-pixel-dab-drops-out-by-where-it-lies Q4, 2026-10-25).
   group('the analytic round coverage', () {
-    test('a HARD tip is full inside and nothing outside', () {
+    test('a HARD tip is full inside, half at its rim, and nothing half a '
+        'pixel past it', () {
       final tip = brushTipGeometry(round());
       expect(tipCoverageAt(tip, 0, 0), 1.0);
       expect(tipCoverageAt(tip, 9.5, 0), 1.0);
       expect(
+        tipCoverageAt(tip, 10, 0),
+        closeTo(0.5, 1e-12),
+        reason: 'the square of a pixel on the rim lies half inside',
+      );
+      expect(tipCoverageAt(tip, 10.25, 0), closeTo(0.25, 1e-12));
+      expect(
         tipCoverageAt(tip, 10.5, 0),
         0.0,
         reason:
-            'past the radius the tip does not reach — callers skip on <= 0, '
+            'past the reach the tip lays nothing — callers skip on <= 0, '
             'which is how the cascade always ended',
       );
     });
 
-    test('a SOFT tip falls off linearly from the hard radius to the rim', () {
+    test('a SOFT tip falls off linearly from the hard radius to the rim, '
+        'as a pixel\'s square covers the ramp', () {
       final tip = brushTipGeometry(round(hardness: 0));
-      // hardRadius 0, radius 10 — halfway out is half covered.
+      // The ramp runs from the centre to 10 — halfway out is half covered.
       expect(tipCoverageAt(tip, 5, 0), closeTo(0.5, 1e-12));
-      expect(tipCoverageAt(tip, 0, 0), 1.0);
-      expect(tipCoverageAt(tip, 10, 0), closeTo(0, 1e-12));
+      expect(
+        tipCoverageAt(tip, 0, 0),
+        closeTo(0.975, 1e-12),
+        reason: 'the centre pixel\'s square reaches half a pixel down the ramp',
+      );
+      expect(tipCoverageAt(tip, 10, 0), closeTo(0.0125, 1e-12));
     });
 
     test('an ELLIPSE reaches further along its major axis than its minor', () {
@@ -137,31 +170,81 @@ void main() {
       expect(tipCoverageAt(tip, 9, 0), 0.0);
     });
 
-    test('a zero-width falloff band is FULL, not a divide by zero', () {
-      // hardness 1 makes hardRadius == radius, so the band is empty.
+    test('a zero-width ramp is a step under the square, not a divide by '
+        'zero', () {
+      // hardness 1 and no edge: both ramps are zero wide.
       final tip = brushTipGeometry(round());
       final atRim = tipCoverageAt(tip, 10, 0);
-      expect(atRim, 1.0);
       expect(atRim.isFinite, isTrue);
+      expect(atRim, closeTo(0.5, 1e-12));
     });
   });
 
   // I-50 (유저 2026-09-30 「경도와 따로 — 단계마다 고정 폭」): the anti-alias
-  // step gives a round tip an edge at least its width wide, INSIDE the rim.
+  // step gives a round tip an edge its width wide, INSIDE the rim — and
+  // where the hardness ramp is lower, that one.
   group('the anti-alias edge', () {
-    test('it pulls the hard radius in and leaves the rim where it was', () {
-      final tip = brushTipGeometry(round(edgeWidth: 2));
+    test('it falls inside the rim and leaves the radius where it was', () {
+      final tip = brushTipGeometry(round(edge: flat(2.0)));
       expect(tip.radius, 10, reason: 'the rim is the thickness that holds');
-      expect(tip.hardRadius, 8);
-      expect(tipCoverageAt(tip, 7.9, 0), 1.0);
+      expect(tipCoverageAt(tip, 7.5, 0), 1.0);
       expect(tipCoverageAt(tip, 9, 0), closeTo(0.5, 1e-12));
-      expect(tipCoverageAt(tip, 10.01, 0), 0.0);
+      expect(tipCoverageAt(tip, 10.5, 0), 0.0);
     });
 
-    test('a hardness ramp wider than the step stands to the bit', () {
+    test('its inset pulls its rim in — in full from its reach up, by the '
+        'radius below it', () {
+      final edge = flat(0.0, inset: 0.5, insetReach: 2.0);
+      final large = brushTipGeometry(round(edge: edge));
+      expect(tipCoverageAt(large, 9.5, 0), closeTo(0.5, 1e-12));
+      final small = brushTipGeometry(round(size: 2, edge: edge));
+      expect(
+        tipCoverageAt(small, 0.75, 0),
+        closeTo(0.5, 1e-12),
+        reason: 'a radius of 1 is half the reach: half the inset',
+      );
+    });
+
+    test('it widens with the radius as far as the samples reach, and no '
+        'further', () {
+      // Clip Studio's edge is wider on a bigger nib (Q4's fit); past the
+      // largest sample it holds (Q5).
+      const edge = (
+        width: 1.0,
+        widthPerRadius: 0.04,
+        inset: 0.0,
+        insetReach: 1.0,
+      );
+      double halfway(double radius) {
+        // A hard nib's edge is a straight ramp, so its half-coverage point
+        // is halfway down it: the rim less half the width.
+        final tip = brushTipGeometry(round(size: radius * 2, edge: edge));
+        var lo = 0.0;
+        var hi = radius + 0.5;
+        for (var i = 0; i < 60; i += 1) {
+          final mid = (lo + hi) / 2;
+          if (tipCoverageAt(tip, mid, 0) > 0.5) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+        return radius - lo;
+      }
+
+      expect(halfway(5), closeTo((1.0 + 0.04 * 5) / 2, 1e-6));
+      expect(halfway(25), closeTo((1.0 + 0.04 * 25) / 2, 1e-6));
+      expect(
+        halfway(100),
+        closeTo(halfway(25), 1e-6),
+        reason: 'past edgeSampledRadius the width holds',
+      );
+      expect(edgeSampledRadius, 25.0);
+    });
+
+    test('a hardness ramp lower than the step stands to the bit', () {
       final plain = brushTipGeometry(round(hardness: 0.5));
-      final stepped = brushTipGeometry(round(hardness: 0.5, edgeWidth: 2.75));
-      expect(stepped.hardRadius, plain.hardRadius);
+      final stepped = brushTipGeometry(round(hardness: 0.5, edge: flat(2.75)));
       for (var d = 0.0; d <= 10.5; d += 0.25) {
         expect(
           tipCoverageAt(stepped, d, 0),
@@ -173,26 +256,106 @@ void main() {
 
     test('it moves continuously with hardness — no jump where the two '
         'ramps trade places', () {
-      var previous = brushTipGeometry(round(hardness: 0.5, edgeWidth: 2.75));
+      final edge = flat(2.75);
+      const distances = [7.0, 8.0, 9.0, 9.5, 10.0];
+      List<double> at(double h) => [
+        for (final d in distances)
+          tipCoverageAt(brushTipGeometry(round(hardness: h, edge: edge)), d, 0),
+      ];
+      var previous = at(0.5);
       for (var h = 0.501; h <= 1.0; h += 0.001) {
-        final tip = brushTipGeometry(round(hardness: h, edgeWidth: 2.75));
-        expect(tip.hardRadius, greaterThanOrEqualTo(previous.hardRadius));
-        expect(
-          tip.hardRadius - previous.hardRadius,
-          lessThanOrEqualTo(0.001 * 10 + 1e-9),
-          reason: 'at hardness $h',
-        );
-        previous = tip;
+        final next = at(h);
+        for (var i = 0; i < distances.length; i += 1) {
+          expect(
+            (next[i] - previous[i]).abs(),
+            lessThan(0.01),
+            reason: 'at hardness $h, ${distances[i]}px out',
+          );
+        }
+        previous = next;
       }
     });
 
-    test('a tip smaller than its edge is all edge, full only at its centre',
-        () {
-      final tip = brushTipGeometry(round(size: 4, edgeWidth: 2.75));
-      expect(tip.hardRadius, 0.0, reason: 'never past the centre');
-      expect(tipCoverageAt(tip, 0, 0), 1.0);
+    test('a tip smaller than its edge is all edge, a cone to its rim', () {
+      final tip = brushTipGeometry(round(size: 4, edge: flat(2.75)));
+      expect(tipCoverageAt(tip, 0, 0), closeTo(0.875, 1e-12));
       expect(tipCoverageAt(tip, 1, 0), closeTo(0.5, 1e-12));
-      expect(tipCoverageAt(tip, 2.01, 0), 0.0);
+      expect(tipCoverageAt(tip, 2.5, 0), 0.0);
+    });
+  });
+
+  // What of the coverage piles where dabs overlap (유저 2026-10-25 「AA
+  // 가장자리는 쌓이지 않는다」): the hardness alone — the rest is edge.
+  group('the pile', () {
+    test('a hard tip\'s whole reach piles, its edge included', () {
+      final tip = brushTipGeometry(round(edge: BrushAntiAlias.high.edge));
+      for (var d = 0.0; d < 10.5; d += 0.25) {
+        expect(tipPileAt(tip, d, 0), 1.0, reason: 'at $d');
+      }
+      expect(
+        tipCoverageAt(tip, 9.5, 0),
+        lessThan(1.0),
+        reason: 'premise: the edge covers less than it piles',
+      );
+    });
+
+    test('a soft tip piles its hardness as the square\'s nearest point '
+        'reads it', () {
+      final tip = brushTipGeometry(round(hardness: 0));
+      expect(tipPileAt(tip, 5, 0), closeTo(0.55, 1e-12));
+      expect(tipPileAt(tip, 0.25, 0), 1.0);
+    });
+
+    test('it is never under the coverage — so the edge\'s ceiling is never '
+        'over one', () {
+      for (final size in [1.0, 1.5, 3.0, 10.0, 50.0]) {
+        for (final hardness in [0.0, 0.5, 1.0]) {
+          for (final step in BrushAntiAlias.values) {
+            final tip = brushTipGeometry(
+              round(size: size, hardness: hardness, edge: step.edge),
+            );
+            for (var d = 0.0; d < size / 2 + 0.5; d += 0.0625) {
+              expect(
+                tipPileAt(tip, d, 0),
+                greaterThanOrEqualTo(tipCoverageAt(tip, d, 0) - 1e-12),
+                reason: 'size $size, hardness $hardness, $step, at $d',
+              );
+            }
+          }
+        }
+      }
+    });
+
+    test('a raster tip and a square pile all they cover, and hold no edge',
+        () {
+      final mask = BrushTipMask(
+        id: 'ramp',
+        size: 4,
+        alpha: Uint8List.fromList([for (var i = 0; i < 16; i += 1) i * 16]),
+      );
+      final raster = brushTipGeometry(round(tipMask: mask, size: 8));
+      final square = brushTipGeometry((
+        size: 8,
+        hardness: 0,
+        roundness: 1,
+        angleDegrees: 0,
+        tipShape: BrushTipShape.square,
+        tipMask: null,
+        edge: BrushAntiAlias.high.edge,
+      ));
+      const law = (threshold: false, contrast: 1.0);
+      for (final tip in [raster, square]) {
+        expect(tipHoldsAnEdge(tip, law), isFalse);
+        for (var d = -4.0; d <= 4.0; d += 0.5) {
+          expect(tipPileAt(tip, d, d / 2), tipCoverageAt(tip, d, d / 2));
+        }
+      }
+    });
+
+    test('an analytic round tip holds its edge under every step but 없음', () {
+      final tip = brushTipGeometry(round(edge: BrushAntiAlias.low.edge));
+      expect(tipHoldsAnEdge(tip, (threshold: false, contrast: 1.0)), isTrue);
+      expect(tipHoldsAnEdge(tip, (threshold: true, contrast: 1.0)), isFalse);
     });
   });
 
@@ -231,7 +394,7 @@ void main() {
       angleDegrees: 0,
       tipShape: BrushTipShape.square,
       tipMask: null,
-      edgeWidth: 2.75,
+      edge: BrushAntiAlias.high.edge,
     ));
     expect(tipCoverageAt(tip, 0, 0), 1.0);
     expect(

@@ -99,9 +99,9 @@ List<CanvasPoint> _strokeWaypoints(List<CanvasPoint> path) {
   return points;
 }
 
-/// The longest stretch one advance takes. A stroke lays a dab a pixel at
-/// most — its spacing never falls under one
-/// ([BrushDabInterpolator.spacingForBrushSize]) — so one advance lays at
-/// this many places at most, at each as many dabs as the brush lays at one
-/// (its symmetry copies, its scatter).
+/// The longest stretch one advance takes. A stroke lays four dabs a pixel
+/// at most — its spacing never falls under a quarter of one
+/// (`finestDabStep`), and only a brush under ten pixels goes under one —
+/// so one advance lays at four times this many places at most, at each as
+/// many dabs as the brush lays at one (its symmetry copies, its scatter).
 const double _waypointSpan = 128;

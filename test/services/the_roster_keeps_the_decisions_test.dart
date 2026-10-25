@@ -504,7 +504,7 @@ void main() {
       tipMask: settings.tipMask,
     );
     var (left, right, top, bottom) = (1 << 30, -1, 1 << 30, -1);
-    forEachBrushPixelCoverage(dab, (x, y, coverage) {
+    forEachBrushPixelCoverage(dab, (x, y, coverage, _) {
       if (coverage > 0.5) {
         (left, right) = (math.min(left, x), math.max(right, x));
         (top, bottom) = (math.min(top, y), math.max(bottom, y));

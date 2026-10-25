@@ -1,17 +1,25 @@
-// A G-PEN LINE'S EDGE IS CLIP STUDIO'S, STEP FOR STEP (I-50).
+// A G-PEN LINE IS CLIP STUDIO'S, SIZE FOR SIZE AND STEP FOR STEP (I-50 · Q4).
 //
-// 유저 2026-09-30: 「경도와 따로 — 단계마다 고정 폭, 클튜 샘플로 맞춤」, and the
-// sample was their own Clip Studio G펜 lines (`参考/brush/cls_gpen_AA.png`,
-// size 10 and 50 at every step). The widths in `BrushAntiAlias.edgeWidth`
-// are fitted to both rows; THIS is the pin that the fit still holds — a line
-// drawn the way the canvas draws one (the interpolator's step, the stamp
-// cache, the kernel and each dab's share of a stamp), measured the way the
-// sample was.
+// 유저 2026-09-30: 「경도와 따로 — 단계마다 고정 폭, 클튜 샘플로 맞춤」, and
+// 2026-10-25 (board a-one-pixel-dab-drops-out-by-where-it-lies Q3): 「표본을
+// 넣는다」. The samples are their own Clip Studio G펜 lines — I-50's at size
+// 10 and 50 (`参考/brush/cls_gpen_AA.png`), Q4's at sizes 1–8, 10 and 50 —
+// and `BrushAntiAlias.edge` is fitted to all of them at once. THIS is the
+// pin that the fit still holds: lines drawn the way the canvas draws one
+// (the interpolator's step, the stamp cache, the kernel and each dab's
+// share of a stamp), measured the way the samples were.
 //
-// 📏The measure is the slanted-edge method: every row that crosses the edge
-// samples the edge profile at a new subpixel phase, so a slanted line gives
-// the profile at a fine pitch. The bands are the distance the coverage
-// takes to fall from 90% to 10%, and from 254/255 to 1/255.
+// 📏Two measures. The INK of a column: a near-level line's coverage summed
+// down each pixel column, over four sub-pixel phases and two slopes — how
+// dark a line is, and the measure a 1px line fell apart on (Q4). And the
+// slanted-edge BANDS: every row that crosses a slanted line's edge samples
+// the edge profile at a new subpixel phase, so the line gives the profile
+// at a fine pitch; the bands are the distance the coverage takes to fall
+// from 90% to 10%, and from 254/255 to 1/255.
+//
+// ⚠️The tolerances are the fit's own residuals at landing (2026-10-25: ink
+// within 0.28 a column, bands within 0.10 and 0.28) — one law for every
+// size leaves some, and they are the room a refit has, not noise.
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -44,19 +52,25 @@ const _clipStudio = {
   },
 };
 
-const _side = 200;
+/// The ink of a column of Clip Studio's G펜 lines at 1단계 · 2단계 · 3단계 —
+/// board a-one-pixel-dab-drops-out-by-where-it-lies Q4 (2026-10-25).
+const _clipStudioInk = [
+  (1.0, (0.50, 0.52, 0.48)),
+  (1.5, (0.71, 0.74, 0.71)),
+  (2.0, (1.00, 0.97, 0.93)),
+  (3.0, (1.69, 1.73, 1.73)),
+  (4.0, (2.90, 2.53, 2.59)),
+  (5.0, (3.93, 3.51, 3.37)),
+  (6.0, (4.91, 4.57, 4.34)),
+  (8.0, (7.21, 6.68, 6.31)),
+  (10.0, (9.14, 8.83, 8.55)),
+  (50.0, (48.82, 48.40, 47.92)),
+];
 
-/// A straight G-pen line at -62°, laid by the interpolator the canvas uses
-/// at the roster's finest spacing and resolved through the stamp cache,
-/// landed on an empty surface.
-List<int> _line(BrushAntiAlias step, {double size = 10}) {
-  BrushDab at(double t) {
-    const angle = -62.0 * math.pi / 180.0;
-    return BrushDab(
-      center: CanvasPoint(
-        x: _side / 2 + t * math.cos(angle) + 0.137,
-        y: _side / 2 + t * math.sin(angle) + 0.291,
-      ),
+/// A G-pen dab of [size] at [step], centred at ([x], [y]).
+BrushDab _gPen(BrushAntiAlias step, double size, double x, double y) =>
+    BrushDab(
+      center: CanvasPoint(x: x, y: y),
       color: 0xFF000000,
       size: size,
       opacity: 1,
@@ -67,25 +81,72 @@ List<int> _line(BrushAntiAlias step, {double size = 10}) {
       tipShape: BrushTipShape.round,
       antiAlias: step,
     );
-  }
 
-  final first = at(-60);
+/// [first] to [last] laid by the interpolator the canvas uses at the
+/// roster's finest spacing, resolved through the stamp cache and landed on
+/// an empty surface of [width] × [height].
+BitmapSurface _laid(BrushDab first, BrushDab last, int width, int height) {
   final dabs = [
     first,
     ...const BrushDabInterpolator().interpolate(
       previous: first,
-      nextRaw: at(60),
+      nextRaw: last,
       firstSequence: 1,
       spacingRatio: 0.01,
     ),
   ];
-  final surface = materializeBrushDabSequenceOnBitmapSurface(
+  return materializeBrushDabSequenceOnBitmapSurface(
     surface: BitmapSurface(
-      canvasSize: const CanvasSize(width: _side, height: _side),
+      canvasSize: CanvasSize(width: width, height: height),
       tileSize: 64,
     ),
     sequence: BrushDabSequence(BrushTipStampCache().resolveDabs(dabs)),
   ).surface;
+}
+
+/// The mean ink of a column of a near-level G-pen line of [size] at
+/// [step], over four sub-pixel phases and two slopes.
+double _ink(BrushAntiAlias step, double size) {
+  const width = 220;
+  const height = 160;
+  var sum = 0.0;
+  var count = 0;
+  for (final phase in [0.0, 0.25, 0.5, 0.75]) {
+    for (final degrees in [0.0, 1.7]) {
+      final angle = degrees * math.pi / 180.0;
+      BrushDab at(double t) => _gPen(
+        step,
+        size,
+        width / 2 + t * math.cos(angle) + 0.137,
+        height / 2 + t * math.sin(angle) + phase,
+      );
+      final surface = _laid(at(-90), at(90), width, height);
+      for (var x = 50; x < width - 50; x += 1) {
+        for (var y = 0; y < height; y += 1) {
+          sum += ((surfacePixelRgba(surface, x, y) ?? 0) & 0xFF) / 255.0;
+        }
+        count += 1;
+      }
+    }
+  }
+  return sum / count;
+}
+
+const _side = 200;
+
+/// A straight G-pen line at -62° ([_laid]), its alpha row by row.
+List<int> _line(BrushAntiAlias step, {double size = 10}) {
+  BrushDab at(double t) {
+    const angle = -62.0 * math.pi / 180.0;
+    return _gPen(
+      step,
+      size,
+      _side / 2 + t * math.cos(angle) + 0.137,
+      _side / 2 + t * math.sin(angle) + 0.291,
+    );
+  }
+
+  final surface = _laid(at(-60), at(60), _side, _side);
   return [
     for (var y = 0; y < _side; y += 1)
       for (var x = 0; x < _side; x += 1)
@@ -169,13 +230,26 @@ void main() {
         final p = _profile(_line(step, size: size.toDouble())).profile;
         final tenToNinety = _crossing(p, 0.1) - _crossing(p, 0.9);
         final full = _crossing(p, 1 / 255) - _crossing(p, 254 / 255);
-        // Landed 2026-10-01 at 0.79/1.10 · 0.93/1.87 · 1.20/2.53 (size 10)
-        // and 0.90/1.60 · 1.19/2.45 · 1.69/3.19 (size 50) — the fit is of
-        // the whole profile, so neither band is exact on its own.
-        expect(tenToNinety, closeTo(target.tenToNinety, 0.1));
-        expect(full, closeTo(target.full, 0.25));
+        // Landed 2026-10-25 at 0.87/1.34 · 1.07/1.92 · 1.29/2.30 (size 10)
+        // and 0.89/1.36 · 1.19/2.14 · 1.71/2.74 (size 50).
+        expect(tenToNinety, closeTo(target.tenToNinety, 0.12));
+        expect(full, closeTo(target.full, 0.3));
       });
     }
+  }
+
+  for (final (size, row) in _clipStudioInk) {
+    test('🚨the ink Clip Studio\'s line lays at size $size, at every step',
+        () {
+      final steps = [
+        (BrushAntiAlias.low, row.$1),
+        (BrushAntiAlias.medium, row.$2),
+        (BrushAntiAlias.high, row.$3),
+      ];
+      for (final (step, target) in steps) {
+        expect(_ink(step, size), closeTo(target, 0.3), reason: step.name);
+      }
+    });
   }
 
   test('🚨the ramp grows INWARD: each step up narrows the half-coverage '

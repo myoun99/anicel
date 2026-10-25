@@ -14,12 +14,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
-/// R20-B tip-stamp cache (the CSP/PS brush architecture): every analytic
-/// dab resolves to a prerendered, quantized, PREROTATED raster mask consumed
-/// through the existing unrotated-lattice fast path; a raster tip is sampled
-/// as it is (F-251). Resolution is idempotent and deterministic; the same
-/// key returns the same mask object, so uploads and lattices amortize across
-/// a stroke.
+/// R20-B tip-stamp cache (the CSP/PS brush architecture): a square resolves
+/// to a prerendered, quantized raster mask consumed through the
+/// unrotated-lattice fast path; a round tip is its profile and is only
+/// quantized (Q4, 2026-10-25), and a raster tip is sampled as it is (F-251).
+/// Resolution is idempotent and deterministic; the same key returns the same
+/// mask object, so uploads and lattices amortize across a stroke.
 void main() {
   BrushDab dab({
     double size = 12,
@@ -45,11 +45,11 @@ void main() {
     tipMask: tipMask,
   );
 
-  test('resolution rewrites a dab to an unrotated cached-mask dab and is '
-      'idempotent + deterministic (same mask OBJECT)', () {
+  test('a SQUARE resolves to an unrotated cached-mask dab, idempotent and '
+      'deterministic (same mask OBJECT)', () {
     final cache = BrushTipStampCache();
     final resolved = cache.resolveDab(
-      dab(size: 12.1, hardness: 0.5, roundness: 0.7, angle: 33.4),
+      dab(size: 12.1, hardness: 0.5, shape: BrushTipShape.square),
     );
 
     expect(resolved.tipMask, isNotNull);
@@ -57,12 +57,12 @@ void main() {
       resolved.tipMask!.id,
       startsWith(BrushTipStampCache.resolvedIdPrefix),
     );
-    expect(resolved.angleDegrees, 0.0, reason: 'rotation baked into mask');
-    expect(resolved.roundness, 1.0, reason: 'roundness baked into mask');
+    expect(resolved.angleDegrees, 0.0);
+    expect(resolved.roundness, 1.0);
     expect(resolved.size, closeTo(12.0, 0.3), reason: 'quantized size');
 
     final again = cache.resolveDab(
-      dab(size: 12.1, hardness: 0.5, roundness: 0.7, angle: 33.4),
+      dab(size: 12.1, hardness: 0.5, shape: BrushTipShape.square),
     );
     expect(
       identical(again.tipMask, resolved.tipMask),
@@ -73,6 +73,29 @@ void main() {
     final rere = cache.resolveDab(resolved);
     expect(
       identical(rere, resolved),
+      isTrue,
+      reason: 'resolving a resolved dab is a no-op',
+    );
+  });
+
+  // Q4 (board a-one-pixel-dab-drops-out-by-where-it-lies, 2026-10-25): a
+  // round tip is its profile, read where it lies — a stamp blurred it a
+  // second time.
+  test('a ROUND dab is not baked — it resolves to its quantized self, its '
+      'angle and roundness as they were, and idempotently', () {
+    final cache = BrushTipStampCache();
+    final resolved = cache.resolveDab(
+      dab(size: 12.1, hardness: 0.503, roundness: 0.7, angle: 33.4),
+    );
+
+    expect(resolved.tipMask, isNull);
+    expect(resolved.size, closeTo(12.0, 0.3), reason: 'quantized size');
+    expect(resolved.hardness, 64 / 128, reason: 'quantized hardness');
+    expect(resolved.roundness, 0.7);
+    expect(resolved.angleDegrees, 33.4);
+    expect(cache.entryCount, 0, reason: 'nothing was baked');
+    expect(
+      identical(cache.resolveDab(resolved), resolved),
       isTrue,
       reason: 'resolving a resolved dab is a no-op',
     );
@@ -208,16 +231,19 @@ void main() {
     });
   });
 
-  test('a circle is one stamp at every angle — an ellipse is not', () {
+  test('no round dab is baked — a circle or an ellipse, at any angle', () {
+    // ↩️A circle was one stamp at every angle and an ellipse one a degree
+    // until 2026-10-25; neither is a stamp now.
     final cache = BrushTipStampCache();
-    final level = cache.resolveDab(dab(size: 30)).tipMask;
-    final turned = cache.resolveDab(dab(size: 30, angle: 137)).tipMask;
-    expect(identical(turned, level), isTrue);
-    final ellipse = cache.resolveDab(dab(size: 30, roundness: 0.5)).tipMask;
-    final turnedEllipse = cache
-        .resolveDab(dab(size: 30, roundness: 0.5, angle: 137))
-        .tipMask;
-    expect(identical(turnedEllipse, ellipse), isFalse);
+    for (final round in [
+      dab(size: 30),
+      dab(size: 30, angle: 137),
+      dab(size: 30, roundness: 0.5),
+      dab(size: 30, roundness: 0.5, angle: 137),
+    ]) {
+      expect(cache.resolveDab(round).tipMask, isNull);
+    }
+    expect(cache.entryCount, 0);
   });
 
   test('size quantization: 1/4 px steps below 64 px, log steps above, '
@@ -246,14 +272,18 @@ void main() {
     );
   });
 
+  // A square is all the cache still bakes.
+  BrushDab square(double size) =>
+      dab(size: size, shape: BrushTipShape.square);
+
   test('the LRU byte budget evicts oldest masks but keeps the newest', () {
     final cache = BrushTipStampCache(byteBudget: 1);
-    final first = cache.resolveDab(dab(size: 10)).tipMask!;
-    final second = cache.resolveDab(dab(size: 20)).tipMask!;
+    final first = cache.resolveDab(square(10)).tipMask!;
+    final second = cache.resolveDab(square(20)).tipMask!;
     expect(cache.entryCount, 1, reason: 'budget of 1 byte keeps only newest');
-    expect(identical(cache.resolveDab(dab(size: 20)).tipMask, second), isTrue);
+    expect(identical(cache.resolveDab(square(20)).tipMask, second), isTrue);
     expect(
-      identical(cache.resolveDab(dab(size: 10)).tipMask, first),
+      identical(cache.resolveDab(square(10)).tipMask, first),
       isFalse,
       reason: 'the evicted mask re-renders (deterministic bytes regardless)',
     );
@@ -262,21 +292,21 @@ void main() {
   test('a resolve is a use: a mask asked for again outlives one asked for '
       'once since', () {
     final cache = BrushTipStampCache(byteBudget: 1 << 30);
-    final small = cache.resolveDab(dab(size: 10)).tipMask!;
-    final large = cache.resolveDab(dab(size: 20)).tipMask!;
+    final small = cache.resolveDab(square(10)).tipMask!;
+    final large = cache.resolveDab(square(20)).tipMask!;
     // Room for these two and no more.
     cache.byteBudget = cache.residentBytes;
 
-    expect(identical(cache.resolveDab(dab(size: 10)).tipMask, small), isTrue);
-    cache.resolveDab(dab(size: 15));
+    expect(identical(cache.resolveDab(square(10)).tipMask, small), isTrue);
+    cache.resolveDab(square(15));
 
     expect(
-      identical(cache.resolveDab(dab(size: 10)).tipMask, small),
+      identical(cache.resolveDab(square(10)).tipMask, small),
       isTrue,
       reason: 'asked for again, so not the least recently used',
     );
     expect(
-      identical(cache.resolveDab(dab(size: 20)).tipMask, large),
+      identical(cache.resolveDab(square(20)).tipMask, large),
       isFalse,
       reason: 'the least recently used went',
     );

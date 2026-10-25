@@ -81,8 +81,14 @@ void main() {
         final visited = <BrushPixelCoverage>[];
         forEachBrushPixelCoverage(
           entry.$2,
-          (x, y, coverage) =>
-              visited.add(BrushPixelCoverage(x: x, y: y, coverage: coverage)),
+          (x, y, coverage, ceiling) => visited.add(
+            BrushPixelCoverage(
+              x: x,
+              y: y,
+              coverage: coverage,
+              ceiling: ceiling,
+            ),
+          ),
         );
         final listed = brushPixelCoveragesForDab(entry.$2);
 
@@ -111,7 +117,7 @@ void main() {
         dab(flow: 0),
       ]) {
         var calls = 0;
-        forEachBrushPixelCoverage(empty, (_, _, _) => calls += 1);
+        forEachBrushPixelCoverage(empty, (_, _, _, _) => calls += 1);
         expect(calls, 0);
         expect(brushPixelCoveragesForDab(empty), isEmpty);
       }
@@ -159,8 +165,26 @@ void main() {
 
     test('round hard tip skips pixels outside radius', () {
       expect(
-        brushPixelCoveragesForDab(dab(x: 1, y: 1, size: 1, hardness: 1)),
+        brushPixelCoveragesForDab(
+          dab(x: 1, y: 1, size: 1, hardness: 1, antiAlias: noEdge),
+        ),
         isEmpty,
+      );
+    });
+
+    test('at a step, a pixel\'s square past the rim takes its share — and '
+        'nothing lies at or past half a pixel beyond', () {
+      // Q4: a round tip is read under a pixel's square, which reaches half
+      // a pixel past the rim — no further.
+      final past = brushPixelCoveragesForDab(
+        dab(x: 1, y: 1, size: 1, hardness: 1),
+      );
+      expect(past, hasLength(4));
+      expect(past.every((c) => c.coverage > 0 && c.coverage < 0.5), isTrue);
+      expect(
+        brushPixelCoveragesForDab(dab(x: 1, y: 1, size: 0.4, hardness: 1)),
+        isEmpty,
+        reason: 'the centres lie 0.707 out, past a reach of 0.7',
       );
     });
 
@@ -190,8 +214,10 @@ void main() {
       final nearEdge = values.firstWhere(
         (value) => value.x == 8 && value.y == 9,
       );
-      expect(nearCenter.coverage, 1);
+      // The square of the pixel by the centre reaches 0.2px into the ramp.
+      expect(nearCenter.coverage, closeTo(0.979, 0.001));
       expect(nearEdge.coverage, allOf(greaterThan(0), lessThan(1)));
+      expect(nearEdge.coverage, lessThan(nearCenter.coverage));
     });
 
     test('round hardness 1 produces hard coverage', () {

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/brush_dab_share.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -859,7 +860,7 @@ void main() {
       final dabs = results.single;
       expect(
         dabs.map((dab) => dab.center.x).toList(),
-        [12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2],
+        _alongTheRow(12, 2),
         reason: 'the off-canvas leg (12..9) draws too now',
       );
       expect(dabs.map((dab) => dab.center.y).toSet(), {1});
@@ -890,7 +891,10 @@ void main() {
       await tester.pump();
 
       expect(results, hasLength(1));
-      expect(results.single.map((dab) => dab.center.x).toList(), [12, 13, 14]);
+      expect(
+        results.single.map((dab) => dab.center.x).toList(),
+        _alongTheRow(12, 14),
+      );
 
       // Beyond the wall (x ≥ 16 for the 8×8 stage's 3×3 pasteboard):
       // nothing.
@@ -1978,6 +1982,18 @@ BrushEditSessionState _paintedSessionState(List<int> rgba) {
       ),
     ),
     materializationHistoryState: BrushBitmapMaterializationHistoryState(),
+  );
+}
+
+/// The dab centres the default one-pixel brush lays from [from] to [to]
+/// along a row: its finest step apart (`finestDabStep`).
+Matcher _alongTheRow(double from, double to) {
+  final step = finestDabStep(1.0) * (to > from ? 1 : -1);
+  final count = ((to - from) / step).round();
+  return pairwiseCompare<double, num>(
+    [for (var i = 0; i <= count; i += 1) from + i * step],
+    (expected, actual) => (actual - expected).abs() < 1e-9,
+    'within 1e-9 of',
   );
 }
 

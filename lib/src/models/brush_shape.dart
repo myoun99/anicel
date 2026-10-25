@@ -84,9 +84,9 @@ class BrushShape {
   /// default 25%; Clip Studio's fixed spacing is the same percent of the tip
   /// (100 = tips touching). 5% stood here, which clamped an imported ABR
   /// brush's 1–4% back up to 5% and left a large tip's edge scalloped. The
-  /// dab step never goes below one pixel whatever this is
-  /// (`BrushDabInterpolator.spacingForBrushSize`), so a small brush pays
-  /// nothing for it.
+  /// dab step never goes below a tenth of the size nor a quarter of a pixel
+  /// whatever this is (`finestDabStep`), so a small brush pays nothing for
+  /// it.
   static const double minSpacing = 0.01;
 
   /// The widest [spacing]: four tip sizes between dabs.

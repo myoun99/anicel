@@ -283,7 +283,17 @@ import '../core/on_a_worker.dart';
 ///   and `qa_audio_device_stop_run` silences unless another run holds the
 ///   device — a player's end stops only its own sound (board
 ///   a-cue-ending-silences-a-viewer-sound-it-did-not-make).
-const int kQaEngineAbiVersion = 55;
+/// - v56: `qa_dab_spec` drops `hard_radius` and `edge_span` for an analytic
+///   round tip's profile — `round_scale`, `round_reach`, `round_inner` and
+///   the two tables `round_coverage` and `round_pile` — and
+///   `QA_DAB_FLAG_EDGE_HELD`: a round tip is two ramps and a pixel's square
+///   read along its radius (`RoundTipProfile`), not a mask the stamp cache
+///   baked, and its edge does not pile (board
+///   a-one-pixel-dab-drops-out-by-where-it-lies Q4, 유저 2026-10-25 「AA
+///   가장자리는 쌓이지 않는다」). The tables are built once per tip in Dart
+///   and copied into the batch arena once per batch. `qa_dab_spec_sizeof`
+///   moves.
+const int kQaEngineAbiVersion = 56;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

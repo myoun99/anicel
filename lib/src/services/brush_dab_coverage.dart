@@ -27,7 +27,7 @@ import 'brush_tip_mask_sampling.dart';
 /// that the loop could hoist.
 void forEachBrushPixelCoverage(
   BrushDab dab,
-  void Function(int x, int y, double coverage) visit,
+  void Function(int x, int y, double coverage, double ceiling) visit,
 ) {
   final dirtyRegion = dirtyRegionForBrushDab(dab);
   if (dirtyRegion == null) {
@@ -36,6 +36,7 @@ void forEachBrushPixelCoverage(
 
   final tip = brushDabTipGeometry(dab);
   final edge = brushDabEdgeLaw(dab);
+  final edgeHeld = tipHoldsAnEdge(tip, edge);
 
   // Applies the dual-brush and paper-texture multiplications with the EXACT
   // multiplication order of the commit/live rasterizers (separate `*=`
@@ -114,11 +115,16 @@ void forEachBrushPixelCoverage(
       if (coverage <= 0.0) {
         continue;
       }
+      // What of it is the tip's EDGE, which does not pile — the kernel's
+      // ceiling, worked out where the kernel works it ([tipPileAt]).
+      final ceiling = edgeHeld
+          ? edgeCeiling(coverage, tipPileAt(tip, dx, dy))
+          : 1.0;
       coverage = texturedCoverageAt(coverage, x, y);
       if (coverage <= 0.0) {
         continue;
       }
-      visit(x, y, coverage);
+      visit(x, y, coverage, ceiling);
     }
   }
 }
@@ -134,8 +140,9 @@ List<BrushPixelCoverage> brushPixelCoveragesForDab(BrushDab dab) {
   final coverages = <BrushPixelCoverage>[];
   forEachBrushPixelCoverage(
     dab,
-    (x, y, coverage) =>
-        coverages.add(BrushPixelCoverage(x: x, y: y, coverage: coverage)),
+    (x, y, coverage, ceiling) => coverages.add(
+      BrushPixelCoverage(x: x, y: y, coverage: coverage, ceiling: ceiling),
+    ),
   );
   return List<BrushPixelCoverage>.unmodifiable(coverages);
 }

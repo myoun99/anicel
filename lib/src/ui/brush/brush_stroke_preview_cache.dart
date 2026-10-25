@@ -18,6 +18,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/brush_dab_coverage.dart';
 import '../../services/brush_dab_interpolator.dart';
 import '../../services/brush_dab_share.dart';
+import '../../services/brush_dab_tip_geometry.dart';
 import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_stroke_dynamics.dart';
@@ -644,20 +645,24 @@ void _layPreviewDab(
   // up darker than a short one.
   final opacity = dab.opacity;
   final evening = eveningTableOf(dab);
-  forEachBrushPixelCoverage(dab, (x, y, coverage) {
+  //
+  // 🚨AND ITS EDGE DOES NOT PILE, as on the canvas (Q4, `edgeCeiling`): it
+  // scales the level the dab settles at, and the dab lays its pile toward
+  // it.
+  forEachBrushPixelCoverage(dab, (x, y, coverage, ceiling) {
     // A spray throws dabs past every edge of the row, not only the far two.
     if (x < 0 || y < 0 || x >= width || y >= height) {
       return;
     }
     final index = y * width + x;
-    final whole = coverage * dab.flow;
+    final whole = edgePiledShare(coverage, ceiling) * dab.flow;
     final laid = evening == null ? whole : evenedLaid(evening, whole);
     final under = accumulated[index];
-    final dabAlpha = opacity >= 1.0
+    final dabAlpha = opacity >= 1.0 && ceiling >= 1.0
         ? laid
         : settledDabAlpha(
             laid: laid,
-            opacity: opacity,
+            opacity: opacity * ceiling,
             destinationAlpha: under,
           );
     if (dabAlpha == null) {

@@ -36,7 +36,7 @@ void main() {
       textureMode: mode,
     );
     final inked = <(int, int)>{};
-    forEachBrushPixelCoverage(dab, (x, y, coverage) {
+    forEachBrushPixelCoverage(dab, (x, y, coverage, _) {
       if (coverage > 0.0) {
         inked.add((x, y));
       }
