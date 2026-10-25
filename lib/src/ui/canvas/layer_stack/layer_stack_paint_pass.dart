@@ -203,13 +203,11 @@ class _LayerStackPaintPass {
     // ([rectTheDisplayReads]): a pixel at the view's edge reads that far
     // past it, and a buffer cut at the edge reads its own edge texel again
     // there, where the frame's picture holds what lies past. 🔬A stroke's
-    // step at 37% on a 1.5 screen over line art of no period cut by the
-    // view's top, up to 3/255 along the top row (Impeller tester,
-    // 2026-10-25, F-465 again). ↩️It was not grown, the buffer's rect put
-    // on the levels' grid alone — which reached past the edge by as much,
-    // on line art of period 8 that the levels average flat; once the buffer
-    // ends where the frame's picture does ([frameGridOutward]) the grid
-    // reaches past the view by nothing it must.
+    // step beside the view's edge at 20% and 10% under opaque line art of
+    // no period, 2/255 to 3/255 down that edge (Impeller tester,
+    // 2026-10-26, F-465 again). ↩️It was not grown: the ⛔ that stood here
+    // measured a step at 25% on a 1.5 screen within 1/255 grown or not,
+    // over translucent line art of period 8, which the levels average flat.
     _visibleCanvasRect = pasteboardRect.intersect(
       rectTheDisplayReads(visibleRect, _displayScale),
     );

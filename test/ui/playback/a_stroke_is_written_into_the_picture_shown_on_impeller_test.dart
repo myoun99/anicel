@@ -30,7 +30,9 @@ import '../../helpers/a_stroke_written_into_the_picture_shown.dart';
 /// page did not fill and the buffer beside it ended where it did not; and
 /// under opaque line art of no period at 20% and 10%, where a landing
 /// patch read its own edge again where the picture holds what lies past
-/// it — 🔬up to 8/255 down that edge.
+/// it — 🔬up to 8/255 down that edge — and, with the page cut by the view
+/// beside the step, the buffer cut at the view's edge read its own edge
+/// again there: 🔬2/255 to 3/255 down the view's edge.
 ///
 /// 🔬Each pixel to within 1/255 a channel: the tester's Vulkan halves an
 /// image cut where a patch is and the picture it is cut from a level apart
@@ -114,6 +116,27 @@ void main() {
     ratios: const [1.0],
     inkAt: (x, y) => [0, ((x * 73856093) ^ (y * 19349663)) & 0xFF, 0, 0xFF],
     strokeAt: const ui.Rect.fromLTRB(73, 57, 79, 63),
+    page: const CanvasSize(width: 160, height: 128),
+    apartBy: 1,
+    withThePinsOfNoView: false,
+    skip: !ui.ImageFilter.isShaderFilterSupported,
+  );
+  aStrokeIsWrittenIntoThePictureShown(
+    views: {
+      'under opaque line art at 20%, cut by the view': CanvasViewport(
+        zoom: 0.2,
+        panX: -3,
+        panY: -3,
+      ),
+      'under opaque line art at 10%, cut by the view': CanvasViewport(
+        zoom: 0.1,
+        panX: -3,
+        panY: -3,
+      ),
+    },
+    ratios: const [1.0],
+    inkAt: (x, y) => [0, ((x * 73856093) ^ (y * 19349663)) & 0xFF, 0, 0xFF],
+    strokeAt: const ui.Rect.fromLTRB(41, 41, 47, 47),
     page: const CanvasSize(width: 160, height: 128),
     apartBy: 1,
     withThePinsOfNoView: false,
