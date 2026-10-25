@@ -1,5 +1,6 @@
 import 'package:flutter/painting.dart';
 
+import '../../core/hashed_once.dart';
 import '../../core/lru.dart';
 
 /// UI-R16: ONE laid-out TextPainter cache for every painter that sets
@@ -25,7 +26,12 @@ import '../../core/lru.dart';
 /// the painters all carry the app's face, the same number in two faces —
 /// or two heights, or two spacings — must be two entries, not whichever
 /// was laid out first.
-final Lru<Object, TextPainter> _cache = Lru(limit: () => _cacheCap);
+final Lru<_GlyphKey, TextPainter> _cache = Lru(limit: () => _cacheCap);
+
+/// What a glyph is cached by — hashed once a lookup ([HashedOnce]): a
+/// style's hash walks every field it has, and the cache is asked for nearly
+/// every glyph a reopen paints.
+typedef _GlyphKey = HashedOnce<(String, TextStyle, double?, double)>;
 
 /// Roomy enough for the widest live set (a storyboard-zoom ruler shows
 /// hundreds of headers × two styles) while bounding memory.
@@ -53,7 +59,7 @@ TextPainter laidOutGlyph(
   double? maxWidth,
   double tightening = 0,
 }) => _cache.resolve(
-  (text, style, maxWidth, tightening),
+  _GlyphKey((text, style, maxWidth, tightening)),
   () => TextPainter(
     text: tightening == 0
         ? TextSpan(text: text, style: style)
