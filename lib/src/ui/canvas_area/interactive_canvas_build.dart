@@ -845,8 +845,9 @@ class _InteractiveCanvasBuild {
   /// (one-picture-per-frame-Q1 = a, 유저 2026-10-24 「한 장 위에 얹는다」),
   /// each drawn from its row's image, and a scrub shows them as it crosses
   /// frames. ↩️They sat directly UNDER the active drawing, inside the folder
-  /// and adjustment around it (`_stackNodesWithGhosts`) — no room for that
-  /// between the rows of one picture.
+  /// and adjustment around it — and, for a day, in what clips to a base
+  /// (I-92) — placed by `stackNodesWithGhosts`: no room for that between
+  /// the rows of one picture, so a ghost is not cut by a clip's base either.
   Widget _ghostsOver(
     EditorSessionManager session,
     List<CanvasLayerImageRequest> ghosts,
