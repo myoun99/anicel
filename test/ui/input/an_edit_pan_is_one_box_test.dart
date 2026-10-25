@@ -270,6 +270,27 @@ void main() {
     expect(narrow.heard, isNot(now.heard), reason: 'CONTROL — the slop counts');
   });
 
+  testWidgets('new device gesture settings reach the box it is mounted in', (
+    tester,
+  ) async {
+    AppInput.settings.value = _drawing;
+    final heard = <String>[];
+    const steps = [Offset(25, 0)];
+    await tester.pumpWidget(
+      _hosted(
+        _box(heard),
+        under: [],
+        settings: const DeviceGestureSettings(touchSlop: 40),
+      ),
+    );
+    await drag(tester, PointerDeviceKind.touch, steps);
+    expect(heard, isNot(contains(startsWith('start'))), reason: 'the slop');
+
+    await tester.pumpWidget(_hosted(_box(heard), under: []));
+    await drag(tester, PointerDeviceKind.touch, steps);
+    expect(heard, contains(startsWith('start')));
+  });
+
   testWidgets('a new one-finger mode reaches the box it is mounted in — a '
       'finger it left starts a drag once the mode takes it', (tester) async {
     AppInput.settings.value = _navigating;
