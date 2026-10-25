@@ -83,14 +83,16 @@ void main() {
   const viewSize = Size(80, 48);
   const fill = [0x10, 0x20, 0x30, 0xFF];
   // Where the cel holds no ink: the paper — or its absence — shows there.
-  // ↩️On every level's grid down to an eighth, so no level pixel mixed ink
-  // and hole: a mixed one rounded apart between a cel's whole image and its
-  // tiles' pyramid at an eighth (1/255 — the halving's two draws,
-  // level-halving-rounds-apart) while the canvas standing still drew its
-  // live row from level tiles — until both roads drew the frame's one
-  // picture (one-picture-per-frame ②-3) and no level tile was left
-  // (②-5b-2).
-  const hole = Rect.fromLTRB(16, 8, 32, 24);
+  // Off every halving's grid, odd on each side: a reduced pixel mixes ink
+  // and hole, where two roads that reduce apart would part.
+  // ↩️It lay on every level's grid down to an eighth, so no level pixel
+  // mixed ink and hole: a mixed one rounded apart between a cel's whole
+  // image and its tiles' pyramid at an eighth (1/255 — the halving's two
+  // draws, level-halving-rounds-apart) while the canvas standing still drew
+  // its live row from level tiles — until every road drew the frame's one
+  // picture by its own chain and no halving was left
+  // (one-picture-per-frame ②-5b-3).
+  const hole = Rect.fromLTRB(17, 9, 31, 23);
   // Past the canvas every road shows this one colour — the editing
   // canvas's pasteboard, the camera's apron and letterbox, the film's
   // floor — so a pixel that differs is the picture's own.
