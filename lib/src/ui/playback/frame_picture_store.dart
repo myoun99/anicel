@@ -353,11 +353,6 @@ class FramePictureStore<K extends Object> {
             asked.rect.width.toInt(),
             asked.rect.height.toInt(),
           );
-    if (entry.gone) {
-      image?.dispose();
-      _arrived(entry, asked);
-      return;
-    }
     entry.waiting.add((patch: asked, image: image));
     entry.writes = entry.writes.then((_) => _writeWaiting(entry));
   }

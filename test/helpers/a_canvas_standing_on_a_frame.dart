@@ -241,14 +241,26 @@ final String? noFlutterGpu = () {
 /// ⚠️Both clocks ([settleAsync]), not `runAsync` alone: the store's chain
 /// runs in the test's pumped zone, and a write in it comes back from the
 /// GPU in real time — awaited inside `runAsync`, the chain never moved on.
+///
+/// 🚨Asks that the view wanted a frame the moment it landed: the texels go
+/// into the picture's texture in place, so a capture here shows them
+/// whether or not the view painted again — only the frame says the screen
+/// will (🔬its repaint taken out, every pixel pin still passed).
 Future<void> inThePicture(WidgetTester tester, Future<void>? landing) async {
   expect(landing, isNotNull, reason: '⛔premise: on its way into a picture');
   var landed = false;
-  unawaited(landing!.then((_) => landed = true));
+  var framed = false;
+  unawaited(
+    landing!.then((_) {
+      landed = true;
+      framed = tester.binding.hasScheduledFrame;
+    }),
+  );
   expect(
     await settleAsync(tester, () => landed),
     isTrue,
     reason: 'LIVENESS: it is in the picture',
   );
+  expect(framed, isTrue, reason: 'the view asks for the frame that shows it');
   await tester.pump();
 }

@@ -426,6 +426,37 @@ void main() {
       expect(gpu.rendered, hasLength(rendered));
     });
 
+    test('of a picture let go while its levels are drawn is not written '
+        'there', () async {
+      final gpu = _RecordingGpu();
+      final store = FramePictureStore<String>(gpu: gpu);
+      await _layed(store, 'a', 1024);
+      gpu.holdRenders = true;
+      final asked = gpu.recorded.length;
+      store.patch(
+        from: 'a',
+        to: 'a',
+        rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
+        draw: fill,
+      );
+      expect(await pollUntil(() => gpu.recorded.length == asked + 1), isTrue);
+      gpu.releaseRender();
+      expect(
+        await pollUntil(() => gpu.recorded.length == asked + 2),
+        isTrue,
+        reason: '⛔premise: its base is written, a level under it drawn',
+      );
+      expect(gpu.bases, hasLength(1));
+      store.dispose();
+      for (var render = 0; render < 2; render += 1) {
+        gpu.releaseRender();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await pumpEventQueue();
+      }
+      expect(gpu.recorded, hasLength(asked + 3), reason: '⛔premise: its run');
+      expect(gpu.levelWrites, isEmpty);
+    });
+
     test('or move still on its way when its picture is let go answers once '
         '— whoever waited, and nothing when its turn comes', () async {
       final gpu = _RecordingGpu();
