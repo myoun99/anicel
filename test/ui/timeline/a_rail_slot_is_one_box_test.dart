@@ -168,25 +168,22 @@ void main() {
     );
   });
 
-  testWidgets('a swipe column is the claim it adds', (tester) async {
+  testWidgets('a swipe column is the claim it adds, and nothing else — '
+      'WHEN its controls act is the row\'s to say', (tester) async {
     const body = ValueKey<String>('body');
     await tester.pumpWidget(
-      RailSwipeColumnPointer(child: const SizedBox(key: body)),
+      const RailSwipeColumnPointer(child: SizedBox(key: body)),
     );
     final column = tester.element(find.byType(RailSwipeColumnPointer));
     expect(
       tester.renderObject(find.byType(RailSwipeColumnPointer)),
       isA<RenderDragVerbClaim>(),
     );
-    final scope = only(column);
+    expect(only(column).widget.key, body);
     expect(
-      scope.widget,
-      isA<PressFireScope>().having(
-        (s) => s.fireOn,
-        'fireOn',
-        PressFire.down,
-      ),
+      PressFireScope.of(tester.element(find.byKey(body))),
+      PressFire.upInside,
+      reason: 'a column outside a row says nothing of its own',
     );
-    expect(only(scope).widget.key, body);
   });
 }

@@ -58,8 +58,8 @@ bool pointerIsStillOnBox(RenderBox? box, Offset globalPosition) {
 enum PressFire {
   /// 「레이어 쪽 버튼」 — the press IS the action.
   ///
-  /// Nothing declares this per button: [PressFireScope] puts a swipe
-  /// column's controls here, which is the same predicate stated once.
+  /// Nothing declares this per button: [PressFireScope] puts a rail row's
+  /// controls here, which is the same predicate stated once.
   down,
 
   /// 「헤더쪽」 and everything else — pressed inside, released inside.
@@ -96,9 +96,10 @@ enum PressFire {
 /// ⛔ONE WAY TO SAY IT. [ControlPressClaim] takes no per-site flag, because a
 /// flag is how the two families stop being two families — the rails would
 /// grow buttons that disagree with the column they sit in. The scope is
-/// mounted by [RailSwipeColumnPointer] for [PressFire.down] and by the
-/// sheets' cell layers for [PressFire.upInsideOrPan], and nowhere else;
-/// everything outside one is 「그 외 버튼」 by default.
+/// mounted by the rails' rows for [PressFire.down] — the layer row, the
+/// lane row and the storyboard's label shell, swipe columns and all — and
+/// by the sheets' cell layers for [PressFire.upInsideOrPan], and nowhere
+/// else; everything outside one is 「그 외 버튼」 by default.
 class PressFireScope extends InheritedWidget {
   const PressFireScope({super.key, required this.fireOn, required super.child});
 

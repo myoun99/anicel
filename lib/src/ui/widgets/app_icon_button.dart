@@ -188,7 +188,7 @@ class AppIconButton extends StatelessWidget {
     // frame-panels-build-in-one-frame): an element and a render object for
     // every icon button a tab reopens.
     // 🚨★★★WHEN it acts is not this widget's to say (유저 확정 2026-08-30):
-    // a button inside a swipe column acts on the DOWN, and every other
+    // a button on a rail's row acts on the DOWN, and every other
     // button acts when it is released still inside itself. [PressFireScope]
     // holds that split in ONE place, so this hands over the callback and
     // says nothing about the moment.

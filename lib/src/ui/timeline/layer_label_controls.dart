@@ -1648,21 +1648,23 @@ class _LabelPlate extends StatelessWidget {
 /// child is one element per column paid on every panel reopen (card
 /// frame-panels-build-in-one-frame, 2026-10-25).
 class RailSwipeColumnPointer extends DragVerbClaim {
-  RailSwipeColumnPointer({super.key, required Widget child})
-    // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
-    // the one widget every button in the app wears — the control inside
-    // wears its own; what a swipe column adds is the STRONG claim, and that
-    // is all it should have to say. ↩️A claim of the column's own stood here
-    // for the bare `InkWell`s that had none and fired through it; the last
-    // two (the storyboard rows' lane twirls) are the rail's twirl since
-    // I-57 ①, and a claim with nothing under it to speak for is weight.
-    //
-    // 🚨★★★AND THIS IS WHERE 「타임라인같은 특정버튼」 IS DEFINED (유저
-    // 확정 2026-08-30). Not a flag on each button — the predicate is 「a drag
-    // from here paints the column」, which is exactly what mounting a swipe
-    // column means, so the scope says it once for every control inside,
-    // including an [AppIconButton] that carries a claim of its own.
-    : super(child: PressFireScope(fireOn: PressFire.down, child: child));
+  // ⛔The WEAK half is NOT written again here. It is [ControlPressClaim],
+  // the one widget every button in the app wears — the control inside
+  // wears its own; what a swipe column adds is the STRONG claim, and that
+  // is all it should have to say. ↩️A claim of the column's own stood here
+  // for the bare `InkWell`s that had none and fired through it; the last
+  // two (the storyboard rows' lane twirls) are the rail's twirl since
+  // I-57 ①, and a claim with nothing under it to speak for is weight.
+  //
+  // ⛔Nor WHEN its controls act. 「타임라인같은 특정버튼」 (유저 확정
+  // 2026-08-30) was first said here — 「a drag from here paints the
+  // column」 — and the same day it became the whole row's: 「레이어 쪽
+  // 버튼은 탭다운, 헤더쪽은 손떼면」. Every row a column stands in says it
+  // for everything on it ([TimelineLayerControlsRow.build], the lane row,
+  // the storyboard's label shell), so a scope here said it a second time
+  // and cost an element per column on every panel reopen; it went
+  // 2026-10-25 (card frame-panels-build-in-one-frame).
+  const RailSwipeColumnPointer({super.key, required super.child});
 }
 
 /// 테이크 라벨의 얼굴 — **바탕 없이 글자만**.
