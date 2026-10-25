@@ -49,6 +49,17 @@ class ActiveCutEdits {
   void onActiveCutQuietly(void Function(CutId cutId) command) =>
       _onCutQuietly(_standingCutId, command);
 
+  /// [onActiveCutQuietly] for an edit pressed on a paper, in the cut that
+  /// paper prints (I-127): a timesheet prints the cut under the playhead,
+  /// the cel export's the cut its list stands on — either may not be the
+  /// active one.
+  void onCutQuietly(CutId cutId, void Function(CutId cutId) command) =>
+      _onCutQuietly(cutId, command);
+
+  /// [onActiveCut] for an edit pressed on a paper ([onCutQuietly]).
+  void onCut(CutId cutId, void Function(CutId cutId) command) =>
+      _onCutQuietly(cutId, _rebuilding(command));
+
   /// What a step on the active cut will make, worked out [ahead] of it: no
   /// change yet, so nothing to rebuild or tell ([onActiveCut] takes the
   /// step).

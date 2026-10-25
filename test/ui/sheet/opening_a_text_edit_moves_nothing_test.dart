@@ -304,7 +304,7 @@ void main() {
     testWidgets('the name box: its one line is typed on its printed glyphs, '
         'centred as printed (I-112)', (tester) async {
       await pumpSheet(tester);
-      session.cutVerbs.setActiveCutSheetArtist('大川ユキ');
+      session.cutVerbs.setCutSheetArtist(session.activeCutId!, '大川ユキ');
       await tester.pumpAndSettle();
       final box = tester.getRect(
         find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
