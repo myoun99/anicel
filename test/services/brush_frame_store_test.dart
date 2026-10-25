@@ -253,14 +253,21 @@ void main() {
   });
 
   test('🚨a cel never stands at a revision it once held at other pixels — '
-      'carried onto a key, drawn on, carried back', () {
+      'a movie's picture installed, a cel carried onto a key, drawn on, '
+      'carried back', () {
     // A frame's picture is kept under its cels' revisions: a revision a
     // key comes back to names the pixels it named then.
     final store = BrushFrameStore();
     final a = key(layer: 'a');
     final b = key(layer: 'b');
-    parkCold(store, {a: surfaceWithInk(), b: surfaceWithInk()});
-    final pixelsAt = {a: 'a as opened', b: 'b as opened'};
+    final c = key(layer: 'c');
+    final movie = key(layer: 'movie');
+    parkCold(store, {
+      a: surfaceWithInk(),
+      b: surfaceWithInk(),
+      c: surfaceWithInk(),
+    });
+    final pixelsAt = {a: 'a as opened', b: 'b as opened', c: 'c as opened'};
     final named = <(BrushFrameKey, int), String>{};
     void look(BrushFrameKey cel) {
       final at = (cel, store.frameOrNull(cel)!.sourceRevision);
@@ -284,8 +291,17 @@ void main() {
       look(cel);
     }
 
+    void install(BrushFrameKey cel, String pixels) {
+      store.installMovieCel(cel, surfaceWithInk());
+      pixelsAt[cel] = pixels;
+      look(cel);
+    }
+
     look(a);
     look(b);
+    install(movie, 'a frame of the movie');
+    install(movie, 'another frame of it');
+    carry(c, movie);
     carry(a, b);
     drawOn(b, 'b drawn once');
     drawOn(b, 'b drawn twice');
