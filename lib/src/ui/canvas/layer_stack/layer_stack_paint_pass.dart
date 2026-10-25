@@ -199,14 +199,20 @@ class _LayerStackPaintPass {
     // intersection is empty in both, nothing intersects the screen, and
     // drawing nothing is pixel-identical on it.
     //
-    // ⛔Not grown by what the display reads past the view: the buffer's
-    // rect is put on the levels' grid where it is decided
-    // ([_composeDisplayBuffer]), and grown here as well the two answered
-    // one question — 🔬either alone kept a stroke's step at 25% on a 1.5
-    // screen, over line art cut by the view's edge, to within 1/255, and
-    // neither showed anything the other did not (Impeller tester,
-    // 2026-10-25, F-465).
-    _visibleCanvasRect = pasteboardRect.intersect(visibleRect);
+    // 🚨Grown by what the display reads past the view
+    // ([rectTheDisplayReads]): a pixel at the view's edge reads that far
+    // past it, and a buffer cut at the edge reads its own edge texel again
+    // there, where the frame's picture holds what lies past. 🔬A stroke's
+    // step at 37% on a 1.5 screen over line art of no period cut by the
+    // view's top, up to 3/255 along the top row (Impeller tester,
+    // 2026-10-25, F-465 again). ↩️It was not grown, the buffer's rect put
+    // on the levels' grid alone — which reached past the edge by as much,
+    // on line art of period 8 that the levels average flat; once the buffer
+    // ends where the frame's picture does ([frameGridOutward]) the grid
+    // reaches past the view by nothing it must.
+    _visibleCanvasRect = pasteboardRect.intersect(
+      rectTheDisplayReads(visibleRect, _displayScale),
+    );
     if (_visibleCanvasRect.isEmpty) {
       canvas.restore();
       return;
@@ -1121,8 +1127,12 @@ class _LayerStackPaintPass {
     // halves on the grid the frame's one picture's does. ↩️Cut where the
     // view cut it, a stroke's step drawn as it stands under its patch's
     // clip read its ink off another chain than the picture's at 25% on a
-    // 1.5 screen, up to 8/255 (F-465).
-    final rect = wholeLevelPixelsOutward(bounds, levelsReadAt(_displayScale));
+    // 1.5 screen, up to 8/255 (F-465). And where the frame ends in view, it
+    // ends where the frame's picture does ([frameGridOutward]): each samples
+    // its own edge again past it, so two that end apart show apart there.
+    final rect = frameGridOutward(bounds).intersect(
+      wholeLevelPixelsOutward(_visibleCanvasRect, levelsReadAt(_displayScale)),
+    );
     final width = rect.width.round();
     final height = rect.height.round();
     if (width <= 0 || height <= 0) {

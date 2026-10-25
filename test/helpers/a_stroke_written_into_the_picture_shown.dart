@@ -64,20 +64,21 @@ import 'settle_async.dart';
 /// and once it has landed at each of [thenAt] too — the view zoomed with
 /// its texels in and the picture's levels not yet: a cel of [inkAt] (one
 /// ink where it is null) under a stroke at [strokeAt], each pixel shown
-/// as it stands to within [apartBy] of a channel. The pins of no view come
-/// [withThePinsOfNoView].
+/// as it stands to within [apartBy] of a channel, on a page of [page]. The
+/// pins of no view come [withThePinsOfNoView].
 void aStrokeIsWrittenIntoThePictureShown({
   required Map<String, CanvasViewport> views,
   required List<double> ratios,
   Map<String, CanvasViewport> thenAt = const {},
   List<int> Function(int x, int y)? inkAt,
   Rect strokeAt = const Rect.fromLTRB(4, 4, 12, 12),
+  CanvasSize page = const CanvasSize(width: 32, height: 32),
   int apartBy = 0,
   bool withThePinsOfNoView = true,
   bool skip = false,
 }) {
   const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
+  final canvasSize = page;
   const viewSize = Size(48, 40);
   const ink = [0x00, 0x40, 0x00, 0x80];
   const stroke = [0x40, 0x00, 0x00, 0x80];
@@ -150,8 +151,8 @@ void aStrokeIsWrittenIntoThePictureShown({
         canvasSize: canvasSize,
         tileSize: tileSize,
         tiles: {
-          for (var ty = 0; ty < 2; ty += 1)
-            for (var tx = 0; tx < 2; tx += 1)
+          for (var ty = 0; ty < (page.height / tileSize).ceil(); ty += 1)
+            for (var tx = 0; tx < (page.width / tileSize).ceil(); tx += 1)
               TileCoord(x: tx, y: ty): tileAt(TileCoord(x: tx, y: ty), inkOf),
         },
       ),
@@ -244,11 +245,15 @@ void aStrokeIsWrittenIntoThePictureShown({
 
         gpu.holdsRenders = true;
         addTearDown(gpu.letAllThrough);
+        final stroked = TileCoord(
+          x: strokeAt.left ~/ tileSize,
+          y: strokeAt.top ~/ tileSize,
+        );
         overlay.showResultTiles([
           PromotedStrokeTile(
-            TileCoord(x: 0, y: 0),
+            stroked,
             tileAt(
-              TileCoord(x: 0, y: 0),
+              stroked,
               (at) => strokeAt.contains(at) ? stroke : inkOf(at),
             ),
             1,
@@ -374,8 +379,9 @@ void aStrokeIsWrittenIntoThePictureShown({
     await lendBothClocks(tester, rounds: 2);
     final before = await onScreen(tester);
 
-    // Right of the page, on the pasteboard the screen shows.
-    final past = TileCoord(x: 2, y: 0);
+    // Left of the page, on the pasteboard the screen shows — past the
+    // grid its picture lies on, which reaches right of the page.
+    final past = TileCoord(x: -1, y: 0);
     overlay.showResultTiles([
       PromotedStrokeTile(past, tileOf(past, stroke, (_) => true), 1),
     ]);

@@ -33,6 +33,7 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart'
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart'
     show CanvasLayerImageRequest, CanvasStackRow;
 import 'package:anicel/src/ui/playback/frame_picture_gpu.dart';
+import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -655,7 +656,11 @@ void main() {
   /// followed from the frame under its playhead, at once, and only as far as
   /// the allowance holds.
   group('a run that plays', () {
-    const pictureBytes = 8 * 8 * 4;
+    // A frame of the page as its picture lies ([pictureExtentOf]).
+    final pictureBytes = estimatedImageBytes(
+      pictureExtentOf(canvasSize.canvasRect).width.round(),
+      pictureExtentOf(canvasSize.canvasRect).height.round(),
+    );
 
     // Four frames, four pictures: each frame its own cel, so no two share a
     // picture and what was made says which frame was asked.

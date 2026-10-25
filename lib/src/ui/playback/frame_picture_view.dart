@@ -165,8 +165,8 @@ final class _DrawnAsItStands {
   final List<_Patching> patching = [];
 }
 
-/// What is drawn where: [image] over [rect].
-typedef _Laid = ({ui.Rect rect, ui.Image image});
+/// What is drawn where: [image] over [rect], shown over [within].
+typedef _Laid = ({ui.Rect rect, ui.Image image, ui.Rect within});
 
 /// A picture's landing patches ([FramePicture.landing]) as a display that
 /// reads the picture's chain shows them ([levelsReadAt]): each over as far
@@ -233,14 +233,22 @@ final class _LandingAsItWillBe {
   ) {
     final patch = upTo.last;
     if (levelsReadAt(displayScale) == 0) {
-      return (rect: patch.rect, image: patch.image);
+      return (rect: patch.rect, image: patch.image, within: patch.rect);
     }
-    // ⛔No margin past it: 🔬an image read as far again past what it shows
-    // drew nothing a cut one did not (Impeller and Skia testers, a stroke
-    // on line art at 50% and 25% on a 1.0 and a 1.5 screen, and zoomed to
-    // 12.5%, 2026-10-25).
-    final rect = rectTheDisplayReads(
+    // 🚨Held as far again past what it shows: a pixel it is shown on reads
+    // as far past it as the display reads ([rectTheDisplayReads]), and
+    // finds there the texels the picture holds. ↩️Held only over what it
+    // shows, a pixel at its edge read its edge texel again where the
+    // picture beside it holds what lies past — 🔬up to 3/255 at 20% over
+    // line art of no period (Impeller tester, 2026-10-25, F-465 again).
+    // The ⛔ that kept no margin was measured on line art of period 8,
+    // which every level from 1/8 down averages flat.
+    final within = rectTheDisplayReads(
       patch.rect,
+      displayScale,
+    ).intersect(picture.extent);
+    final rect = rectTheDisplayReads(
+      within,
       displayScale,
     ).intersect(picture.extent);
     final recorded = picturedReads([
@@ -260,6 +268,7 @@ final class _LandingAsItWillBe {
       return (
         rect: rect,
         image: recorded.toImageSync(rect.width.round(), rect.height.round()),
+        within: within,
       );
     } finally {
       recorded.dispose();
@@ -825,7 +834,7 @@ class _FramePicturePainter extends CustomPainter {
     if (shown case (:final picture, :final image)) {
       final landing = patchedBy == null
           ? null
-          : _onScreen([
+          : _onScreen(canvas, [
               for (final patching in standing.patching) patching.rect,
             ]);
       // 🚨A patch still landing is drawn by the walk ALONE: the picture
@@ -872,20 +881,39 @@ class _FramePicturePainter extends CustomPainter {
   /// zoomed out, a pixel beside a patch reads the picture's texels inside
   /// it, which hold what the rows were until the patch lands. ↩️Cut at the
   /// patch, the picture beside it read the ink the step had moved (F-465).
-  ui.Path? _onScreen(List<ui.Rect> rects) {
+  ///
+  /// 🚨And each cut on [canvas]'s pixels ([cutOnThePixelGrid]) where the
+  /// view is not turned: the picture and the walk are each clipped to their
+  /// side of this one edge, and Impeller covers a pixel an edge crosses by
+  /// what falls on each side — so a pixel it crossed showed the ink twice,
+  /// or what lies under the view. 🔬At 10%, 125% and 150% on a 1.0 screen
+  /// and 50% on a 1.25 one, up to 8/255 down the edge (Impeller tester,
+  /// 2026-10-25 — F-465 again, 유저 실기 Windows: 「10%에서 발생하는거
+  /// 확인 … 소수점배율에서 발생할거같아서」). ↩️The edge lay on the level
+  /// grid alone, which lands on whole pixels only where its texel is a
+  /// whole number of them: 50%, 25% and 12.5% on a 1.0 screen. An edge on
+  /// a pixel boundary covers each pixel on one side wholly, at any scale.
+  ui.Path? _onScreen(Canvas canvas, List<ui.Rect> rects) {
     if (rects.isEmpty) {
       return null;
     }
     final scale = displayScaleOf(viewport.zoom, devicePixelRatio);
-    final world = ui.Path();
+    final toScreen = viewportTransformMatrix(
+      renderSnappedViewport(viewport, devicePixelRatio),
+    ).storage;
+    final shown = ui.Path();
     for (final rect in rects) {
-      world.addRect(rectTheDisplayReads(rect, scale));
+      final there = (ui.Path()..addRect(rectTheDisplayReads(rect, scale)))
+          .transform(toScreen);
+      if (viewport.rotationDegrees == 0) {
+        shown.addRect(
+          cutOnThePixelGrid(canvas, there.getBounds(), devicePixelRatio),
+        );
+      } else {
+        shown.addPath(there, Offset.zero);
+      }
     }
-    return world.transform(
-      viewportTransformMatrix(
-        renderSnappedViewport(viewport, devicePixelRatio),
-      ).storage,
-    );
+    return shown;
   }
 
   void _standOnScreen(Canvas canvas, Size size, StackedFrame frame) =>
@@ -914,7 +942,13 @@ class _FramePicturePainter extends CustomPainter {
     }
     _lay(canvas, image, picture.extent);
     for (final laid in landing) {
-      _lay(canvas, laid.image, laid.rect, blendMode: BlendMode.src);
+      _lay(
+        canvas,
+        laid.image,
+        laid.rect,
+        blendMode: BlendMode.src,
+        within: laid.within,
+      );
     }
     if (landing.isNotEmpty) {
       canvas.restore();
@@ -926,6 +960,7 @@ class _FramePicturePainter extends CustomPainter {
     ui.Image image,
     Rect at, {
     BlendMode blendMode = BlendMode.srcOver,
+    Rect? within,
   }) => drawOnTheDisplay(
     canvas,
     image,
@@ -934,6 +969,7 @@ class _FramePicturePainter extends CustomPainter {
     viewport: viewport,
     devicePixelRatio: devicePixelRatio,
     blendMode: blendMode,
+    within: within,
   );
 
   void _paintOutside(Canvas canvas, Rect extent, Color outside) {

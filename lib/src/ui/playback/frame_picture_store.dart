@@ -5,7 +5,8 @@ import 'dart:ui' as ui;
 import '../../core/pin_counts.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/playback/let_go_wanted_latest.dart';
-import '../canvas/display_resample.dart' show wholeLevelPixelsOutward;
+import '../canvas/display_resample.dart'
+    show frameGridOutward, wholeLevelPixelsOutward;
 import '../quiet_turns.dart';
 import 'frame_picture_gpu.dart';
 
@@ -738,8 +739,15 @@ int _patchedLevelsFor(int width, int height) {
 
 const int _wholeLevelSide = 256;
 
-/// [extent] widened to whole texels of the deepest patched level — the
-/// grid a patch is widened to, so a widened patch inside it stays inside.
+/// Where the picture a store lays of a frame drawn over [extent] lies
+/// ([FramePicture.extent]) — what it weighs before it is made.
+ui.Rect pictureExtentOf(ui.Rect extent) => _shapeOf(extent).extent;
+
+/// [extent] on the grid a frame's picture lies on ([frameGridOutward]) —
+/// whole texels of the deepest patched level too, the grid a patch is
+/// widened to, so a widened patch inside it stays inside. A page under the
+/// texture cap patches fewer levels than a canvas reads, and the second
+/// grid adds nothing.
 ({ui.Rect extent, int patchedLevels}) _shapeOf(ui.Rect extent) {
   if (extent.isEmpty) {
     return (extent: ui.Rect.zero, patchedLevels: 0);
@@ -749,7 +757,7 @@ const int _wholeLevelSide = 256;
     extent.height.ceil(),
   );
   return (
-    extent: wholeLevelPixelsOutward(extent, levels),
+    extent: wholeLevelPixelsOutward(frameGridOutward(extent), levels),
     patchedLevels: levels,
   );
 }

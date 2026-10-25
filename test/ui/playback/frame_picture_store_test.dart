@@ -26,20 +26,30 @@ void main() {
   // A pause no test sits through: the levels land at the cap or when asked.
   const never = Duration(days: 1);
 
-  test('a picture is laid over its extent widened out to the patch grid '
-      'of the world', () async {
+  test('a picture is laid over its extent widened out to the grid of the '
+      'world every level a canvas reads halves on', () async {
     final gpu = _RecordingGpu();
     final store = FramePictureStore<String>(gpu: gpu);
-    // 1001 x 300 halves twice to come under 256 a side: a grid of 4.
+    // A canvas reads down to the level of 128 texels a side at its least
+    // zoom (frameGridOutward), deeper than 1001 x 300's patches write.
     final picture = await store.lay(
       'a',
       over(const ui.Rect.fromLTRB(0.5, 0.5, 1000.7, 300.5)),
     );
-    expect(picture!.extent, const ui.Rect.fromLTWH(0, 0, 1004, 304));
+    expect(picture!.extent, const ui.Rect.fromLTWH(0, 0, 1024, 384));
     expect(picture.outside, white);
-    expect(gpu.rendered, [(1004, 304)]);
+    expect(gpu.rendered, [(1024, 384)]);
     expect(store.peek('a'), same(picture));
     expect(store.peek('b'), isNull);
+    final past = await store.lay(
+      'b',
+      over(const ui.Rect.fromLTRB(-5, -5, 10, 10)),
+    );
+    expect(past!.extent, const ui.Rect.fromLTRB(-128, -128, 128, 128));
+    expect(
+      pictureExtentOf(const ui.Rect.fromLTRB(-5, -5, 10, 10)),
+      past.extent,
+    );
     store.dispose();
   });
 
@@ -853,10 +863,10 @@ void main() {
     final store = FramePictureStore<String>(gpu: gpu);
     final laid = <Future<FramePicture?>>[
       for (final (index, key) in ['a', 'b', 'c'].indexed)
-        store.lay(key, over(ui.Rect.fromLTWH(0, 0, 8.0 + index, 8))),
+        store.lay(key, over(ui.Rect.fromLTWH(0, 0, 128.0 * (index + 1), 8))),
       store.lay(
         'shown',
-        over(const ui.Rect.fromLTWH(0, 0, 32, 8)),
+        over(const ui.Rect.fromLTWH(0, 0, 512, 8)),
         shownNow: true,
       ),
     ];
@@ -867,7 +877,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 1));
     }
     // 'a' was already rastering; the frame on screen goes next.
-    expect(gpu.rendered.map((size) => size.$1), [8, 32, 9, 10]);
+    expect(gpu.rendered.map((size) => size.$1), [128, 512, 256, 384]);
     store.dispose();
   });
 
@@ -875,9 +885,9 @@ void main() {
       'one, and counts each by the app\'s one image estimate', () async {
     final store = FramePictureStore<String>(gpu: _RecordingGpu());
     for (final key in ['soon', 'late', 'pinned']) {
-      await _layed(store, key, 64);
+      await _layed(store, key, 128);
     }
-    final one = estimatedImageBytes(64, 64);
+    final one = estimatedImageBytes(128, 128);
     expect(store.estimatedBytes, 3 * one);
     store.retainPin('pinned');
     expect(store.pinnedBytes, one);
@@ -901,7 +911,7 @@ void main() {
       () async {
     final gpu = _RecordingGpu()..holdWrites = true;
     final store = FramePictureStore<String>(gpu: gpu);
-    final picture = await _layed(store, 'a', 64);
+    final picture = await _layed(store, 'a', 128);
     store.patch(
       from: 'a',
       to: 'b',
@@ -911,10 +921,10 @@ void main() {
     expect(await pollUntil(() => picture.landing.isNotEmpty), isTrue);
     expect(
       store.estimatedBytes,
-      estimatedImageBytes(64, 64) + estimatedImageBytes(8, 8),
+      estimatedImageBytes(128, 128) + estimatedImageBytes(8, 8),
     );
     await _landAll(gpu, store);
-    expect(store.estimatedBytes, estimatedImageBytes(64, 64));
+    expect(store.estimatedBytes, estimatedImageBytes(128, 128));
     store.dispose();
   });
 

@@ -12,6 +12,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/rgba_image_bytes.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -39,7 +40,12 @@ import '../../helpers/poll_until.dart';
 /// (one-picture-per-frame ②-5b-1).
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
-  const canvasBytes = 8 * 8 * 4;
+  // The canvas as its picture lies ([pictureExtentOf]).
+  final canvasPicture = pictureExtentOf(canvasSize.canvasRect);
+  final canvasBytes = estimatedImageBytes(
+    canvasPicture.width.round(),
+    canvasPicture.height.round(),
+  );
 
   final cut = Cut(
     id: const CutId('c'),

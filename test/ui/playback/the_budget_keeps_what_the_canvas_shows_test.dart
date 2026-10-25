@@ -223,17 +223,18 @@ void main() {
     await tester.runAsync(() async {
       final pictures = picturesOfTheFrames();
       await makePictures(pictures);
+      final shown = keyOf(pictures, 'b');
+      final picture = pictures.store.bytesOf(shown)!;
+      final line = 4 * picture;
       final budget = PlaybackCacheBudgetEnforcer(
         pictures: pictures.store,
-        maxBytes: 4096,
+        maxBytes: line,
       );
-      expect(budget.lendableBytes(), 4096, reason: 'all of it gives way');
+      expect(budget.lendableBytes(), line, reason: 'all of it gives way');
 
-      final shown = keyOf(pictures, 'b');
       pictures.store.retainPin(shown);
       addTearDown(() => pictures.store.releasePin(shown));
-      final picture = pictures.store.bytesOf(shown)!;
-      expect(budget.lendableBytes(), 4096 - picture);
+      expect(budget.lendableBytes(), line - picture);
     });
   });
 

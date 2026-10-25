@@ -142,6 +142,33 @@ int levelsReadAt(double displayScale) => displayScale >= 1
     ? 0
     : (math.log(1 / displayScale) / math.ln2).floor() + 1;
 
+/// The deepest level of a frame's picture's chain a canvas reads: at its
+/// least zoom on a screen of one device pixel a canvas pixel
+/// ([levelsReadAt]).
+final int deepestLevelACanvasReads = levelsReadAt(CanvasViewport.minZoom);
+
+/// [extent] out to whole texels of [deepestLevelACanvasReads] — the grid a
+/// frame's picture lies on (`FramePictureStore`), and the display buffer
+/// that draws the frame as it stands beside it.
+///
+/// 🚨★ONE GRID FOR EVERY IMAGE OF A FRAME THE DISPLAY READS A CHAIN OF
+/// (F-465 again, 유저 실기 Windows 2026-10-25: 「10%에서 발생하는거 확인 …
+/// 소수점배율에서 발생할거같아서 저번 고칠때랑 데자뷰」): a level is the
+/// canvas's grid halved, exactly, only where the image holds whole texels
+/// of it — one of fewer texels stretches over the image — and two images
+/// of one frame show alike past where their content ends only where they
+/// end at one edge: each samples its own edge again past it. ↩️The picture
+/// lay on the grid of the levels its patches write, as deep as a 1920 page
+/// is read above 12.5% — its 1080 rows were 67.5 texels of the level 10%
+/// reads — and the buffer beside it on the grid of the level the display
+/// read: 🔬a page of 270 rows apart from its picture down its edge at 6%,
+/// and at 10% once the picture alone was widened (Impeller tester).
+///
+/// 🔬What it costs: a picture is at most 2^[deepestLevelACanvasReads] − 1
+/// texels a side larger — a 1920×1080 page's 1920×1152.
+ui.Rect frameGridOutward(ui.Rect extent) =>
+    wholeLevelPixelsOutward(extent, deepestLevelACanvasReads);
+
 /// [rect] grown by what a display at [displayScale] reads past it — a
 /// texel of the deepest level it reads ([levelsReadAt]) — out to whole
 /// texels of that level ([wholeLevelPixelsOutward]): a picture of the
@@ -266,6 +293,13 @@ ui.Rect displayEdgeRect(
 /// 🚨ONE BLIT for every image the display lays over the view — the
 /// canvas's display buffer, and a frame's one picture (`FramePictureView`):
 /// two spellings of it would be two answers to how a frame is shown.
+///
+/// Shown over [within] alone where it is named — a rect inside [dst], cut
+/// on the pixel grid ([cutOnThePixelGrid]) whatever the zoom where the
+/// view is not turned: an image laid in over another one's texels, whose
+/// every pixel by the cut is the one image's or the other's, never a blend
+/// of the two (F-465 — a frame's landing patch over its picture). The
+/// texels past [within] are still read where a pixel inside it reads them.
 void drawOnTheDisplay(
   ui.Canvas canvas,
   ui.Image image,
@@ -274,19 +308,27 @@ void drawOnTheDisplay(
   required CanvasViewport viewport,
   required double devicePixelRatio,
   ui.BlendMode blendMode = ui.BlendMode.srcOver,
+  ui.Rect? within,
 }) {
   final filterQuality = filterQualityForDisplayScale(
     displayScaleOf(viewport.zoom, devicePixelRatio),
   );
+  final (from, to) = within == null
+      ? (src, dst)
+      : (_mappedInto(src, dst, within), within);
   // The image's edge IS the canvas's edge on screen, cut by the same law
   // as the paper's (F-67-paper-edge): under nearest on an axis-aligned
   // view it is one more texel boundary, decided by pixel centres, not a
-  // blended line.
-  if (displayEdgeAntiAliased(viewport, devicePixelRatio)) {
+  // blended line. One laid in over another's texels is cut on the grid
+  // at any zoom; a turned view has no grid.
+  final antiAliased = within == null
+      ? displayEdgeAntiAliased(viewport, devicePixelRatio)
+      : viewport.rotationDegrees != 0;
+  if (antiAliased) {
     canvas.drawImageRect(
       image,
-      src,
-      dst,
+      from,
+      to,
       ui.Paint()
         ..filterQuality = filterQuality
         ..blendMode = blendMode,
@@ -295,13 +337,25 @@ void drawOnTheDisplay(
     drawImageRectOnThePixelGrid(
       canvas,
       image,
-      src,
-      dst,
+      from,
+      to,
       filterQuality: filterQuality,
       pixelRatio: devicePixelRatio,
       blendMode: blendMode,
     );
   }
+}
+
+/// What of [src] lands on [part] of [dst], where [src] is laid over [dst].
+ui.Rect _mappedInto(ui.Rect src, ui.Rect dst, ui.Rect part) {
+  final sx = src.width / dst.width;
+  final sy = src.height / dst.height;
+  return ui.Rect.fromLTRB(
+    src.left + (part.left - dst.left) * sx,
+    src.top + (part.top - dst.top) * sy,
+    src.left + (part.right - dst.left) * sx,
+    src.top + (part.bottom - dst.top) * sy,
+  );
 }
 
 /// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel

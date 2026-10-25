@@ -233,11 +233,13 @@ void main() {
 
       expect(await pictures.make(frame, shouldAbort: () => false), isTrue);
 
-      final pixels = (await pictures.store
-          .peek(pictures.keyOf(frame))!
-          .image
-          .toByteData())!;
-      expect(pixels.getUint8((1 * 8 + 1) * 4 + 3), 0xFF, reason: 'its ink');
+      final image = pictures.store.peek(pictures.keyOf(frame))!.image;
+      final pixels = (await image.toByteData())!;
+      expect(
+        pixels.getUint8((1 * image.width + 1) * 4 + 3),
+        0xFF,
+        reason: 'its ink',
+      );
     });
   });
 

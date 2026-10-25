@@ -4,41 +4,96 @@ library;
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 
 import '../../helpers/a_stroke_written_into_the_picture_shown.dart';
 
 /// 🚨A stroke's step written into the picture the canvas shows
-/// ([aStrokeIsWrittenIntoThePictureShown]) as Impeller reads a chain zoomed
-/// out (F-465, 유저 2026-10-25: 「50%에서는 매번」): BETWEEN two levels,
-/// a texel past the one the pixel lies over. The tester's Skia reads the
-/// nearest level alone, on these views straight over its texels, and drew
-/// a step cut at its patch, a buffer off the picture's grid and a patch
-/// laid for a zoom left as one picture — so these run on the Impeller
-/// tester (the `impeller` tag's batch) and skip on Skia.
+/// ([aStrokeIsWrittenIntoThePictureShown]) as Impeller shows it (F-465,
+/// 유저 2026-10-25: 「50%에서는 매번」, and on Windows the same night: 「10%에서
+/// 발생하는거 확인 … 소수점배율에서 발생할거같아서」). The tester's Skia reads
+/// the nearest level alone, on these views straight over its texels, and
+/// cuts a pixel an edge crosses by its centre — so these run on the
+/// Impeller tester (the `impeller` tag's batch) and skip on Skia.
 ///
-/// On line art, under a stroke laid over it, at a view whose edge cuts the
-/// page off the levels' grid, and zoomed to 12.5% with the step's texels in
-/// and the picture's levels not yet — on a 1.0 screen and a 1.5 one, whose
-/// 0.375 at 25% reads two levels off the texels a pixel lies over.
+/// Impeller reads a chain zoomed out BETWEEN two levels, a texel past the
+/// one the pixel lies over, and covers a pixel an edge crosses by what
+/// falls on each side of it. On line art, under a stroke laid over it, at
+/// a view whose edge cuts the page off the levels' grid, zoomed to 12.5%
+/// with the step's texels in and the picture's levels not yet, and at
+/// scales whose pixels the levels' grid does not land on — 10%, 125% and
+/// 150%, and every view on a 1.25 and a 1.5 screen.
+///
+/// And on a page of 270 rows under line art of no period, which no level
+/// averages flat: at 20% a landing patch read its own edge where the
+/// picture holds what lies past it, and at 10% and 6% the picture's levels
+/// stretched over the rows its page did not fill.
 ///
 /// 🔬Each pixel to within 1/255 a channel: the tester's Vulkan halves an
 /// image cut where a patch is and the picture it is cut from a level apart
 /// by one where line art changes under them (measured 2026-10-25 — one
 /// pixel at 25% and 12.5%, 0 on one ink). A step cut at its patch was up to
 /// 12/255 off, a buffer off the grid 8, a patch laid for 37.5% shown at
-/// 18.75% 2.
-void main() => aStrokeIsWrittenIntoThePictureShown(
-  views: {
-    'at 50%': CanvasViewport(zoom: 0.5, panX: 8, panY: 4),
-    'at 25%': CanvasViewport(zoom: 0.25, panX: 8, panY: 4),
-    'at 25%, cut by the view': CanvasViewport(zoom: 0.25, panX: -1, panY: -1),
-  },
-  ratios: const [1.0, 1.5],
-  thenAt: {'12.5%': CanvasViewport(zoom: 0.125, panX: 8, panY: 4)},
-  inkAt: (x, y) => [0, (x * 5 + y * 3) % 8 * 16, 0, 0x80],
-  strokeAt: const ui.Rect.fromLTRB(9, 9, 15, 15),
-  apartBy: 1,
-  withThePinsOfNoView: false,
-  skip: !ui.ImageFilter.isShaderFilterSupported,
-);
+/// 18.75% 2, an edge between the picture and the step off the screen's
+/// pixels 8.
+void main() {
+  aStrokeIsWrittenIntoThePictureShown(
+    views: {
+      'at 50%': CanvasViewport(zoom: 0.5, panX: 8, panY: 4),
+      'at 25%': CanvasViewport(zoom: 0.25, panX: 8, panY: 4),
+      'at 25%, cut by the view': CanvasViewport(
+        zoom: 0.25,
+        panX: -1,
+        panY: -1,
+      ),
+      'at 125%': CanvasViewport(zoom: 1.25, panX: 8, panY: 4),
+      'at 150%': CanvasViewport(zoom: 1.5, panX: 8, panY: 4),
+      'at 125%, flipped': CanvasViewport(
+        zoom: 1.25,
+        panX: 8,
+        panY: 4,
+        flipHorizontal: true,
+      ),
+    },
+    ratios: const [1.0, 1.25, 1.5],
+    thenAt: {'12.5%': CanvasViewport(zoom: 0.125, panX: 8, panY: 4)},
+    inkAt: (x, y) => [0, (x * 5 + y * 3) % 8 * 16, 0, 0x80],
+    strokeAt: const ui.Rect.fromLTRB(9, 9, 15, 15),
+    apartBy: 1,
+    withThePinsOfNoView: false,
+    skip: !ui.ImageFilter.isShaderFilterSupported,
+  );
+  aStrokeIsWrittenIntoThePictureShown(
+    views: {
+      'on a page of 270 rows at 20%': CanvasViewport(
+        zoom: 0.2,
+        panX: 8,
+        panY: 4,
+      ),
+      'on a page of 270 rows at 10%': CanvasViewport(
+        zoom: 0.1,
+        panX: 8,
+        panY: 4,
+      ),
+      'on a page of 270 rows at 6%': CanvasViewport(
+        zoom: 0.06,
+        panX: 8,
+        panY: 4,
+      ),
+      'on a page of 270 rows at 10%, cut by the view': CanvasViewport(
+        zoom: 0.1,
+        panX: -1,
+        panY: -1,
+      ),
+    },
+    ratios: const [1.0, 1.25],
+    thenAt: {'7%': CanvasViewport(zoom: 0.07, panX: 8, panY: 4)},
+    inkAt: (x, y) => [0, ((x * 73856093) ^ (y * 19349663)) & 0xF0, 0, 0x80],
+    strokeAt: const ui.Rect.fromLTRB(201, 161, 207, 167),
+    page: const CanvasSize(width: 320, height: 270),
+    apartBy: 1,
+    withThePinsOfNoView: false,
+    skip: !ui.ImageFilter.isShaderFilterSupported,
+  );
+}

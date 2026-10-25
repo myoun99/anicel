@@ -4,6 +4,7 @@ import '../../core/lru.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/composite_tree.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/cel_content_notes.dart';
 import '../../services/playback/frame_demand.dart';
@@ -205,19 +206,19 @@ class FramePictures implements PlaybackPictures {
   bool cannotRead(DemandedPicture picture) =>
       stackedCelsOf(stackOf(picture)).any(layerImages.unreadable.has);
 
-  /// What the picture will weigh: its drawing's extent, where every cel it
-  /// draws is in hand ([readIn]) — and else the page's. ⛔Reads nothing:
-  /// a walk weighs the frames it asks for ahead before it reads them.
+  /// What the picture will weigh: the picture the store lays of its
+  /// drawing's extent ([pictureExtentOf]), where every cel it draws is in
+  /// hand ([readIn]) — and else of the page's. ⛔Reads nothing: a walk
+  /// weighs the frames it asks for ahead before it reads them.
   @override
   int bytesToMake(DemandedPicture picture) {
     final nodes = stackOf(picture);
-    final canvasSize = pageOf(picture).canvasSize;
-    final extent = allInHand(nodes, picture)
-        ? drawingNow(nodes, picture).frame.drawing.extent
-        : null;
-    return extent == null
-        ? estimatedImageBytes(canvasSize.width, canvasSize.height)
-        : estimatedImageBytes(extent.width.ceil(), extent.height.ceil());
+    final extent = pictureExtentOf(
+      allInHand(nodes, picture)
+          ? drawingNow(nodes, picture).frame.drawing.extent
+          : pageOf(picture).canvasSize.canvasRect,
+    );
+    return estimatedImageBytes(extent.width.round(), extent.height.round());
   }
 
   /// Whether every cel [nodes] draw for [picture] is in hand — its stored
