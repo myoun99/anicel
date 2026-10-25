@@ -202,9 +202,10 @@ class _LayerStackPaintPass {
     // ⛔Not grown by what the display reads past the view: the buffer's
     // rect is put on the levels' grid where it is decided
     // ([_composeDisplayBuffer]), and grown here as well the two answered
-    // one question — 🔬either alone kept a stroke's step at 25% on a page
-    // of line art cut by the view's edge to the byte, and neither showed
-    // anything the other did not (Impeller tester, 2026-10-25, F-465).
+    // one question — 🔬either alone kept a stroke's step at 25% on a 1.5
+    // screen, over line art cut by the view's edge, to within 1/255, and
+    // neither showed anything the other did not (Impeller tester,
+    // 2026-10-25, F-465).
     _visibleCanvasRect = pasteboardRect.intersect(visibleRect);
     if (_visibleCanvasRect.isEmpty) {
       canvas.restore();
@@ -1119,7 +1120,8 @@ class _LayerStackPaintPass {
     // level the display reads, too ([levelsReadAt]): the buffer's chain
     // halves on the grid the frame's one picture's does. ↩️Cut where the
     // view cut it, a stroke's step drawn as it stands under its patch's
-    // clip read its ink off another chain than the picture's at 25% (F-465).
+    // clip read its ink off another chain than the picture's at 25% on a
+    // 1.5 screen, up to 8/255 (F-465).
     final rect = wholeLevelPixelsOutward(bounds, levelsReadAt(_displayScale));
     final width = rect.width.round();
     final height = rect.height.round();

@@ -237,7 +237,8 @@ final class _LandingAsItWillBe {
     }
     // ⛔No margin past it: 🔬an image read as far again past what it shows
     // drew nothing a cut one did not (Impeller and Skia testers, a stroke
-    // on line art at 50%, 25% and from 50% to 12.5%, 2026-10-25).
+    // on line art at 50% and 25% on a 1.0 and a 1.5 screen, and zoomed to
+    // 12.5%, 2026-10-25).
     final rect = rectTheDisplayReads(
       patch.rect,
       displayScale,

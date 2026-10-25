@@ -18,14 +18,16 @@ import '../../helpers/a_stroke_written_into_the_picture_shown.dart';
 /// tester (the `impeller` tag's batch) and skip on Skia.
 ///
 /// On line art, under a stroke laid over it, at a view whose edge cuts the
-/// page off the levels' grid, and zoomed from 50% to 12.5% with the step's
-/// texels in and the picture's levels not yet.
+/// page off the levels' grid, and zoomed to 12.5% with the step's texels in
+/// and the picture's levels not yet — on a 1.0 screen and a 1.5 one, whose
+/// 0.375 at 25% reads two levels off the texels a pixel lies over.
 ///
 /// 🔬Each pixel to within 1/255 a channel: the tester's Vulkan halves an
 /// image cut where a patch is and the picture it is cut from a level apart
 /// by one where line art changes under them (measured 2026-10-25 — one
-/// pixel at 25% and 12.5%, 0 on one ink). A step cut at its patch was 4/255
-/// off, a buffer off the grid 3, a patch laid for 50% shown at 12.5% 5.
+/// pixel at 25% and 12.5%, 0 on one ink). A step cut at its patch was up to
+/// 12/255 off, a buffer off the grid 8, a patch laid for 37.5% shown at
+/// 18.75% 2.
 void main() => aStrokeIsWrittenIntoThePictureShown(
   views: {
     'at 50%': CanvasViewport(zoom: 0.5, panX: 8, panY: 4),
