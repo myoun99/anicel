@@ -128,6 +128,24 @@ class FramePictures implements PlaybackPictures {
     revisionOf: (cel) => cel == asOf?.cel ? asOf!.revision : _revisionOf(cel),
   );
 
+  /// The key of the frame [nodes] stack for [picture] AS IT STANDS — signed
+  /// by every row of it, a cel drawn or not ([framePictureKeyOf]): a tree
+  /// that stands under the key a frame was stood by is that frame handed
+  /// again (`FramePictureView`).
+  ///
+  /// ⛔Not [keyOfStack]: a cel with nothing in it is no part of the
+  /// picture, but the row a pen is on draws its stroke as it stands by that
+  /// row's opacity, blend and pose.
+  FramePictureKey keyAsItStands(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture,
+  ) => framePictureKeyOf(
+    nodes,
+    cutId: picture.cut.id,
+    page: pageOf(picture),
+    revisionOf: _revisionOf,
+  );
+
   /// The key [picture]'s picture is kept under.
   FramePictureKey keyOf(DemandedPicture picture) =>
       keyOfStack(stackOf(picture), picture);

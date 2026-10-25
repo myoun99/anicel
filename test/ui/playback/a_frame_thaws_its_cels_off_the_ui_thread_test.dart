@@ -18,7 +18,6 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
@@ -26,6 +25,7 @@ import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 import '../../helpers/cels_kept_in_a_file.dart';
+import '../../helpers/no_worker_free.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel still in the saved file was
 /// inflated on the UI thread the moment a row's image was made — 16–19 ms a
@@ -82,22 +82,6 @@ void main() {
     store,
     {for (final (index, cel) in cels.indexed) keyOf(cel): surfaceOf(index + 1)},
   );
-
-  /// [body] run while every worker's turn is taken — no thaw can start —
-  /// and the turns given back after it, whatever it did.
-  Future<void> whileNoWorkerIsFree(Future<void> Function() body) async {
-    final held = Completer<void>();
-    final holding = [
-      for (var i = 0; i < celThawTurns.atOnce; i += 1)
-        celThawTurns.run(() => held.future),
-    ];
-    try {
-      await body();
-    } finally {
-      held.complete();
-      await Future.wait(holding);
-    }
-  }
 
   FramePictures picturesOf(LayerFrameImageCache images, List<String> cels) {
     final store = FramePictureStore<FramePictureKey>();

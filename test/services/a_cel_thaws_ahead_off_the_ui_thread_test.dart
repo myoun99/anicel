@@ -18,10 +18,10 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:anicel/src/services/persistence/thaw_in_worker.dart';
 
 import '../helpers/cels_kept_in_a_file.dart';
 import '../helpers/cels_parked_cold.dart';
+import '../helpers/no_worker_free.dart';
 
 /// 🚨Card `cel-thaw-holds-the-ui-thread`: a cel's thaw — zstd, then a copy
 /// per tile — ran on the UI thread, 60–70 ms of a first playback's late
@@ -70,22 +70,6 @@ void main() {
     for (final entry in surface.tiles.entries)
       entry.key: entry.value.pixels.toList(),
   };
-
-  /// [body] run while every worker's turn is taken — as by a frame's other
-  /// rows — and the turns given back after it, whatever it did.
-  Future<void> whileEveryTurnIsTaken(Future<void> Function() body) async {
-    final held = Completer<void>();
-    final holding = [
-      for (var i = 0; i < celThawTurns.atOnce; i += 1)
-        celThawTurns.run(() => held.future),
-    ];
-    try {
-      await body();
-    } finally {
-      held.complete();
-      await Future.wait(holding);
-    }
-  }
 
   /// Whether [thaws] have all answered once what is queued has run — none
   /// of them waiting for a worker's turn.
@@ -163,7 +147,7 @@ void main() {
     final hot = inkSurface();
     store.storeBakedSurface(hotKey, hot);
 
-    await whileEveryTurnIsTaken(() async {
+    await whileNoWorkerIsFree(() async {
       expect(
         await answeredAtOnce([
           store.thawAhead(hotKey, canvasSize: canvasSize),
@@ -191,7 +175,7 @@ void main() {
     final read = store.bakedSurfaceOrNull(k);
     expect(store.isCelFileBacked(k), isTrue, reason: 'premise: still kept');
 
-    await whileEveryTurnIsTaken(() async {
+    await whileNoWorkerIsFree(() async {
       expect(
         await answeredAtOnce([store.thawAhead(k, canvasSize: canvasSize)]),
         isTrue,
@@ -208,7 +192,7 @@ void main() {
     parkCold(store, {k: inkSurface()});
     late final Future<void> thaw;
 
-    await whileEveryTurnIsTaken(() async {
+    await whileNoWorkerIsFree(() async {
       thaw = store.thawAhead(k, canvasSize: canvasSize);
       const bigger = CanvasSize(width: 32, height: 32);
       parkCold(store, {k: inkSurface(canvas: bigger)});

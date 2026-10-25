@@ -302,6 +302,10 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// ghosts were one picture too (one-picture-per-frame ②-5b-1).
   Set<BrushFrameKey> _onScreen = const {};
 
+  /// The key the frame was last stood by ([FramePictures.keyAsItStands]):
+  /// a tree handed under it is that frame handed again.
+  FramePictureKey? _stoodBy;
+
   final LiftedRowPainters _painters = LiftedRowPainters();
 
   /// What of the live rows the picture shown holds, to measure their next
@@ -355,8 +359,14 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (!identical(oldWidget.run.pictures, widget.run.pictures)) {
       _letGo(oldWidget.run.pictures.store);
     }
+    // 🚨A TREE HANDED AGAIN IS NOT A FRAME HANDED ANEW (F-244): every
+    // build of the canvas asks its tree afresh — a block's drag in the
+    // timeline builds it at every step with every row as it was — and the
+    // frame stood again at each repainted the whole canvas. ↩️Told by the
+    // list's identity, which no build kept.
     final handedAnew =
-        !identical(oldWidget.nodes, widget.nodes) ||
+        _stoodBy != _pictures.keyAsItStands(widget.nodes, widget.picture) ||
+        !identical(oldWidget.run.pictures, widget.run.pictures) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
     if (handedAnew) {
@@ -402,6 +412,7 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// ([FramePictureView.alreadyShown], [FramePictureView.drawnLive],
   /// [_onScreen]).
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
+    _stoodBy = _pictures.keyAsItStands(widget.nodes, widget.picture);
     _liveChanges = null;
     _live = null;
     _onScreen = const {};
@@ -437,7 +448,7 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (!_pictures.allInHand(nodes, widget.picture)) {
       unawaited(
         _pictures.readInStack(nodes, widget.picture).then((_) {
-          if (mounted && identical(widget.nodes, nodes)) {
+          if (mounted && identical(_live, frame)) {
             setState(_standLive);
           }
         }),
