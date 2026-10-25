@@ -2,13 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/arena_tap_hold.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
+
+import '../../helpers/timeline_host.dart';
 
 /// A timeline row's BODY — its pick, its label's double click and the tap it
 /// holds in the arena — is three light boxes (card
@@ -18,27 +16,12 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 void main() {
   testWidgets('🚨from its pick to its plate a rail row holds no state and no '
       'detector — one element a box', (tester) async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(800, 600),
+      pixelsPerFrame: 24,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: buildAppTheme(),
-        home: Scaffold(
-          body: TimelineTabHost(
-            session: session,
-            orientation: TimelineOrientation.horizontal,
-            onOrientationChanged: (_) {},
-            pixelsPerFrame: 24,
-            onPixelsPerFrameChanged: (_) {},
-            showSeconds: false,
-            onShowSecondsChanged: (_) {},
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
 
     final rows = find.byType(TimelineLayerControlsRow).evaluate().toList();
     expect(rows, isNotEmpty, reason: 'fixture: the rail draws rows');

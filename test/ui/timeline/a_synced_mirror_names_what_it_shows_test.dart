@@ -8,8 +8,8 @@ import 'package:anicel/src/models/timeline_coverage.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../../helpers/timeline_host.dart';
 import 'timeline_cell_probe.dart';
 
 /// 🚨F-147 (유저 2026-09-16): 「기준레이어 엣지 움직일때 어태치 동기 레이어의
@@ -58,26 +58,6 @@ void main() {
     return (s, base, mirror);
   }
 
-  Widget host(
-    EditorSessionManager session,
-    TimelineOrientation orientation,
-  ) => MaterialApp(
-    home: Scaffold(
-      body: ListenableBuilder(
-        listenable: session,
-        builder: (context, _) => TimelineTabHost(
-          session: session,
-          orientation: orientation,
-          onOrientationChanged: (_) {},
-          pixelsPerFrame: 24,
-          onPixelsPerFrameChanged: (_) {},
-          showSeconds: false,
-          onShowSecondsChanged: (_) {},
-        ),
-      ),
-    ),
-  );
-
   for (final (orientation, prefix) in [
     (TimelineOrientation.horizontal, 'timeline'),
     (TimelineOrientation.vertical, 'xsheet'),
@@ -88,12 +68,15 @@ void main() {
     ]) {
       testWidgets('$prefix: mid-drag of $what, the mirror prints what its '
           'base prints at every block start', (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1400, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
         final (session, base, mirror) = fixture();
         addTearDown(session.dispose);
-        await tester.pumpWidget(host(session, orientation));
-        await tester.pumpAndSettle();
+        await pumpTimelineHostOn(
+          tester,
+          session,
+          surface: const Size(1400, 900),
+          orientation: orientation,
+          pixelsPerFrame: 24,
+        );
 
         expect(
           session.edgeDrag.beginExposureEdgeDrag(

@@ -5,6 +5,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 
 import 'storyboard_twirls.dart';
 
@@ -54,6 +55,9 @@ Future<void> pumpStoryboardHostOn(
   final presses = SessionRowButtonPresses(session);
   await tester.pumpWidget(
     MaterialApp(
+      // The app's theme, as `main.dart` lays it over the workspace: it is
+      // what keeps a press inkless (`splashFactory`), among the rest.
+      theme: buildAppTheme(),
       home: Scaffold(
         body: withStoryboardTwirls(
           session,

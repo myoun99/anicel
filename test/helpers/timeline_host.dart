@@ -4,6 +4,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
@@ -32,13 +33,57 @@ Future<EditorSessionManager> pumpTimelineHost(
   Project project, {
   Size surface = const Size(1400, 700),
   TimelineOrientation orientation = TimelineOrientation.horizontal,
+  double pixelsPerFrame = TimelineZoomLimits.referencePixelsPerFrame,
+}) async {
+  final session = EditorSessionManager(initialProject: project);
+  final tab = await _timelineTab(
+    tester,
+    session,
+    surface: surface,
+    orientation: orientation,
+    pixelsPerFrame: pixelsPerFrame,
+  );
+  await tester.pumpWidget(_SessionOwner(session: session, child: tab));
+  await tester.pumpAndSettle();
+  return session;
+}
+
+/// [pumpTimelineHost] on a [session] the test made and set up itself —
+/// the test disposes it.
+///
+/// 📏tests-hand-roll-the-tab-hosts (2026-10-25): as the conte's
+/// (`pumpStoryboardHostOn`).
+Future<void> pumpTimelineHostOn(
+  WidgetTester tester,
+  EditorSessionManager session, {
+  Size surface = const Size(1400, 700),
+  TimelineOrientation orientation = TimelineOrientation.horizontal,
+  double pixelsPerFrame = TimelineZoomLimits.referencePixelsPerFrame,
+}) async {
+  await tester.pumpWidget(
+    await _timelineTab(
+      tester,
+      session,
+      surface: surface,
+      orientation: orientation,
+      pixelsPerFrame: pixelsPerFrame,
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<Widget> _timelineTab(
+  WidgetTester tester,
+  EditorSessionManager session, {
+  required Size surface,
+  required TimelineOrientation orientation,
+  required double pixelsPerFrame,
 }) async {
   await tester.binding.setSurfaceSize(surface);
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  final session = EditorSessionManager(initialProject: project);
   final turned = ValueNotifier(orientation);
   addTearDown(turned.dispose);
-  final zoom = ValueNotifier(TimelineZoomLimits.referencePixelsPerFrame);
+  final zoom = ValueNotifier(pixelsPerFrame);
   addTearDown(zoom.dispose);
   final transformTool = ValueNotifier(TransformToolOptions.defaults);
   addTearDown(transformTool.dispose);
@@ -80,26 +125,22 @@ Future<EditorSessionManager> pumpTimelineHost(
     onToggleAttachGroup: presses.toggleGroupFold,
     transformOptions: transformTool,
   );
-  await tester.pumpWidget(
-    _SessionOwner(
-      session: session,
-      child: MaterialApp(
-        home: Scaffold(
-          // Laid out tight, as a dock lays its panel — the tick host asks it.
-          body: SizedBox.expand(
-            child: TickLayer.host(
-              child: ListenableBuilder(
-                listenable: Listenable.merge([session, turned, rail.drawn]),
-                builder: tab,
-              ),
-            ),
+  return MaterialApp(
+    // The app's theme, as `main.dart` lays it over the workspace: it is
+    // what keeps a press inkless (`splashFactory`), among the rest.
+    theme: buildAppTheme(),
+    home: Scaffold(
+      // Laid out tight, as a dock lays its panel — the tick host asks it.
+      body: SizedBox.expand(
+        child: TickLayer.host(
+          child: ListenableBuilder(
+            listenable: Listenable.merge([session, turned, rail.drawn]),
+            builder: tab,
           ),
         ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
-  return session;
 }
 
 /// The session the timeline tab up shows — the app's or [pumpTimelineHost]'s,

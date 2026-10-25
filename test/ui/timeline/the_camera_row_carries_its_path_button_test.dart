@@ -4,13 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/timeline_host.dart';
 
 /// I-89 ④ — the camera's path button on its row (유저 2026-10-12: 「카메라
 /// 경로표시 설정은 카메라 레이어에 두고싶어. 거기에 버튼으로서」): the
@@ -35,29 +34,13 @@ void main() {
     testWidgets('the $prefix\'s camera row carries it and no other row; '
         'pressed, it opens the path settings and stays at rest while they '
         'are open, and a pick writes them', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      final s = EditorSessionManager(initialProject: createDefaultProject());
-      addTearDown(s.dispose);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ListenableBuilder(
-              listenable: s,
-              builder: (context, _) => TimelineTabHost(
-                session: s,
-                orientation: orientation,
-                onOrientationChanged: (_) {},
-                pixelsPerFrame: 24,
-                onPixelsPerFrameChanged: (_) {},
-                showSeconds: false,
-                onShowSecondsChanged: (_) {},
-              ),
-            ),
-          ),
-        ),
+      final s = await pumpTimelineHost(
+        tester,
+        createDefaultProject(),
+        surface: const Size(1600, 1000),
+        orientation: orientation,
+        pixelsPerFrame: 24,
       );
-      await tester.pumpAndSettle();
       final camera = s.requireActiveCut.layers
           .firstWhere((layer) => layer.kind == LayerKind.camera)
           .id;

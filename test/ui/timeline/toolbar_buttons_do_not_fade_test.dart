@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
+
+import '../../helpers/timeline_host.dart';
 
 /// 🚨유저 #8 (2026-08-14): 「타임라인 펼친상황의 버튼갱신, **1,2,3,4,n만
 /// 천천히 페이드인**하면서 나타나거나 페이드아웃하면서 사라짐. **누가 이런
@@ -21,29 +20,12 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 void main() {
   testWidgets('the comma buttons change state instantly, like every other '
       'button on the bar', (tester) async {
-    final session = EditorSessionManager(
-      initialProject: createDefaultProject(),
+    await pumpTimelineHost(
+      tester,
+      createDefaultProject(),
+      surface: const Size(800, 600),
+      pixelsPerFrame: 24,
     );
-    addTearDown(session.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: session,
-            builder: (context, _) => TimelineTabHost(
-              session: session,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
 
     for (final id in const [
       'set-comma-1-button',

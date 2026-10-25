@@ -19,10 +19,9 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/instance_editor_commands.dart';
-import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
-import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/timeline_host.dart';
 
 void main() {
   test('standing on the transition row, the ＋ makes a span at the playhead '
@@ -144,28 +143,13 @@ void main() {
   testWidgets('the timeline\'s own ＋ button is lit there and makes the span', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final s = _standingOnTheTransitionRow(frame: 2);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => TimelineTabHost(
-              session: s,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      s,
+      surface: const Size(1400, 900),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
     await tester.pumpAndSettle();
@@ -180,8 +164,6 @@ void main() {
   // 가면 추가버튼 다른 블록있는 OL있는곳가던 뭐하던 활성화된채」.
   testWidgets('the bar\'s ＋ goes dark where the playhead steps onto an '
       'O.L\'s mark — and lights again off it', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
     final s = _session();
     s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.single;
@@ -194,25 +176,12 @@ void main() {
     s.selectCut(track.cuts[1].id);
     s.standOnRow(LayerRowAddress(track.transitionLayer.id));
     s.selectFrameIndex(14);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ListenableBuilder(
-            listenable: s,
-            builder: (context, _) => TimelineTabHost(
-              session: s,
-              orientation: TimelineOrientation.horizontal,
-              onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
-              showSeconds: false,
-              onShowSecondsChanged: (_) {},
-            ),
-          ),
-        ),
-      ),
+    await pumpTimelineHostOn(
+      tester,
+      s,
+      surface: const Size(1400, 900),
+      pixelsPerFrame: 24,
     );
-    await tester.pumpAndSettle();
     bool lit() => tester
             .appIconButton(
               find.byKey(const ValueKey<String>('new-frame-button')),
