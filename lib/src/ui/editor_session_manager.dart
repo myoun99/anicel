@@ -1038,10 +1038,8 @@ class EditorSessionManager extends ChangeNotifier
   // A collaborator (session/storyboard_rows.dart). Callers name it —
   // `session.storyboardRows.storyboardSelectedCutIds` (round 8, G3).
   late final StoryboardRows storyboardRows = StoryboardRows(
-    project: this,
     selection: this,
     projectSettings: projectSettings,
-    railView: railView,
   );
 
   void claimStoryboardRow() => standing.claimStoryboardRow();
@@ -1062,13 +1060,11 @@ class EditorSessionManager extends ChangeNotifier
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TrackId? trackId,
-    TimelineRowAddress? headRow,
     List<TimelineRowAddress> spanRows = const [],
   }) => rangeSelections.updateStoryboardCutSelectionByFrame(
     anchorGlobalFrame: anchorGlobalFrame,
     headGlobalFrame: headGlobalFrame,
     trackId: trackId,
-    headRow: headRow,
     spanRows: spanRows,
   );
   @override
@@ -1115,7 +1111,6 @@ class EditorSessionManager extends ChangeNotifier
     selection: this,
     retime: this,
     projectSettings: projectSettings,
-    storyboardRows: storyboardRows,
     trackSe: trackSe,
     rowSpans: rowSpans,
     currentRow: () => standing.currentRow,
@@ -1149,14 +1144,12 @@ class EditorSessionManager extends ChangeNotifier
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    TimelineRowAddress? headRow,
     TimelineRowAddress? anchorRow,
     List<TimelineRowAddress> spanRows = const [],
   }) => rangeSelections.updateTrackRowRangeSelectionByFrame(
     layerId: layerId,
     anchorGlobalFrame: anchorGlobalFrame,
     headGlobalFrame: headGlobalFrame,
-    headRow: headRow,
     anchorRow: anchorRow,
     spanRows: spanRows,
   );

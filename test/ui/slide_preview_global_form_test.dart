@@ -20,7 +20,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
-import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -83,7 +82,6 @@ void main() {
       layerId: _seLayerId,
       anchorGlobalFrame: 2,
       headGlobalFrame: 4,
-      headRow: const LayerRowAddress(_seLayerId),
     );
     expect(session.rangeMove.beginTrackRangeMoveDrag(), isTrue);
     session.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);

@@ -1650,10 +1650,10 @@ class _StoryboardRailRows {
   /// The group's rows in VISUAL order with their heights — mirrored from
   /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
   /// row kind must land in both, or the band drifts off its rows.
-  /// R9 #25 — what a select-drag pressed on [anchorRow] has swept: the
-  /// rail row its pointer is over, and every row from the anchor's to it
-  /// in the order this rail DRAWS them, lanes and all — the slice the
-  /// timeline's grids hand over ([resolveSelectionSpanOverAddresses]).
+  /// R9 #25 — what a select-drag pressed on [anchorRow] has swept: every
+  /// row from the anchor's to the one its pointer is over, in the order
+  /// this rail DRAWS them, lanes and all — the slice the timeline's grids
+  /// hand over ([resolveSelectionSpanOverAddresses]).
   ///
   /// [crossOffset] is the pointer's cross-axis distance from the ANCHOR
   /// row's top (negative above it), handed up raw by the shared gesture.
@@ -1671,6 +1671,10 @@ class _StoryboardRailRows {
   /// name no lane: a sweep from an S row's cells down its lanes held the
   /// S row alone, and a press on a lane it seemed to cover started a
   /// selection of its own (conte-sweep-leaves-the-lanes-out, 🧪10-25).
+  /// That list of the session's held the rail's order this table draws —
+  /// the transition row, the S rows highest slot first, the V row (user
+  /// 2026-08-11; leading with the V row inverted every cross-row drag) —
+  /// and left a hidden section's rows off, as this table does (F-199).
   ///
   /// 🚨Asked at the drag, of the track [trackId] names as the panel holds
   /// it THEN ([_trackNamed]): a kept row drags with the lookup it was
@@ -1691,13 +1695,10 @@ class _StoryboardRailRows {
     if (swept == null) {
       return null;
     }
-    return (
-      head: swept.head,
-      spanRows: resolveSelectionSpanOverAddresses(
-        rows: swept.rows,
-        anchor: anchorRow,
-        rowDelta: swept.rowDelta,
-      ),
+    return resolveSelectionSpanOverAddresses(
+      rows: swept.rows,
+      anchor: anchorRow,
+      rowDelta: swept.rowDelta,
     );
   };
 
@@ -1713,8 +1714,7 @@ class _StoryboardRailRows {
     return select == null
         ? null
         : _storyboardBandCallbacks(
-            layerId: lane.layerId,
-            laneId: lane.laneId,
+            row: lane,
             select: select,
             railSweepAt: _railSweepOn(track.id),
             rows: _seMoveRows(track),
@@ -1928,7 +1928,6 @@ class _StoryboardRailRows {
               layerId: layerId,
               anchorGlobalFrame: anchorIndex,
               headGlobalFrame: headIndex,
-              headRow: escalation.head,
               anchorRow: anchor,
               spanRows: escalation.spanRows,
             );
@@ -1952,7 +1951,6 @@ class _StoryboardRailRows {
           layerId: anchor.layerId,
           anchorGlobalFrame: anchorIndex,
           headGlobalFrame: headIndex,
-          headRow: rows.last,
           anchorRow: anchor,
           spanRows: rows,
         );
@@ -3259,14 +3257,13 @@ final class _TrackStrip {
 }
 
 /// Where a sweep pressed on [anchor] has reached, the pointer [crossOffset]
-/// from the top of its row, in a table of rows [heights] tall: the row it
-/// stands over ([head]) — walked back toward the anchor past rows
-/// [addresses] names none for (an Audio lane, a slot nobody stands on), so
-/// a drag that ends on one reaches as far as it legibly can rather than
-/// collapsing to nothing — and how many of the NAMED rows ([rows]) lie
-/// from the anchor's to it. Null when the anchor is not in the table.
-({List<TimelineRowAddress> rows, TimelineRowAddress head, int rowDelta})?
-_sweptOver(
+/// from the top of its row, in a table of rows [heights] tall: how many of
+/// the NAMED rows ([rows]) lie from the anchor's to the row it stands over
+/// — walked back toward the anchor past rows [addresses] names none for
+/// (an Audio lane, a slot nobody stands on), so a drag that ends on one
+/// reaches as far as it legibly can rather than collapsing to nothing.
+/// Null when the anchor is not in the table.
+({List<TimelineRowAddress> rows, int rowDelta})? _sweptOver(
   List<TimelineRowAddress?> addresses,
   List<double> heights, {
   required TimelineRowAddress anchor,
@@ -3285,11 +3282,9 @@ _sweptOver(
   while (at != anchorIndex && addresses[at] == null) {
     at += towardAnchor;
   }
-  final head = addresses[at]!;
   final rows = addresses.nonNulls.toList();
   return (
     rows: rows,
-    head: head,
-    rowDelta: rows.indexOf(head) - rows.indexOf(anchor),
+    rowDelta: rows.indexOf(addresses[at]!) - rows.indexOf(anchor),
   );
 }

@@ -329,19 +329,16 @@ typedef _StoryboardRailSlot = ({
   TimelineGraphSeat? graph,
 });
 
-/// What a select-drag pressed on a row of the rail has swept
-/// ([_StoryboardRailRows._railSweepOn]): the row its pointer is over, and
-/// every row from the pressed one to it in the order the rail draws them.
-typedef _RailSweep = ({
-  TimelineRowAddress head,
-  List<TimelineRowAddress> spanRows,
-});
-
-/// R9 #25: the rail's sweep from [anchorRow] to a pointer [crossOffset]
-/// from its top, resolved by the PANEL against the heights it paints. Null
-/// keeps the anchor.
+/// R9 #25: the rows a select-drag pressed on [anchorRow] has swept to a
+/// pointer [crossOffset] from its top ([_StoryboardRailRows._railSweepOn]) —
+/// every row from the pressed one to the one under the pointer, in the
+/// order the rail draws them — resolved by the PANEL against the heights it
+/// paints. Null keeps the anchor.
 typedef _RailSweepAt =
-    _RailSweep? Function(TimelineRowAddress anchorRow, double crossOffset);
+    List<TimelineRowAddress>? Function(
+      TimelineRowAddress anchorRow,
+      double crossOffset,
+    );
 
 /// The address a rail slot is stood on by — a row's own, a lane's, or the
 /// conte row's — or null for a row nobody stands on (the Audio lane, an S
@@ -474,17 +471,16 @@ class StoryboardCutSelectCallbacks {
   /// gesture of its own; frames are the axis the shared range gesture
   /// already speaks, and the session snaps them to whole cuts with the
   /// same rule the timeline snaps cells with.
-  /// [headRow] is the Excel-style cross-row reach (feedback #14): the
-  /// rail row the pointer is over now, which the PANEL resolves from the
-  /// heights it paints (R9 #25 — it used to be a row count computed from
-  /// one row height, which mis-counted every row of a different size).
-  /// [spanRows] are the rows the drag swept, lanes and all, in the order
-  /// the panel draws them ([StoryboardSeSelectCallbacks.onDrag]'s).
+  /// [spanRows] are the Excel-style cross-row reach (feedback #14): the
+  /// rows the drag swept, lanes and all, in the order the panel draws them
+  /// ([StoryboardSeSelectCallbacks.onDrag]'s), which the PANEL resolves
+  /// from the heights it paints (R9 #25 — it used to be a row count
+  /// computed from one row height, which mis-counted every row of a
+  /// different size).
   final void Function({
     required TrackId trackId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    TimelineRowAddress? headRow,
     List<TimelineRowAddress> spanRows,
   })
   onDrag;
@@ -507,16 +503,15 @@ class StoryboardSeSelectCallbacks {
   /// here is what takes it off the cut row.
   final ValueListenable<TrackFrameRangeSelection?> selectedRange;
 
-  /// A select-drag step on the track's GLOBAL frame axis. [headRow]
-  /// reaches across the rail's rows exactly as the cut row's does, and
-  /// [spanRows] are the rows the drag swept from [anchorRow] — the panel
-  /// hands the sliced span of the rows it drew, lanes and all, whichever
-  /// row it was pressed on (C② · H20).
+  /// A select-drag step on the track's GLOBAL frame axis. [spanRows]
+  /// reach across the rail's rows exactly as the cut row's do: the rows the
+  /// drag swept from [anchorRow] — the panel hands the sliced span of the
+  /// rows it drew, lanes and all, whichever row it was pressed on (C② ·
+  /// H20).
   final void Function({
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    TimelineRowAddress? headRow,
     TimelineRowAddress? anchorRow,
     List<TimelineRowAddress> spanRows,
   })
@@ -3648,17 +3643,18 @@ TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   callbacks: _storyboardBandCallbacks(
-    layerId: layer.id,
+    row: LayerRowAddress(layer.id),
     select: select,
     railSweepAt: railSweepAt,
     rows: rows,
   ),
 );
 
-/// The track band's gesture bundle on the row of [layerId] — its lane
-/// [laneId], where one is named: a sweep from it selects through [select]
-/// over what the rail swept ([railSweepAt]), and a press inside the band
-/// moves the band, its row steps counted from this row over [rows].
+/// The track band's gesture bundle on [row] — an S row, or a lane of its
+/// layer ([TimelineRowAddress.owningLayerId]): a sweep from it selects
+/// through [select] over what the rail swept ([railSweepAt]), and a press
+/// inside the band moves the band, its row steps counted from this row
+/// over [rows].
 ///
 /// 🚨H20 — ONE bundle for a row's cells and, as their band
 /// ([TimelineLaneRangeCallbacks.band]), each lane under them: a band carries
@@ -3666,29 +3662,23 @@ TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
 /// grids hand their lanes the cells' bundle. ↩️A lane's press began a lane
 /// selection of its own, and the band it lay in went.
 TimelineRangeGestureCallbacks _storyboardBandCallbacks({
-  required LayerId layerId,
-  String? laneId,
+  required TimelineRowAddress row,
   required StoryboardSeSelectCallbacks select,
   required _RailSweepAt? railSweepAt,
   required List<TimelineDisplayRow> rows,
 }) {
-  final row = laneId == null
-      ? LayerRowAddress(layerId)
-      : LaneRowAddress(layerId, laneId);
+  final layerId = row.owningLayerId!;
   return TimelineRangeGestureCallbacks(
     isInSelection: (_, frame) =>
         _storyboardRangeCovers(select.selectedRange.value, row, frame),
-    onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) {
-      final swept = railSweepAt?.call(row, headCrossOffset);
-      select.onDrag(
-        layerId: layerId,
-        anchorGlobalFrame: anchorIndex,
-        headGlobalFrame: headIndex,
-        headRow: swept?.head,
-        anchorRow: row,
-        spanRows: swept?.spanRows ?? const [],
-      );
-    },
+    onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
+        select.onDrag(
+          layerId: layerId,
+          anchorGlobalFrame: anchorIndex,
+          headGlobalFrame: headIndex,
+          anchorRow: row,
+          spanRows: railSweepAt?.call(row, headCrossOffset) ?? const [],
+        ),
     onTapClear: (_) => select.onClear(),
     onMoveBegin: (_, _) => select.move?.onBegin(layerId) ?? false,
     onMoveUpdate: (frameDelta, rowDelta) => select.move?.onUpdate(
@@ -5258,19 +5248,15 @@ class _StoryboardTrackRow extends KeptPiece {
       // every press is a move press — what the block body did before the
       // row had a range gesture. [onMoveBegin] still refuses gaps.
       isInSelection: (_, frame) => cutSelect == null || _isSelectedAt(frame),
-      onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) {
-        final swept = railSweepAt?.call(
-          TrackRowAddress(trackId),
-          headCrossOffset,
-        );
-        cutSelect?.onDrag(
-          trackId: trackId,
-          anchorGlobalFrame: anchorIndex,
-          headGlobalFrame: headIndex,
-          headRow: swept?.head,
-          spanRows: swept?.spanRows ?? const [],
-        );
-      },
+      onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
+          cutSelect?.onDrag(
+            trackId: trackId,
+            anchorGlobalFrame: anchorIndex,
+            headGlobalFrame: headIndex,
+            spanRows:
+                railSweepAt?.call(TrackRowAddress(trackId), headCrossOffset) ??
+                const [],
+          ),
       // A cut press already takes the cut and seeks into it, so the tap
       // only drops the selection (R10: standing is the press's job here).
       onTapClear: (_) => cutSelect?.onClear(),

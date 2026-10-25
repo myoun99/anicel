@@ -28,7 +28,6 @@ import 'project_settings.dart';
 import 'row_spans.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
-import 'storyboard_rows.dart';
 
 /// The RANGE SELECTIONS — the frame, track and lane range sweeps, what a
 /// selection spans, which block starts it names, standing inside it,
@@ -49,7 +48,6 @@ class RangeSelections {
     required ProjectSettings projectSettings,
     required TimelineRowAddress Function() currentRow,
     required PlaybackRig playbackRig,
-    required StoryboardRows storyboardRows,
     required TrackSeDisplay trackSe,
     required RowSpans rowSpans,
     required bool Function(TimelineRowAddress row) rowIsSelected,
@@ -63,7 +61,6 @@ class RangeSelections {
        _projectSettings = projectSettings,
        _currentRow = currentRow,
        _playbackRig = playbackRig,
-       _storyboardRows = storyboardRows,
        _trackSe = trackSe,
        _rowSpans = rowSpans,
        _rowIsSelected = rowIsSelected,
@@ -79,7 +76,6 @@ class RangeSelections {
   /// The row the user stands on — `Standing.currentRow`, asked when needed.
   final TimelineRowAddress Function() _currentRow;
   final PlaybackRig _playbackRig;
-  final StoryboardRows _storyboardRows;
   final TrackSeDisplay _trackSe;
   final RowSpans _rowSpans;
 
@@ -397,7 +393,6 @@ class RangeSelections {
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TrackId? trackId,
-    TimelineRowAddress? headRow,
     List<TimelineRowAddress> spanRows = const [],
   }) {
     final row = trackId ?? _selection.selectedTrackId;
@@ -406,7 +401,6 @@ class RangeSelections {
       anchorRow: TrackRowAddress(row),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
-      headRow: headRow,
       spanRows: spanRows,
     );
   }
@@ -423,36 +417,16 @@ class RangeSelections {
     required TimelineRowAddress anchorRow,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    required TimelineRowAddress? headRow,
     List<TimelineRowAddress> spanRows = const [],
   }) {
-    final railRows = _storyboardRows.storyboardRailRows(trackId);
-    final anchorIndex = railRows.indexOf(anchorRow);
-    final List<TimelineRowAddress> spanned;
-    if (spanRows.isNotEmpty) {
-      // The span IS the display slice the panel handed over — every drag
-      // the rail makes, from a lane (C②) or from a row's cells (H20) —
-      // lane rows included: the session's model-only rail list cannot
-      // name them, the same reason the timeline's spanRows channel exists.
-      spanned = spanRows;
-    } else if (anchorIndex < 0 || railRows.length < 2) {
-      spanned = [anchorRow];
-    } else {
-      // R9 #25: the head arrives as an ADDRESS, resolved by the panel
-      // against the heights it paints. It used to arrive as a row DELTA
-      // computed from one row's height, which under-counted every row that
-      // was a different size — the whole of the "V행에서 위로 끌면 S1에서
-      // 막힘" report. A row this rail does not hold (or none at all) simply
-      // leaves the anchor alone: what is not on the list is unreachable,
-      // which is the same guard the clamp used to be.
-      final headIndex = headRow == null
-          ? anchorIndex
-          : railRows.indexOf(headRow);
-      final resolvedHead = headIndex < 0 ? anchorIndex : headIndex;
-      final first = math.min(anchorIndex, resolvedHead);
-      final last = math.max(anchorIndex, resolvedHead);
-      spanned = railRows.sublist(first, last + 1);
-    }
+    // The span IS the display slice the panel handed over — every drag the
+    // rail makes, from a lane (C②) or from a row's cells (H20), lane rows
+    // included — and none is the anchor alone. ↩️R9 #25: the panel handed
+    // a head ADDRESS (a row DELTA before that, which mis-counted every row
+    // of a different size — "V행에서 위로 끌면 S1에서 막힘") and the span
+    // was cut here off a rail list of the model's own, which can name no
+    // lane: a sweep into S1's lanes held S1 alone.
+    final spanned = spanRows.isNotEmpty ? spanRows : [anchorRow];
 
     final axis = _projectSettings.axisForTrack(trackId);
     final lanes = <RangeBlock? Function(int)>[
@@ -509,7 +483,6 @@ class RangeSelections {
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    TimelineRowAddress? headRow,
     TimelineRowAddress? anchorRow,
     List<TimelineRowAddress> spanRows = const [],
   }) {
@@ -530,7 +503,6 @@ class RangeSelections {
       anchorRow: anchorRow ?? LayerRowAddress(layerId),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
-      headRow: headRow,
       spanRows: spanRows,
     );
   }
