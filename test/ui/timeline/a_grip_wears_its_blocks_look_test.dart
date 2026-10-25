@@ -272,6 +272,25 @@ void main() {
       expect(repaints, 1);
     });
 
+    test('a row is compared by value — an equal layer built again is the '
+        'same row; another cel or another layer is not', () {
+      TimelineBlockRow rowOf(String id, String cel) => (
+        layer: Layer(
+          id: LayerId(id),
+          name: id,
+          frames: const [],
+          timeline: {0: TimelineExposure.drawing(FrameId(cel), length: 2)},
+        ),
+        shown: true,
+        content: content,
+        ground: ground,
+      );
+      final facts = timelineBlockRowFacts(rowOf('row', 'f1'));
+      expect(timelineBlockRowFacts(rowOf('row', 'f1')), facts);
+      expect(timelineBlockRowFacts(rowOf('row', 'f2')), isNot(facts));
+      expect(timelineBlockRowFacts(rowOf('other', 'f1')), isNot(facts));
+    });
+
     test('a row with other answers is another paint — the chrome\'s, the '
         'numbers\' and a widget grip\'s', () {
       expect(chrome().shouldRepaint(chrome()), isFalse);

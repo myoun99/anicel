@@ -3,7 +3,7 @@ import 'package:flutter/widgets.dart' show BuildContext, Color;
 import '../../models/layer.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart' show layerMarkColor;
-import 'memo_token.dart' show ByIdentity;
+import 'memo_token.dart' show ByMap;
 import 'rail_eyes.dart';
 import 'timeline_beat_lines.dart' show TimelineGridLaw, timelineGridGroundOver;
 import 'timeline_cel_content_source.dart';
@@ -120,12 +120,15 @@ typedef TimelineBlockRow = ({
 });
 
 /// What of [row] its blocks' look reads, as a painter compares it between
-/// two paints: its layer, its eye, what its cels hold and its ground — or
-/// nothing, for a row that hands none.
+/// two paints: which cel its layer shows where (its id and its timeline),
+/// its eye, what its cels hold and its ground — or nothing, for a row that
+/// hands none. By VALUE: a rebuilt row with an equal layer is the same
+/// input (the edit chrome's law — `a changed face repaints the run glyphs`).
 Object? timelineBlockRowFacts(TimelineBlockRow? row) => row == null
     ? null
     : (
-        ByIdentity(row.layer),
+        row.layer.id,
+        ByMap(row.layer.timeline),
         row.shown,
         row.content?.hasContent,
         row.content?.cannotRead,
