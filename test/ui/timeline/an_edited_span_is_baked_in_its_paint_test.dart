@@ -67,21 +67,24 @@ void main() {
     },
   );
 
-  TimelineRowCellsPainter painterFor(Layer layer, {int frames = 4}) =>
-      TimelineRowCellsPainter(
-        layer: layer,
-        geometry: testFrameGeometry(
-          frameCellExtent: 24,
-          frameEndIndexExclusive: frames,
-        ),
-        crossAxisExtent: 28,
-        exposureStateForLayer: exposureOf,
-        frameNameForLayer: frameNameOf,
-        colorScheme: const ColorScheme.dark(),
-        baseTextStyle: const TextStyle(fontSize: 11),
-        tileStore: store,
-        substrateGeneration: 'f314',
-      );
+  TimelineRowCellsPainter painterFor(
+    Layer layer, {
+    int frames = 4,
+    double crossAxisExtent = 28,
+  }) => TimelineRowCellsPainter(
+    layer: layer,
+    geometry: testFrameGeometry(
+      frameCellExtent: 24,
+      frameEndIndexExclusive: frames,
+    ),
+    crossAxisExtent: crossAxisExtent,
+    exposureStateForLayer: exposureOf,
+    frameNameForLayer: frameNameOf,
+    colorScheme: const ColorScheme.dark(),
+    baseTextStyle: const TextStyle(fontSize: 11),
+    tileStore: store,
+    substrateGeneration: 'f314',
+  );
 
   /// What a paint asks of the store for the row's first span.
   ui.Image? ask(TimelineRowCellsPainter painter) => store.tileFor(
@@ -331,5 +334,53 @@ void main() {
     expect(heard, greaterThan(0), reason: 'nothing else would repaint it');
     paintRow(renamed, 8);
     expect(store.debugBusy, isFalse, reason: 'its spans show the rename');
+  });
+
+  test('a row the store comes back to with nothing baked in that ask is not '
+      'repainted for it — its landings repaint it, once each', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    // Two cold spans, turned away by thirty-two queued after them: the
+    // store comes back to them cold, and queues them.
+    final row = painterFor(rowLayer('r', frames: 8), frames: 8);
+    var repaints = 0;
+    show(row, () => repaints += 1);
+    final filler = painterFor(rowLayer('filler', frames: 128), frames: 128);
+    paintRow(row, 8);
+    paintRow(filler, 128);
+    await tileStoreIdle(store);
+
+    expect(repaints, 2, reason: 'a repaint of a row with cold spans is the '
+        'classic paint again (I-22 ③) — for nothing new, here');
+  });
+
+  test('a stand-in is a tile of the span\'s own size — a taller row, or a '
+      'span the axis cut shorter, keeps the classic paint while its new word '
+      'bakes', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    await landed(painterFor(rowLayer('tall')));
+    final taller = painterFor(
+      rowLayer('tall', name: 'T1'),
+      crossAxisExtent: 40,
+    );
+    expect(ask(taller), isNull, reason: 'a 28px tile stretched over 40px');
+
+    await landed(painterFor(rowLayer('short')));
+    final shorter = painterFor(rowLayer('short', name: 'T2'), frames: 3);
+    expect(
+      store.tileFor(
+        painter: shorter,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 3,
+        devicePixelRatio: 1.0,
+      ),
+      isNull,
+      reason: 'four cells\' tile squeezed into three',
+    );
   });
 }

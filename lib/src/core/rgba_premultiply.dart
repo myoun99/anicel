@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 /// Premultiplies straight RGBA bytes IN PLACE — the same mul-div-255
@@ -71,27 +72,15 @@ Uint8List straightRgbaFor(Uint8List premultiplied) {
       continue;
     }
     for (var channel = offset; channel < offset + 3; channel += 1) {
-      bytes[channel] = _straightUnder(bytes[channel], alpha);
+      // The rounded inverse of [mul255Round] lands on it exactly for every
+      // channel up to its alpha — pinned over all of them.
+      bytes[channel] = math.min(
+        255,
+        (bytes[channel] * 255 + alpha ~/ 2) ~/ alpha,
+      );
     }
   }
   return bytes;
-}
-
-/// The value [mul255Round] by [alpha] takes to [premultiplied] — one is
-/// there for every channel up to the alpha, since the rounding climbs by
-/// at most one a value.
-int _straightUnder(int premultiplied, int alpha) {
-  if (premultiplied >= alpha) {
-    return 255;
-  }
-  var value = (premultiplied * 255 + alpha ~/ 2) ~/ alpha;
-  while (mul255Round(value, alpha) > premultiplied) {
-    value -= 1;
-  }
-  while (mul255Round(value, alpha) < premultiplied) {
-    value += 1;
-  }
-  return value;
 }
 
 /// `value * alpha / 255`, rounded the way the whole app rounds it.

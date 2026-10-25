@@ -53,13 +53,13 @@ void main() {
   const cell = 24.0;
   const viewport = 240.0;
 
-  Layer rowLayer(String id) => Layer(
+  Layer rowLayer(String id, {int length = 2}) => Layer(
     id: LayerId(id),
     name: id,
     frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
     timeline: {
       for (var start = 0; start < frames; start += 4)
-        start: TimelineExposure.drawing(FrameId('$id-f'), length: 2),
+        start: TimelineExposure.drawing(FrameId('$id-f'), length: length),
     },
   );
 
@@ -84,8 +84,9 @@ void main() {
     ValueListenable<int> bucket, {
     int builtFrames = frames,
     TimelineNextPage? Function()? nextPage,
+    int length = 2,
   }) => TimelineRowCellsPainter(
-    layer: rowLayer(id),
+    layer: rowLayer(id, length: length),
     geometry: testFrameGeometry(
       frameCellExtent: cell,
       frameEndIndexExclusive: builtFrames,
@@ -504,6 +505,59 @@ void main() {
     await tileStoreIdle(store);
 
     expect(uploads, 1 + rest.length, reason: 'and not again with the rest');
+  });
+
+  test('a span a paint bakes in its ask is taken off the next page\'s '
+      'warm-up — not baked again with the rest (F-314)', () async {
+    if (!available) {
+      markTestSkipped('qa_engine.dll not built');
+      return;
+    }
+    final bucket = ValueNotifier<int>(0);
+    addTearDown(bucket.dispose);
+    final before = painterFor('baked', bucket);
+    show(before);
+    paintRow(before);
+    await tileStoreIdle(store);
+    store.warmTheNextPage(tiles: 64);
+    await tileStoreIdle(store);
+    // An edit: every tile of the row, the next page's too, shows the row
+    // before it. The paint bakes its own spans in its asks.
+    final after = painterFor('baked', bucket, length: 3);
+    paintRow(after);
+    store.warmTheNextPage(tiles: 0);
+    await tileStoreIdle(store);
+    var uploads = 0;
+    debugRawRgbaUploader =
+        (rgba, {required width, required height, targetWidth, targetHeight}) {
+          uploads += 1;
+          return Future.value(tiny());
+        };
+    addTearDown(() => debugRawRgbaUploader = null);
+
+    // Queued, none rastered yet: a paint asks for one of them.
+    final queued = coldOfTheNextPage(after);
+    expect(queued.length, greaterThan(1), reason: '⛔premise: more to warm');
+    final (start, end) = queued.first;
+    expect(
+      store.tileFor(
+        painter: after,
+        spanStartIndex: start,
+        spanEndIndexExclusive: end,
+        devicePixelRatio: 1,
+      ),
+      isNotNull,
+    );
+    expect(uploads, 0, reason: '⛔premise: baked in the ask');
+    store.warmTheNextPage(tiles: 64);
+    await tileStoreIdle(store);
+
+    expect(
+      uploads,
+      queued.length - 1,
+      reason: 'the rest of the page once each, and not the span the paint '
+          'baked',
+    );
   });
 
   group('🚨a warm span is rastered in the quiet between two held frames', () {

@@ -292,6 +292,10 @@ void main() {
       expect(straight[3], 64);
       expect(straight[0], greaterThan(10));
     });
+
+    test('a channel over its alpha, which no premultiply makes, takes 255', () {
+      expect(straightRgbaFor(pixel(200, 101, 100, 100)), [255, 255, 255, 100]);
+    });
   });
 
   group('unitDirection', () {
