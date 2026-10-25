@@ -222,19 +222,19 @@ void main() {
 
   testWidgets('a first step the host names starts the drag as the detector '
       'it replaced started it', (tester) async {
-    AppInput.settings.value = _navigating;
+    AppInput.settings.value = _drawing;
     bool firstStepAt(Offset down, Offset now) => (now - down).distance > 2;
     const steps = [Offset(3, 0), Offset(3, 0)];
     final now = await read(
       tester,
       (heard) => _box(heard, firstStepAt: firstStepAt),
-      kind: PointerDeviceKind.mouse,
+      kind: PointerDeviceKind.touch,
       steps: steps,
     );
     final old = await read(
       tester,
       (heard) => _asItWas(heard, firstStepAt: firstStepAt),
-      kind: PointerDeviceKind.mouse,
+      kind: PointerDeviceKind.touch,
       steps: steps,
     );
     expect(now.heard, old.heard);
