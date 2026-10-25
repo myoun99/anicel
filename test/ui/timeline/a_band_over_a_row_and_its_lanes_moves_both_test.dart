@@ -47,6 +47,7 @@ import '../../helpers/timeline_host.dart';
 const _a = LayerId('a');
 const _b = LayerId('b');
 const _c = LayerId('c');
+const _d = LayerId('d');
 const _cell = TimelineZoomLimits.referencePixelsPerFrame;
 const _position = LaneRowAddress(_a, 'position');
 
@@ -77,8 +78,9 @@ Layer _layer(LayerId id, {bool keyed = false, bool exposed = true}) => Layer(
 
 /// B, empty, stands right before A (above it on the rail) — no lane row
 /// between them — and C, empty, before B, where a carry onto B lands when
-/// its rows are counted from anywhere but the row pressed. Their drawings
-/// are named apart, so a carry asks nothing (F-413).
+/// its rows are counted from anywhere but the row pressed. D, empty, stands
+/// after A's lanes. Their drawings are named apart, so a carry asks nothing
+/// (F-413).
 Project _project() => Project(
   id: const ProjectId('p'),
   name: 'P',
@@ -95,6 +97,7 @@ Project _project() => Project(
           canvasSize: const CanvasSize(width: 64, height: 64),
           camera: CutCamera.empty(),
           layers: [
+            _layer(_d, exposed: false),
             _layer(_a, keyed: true),
             _layer(_b, exposed: false),
             _layer(_c, exposed: false),
@@ -114,8 +117,13 @@ typedef _Grid = ({
 });
 
 /// The grid on [axis] with A's Transform lanes open, swept from A's cell
-/// at frame 0 down to its Position lane at frame 2.
-Future<_Grid> _sweptBand(WidgetTester tester, Axis axis) async {
+/// at frame 0 down to its Position lane at frame 2 — or on past them to
+/// [pastTheLanesTo]'s cells.
+Future<_Grid> _sweptBand(
+  WidgetTester tester,
+  Axis axis, {
+  LayerId? pastTheLanesTo,
+}) async {
   final session = await pumpTimelineHost(
     tester,
     _project(),
@@ -146,31 +154,31 @@ Future<_Grid> _sweptBand(WidgetTester tester, Axis axis) async {
     along: partAlong(axis, tester.getTopLeft(lane)) + _cell * frame + _cell / 2,
     across: partAcross(axis, tester.getCenter(row)),
   );
-  final cells = find.named(
-    sheet ? 'xsheet-column-a-cells' : 'timeline-row-a-cells',
-  );
+  final cells = _cellsOf(axis, _a);
   final sweep = await tester.startGesture(
     at(cells, 0),
     kind: PointerDeviceKind.mouse,
   );
   await sweep.moveBy(offsetAlong(axis, along: _cell, across: 0));
   await tester.pump();
-  await sweep.moveTo(at(lane, 2));
+  final past = pastTheLanesTo;
+  await sweep.moveTo(at(past == null ? lane : _cellsOf(axis, past), 2));
   await tester.pump();
   await sweep.up();
   await tester.pumpAndSettle();
   return (session: session, axis: axis, cells: cells, lane: lane, at: at);
 }
 
-/// A press at [from], carried to [to] a cell at a time, [held] read there,
-/// and let go.
+/// A press of [kind] at [from], carried to [to] in four steps, [held] read
+/// there, and let go.
 Future<void> _carry(
   WidgetTester tester,
   Offset from,
   Offset to, {
   void Function()? held,
+  PointerDeviceKind kind = PointerDeviceKind.mouse,
 }) async {
-  final hand = await tester.startGesture(from, kind: PointerDeviceKind.mouse);
+  final hand = await tester.startGesture(from, kind: kind);
   await tester.pump();
   final travel = to - from;
   for (var step = 1; step <= 4; step += 1) {
@@ -235,6 +243,31 @@ void main() {
         expect(_keysOf(s), [0, 2]);
       });
     }
+    // A sweep that runs on past A's lanes holds them with no lane
+    // selection beside the band (R27 #14 stands one only for a sweep that
+    // ends on a transform lane). A press on one is the band's still, and
+    // steps as the band's does: on the frame a move would land on (F-238
+    // 「1콤마만 바로바로」), not on leaving the cell it pressed.
+    testWidgets('on the ${axis == Axis.horizontal ? 'rail' : 'sheet'}, a '
+        'band swept past a row\'s lanes goes a frame on a short touch drag '
+        'of one of them', (tester) async {
+      final g = await _sweptBand(tester, axis, pastTheLanesTo: _d);
+      final s = g.session;
+      expect(s.frameRangeSelection.value?.coversRow(_position), isTrue);
+      expect(s.laneRangeSelection.value, isNull);
+
+      final from = g.at(g.lane, 1) -
+          offsetAlong(axis, along: _cell * 0.3, across: 0);
+      await _carry(
+        tester,
+        from,
+        from + offsetAlong(axis, along: _cell * 0.6, across: 0),
+        kind: PointerDeviceKind.touch,
+      );
+
+      expect(_blocksOf(s, _a), [1]);
+      expect(_keysOf(s), [1, 3]);
+    });
     // 🗣️「a-lane-press-clears-a-mixed-run-Q1」 (유저 2026-10-25): 「블록은 다른
     // 행으로, 키는 제 레인에서 프레임으로만」 — what the riders of a hop
     // already did (R27 #8).
