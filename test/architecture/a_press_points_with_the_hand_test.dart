@@ -4,13 +4,18 @@
 // gets its cursor one of three ways, and these hold each: a Material button
 // reads the theme, an `InkWell` names it (no theme reaches one), and the
 // app's own faces resolve it.
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/brush/tool_setting_rows.dart';
+import 'package:anicel/src/ui/color/color_slot_pair.dart';
+import 'package:anicel/src/ui/color/color_status_bar.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/command_pill.dart';
+
+import '../../tool/source_brackets.dart';
+import '../helpers/dart_sources.dart';
 
 /// Folders whose `InkWell`s are another lane's to change, with why — and
 /// how many still say nothing, so a fix there shrinks this by hand.
@@ -25,33 +30,15 @@ const _notYet = <String, (String, int)>{
   ),
 };
 
-/// Each `InkWell(` / `InkResponse(` in [source] whose arguments name no
-/// `mouseCursor`, by line.
+/// Each `InkWell(` / `InkResponse(` in [source] whose own arguments name no
+/// `mouseCursor`, by line of [source] with its comments taken out.
 Iterable<int> _silentInks(String source) sync* {
+  final code = withoutComments(source);
   final call = RegExp(r'(^|[^A-Za-z_])(InkWell|InkResponse)\(');
-  for (final match in call.allMatches(source)) {
-    final lineStart = source.lastIndexOf('\n', match.start) + 1;
-    if (source.substring(lineStart, match.start).trimLeft().startsWith('//')) {
-      continue;
-    }
-    var depth = 0;
-    var end = match.end - 1;
-    for (; end < source.length; end++) {
-      final c = source[end];
-      if (c == '(') depth++;
-      if (c == ')' && --depth == 0) break;
-    }
-    final arguments = source.substring(match.end, end);
-    // Its own arguments only — a nested call's are not its.
-    final own = StringBuffer();
-    var nested = 0;
-    for (final c in arguments.split('')) {
-      if (c == '(' || c == '[' || c == '{') nested++;
-      if (c == ')' || c == ']' || c == '}') nested--;
-      if (nested == 0) own.write(c);
-    }
-    if (!own.toString().contains('mouseCursor:')) {
-      yield '\n'.allMatches(source.substring(0, match.start)).length + 1;
+  for (final match in call.allMatches(code)) {
+    final openAt = match.end - 1;
+    if (namedArgument(code, openAt, 'mouseCursor') == null) {
+      yield '\n'.allMatches(code.substring(0, openAt)).length + 1;
     }
   }
 }
@@ -86,9 +73,8 @@ void main() {
   test('every InkWell names its cursor — no theme reaches one', () {
     final silent = <String>[];
     final waiting = <String, int>{for (final folder in _notYet.keys) folder: 0};
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) continue;
-      final path = file.path.replaceAll(r'\', '/');
+    for (final file in dartFilesUnder('lib')) {
+      final path = libPath(file);
       final lines = _silentInks(file.readAsStringSync()).toList();
       if (lines.isEmpty) continue;
       final folder = _notYet.keys.where(path.startsWith).firstOrNull;
@@ -112,13 +98,11 @@ void main() {
 
   test('the hand is spelled once — in AppCursors', () {
     final spelled = <String>[];
-    for (final file in Directory('lib').listSync(recursive: true)) {
-      if (file is! File || !file.path.endsWith('.dart')) continue;
-      final lines = file.readAsLinesSync();
+    for (final file in dartFilesUnder('lib')) {
+      final lines = withoutComments(file.readAsStringSync()).split('\n');
       for (var i = 0; i < lines.length; i++) {
-        if (lines[i].trimLeft().startsWith('//')) continue;
         if (lines[i].contains('SystemMouseCursors.click')) {
-          spelled.add('${file.path}:${i + 1}');
+          spelled.add('${libPath(file)}:${i + 1}');
         }
       }
     }
@@ -166,6 +150,59 @@ void main() {
         reason: '$family, dead',
       );
     }
+  });
+
+  testWidgets("the app's own faces point with the hand while they are live, "
+      'and with the arrow while they are dead', (tester) async {
+    Future<MouseCursor> at(Widget control, String key) async {
+      await _cursorOf(tester, control);
+      return _cursorAt(
+        tester,
+        tester.getCenter(find.byKey(ValueKey<String>(key))),
+      );
+    }
+
+    for (final live in [true, false]) {
+      final press = live ? () {} : null;
+      final hand = live ? SystemMouseCursors.click : SystemMouseCursors.basic;
+      final strap = StrapIconButton(
+        buttonKey: 'strap',
+        menuKey: 'strap-caret',
+        icon: Icons.add,
+        tooltip: 'Add',
+        onPressed: press,
+        entriesBuilder: () => const [],
+      );
+      expect(await at(strap, 'strap'), hand, reason: 'icon button, $live');
+      expect(await at(strap, 'strap-caret'), hand, reason: 'caret, $live');
+      expect(
+        await at(
+          ToolSettingAction(keyValue: 'act', label: 'Go', onPressed: press),
+          'act',
+        ),
+        hand,
+        reason: 'tool setting action, $live',
+      );
+    }
+    final bar = SizedBox(
+      width: 320,
+      child: ColorStatusBar(color: 0xFF336699, onColorChanged: (_) {}),
+    );
+    for (final readout in ['color-status-hex', 'color-status-r']) {
+      expect(await at(bar, readout), SystemMouseCursors.click, reason: readout);
+    }
+    expect(
+      await at(
+        ColorSlotPair(
+          foreground: const Color(0xFF000000),
+          background: const Color(0xFFFFFFFF),
+          onBackgroundTap: () {},
+        ),
+        'color-wheel-background-swatch',
+      ),
+      SystemMouseCursors.click,
+      reason: 'the swap swatch',
+    );
   });
 
   testWidgets("a popup menu's row points with the hand while it is live, "

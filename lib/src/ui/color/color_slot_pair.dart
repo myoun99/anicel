@@ -71,10 +71,10 @@ class ColorSlotPair extends StatelessWidget {
             bottom: 0,
             child: AppTooltip(
               message: AppText.strings.colorBackgroundSwap,
-              child: ControlPressClaim(
-                onPressed: onBackgroundTap,
-                child: MouseRegion(
-                  cursor: AppCursors.pressWhen(live: true),
+              child: MouseRegion(
+                cursor: AppCursors.pressWhen(live: true),
+                child: ControlPressClaim(
+                  onPressed: onBackgroundTap,
                   child: GestureDetector(
                     onTap: silentPress(onBackgroundTap),
                     child: swatch('$keyPrefix-background-swatch', background),

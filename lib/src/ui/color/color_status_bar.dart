@@ -152,10 +152,10 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                   onSubmit: (text) => _commitChannel(which, text),
                   onCancel: () => setState(() => _editing = _Editing.none),
                 )
-              : ControlPressClaim(
-                  onPressed: () => setState(() => _editing = which),
-                  child: MouseRegion(
-                    cursor: AppCursors.pressWhen(live: true),
+              : MouseRegion(
+                  cursor: AppCursors.pressWhen(live: true),
+                  child: ControlPressClaim(
+                    onPressed: () => setState(() => _editing = which),
                     child: GestureDetector(
                       key: ValueKey<String>(
                         'color-status-${label.toLowerCase()}',
@@ -219,10 +219,10 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                     onSubmit: _commitHex,
                     onCancel: () => setState(() => _editing = _Editing.none),
                   )
-                : ControlPressClaim(
-                    onPressed: () => setState(() => _editing = _Editing.hex),
-                    child: MouseRegion(
-                      cursor: AppCursors.pressWhen(live: true),
+                : MouseRegion(
+                    cursor: AppCursors.pressWhen(live: true),
+                    child: ControlPressClaim(
+                      onPressed: () => setState(() => _editing = _Editing.hex),
                       child: GestureDetector(
                         key: const ValueKey<String>('color-status-hex'),
                         behavior: HitTestBehavior.opaque,
