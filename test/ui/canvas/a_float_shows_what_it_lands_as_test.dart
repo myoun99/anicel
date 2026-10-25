@@ -25,8 +25,9 @@ import 'package:anicel/src/ui/canvas/tile_picture_budget.dart';
 /// sampled one pixel in two instead, so the picture changed the moment it
 /// landed. Here the SAME surface paint is asked twice: once holding the
 /// float (while it floats), once holding a cel whose tiles are what 100%
-/// showed with the float on it (after it lands) — and at 50% and 25% the
-/// two must be the same bytes. The cel and the float are opaque
+/// showed with the float on it (after it lands) — and at the halvings and
+/// between them the two must be the same bytes, on the tester's Skia and
+/// on its Impeller (`--enable-impeller`). The cel and the float are opaque
 /// high-frequency patterns, so nearest sampling and the mean disagree nearly
 /// everywhere; the scene proves it can tell them apart before it is trusted.
 ///
@@ -89,16 +90,15 @@ void main() {
     return done.future;
   }
 
-  /// [painter]'s content at 1/2^[level], the float laid through the surface
+  /// [painter]'s content at [scale], the float laid through the surface
   /// pass — or, [floatOnTop], drawn over it at `none` afterwards, the way
   /// the stack did before F-240.
   Future<ui.Image> paint(
     BitmapSurfacePainter painter, {
-    required int level,
+    required double scale,
     LandingPreview? float,
     bool floatOnTop = false,
   }) async {
-    final scale = 1 / (1 << level);
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder)
       ..scale(scale)
@@ -114,7 +114,10 @@ void main() {
       float!.paintInto(canvas);
     }
     final picture = recorder.endRecording();
-    final image = await picture.toImage(width >> level, height >> level);
+    final image = await picture.toImage(
+      (width * scale).ceil(),
+      (height * scale).ceil(),
+    );
     picture.dispose();
     return image;
   }
@@ -144,25 +147,25 @@ void main() {
     lineage: 'f240-${lineages++}',
   );
 
-  /// While it floats and once it has landed, at [level]: the floating
+  /// While it floats and once it has landed, at [scale]: the floating
   /// paint, the landed paint, and what the old overlay drew.
   Future<({Uint8List floating, Uint8List landed, Uint8List old})> both(
-    int level, {
+    double scale, {
     required LandingPreview float,
   }) async {
     final cel = surfaceOf(pattern(width, height, 1));
     final floating = painterOf(cel);
     // What 100% shows with the preview on it is what the landing writes.
-    final atFull = await paint(floating, level: 0, float: float);
+    final atFull = await paint(floating, scale: 1, float: float);
     final landedCel = surfaceOf(
       await bytes(atFull, format: ui.ImageByteFormat.rawStraightRgba),
     );
     atFull.dispose();
-    final whileFloating = await paint(floating, level: level, float: float);
-    final afterLanding = await paint(painterOf(landedCel), level: level);
+    final whileFloating = await paint(floating, scale: scale, float: float);
+    final afterLanding = await paint(painterOf(landedCel), scale: scale);
     final oldWay = await paint(
       painterOf(cel),
-      level: level,
+      scale: scale,
       float: float,
       floatOnTop: true,
     );
@@ -177,8 +180,10 @@ void main() {
     return result;
   }
 
-  for (final level in [1, 2]) {
-    final zoom = '${100 >> level}%';
+  // The halvings, and two reductions between them — where a tile's edge is
+  // filtered on a band of its own (`chained_picture.dart`).
+  for (final scale in [0.5, 0.25, 0.6, 0.3]) {
+    final zoom = '${(scale * 100).round()}%';
 
     test('a TRANSFORM\'s float at $zoom shows the bytes it lands as', () async {
       final floatImage = await imageOf(pattern(22, 14, 2), 22, 14);
@@ -187,7 +192,7 @@ void main() {
         imageLeft: 13,
         imageTop: 9,
       );
-      final seen = await both(level, float: float);
+      final seen = await both(scale, float: float);
       expect(
         differing(seen.old, seen.landed),
         greaterThan(20),
@@ -211,7 +216,7 @@ void main() {
         surfaceOffset: CanvasPoint(x: 5, y: 3),
         clip: const ui.Rect.fromLTWH(9, 7, 27, 19),
       );
-      final seen = await both(level, float: float);
+      final seen = await both(scale, float: float);
       expect(differing(seen.old, seen.landed), greaterThan(20));
       expect(differing(seen.floating, seen.landed), 0);
     });

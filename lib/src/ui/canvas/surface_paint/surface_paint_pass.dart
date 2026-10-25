@@ -372,26 +372,38 @@ class _SurfacePaintPass {
   /// chains, each the 100% picture of its coordinate ([_CoordinatePicture]).
   /// The float laid over the tiles, each reduced on its own, would blend
   /// its edge with nothing under it where the landed tile blends it with
-  /// the cel. So [region], whole tiles, is painted by this same pass at
+  /// the cel. So each tile of [region] is painted by this same pass at
   /// 100% — the coordinates, the overlay and the float exactly as 100% shows
-  /// them — into one render, which the engine gives its chain, and drawn
-  /// reduced as a landed tile is: the same chain on the same grid, the
-  /// same bytes at 1/2ⁿ, and elsewhere apart only on the band a tile's
-  /// edge is filtered on ([chainedPictureOf]).
+  /// them — into a render of its own, which the engine gives its chain, and
+  /// drawn reduced at its coordinate as the tile it lands as is: a picture
+  /// of the same size and bytes, the same chain, the same draw — so the
+  /// same bytes at every scale.
+  ///
+  /// ⛔NOT ONE RENDER OF THE REGION. 🔬Drawn so (this pin, 10-25), it was
+  /// apart from the landing wherever it is not a halving — on Skia on the
+  /// band a tile's edge is filtered on (60%: 47 pixels), on Impeller Vulkan
+  /// over most of the region (60%: 555), whose chain of a picture drifts
+  /// with the picture's size. One render can also pass the texture cap the
+  /// walk past it (`layer_stack_paint_pass.dart`) exists for; a tile cannot.
   ///
   /// ↩️The region was made at the display's level, halved from 100% one
   /// 2×2 box at a time, while a landed cel showed as level tiles — until
   /// one-picture-per-frame ②-5b-2.
   void _paintLandingReduced(Rect region) {
-    final image = _rasterAtFullSize(region);
-    try {
-      _canvas.drawImageRect(
-        image,
-        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-        region,
-        _tileImagePaint,
+    final tileSize = _painter.surface.tileSize;
+    final tiles = tileRangeCovering(
+      left: region.left,
+      top: region.top,
+      right: region.right,
+      bottom: region.bottom,
+      tileSize: tileSize,
+    );
+    for (final coord in tileCoordsIn(tiles)) {
+      final image = _rasterAtFullSize(
+        tileCoordOriginOffset(coord, tileSize) &
+            Size.square(tileSize.toDouble()),
       );
-    } finally {
+      _drawImageAtTile(image, coord);
       // Safe once drawn: the draw holds its own claim on the pixels.
       image.dispose();
     }

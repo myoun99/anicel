@@ -203,12 +203,10 @@ void main() {
         theFramesPicture(within: mainCanvasPanel()),
       );
 
-  /// The level of the view's pyramid the stack composes at.
-  int levelOf(WidgetTester tester) => displayLevelOf(
-    displayScaleOf(
-      canvasOf(tester).viewport.zoom,
-      tester.view.devicePixelRatio,
-    ),
+  /// Device pixels a canvas pixel of the view lands on.
+  double scaleOf(WidgetTester tester) => displayScaleOf(
+    canvasOf(tester).viewport.zoom,
+    tester.view.devicePixelRatio,
   );
 
   /// What the drawing canvas's stack draws — every row, each float in the
@@ -258,9 +256,11 @@ void main() {
   );
 
   /// The app on [project], stood on row A — at the 1:1 it opens at, or
-  /// [zoomedOut] by the bar's own steps until its rows are drawn as level
-  /// tiles (F-240) — with the text tool in hand, and the canvas pixel in
-  /// the middle of what can be seen of it.
+  /// [zoomedOut] by the bar's own steps past a halving, where the screen
+  /// samples the frame's picture from its chain (F-240) — with the text
+  /// tool in hand, and the canvas pixel in the middle of what can be seen
+  /// of it. ↩️Past a halving the rows were drawn as level tiles, until
+  /// one-picture-per-frame ②-5b-2.
   Future<Offset> open(
     WidgetTester tester,
     Project project, {
@@ -272,14 +272,18 @@ void main() {
     final view = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .canvasViewCommands!;
-    for (var step = 0; zoomedOut && levelOf(tester) == 0 && step < 8; step++) {
+    for (
+      var step = 0;
+      zoomedOut && scaleOf(tester) > 0.5 && step < 8;
+      step++
+    ) {
       view.zoomStep(zoomIn: false);
       await settle(tester);
     }
     expect(
-      levelOf(tester),
-      zoomedOut ? greaterThan(0) : 0,
-      reason: '⛔fixture: 1:1, or a zoom whose rows are drawn as level tiles',
+      scaleOf(tester),
+      zoomedOut ? lessThanOrEqualTo(0.5) : greaterThan(0.5),
+      reason: '⛔fixture: 1:1, or a zoom past a halving',
     );
     await takeTextTool(tester);
     return canvasPixelInView(tester);
