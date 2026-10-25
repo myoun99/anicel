@@ -519,9 +519,9 @@ void main() {
     // row must not change width when the control comes alive.
     final bar = find.descendant(
       of: find.byKey(sliderKey),
-      matching: find.byType(DecoratedBox),
+      matching: find.byType(FieldSliderTrack),
     );
-    await tester.tapAt(tester.getCenter(bar.first));
+    await tester.tapAt(tester.getCenter(bar));
     await tester.pump();
     expect(value.value, 0.2);
 
@@ -541,14 +541,8 @@ void main() {
     );
 
     // And it really is dim: the track it draws carries the 40%.
-    final decorated = tester
-        .widgetList<DecoratedBox>(bar)
-        .map((box) => box.decoration)
-        .whereType<ShapeDecoration>()
-        .toList();
-    expect(decorated, isNotEmpty, reason: 'fixture: the bar draws a track');
     expect(
-      decorated.first.color!.a,
+      tester.widget<FieldSliderTrack>(bar).frame.color!.a,
       closeTo(0.4, 1e-3),
       reason: 'a disabled bar shows 40% of itself, as it always did',
     );

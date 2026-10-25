@@ -47,14 +47,15 @@ class SuperellipseClip extends SingleChildRenderObjectWidget {
 
   final Clip clipBehavior;
 
-  BorderRadius _radiusOf(BuildContext context) => shape.borderRadius.resolve(
-    Directionality.maybeOf(context) ?? TextDirection.ltr,
-  );
+  /// [shape]'s corners where [context] reads — what the render object is
+  /// handed, by this widget and by one that clips as it does.
+  BorderRadius borderRadiusIn(BuildContext context) => shape.borderRadius
+      .resolve(Directionality.maybeOf(context) ?? TextDirection.ltr);
 
   @override
   RenderSuperellipseClip createRenderObject(BuildContext context) {
     return RenderSuperellipseClip(
-      borderRadius: _radiusOf(context),
+      borderRadius: borderRadiusIn(context),
       clipBehavior: clipBehavior,
     );
   }
@@ -65,7 +66,7 @@ class SuperellipseClip extends SingleChildRenderObjectWidget {
     RenderSuperellipseClip renderObject,
   ) {
     renderObject
-      ..borderRadius = _radiusOf(context)
+      ..borderRadius = borderRadiusIn(context)
       ..clipBehavior = clipBehavior;
   }
 }
@@ -122,7 +123,7 @@ class RenderSuperellipseClip extends RenderProxyBox {
     if (child == null || _clipBehavior == Clip.none) {
       _clipLayer.layer = null;
       if (child != null) {
-        super.paint(context, offset);
+        paintInside(context, offset);
       }
       return;
     }
@@ -131,11 +132,17 @@ class RenderSuperellipseClip extends RenderProxyBox {
       offset,
       Offset.zero & size,
       _shape,
-      super.paint,
+      paintInside,
       clipBehavior: _clipBehavior,
       oldLayer: _clipLayer.layer,
     );
   }
+
+  /// What is drawn inside the clip: the child, and whatever a box that
+  /// clips as this one does lays under it.
+  @protected
+  void paintInside(PaintingContext context, Offset offset) =>
+      super.paint(context, offset);
 
   @override
   void dispose() {

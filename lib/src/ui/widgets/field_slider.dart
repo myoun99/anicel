@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 
 import '../../services/input/modifier_keys.dart';
 import '../input/control_press_claim.dart';
@@ -964,29 +963,23 @@ class _FieldSliderState extends State<FieldSlider> {
             ),
           );
 
-    Widget bar = _TrackExtentProbe(
+    Widget bar = FieldSliderTrack(
       axis: widget.axis,
       onExtent: _takeTrackExtent,
-      child: DecoratedBox(
-        decoration: FieldSlider.frameOf(widget.height, enabled: _enabled),
-        child: SuperellipseClip(
-          shape: AppShapes.container(_radius),
-          child: CustomPaint(
-            painter: _FieldSliderTrackPainter(
-              axis: widget.axis,
-              t: t,
-              originT: _originFraction,
-              accent: _asDrawn(accent),
-            ),
-            child: acrossBox(
-              widget.axis,
-              widget.height,
-              child: _vertical && !widget.upright
-                  ? RotatedBox(quarterTurns: 1, child: inner)
-                  : inner,
-            ),
-          ),
-        ),
+      frame: FieldSlider.frameOf(widget.height, enabled: _enabled),
+      shape: AppShapes.container(_radius),
+      fill: _FieldSliderTrackPainter(
+        axis: widget.axis,
+        t: t,
+        originT: _originFraction,
+        accent: _asDrawn(accent),
+      ),
+      child: acrossBox(
+        widget.axis,
+        widget.height,
+        child: _vertical && !widget.upright
+            ? RotatedBox(quarterTurns: 1, child: inner)
+            : inner,
       ),
     );
 
@@ -1223,8 +1216,19 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
   Object get props => (t, originT, axis, accent);
 }
 
-/// Hands the bar's length along its axis to the gesture math as the bar is
-/// laid out — the one thing the bar needed a `LayoutBuilder` for.
+/// The bar's TRACK, as one box: its [frame] under everything, its [fill]
+/// inside the frame's corner under the writing, and the writing — the
+/// order a [DecoratedBox], a [SuperellipseClip] and a [CustomPaint] painted
+/// them in, and the clip's exact corner for a pointer.
+///
+/// 🪶WHY (card frame-panels-build-in-one-frame, 2026-10-25): the track was
+/// those three and a probe of its length — four elements and four render
+/// objects for one painted bar, made again for every bar a tab reopens
+/// (fourteen on each of the timeline's tabs). It IS the clip, so the
+/// corner is the clip's code and not a second spelling of it.
+///
+/// It also hands the bar's length along its axis to the gesture math as the
+/// bar is laid out — the one thing the bar needed a `LayoutBuilder` for.
 ///
 /// 🚨NOT A LAYOUT BUILDER (2026-09-26). A layout builder re-runs its builder
 /// on every rebuild, and that is a relayout — which climbs past the bar to
@@ -1236,34 +1240,68 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
 /// pick's heaviest frame spent ~4 ms there. This lays the bar out exactly
 /// as the builder did (its constraints, handed straight through) and asks
 /// for nothing when the bar is only repainted.
-class _TrackExtentProbe extends SingleChildRenderObjectWidget {
-  const _TrackExtentProbe({
+class FieldSliderTrack extends SuperellipseClip {
+  const FieldSliderTrack({
+    super.key,
     required this.axis,
+    required this.frame,
+    required this.fill,
     required this.onExtent,
+    required super.shape,
     required super.child,
   });
 
   final Axis axis;
+
+  /// The bar's frame ([FieldSlider.frameOf]).
+  final ShapeDecoration frame;
+
+  /// What the track fills, inside the corner and under the writing.
+  final CustomPainter fill;
+
   final ValueChanged<double> onExtent;
 
   @override
-  _RenderTrackExtentProbe createRenderObject(BuildContext context) =>
-      _RenderTrackExtentProbe(axis: axis, onExtent: onExtent);
+  RenderSuperellipseClip createRenderObject(BuildContext context) =>
+      RenderFieldSliderTrack(
+        borderRadius: borderRadiusIn(context),
+        clipBehavior: clipBehavior,
+        axis: axis,
+        frame: frame,
+        textDirection: Directionality.maybeOf(context),
+        fill: fill,
+        onExtent: onExtent,
+      );
 
   @override
   void updateRenderObject(
     BuildContext context,
-    _RenderTrackExtentProbe renderObject,
+    covariant RenderFieldSliderTrack renderObject,
   ) {
+    super.updateRenderObject(context, renderObject);
     renderObject
       ..axis = axis
+      ..frame = frame
+      ..textDirection = Directionality.maybeOf(context)
+      ..fill = fill
       ..onExtent = onExtent;
   }
 }
 
-class _RenderTrackExtentProbe extends RenderProxyBox {
-  _RenderTrackExtentProbe({required Axis axis, required this.onExtent})
-    : _axis = axis;
+/// [FieldSliderTrack]'s render object.
+class RenderFieldSliderTrack extends RenderSuperellipseClip {
+  RenderFieldSliderTrack({
+    required super.borderRadius,
+    required super.clipBehavior,
+    required Axis axis,
+    required ShapeDecoration frame,
+    required TextDirection? textDirection,
+    required CustomPainter fill,
+    required this.onExtent,
+  }) : _axis = axis,
+       _frame = frame,
+       _textDirection = textDirection,
+       _fill = fill;
 
   ValueChanged<double> onExtent;
 
@@ -1277,9 +1315,84 @@ class _RenderTrackExtentProbe extends RenderProxyBox {
     markNeedsLayout();
   }
 
+  ShapeDecoration get frame => _frame;
+  ShapeDecoration _frame;
+  BoxPainter? _framePainter;
+  set frame(ShapeDecoration value) {
+    if (_frame == value) {
+      return;
+    }
+    _framePainter?.dispose();
+    _framePainter = null;
+    _frame = value;
+    markNeedsPaint();
+  }
+
+  TextDirection? get textDirection => _textDirection;
+  TextDirection? _textDirection;
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) {
+      return;
+    }
+    _textDirection = value;
+    markNeedsPaint();
+  }
+
+  CustomPainter get fill => _fill;
+  CustomPainter _fill;
+  set fill(CustomPainter value) {
+    final old = _fill;
+    _fill = value;
+    if (value.runtimeType != old.runtimeType || value.shouldRepaint(old)) {
+      markNeedsPaint();
+    }
+  }
+
   @override
   void performLayout() {
     super.performLayout();
     onExtent(extentAlong(_axis, constraints.biggest));
+  }
+
+  /// The fill's box takes a press anywhere inside the corner, as a
+  /// [CustomPaint] whose painter does not say does.
+  @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final painter = _framePainter ??= _frame.createBoxPainter(markNeedsPaint);
+    painter.paint(
+      context.canvas,
+      offset,
+      ImageConfiguration(size: size, textDirection: _textDirection),
+    );
+    super.paint(context, offset);
+  }
+
+  @override
+  void paintInside(PaintingContext context, Offset offset) {
+    final canvas = context.canvas;
+    canvas.save();
+    if (offset != Offset.zero) {
+      canvas.translate(offset.dx, offset.dy);
+    }
+    _fill.paint(canvas, size);
+    canvas.restore();
+    super.paintInside(context, offset);
+  }
+
+  @override
+  void detach() {
+    _framePainter?.dispose();
+    _framePainter = null;
+    super.detach();
+    markNeedsPaint();
+  }
+
+  @override
+  void dispose() {
+    _framePainter?.dispose();
+    super.dispose();
   }
 }
