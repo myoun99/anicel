@@ -14,6 +14,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
+import 'helpers/room_for_the_pills.dart';
 import 'helpers/named_finders.dart';
 import 'ui/timeline/timeline_cell_probe.dart' show timelineCellGlobalRect;
 
@@ -258,6 +259,8 @@ void main() {
   Future<EditorSessionManager> withTheActiveRowSelected(
     WidgetTester tester,
   ) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))

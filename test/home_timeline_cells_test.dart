@@ -11,12 +11,15 @@ import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/app_icon_button_probe.dart';
 import 'helpers/home_page_probes.dart';
+import 'helpers/room_for_the_pills.dart';
 import 'helpers/named_finders.dart';
 
 void main() {
   testWidgets('timeline action toolbar hosts cell action controls', (
     WidgetTester tester,
   ) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
 
     final toolbar = find.byKey(

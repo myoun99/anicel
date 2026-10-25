@@ -7,6 +7,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
 import '../helpers/app_icon_button_probe.dart';
+import '../helpers/home_page_probes.dart';
 
 /// T17 — a button must answer about NOW, and to do that it has to subscribe
 /// to everything its predicate reads.
@@ -103,13 +104,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(enabled(tester, 'push-blocks-button'), isTrue);
-    await tester.tap(find.byKey(const ValueKey<String>('push-blocks-button')));
-    await tester.pumpAndSettle();
+    await tapToolbarButton(
+      tester,
+      const ValueKey<String>('push-blocks-button'),
+    );
 
     expect(session.blockShift.canPullBlocks(), isTrue);
     expect(enabled(tester, 'pull-blocks-button'), isTrue);
-    await tester.tap(find.byKey(const ValueKey<String>('pull-blocks-button')));
-    await tester.pumpAndSettle();
+    await tapToolbarButton(
+      tester,
+      const ValueKey<String>('pull-blocks-button'),
+    );
     expect(session.blockShift.canPullBlocks(), isFalse);
   });
 

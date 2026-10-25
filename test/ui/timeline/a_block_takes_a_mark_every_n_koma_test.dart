@@ -402,6 +402,8 @@ void main() {
 
     standOn(session, idA, 1);
     await tester.pumpAndSettle();
+    await tester.ensureVisible(inThePill('mark-every-button'));
+    await tester.pumpAndSettle();
     await tester.tap(inThePill('mark-every-button'));
     await tester.pumpAndSettle();
 

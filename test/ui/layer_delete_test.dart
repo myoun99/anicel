@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'flyout_test_helpers.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/room_for_the_pills.dart';
 import '../helpers/timeline_host.dart';
 
 // ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT, then left its own
@@ -230,8 +231,10 @@ void main() {
   });
 }
 
-/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
-/// 800 × 600 laid it — the shared pill and its windows are the tab's.
+/// The timeline tab alone ([pumpTimelineHost]) — the shared pill and its
+/// windows are the tab's — with room for its pills. ↩️It stood as the app's
+/// window of 800 × 600 laid it, where the pills have 34px now
+/// ([timelineTabWithRoomForItsPills]).
 Future<void> _pumpHome(
   WidgetTester tester, {
   Project? project,
@@ -240,17 +243,20 @@ Future<void> _pumpHome(
   final session = await pumpTimelineHost(
     tester,
     project ?? _project(),
-    surface: const Size(640, 320),
+    surface: timelineTabWithRoomForItsPills,
   );
   onRepositoryCreated?.call(session.repository);
 }
 
-/// The app, for the app's own undo and redo buttons.
+/// The app, for the app's own undo and redo buttons, with room for the
+/// pills ([appWindowWithRoomForItsPills]).
 Future<void> _pumpApp(
   WidgetTester tester, {
   Project? project,
   void Function(ProjectRepository repository)? onRepositoryCreated,
 }) async {
+  await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: HomePage(

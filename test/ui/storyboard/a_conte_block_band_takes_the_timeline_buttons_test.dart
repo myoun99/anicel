@@ -90,8 +90,7 @@ void main() {
       reason: '「콘티블록 선택하면 … 편집버튼 … 활성화」',
     );
 
-    await tester.tap(find.byKey(edit));
-    await tester.pumpAndSettle();
+    await tapToolbarButton(tester, edit);
     expect(
       find.byType(RenameFrameDialog),
       findsOneWidget,
@@ -142,8 +141,10 @@ void main() {
 
     // The press is the timeline's too: a copy made HERE is what the two
     // pastes then offer.
-    await tester.tap(find.byKey(const ValueKey<String>('shared-copy-button')));
-    await tester.pumpAndSettle();
+    await tapToolbarButton(
+      tester,
+      const ValueKey<String>('shared-copy-button'),
+    );
     await expectTheTimelinesAnswers();
     expect(
       timeline.canPasteLinkedFrame,

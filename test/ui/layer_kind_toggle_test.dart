@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import '../helpers/boolean_dot_probe.dart';
 import 'flyout_test_helpers.dart';
 import '../helpers/named_finders.dart';
+import '../helpers/room_for_the_pills.dart';
 import '../helpers/timeline_host.dart';
 
 const _toggleKey = ValueKey<String>('toggle-storyboard-layer-button');
@@ -38,14 +39,15 @@ const _cutId = CutId('phase-73-cut');
 const _layerId = LayerId('phase-73-layer');
 const _frameId = FrameId('phase-73-frame');
 
-/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
-/// 800 × 600 laid it unless [surface] says another — the Layer flyout and
-/// the `＋`'s band are the tab's.
+/// The timeline tab alone ([pumpTimelineHost]) — the Layer flyout and the
+/// `＋`'s band are the tab's — with room for its pills unless [surface] says
+/// another. ↩️It stood as the app's window of 800 × 600 laid it, where the
+/// pills have 34px now ([timelineTabWithRoomForItsPills]).
 Future<void> _pumpHome(
   WidgetTester tester, {
   Project? project,
   void Function(ProjectRepository repository)? onRepositoryCreated,
-  Size surface = const Size(640, 320),
+  Size surface = timelineTabWithRoomForItsPills,
 }) async {
   final session = await pumpTimelineHost(
     tester,
@@ -55,12 +57,15 @@ Future<void> _pumpHome(
   onRepositoryCreated?.call(session.repository);
 }
 
-/// The app, for its undo and redo buttons and the canvas they retarget.
+/// The app, for its undo and redo buttons and the canvas they retarget,
+/// with room for the pills ([appWindowWithRoomForItsPills]).
 Future<void> _pumpApp(
   WidgetTester tester, {
   Project? project,
   void Function(ProjectRepository repository)? onRepositoryCreated,
 }) async {
+  await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: HomePage(
@@ -200,6 +205,8 @@ Project _projectWithNoLayers() {
 
 void main() {
   testWidgets('toggle lives in the Layer flyout', (tester) async {
+    await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
 
     // Not a standalone toolbar button anymore (R-toolbar round)…

@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/room_for_the_pills.dart';
 import '../../helpers/the_classic_rail.dart';
 import '../../helpers/timeline_host.dart';
 import '../flyout_test_helpers.dart';
@@ -96,20 +97,25 @@ Project _project() {
   );
 }
 
-/// The timeline tab alone ([pumpTimelineHost]), as the app's window of
-/// 800 × 600 laid it — its command bar is the tab's.
+/// The timeline tab alone ([pumpTimelineHost]) — its command bar is the
+/// tab's — with room for its pills. ↩️It stood as the app's window of
+/// 800 × 600 laid it, where the pills have 34px now
+/// ([timelineTabWithRoomForItsPills]).
 Future<ProjectRepository> _open(WidgetTester tester) async {
   final session = await pumpTimelineHost(
     tester,
     _project(),
-    surface: const Size(640, 320),
+    surface: timelineTabWithRoomForItsPills,
   );
   return session.repository;
 }
 
-/// The app, for the app's own undo button.
+/// The app, for the app's own undo button, with room for the pills
+/// ([appWindowWithRoomForItsPills]).
 Future<ProjectRepository> _pumpHome(WidgetTester tester) async {
   late ProjectRepository repository;
+  await tester.binding.setSurfaceSize(appWindowWithRoomForItsPills);
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(
       home: HomePage(
