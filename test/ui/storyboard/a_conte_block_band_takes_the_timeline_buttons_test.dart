@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -152,5 +153,30 @@ void main() {
       isTrue,
       reason: 'LIVENESS: the copy reached the clipboard, and a paste is lit',
     );
+  });
+
+  testWidgets('🗣️I-130: the ○ and the ● press the band\'s marks the way the '
+      'timeline\'s do — 「타임라인 패널에만 있는 것은 콘티 패널에도」', (
+    tester,
+  ) async {
+    final session = await pumpStoryboard(tester);
+    await sweepTheSecondPanel(tester);
+    Map<int, InbetweenMark> worn() => session.layers
+        .firstWhere((layer) => layer.id == conteId)
+        .timeline[4]!
+        .breakdownMarks;
+    expect(worn(), isEmpty, reason: '⛔전제: the panel wears no mark');
+
+    await tapToolbarButton(
+      tester,
+      const ValueKey<String>('toggle-mark-one-button'),
+    );
+    final swept = worn().keys.toList();
+    expect(swept, isNotEmpty, reason: 'the press marked the band');
+    expect(worn().values, everyElement(InbetweenMark.one));
+
+    await tapToolbarButton(tester, const ValueKey<String>('toggle-mark-button'));
+    expect(worn().keys, swept);
+    expect(worn().values, everyElement(InbetweenMark.two));
   });
 }
