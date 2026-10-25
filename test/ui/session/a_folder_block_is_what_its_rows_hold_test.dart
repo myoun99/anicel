@@ -323,10 +323,12 @@ void main() {
       );
       expect(onFolder.cellModelAt(9).ghost, isFalse);
       expect(
-        onFolder.resolvedCellStyleFor(9).background,
-        isNot(onFolder.resolvedCellStyleFor(30).background),
-        reason: 'CONTROL: a block does wear paper',
+        onFolder.resolvedCellStyleFor(9).border,
+        isNot(onFolder.resolvedCellStyleFor(30).border),
+        reason: 'CONTROL: a block is drawn — here with no picture yet, over '
+            'no ground, as its outline (I-129)',
       );
+      expect(onFolder.resolvedCellStyleFor(12).border, Colors.transparent);
     });
 
     test('a repeat\'s ghosts are no block either, and stand where no hold '
