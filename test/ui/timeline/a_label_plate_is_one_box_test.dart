@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart'
     show BakedWords, WordBakeWaiter;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/timeline/axis_turn.dart' show sizeAlong;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_plate_words.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
@@ -190,9 +191,7 @@ void _expectSame(_Reading now, _Reading old) {
 /// A slot of the rail ([Axis.horizontal], tall) or the sheet's header
 /// ([Axis.vertical], wide), and a loose host around it.
 Map<String, Widget Function(Widget)> _hostsOf(Axis axis) {
-  final slot = axis == Axis.horizontal
-      ? const Size(14, 26)
-      : const Size(28, 14);
+  final slot = sizeAlong(axis, along: 14, across: 26);
   return {
     'its slot': (box) => Center(child: SizedBox.fromSize(size: slot, child: box)),
     'a loose host': (box) => Center(child: box),

@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 
 import '../text/vertical_writing_text.dart';
 import '../widgets/tick_text.dart';
+import 'axis_turn.dart';
 
 /// A word a label plate writes, set the way its rail reads it — stood up
 /// down a rail's slot ([StoodPlateWords]), laid across on the sheet's
@@ -295,21 +296,12 @@ class RenderLabelPlate extends RenderBox with _HoldsPlateWords {
   /// ⛔The shares are EVEN, so 공정 and 수정 own half each and neither pushes
   /// the other. With one word it takes the whole plate.
   Rect wordRectOf(int index) {
-    final count = _words.length;
-    return switch (_axis) {
-      Axis.horizontal => Rect.fromLTWH(
-        size.width / count * index,
-        0,
-        size.width / count,
-        size.height,
-      ),
-      Axis.vertical => Rect.fromLTWH(
-        0,
-        size.height / count * index,
-        size.width,
-        size.height / count,
-      ),
-    };
+    final share = extentAlong(_axis, size) / _words.length;
+    return rectAlong(
+      _axis,
+      along: (from: share * index, to: share * index + share),
+      across: (from: 0, to: extentAcross(_axis, size)),
+    );
   }
 
   @override
