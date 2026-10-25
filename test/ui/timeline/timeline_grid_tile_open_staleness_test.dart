@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/awaited_uploads.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/poll_until.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -60,10 +61,10 @@ import 'timeline_frame_geometry_probe.dart';
 /// THE LAW THIS PINS: the entry is stamped with the revision `_raster`
 /// SAMPLED in the same synchronous block as its content reads — pixels
 /// and stamp can never disagree. A crossing that straddles the raster
-/// costs exactly one stale-while-revalidate beat (the old tile shows, no
-/// flash, while the re-raster against live answers lands) and then the
-/// resident tile is honest: no revalidation storm, and a cut trip serves
-/// it back with no repair needed.
+/// costs exactly one bake, in the ask that next finds the tile stale
+/// (↩️it was a stale-while-revalidate beat until F-314 baked such a span
+/// in the ask), and then the resident tile is honest: no revalidation
+/// storm, and a cut trip serves it back with no repair needed.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -105,14 +106,15 @@ void main() {
   });
 
   test('a crossing that lands inside the raster window stamps the SAMPLED '
-      'revision: the straddled tile is served stale-while-revalidate, '
-      're-rastered once against live answers, and never resident-poisoned '
+      'revision: the straddled tile is baked again once, in the ask that '
+      'finds it stale, against live answers, and never resident-poisoned '
       '(a cut trip needs no repair)', () async {
     if (!available) {
       markTestSkipped('qa_engine.dll not built');
       return;
     }
     final store = TimelineGridTileStore.instance;
+    final uploaded = keepAwaitedUploads();
     var landings = 0;
     store.revision.addListener(() => landings += 1);
     Future<void> waitForLandings(int n) async {
@@ -185,45 +187,31 @@ void main() {
       reason: 'sanity: the crossing really landed inside the raster',
     );
 
-    final stale = store.tileFor(
-      painter: painterA,
-      spanStartIndex: 0,
-      spanEndIndexExclusive: 4,
-      devicePixelRatio: 1.0,
-    );
+    expect(uploaded, hasLength(1), reason: 'premise: the drain uploaded it');
+    final staleBytes = uploaded.single;
+
     // The tile's pixels describe revision 0 (cells 0..2 baked with the
     // empty-cel tint) and — the fix — its stamp says so too: `_raster`
     // returned the revision it sampled beside its content reads and
     // `_drain` stamped that. `matches()` now fails against the live
-    // revision 1, so this serve is STALE-WHILE-REVALIDATE: the resident
-    // tile shows (no flash) and a re-raster against live answers is
-    // scheduled. Pre-fix this was the poisoning: a live stamp read after
-    // the raster's awaits said revision 1 over revision-0 pixels, the
-    // serve was a perfectly FRESH hit, and the landing waited on below
-    // never came (this test's red state).
-    expect(
-      stale,
-      isNotNull,
-      reason:
-          'stale-while-revalidate (by design): the straddled tile keeps '
-          'showing while the honest re-raster lands',
-    );
-    final staleImage = stale!;
-    final staleBytes = (await staleImage.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    ))!.buffer.asUint8List();
-
-    // The revalidation the sampled stamp makes possible — and the exact
-    // landing the live-read stamp made impossible forever.
-    await waitForLandings(2);
+    // revision 1, so this ask finds the tile STALE and bakes the span
+    // against live answers in itself (F-314). Pre-fix this was the
+    // poisoning: a live stamp read after the raster's awaits said revision
+    // 1 over revision-0 pixels, the ask was a perfectly FRESH hit, and the
+    // straddled pixels stayed resident.
     final healed = store.tileFor(
       painter: painterA,
       spanStartIndex: 0,
       spanEndIndexExclusive: 4,
       devicePixelRatio: 1.0,
     );
+    expect(
+      landings,
+      2,
+      reason: 'the ask found the straddled tile stale and baked it again',
+    );
     expect(healed, isNotNull);
-    expect(identical(healed, staleImage), isFalse);
+    expect(uploaded, hasLength(1), reason: 'through the door, unawaited');
     final healedBytes = (await healed!.toByteData(
       format: ui.ImageByteFormat.rawRgba,
     ))!.buffer.asUint8List();

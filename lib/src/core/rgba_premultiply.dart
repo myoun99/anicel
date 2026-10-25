@@ -53,6 +53,47 @@ Uint8List premultipliedRgbaCopy(Uint8List straight) {
   return bytes;
 }
 
+/// Straight RGBA bytes that [premultiplyRgbaInPlace] turns back into
+/// exactly [premultiplied]; the source is left as it was. What a picture
+/// DRAWN from straight colours (the door's Skia road, `pictureOf`) needs of
+/// bytes that were only ever premultiplied — a timeline tile's raster.
+///
+/// ⚠️Not the colour the premultiply came from: under a low alpha many
+/// colours premultiply alike, and nothing tells which one it was. It is the
+/// one whose premultiply IS the channel, so the picture's bytes are the
+/// raster's to the last one. A channel over its alpha, which no premultiply
+/// makes, takes 255.
+Uint8List straightRgbaFor(Uint8List premultiplied) {
+  final bytes = Uint8List.fromList(premultiplied);
+  for (var offset = 0; offset < bytes.length; offset += 4) {
+    final alpha = bytes[offset + 3];
+    if (alpha == 255 || alpha == 0) {
+      continue;
+    }
+    for (var channel = offset; channel < offset + 3; channel += 1) {
+      bytes[channel] = _straightUnder(bytes[channel], alpha);
+    }
+  }
+  return bytes;
+}
+
+/// The value [mul255Round] by [alpha] takes to [premultiplied] — one is
+/// there for every channel up to the alpha, since the rounding climbs by
+/// at most one a value.
+int _straightUnder(int premultiplied, int alpha) {
+  if (premultiplied >= alpha) {
+    return 255;
+  }
+  var value = (premultiplied * 255 + alpha ~/ 2) ~/ alpha;
+  while (mul255Round(value, alpha) > premultiplied) {
+    value -= 1;
+  }
+  while (mul255Round(value, alpha) < premultiplied) {
+    value += 1;
+  }
+  return value;
+}
+
 /// `value * alpha / 255`, rounded the way the whole app rounds it.
 int mul255Round(int value, int alpha) {
   final product = value * alpha + 128;

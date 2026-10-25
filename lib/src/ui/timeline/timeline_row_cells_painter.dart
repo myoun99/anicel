@@ -753,11 +753,12 @@ class TimelineRowCellsPainter extends CustomPainter
     // user's switch shows them ([substrateIn]).
   }
 
-  /// The substrate through the tile store: a fresh tile is one
-  /// drawImageRect, a cold or stale span keeps the classic paint
-  /// underneath while its raster lands off-frame, and the two spans past
-  /// the window are asked for so a scroll finds them warm. Answers the
-  /// spans whose fresh tile already carries the foreground ink.
+  /// The substrate through the tile store: a tile is one drawImageRect —
+  /// baked in this paint where an edit moved the span
+  /// ([TimelineGridTileStore.tileFor]) — a cold span keeps the classic
+  /// paint underneath while its raster lands off-frame, and the two spans
+  /// past the window are asked for so a scroll finds them warm. Answers the
+  /// spans whose tile already carries the foreground ink.
   List<(int, int)> _paintTiledSubstrate(
     Canvas canvas,
     ({int startIndex, int endIndexExclusive}) window,

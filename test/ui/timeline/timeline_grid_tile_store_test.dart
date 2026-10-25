@@ -423,10 +423,12 @@ void main() {
 
     // A LOOK-only change (the base text style here) keeps showing the
     // STALE tile while the fresh raster lands (UI-R20 #6: no
-    // classic-pass flicker) — same content, different look. The ACTIVE
-    // flag is no such lever anymore: it left the raster entirely (UI-R21
-    // #2; the grid sheet paints the wash since I-44), so activation is a
-    // guaranteed tile HIT by construction.
+    // classic-pass flicker) — a new type is a new word, every one of them
+    // (the X that opens the empty run too), and a word's first bake is the
+    // one wait an ask cannot make (F-314). The ACTIVE flag is no such
+    // lever anymore: it left the raster entirely (UI-R21 #2; the grid
+    // sheet paints the wash since I-44), so activation is a guaranteed
+    // tile HIT by construction.
     final stylePainter = painterFor(
       layer,
       store: store,
@@ -440,7 +442,7 @@ void main() {
         devicePixelRatio: 2.0,
       ),
       same(image),
-      reason: 'stale-while-revalidate for look-only changes',
+      reason: 'stale-while-revalidate while its words bake',
     );
     await pollUntil(() => landings != hits);
     final fresh = store.tileFor(
@@ -452,24 +454,24 @@ void main() {
     expect(fresh, isNotNull);
     expect(identical(fresh, image), isFalse, reason: 'the re-raster landed');
 
-    // A CONTENT change (new layer instance) ALSO holds the stale tile
-    // while the fresh raster lands (R26 #27): dropping to the classic
-    // pass swapped text rendering for a frame and read as every glyph
-    // thinning/thickening. The re-raster still happens — the fresh
-    // image must land and replace the held one.
+    // A CONTENT change (new layer instance) over words already baked is
+    // baked in the ask (F-314): the row's chrome follows the edit in this
+    // frame, and so must its tile.
     final beforeEdit = landings;
-    final editedPainter = painterFor(blockLayer(), store: store);
-    expect(
-      store.tileFor(
-        painter: editedPainter,
-        spanStartIndex: 0,
-        spanEndIndexExclusive: 4,
-        devicePixelRatio: 2.0,
+    final editedPainter = painterFor(
+      Layer(
+        id: const LayerId('layer-a'),
+        name: 'A',
+        frames: [
+          Frame(id: const FrameId('f1'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('f1'), length: 3),
+        },
       ),
-      same(fresh),
-      reason: 'R26 #27: stale-while-revalidate covers content edits too',
+      store: store,
+      baseTextStyle: const TextStyle(fontSize: 12),
     );
-    await pollUntil(() => landings != beforeEdit);
     final reRastered = store.tileFor(
       painter: editedPainter,
       spanStartIndex: 0,
@@ -480,8 +482,10 @@ void main() {
     expect(
       identical(reRastered, fresh),
       isFalse,
-      reason: 'the content re-raster landed',
+      reason: 'F-314: the content is baked in the ask, not served stale',
     );
+    expect(landings, beforeEdit + 1);
+    expect(store.debugBusy, isFalse, reason: 'nothing left for off-frame');
 
     // R27 #10: a ZOOM step re-geometries every visible tile at once, and
     // dropping them all to the classic pass is what made zooming crawl.
@@ -527,8 +531,8 @@ void main() {
   });
 
   // I-44: what the unworked paper is pre-blended onto is baked into the
-  // tile, so a changed paper ground is a changed LOOK — it re-rasters,
-  // showing the stale tile while it does.
+  // tile, so a changed paper ground is a changed LOOK — it re-rasters, in
+  // the ask that brings it (F-314).
   test('I-44: the paper\'s ground is part of the look — a new one '
       're-rasters the tile', () async {
     if (!available) {
@@ -556,18 +560,14 @@ void main() {
       store: store,
       paperGround: const Color(0xFF202020),
     );
+    final fresh = tile(grounded);
     expect(
-      tile(grounded),
-      same(first),
-      reason: 'stale-while-revalidate for a new paper ground too',
-    );
-    await pollUntil(() => !identical(tile(grounded), first));
-    expect(
-      tile(grounded),
+      fresh,
       isNotNull,
       reason: 'the paper\'s ground is part of the look the tile keys on — '
-          'a fresh raster landed for it',
+          'a fresh raster is baked for it',
     );
+    expect(identical(fresh, first), isFalse);
     expect(first.debugDisposed, isTrue, reason: 'the tile it replaced went');
   });
 
@@ -822,7 +822,6 @@ void main() {
       blockFrameLines: true,
       framesPerSecond: 24,
     );
-    expect(tile(on), same(first), reason: 'stale-while-revalidate');
     final second = await landed(on, first);
 
     final otherFps = painterFor(
@@ -831,7 +830,6 @@ void main() {
       blockFrameLines: true,
       framesPerSecond: 30,
     );
-    expect(tile(otherFps), same(second));
     await landed(otherFps, second);
   });
 }

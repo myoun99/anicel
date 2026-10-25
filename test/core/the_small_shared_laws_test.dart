@@ -262,6 +262,36 @@ void main() {
         128,
       ]);
     });
+
+    test('straight bytes for premultiplied ones premultiply back to them '
+        'exactly — every channel under every alpha', () {
+      for (var alpha = 0; alpha <= 255; alpha += 1) {
+        final premultiplied = Uint8List(4 * (alpha + 1));
+        for (var channel = 0; channel <= alpha; channel += 1) {
+          premultiplied.setAll(4 * channel, [
+            channel,
+            alpha - channel,
+            0,
+            alpha,
+          ]);
+        }
+        final straight = straightRgbaFor(premultiplied);
+        expect(
+          premultipliedRgbaCopy(straight),
+          premultiplied,
+          reason: 'alpha $alpha',
+        );
+      }
+    });
+
+    test('the straight copy leaves the premultiplied source alone', () {
+      final premultiplied = pixel(10, 20, 30, 64);
+      final straight = straightRgbaFor(premultiplied);
+
+      expect(premultiplied, [10, 20, 30, 64], reason: 'untouched');
+      expect(straight[3], 64);
+      expect(straight[0], greaterThan(10));
+    });
   });
 
   group('unitDirection', () {

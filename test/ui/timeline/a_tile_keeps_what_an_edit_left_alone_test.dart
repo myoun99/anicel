@@ -28,6 +28,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import '../../helpers/frame_name_of.dart';
 import '../../helpers/native_engine_path.dart';
 import 'tile_store_idle.dart';
 import 'timeline_frame_geometry_probe.dart';
@@ -63,13 +64,6 @@ void main() {
     return held
         ? TimelineCellExposureState.held
         : TimelineCellExposureState.uncovered;
-  }
-
-  // And its names (`FrameVerbs.frameNameForLayer`, a row that mirrors
-  // nothing): the cel the block at [frameIndex] exposes.
-  String? nameFor(Layer layer, int frameIndex) {
-    final cel = exposedFrameIdAt(layer.timeline, frameIndex);
-    return cel == null ? null : layer.frameById(cel)?.name;
   }
 
   // The cels are named short and long, and one is unnamed (a mark).
@@ -322,7 +316,7 @@ void main() {
               ),
               crossAxisExtent: 28,
               exposureStateForLayer: stateFor,
-              frameNameForLayer: nameFor,
+              frameNameForLayer: frameNameOf,
               celContent: celContent,
               colorScheme: const ColorScheme.dark(),
               baseTextStyle: const TextStyle(fontSize: 11),
@@ -419,7 +413,7 @@ void main() {
       ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
-      frameNameForLayer: nameFor,
+      frameNameForLayer: frameNameOf,
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
       tileStore: store,

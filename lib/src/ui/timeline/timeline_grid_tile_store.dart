@@ -7,7 +7,9 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
+import '../../core/rgba_premultiply.dart' show straightRgbaFor;
 import '../../core/signed_memo.dart';
+import '../../core/sync_image_upload.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_cells_agreement.dart';
@@ -67,9 +69,9 @@ class TimelineGridTileStore {
 
   static final TimelineGridTileStore instance = TimelineGridTileStore._();
 
-  /// Bumped when a tile upload lands, whichever row it is — a count for
-  /// tests to wait on. ⛔No painter listens to it: a row repaints on ITS
-  /// OWN landings ([noticesFor]).
+  /// Bumped when a tile lands, whichever row it is — in the paint that
+  /// bakes it or off-frame — a count for tests to wait on. ⛔No painter
+  /// listens to it: a row repaints on ITS OWN landings ([noticesFor]).
   ///
   /// 🚨I-22 ③: every row painter used to merge this into its repaint, so ONE
   /// landing repainted EVERY row — and a row with cold spans repaints the
@@ -180,6 +182,10 @@ class TimelineGridTileStore {
   /// The keys a drain has taken off the queue and not landed yet.
   final Set<String> _inFlight = <String>{};
 
+  /// The keys of [_inFlight] a paint baked meanwhile ([_landNow]) — from an
+  /// ask newer than the drain's, so the drain's raster lands nothing.
+  final Set<String> _overtaken = <String>{};
+
   /// Bumped by [clear]: what a drain begun before it was doing reaches
   /// nothing after it — its key is free at once, it counts as no drain,
   /// and its pixels land nowhere.
@@ -240,6 +246,7 @@ class TimelineGridTileStore {
     _pending.clear();
     _starved.clear();
     _inFlight.clear();
+    _overtaken.clear();
     _warming.clear();
     _ahead.clear();
     _warmInFlight.clear();
@@ -267,16 +274,20 @@ class TimelineGridTileStore {
     }
   }
 
-  /// The fresh substrate tile for [painter]'s span starting at
-  /// [spanStartIndex], or null (cold/stale — the classic paint covers
-  /// this frame, and a raster is scheduled off the paint phase).
+  /// The substrate tile for [painter]'s span starting at [spanStartIndex]:
+  /// the one it holds where that shows the span, one baked in this call
+  /// where the span's look or content moved — or a stand-in while a word
+  /// it sets is baked the first time, scaled while a zoom's raster lands,
+  /// and null for a cold span (the classic paint covers this frame). What
+  /// is not baked here is scheduled off the paint phase.
   ui.Image? tileFor({
     required TimelineTileRasterSource painter,
     required int spanStartIndex,
     required int spanEndIndexExclusive,
     required double devicePixelRatio,
   }) {
-    if (QaNativeEngine.instance == null) {
+    final engine = QaNativeEngine.instance;
+    if (engine == null) {
       return null;
     }
     if (painter.followsTheLiveCut) {
@@ -307,6 +318,23 @@ class TimelineGridTileStore {
     final entry = _touched(key);
     if (entry != null && _shows(entry, asked)) {
       return entry.image;
+    }
+    // 🚨F-314 (유저 2026-10-08: 「코마 바꿀때 +나 N이나 코마텍스트 이런 위젯이랑
+    // 블록이랑 위치 어긋나는 프레임 1프레임정도 … 1프레임도 위치 안어긋나게」):
+    // A SPAN WHOSE LOOK OR CONTENT MOVED IS BAKED IN THE PAINT THAT ASKS.
+    // The row's chrome follows an edit in the frame it lands in, so a tile
+    // that came a frame later showed the block a step behind its own grips:
+    // 🔬every one of a drag's steps did (8 of 8 — comma, +, a move, a move
+    // to another row; Surface, 10-25), each tile ~0.3ms of ops and ~70µs of
+    // raster through the door's picture ([pictureOf]), ~1.5 tiles a step.
+    // A word never baked before is the one wait left: its bake reads the
+    // word back ([bakeWordCoverage]), which a paint cannot wait for.
+    final stale = entry != null && entry.hasTheGeometryOf(asked) ? entry : null;
+    if (stale != null) {
+      final baked = _landNow(engine, asked);
+      if (baked != null) {
+        return baked;
+      }
     }
     // Cold or stale: schedule ONE raster per key (the newest look wins —
     // a stale in-flight request re-checks at drain time). The queue is
@@ -346,18 +374,16 @@ class TimelineGridTileStore {
     // now runs only when something genuinely changed, and it stays as the
     // graceful landing for those cases. The drain rasters the NEWEST look
     // within a frame or two, so content lags one beat at most.
+    // ↩️F-314: that beat was the frame the user saw the block part from its
+    // grips in — the span is baked above now, and the stale tile stands in
+    // only while a word it sets is baked the first time.
     // ⛔Both stale arms demand the GENERATION even though the key already
     // carries it: stale-while-revalidate exists precisely for "same row,
     // new instance", and without this term it is also "same id, other
     // cut" — the alias that turned a mid-drain grey from a flicker into
     // a resident.
-    if (entry != null &&
-        entry.substrateGeneration == painter.substrateGeneration &&
-        entry.frameCellExtent == painter.frameCellExtent &&
-        entry.crossAxisExtent == painter.crossAxisExtent &&
-        entry.spanEndIndexExclusive == spanEndIndexExclusive &&
-        entry.devicePixelRatio == devicePixelRatio) {
-      return entry.image;
+    if (stale != null) {
+      return stale.image;
     }
     // R27 #10: a ZOOM step changes the geometry of every visible tile at
     // once, and dropping all of them to the classic Dart pass is what
@@ -376,6 +402,27 @@ class TimelineGridTileStore {
       return entry.image;
     }
     return null;
+  }
+
+  /// Bakes [asked]'s span in this call and keeps it — the picture the paint
+  /// asking draws — or null while a word it sets has never been baked.
+  /// What was asked for it before is answered by it, and a raster of it in
+  /// flight lands nothing ([_overtaken]).
+  ui.Image? _landNow(QaNativeEngine engine, _TileRequest asked) {
+    final rastered = _rasterNow(engine, asked);
+    if (rastered == null) {
+      return null;
+    }
+    final key = asked.key;
+    _pending.take(key);
+    _warming.remove(key);
+    _ahead.remove(key);
+    if (_inFlight.contains(key)) {
+      _overtaken.add(key);
+    }
+    _keep(key, asked, _entryOf(asked, rastered));
+    revision.value += 1;
+    return rastered.image;
   }
 
   /// The tile at [key], made the newest in the cache: a span asked for —
@@ -549,39 +596,15 @@ class TimelineGridTileStore {
       rastered?.image.dispose();
       return false;
     }
+    if (_overtaken.remove(key)) {
+      _askedWhileWarm.remove(key);
+      rastered?.image.dispose();
+      return true;
+    }
     if (rastered == null) {
       return true;
     }
-    final landed = _TileEntry(
-      substrateGeneration: request.painter.substrateGeneration,
-      layer: request.painter.layer,
-      coverageIdentity: request.painter.coverageIdentity,
-      frameCellExtent: request.painter.frameCellExtent,
-      crossAxisExtent: request.painter.crossAxisExtent,
-      colorScheme: request.painter.colorScheme,
-      exposureStateForLayer: request.painter.exposureStateForLayer,
-      frameNameForLayer: request.painter.frameNameForLayer,
-      celHasContentForLayer: request.painter.celHasContentForLayer,
-      // ⛔The revision the RASTER sampled, never a live read. `_raster`
-      // suspends between its content reads and this landing (the glyph A8
-      // bake, the ImmutableBuffer upload are real awaits), so a crossing
-      // that bumps the revision inside that window would give pixels of
-      // revision N a stamp of N+1 — and `showsNow` trusts the NUMBER, so
-      // the poisoned tile was served as fresh forever (the LRU survives cut
-      // trips and the 'projectId:cutId' string is reproduced exactly on
-      // return; only the NEXT bump healed it).
-      celContentRevision: rastered.celContentRevision,
-      substrate: rastered.substrate,
-      baseTextStyle: request.painter.baseTextStyle,
-      spanEndIndexExclusive: request.spanEndIndexExclusive,
-      devicePixelRatio: request.devicePixelRatio,
-      paperGround: request.painter.paperGround,
-      blockFrameLines: request.painter.blockFrameLines,
-      framesPerSecond: request.painter.framesPerSecond,
-      image: rastered.image,
-      ink: rastered.ink,
-    );
-    _keep(key, request, landed);
+    _keep(key, request, _entryOf(request, rastered));
     revision.value += 1;
     if (!warm || _askedWhileWarm.remove(key)) {
       // A row whose tile lands asks again for itself when it repaints —
@@ -590,6 +613,42 @@ class TimelineGridTileStore {
       _noticeLanding(request.row);
     }
     return true;
+  }
+
+  /// The tile [rastered] makes of [request]: the look its painter states,
+  /// and what the raster read.
+  static _TileEntry _entryOf(_TileRequest request, _Rastered rastered) {
+    final painter = request.painter;
+    final emitted = rastered.emitted;
+    return _TileEntry(
+      substrateGeneration: painter.substrateGeneration,
+      layer: painter.layer,
+      coverageIdentity: painter.coverageIdentity,
+      frameCellExtent: painter.frameCellExtent,
+      crossAxisExtent: painter.crossAxisExtent,
+      colorScheme: painter.colorScheme,
+      exposureStateForLayer: painter.exposureStateForLayer,
+      frameNameForLayer: painter.frameNameForLayer,
+      celHasContentForLayer: painter.celHasContentForLayer,
+      // ⛔The revision the RASTER sampled, never a live read. `_raster`
+      // suspends between its content reads and this landing (the glyph A8
+      // bake, the ImmutableBuffer upload are real awaits), so a crossing
+      // that bumps the revision inside that window would give pixels of
+      // revision N a stamp of N+1 — and `showsNow` trusts the NUMBER, so
+      // the poisoned tile was served as fresh forever (the LRU survives cut
+      // trips and the 'projectId:cutId' string is reproduced exactly on
+      // return; only the NEXT bump healed it).
+      celContentRevision: emitted.celContentRevision,
+      substrate: emitted.substrate,
+      baseTextStyle: painter.baseTextStyle,
+      spanEndIndexExclusive: request.spanEndIndexExclusive,
+      devicePixelRatio: request.devicePixelRatio,
+      paperGround: painter.paperGround,
+      blockFrameLines: painter.blockFrameLines,
+      framesPerSecond: painter.framesPerSecond,
+      image: rastered.image,
+      ink: emitted.ink,
+    );
   }
 
   /// 🚨A RUN'S NEXT PAGE IS BAKED WHILE IT PLAYS THE PAGE BEFORE (유저
@@ -818,6 +877,7 @@ class TimelineGridTileStore {
         continue;
       }
       final (:shown, :ahead) = painter.tileSpans;
+      final landings = revision.value;
       for (final (start, end) in shown) {
         tileFor(
           painter: painter,
@@ -825,6 +885,11 @@ class TimelineGridTileStore {
           spanEndIndexExclusive: end,
           devicePixelRatio: request.devicePixelRatio,
         );
+      }
+      // A span the ask bakes in itself lands there ([_landNow]) — with no
+      // paint under way to draw it, so the row hears of it.
+      if (revision.value != landings) {
+        _noticeLanding(row);
       }
       for (final (start, end) in ahead) {
         _warm(
@@ -907,6 +972,48 @@ class TimelineGridTileStore {
     QaNativeEngine engine,
     _TileRequest request,
   ) async {
+    final emitted = _emit(request);
+    if (emitted == null) {
+      return null;
+    }
+    final words = await _bakedWords(emitted.ink.glyphs);
+    final pixels = _pixelsOf(engine, request, emitted, words);
+    if (pixels == null) {
+      return null;
+    }
+    final image = await _upload(pixels, emitted.tileWidth, emitted.tileHeight);
+    return (image: image, emitted: emitted);
+  }
+
+  /// [_raster] within the call, the picture made through the door
+  /// ([pictureOf]) — or null while a word the span sets has never been
+  /// baked.
+  _Rastered? _rasterNow(QaNativeEngine engine, _TileRequest request) {
+    final emitted = _emit(request);
+    if (emitted == null) {
+      return null;
+    }
+    final words = _bakedWordsNow(emitted.ink.glyphs);
+    if (words == null) {
+      return null;
+    }
+    final pixels = _pixelsOf(engine, request, emitted, words);
+    if (pixels == null) {
+      return null;
+    }
+    return (
+      image: pictureOf(
+        _TileBytes(pixels, emitted.tileWidth, emitted.tileHeight),
+      ),
+      emitted: emitted,
+    );
+  }
+
+  /// The request's span laid as ops up to its words ([_setWords]) — its
+  /// tile's size, and the revision, the substrate and the ink the ops
+  /// describe — or null for a span with no pixels. ⛔Synchronous, every
+  /// answer of it read in one block.
+  _Emitted? _emit(_TileRequest request) {
     final painter = request.painter;
     final dpr = request.devicePixelRatio;
     final spanCells = request.spanEndIndexExclusive - request.spanStartIndex;
@@ -954,20 +1061,38 @@ class TimelineGridTileStore {
       ),
     );
     writer.append(ink.ops);
-    final atlas = await _bakeGlyphs(
-      writer,
-      ink.glyphs,
-      devicePixelRatio: dpr,
-    );
-
-    final ops = writer.build();
-    final pixels = Uint8List(tileWidth * tileHeight * 4);
-    final result = engine.gridRasterTileBytes(
-      pixels: pixels,
+    return (
+      writer: writer,
       tileWidth: tileWidth,
       tileHeight: tileHeight,
+      celContentRevision: sampledCelContentRevision,
+      substrate: substrate,
+      ink: ink,
+    );
+  }
+
+  /// [emitted]'s span with [words] set over it ([_setWords]), rastered by
+  /// [engine] into the tile's premultiplied bytes — null where it refused.
+  static Uint8List? _pixelsOf(
+    QaNativeEngine engine,
+    _TileRequest request,
+    _Emitted emitted,
+    Map<String, BakedWordCoverage> words,
+  ) {
+    final writer = emitted.writer;
+    final atlas = _setWords(
+      writer,
+      emitted.ink.glyphs,
+      words,
+      devicePixelRatio: request.devicePixelRatio,
+    );
+    final pixels = Uint8List(emitted.tileWidth * emitted.tileHeight * 4);
+    final result = engine.gridRasterTileBytes(
+      pixels: pixels,
+      tileWidth: emitted.tileWidth,
+      tileHeight: emitted.tileHeight,
       backgroundRgba: 0,
-      ops: ops,
+      ops: writer.build(),
       atlas: atlas?.alpha,
       atlasWidth: atlas?.width ?? 0,
       atlasHeight: atlas?.height ?? 0,
@@ -976,14 +1101,7 @@ class TimelineGridTileStore {
       assert(false, 'qa_grid_raster_tile failed: $result');
       return null;
     }
-
-    final image = await _upload(pixels, tileWidth, tileHeight);
-    return (
-      image: image,
-      celContentRevision: sampledCelContentRevision,
-      substrate: substrate,
-      ink: ink,
-    );
+    return pixels;
   }
 
   /// The ink [painter]'s span [spanStartIndex, spanEndIndexExclusive) bakes
@@ -1035,18 +1153,23 @@ class TimelineGridTileStore {
       devicePixelRatio: devicePixelRatio,
     );
     final writer = TimelineGridTileOpWriter()..append(ink.ops);
-    await _bakeGlyphs(writer, ink.glyphs, devicePixelRatio: devicePixelRatio);
+    _setWords(
+      writer,
+      ink.glyphs,
+      await _bakedWords(ink.glyphs),
+      devicePixelRatio: devicePixelRatio,
+    );
     return writer.build();
   }
 
   /// Emits the span's FOREGROUND ink (T3), a ghost's aside (F-446) — the
   /// in-between marks inline — and answers the words it writes, for
-  /// [_bakeGlyphs] to set through the A8 atlas: geometry and ink probed from
+  /// [_setWords] to set through the A8 atlas: geometry and ink probed from
   /// the painter (the substrate's fidelity rule).
   ///
   /// ⛔SYNCHRONOUS, so it can run inside the painter's one pass
   /// ([TimelineTileRasterSource.readInOnePass]) — every answer it reads is
-  /// the session's, and the bake after it awaits.
+  /// the session's, and a word's first bake after it awaits.
   List<_TileGlyph> _emitForeground(
     TimelineGridTileOpWriter writer, {
     required TimelineTileRasterSource painter,
@@ -1117,19 +1240,12 @@ class TimelineGridTileStore {
     return glyphCells;
   }
 
-  /// Bakes the [glyphs] [_emitForeground] answered into A8 coverage and
-  /// writes their GLYPH ops — returns the transient atlas those ops
-  /// reference, or null (no glyphs).
-  Future<_TileAtlas?> _bakeGlyphs(
-    TimelineGridTileOpWriter writer,
-    List<_TileGlyph> glyphs, {
-    required double devicePixelRatio,
-  }) async {
-    final dpr = devicePixelRatio;
-    if (glyphs.isEmpty) {
-      return null;
-    }
-
+  /// The [glyphs] [_emitForeground] answered, baked into A8 coverage, each
+  /// once ([_glyphA8]) — by their keys, a word whose bake made nothing left
+  /// out.
+  Future<Map<String, BakedWordCoverage>> _bakedWords(
+    List<_TileGlyph> glyphs,
+  ) async {
     final baked = <String, BakedWordCoverage>{};
     for (final cell in glyphs) {
       if (baked.containsKey(cell.key)) {
@@ -1140,6 +1256,34 @@ class TimelineGridTileStore {
         baked[cell.key] = glyph;
       }
     }
+    return baked;
+  }
+
+  /// [_bakedWords] as the words stand baked — null while any of them has
+  /// never been.
+  Map<String, BakedWordCoverage>? _bakedWordsNow(List<_TileGlyph> glyphs) {
+    final baked = <String, BakedWordCoverage>{};
+    for (final cell in glyphs) {
+      if (!_glyphs.isDone(cell.key)) {
+        return null;
+      }
+      final glyph = _glyphs.peek(cell.key);
+      if (glyph != null) {
+        baked[cell.key] = glyph;
+      }
+    }
+    return baked;
+  }
+
+  /// Writes the GLYPH ops of the [glyphs] [baked] holds — returns the
+  /// transient atlas those ops reference, or null (no word to set).
+  static _TileAtlas? _setWords(
+    TimelineGridTileOpWriter writer,
+    List<_TileGlyph> glyphs,
+    Map<String, BakedWordCoverage> baked, {
+    required double devicePixelRatio,
+  }) {
+    final dpr = devicePixelRatio;
     if (baked.isEmpty) {
       return null;
     }
@@ -1290,14 +1434,44 @@ typedef _TileGlyph = ({
 /// fit, and set as tight as its letter gaps gave way (F-234-Q1).
 typedef _GlyphBake = ({double dpr, WordFit fit, double tightening});
 
-/// What `_raster` hands the drain: the pixels, and the revision, the
-/// substrate and the ink they describe.
-typedef _Rastered = ({
-  ui.Image image,
+/// A span as a raster lays it before it sets a word
+/// ([TimelineGridTileStore._emit]): the op stream, the tile's size, and the
+/// revision, the substrate and the ink the ops describe — read in one
+/// synchronous block.
+typedef _Emitted = ({
+  TimelineGridTileOpWriter writer,
+  int tileWidth,
+  int tileHeight,
   int celContentRevision,
   TimelineRowSubstrate substrate,
   _TileInk ink,
 });
+
+/// What a raster hands its landing: the picture, and what it shows.
+typedef _Rastered = ({ui.Image image, _Emitted emitted});
+
+/// A tile's pixels as the door ([pictureOf]) reads them: the raster's own
+/// premultiplied bytes, and on the road that draws them the straight bytes
+/// that premultiply back to them ([straightRgbaFor]).
+class _TileBytes implements PictureBytes {
+  const _TileBytes(this._premultiplied, this.width, this.height);
+
+  final Uint8List _premultiplied;
+
+  @override
+  final int width;
+
+  @override
+  final int height;
+
+  @override
+  T readPremultiplied<T>(T Function(Uint8List premultiplied) use) =>
+      use(_premultiplied);
+
+  @override
+  T readStraight<T>(T Function(Uint8List straight) use) =>
+      use(straightRgbaFor(_premultiplied));
+}
 
 /// The ink a tile bakes over its substrate ([TimelineGridTileStore._inkOf]):
 /// the ops its marks write, and the words it sets.
@@ -1467,6 +1641,18 @@ class _TileEntry {
     layer = painter.layer;
     celContentRevision = painter.celContentRevision;
     return true;
+  }
+
+  /// Whether this tile is drawn where [asked]'s span is, at its size — the
+  /// same world, cells and device pixel ratio, whatever else of the look or
+  /// the content moved.
+  bool hasTheGeometryOf(_TileRequest asked) {
+    final painter = asked.painter;
+    return substrateGeneration == painter.substrateGeneration &&
+        frameCellExtent == painter.frameCellExtent &&
+        crossAxisExtent == painter.crossAxisExtent &&
+        spanEndIndexExclusive == asked.spanEndIndexExclusive &&
+        devicePixelRatio == asked.devicePixelRatio;
   }
 
   static bool _sameSubstrate(TimelineRowSubstrate a, TimelineRowSubstrate b) =>
