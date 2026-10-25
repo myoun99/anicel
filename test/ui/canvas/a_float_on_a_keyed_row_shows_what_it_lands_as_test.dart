@@ -247,13 +247,35 @@ void main() {
     return Uint8List.fromList(bytes!.buffer.asUint8List());
   }
 
-  /// Lets what is drawn off the frame's clock land.
-  Future<void> settle(WidgetTester tester) => lendBothClocks(
-    tester,
-    rounds: 12,
-    beat: const Duration(milliseconds: 16),
-    step: const Duration(milliseconds: 16),
-  );
+  /// Lets a step land: its frames, and the one thing here drawn off the
+  /// frame's clock — the picture an open warp resamples to, decoded by the
+  /// engine on a real thread — waited for until it is the one the box's
+  /// values ask for now ([CanvasSelectionCommands.debugFloatsCaughtUp]).
+  ///
+  /// ↩️It lent both clocks twelve rounds of 16 ms until 2026-10-25. 🔬On
+  /// two pumped frames and no real time 17 of the 22 tests passed, their
+  /// controls too; the five that failed were the warps, showing the float's
+  /// surface where its resample was still decoding — and one let-go,
+  /// waited for where it is checked.
+  Future<void> settle(WidgetTester tester) async {
+    await pumpFrames(tester, 2);
+    // No selection layer up — before the Move tool is — floats nothing.
+    bool caughtUp() => tester
+        .widgetList<CanvasSelectionLayer>(find.byType(CanvasSelectionLayer))
+        .every(
+          (layer) => layer.selectionCommands?.debugFloatsCaughtUp ?? true,
+        );
+    expect(
+      await settleAsync(
+        tester,
+        caughtUp,
+        step: const Duration(milliseconds: 16),
+      ),
+      isTrue,
+      reason: 'the warp shows the resample its values ask for',
+    );
+    await pumpFrames(tester, 2);
+  }
 
   /// The app on [project], stood on row A — at the 1:1 it opens at, or
   /// [zoomedOut] by the bar's own steps past a halving, where the screen
@@ -842,9 +864,15 @@ void main() {
     expect(further.picture.debugDisposed, isFalse, reason: 'still shown');
 
     commands.applyTransform();
-    await settle(tester);
-
-    expect(further.picture.debugDisposed, isTrue);
+    expect(
+      await settleAsync(
+        tester,
+        () => further.picture.debugDisposed,
+        step: const Duration(milliseconds: 16),
+      ),
+      isTrue,
+      reason: 'the last landing is let go once the box lands',
+    );
   });
 }
 

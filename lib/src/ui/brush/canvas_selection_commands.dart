@@ -301,6 +301,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _cancelTransform;
   void Function(CanvasSelectionRegion? region)? _applyRegion;
   bool Function()? _movePending;
+  bool Function()? _floatsCaughtUp;
   VoidCallback? _confirmPendingMove;
   TransformValues? Function()? _transformValues;
   void Function(TransformValues Function(TransformValues now) change)?
@@ -329,6 +330,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     VoidCallback? cancelTransform,
     void Function(CanvasSelectionRegion? region)? applyRegion,
     bool Function()? movePending,
+    bool Function()? floatsCaughtUp,
     VoidCallback? confirmPendingMove,
     TransformValues? Function()? transformValues,
     void Function(TransformValues Function(TransformValues now) change)?
@@ -356,6 +358,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _cancelTransform = cancelTransform;
     _applyRegion = applyRegion;
     _movePending = movePending;
+    _floatsCaughtUp = floatsCaughtUp;
     _confirmPendingMove = confirmPendingMove;
     _transformValues = transformValues;
     _editTransformValues = editTransformValues;
@@ -378,6 +381,7 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _cancelTransform = null;
     _applyRegion = null;
     _movePending = null;
+    _floatsCaughtUp = null;
     _confirmPendingMove = null;
     _transformValues = null;
     _editTransformValues = null;
@@ -522,6 +526,12 @@ class CanvasSelectionCommands extends ChangeNotifier {
 
   /// Whether a TVP-style move session awaits its confirm (R16-①).
   bool get movePending => _movePending?.call() ?? false;
+
+  /// Whether every float the open box carries shows the resample its
+  /// values ask for now ([FloatResamplePreview.caughtUp]) — what a test
+  /// waits for after a warp, rather than a time.
+  @visibleForTesting
+  bool get debugFloatsCaughtUp => _floatsCaughtUp?.call() ?? true;
 
   /// Lands the session — the open box, then the move it rides — as ONE undo
   /// entry. Called by tool switches, the history manager's pre-undo/redo
