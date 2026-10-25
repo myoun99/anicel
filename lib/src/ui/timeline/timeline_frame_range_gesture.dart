@@ -1045,7 +1045,16 @@ class _TimelineLaneRangeGestureLayerState
         // [InstantTapRegion.onSettledTap], exactly as
         // `timelineRowCellsPaintArea` mounts it — so the double tap can sit
         // where the tap-up did.
-        onSettledTap: (_) => widget.callbacks.onTapClear(),
+        //
+        // 🗣️유저 2026-08-12: 「선택된 내 물건 클릭해도 사라지도록」 — and a
+        // band that holds this lane is clicked by a click on it: its clear
+        // goes with the lane selection's, as the cells' tap clears it.
+        // ↩️The lane cleared its own selection alone, so a click inside a
+        // band over a row and its lanes left the band standing (🧪10-25).
+        onSettledTap: (_) {
+          widget.callbacks.band?.onTapClear(_rowAddress);
+          widget.callbacks.onTapClear();
+        },
         // 🚨H18 (유저 2026-08-22): 「**fx헤더,멤버행의 선택범위 규칙이 다름.**
         // 일반 프레임셀은 클릭한다고 선택범위 작동 안하는데 fx헤더,멤버행은
         // 클릭한다고 선택범위 작동하는거같음. **또 몇번째인지 모를정도의 통일

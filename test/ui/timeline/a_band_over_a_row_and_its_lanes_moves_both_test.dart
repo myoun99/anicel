@@ -268,6 +268,26 @@ void main() {
       expect(_blocksOf(s, _a), [1]);
       expect(_keysOf(s), [1, 3]);
     });
+    // 🗣️유저 2026-08-12: 「어딘가 클릭하면 사라지도록 … 근데 선택된 내 물건
+    // 클릭해도 사라지도록」 — a click on a lane the band holds is a click on
+    // the band.
+    testWidgets('on the ${axis == Axis.horizontal ? 'rail' : 'sheet'}, a '
+        'click on a lane inside the band lets it go', (tester) async {
+      final g = await _sweptBand(tester, axis);
+      final s = g.session;
+
+      final hand = await tester.startGesture(
+        g.at(g.lane, 1),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await hand.up();
+      await tester.pumpAndSettle();
+
+      expect(s.frameRangeSelection.value, isNull);
+      expect(s.laneRangeSelection.value, isNull);
+      expect(_keysOf(s), [0, 2]);
+    });
     // 🗣️「a-lane-press-clears-a-mixed-run-Q1」 (유저 2026-10-25): 「블록은 다른
     // 행으로, 키는 제 레인에서 프레임으로만」 — what the riders of a hop
     // already did (R27 #8).
