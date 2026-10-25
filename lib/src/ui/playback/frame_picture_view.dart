@@ -184,13 +184,13 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// What moves [_live]'s pixels ([StackedFrame.changes]).
   Listenable? _liveChanges;
 
-  /// The cels this view had in hand when it last stood its frame — the
-  /// ones on screen from their stored pixels, in its picture or as they
-  /// stand; the cel the pen is on, drawn live, is none of them. One an edit
-  /// takes out of hand is read on this thread at the next build: the frame
-  /// after an edit shows the edit, not the drawing before it, nor a blank
-  /// (H27, iPhone 2026-08-27: 「이전 변형하기 전 그림이 남아있었음」; 유저
-  /// 2026-09-17: 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
+  /// The cels this view had in hand when it last stood its frame — on
+  /// screen, in its picture or as they stand. One an edit takes out of hand
+  /// is read on this thread when the view is next handed its tree, at the
+  /// next build of every screen that shows one: the frame after an edit
+  /// shows the edit, not the drawing before it, nor a blank (H27, iPhone
+  /// 2026-08-27: 「이전 변형하기 전 그림이 남아있었음」; 유저 2026-09-17:
+  /// 「보이는 중이랑 결과랑 절대로 다르면 안 되」).
   ///
   /// ↩️The editing stack composed on the spot a row it held an image of at
   /// an older revision (`CanvasLayerStackView._wasOnScreen`), until the
@@ -251,7 +251,7 @@ class _FramePictureViewState extends State<FramePictureView> {
         !identical(oldWidget.nodes, widget.nodes) ||
         !_sameLive(oldWidget.live, widget.live) ||
         oldWidget.wholeFrames != widget.wholeFrames;
-    if (handedAnew || _anEditTookOutOfHand()) {
+    if (handedAnew) {
       final shown = _onScreen;
       final drawnLive = oldWidget.drawnLive;
       _standLive(
@@ -280,10 +280,6 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   void _landed() => setState(_look);
 
-  /// Whether a cel on screen from its stored pixels ([_onScreen]) is out of
-  /// hand now — an edit off the pen: a transform's confirm, an undo.
-  bool _anEditTookOutOfHand() =>
-      _onScreen.any((cel) => !_pictures.inHand(cel, widget.picture));
 
   static bool _sameLive(LiveRows? a, LiveRows? b) =>
       identical(a?.activeSurfacePainter, b?.activeSurfacePainter) &&
@@ -291,11 +287,11 @@ class _FramePictureViewState extends State<FramePictureView> {
       identical(a?.liftedRows, b?.liftedRows);
 
   /// The frame as it stands, for a view that draws one ([_live]) — built
-  /// again for each tree it is handed and each edit that takes a cel it
-  /// shows out of hand, from the cels in hand; the rest are read and it is
-  /// built again once they are. The ones [onScreen] picks are on screen
-  /// already and read on this thread first ([FramePictureView.alreadyShown],
-  /// [FramePictureView.drawnLive], [_onScreen]).
+  /// again for each tree it is handed, from the cels in hand; the rest are
+  /// read and it is built again once they are. The ones [onScreen] picks
+  /// are on screen already and read on this thread first
+  /// ([FramePictureView.alreadyShown], [FramePictureView.drawnLive],
+  /// [_onScreen]).
   void _standLive({bool Function(BrushFrameKey cel)? onScreen}) {
     _liveChanges = null;
     _live = null;
@@ -325,10 +321,9 @@ class _FramePictureViewState extends State<FramePictureView> {
       _liveChanges = frame.changes;
     }
     final nodes = widget.nodes;
-    final drawnOn = _celDrawnOn();
     _onScreen = {
       for (final cel in stackedCelsOf(nodes))
-        if (cel != drawnOn && _pictures.inHand(cel, widget.picture)) cel,
+        if (_pictures.inHand(cel, widget.picture)) cel,
     };
     if (!_pictures.allInHand(nodes, widget.picture)) {
       unawaited(
