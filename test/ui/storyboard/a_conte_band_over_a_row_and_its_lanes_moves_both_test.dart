@@ -346,7 +346,10 @@ void main() {
     final session = await _openVLanes(tester);
     await _sweep(tester, _vRow, _vLane);
     final rows = session.trackFrameRangeSelection.value?.spanRows;
-    expect(rows, containsAllInOrder([const TrackRowAddress(_track), _vLaneRow]));
+    expect(
+      rows,
+      containsAllInOrder([const TrackRowAddress(_track), _vLaneRow]),
+    );
 
     await _carry(tester, _vLane);
 
