@@ -300,6 +300,67 @@ void main() {
     });
   }
 
+  /// The V row's [brightness] keyed [from] at track frame 0 and [to] at
+  /// track frame [at].
+  LayerEffect brightening({
+    required double from,
+    required double to,
+    required int at,
+  }) => LayerEffect(
+    id: const EffectId('fx'),
+    kind: EffectKind.brightnessContrast,
+    parameters: {
+      'brightness': EffectParameter(
+        track: PropertyTrack<double>().withKey(0, from).withKey(at, to),
+      ),
+    },
+  );
+
+  testWidgets('a picture sequence lays each frame\'s own chain — the same '
+      'drawing under a keyed V row is two pictures', (tester) async {
+    await tester.runAsync(() async {
+      final session = sessionOf(
+        trackEffects: [brightening(from: 0, to: 50, at: 1)],
+      );
+      final cut = session.requireActiveCut;
+      final run = ExportFrameRenderer(
+        session: session,
+        layerFx: ExportLayerFx.on,
+      ).stillRun([
+        ExportFrameTask(cut: cut, frameIndex: 0),
+        ExportFrameTask(cut: cut, frameIndex: 1),
+      ], ExportSizeMode.canvas);
+      int red(Uint8List rgba) => rgba[(10 * canvas.width + 10) * 4];
+
+      final first = red(await bytesOf(await run.frame(0)));
+      final second = red(await bytesOf(await run.frame(1)));
+      expect(first, closeTo(128, 2), reason: 'keyed at nothing there');
+      expect(second, greaterThan(first + 20));
+    });
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the V row\'s chain is read where the frame stands on the '
+      'track, not on the cut', (tester) async {
+    await tester.runAsync(() async {
+      final session = sessionOf(
+        trackEffects: [brightening(from: 0, to: 50, at: 4)],
+      );
+      session.repository.updateCutLeadingGap(
+        cutId: cutId,
+        leadingGapFrames: 4,
+      );
+      final rgba = await pictureOf(session, ExportLayerFx.on);
+
+      expect(
+        rgba[(10 * canvas.width + 10) * 4],
+        greaterThan(128 + 20),
+        reason: 'the cut\'s first frame is the track\'s fifth',
+      );
+    });
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a layered file lays no V row\'s fx, which none of its rows '
       'can hold — and says it left them out', (tester) async {
     await tester.runAsync(() async {
