@@ -339,11 +339,27 @@ class _LayerStackPaintPass {
     if (extent.isEmpty) {
       return;
     }
-    _shownWithin = extent;
-    into.save();
-    // Cut where the buffer would end: an effect's spread past every row is
-    // cut there on the screen, so it is in the frame's picture.
-    into.clipRect(extent);
+    _paintCutWhereItEnds(into, extent, shownWithin: extent);
+  }
+
+  /// The frame composed into [into] and cut where it ends — at [edge], the
+  /// page and every row's content: an effect's spread past every row is cut
+  /// there, in the frame's picture ([paintFrame]) and in the display buffer
+  /// that draws it as it stands ([_composeDisplayBuffer]), whatever either
+  /// image holds past it. 🚨ONE CUT FOR BOTH: the buffer that came to end
+  /// on the picture's grid past the page ([frameGridOutward]) and kept no
+  /// cut of its own laid a blurred row's spread there, which the picture
+  /// does not hold (🔬a blur beside ink on the pasteboard, 9 pixels up to
+  /// 50/255 at 100%, from F-465's grid on — 2026-10-26, bisected).
+  void _paintCutWhereItEnds(
+    Canvas into,
+    Rect edge, {
+    required Rect shownWithin,
+  }) {
+    _shownWithin = shownWithin;
+    into
+      ..save()
+      ..clipRect(edge);
     _paintContent(into, intoTheBuffer: true, rasterScale: 1);
     into.restore();
     _shownWithin = null;
@@ -1073,8 +1089,9 @@ class _LayerStackPaintPass {
   bool _composingTheBuffer = false;
 
   /// Where the recording being made is shown — whole, once, cut by nothing
-  /// else: the display buffer's rect on the visible canvas while it is
-  /// composed, and a frame's extent while its picture is drawn; null
+  /// else: the frame's extent on the visible canvas while the display
+  /// buffer is composed, and the whole of it while its picture is drawn
+  /// ([_paintCutWhereItEnds]); null
   /// otherwise. A blend is read in the frame only inside it
   /// ([drawBlendOverBackdrop]): the engine cuts the layer a blend reads to
   /// the clip it is DRAWN under, and the source would then be sampled off
@@ -1163,17 +1180,16 @@ class _LayerStackPaintPass {
     // 2026-10-25): what composes here now is a frame as it stands where a
     // stroke's patch is still on its way — or ghosts whose picture is not
     // there yet.
-    _shownWithin = rect.intersect(_visibleCanvasRect);
+    final edge = wholeLevelPixelsOutward(bounds, 0);
     final recorder = ui.PictureRecorder();
     labProbe(
       'displayBuffer.recordWhole',
-      () => _paintContent(
+      () => _paintCutWhereItEnds(
         _bufferCanvas(recorder, rect),
-        intoTheBuffer: true,
-        rasterScale: 1,
+        edge,
+        shownWithin: edge.intersect(_visibleCanvasRect),
       ),
     );
-    _shownWithin = null;
     final image = labProbe(
       'displayBuffer.raster',
       () => rasterPicture(recorder, width, height),

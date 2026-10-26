@@ -400,8 +400,9 @@ void main() {
         ],
       ),
     ],
-    // Its spread past the outermost ink is cut where the canvas's buffer
-    // ends: the page and every row's content, and not a pixel further.
+    // Its spread past the outermost ink is cut where the frame ends: the
+    // page and every row's content, and not a pixel further — though the
+    // canvas's buffer ends past it, on the grid of the frame's picture.
     'a blurred row with ink on the pasteboard': [
       cel(
         'past',
