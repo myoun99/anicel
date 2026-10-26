@@ -1089,9 +1089,8 @@ class _LayerStackPaintPass {
   bool _composingTheBuffer = false;
 
   /// Where the recording being made is shown — whole, once, cut by nothing
-  /// else: the frame's extent on the visible canvas while the display
-  /// buffer is composed, and the whole of it while its picture is drawn
-  /// ([_paintCutWhereItEnds]); null
+  /// else: the display buffer's rect on the visible canvas while it is
+  /// composed, and a frame's extent while its picture is drawn; null
   /// otherwise. A blend is read in the frame only inside it
   /// ([drawBlendOverBackdrop]): the engine cuts the layer a blend reads to
   /// the clip it is DRAWN under, and the source would then be sampled off
@@ -1187,7 +1186,7 @@ class _LayerStackPaintPass {
       () => _paintCutWhereItEnds(
         _bufferCanvas(recorder, rect),
         edge,
-        shownWithin: edge.intersect(_visibleCanvasRect),
+        shownWithin: rect.intersect(_visibleCanvasRect),
       ),
     );
     final image = labProbe(
