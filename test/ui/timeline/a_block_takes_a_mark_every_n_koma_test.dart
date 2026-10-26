@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/run_edge_fixtures.dart';
@@ -38,6 +40,13 @@ import '../../helpers/run_edge_fixtures.dart';
 /// 추가함. 참고로 현재 인덱스에도 마크찍도록」 · 「중간나누기 마크는 토글이기
 /// 때문에 마크가 존재하는 곳은 토글규칙에 따라서 마크 삭제」.
 void main() {
+  // The mark the window opens on is an app-wide value that outlives a test:
+  // each starts from the product default.
+  void resetSettings() =>
+      AppFrameCountSettings.settings.value = const AppFrameCountSettings();
+  setUp(resetSettings);
+  tearDown(resetSettings);
+
   const idA = LayerId('every-a');
   const idB = LayerId('every-b');
   const idC = LayerId('every-c');
@@ -161,7 +170,7 @@ void main() {
     standOn(session, idA, 2);
 
     expect(session.layerMarks.canMarkEvery, isTrue);
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
 
     expect(marksAt(session, idA, 0), [2, 5, 8]);
     expect(
@@ -176,7 +185,7 @@ void main() {
     final session = rig();
     standOn(session, idA, 0);
 
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
 
     expect(marksAt(session, idA, 0), [3, 6, 9]);
   });
@@ -189,20 +198,20 @@ void main() {
     expect(marksAt(session, idA, 0), [4], reason: '⛔전제');
 
     standOn(session, idA, 1);
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
     expect(marksAt(session, idA, 0), [1, 4, 7], reason: 'a mix: all marked');
 
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
     expect(marksAt(session, idA, 0), isEmpty, reason: 'all marked: cleared');
   });
 
   test('a band toggles by the same law', () {
     final session = rig();
     sweep(session, [idA, idB], from: 0, toExclusive: 10);
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
     expect(marksAt(session, idA, 0), [3, 6, 9], reason: '⛔전제');
 
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
 
     for (final (id, start) in [(idA, 0), (idB, 0), (idB, 4)]) {
       expect(marksAt(session, id, start), isEmpty);
@@ -215,7 +224,7 @@ void main() {
     standOn(session, idA, 0);
     sweep(session, [idA, idB], from: 0, toExclusive: 10);
 
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
 
     expect(marksAt(session, idA, 0), [3, 6, 9]);
     expect(marksAt(session, idB, 0), [3]);
@@ -233,7 +242,7 @@ void main() {
     var notifies = 0;
     session.addListener(() => notifies += 1);
 
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
 
     expect(marksAt(session, idB, 4), [3], reason: 'premise');
     expect(notifies, isPositive);
@@ -253,7 +262,7 @@ void main() {
     sweep(session, [idB], from: 1, toExclusive: 3);
 
     expect(session.layerMarks.canMarkEvery, isFalse);
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
     for (final (id, start) in [(idA, 0), (idB, 0), (idB, 4)]) {
       expect(marksAt(session, id, start), isEmpty);
     }
@@ -301,7 +310,7 @@ void main() {
     expect(session.layerMarks.canMarkEvery, isFalse);
 
     sweep(session, [idA, idD], from: 0, toExclusive: 6);
-    session.layerMarks.markEvery(3);
+    session.layerMarks.markEvery(3, InbetweenMark.two);
     expect(marksAt(session, idA, 0), [3, 6, 9]);
   });
 
@@ -310,7 +319,7 @@ void main() {
     final session = rigWithSyncedRow();
     standOn(session, idD, 2);
     expect(session.layerMarks.canMarkEvery, isFalse);
-    session.layerMarks.markEvery(2);
+    session.layerMarks.markEvery(2, InbetweenMark.two);
     expect(marksAt(session, idD, 0), isEmpty);
   });
 
@@ -327,7 +336,7 @@ void main() {
     final undoBefore = session.canUndo;
     var notifies = 0;
     session.addListener(() => notifies += 1);
-    session.layerMarks.markEvery(10);
+    session.layerMarks.markEvery(10, InbetweenMark.two);
     expect(marksAt(session, idA, 0), isEmpty, reason: '10 is past the end');
     expect((session.canUndo, notifies), (undoBefore, 0));
   });
@@ -338,9 +347,39 @@ void main() {
     standOn(session, idC, 1);
 
     expect(session.layerMarks.canMarkEvery, isTrue);
-    session.layerMarks.markEvery(1);
+    session.layerMarks.markEvery(1, InbetweenMark.two);
 
     expect(marksAt(session, idC, 1), [1]);
+  });
+
+  Map<int, InbetweenMark> wornAt(
+    EditorSessionManager session,
+    LayerId id,
+    int start,
+  ) => session.layers.firstWhere((l) => l.id == id).timeline[start]!
+      .breakdownMarks;
+
+  test('🗣️I-130-Q2 「창에서 마크를 고른다」: the ○ goes down the cells the ● '
+      'would, by the same law over many', () {
+    final session = rig();
+    standOn(session, idA, 0);
+
+    session.layerMarks.markEvery(3, InbetweenMark.one);
+    expect(wornAt(session, idA, 0), {
+      3: InbetweenMark.one,
+      6: InbetweenMark.one,
+      9: InbetweenMark.one,
+    });
+
+    session.layerMarks.markEvery(3, InbetweenMark.two);
+    expect(
+      wornAt(session, idA, 0),
+      {3: InbetweenMark.two, 6: InbetweenMark.two, 9: InbetweenMark.two},
+      reason: 'cells wearing the other mark are not all the ●: they take it',
+    );
+
+    session.layerMarks.markEvery(3, InbetweenMark.two);
+    expect(wornAt(session, idA, 0), isEmpty, reason: 'all the ●: cleared');
   });
 
   Future<EditorSessionManager> pumpEditor(WidgetTester tester) async {
@@ -430,6 +469,109 @@ void main() {
 
     expect(window, findsNothing);
     expect(marksAt(session, idA, 0), [1, 4, 7]);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  Finder markPick(InbetweenMark mark) =>
+      find.byKey(ValueKey<String>('mark-every-mark-${mark.name}'));
+
+  Future<void> openWindow(WidgetTester tester) async {
+    await tester.ensureVisible(inThePill('mark-every-button'));
+    await tester.pumpAndSettle();
+    await tester.tap(inThePill('mark-every-button'));
+    await tester.pumpAndSettle();
+  }
+
+  bool picked(WidgetTester tester, InbetweenMark mark) =>
+      tester.widget<Pill>(markPick(mark)).selected;
+
+  // 🗣️I-130-Q2 (유저 2026-10-25): 「창에서 마크를 고른다」 — 간격 숫자 옆에
+  // ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로.
+  testWidgets('🗣️I-130-Q2: the window picks the mark it lays, and opens on '
+      'the one picked last', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 1);
+    await tester.pumpAndSettle();
+
+    await openWindow(tester);
+    expect(
+      (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
+      (false, true),
+      reason: 'never picked: the ●, the one mark it laid before',
+    );
+    await tester.tap(markPick(InbetweenMark.one));
+    await tester.pumpAndSettle();
+    expect(
+      (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
+      (true, false),
+    );
+    await typeAndApply(tester, '3');
+
+    expect(wornAt(session, idA, 0), {
+      1: InbetweenMark.one,
+      4: InbetweenMark.one,
+      7: InbetweenMark.one,
+    });
+    expect(
+      AppFrameCountSettings.settings.value.lastEveryMark,
+      InbetweenMark.one,
+      reason: 'remembered where a restart reads it',
+    );
+
+    await openWindow(tester);
+    expect(
+      (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
+      (true, false),
+      reason: '지난번 고른 것 기억',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('「간격 숫자 옆에」: the pick stands beside the number, either '
+      'way it is typed', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 1);
+    await tester.pumpAndSettle();
+    await openWindow(tester);
+
+    void besideTheNumber(String field) {
+      final number = tester.getRect(find.byKey(ValueKey<String>(field)));
+      for (final mark in InbetweenMark.values) {
+        final pick = tester.getRect(markPick(mark));
+        expect(pick.left, greaterThanOrEqualTo(number.right), reason: field);
+        expect(
+          (pick.top < number.bottom, pick.bottom > number.top),
+          (true, true),
+          reason: '$field: on the number\'s line',
+        );
+      }
+    }
+
+    besideTheNumber('mark-every-field');
+    await tester.tap(find.byKey(const ValueKey('mark-every-entry-seconds')));
+    await tester.pumpAndSettle();
+    besideTheNumber('mark-every-koma-field');
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a pick wears its button\'s face and name', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 1);
+    await tester.pumpAndSettle();
+    await openWindow(tester);
+
+    for (final (mark, button) in [
+      (InbetweenMark.one, 'toggle-mark-one-button'),
+      (InbetweenMark.two, 'toggle-mark-button'),
+    ]) {
+      final pressed = tester.widget<AppIconButton>(inThePill(button));
+      final pick = tester.widget<Pill>(markPick(mark));
+      expect(
+        (pick.icon, pick.label),
+        ((pressed.icon as Icon).icon, pressed.tooltip),
+        reason: mark.name,
+      );
+    }
     session.playbackRig.prerenderScheduler.cancel();
   });
 

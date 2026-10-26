@@ -243,7 +243,11 @@ void main() {
       session.selectFrameIndex(8);
 
       expect(session.layerMarks.canMarkEvery, isTrue);
-      expectLands(session, id, () => session.layerMarks.markEvery(3));
+      expectLands(
+        session,
+        id,
+        () => session.layerMarks.markEvery(3, InbetweenMark.two),
+      );
     });
 
     test('cut', () {

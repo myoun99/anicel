@@ -6,6 +6,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/models/pixel_verb_settings.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
@@ -185,10 +186,14 @@ void main() {
     appSettingsOf(first).setFrameGridSettings(
       const AppFrameGridSettings(blockFrameLines: true),
     );
-    // The count window's entry (I-24-open-entry) — seconds+frames, because
-    // frames is the default a lost store returns.
+    // The count window's entry (I-24-open-entry) and the mark-every window's
+    // mark (I-130-Q2) — seconds+frames and the ○, because frames and the ●
+    // are the defaults a lost store returns.
     appSettingsOf(first).setFrameCountSettings(
-      const AppFrameCountSettings(lastEntry: FrameCountEntry.secondsPlusFrames),
+      const AppFrameCountSettings(
+        lastEntry: FrameCountEntry.secondsPlusFrames,
+        lastEveryMark: InbetweenMark.one,
+      ),
     );
     // How the canvas shows a camera's path (I-89 ④) — every field off its
     // default, since a lost store returns the defaults.
@@ -248,8 +253,8 @@ void main() {
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
-          AppFrameCountSettings.settings.value.lastEntry ==
-              FrameCountEntry.secondsPlusFrames &&
+          AppFrameCountSettings.settings.value.lastEveryMark ==
+              InbetweenMark.one &&
           CameraPathSettings.settings.value.tickEvery == 6 &&
           PixelVerbSettings.settings.value.binarizeThreshold == 179 &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
@@ -265,8 +270,11 @@ void main() {
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
     expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
     expect(
-      AppFrameCountSettings.settings.value.lastEntry,
-      FrameCountEntry.secondsPlusFrames,
+      AppFrameCountSettings.settings.value,
+      const AppFrameCountSettings(
+        lastEntry: FrameCountEntry.secondsPlusFrames,
+        lastEveryMark: InbetweenMark.one,
+      ),
     );
     expect(
       CameraPathSettings.settings.value,

@@ -14,6 +14,7 @@ import 'comma_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/pill_strip.dart';
 import '../widgets/static_raster.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
 import 'timeline_section_policy.dart';
@@ -67,15 +68,20 @@ Future<void> showTimelineCommaCountDialog(
 
 /// 🗣️I-58 (유저 2026-10-01): 「버튼누르면 창 열려서 숫자만 입력가능한창.
 /// 3적고 확인누르면 현재 블록에서 헤더부터 시작해서 3코마마다 점 찍음」 — the
-/// ● every n koma, pressed on [panel] as the N commas are. With no band it
-/// counts from the playhead's cell, and it toggles as the ● does (F-402 —
-/// `LayerMarks.markEvery`).
+/// mark every n koma, pressed on [panel] as the N commas are. With no band
+/// it counts from the playhead's cell, and it toggles as the mark's button
+/// does (F-402 — `LayerMarks.markEvery`).
+///
+/// The window picks the mark — ○ or ● — opening on the one picked last:
+/// 🗣️I-130-Q2 (유저 2026-10-25 「창에서 마크를 고른다」 — 간격 숫자 옆에
+/// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로).
 Future<void> showMarkEveryDialog(
   BuildContext context,
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
   final strings = AppText.strings;
+  var mark = AppFrameCountSettings.settings.value.lastEveryMark;
   final every = await _askFrameCount(
     context,
     session,
@@ -88,13 +94,43 @@ Future<void> showMarkEveryDialog(
     titleIcon: _markEveryIcon,
     // The interval is the one number the title does not say.
     field: strings.markEveryField,
+    mark: (
+      picked: mark,
+      onPicked: (picked) {
+        mark = picked;
+        session.appSettings.setFrameCountSettings(
+          AppFrameCountSettings.settings.value.copyWith(lastEveryMark: picked),
+        );
+      },
+    ),
   );
   if (every != null && every >= 1) {
-    panel.markEvery(every);
+    panel.markEvery(every, mark);
   }
 }
 
+/// The mark a count window picks beside its count, and the hook that hears
+/// a pick ([showMarkEveryDialog]).
+typedef _MarkPick = ({
+  InbetweenMark picked,
+  ValueChanged<InbetweenMark> onPicked,
+});
+
 const _markEveryIcon = Icons.linear_scale;
+
+/// A mark's face where it is pressed or picked — its toggle button and the
+/// mark-every window's pick wear one, so the two read as one mark.
+IconData _markIcon(InbetweenMark mark) => switch (mark) {
+  InbetweenMark.one => Icons.circle_outlined,
+  InbetweenMark.two => Icons.circle,
+};
+
+/// The action that toggles [mark] — its button's, and the name its pick
+/// in the mark-every window wears.
+String _markToggleAction(InbetweenMark mark) => switch (mark) {
+  InbetweenMark.one => EditorActionIds.frameToggleMarkOne,
+  InbetweenMark.two => EditorActionIds.frameToggleMarkTwo,
+};
 
 /// What a comma window names in its title's brackets: the kinds it
 /// re-times, together where it re-times several.
@@ -113,7 +149,8 @@ String _commaTargetNoun(List<CommaTargetKind> kinds) {
 
 /// A count of frames, asked in a window and popped as frames — null when
 /// it closes without one. Every window that asks for a count of frames
-/// asks with [FrameCountField] (I-24).
+/// asks with [FrameCountField] (I-24); one that lays a mark picks it
+/// beside the count ([mark]).
 Future<int?> _askFrameCount(
   BuildContext context,
   EditorSessionManager session, {
@@ -122,6 +159,7 @@ Future<int?> _askFrameCount(
   required IconData titleIcon,
   String? field,
   int? initialCount,
+  _MarkPick? mark,
 }) => showDialog<int>(
   context: context,
   builder: (context) => _FrameCountWindow(
@@ -136,8 +174,9 @@ Future<int?> _askFrameCount(
     // keeps it too.
     entry: AppFrameCountSettings.settings.value.lastEntry,
     onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
-      AppFrameCountSettings(lastEntry: entry),
+      AppFrameCountSettings.settings.value.copyWith(lastEntry: entry),
     ),
+    mark: mark,
   ),
 );
 
@@ -153,6 +192,7 @@ class _FrameCountWindow extends StatefulWidget {
     required this.entry,
     required this.onEntryChanged,
     required this.initialCount,
+    required this.mark,
   });
 
   /// `<keyPrefix>-dialog`, `<keyPrefix>-apply`, and the field's own.
@@ -167,18 +207,28 @@ class _FrameCountWindow extends StatefulWidget {
   final FrameCountEntry entry;
   final ValueChanged<FrameCountEntry> onEntryChanged;
 
+  /// The mark it picks beside the count — null for a window that lays none.
+  final _MarkPick? mark;
+
   @override
   State<_FrameCountWindow> createState() => _FrameCountWindowState();
 }
 
 class _FrameCountWindowState extends State<_FrameCountWindow> {
   int? _count;
+  late InbetweenMark? _mark = widget.mark?.picked;
 
   void _apply() => Navigator.of(context).pop(_count);
+
+  void _pick(InbetweenMark mark) {
+    setState(() => _mark = mark);
+    widget.mark?.onPicked(mark);
+  }
 
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
+    final mark = _mark;
     return AppWindow(
       windowKey: ValueKey<String>('${widget.keyPrefix}-dialog'),
       title: widget.title,
@@ -194,6 +244,20 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
         initialEntry: widget.entry,
         initialCount: widget.initialCount,
         onEntryChanged: widget.onEntryChanged,
+        beside: mark == null
+            ? null
+            : PillStrip(
+                items: [
+                  for (final each in InbetweenMark.values)
+                    PillItem(
+                      keyValue: '${widget.keyPrefix}-mark-${each.name}',
+                      label: editorActionLabel(_markToggleAction(each)),
+                      icon: _markIcon(each),
+                      selected: each == mark,
+                      onTap: () => _pick(each),
+                    ),
+                ],
+              ),
       ),
       actions: [
         AppWindowAction(
@@ -959,24 +1023,19 @@ class TimelineActionToolbar extends StatelessWidget {
             ),
             // 🗣️I-130 (유저 2026-10-25): 「기존 중간나누기 버튼 왼쪽에
             // 중간나누기 마크1 버튼 신설」 — ○ mark 1, then ● mark 2.
-            _iconButton(
-              key: const ValueKey<String>('toggle-mark-one-button'),
-              tooltip: editorActionLabel(EditorActionIds.frameToggleMarkOne),
-              shortcuts: const [EditorActionIds.frameToggleMarkOne],
-              icon: Icons.circle_outlined,
-              onPressed: panelContext.canToggleMark
-                  ? () => panelContext.toggleMark(InbetweenMark.one)
-                  : null,
-            ),
-            _iconButton(
-              key: const ValueKey<String>('toggle-mark-button'),
-              tooltip: editorActionLabel(EditorActionIds.frameToggleMarkTwo),
-              shortcuts: const [EditorActionIds.frameToggleMarkTwo],
-              icon: Icons.circle,
-              onPressed: panelContext.canToggleMark
-                  ? () => panelContext.toggleMark(InbetweenMark.two)
-                  : null,
-            ),
+            for (final (mark, key) in const [
+              (InbetweenMark.one, 'toggle-mark-one-button'),
+              (InbetweenMark.two, 'toggle-mark-button'),
+            ])
+              _iconButton(
+                key: ValueKey<String>(key),
+                tooltip: editorActionLabel(_markToggleAction(mark)),
+                shortcuts: [_markToggleAction(mark)],
+                icon: _markIcon(mark),
+                onPressed: panelContext.canToggleMark
+                    ? () => panelContext.toggleMark(mark)
+                    : null,
+              ),
             // 🗣️I-58-Q1 (유저 2026-10-18): 「토글은 지금 자리, 새 버튼만 ●
             // 오른쪽」.
             _iconButton(

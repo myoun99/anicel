@@ -250,10 +250,10 @@ void main() {
     test('🗣️I-58: the ● every n koma dots the panel stood on from the cell '
         'stood on (F-402), as the timeline\'s press on that cell does', () {
       final session = onTheConteRow(18);
-      StoryboardToolbarPanelContext(session).markEvery(3);
+      StoryboardToolbarPanelContext(session).markEvery(3, InbetweenMark.two);
 
       final timeline = onTheTimelinesRow(18);
-      TimelineToolbarPanelContext(timeline).markEvery(3);
+      TimelineToolbarPanelContext(timeline).markEvery(3, InbetweenMark.two);
 
       List<int>? marksOf(EditorSessionManager s) =>
           conteOf(s).timeline[16]?.breakdownOffsets;

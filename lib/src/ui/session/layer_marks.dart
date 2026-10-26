@@ -221,9 +221,9 @@ class LayerMarks {
   /// 존재하는 곳은 토글규칙에 따라서 마크 삭제」. ↩️It only added, keeping
   /// every mark the cells carried (I-58 「추가」).
   ///
-  /// ⚠️It lays mark 2, the ● it laid before I-130 — which mark it lays is
-  /// I-130-Q2, still open.
-  void markEvery(int every) {
+  /// It lays [mark], the one its window picked: 🗣️I-130-Q2 (유저 2026-10-25
+  /// 「창에서 마크를 고른다」). ↩️It laid the ● alone, the one mark there was.
+  void markEvery(int every, InbetweenMark mark) {
     if (every < 1) {
       return;
     }
@@ -231,7 +231,7 @@ class LayerMarks {
     if (frames.isEmpty) {
       return;
     }
-    _toggleMarksOf(frames, InbetweenMark.two);
+    _toggleMarksOf(frames, mark);
   }
 
   bool hasMarkForLayer(Layer layer, int frameIndex) {
