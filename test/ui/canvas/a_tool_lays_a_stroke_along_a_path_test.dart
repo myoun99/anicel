@@ -73,8 +73,18 @@ void main() {
 
     host.show!.landStroke(corner);
 
-    expect(host.active, [true, false]);
+    expect(host.active, [StrokeInFlight.paints, StrokeInFlight.none]);
     expect(host.committed, hasLength(1), reason: 'landed before it answers');
+  });
+
+  testWidgets('an erasing tool\'s stroke is heard as one that erases — what '
+      'leaves an empty block empty (F-482)', (tester) async {
+    final host = _Host();
+    await _pump(tester, host, _brush().copyWith(erase: true));
+
+    host.show!.landStroke(corner);
+
+    expect(host.active, [StrokeInFlight.erases, StrokeInFlight.none]);
   });
 
   testWidgets('⛔nothing steadies it: a stabilised brush lays the path where '
@@ -271,19 +281,20 @@ void main() {
 
     final down = host.committed.single;
     expect(down.length, greaterThan(4));
-    // The stamp a dab lands with is its tip already turned (the tip-stamp
-    // cache), so two dabs turned alike wear the very same one.
+    // ↩️It compared the tip stamps a dab landed with, its tip already
+    // turned — a round tip has none since it is read off its radial
+    // profile (fbe3767c2), and the two nulls compared alike.
     expect(
-      down.first.tipMask,
-      same(down.last.tipMask),
+      down.first.angleDegrees,
+      down.last.angleDegrees,
       reason: 'one straight line, one direction from its first dab on',
     );
 
     // Fixture: the direction is what turns it.
     host.show!.landStroke([p(8, 30), p(150, 30)]);
     final across = host.committed.last;
-    expect(across.first.tipMask, same(across.last.tipMask));
-    expect(down.first.tipMask, isNot(same(across.first.tipMask)));
+    expect(across.first.angleDegrees, across.last.angleDegrees);
+    expect(down.first.angleDegrees, isNot(across.first.angleDegrees));
   });
 
   group('where there is nothing to draw on', () {
@@ -484,7 +495,11 @@ void main() {
       expect(overlay.hasStrokeContent, isTrue, reason: 'and it still shows');
 
       host.show!.landStroke(corner);
-      expect(host.active, [true, false], reason: 'heard as it lands');
+      expect(
+        host.active,
+        [StrokeInFlight.paints, StrokeInFlight.none],
+        reason: 'heard as it lands',
+      );
       expect(host.committed, hasLength(1));
     });
 
@@ -598,7 +613,7 @@ void main() {
         Offset(100, 50),
       ]);
       expect(host.committed, hasLength(1));
-      expect(host.active, [true, false]);
+      expect(host.active, [StrokeInFlight.paints, StrokeInFlight.none]);
     });
 
     testWidgets('a long stretch is laid a share at a time — no frame lays a '
@@ -723,7 +738,7 @@ class _Host {
   List<List<BrushDab>> get committed => [
     for (final landed in data) landed.sourceDabs,
   ];
-  final active = <bool>[];
+  final active = <StrokeInFlight>[];
   int askedForACel = 0;
 }
 
@@ -791,8 +806,7 @@ Future<void> _pump(
                   return celAnswer;
                 },
           markMakesItsOwnCel: markMakesItsOwnCel,
-          onActiveStrokeChanged: (stroke) =>
-              host.active.add(stroke != StrokeInFlight.none),
+          onActiveStrokeChanged: host.active.add,
           shapeShow: host.shapeShow,
           strokeLander: host.strokeLander,
           onSourceStrokeCommitted: host.data.add,
