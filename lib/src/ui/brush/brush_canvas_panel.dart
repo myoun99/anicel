@@ -2876,8 +2876,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// the original first — as ONE STROKE of the tool in hand where
   /// [asStroke], and as ONE AREA where not ([_drawTracedShape]). The shape
   /// tool's line and the line from the last stroke (I-119) both land here:
-  /// 「도형도구의 직선이랑 최대한 동일하게 로직 재사용. 법 통일」.
-  void _landTraced(List<DrawnShapePath> copies, {required bool asStroke}) {
+  /// 「도형도구의 직선이랑 최대한 동일하게 로직 재사용. 법 통일」. A stroke is
+  /// laid at [pressure] the whole way ([ShapeShow.landStroke]).
+  void _landTraced(
+    List<DrawnShapePath> copies, {
+    required bool asStroke,
+    double pressure = 1,
+  }) {
     final show = _contentShape?.show ?? _shapeShow.now;
     final onTheRow = _onTheRow(copies);
     _contentShape = null;
@@ -2889,7 +2894,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     if (asStroke) {
-      show.landStroke(_tracedStroke(onTheRow));
+      show.landStroke(_tracedStroke(onTheRow), pressure: pressure);
       return;
     }
     show.land(_tracedArea(onTheRow));
@@ -2897,7 +2902,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// [_landTraced]'s show: [copies] traced so far, shown as they will land
   /// — or, null, taken back ([_showTracedShape]).
-  void _showTraced(List<DrawnShapePath>? copies, {required bool asStroke}) {
+  void _showTraced(
+    List<DrawnShapePath>? copies, {
+    required bool asStroke,
+    double pressure = 1,
+  }) {
     final show = _contentShape?.show ?? _shapeShow.now;
     if (copies == null) {
       // The drag is over without a shape: what its press took goes too.
@@ -2912,7 +2921,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     if (asStroke) {
-      show.showStroke(_tracedStroke(onTheRow));
+      show.showStroke(_tracedStroke(onTheRow), pressure: pressure);
       return;
     }
     show.show(_tracedArea(onTheRow));

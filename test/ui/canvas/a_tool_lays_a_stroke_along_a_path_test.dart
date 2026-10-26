@@ -305,7 +305,11 @@ void main() {
       await tester.pump();
       expect(tester.binding.hasScheduledFrame, isFalse, reason: 'fixture');
 
-      expect(host.show!.landStroke(corner), isTrue, reason: 'it will be drawn');
+      expect(
+        host.show!.landStroke(corner, pressure: 0.3),
+        isTrue,
+        reason: 'it will be drawn',
+      );
       expect(host.askedForACel, 1);
       expect(host.committed, isEmpty, reason: 'not before the cel');
       expect(
@@ -322,6 +326,11 @@ void main() {
 
       expect(host.committed, hasLength(1));
       expect(host.committed.single.first.center, p(10, 10));
+      expect(
+        {for (final dab in host.committed.single) dab.pressure},
+        {0.3},
+        reason: 'at the pressure it was handed',
+      );
       expect(host.askedForACel, 1, reason: 'asked once');
     });
 
@@ -480,6 +489,27 @@ void main() {
         reason: 'what was shown landed: the landing laid nothing again',
       );
       expect(overlay.hasStrokeContent, isFalse, reason: 'it has landed');
+    });
+
+    // 🗣️F-483: the line from the last stroke goes through these two doors
+    // at that stroke's pressure.
+    testWidgets('every dab reads the pressure the stroke is handed — and the '
+        'same path at another pressure is another stroke', (tester) async {
+      final once = _Host();
+      await _pump(tester, once, _brush());
+      once.show!.landStroke(corner, pressure: 0.3);
+      expect({for (final dab in once.committed.single) dab.pressure}, {0.3});
+
+      final host = _Host();
+      final overlay = await pumpShown(tester, host);
+      host.show!.showStroke(corner, pressure: 0.3);
+      await untilShown(tester, overlay);
+      expect(host.show!.landStroke(corner), isTrue);
+      expect(
+        {for (final dab in host.committed.single) dab.pressure},
+        {1.0},
+        reason: 'shown light, landed at full: laid again at full',
+      );
     });
 
     testWidgets('until it lands it is no stroke: the host hears nothing, and '

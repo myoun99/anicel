@@ -15,19 +15,19 @@ part of '../interactive_brush_edit_canvas_view.dart';
 /// beside the stroke's would be the copy that drifts.
 ///
 /// What differs is only what a pen brings and a tool does not: no pointer,
-/// no pressure to read (the stroke is laid at full pressure the whole
-/// way), no hand to steady and no ray to snap to — its points go straight
-/// to the stroke's advance ([_BrushEditStroke.startToolStrokeAt]).
+/// no pressure to read (the stroke is laid at the one pressure it is given
+/// the whole way), no hand to steady and no ray to snap to — its points go
+/// straight to the stroke's advance ([_BrushEditStroke.startToolStrokeAt]).
 class _BrushEditPathStroke {
   _BrushEditPathStroke(this._state);
 
   final _InteractiveBrushEditCanvasViewState _state;
 
   /// Draws [path] — two or more points in this view's own space — as one
-  /// stroke, and answers whether it is drawn, or will be once the cel it
-  /// asked for is there: laid and landed in one go, where nothing of it was
-  /// laid while it was dragged ([ShapeShow.landStroke]).
-  bool strokeAlong(List<CanvasPoint> path) {
+  /// stroke at [pressure], and answers whether it is drawn, or will be once
+  /// the cel it asked for is there: laid and landed in one go, where nothing
+  /// of it was laid while it was dragged ([ShapeShow.landStroke]).
+  bool strokeAlong(List<CanvasPoint> path, {required double pressure}) {
     if (path.length < 2 || _state._activeDrawingPointer != null) {
       return false;
     }
@@ -49,7 +49,7 @@ class _BrushEditPathStroke {
       // mid-stroke flip's red screen (R13-4).
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_state.mounted && _state.widget.editable) {
-          strokeAlong(path);
+          strokeAlong(path, pressure: pressure);
         }
       });
       SchedulerBinding.instance.ensureVisualUpdate();
@@ -63,7 +63,11 @@ class _BrushEditPathStroke {
     final waypoints = _strokeWaypoints(path);
     // One path, one roll: the same shape drawn again rolls the same
     // scatter and jitter.
-    stroke.startToolStrokeAt(waypoints.first, dice: Object.hashAll(path));
+    stroke.startToolStrokeAt(
+      waypoints.first,
+      dice: Object.hashAll(path),
+      pressure: pressure,
+    );
     for (final point in waypoints.skip(1)) {
       stroke.advanceStrokeTo(point);
     }

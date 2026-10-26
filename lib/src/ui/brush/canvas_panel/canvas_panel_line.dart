@@ -12,6 +12,11 @@ part of '../brush_canvas_panel.dart';
 /// 실제 브러시 획까지」 · I-119-Q2: 「도중에 … 키를 떼면 취소임. 호버하면서
 /// 위치 정하고, 클릭해야 직선 착지」.
 ///
+/// 🗣️F-483 (유저 2026-10-27): 「z로 마지막 찍은 점에서 직선 그을때, 필압 최대
+/// 고정인데, 마지막 찍은 필압 기준으로 직선 그리도록」 — the line is laid at
+/// the pressure of the last dab the last stroke laid, the whole way. ↩️It
+/// was laid at full, as the shape tool's line is, which no pen pressed.
+///
 /// ★THE SHAPE TOOL'S LINE FROM ANOTHER START, not one like it: that tool's
 /// own drag ([MarqueeDrag] of a [CanvasShapeKind.line]) begun at the last
 /// stroke's end instead of at a press — its end where the hand is, kept to
@@ -32,10 +37,10 @@ class _CanvasPanelLine {
 
   final _BrushCanvasPanelState _state;
 
-  /// Where the last stroke drawn here ended, on the canvas — null before
-  /// there was one. A line landed is a stroke, so its end is the next
-  /// one's start.
-  CanvasPoint? _from;
+  /// Where the last stroke drawn here ended, on the canvas, and the
+  /// pressure its last dab was laid at — null before there was one. A line
+  /// landed is a stroke, so its end is the next one's start.
+  ({CanvasPoint at, double pressure})? _from;
 
   /// The press the line lands at when it lets go.
   int? _press;
@@ -65,14 +70,19 @@ class _CanvasPanelLine {
     trails.dispose();
   }
 
-  /// [stroke] has landed: where its path ended is the next line's start. A
-  /// mark with no path (a fill, a stamp) leaves the start where it was.
+  /// [stroke] has landed: where its path ended, at its last dab's pressure
+  /// (full where it laid none, as a stroke opens), is the next line's
+  /// start. A mark with no path (a fill, a stamp) leaves the start where it
+  /// was.
   void heard(BrushStrokeCommitData stroke) {
     final end = stroke.end;
     if (end == null) {
       return;
     }
-    _from = _state._selectionSeat.pointOnTheCanvas(end);
+    _from = (
+      at: _state._selectionSeat.pointOnTheCanvas(end),
+      pressure: stroke.sourceDabs.lastOrNull?.pressure ?? 1,
+    );
     refresh();
   }
 
@@ -131,7 +141,7 @@ class _CanvasPanelLine {
       return;
     }
     _setTrails(const [], shown: false);
-    _state._landTraced(copies, asStroke: true);
+    _state._landTraced(copies, asStroke: true, pressure: _from!.pressure);
   }
 
   /// The shape tool's line from [_from] to [hand] — the census's, local to
@@ -146,7 +156,7 @@ class _CanvasPanelLine {
       pointer: -1,
       shapeKind: CanvasShapeKind.line,
       before: null,
-      at: _from!,
+      at: _from!.at,
       guides: _state.widget.guides ?? CutGuides(),
       zoom: viewport.zoom,
     )..update(
@@ -159,7 +169,8 @@ class _CanvasPanelLine {
   }
 
   /// Shows [line] with every copy the guide makes of it — the ants over,
-  /// the stroke under — or takes back what this hand showed.
+  /// the stroke under — or takes back what this hand showed. Past the first
+  /// return there is a start: a line runs from it, and one was shown.
   void _show(DrawnShapePath? line) {
     if (line == null && !_shown) {
       return;
@@ -169,7 +180,7 @@ class _CanvasPanelLine {
       [for (final copy in copies ?? const <DrawnShapePath>[]) copy.points],
       shown: copies != null,
     );
-    _state._showTraced(copies, asStroke: true);
+    _state._showTraced(copies, asStroke: true, pressure: _from!.pressure);
   }
 
   void _setTrails(List<List<CanvasPoint>> next, {required bool shown}) {

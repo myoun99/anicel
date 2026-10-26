@@ -120,13 +120,15 @@ abstract interface class ShapeShow {
   /// laid whole now — and answers whether anything landed.
   bool land(ShapeArea area);
 
-  /// [show] for the stroke along [path].
-  void showStroke(List<CanvasPoint> path);
+  /// [show] for the stroke along [path], every dab of it at [pressure] —
+  /// full where no pen pressed it, as a shape's is.
+  void showStroke(List<CanvasPoint> path, {double pressure = 1});
 
-  /// [land] for the stroke along [path] — laid and landed in one go when
-  /// nothing of it was laid ahead, asking for the cel where there is none
-  /// — and answers whether it is drawn, or will be once that cel is there.
-  bool landStroke(List<CanvasPoint> path);
+  /// [land] for the stroke along [path] at [pressure] ([showStroke]) — laid
+  /// and landed in one go when nothing of it was laid ahead, asking for the
+  /// cel where there is none — and answers whether it is drawn, or will be
+  /// once that cel is there.
+  bool landStroke(List<CanvasPoint> path, {double pressure = 1});
 
   /// Takes back whatever is shown or being laid: the drag ended without a
   /// shape.
