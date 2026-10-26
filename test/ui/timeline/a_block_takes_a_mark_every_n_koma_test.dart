@@ -548,9 +548,19 @@ void main() {
     }
 
     besideTheNumber('mark-every-field');
+    await tester.tap(markPick(InbetweenMark.one));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('mark-every-entry-seconds')));
     await tester.pumpAndSettle();
     besideTheNumber('mark-every-koma-field');
+    expect(
+      AppFrameCountSettings.settings.value,
+      const AppFrameCountSettings(
+        lastEntry: FrameCountEntry.secondsPlusFrames,
+        lastEveryMark: InbetweenMark.one,
+      ),
+      reason: 'switching the entry keeps the mark picked, and the other way',
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -560,9 +570,20 @@ void main() {
     await tester.pumpAndSettle();
     await openWindow(tester);
 
-    for (final (mark, button) in [
-      (InbetweenMark.one, 'toggle-mark-one-button'),
-      (InbetweenMark.two, 'toggle-mark-button'),
+    // 🗣️I-130: 「속이 찬 점을 마크2, 속이 빈 그냥 선으로 된 원을 마크1」.
+    for (final (mark, button, face, action) in [
+      (
+        InbetweenMark.one,
+        'toggle-mark-one-button',
+        Icons.circle_outlined,
+        EditorActionIds.frameToggleMarkOne,
+      ),
+      (
+        InbetweenMark.two,
+        'toggle-mark-button',
+        Icons.circle,
+        EditorActionIds.frameToggleMarkTwo,
+      ),
     ]) {
       final pressed = tester.widget<AppIconButton>(inThePill(button));
       final pick = tester.widget<Pill>(markPick(mark));
@@ -571,6 +592,7 @@ void main() {
         ((pressed.icon as Icon).icon, pressed.tooltip),
         reason: mark.name,
       );
+      expect((pick.icon, pick.label), (face, editorActionLabel(action)));
     }
     session.playbackRig.prerenderScheduler.cancel();
   });
