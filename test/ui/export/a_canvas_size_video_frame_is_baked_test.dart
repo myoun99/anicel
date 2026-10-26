@@ -299,32 +299,52 @@ void main() {
       });
     });
 
-    // 🗣️I-65-Q8 (유저 2026-10-25): 「출력은 이 머리도 안 본다」.
-    testWidgets('🚨an output lays the V row\'s chain on each cut it mixes '
-        'whatever the row\'s switch says — a picture of the screen keeps '
-        'the switch', (tester) async {
+    // 🗣️I-65-Q11 (유저 2026-10-25): 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면
+    // 빠짐」. ↩️Q8 laid it whatever the switch said.
+    testWidgets('🚨an output lays the V row\'s chain on each cut it mixes as '
+        'the row\'s switch shows it under 켬 and 기본만 켬 — never under 끔', (
+      tester,
+    ) async {
       await tester.runAsync(() async {
-        final session = mixing(
-          effects: [
-            LayerEffect(
-              id: const EffectId('fx'),
-              kind: EffectKind.brightnessContrast,
-              parameters: {'brightness': EffectParameter(value: 50)},
-            ),
-          ],
-          fxEnabled: false,
-        );
-        addTearDown(session.dispose);
-        Future<int> redThrough(ExportLayerFx? layerFx) async {
-          final (r, _, _, _) = centreOf(
-            await videoFrame(session, midway(session), layerFx: layerFx),
+        Future<int> redThrough(
+          ExportLayerFx? layerFx, {
+          required bool switchedOn,
+        }) async {
+          final session = mixing(
+            effects: [
+              LayerEffect(
+                id: const EffectId('fx'),
+                kind: EffectKind.brightnessContrast,
+                parameters: {'brightness': EffectParameter(value: 50)},
+              ),
+            ],
+            fxEnabled: switchedOn,
           );
-          return r;
+          try {
+            final (r, _, _, _) = centreOf(
+              await videoFrame(session, midway(session), layerFx: layerFx),
+            );
+            return r;
+          } finally {
+            session.dispose();
+          }
         }
 
-        expect(await redThrough(null), 0, reason: 'switched off, as shown');
-        for (final layerFx in ExportLayerFx.values) {
-          expect(await redThrough(layerFx), greaterThan(40), reason: '$layerFx');
+        for (final switchedOn in [true, false]) {
+          final shown = await redThrough(null, switchedOn: switchedOn);
+          expect(
+            shown > 40,
+            switchedOn,
+            reason: 'the screen\'s picture, switched ${switchedOn ? 'on' : 'off'}',
+          );
+          for (final layerFx in ExportLayerFx.values) {
+            final laid = await redThrough(layerFx, switchedOn: switchedOn);
+            expect(
+              laid > 40,
+              switchedOn && layerFx != ExportLayerFx.off,
+              reason: '$layerFx, switched ${switchedOn ? 'on' : 'off'}',
+            );
+          }
         }
       });
     });

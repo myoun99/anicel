@@ -100,17 +100,20 @@ void main() {
     expect(raw.laid, laid);
   });
 
-  // 🗣️I-65-Q8 (유저 2026-10-25): 「출력은 이 머리도 안 본다」 — 「그 두개는
-  // 기본만켬에 포함」.
-  test('🚨the camera row\'s work goes out whatever its switch and the '
-      'window\'s FX say', () {
+  // 🗣️I-65-Q11 (유저 2026-10-25): 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면
+  // 빠짐 — 카메라 행도 같이」. ↩️Q8 sent the work out whatever both said.
+  test('🚨the camera row\'s work goes out as its switch shows it under 켬 '
+      'and 기본만 켬 — and not under 끔', () {
     final camera = createCameraLayer(cutId: const CutId('cut'));
-    for (final fx in ExportLayerFx.values) {
-      expect(
-        layerAsOutput(camera.copyWith(transformEnabled: false), fx),
-        camera.copyWith(transformEnabled: true),
-        reason: '$fx',
-      );
+    for (final shown in [true, false]) {
+      final row = camera.copyWith(transformEnabled: shown);
+      for (final fx in ExportLayerFx.values) {
+        expect(
+          layerAsOutput(row, fx).transformEnabled,
+          shown && fx != ExportLayerFx.off,
+          reason: '$fx, switched ${shown ? 'on' : 'off'}',
+        );
+      }
     }
   });
 }

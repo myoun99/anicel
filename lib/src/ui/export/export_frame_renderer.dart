@@ -159,9 +159,10 @@ class ExportFrameRenderer {
   /// window asks about (the storyboard's panels, the conte's cells): every
   /// row's own switches read as they stand, the camera row's and the V
   /// row's too (🗣️I-65-Q9, 유저 2026-10-25: 「화면 그대로(지금)」). The
-  /// cut's fade and camera work are cut-level and stay either way; an
-  /// output keeps the camera work and the V row's chain whatever their
-  /// switches say (I-65-Q8, [layerAsOutput] · [_trackFxLaid]).
+  /// cut's fade is cut-level and stays either way; an output keeps the
+  /// camera work and the V row's chain as their switches show them under 켬
+  /// and 기본만 켬, and neither under 끔 (I-65-Q11, [layerAsOutput] ·
+  /// [_trackFxLaid]).
   final ExportLayerFx? layerFx;
 
   /// Whether the frames drawn here go into a file that keeps the cut's rows
@@ -386,13 +387,40 @@ class ExportFrameRenderer {
     null => layer,
   };
 
-  /// Whether this render lays [cutId]'s V row chain: an output always, a
-  /// picture of the screen ([layerFx] null) by the row's switch — the row's
-  /// head hides the chain on the screen and an output does not look at it
-  /// (I-65-Q8 「출력은 이 머리도 안 본다」, [layerAsOutput]). ↩️The switch
-  /// gated the output since R8, as every fx switch did.
+  /// Whether this render lays [cutId]'s V row chain: where the screen shows
+  /// it — the row's switch on — and, in an output, where the window's 레이어
+  /// FX is not 끔 (I-65-Q11 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면
+  /// 빠짐」, as the camera row's work is — [layerAsOutput]). ↩️I-65-Q8 laid
+  /// it in every output whatever the switch said; the switch alone gated
+  /// the output since R8 before that.
   bool _trackFxLaid(CutId cutId) =>
-      layerFx != null || session.effectsAndFx.isCutFxEnabled(cutId);
+      layerFx != ExportLayerFx.off &&
+      session.effectsAndFx.isCutFxEnabled(cutId);
+
+  /// [cut]'s V row chain at [globalFrame] — the frame's place on the track's
+  /// own axis (R4) — laid as [_trackFxLaid] says: what every route that
+  /// draws a cut lays under its picture.
+  List<ResolvedLayerEffect> _trackChainAt(Cut cut, int globalFrame) =>
+      trackEffectsAt(
+        session.effectsAndFx.trackEffectsForCut(cut.id),
+        globalFrame,
+        enabled: _trackFxLaid(cut.id),
+      );
+
+  /// [task]'s cut's V row chain at the task's place on the track
+  /// ([_trackChainAt]).
+  List<ResolvedLayerEffect> _trackChainOf(ExportFrameTask task) =>
+      _trackChainAt(
+        task.cut,
+        session.rowSpans.trackGlobalFrameOf(task.cut.id, task.frameIndex),
+      );
+
+  /// The V row chain under a STILL of [task] — as a video's frame lays it
+  /// ([_trackChainOf]; I-65-Q10 a: 「이미지 탭에도 V 행 fx 를 깐다」) — none in
+  /// a file that keeps the rows apart, which no row of the file can hold
+  /// ([leftOutOfRows] says so). ↩️A still laid none, whatever the switch.
+  List<ResolvedLayerEffect> _stillChainOf(ExportFrameTask task) =>
+      keepsRowsApart ? const [] : _trackChainOf(task);
 
   static List<LayerEffect> _switchedOff(List<LayerEffect> effects) => [
     for (final effect in effects) effect.copyWith(enabled: false),
@@ -456,6 +484,7 @@ class ExportFrameRenderer {
       task,
       _viewFor(task.cut, task.frameIndex, mode),
       outputSize: outputSize,
+      trackEffects: _stillChainOf(task),
       nameTags: withNameTags
           ? session.seEntries.seNameTagsForCutFrame(task.cut, task.frameIndex)
           : const [],
@@ -600,14 +629,15 @@ class ExportFrameRenderer {
 
   /// What a file that keeps [task]'s rows apart leaves out of them
   /// ([keepsRowsApart]) — every adjustment row, whose filter no row of the
-  /// file holds, and every folder whose effects are on here — each said as
-  /// a PSD's reader says what it could not bring in. None where the file is
-  /// the picture alone.
+  /// file holds, every folder whose effects are on here, and the V row
+  /// whose chain a picture of the frame would lay ([_trackChainOf]) — each
+  /// said as a PSD's reader says what it could not bring in. None where the
+  /// file is the picture alone.
   ///
   /// 🗣️I-117-Q2 (유저 2026-10-22): 「내보내기가 끝나면 무엇이 빠졌는지
   /// 알린다(PSD 를 읽을 때 못 담은 것을 알리듯이)」.
   List<ImportWarning> leftOutOfRows(ExportFrameTask task) => [
-    if (keepsRowsApart)
+    if (keepsRowsApart) ...[
       for (final layer in task.cut.layers)
         if (layer.kind.filtersBelow)
           unsupportedLayerKind(layer.name)
@@ -617,6 +647,12 @@ class ExportFrameRenderer {
               frameIndex: task.frameIndex,
             ).isNotEmpty)
           layerEffectsNotApplied(layer.name),
+      // The V row's chain lies over the whole picture, as a folder's does
+      // over what it holds ([_stillChainOf]).
+      if (session.trackOwningCut(task.cut.id) case final track?
+          when _trackChainOf(task).isNotEmpty)
+        layerEffectsNotApplied(track.name),
+    ],
   ];
 
   /// A panel's picture — the storyboard's, the conte's: [cut] at
@@ -648,9 +684,9 @@ class ExportFrameRenderer {
   /// camera there, or the whole canvas — a camera standing square over all
   /// of it, at its own size.
   ///
-  /// The camera is the RENDER's ([_cutForRender]): an output keeps the
-  /// camera work whatever the camera row's switch says ([layerAsOutput],
-  /// I-65-Q8), a picture of the screen keeps the switch.
+  /// The camera is the RENDER's ([_cutForRender]): the camera row's switch
+  /// as the screen shows it, and off under an output's 끔 ([layerAsOutput],
+  /// I-65-Q11).
   CameraView _viewFor(Cut cut, int frameIndex, ExportSizeMode mode) =>
       switch (mode) {
         ExportSizeMode.camera => (
@@ -907,11 +943,13 @@ class ExportFrameRenderer {
   ) async {
     _startFrame();
     final view = _viewFor(task.cut, task.frameIndex, mode);
+    final trackEffects = _stillChainOf(task);
     final picture = await _cutPicture(
       task.cut,
       task.frameIndex,
-      route: ('still', view),
-      render: (rows) => _composite(task, view, rows: rows),
+      route: ('still', view, ByList(trackEffects)),
+      render: (rows) =>
+          _composite(task, view, trackEffects: trackEffects, rows: rows),
     );
     return picture.clone();
   }
@@ -1015,19 +1053,11 @@ class ExportFrameRenderer {
       return _canvasSpaceTransitionFrame(shared, ground: ground);
     }
     final cut = task.cut;
-    // The V effects are TRACK data on the global axis (R4).
-    final trackFrame = session.rowSpans.trackGlobalFrameOf(
-      cut.id,
-      task.frameIndex,
-    );
-    // No track fade: the transition row's ramp lands in
-    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers,
-    // and the track's static opacity went with the V row's bar (I-73).
-    final trackEffects = trackEffectsAt(
-      session.effectsAndFx.trackEffectsForCut(cut.id),
-      trackFrame,
-      enabled: _trackFxLaid(cut.id),
-    );
+    // The V effects are TRACK data on the global axis (R4). No track fade:
+    // the transition row's ramp lands in [_canvasSpaceTransitionFrame]
+    // above, on the frames it actually covers, and the track's static
+    // opacity went with the V row's bar (I-73).
+    final trackEffects = _trackChainOf(task);
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
     final image = await _canvasPicture(
@@ -1142,13 +1172,7 @@ class ExportFrameRenderer {
                   // The V row's chain on this contribution, keys included —
                   // the dissolve weights what the chain made, not what it
                   // started from.
-                  trackEffectsAt(
-                    session.effectsAndFx.trackEffectsForCut(
-                      contribution.cut.id,
-                    ),
-                    shared.globalFrame,
-                    enabled: _trackFxLaid(contribution.cut.id),
-                  ),
+                  _trackChainAt(contribution.cut, shared.globalFrame),
                 ),
               ),
               weight: shared.weights[i].clamp(0.0, 1.0),
@@ -1242,12 +1266,8 @@ class ExportFrameRenderer {
     final frameIndex = position.localFrameIndex;
     final view = _viewFor(cut, frameIndex, ExportSizeMode.camera);
     // Track effects at the frame's GLOBAL position (R4) — the stack's
-    // own axis — laid as [_trackFxLaid] says.
-    final trackEffects = trackEffectsAt(
-      session.effectsAndFx.trackEffectsForCut(cut.id),
-      position.globalFrameIndex,
-      enabled: _trackFxLaid(cut.id),
-    );
+    // own axis.
+    final trackEffects = _trackChainAt(cut, position.globalFrameIndex);
     // The stage belongs to the bottom covered TRACK, and to every
     // contribution of it: an O.L is a 場面転換, so the arriving cut brings
     // its own paper and the weights cross-fade the whole screen. Keyed to

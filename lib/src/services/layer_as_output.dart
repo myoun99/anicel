@@ -24,17 +24,23 @@ import '../models/transform_track.dart';
 /// 바껴서 기본fx로 분류되고 그거마저 끌수있게 하는걸 노리는것임」. ↩️I-68-Q1
 /// kept it whatever the output's switch said.
 ///
-/// 🗣️I-65-Q8 (유저 2026-10-25): 「출력은 이 머리도 안 본다」 — 「그 두개는
-/// 기본만켬에 포함. 시퀀스 출력같은거 얘기잖아」: the camera row's switch
-/// bypasses the cut's camera work on the screen, and an output keeps the
-/// work whatever its FX (cut-level, as the fade) — the V row's chain too
-/// (the renderer's `_trackFxLaid`). ↩️Both switches reached the output.
+/// 🗣️I-65-Q11 (유저 2026-10-25): 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면
+/// 빠짐 — 카메라 행도 같이」, on Q10's memo 「출력할때 fx on 되있으면, 보는
+/// 화면에서 on 되있는거를 fx로서 넣어서 출력함. 보는화면에서 off 되있으면
+/// 안넣음」: the camera row's switch bypasses the cut's camera work on the
+/// screen, and an output keeps the work as the screen shows it under 켬 and
+/// 기본만 켬, and none of it under 끔 — the V row's chain too (the renderer's
+/// `_trackFxLaid`). ↩️I-65-Q8 (「출력은 이 머리도 안 본다」) kept both whatever
+/// the switches and the window said; before it, both switches reached the
+/// output.
 ///
 /// The window's choice expressed as DATA: the plan renders exactly the rows
 /// it is given, so no route can forget it.
 Layer layerAsOutput(Layer layer, ExportLayerFx fx) {
   if (layer.kind == LayerKind.camera) {
-    return layer.copyWith(transformEnabled: true);
+    return layer.copyWith(
+      transformEnabled: layer.transformEnabled && fx != ExportLayerFx.off,
+    );
   }
   final reference = layer.mediaReference;
   return layer.copyWith(

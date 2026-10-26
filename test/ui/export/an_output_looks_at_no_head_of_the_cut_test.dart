@@ -9,9 +9,11 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_spec.dart' show ExportLayerFx;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -32,10 +34,12 @@ import 'package:anicel/src/ui/export/export_plan.dart';
 
 /// What an output keeps of the cut's heads (I-65, 유저 2026-10-25):
 ///
-/// * Q8 「출력은 이 머리도 안 본다」 — 「그 두개는 기본만켬에 포함. 시퀀스
-///   출력같은거 얘기잖아」: the camera row's switch and the V row's hide the
-///   camera work and the V row's chain on the screen; an output keeps both
-///   whatever they and the window's 레이어 FX say.
+/// * Q11 「켬 · 기본만 켬이면 화면 스위치대로, 끔이면 빠짐 — 카메라 행도
+///   같이」: the camera row's switch and the V row's hide the camera work
+///   and the V row's chain on the screen; an output keeps each as the screen
+///   shows it under 켬 and 기본만 켬, and neither under 끔 — a still as a
+///   video (Q10 a 「이미지 탭에도 V 행 fx 를 깐다」). ↩️Q8 「출력은 이 머리도
+///   안 본다」 kept both whatever the switches and the window said.
 /// * Q9 「화면 그대로(지금)」: a picture of the screen (no 레이어 FX to ask)
 ///   keeps both switches.
 /// * Q7 「참조 fx 만 따른다」 — 「트랜스폼은 기본만켬에서 빠진다고 몇번이나
@@ -175,9 +179,9 @@ void main() {
         (i % width, i ~/ width),
   ];
 
-  testWidgets('🚨an output frames the cut through its camera work whatever '
-      'the camera row\'s switch says — a picture of the screen keeps the '
-      'switch', (tester) async {
+  testWidgets('🚨an output frames the cut through its camera work as the '
+      'camera row\'s switch shows it under 켬 and 기본만 켬 — centred under '
+      '끔', (tester) async {
     await tester.runAsync(() async {
       final session = sessionOf();
       session.camera.setCameraKeyframeAtCurrentFrame(
@@ -187,64 +191,172 @@ void main() {
         await pictureOf(session, fx, mode: ExportSizeMode.camera),
         canvas.width,
       );
-      final worked = await inkThrough(ExportLayerFx.on);
-      expect(worked, [(7, 10)], reason: 'framed 3 to the right');
+      const worked = [(7, 10)];
+      const centred = [(10, 10)];
+      expect(await inkThrough(null), worked, reason: 'framed 3 to the right');
+      for (final (fx, ink) in [
+        (ExportLayerFx.on, worked),
+        (ExportLayerFx.basic, worked),
+        (ExportLayerFx.off, centred),
+      ]) {
+        expect(await inkThrough(fx), ink, reason: '$fx, switched on');
+      }
 
       session.effectsAndFx.toggleLayerTransformFx(
         session.requireActiveCut.layers.cameraLayer!.id,
       );
       expect(session.requireActiveCut.layers.cameraWorkBypassed, isTrue);
+      expect(await inkThrough(null), centred, reason: 'centred, as shown');
       for (final fx in ExportLayerFx.values) {
-        expect(await inkThrough(fx), worked, reason: '$fx');
+        expect(await inkThrough(fx), centred, reason: '$fx, switched off');
       }
-      expect(await inkThrough(null), [(10, 10)], reason: 'centred, as shown');
     });
     await tester.pumpAndSettle();
   });
 
-  testWidgets('🚨a film lays the V row\'s fx whatever its switch says — a '
-      'picture of the screen keeps the switch', (tester) async {
+  /// The red at the ink of [session]'s first frame, written with [fx] — null
+  /// for a picture of the screen — in [mode] by [draw]: a video's frame or
+  /// a still's.
+  Future<int> redAtTheInk(
+    EditorSessionManager session,
+    ExportLayerFx? fx,
+    ExportSizeMode mode, {
+    required Future<ui.Image> Function(
+      ExportFrameRenderer renderer,
+      ExportFrameTask task,
+    )
+    draw,
+  }) async {
+    final rgba = await bytesOf(
+      await draw(
+        ExportFrameRenderer(session: session, layerFx: fx),
+        ExportFrameTask(cut: session.requireActiveCut, frameIndex: 0),
+      ),
+    );
+    return rgba[(10 * canvas.width + 10) * 4];
+  }
+
+  for (final (output, draw) in [
+    (
+      'a film',
+      (ExportFrameRenderer renderer, ExportFrameTask task, ExportSizeMode m) =>
+          renderer.videoRun([task], m).frame(0),
+    ),
+    (
+      'a picture sequence',
+      (ExportFrameRenderer renderer, ExportFrameTask task, ExportSizeMode m) =>
+          renderer.stillRun([task], m).frame(0),
+    ),
+    (
+      'a still',
+      (ExportFrameRenderer renderer, ExportFrameTask task, ExportSizeMode m) =>
+          renderer.renderComposite(task, m),
+    ),
+  ]) {
+    testWidgets('🚨$output lays the V row\'s fx as its switch shows it under '
+        '켬 and 기본만 켬 — never under 끔', (tester) async {
+      await tester.runAsync(() async {
+        final switchedOff = sessionOf(
+          trackEffects: [brightness],
+          trackFxEnabled: false,
+        );
+        final switchedOn = sessionOf(trackEffects: [brightness]);
+
+        for (final mode in ExportSizeMode.values) {
+          Future<int> red(EditorSessionManager session, ExportLayerFx? fx) =>
+              redAtTheInk(
+                session,
+                fx,
+                mode,
+                draw: (renderer, task) => draw(renderer, task, mode),
+              );
+          final bare = await red(switchedOff, null);
+          expect(
+            bare,
+            closeTo(128, 2),
+            reason: '$mode: the switch is off on the screen',
+          );
+          expect(
+            await red(switchedOn, null),
+            greaterThan(bare + 20),
+            reason: '$mode: the switch is on on the screen',
+          );
+          for (final fx in ExportLayerFx.values) {
+            expect(
+              await red(switchedOff, fx),
+              closeTo(bare, 2),
+              reason: '$mode, $fx: switched off',
+            );
+            final laid = await red(switchedOn, fx);
+            expect(
+              fx == ExportLayerFx.off ? laid < bare + 20 : laid > bare + 20,
+              isTrue,
+              reason: '$mode, $fx, switched on: $laid against $bare',
+            );
+          }
+        }
+      });
+      await tester.pumpAndSettle();
+    });
+  }
+
+  testWidgets('a layered file lays no V row\'s fx, which none of its rows '
+      'can hold — and says it left them out', (tester) async {
     await tester.runAsync(() async {
+      const psd = ExportFormatSelection(
+        kind: ExportMediaKind.still,
+        stillFormat: ExportStillFormat.psd,
+      );
+      ExportFrameRenderer rendererOf(
+        EditorSessionManager session,
+        ExportLayerFx fx, {
+        ExportFormatSelection format = psd,
+      }) => ExportFrameRenderer.forFormat(
+        session: session,
+        format: format,
+        layerFx: fx,
+      );
+      final session = sessionOf(trackEffects: [brightness]);
+      final task = ExportFrameTask(
+        cut: session.requireActiveCut,
+        frameIndex: 0,
+      );
+      final rgba = await bytesOf(
+        await rendererOf(
+          session,
+          ExportLayerFx.on,
+        ).renderComposite(task, ExportSizeMode.canvas),
+      );
+
+      expect(rgba[(10 * canvas.width + 10) * 4], closeTo(128, 2));
+      expect(rendererOf(session, ExportLayerFx.on).leftOutOfRows(task), [
+        layerEffectsNotApplied('V1'),
+      ]);
+      expect(
+        rendererOf(session, ExportLayerFx.off).leftOutOfRows(task),
+        isEmpty,
+        reason: 'under 끔 no file lays it',
+      );
       final switchedOff = sessionOf(
         trackEffects: [brightness],
         trackFxEnabled: false,
       );
-      final switchedOn = sessionOf(trackEffects: [brightness]);
-      Future<int> redAtTheInk(
-        EditorSessionManager session,
-        ExportLayerFx? fx,
-        ExportSizeMode mode,
-      ) async {
-        final rgba = await bytesOf(
-          await ExportFrameRenderer(session: session, layerFx: fx)
-              .videoRun([
-                ExportFrameTask(cut: session.requireActiveCut, frameIndex: 0),
-              ], mode)
-              .frame(0),
-        );
-        return rgba[(10 * canvas.width + 10) * 4];
-      }
-
-      for (final mode in ExportSizeMode.values) {
-        final bare = await redAtTheInk(switchedOff, null, mode);
-        expect(
-          bare,
-          closeTo(128, 2),
-          reason: '$mode: the switch is off on the screen',
-        );
-        expect(
-          await redAtTheInk(switchedOn, null, mode),
-          greaterThan(bare + 20),
-          reason: '$mode: the switch is on on the screen',
-        );
-        for (final fx in ExportLayerFx.values) {
-          expect(
-            await redAtTheInk(switchedOff, fx, mode),
-            greaterThan(bare + 20),
-            reason: '$mode, $fx: the chain brightens the ink',
-          );
-        }
-      }
+      expect(
+        rendererOf(switchedOff, ExportLayerFx.on).leftOutOfRows(
+          ExportFrameTask(cut: switchedOff.requireActiveCut, frameIndex: 0),
+        ),
+        isEmpty,
+        reason: 'switched off, no file lays it',
+      );
+      expect(
+        rendererOf(
+          session,
+          ExportLayerFx.on,
+          format: const ExportFormatSelection(kind: ExportMediaKind.still),
+        ).leftOutOfRows(task),
+        isEmpty,
+        reason: 'a PNG lays it',
+      );
     });
     await tester.pumpAndSettle();
   });
