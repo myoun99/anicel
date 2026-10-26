@@ -62,6 +62,19 @@ void main() {
       count: 2,
       why: 'a blank stand-in for a cel with nothing to show',
     ),
+    'lib/src/services/cut_frame_composite_plan.dart': (
+      count: 1,
+      why:
+          'the row a cel number is written on, standing bare where its '
+          'cel has nothing drawn (F-481) — nothing of it paints; the '
+          'letters ask it where the row lies',
+    ),
+    'lib/src/ui/playback/stacked_frame_picture.dart': (
+      count: 1,
+      why:
+          'the row a cel number is written on, standing bare where its '
+          'cel has nothing drawn (F-481) — as the plan\'s does',
+    ),
     'lib/src/services/brush_frame_edit_session_store.dart': (
       count: 1,
       why: 'a session that has not been seeded from its cel yet',
@@ -186,7 +199,7 @@ void main() {
           'these build fewer pictures fresh than the ledger says — lower '
           'the count, or take the line out',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 19);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 21);
   });
 
   test('the places that rebuild a picture from its parts hand the texts, '
