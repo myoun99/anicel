@@ -144,33 +144,36 @@ class _FrameCountFieldState extends State<FrameCountField> {
     onSubmitted: (_) => widget.onSubmitted?.call(),
   );
 
+  /// The field or fields the count is typed in, as the entry has it.
+  Widget _number(String prefix) => switch (_entry) {
+    FrameCountEntry.frames => _numberField(
+      '$prefix-field',
+      _frames,
+      autofocus: true,
+    ),
+    FrameCountEntry.secondsPlusFrames => Row(
+      children: [
+        Expanded(
+          child: _numberField(
+            '$prefix-seconds-field',
+            _seconds,
+            autofocus: true,
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: Text('+'),
+        ),
+        Expanded(child: _numberField('$prefix-koma-field', _koma)),
+      ],
+    ),
+  };
+
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     final prefix = widget.keyPrefix;
-    final number = switch (_entry) {
-      FrameCountEntry.frames => _numberField(
-        '$prefix-field',
-        _frames,
-        autofocus: true,
-      ),
-      FrameCountEntry.secondsPlusFrames => Row(
-        children: [
-          Expanded(
-            child: _numberField(
-              '$prefix-seconds-field',
-              _seconds,
-              autofocus: true,
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8),
-            child: Text('+'),
-          ),
-          Expanded(child: _numberField('$prefix-koma-field', _koma)),
-        ],
-      ),
-    };
+    final number = _number(prefix);
     final beside = widget.beside;
     return Column(
       mainAxisSize: MainAxisSize.min,
