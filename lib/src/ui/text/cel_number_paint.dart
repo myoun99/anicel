@@ -32,12 +32,24 @@ void paintCelNumber(ui.Canvas canvas, CelNumberLetters letters) {
 
 /// The rect of the row's paper [letters] may paint — what a buffer that
 /// holds them must cover.
-ui.Rect celNumberExtent(CelNumberLetters letters) {
+ui.Rect celNumberExtent(CelNumberLetters letters) =>
+    _onThePaper(letters, (layout) => layout.paintBounds);
+
+/// The box of [letters]' ink on the row's paper, where they stand — what
+/// the canvas's box frames them by (F-477), as a row's box frames its ink.
+ui.Rect celNumberBox(CelNumberLetters letters) =>
+    _onThePaper(letters, (layout) => layout.inkBounds);
+
+/// [rectOf] [letters]' layout, on the row's paper where they stand.
+ui.Rect _onThePaper(
+  CelNumberLetters letters,
+  ui.Rect Function(TextCelLayout layout) rectOf,
+) {
   final layout = _layoutOf(letters);
   try {
     return MatrixUtils.transformRect(
       _standOf(letters, layout),
-      layout.paintBounds,
+      rectOf(layout),
     );
   } finally {
     layout.dispose();

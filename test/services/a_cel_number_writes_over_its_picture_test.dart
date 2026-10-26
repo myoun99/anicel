@@ -44,17 +44,13 @@ void main() {
     String id, {
     TransformTrack? stand,
     bool enabled = true,
-    (int, int, int) rgb = (0, 0, 0),
+    int? ink,
   }) => LayerEffect(
     id: EffectId(id),
     kind: EffectKind.celNumber,
     enabled: enabled,
-    parameters: {
-      'red': EffectParameter(value: rgb.$1.toDouble()),
-      'green': EffectParameter(value: rgb.$2.toDouble()),
-      'blue': EffectParameter(value: rgb.$3.toDouble()),
-    },
     stand: stand,
+    ink: ink == null ? null : PropertyTrack<int>.empty().withKey(0, ink),
   );
 
   Layer drawing({
@@ -285,13 +281,17 @@ void main() {
     expect(letters.scale, CanvasPoint(x: 2, y: 0.5));
   });
 
-  test('they are written in the number\'s colour, opaque', () {
-    final letters = lettersOf(
-      drawing(effects: [number('n', rgb: (200, 10, 30))]),
+  test('they are written in the number\'s ink — the text tool\'s black '
+      'where it is unkeyed', () {
+    final colour = RgbaColor(r: 200, g: 10, b: 30, a: 255).toArgbInt();
+    expect(
+      lettersOf(drawing(effects: [number('n', ink: colour)])).color,
+      colour,
     );
     expect(
-      letters.color,
-      RgbaColor(r: 200, g: 10, b: 30, a: 255).toArgbInt(),
+      lettersOf(drawing(effects: [number('n')])).color,
+      0xFF000000,
+      reason: 'unkeyed',
     );
   });
 
@@ -308,7 +308,7 @@ void main() {
     for (final (says, other) in [
       ('another row name', drawing(name: 'B', effects: [number('n')])),
       ('another drawing', drawing(frameName: '2', effects: [number('n')])),
-      ('another colour', drawing(effects: [number('n', rgb: (255, 0, 0))])),
+      ('another colour', drawing(effects: [number('n', ink: 0xFFFF0000)])),
       ('no number', drawing()),
     ]) {
       final signature = signatureOf(other);

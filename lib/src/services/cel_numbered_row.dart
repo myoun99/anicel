@@ -3,7 +3,6 @@ import '../models/cel_number_letters.dart';
 import '../models/composite_tree.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
-import '../models/rgba_color.dart';
 
 /// How a row composites, apart from its pixels and where it lies: its
 /// strength, its blend and its effect chain.
@@ -62,7 +61,7 @@ CompositeNode<P> celNumberedRow<P>({
         node,
         CompositeCelNumber<P>(
           on: row,
-          letters: _lettersOf(effects[at], text: text, paper: paper),
+          letters: celNumberLettersOf(effects[at], text: text, paper: paper),
         ),
       ]),
       opacity: last ? paint.opacity : 1,
@@ -75,22 +74,18 @@ CompositeNode<P> celNumberedRow<P>({
   return node;
 }
 
-/// What [number] — a resolved cel number — writes, saying [text].
-CelNumberLetters _lettersOf(
+/// What [number] — a resolved cel number — writes, saying [text]: the
+/// letters a row's tree lays, and the ones the canvas's box frames
+/// (F-477).
+CelNumberLetters celNumberLettersOf(
   ResolvedLayerEffect number, {
   required String text,
   required CanvasSize paper,
 }) {
   final stand = effectStandPose(number.stand!, paper);
-  int byte(String parameter) => number.parameter(parameter).round();
   return CelNumberLetters(
     text: text,
-    color: RgbaColor(
-      r: byte('red'),
-      g: byte('green'),
-      b: byte('blue'),
-      a: 255,
-    ).toArgbInt(),
+    color: number.ink!,
     center: stand.center,
     scale: stand.scale,
   );

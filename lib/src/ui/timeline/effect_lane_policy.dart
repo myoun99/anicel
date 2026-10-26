@@ -72,6 +72,36 @@ bool effectLaneWalksAPath(String laneId) =>
       _ => false,
     };
 
+/// The effect of [effects] whose picture the CANVAS's box drives while
+/// [laneId] is stood on — R5 #10, 「an fx declares its own manipulators」
+/// (`canvasManipulatorsForLane`): an effect that draws its own picture, on
+/// and drawing, declares the box over it on its header and on the lanes of
+/// where it stands ([effectStandLanes]), as a transform's header and its
+/// Position and Scale declare the row's. Its colour, and every lane of any
+/// other effect, declare none. Null for every other lane.
+///
+/// 🗣️F-477 (유저 2026-10-26): 「fx헤더에 서있으면 트랜스폼처럼 조작할수있는거
+/// 캔버스에 뜨고 조작가능하고, 키에 서도 해당 키 조작가능한거면 가능할수
+/// 있게」. ↩️Only the transform's lanes declared one, so a cel number's
+/// header and its Position and Scale drew nothing on the canvas.
+LayerEffect? effectBoxedOn(List<LayerEffect> effects, String? laneId) {
+  final address = laneId == null ? null : parseEffectLaneId(laneId);
+  if (address == null) {
+    return null;
+  }
+  final lane = address.parameterId;
+  for (final effect in effects) {
+    if (effect.id == address.effectId) {
+      return effect.kind.drawsItsOwnPicture &&
+              effect.enabled &&
+              (lane == null || effect.standLaneOf(lane) != null)
+          ? effect
+          : null;
+    }
+  }
+  return null;
+}
+
 /// The lane rows for [effects]: each effect's header, and its lanes while
 /// [isExpanded] says the header is twirled open (AE group collapse, exactly
 /// like the Transform group) — where it stands first, on a kind that draws
@@ -126,7 +156,9 @@ List<PropertyLaneRow> effectPropertyLanes(
       continue;
     }
     if (effect.kind.drawsItsOwnPicture) {
-      rows.addAll(_standLanes(effect, standAt));
+      rows
+        ..addAll(_standLanes(effect, standAt))
+        ..add(_inkLane(effect, valued: valueAt != null));
     }
     for (final (index, spec) in effectParametersOf(effect.kind).indexed) {
       final parameter = effect.parameterOf(spec.id);
@@ -186,6 +218,24 @@ List<PropertyLaneRow> _standLanes(
       if (ids.contains(row.laneId)) row,
   ];
 }
+
+/// [effect]'s lane of the colour it draws its picture in ([LayerEffect
+/// .ink]): a colour lane, as an SE name tag's inks are — the value cell the
+/// shared colour swatch, no line on a header graph. Unvalued where [valued]
+/// is not, as the parameters' lanes are.
+PropertyLaneRow _inkLane(LayerEffect effect, {required bool valued}) =>
+    PropertyLaneRow(
+      laneId: effectLaneId(effect.id, effectInkLane),
+      label: AppText.strings.effectParameterName(effectInkLane, 'Ink'),
+      keyMarks: keyMarksOf(effect.ink),
+      keyNames: effect.ink.namedKeysByFrame,
+      valueKind: PropertyLaneValueKind.color,
+      valueLabel: valued
+          ? (frameIndex) => formatLaneColorValue(
+              effectInkAt(effect.ink, frameIndex.toDouble()),
+            )
+          : null,
+    );
 
 /// The display order of ONE effect's member lanes — the order the rail
 /// draws them under the effect's group header ([LayerEffect.lanes]).

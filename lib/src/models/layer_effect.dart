@@ -8,6 +8,7 @@ import 'transform_track.dart'
         TransformPose,
         TransformPropertyId,
         TransformTrack,
+        argbKeySpace,
         doubleKeySpace,
         layerIdentityPose,
         transformLaneOf,
@@ -259,34 +260,9 @@ const Map<EffectKind, List<EffectParameterSpec>> effectParameterSpecs = {
   ],
   EffectKind.deleteColor: colorKeyParameterSpecs,
   EffectKind.keepColor: colorKeyParameterSpecs,
-  // 🗣️I-65-Q1 메모 (유저 2026-10-24): 「색 키 고르는것도 존재. 심플하게 딱
-  // 하나만」 — the letters' ONE colour, chosen the way a key colour is: three
-  // of the bytes the lanes animate ([colorKeyParameterSpecs]). Black at rest,
-  // the text tool's own ink (`TextLetterStyle.color`). Where they stand and
-  // how big are the effect's [LayerEffect.stand], not parameters.
-  EffectKind.celNumber: [
-    EffectParameterSpec(
-      id: 'red',
-      label: 'Red',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 255,
-    ),
-    EffectParameterSpec(
-      id: 'green',
-      label: 'Green',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 255,
-    ),
-    EffectParameterSpec(
-      id: 'blue',
-      label: 'Blue',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 255,
-    ),
-  ],
+  // Where the letters stand, how big and in what colour are the effect's
+  // [LayerEffect.stand] and [LayerEffect.ink], not parameters.
+  EffectKind.celNumber: [],
 };
 
 /// The color keys' parameters — ONE list for both kinds, because erase and
@@ -448,14 +424,15 @@ class LayerEffect {
   /// composite cache key, the autosave dirty check and the thumbnail
   /// signature.
   ///
-  /// [stand] is normalized the same way: a kind that draws no picture of its
-  /// own holds none, whatever it was handed.
+  /// [stand] and [ink] are normalized the same way: a kind that draws no
+  /// picture of its own holds neither, whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
     this.enabled = true,
     Map<String, EffectParameter>? parameters,
     TransformTrack? stand,
+    PropertyTrack<int>? ink,
   }) : parameters = Map.unmodifiable({
          for (final spec in effectParametersOf(kind))
            spec.id:
@@ -464,7 +441,10 @@ class LayerEffect {
        }),
        stand = kind.drawsItsOwnPicture && stand != null
            ? stand
-           : TransformTrack.empty();
+           : TransformTrack.empty(),
+       ink = kind.drawsItsOwnPicture && ink != null
+           ? ink
+           : PropertyTrack<int>.empty();
 
   /// A fresh effect of [kind], every parameter at its spec default — what
   /// "Add effect" creates (an effect you just added must change nothing
@@ -500,6 +480,22 @@ class LayerEffect {
   /// 공통된 거 사용」.
   final TransformTrack stand;
 
+  /// The colour a kind that draws its own picture draws it in — the KEYS of
+  /// ONE colour lane, as an SE row's name tag keys its name's ink
+  /// (`SeNameTagTrack.nameInk`), read in the same key space
+  /// ([argbKeySpace]). Unkeyed, the text tool's own black
+  /// ([effectInkAtRest]). Empty for every other kind.
+  ///
+  /// 🗣️F-477 (유저 2026-10-26): 「se행의 이름표fx의 이름 잉크같은것처럼 색
+  /// 컬러팝오버로 고르는거 그대로 사용하라고. 쓸데없이 빨강파랑초록
+  /// 나누지말고」. ↩️It was three number lanes, Red · Green · Blue — the
+  /// colour keys' shape ([colorKeyParameterSpecs]), which I-65-Q1's 「색 키
+  /// 고르는것」 was read as; nobody asked for it.
+  final PropertyTrack<int> ink;
+
+  /// Whether lane [lane] is this effect's [ink].
+  bool inksOn(String lane) => kind.drawsItsOwnPicture && lane == effectInkLane;
+
   /// The named parameter. Non-null for every id the kind declares (the
   /// constructor materializes them); an id from another kind answers a
   /// zero-valued placeholder rather than throwing, so a stale lane address
@@ -515,6 +511,7 @@ class LayerEffect {
     bool? enabled,
     Map<String, EffectParameter>? parameters,
     TransformTrack? stand,
+    PropertyTrack<int>? ink,
   }) {
     return LayerEffect(
       id: id,
@@ -522,6 +519,7 @@ class LayerEffect {
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
       stand: stand ?? this.stand,
+      ink: ink ?? this.ink,
     );
   }
 
@@ -540,25 +538,28 @@ class LayerEffect {
       : null;
 
   /// The keys lane [lane] of this effect holds — a parameter's by its id,
-  /// a stand lane's ([standLaneOf]) — read without knowing their value
-  /// type; null for a lane the effect has not.
+  /// a stand lane's ([standLaneOf]), the [ink]'s — read without knowing
+  /// their value type; null for a lane the effect has not.
   PropertyTrack<Object?>? laneTrack(String lane) => switch (standLaneOf(lane)) {
     final property? => transformLaneOf(stand, property),
+    null when inksOn(lane) => ink,
     null => parameters[lane]?.track,
   };
 
   /// Every lane of this effect, in the order its rows show them: where it
-  /// stands first ([effectStandLanes]), as a transform's lanes lead, then
-  /// its parameters.
+  /// stands first ([effectStandLanes]), as a transform's lanes lead, and
+  /// its [ink], then its parameters.
   List<String> get lanes => [
-    if (kind.drawsItsOwnPicture) ...effectStandLanes,
+    if (kind.drawsItsOwnPicture) ...[...effectStandLanes, effectInkLane],
     for (final spec in effectParametersOf(kind)) spec.id,
   ];
 
   /// Whether this effect carries any animation at all (the lane group
   /// header's key union asks).
   bool get isAnimated =>
-      stand.isNotEmpty || parameters.values.any((value) => value.isAnimated);
+      stand.isNotEmpty ||
+      ink.isNotEmpty ||
+      parameters.values.any((value) => value.isAnimated);
 
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
@@ -572,6 +573,7 @@ class LayerEffect {
           entry.key: entry.value.toJson(),
     },
     if (stand.isNotEmpty) 'stand': stand.toJson(),
+    if (ink.isNotEmpty) 'ink': ink.toJson((value) => value),
   };
 
   factory LayerEffect.fromJson(Map<String, dynamic> json) {
@@ -590,6 +592,10 @@ class LayerEffect {
           ),
       },
       stand: stand == null ? null : TransformTrack.fromJson(stand),
+      ink: PropertyTrack.fromJson(
+        json['ink'] as List?,
+        (value) => (value! as num).toInt(),
+      ),
     );
   }
 
@@ -601,7 +607,8 @@ class LayerEffect {
           other.kind == kind &&
           other.enabled == enabled &&
           mapEquals(other.parameters, parameters) &&
-          other.stand == stand;
+          other.stand == stand &&
+          other.ink == ink;
 
   @override
   int get hashCode => Object.hash(
@@ -613,6 +620,7 @@ class LayerEffect {
         Object.hash(entry.key, entry.value),
     ]),
     stand,
+    ink,
   );
 
   @override
@@ -632,6 +640,7 @@ class ResolvedLayerEffect {
     required this.kind,
     required List<double> values,
     this.stand,
+    this.ink,
   }) : values = List.unmodifiable(values);
 
   final EffectKind kind;
@@ -640,6 +649,10 @@ class ResolvedLayerEffect {
   /// Where a kind that draws its own picture stands it at this frame
   /// ([LayerEffect.stand] sampled); null for every other kind.
   final EffectStand? stand;
+
+  /// The ARGB colour a kind that draws its own picture draws it in at this
+  /// frame ([LayerEffect.ink] sampled); null for every other kind.
+  final int? ink;
 
   double parameter(String id) {
     final specs = effectParametersOf(kind);
@@ -681,13 +694,14 @@ class ResolvedLayerEffect {
       other is ResolvedLayerEffect &&
           other.kind == kind &&
           listEquals(other.values, values) &&
-          other.stand == stand;
+          other.stand == stand &&
+          other.ink == ink;
 
   @override
-  int get hashCode => Object.hash(kind, Object.hashAll(values), stand);
+  int get hashCode => Object.hash(kind, Object.hashAll(values), stand, ink);
 
   @override
-  String toString() => 'ResolvedLayerEffect($kind, $values, $stand)';
+  String toString() => 'ResolvedLayerEffect($kind, $values, $stand, $ink)';
 }
 
 /// Where the picture of an effect that draws its own stands at one time:
@@ -719,6 +733,21 @@ TransformPose effectStandPose(EffectStand stand, CanvasSize paper) =>
       orElse: () => layerIdentityPose(paper),
     );
 
+/// The lane of [LayerEffect.ink] — after where the effect stands, as an SE
+/// name tag's inks follow its letters' size.
+const String effectInkLane = 'ink';
+
+/// What an unkeyed [LayerEffect.ink] draws in: opaque black, the text
+/// tool's own ink (`TextLetterStyle.color`).
+const int effectInkAtRest = 0xFF000000;
+
+/// [ink] at [time], a frame or between two — unkeyed, [effectInkAtRest].
+int effectInkAt(PropertyTrack<int> ink, double time) => ink.resolveAtTime(
+  time: time,
+  orElse: () => effectInkAtRest,
+  space: argbKeySpace,
+);
+
 /// Samples [effects] at [frameIndex], dropping the disabled ones and the
 /// ones that resolve to a no-op. An empty result is the overwhelmingly
 /// common case and every consumer treats it as "no filter work at all".
@@ -743,6 +772,9 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
       ],
       stand: effect.kind.drawsItsOwnPicture
           ? effectStandAt(effect.stand, frameIndex.toDouble())
+          : null,
+      ink: effect.kind.drawsItsOwnPicture
+          ? effectInkAt(effect.ink, frameIndex.toDouble())
           : null,
     );
     if (sample.isNoOp) {
@@ -831,6 +863,7 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
     final stand = transformNamedKeyChanges(old.stand, effect.stand);
     moved('position', stand.position);
     moved('scale', stand.scale);
+    moved(effectInkLane, movedNamedKeys(old.ink, effect.ink));
   }
   return changes;
 }
@@ -923,6 +956,9 @@ LayerEffect? _withNamedValue(
   NamedEffectKeyChange change,
 ) {
   final named = {change.name: change.held};
+  if (effect.inksOn(change.lane)) {
+    return effect.copyWith(ink: effect.ink.withNamedKeys(named.cast()));
+  }
   switch (effect.standLaneOf(change.lane)) {
     case TransformPropertyId.position:
       return effect.copyWith(

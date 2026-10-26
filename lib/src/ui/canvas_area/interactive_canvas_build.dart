@@ -290,6 +290,17 @@ class _InteractiveCanvasBuild {
             session.currentFrameIndex,
           )
         : null;
+    // An effect that draws its own picture declares ITS box (F-477) — on
+    // its own switch, as the transform's box is on the transform's
+    // ([effectBoxedOn]).
+    final effectBox =
+        !_isPlaybackActive &&
+            !isCameraLayerActive &&
+            activeLayer != null &&
+            standing is LaneRowAddress &&
+            standing.layerId == activeLayer.id
+        ? effectBoxedOn(activeLayer.effects, standing.laneId)
+        : null;
     final frame = _HostFrame(
       session: session,
       tool: tool,
@@ -297,7 +308,10 @@ class _InteractiveCanvasBuild {
       boxGrabbable: boxGrabbable,
       inkBounds: inkBounds,
       crossGrabbable: crossGrabbable,
-      referenceBox: _referenceBoxShown(activeLayer, standing, tool),
+      effectBox: effectBox,
+      referenceBox:
+          effectBox == null &&
+          _referenceBoxShown(activeLayer, standing, tool),
       isCameraLayerActive: isCameraLayerActive,
       pathLane: switch (standingLane) {
         final lane? => switch (transformPropertyOfLaneId(lane)) {
@@ -1094,6 +1108,9 @@ class _InteractiveCanvasBuild {
     if (frame.referenceBox) {
       return _state._referenceBox(frame, viewport, _canvasSize);
     }
+    if (frame.effectBox != null) {
+      return _state._effectBox(frame, viewport, _canvasSize);
+    }
     final layer = frame.activeLayer;
     if (layer == null || !(frame.boxGrabbable || frame.crossGrabbable)) {
       return const SizedBox.shrink();
@@ -1181,6 +1198,7 @@ class _HostFrame {
     required this.boxGrabbable,
     required this.inkBounds,
     required this.crossGrabbable,
+    required this.effectBox,
     required this.referenceBox,
     required this.isCameraLayerActive,
     required this.pathLane,
@@ -1205,6 +1223,11 @@ class _HostFrame {
   /// The active row's reference fx box stands on the canvas (I-68) — the
   /// file it shows, where its reference says (`_referenceBoxShown`).
   final bool referenceBox;
+
+  /// The effect of the active row whose own picture the canvas's box
+  /// drives — a cel number's letters, while its header or where it stands
+  /// is stood on (F-477, [effectBoxedOn]); null on every other lane.
+  final LayerEffect? effectBox;
 
   /// The active layer's ink at the playhead, while [boxGrabbable] or
   /// [crossGrabbable] — null on a cel that shows nothing.

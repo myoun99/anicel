@@ -5,7 +5,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/brush_frame_key.dart';
+import '../models/cel_number_letters.dart' show celNumberText;
 import '../models/layer_effect.dart';
+import '../services/cel_numbered_row.dart' show celNumberLettersOf;
+import 'text/cel_number_paint.dart' show celNumberBox;
+import 'timeline/effect_lane_policy.dart'
+    show effectBoxedOn, effectGroupLaneId;
 import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
@@ -149,6 +154,11 @@ typedef _ShownSpace = ({
 /// the whole [space] it is posed in, which stands in for a picture with
 /// nothing in it (F-387 ③).
 typedef _RowPicture = ({Rect? drawn, Rect space});
+
+/// One edit of a transform track at a frame — what a canvas handle's drag
+/// makes of the track it drives ([_EditorCanvasAreaState._handleLandings]).
+typedef _TrackEdit =
+    TransformTrack Function(TransformTrack track, int frameIndex);
 
 /// A row's [lane] — its transform [property] — whose keys walk a path, as
 /// the canvas shows it: its frames [axisOffset] ahead of the cut's, its
@@ -1111,26 +1121,44 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   RowBoxLanding<T> _handleLandings<T>(
     EditorSessionManager session,
     LayerId layerId,
-    TransformTrack Function(TransformTrack track, int frameIndex) Function(
-      T value,
-    )
-    editOf, {
+    _TrackEdit Function(T value) editOf, {
     required String description,
     bool reference = false,
   }) {
     final verbs = session.laneVerbs;
-    final (preview, edit) = reference
-        ? (verbs.previewReferenceFxAtPlayhead, verbs.editReferenceFxAtPlayhead)
-        : (
-            verbs.previewLayerTransformAtPlayhead,
-            verbs.editLayerTransformAtPlayhead,
+    return reference
+        ? _landedThrough(
+            editOf,
+            preview: (edit) =>
+                verbs.previewReferenceFxAtPlayhead(layerId, edit),
+            write: (edit) => verbs.editReferenceFxAtPlayhead(
+              layerId,
+              edit,
+              description: description,
+            ),
+          )
+        : _landedThrough(
+            editOf,
+            preview: (edit) =>
+                verbs.previewLayerTransformAtPlayhead(layerId, edit),
+            write: (edit) => verbs.editLayerTransformAtPlayhead(
+              layerId,
+              edit,
+              description: description,
+            ),
           );
-    return (
-      changed: (value) => preview(layerId, editOf(value)),
-      committed: (value) =>
-          edit(layerId, editOf(value), description: description),
-    );
   }
+
+  /// [editOf]'s ONE edit of a value a handle drags ([_handleLandings]):
+  /// [preview]ed while the handle moves, [write]n when it lets go.
+  static RowBoxLanding<T> _landedThrough<T>(
+    _TrackEdit Function(T value) editOf, {
+    required void Function(_TrackEdit edit) preview,
+    required void Function(_TrackEdit edit) write,
+  }) => (
+    changed: (value) => preview(editOf(value)),
+    committed: (value) => write(editOf(value)),
+  );
 
   /// The active row's transform fx box (F-222 ②): the inside moves its
   /// position, a corner scales it, outside on stage turns it, and the cross
@@ -1345,6 +1373,102 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         ),
         description: 'Rotate $name reference',
         reference: true,
+      ),
+    );
+  }
+
+  /// The box of an effect that draws its own picture — a cel number's
+  /// letters (F-477) — while its header or where it stands is stood on
+  /// ([effectBoxedOn]): the inside moves the letters, a corner or an edge's
+  /// middle scales them, as a row's box moves and scales its picture; no
+  /// turn, the effect keys none (I-65-Q2 「위치/비율 두개 키」). What each
+  /// writes is where the effect stands — ONE key at the playhead, one undo,
+  /// as the row's box writes its transform's. It frames the letters where
+  /// the canvas shows them: on the row's paper, laid where the row is.
+  Widget _effectBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+  ) {
+    final session = frame.session;
+    final at = session.laneVerbs.laneValueSourceAt(
+      _shownRow(session, frame.activeLayer!),
+      session.currentFrameIndex,
+    );
+    final row = at.layer;
+    final effectId = frame.effectBox!.id;
+    final effect = effectBoxedOn(row.effects, effectGroupLaneId(effectId));
+    if (effect == null) {
+      return const SizedBox.shrink();
+    }
+    final number = resolveLayerEffectsAt(
+      effects: [effect],
+      frameIndex: at.frame,
+    ).single;
+    final letters = celNumberLettersOf(
+      number,
+      text: celNumberText(
+        rowName: row.name,
+        drawingName: session.selectedFrame?.name,
+        kind: row.kind,
+      ),
+      paper: canvasSize,
+    );
+    final stand = effectStandPose(number.stand!, canvasSize);
+    final placement = session.frameVerbs.layerCanvasPoseSample(row.id);
+    final back = placement == null ? null : canvasToArtwork(placement);
+    CanvasPoint toCanvas(CanvasPoint point) =>
+        placement?.apply(point) ?? point;
+    CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
+    final box = celNumberBox(letters);
+    final name = row.name;
+    final verbs = session.laneVerbs;
+    RowBoxLanding<T> landing<T>(
+      _TrackEdit Function(T value) editOf, {
+      required String description,
+    }) => _landedThrough(
+      editOf,
+      preview: (edit) =>
+          verbs.previewEffectStandAtPlayhead(row.id, effectId, edit),
+      write: (edit) => verbs.editEffectStandAtPlayhead(
+        row.id,
+        effectId,
+        edit,
+        description: description,
+      ),
+    );
+    return RowTransformBox(
+      corners: [
+        for (final corner in [
+          box.topLeft,
+          box.topRight,
+          box.bottomRight,
+          box.bottomLeft,
+        ])
+          toCanvas(CanvasPoint(x: corner.dx, y: corner.dy)),
+      ],
+      pose: stand.copyWith(center: toCanvas(stand.center)),
+      pasteboard: session.pasteboardOf(canvasSize),
+      viewport: viewport,
+      presses: frame.boxPresses,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: landing<CanvasPoint>(
+        (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
+          track,
+          frameIndex: frameIndex,
+          position: fromCanvas(dropped),
+        ),
+        description: 'Move $name ${effect.kind.label}',
+      ),
+      scale: RowBoxTwoScales(
+        landing<CanvasPoint>(
+          (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
+            track,
+            frameIndex: frameIndex,
+            scale: scale,
+          ),
+          description: 'Scale $name ${effect.kind.label}',
+        ),
       ),
     );
   }

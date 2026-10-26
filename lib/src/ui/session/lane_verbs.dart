@@ -29,9 +29,10 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithLaneKeyToggled,
         effectsWithLaneKeysWritten,
         effectsWithLaneValueEdited,
-        effectsWithRemoved;
+        effectsWithRemoved,
+        effectsWithStandEdited;
 import '../timeline/effect_lane_policy.dart'
-    show effectLaneDisplayOrder, parseEffectLaneId;
+    show effectGroupLaneId, effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/reference_lane_policy.dart'
     show
         laneIsReference,
@@ -871,6 +872,50 @@ class LaneVerbs {
     LayerId layerId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
   ) => _previewAtPlayhead(layerId, edit, reference: true);
+
+  /// A canvas box's drag landing where [effectId] of [layerId] stands its
+  /// picture (F-477): the same ONE key at the playhead a transform's box
+  /// writes, on the effect's own Position and Scale — one undo.
+  void editEffectStandAtPlayhead(
+    LayerId layerId,
+    EffectId effectId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit, {
+    required String description,
+  }) => _commitLaneEdit(
+    _effectStandEditAtPlayhead(layerId, effectId, edit),
+    description: description,
+  );
+
+  /// The effect's box mid-drag: the edit [editEffectStandAtPlayhead] would
+  /// write at the release, shown on the preview channel.
+  void previewEffectStandAtPlayhead(
+    LayerId layerId,
+    EffectId effectId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit,
+  ) => _previewLaneEdit(_effectStandEditAtPlayhead(layerId, effectId, edit));
+
+  /// [edit] of where [effectId] stands, at the playhead on [layerId]'s own
+  /// axis — through the one dispatch every lane verb takes ([_laneEditAt]),
+  /// on the effect's header.
+  ({Layer layer, LaneEdit edit})? _effectStandEditAtPlayhead(
+    LayerId layerId,
+    EffectId effectId,
+    TransformTrack Function(TransformTrack track, int frameIndex) edit,
+  ) => _laneEditAt(
+    layerId,
+    effectGroupLaneId(effectId),
+    _controllers.timelineController.currentFrameIndex,
+    frameIsGlobal: false,
+    edits: (
+      nameTag: (_, _) => null,
+      effects: (_, effects, frame) => effectsWithStandEdited(
+        effects,
+        effectId,
+        (stand) => edit(stand, frame),
+      ),
+      transform: (_, _, _, {required reference}) => null,
+    ),
+  );
 
   /// [edit] of [layerId]'s transform track — its reference fx's where
   /// [reference] says — at the playhead on the row's own axis, committed as

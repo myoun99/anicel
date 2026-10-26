@@ -39,15 +39,14 @@ void main() {
   );
 
   group('the rows', () {
-    test('Position and Scale lead the parameters under the header', () {
+    test('Position and Scale lead the colour under the header', () {
       final rows = effectPropertyLanes([number()], isExpanded: (_) => true);
 
       expect(rows.first.isGroupHeader, isTrue);
       expect(rows.skip(1).map((row) => row.laneId), [
         position,
         scale,
-        for (final spec in effectParametersOf(EffectKind.celNumber))
-          effectLaneId(id, spec.id),
+        effectLaneId(id, effectInkLane),
       ]);
       expect(effectLaneDisplayOrder(number()), [
         for (final row in rows.skip(1)) row.laneId,
@@ -251,7 +250,7 @@ void main() {
     }
     expect(effectLaneWalksAPath(position), isTrue);
     expect(effectLaneWalksAPath(scale), isFalse);
-    expect(effectLaneWalksAPath(effectLaneId(id, 'red')), isFalse);
+    expect(effectLaneWalksAPath(effectLaneId(id, effectInkLane)), isFalse);
   });
 
   group('the keys', () {
@@ -271,21 +270,21 @@ void main() {
       expect(effectLaneKeyCanRove(effects, scale, 4), isFalse);
     });
 
-    test('a parameter\'s never may', () {
-      final red = effectLaneId(id, 'red');
+    test('its colour\'s never may', () {
+      final ink = effectLaneId(id, effectInkLane);
       final keyed = [0, 4, 8].fold(
         [number()],
         (effects, frame) => effectsWithLaneValueEdited(
           effects,
-          laneId: red,
+          laneId: ink,
           frameIndex: frame,
-          input: '$frame',
+          input: '#0000${frame}0',
           scaleLinked: false,
         )!,
       );
 
-      expect(keyed.single.parameterOf('red').track.keys, hasLength(3));
-      expect(effectLaneKeyCanRove(keyed, red, 4), isFalse);
+      expect(keyed.single.ink.keys, hasLength(3));
+      expect(effectLaneKeyCanRove(keyed, ink, 4), isFalse);
     });
 
     test('the key window\'s path and roving reach a stand Position', () {
@@ -319,10 +318,7 @@ void main() {
     Layer edited(LayerEffect Function(LayerEffect effect) edit) =>
         row.copyWith(effects: [edit(row.effects.single)]);
     final recoloured = edited(
-      (effect) => effect.withParameter(
-        'red',
-        effect.parameterOf('red').copyWith(value: 9),
-      ),
+      (effect) => effect.copyWith(ink: effect.ink.withKey(0, 0xFF112233)),
     );
     final moved = edited(
       (effect) => effect.copyWith(
@@ -338,7 +334,10 @@ void main() {
     bool kept(Layer after, String lane) =>
         identical(laneRowSlice(row, lane), laneRowSlice(after, lane));
 
+    final ink = effectLaneId(id, effectInkLane);
     expect(kept(recoloured, position), isTrue, reason: 'a colour edit');
+    expect(kept(recoloured, ink), isFalse, reason: 'a colour edit, on Ink');
+    expect(kept(moved, ink), isTrue, reason: 'a Position edit, on Ink');
     expect(kept(moved, scale), isTrue, reason: 'a Position edit, on Scale');
     expect(kept(moved, position), isFalse, reason: 'a Position edit');
   });
