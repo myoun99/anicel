@@ -14,6 +14,10 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/scrollable_of.dart';
@@ -306,4 +310,82 @@ void main() {
       }
     });
   }
+
+  // The LANE columns ride the same sweep: a group's graph, at the end of its
+  // header's name, and a lane's pin, at the end of its row. A drag from one
+  // of them is theirs the same way.
+  group('the lane columns', () {
+    final transform = transformGroupHeaderLane.laneId;
+    final graph = 'timeline-lane-group-graph-l13-$transform';
+    const pins = 'timeline-lane-pin-l13-';
+
+    /// The top layer's lanes open, and its Transform group.
+    Future<EditorSessionManager> pumpOpen(WidgetTester tester) async {
+      final s = await pump(tester);
+      for (final name in [
+        'timeline-lane-toggle-l13',
+        'timeline-lane-group-toggle-l13-$transform',
+      ]) {
+        await tester.tap(find.named(name));
+        await tester.pumpAndSettle();
+      }
+      return s;
+    }
+
+    /// The pins down the open group, top first.
+    List<String> pinsDown(WidgetTester tester) {
+      double topOf(String name) => tester.getCenter(find.named(name)).dy;
+      return [
+        for (final element
+            in find.namedWhere((name) => name.startsWith(pins)).evaluate())
+          nameOf(element)!,
+      ]..sort((a, b) => topOf(a).compareTo(topOf(b)));
+    }
+
+    String pinKey(String pin) =>
+        laneGroupKey(const LayerId('l13'), pin.substring(pins.length));
+
+    for (final kind in const [
+      PointerDeviceKind.mouse,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.touch,
+    ]) {
+      testWidgets('${kind.name}: a graph and a pin hold a drag across the '
+          'rail, and the pins sweep down theirs', (tester) async {
+        final s = await pumpOpen(tester);
+        final scroll = rows(tester);
+        final graphs = s.railView.laneGraphs;
+
+        await drag(tester, tester.getCenter(find.named(graph)), kind, sideways);
+        expect(scroll.offset, 0, reason: 'sideways from the graph scrolled');
+        expect(graphs.value.open.keys, [
+          laneGroupKey(const LayerId('l13'), transform),
+        ]);
+
+        final down = pinsDown(tester);
+        expect(down.length, greaterThanOrEqualTo(4), reason: 'the fixture');
+        await drag(
+          tester,
+          tester.getCenter(find.named(down[0])),
+          kind,
+          sideways,
+        );
+        expect(scroll.offset, 0, reason: 'sideways from a pin scrolled');
+        expect(graphs.value.pinned, {pinKey(down[0])});
+
+        double topOf(String pin) => tester.getCenter(find.named(pin)).dy;
+        final step = Offset(0, topOf(down[2]) - topOf(down[1]));
+        await drag(
+          tester,
+          tester.getCenter(find.named(down[1])),
+          kind,
+          [step, step],
+        );
+        expect(scroll.offset, 0, reason: 'down from a pin scrolled');
+        expect(graphs.value.pinned, {
+          for (final pin in down.take(4)) pinKey(pin),
+        });
+      });
+    }
+  });
 }
