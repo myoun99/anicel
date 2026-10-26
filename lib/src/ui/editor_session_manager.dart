@@ -86,6 +86,7 @@ import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_audio_device.dart' show audioDeviceUnlessTesting;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
+import 'canvas/stroke_in_flight.dart';
 import 'session/cache_budgets.dart';
 import '../services/memory_allowance.dart';
 import '../services/brush_tip_stamp_cache.dart';
@@ -807,7 +808,7 @@ class EditorSessionManager extends ChangeNotifier
     standing: standing,
     folderBands: folderBands,
     renderCaches: renderCaches,
-    brushInputActive: brushInputActive,
+    canvasStroke: canvasStroke,
     dragPreview: dragPreview,
     soundCannotPlay: (filePath) => playbackRig.soundCannotPlay(filePath),
     soundsMoved: () => playbackRig.soundsMoved,
@@ -1559,7 +1560,7 @@ class EditorSessionManager extends ChangeNotifier
   ///     before [editingFrameCursor], the three history listeners before
   ///     [historyManager] at the very end;
   ///   - [LayerStack.dispose] removes ITS OWN listeners from [renderCaches]
-  ///     and [brushInputActive], so it runs before either of them;
+  ///     and [canvasStroke], so it runs before either of them;
   ///   - [historyManager] goes last, after every listener it carries.
   /// A new entry belongs at the END unless it has one of those reasons —
   /// and then the reason is written here.
@@ -1637,6 +1638,7 @@ class EditorSessionManager extends ChangeNotifier
     () => unawaited(movieCels.dispose()),
     standing.dispose,
     _letGoOfTheFilesItHolds,
+    canvasStroke.dispose,
     historyManager.dispose,
   ];
 
@@ -3308,6 +3310,25 @@ class EditorSessionManager extends ChangeNotifier
     } else {
       playbackRig.prerenderScheduler.endInputHold();
     }
+  }
+
+  /// The stroke the main canvas has in flight — what makes the cel it draws
+  /// count as drawn from pen-down (`LayerStack.liveStrokeDraws`), where it
+  /// [StrokeInFlight.paints].
+  ///
+  /// ⛔NOT [brushInputActive] (F-482, 유저 2026-10-27: 「없던 블록에서
+  /// 지우는 동작은 블록 채우지 않도록 근본/구조적으로」): that says a stroke
+  /// is in flight on ANY surface — a sheet's, an eraser's — and read as
+  /// 「the active cel is being drawn」, an eraser on an empty block turned it
+  /// white until the pen lifted, and so did a pen on the timesheet.
+  final ValueNotifier<StrokeInFlight> canvasStroke =
+      ValueNotifier<StrokeInFlight>(StrokeInFlight.none);
+
+  /// The main canvas's stroke goes up or lands: [canvasStroke], and a
+  /// stroke in flight like any surface's ([setBrushInputActive]).
+  void setCanvasStroke(StrokeInFlight stroke) {
+    canvasStroke.value = stroke;
+    setBrushInputActive(stroke != StrokeInFlight.none);
   }
 
   /// R15-⑤: a live STROKE blocks frame seeks, scrubs and cut switches

@@ -20,6 +20,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/session/layer_stack.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -168,7 +169,7 @@ void main() {
       s.selectFrameIndex(0);
       final heard = _hearing(s, _rows);
 
-      s.setBrushInputActive(true);
+      s.setCanvasStroke(StrokeInFlight.paints);
       expect(
         _drawn(s, 'a'),
         isTrue,
@@ -176,7 +177,7 @@ void main() {
       );
       expect(heard(), {'a', 'F'});
 
-      s.setBrushInputActive(false);
+      s.setCanvasStroke(StrokeInFlight.none);
       expect(heard(), {'a', 'F'}, reason: 'and back to grey');
     });
 

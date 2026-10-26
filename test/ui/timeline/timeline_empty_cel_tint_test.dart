@@ -19,6 +19,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -311,7 +312,7 @@ void main() {
       final here = s.activeCutOrNull!;
       final liveRow = s.activeLayer!.id;
       final liveCel = s.activeLayer!.frames.single.id;
-      s.setBrushInputActive(true);
+      s.setCanvasStroke(StrokeInFlight.paints);
       expect(s.layerStack.celHoldsAPicture(here, liveRow, liveCel), isTrue);
       expect(
         s.layerStack.celHoldsAPicture(away, liveRow, liveCel),
@@ -410,7 +411,7 @@ void main() {
       expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
       final before = s.layerStack.celTintRevision.value;
 
-      s.setBrushInputActive(true);
+      s.setCanvasStroke(StrokeInFlight.paints);
 
       expect(
         s.layerStack.celHasContentForLayer(layer, 0),
@@ -428,7 +429,7 @@ void main() {
       expect(s.layerStack.celHasContentForLayer(other, 0), isTrue);
 
       final beforeUp = s.layerStack.celTintRevision.value;
-      s.setBrushInputActive(false);
+      s.setCanvasStroke(StrokeInFlight.none);
       expect(
         s.layerStack.celHasContentForLayer(layer, 0),
         isFalse,
@@ -438,6 +439,40 @@ void main() {
         s.layerStack.celTintRevision.value,
         greaterThan(beforeUp),
         reason: 'and the row has to hear it go grey again',
+      );
+    });
+
+    test('F-482: an eraser\'s line, and a pen on a sheet, leave an empty '
+        'block grey — and move no row', () {
+      // 유저 2026-10-27: 「없던 블록에서 지우는 동작은 블록 채우지 않도록
+      // 근본/구조적으로」.
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.createDrawingAtCurrentFrame();
+      final layer = s.activeLayer!;
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
+      final before = s.layerStack.celTintRevision.value;
+
+      s.setCanvasStroke(StrokeInFlight.erases);
+      expect(s.brushInputActive.value, isTrue, reason: 'premise: in flight');
+      expect(
+        s.layerStack.celHasContentForLayer(layer, 0),
+        isFalse,
+        reason: 'an eraser puts nothing on an empty cel',
+      );
+      expect(s.pixelVerbs.canOpenColourEdit, isFalse);
+      s.setCanvasStroke(StrokeInFlight.none);
+
+      // A sheet's pen (the timesheet, the conte, the envelope) is a stroke
+      // in flight, on no cel.
+      s.setBrushInputActive(true);
+      expect(s.layerStack.celHasContentForLayer(layer, 0), isFalse);
+      s.setBrushInputActive(false);
+
+      expect(
+        s.layerStack.celTintRevision.value,
+        before,
+        reason: 'no block changed its answer, so no row may repaint',
       );
     });
 
@@ -458,9 +493,9 @@ void main() {
       );
       final before = s.layerStack.celTintRevision.value;
 
-      s.setBrushInputActive(true);
+      s.setCanvasStroke(StrokeInFlight.paints);
       expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
-      s.setBrushInputActive(false);
+      s.setCanvasStroke(StrokeInFlight.none);
       expect(s.layerStack.celHasContentForLayer(layer, 0), isTrue);
 
       expect(
@@ -560,7 +595,7 @@ void main() {
           layer.id,
           layer.frames.single.id,
         );
-        s.setBrushInputActive(true);
+        s.setCanvasStroke(StrokeInFlight.paints);
         return (s: s, layer: layer, key: key);
       }
 
@@ -568,7 +603,7 @@ void main() {
       /// still down, then the stroke ends.
       void lift(EditorSessionManager s, BrushFrameKey key) {
         s.renderCaches.brushFrameStore.storeBakedSurface(key, surfaceWithInk());
-        s.setBrushInputActive(false);
+        s.setCanvasStroke(StrokeInFlight.none);
       }
 
       test('moves no tint — the line counted the cel from pen-down', () {

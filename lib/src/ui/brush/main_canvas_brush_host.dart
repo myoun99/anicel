@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 import '../canvas/view_hand.dart';
+import '../canvas/stroke_in_flight.dart';
 
 import '../../models/app_input_settings.dart';
 import '../../models/layer_effect.dart';
@@ -327,7 +328,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   final LastStrokeSlot? lastStroke;
 
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
-  final ValueChanged<bool>? onStrokeInputActiveChanged;
+  final ValueChanged<StrokeInFlight>? onStrokeInputActiveChanged;
 
   /// Forwarded to [BrushCanvasPanel]: where the canvas holds up what a
   /// save lands first — see [BrushCanvasPanel.strokeLander].

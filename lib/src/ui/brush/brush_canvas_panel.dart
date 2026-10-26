@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard;
 
 import '../canvas/shown_cels.dart';
+import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
 import '../timeline/memo_token.dart'
     show ByIdentity, ByList, Kept, keptWhileSame;
@@ -1060,10 +1061,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// even while the cut IS armed (I-14) — two questions, two answers.
   final bool runsTheSelectedTool;
 
-  /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
-  /// stroke end/cancel — the session holds prerender warming while a
-  /// stroke is live.
-  final ValueChanged<bool>? onStrokeInputActiveChanged;
+  /// Stroke lifecycle for the host (R13-3): the stroke at pen-down,
+  /// [StrokeInFlight.none] at stroke end/cancel — the session holds
+  /// prerender warming while a stroke is live, and counts the cel a
+  /// painting stroke draws as drawn (F-482).
+  final ValueChanged<StrokeInFlight>? onStrokeInputActiveChanged;
 
   /// Where this panel holds up what a save lands first while it is
   /// mounted — the stroke its view's pen is in and the text in hand
@@ -1148,9 +1150,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The book (F-201): the page its reader is on, kept true to the view.
   late final _CanvasPanelBook _bookState = _CanvasPanelBook(this);
 
-  /// True while a brush stroke is in progress; the viewport gesture layer
-  /// ignores wheel zooms and new pans so they cannot disturb the stroke.
-  bool _strokeActive = false;
+  /// The brush stroke in progress, if any; while one is, the viewport
+  /// gesture layer ignores wheel zooms and new pans so they cannot disturb
+  /// the stroke.
+  StrokeInFlight _stroke = StrokeInFlight.none;
+
+  bool get _strokeActive => _stroke != StrokeInFlight.none;
 
   /// True while a selection marquee/move drag is in progress (P9) — holds
   /// viewport gestures exactly like a stroke.
@@ -1640,7 +1645,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // leaked hold would gate prerendering forever (and a stroke's would
     // hold the playhead). Same for a mid-drag selection interaction.
     if (_strokeActive) {
-      widget.onStrokeInputActiveChanged?.call(false);
+      widget.onStrokeInputActiveChanged?.call(StrokeInFlight.none);
     }
     if (_selectionDragActive) {
       widget.onSelectionInteractionChanged?.call(false);
@@ -2253,14 +2258,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       strokeLander: _viewLander,
       // I-69: the shape tool has the view draw what its drag traced.
       shapeShow: _shapeShow,
-      onActiveStrokeChanged: (active) {
-        if (_strokeActive != active) {
-          widget.onStrokeInputActiveChanged?.call(active);
+      onActiveStrokeChanged: (stroke) {
+        if (_stroke != stroke) {
+          widget.onStrokeInputActiveChanged?.call(stroke);
           // ⛔NOT a setState (2026-09-26): nothing the panel draws reads
           // this — the gesture layer asks for it when an event arrives —
           // and the rebuild it forced rebuilt the whole canvas panel on
           // every pen-down and pen-up.
-          _strokeActive = active;
+          _stroke = stroke;
         }
       },
       // The underlay paints the paper (and the layers below); an opaque

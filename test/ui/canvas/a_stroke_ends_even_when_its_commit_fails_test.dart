@@ -7,6 +7,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 
 /// 🗣️F-196 (유저 2026-09-27): 「이 상황 이후 발생함. 타임라인이 잠금상태?
 /// 룰러쪽 드래그 안먹는데 위아래 이동은 먹힘」.
@@ -35,7 +36,8 @@ void main() {
               layerId: const LayerId('layer-a'),
               frameId: const FrameId('frame-a'),
               inputSettings: () => BrushEditCanvasInputSettings.defaults,
-              onActiveStrokeChanged: strokeLive.add,
+              onActiveStrokeChanged: (stroke) =>
+                  strokeLive.add(stroke != StrokeInFlight.none),
               onSourceStrokeCommitted: (_) {
                 commits += 1;
                 throw StateError('the commit was refused');

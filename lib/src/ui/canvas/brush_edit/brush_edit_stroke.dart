@@ -151,7 +151,9 @@ class _BrushEditStroke {
     _state._activeDrawingPointer = _toolsOwnStroke;
     _state._touchStrokeDownPosition = null;
     _state._touchStrokeCommitted = false;
-    _state.widget.onActiveStrokeChanged?.call(true);
+    _state.widget.onActiveStrokeChanged?.call(
+      StrokeInFlight.of(_state._activeStrokeInputSettings!),
+    );
   }
 
   /// THE PEN'S STROKE IS ARMED — everything it stands on before its first
@@ -165,7 +167,9 @@ class _BrushEditStroke {
     required bool startsInsidePasteboard,
     required int dice,
   }) {
-    _state.widget.onActiveStrokeChanged?.call(true);
+    _state.widget.onActiveStrokeChanged?.call(
+      StrokeInFlight.of(strokeSettings),
+    );
     _armAfresh(
       strokeSettings,
       at: at,
@@ -762,7 +766,7 @@ class _BrushEditStroke {
   );
 
   void endStrokeInput() {
-    _state.widget.onActiveStrokeChanged?.call(false);
+    _state.widget.onActiveStrokeChanged?.call(StrokeInFlight.none);
     _state._pressure.reportReadings();
     clearStrokeInputState();
   }

@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/stroke_in_flight.dart';
 import 'package:anicel/src/ui/canvas/view_hand.dart';
 
 import '../brush_canvas_test_helpers.dart';
@@ -790,7 +791,8 @@ Future<void> _pump(
                   return celAnswer;
                 },
           markMakesItsOwnCel: markMakesItsOwnCel,
-          onActiveStrokeChanged: host.active.add,
+          onActiveStrokeChanged: (stroke) =>
+              host.active.add(stroke != StrokeInFlight.none),
           shapeShow: host.shapeShow,
           strokeLander: host.strokeLander,
           onSourceStrokeCommitted: host.data.add,

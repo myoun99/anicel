@@ -406,7 +406,7 @@ class _InteractiveCanvasBuild {
       lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite
       // warming never shares the UI/raster threads with drawing.
-      onStrokeInputActiveChanged: session.setBrushInputActive,
+      onStrokeInputActiveChanged: session.setCanvasStroke,
       // The canvas holds up, in the session's hand, what a SAVE lands
       // before it snapshots — counted, not the last word ([ViewHand]:
       // a view built anew comes up before the old one goes down).

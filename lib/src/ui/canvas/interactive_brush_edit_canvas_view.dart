@@ -49,6 +49,7 @@ import 'canvas_press.dart';
 import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
+import 'stroke_in_flight.dart';
 import 'view_hand.dart';
 import 'canvas_viewport_offset.dart';
 
@@ -303,7 +304,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   final ValueGetter<BrushEditCanvasInputSettings> inputSettings;
   final ValueChanged<BrushStrokeCommitData> onSourceStrokeCommitted;
   final bool showTransparentBackground;
-  final ValueChanged<bool>? onActiveStrokeChanged;
+
+  /// The stroke this view has in flight, told as it goes up and as it
+  /// lands ([StrokeInFlight.none]).
+  final ValueChanged<StrokeInFlight>? onActiveStrokeChanged;
 
   /// Where this view holds up its [StrokeLander] while it is mounted, and
   /// takes it back when it goes — on the same route as
@@ -614,7 +618,7 @@ class _InteractiveBrushEditCanvasViewState
     if (hadActiveStroke) {
       final notify = widget.onActiveStrokeChanged;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        notify?.call(false);
+        notify?.call(StrokeInFlight.none);
       });
     }
   }

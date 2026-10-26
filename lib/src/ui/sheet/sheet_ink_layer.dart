@@ -32,6 +32,7 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../canvas/stroke_in_flight.dart';
 import '../canvas/view_hand.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../session/sheet_photo_hold.dart';
@@ -1164,8 +1165,10 @@ class _SheetInkLayerState extends State<SheetInkLayer> {
       // F-420: the shape tool's drag lands what it traced in this view.
       shapeShow: _shapeShows.putIfAbsent(window.id, ViewHand.new),
       shiftLine: _shiftLines.putIfAbsent(window.id, ShiftLine.new),
-      onActiveStrokeChanged: (active) =>
-          _windowStroking(window.id, active: active),
+      onActiveStrokeChanged: (stroke) => _windowStroking(
+        window.id,
+        active: stroke != StrokeInFlight.none,
+      ),
       onSourceStrokeCommitted: (strokeData) =>
           _land(window, keeps, strokeData),
     );
