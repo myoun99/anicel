@@ -810,14 +810,54 @@ void aStrokeIsWrittenIntoThePictureShown({
       ),
     ]);
     await tester.pump();
+    final secondStep = store.landingOf(keptByTheCanvas(tester, after));
     expect(
-      store.landingOf(keptByTheCanvas(tester, after)),
+      secondStep,
       isNotNull,
       reason: 'the next stroke is written into the picture under its new '
           'key — not the frame drawn as it stands a step at a time',
     );
 
+    // The next stroke lands as the first did.
     gpu.letAllThrough();
+    await inThePicture(tester, secondStep);
+    final drawnNow = BrushFrameDisplayCacheService(
+      frameStore: cels,
+      canvasSize: canvasSize,
+    ).prepareFramePreview(key).previewSurface;
+    cels.storeBakedSurface(
+      key,
+      BitmapSurface(
+        canvasSize: canvasSize,
+        tileSize: tileSize,
+        tiles: {
+          ...drawnNow.tiles,
+          second: tileOf(second, stroke, (at) => at.dx < 24 && at.dy < 24),
+        },
+      ),
+    );
+    cels.markCelEdited(key);
+    overlay.reset();
+    final next = run.pictures.keyOfStack(nodes, frame);
+    expect(next, isNot(after), reason: '⛔premise: the frame\'s key moved');
+    await pump(
+      tester,
+      run,
+      key: const ValueKey(0),
+      view: view,
+      live: painterOfTheCel(),
+    );
+    expect(
+      await settleAsync(tester, () => store.peek(next) != null),
+      isTrue,
+      reason: 'the picture answers to the frame\'s key after the next stroke',
+    );
+    expect(
+      store.laid,
+      isNot(contains(next)),
+      reason: 'the next stroke\'s landing moves it again, not laid anew',
+    );
+
     await tester.pumpWidget(const SizedBox());
     overlay.dispose();
   }, skip: skipped);

@@ -511,8 +511,11 @@ class _FramePictureViewState extends State<FramePictureView> {
     // up here first, as the move's own, until the change went in under the
     // key a picture moves to: the same texels.
     _repaint.value += 1;
-    // ⛔Not [_held]: the stroke's lift lets go of its overlay in the call
-    // that commits it, and what the picture held of it is no longer shown.
+    // The live rows as they are, not as [_held] last saw them: the stroke's
+    // lift lets go of its overlay in the call that commits it, and what the
+    // picture held of it is stored now — the frame's. (Kept under [_held],
+    // the picture went this view's own until the lift's own patch gave it
+    // back: no screen told the two apart, F-473's mutants 2026-10-26.)
     final to = _keptUnder(key, _live?.tokens);
     if (_standing.whole || !_store.move(from: _keptAs!, to: to)) {
       return false;
