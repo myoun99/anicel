@@ -77,15 +77,24 @@ class OwningAxisGrip extends RecognizerBox<DragGestureRecognizer> {
   @override
   bool get offers => _verb != null;
 
-  @override
-  DragGestureRecognizer makeRecognizer() =>
-      owningDragAlong(axis, debugOwner: this);
+  /// The recogniser's type, as a [RawGestureDetector]'s factory was keyed:
+  /// a grip whose axis changes is handed a new one.
+  Type get _kind => switch (axis) {
+    null => OwningPanGestureRecognizer,
+    Axis.horizontal => OwningHorizontalDragGestureRecognizer,
+    Axis.vertical => OwningVerticalDragGestureRecognizer,
+  };
 
-  /// As a [RawGestureDetector]'s factory was keyed by the recogniser's
-  /// type: a grip whose axis changes is handed a new one.
+  @override
+  DragGestureRecognizer makeRecognizer() => switch (axis) {
+    null => OwningPanGestureRecognizer(debugOwner: this),
+    Axis.horizontal => OwningHorizontalDragGestureRecognizer(debugOwner: this),
+    Axis.vertical => OwningVerticalDragGestureRecognizer(debugOwner: this),
+  };
+
   @override
   bool fits(DragGestureRecognizer recognizer) =>
-      isOwningDragAlong(recognizer, axis);
+      recognizer.runtimeType == _kind;
 
   @override
   void configure(DragGestureRecognizer recognizer) => _verb!(recognizer);

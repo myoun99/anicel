@@ -1,6 +1,5 @@
 import 'package:flutter/gestures.dart'
     show
-        DragGestureRecognizer,
         GestureDisposition,
         GestureMultiDragStartCallback,
         HorizontalDragGestureRecognizer,
@@ -11,7 +10,6 @@ import 'package:flutter/gestures.dart'
         PointerDeviceKind,
         PointerDownEvent,
         VerticalDragGestureRecognizer;
-import 'package:flutter/painting.dart' show Axis;
 
 /// 🚨★★★ **THE LAW: A PRESS THAT LANDS ON A BAR BELONGS TO THAT BAR.**
 ///
@@ -102,36 +100,6 @@ class OwningPanGestureRecognizer extends PanGestureRecognizer {
     double? deviceTouchSlop,
   ) => true;
 }
-
-/// The drag a control that OWNS its drag takes: along [axis] for a bar,
-/// both ways (null) for a handle — the twins above, chosen by the axis.
-///
-/// ⛔ONE choice of twin by axis. The grip box (`OwningAxisGrip`), the dense
-/// rows' grips (`TimelineRowEditChromeLayer`) and the rail's column sweep
-/// (`RailColumnSwipe`, F-475) each made it — three, so it is said here.
-DragGestureRecognizer owningDragAlong(Axis? axis, {Object? debugOwner}) =>
-    _owningTwin(axis).make(debugOwner);
-
-/// Whether [recognizer] is the twin [owningDragAlong] makes for [axis] — a
-/// holder that keeps its recogniser asks it when its axis may have turned.
-bool isOwningDragAlong(DragGestureRecognizer recognizer, Axis? axis) =>
-    recognizer.runtimeType == _owningTwin(axis).kind;
-
-({Type kind, DragGestureRecognizer Function(Object? debugOwner) make})
-_owningTwin(Axis? axis) => switch (axis) {
-  null => (
-    kind: OwningPanGestureRecognizer,
-    make: (owner) => OwningPanGestureRecognizer(debugOwner: owner),
-  ),
-  Axis.horizontal => (
-    kind: OwningHorizontalDragGestureRecognizer,
-    make: (owner) => OwningHorizontalDragGestureRecognizer(debugOwner: owner),
-  ),
-  Axis.vertical => (
-    kind: OwningVerticalDragGestureRecognizer,
-    make: (owner) => OwningVerticalDragGestureRecognizer(debugOwner: owner),
-  ),
-};
 
 /// The MULTI-drag twin, for a `Draggable`: a drag SOURCE — a panel tab's
 /// grip, a media pool row, a brush preset cell — takes the arena on the

@@ -480,7 +480,7 @@ mixin PressClaim on RenderBox {
 /// 「클릭이 버튼이면 스크롤 절대 발생안하게한다」 is not a threshold.
 ///
 /// ★So they are [OwningHorizontalDragGestureRecognizer] and its twin — the
-/// app's existing 「accept on the first movement」 pair, which the sliders and
+/// app's existing 「accept on the first movement」 family, which the sliders and
 /// the swipe columns already ride. ⛔They are NOT re-implemented here: this
 /// file spent a round with two hand-written copies, one per axis, and the day
 /// one of them was wrong the other was too ([[no-copy-to-share]]).

@@ -17,8 +17,7 @@ import 'layer_label_controls.dart'
         layerLanePinSlotWidth,
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
-import '../widgets/axis_bar_gesture.dart'
-    show isOwningDragAlong, owningDragAlong;
+import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
 import 'axis_turn.dart' show partAcross, partAlong;
 import 'timeline_row_edges.dart';
 import 'timeline_visible_range.dart';
@@ -231,11 +230,16 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// 발동시키지않음 … 법 하나로 통일」. A column's button stands its press
   /// down for this drag (the strong claim — [RailSwipeColumnPointer]), so
   /// THIS is what holds the press against the scrollers, and it is the law
-  /// every drag verb on a control keeps ([owningDragAlong]): taken on the
-  /// first movement. ↩️It was a one-axis drag that waited for the device's
-  /// slop along the rail, and a pull ACROSS the rail never reached it — the
-  /// sheet's two-way drag (F-351) took it and scrolled the rows: 「비지블이나
-  /// 어니언은 좌우로하면 위아래 스크롤이 발동」.
+  /// every drag verb on a control keeps: taken on the first movement
+  /// ([OwningPanGestureRecognizer]). ↩️It was a one-axis drag that waited
+  /// for the device's slop along the rail, and a pull ACROSS the rail never
+  /// reached it — the sheet's two-way drag (F-351) took it and scrolled the
+  /// rows: 「비지블이나 어니언은 좌우로하면 위아래 스크롤이 발동」.
+  ///
+  /// ★The twin with NO axis: a move is read for where the pointer IS along
+  /// the rail ([_along]), never for how far it went along it, so one drag
+  /// serves the rail and the x-sheet that is the rail on its side — and a
+  /// pull across the rail holds the press and stays on its row.
   ///
   /// ⛔EVERY DEVICE. ↩️A finger was left out (F-8: the rail had to scroll
   /// under a finger, and a sweep that took every press on the rail killed
@@ -243,7 +247,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// 유저 2026-08-29: 「터치 좌표가 버튼인데 거기서 움직였다고 스크롤이
   /// 발생하는게 심각한 버그야」. The sweep is offered a column's presses
   /// alone now, so a finger off the buttons still scrolls the rail.
-  late DragGestureRecognizer _drag = _sweepDrag();
+  late final DragGestureRecognizer _drag = _sweepDrag();
 
   /// The column the press the drag holds landed on.
   int _pressedColumn = -1;
@@ -403,7 +407,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   }
 
   DragGestureRecognizer _sweepDrag() =>
-      owningDragAlong(widget.axis, debugOwner: this)
+      OwningPanGestureRecognizer(debugOwner: this)
         // 🚨I-1, measured: with the default `DragStartBehavior.start` a
         // swipe MISSES A ROW. The recogniser reports its start where it WON
         // the arena and drops the movement that won as a delta, so no update
@@ -477,15 +481,6 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     _strokes.clear();
     _held.clear();
     _startAlong = null;
-  }
-
-  @override
-  void didUpdateWidget(RailColumnSwipe<TRow> oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!isOwningDragAlong(_drag, widget.axis)) {
-      _drag.dispose();
-      _drag = _sweepDrag();
-    }
   }
 
   @override

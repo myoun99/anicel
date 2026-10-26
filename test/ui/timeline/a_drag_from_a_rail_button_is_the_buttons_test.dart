@@ -274,4 +274,36 @@ void main() {
       );
     });
   }
+
+  // ↩️A column's band reached 4px past its slot either side, and the slots
+  // stand edge to edge — so a button's edge lay in its NEIGHBOUR's band as
+  // well, and the band asked first took the press: the onion pressed by its
+  // edge beside the eye swept the eyes (F-475).
+  for (final column in columns.where((column) => !column.laysRows)) {
+    testWidgets('${column.button}: a press on either edge of the button '
+        'sweeps its own column', (tester) async {
+      final s = await pump(tester);
+      final rowHeight = tester
+          .getRect(find.named('timeline-layer-row-l12'))
+          .height;
+      for (final edge in const ['left', 'right']) {
+        final button = tester.getRect(find.named('${column.button}-l12'));
+        final before = read(s, column);
+        await drag(
+          tester,
+          Offset(
+            edge == 'left' ? button.left + 1 : button.right - 1,
+            button.center.dy,
+          ),
+          PointerDeviceKind.mouse,
+          [Offset(0, rowHeight), Offset(0, rowHeight)],
+        );
+        expect(
+          changedSince(s, column, before),
+          unorderedEquals(['l12', 'l11', 'l10']),
+          reason: 'pressed by its $edge edge',
+        );
+      }
+    });
+  }
 }

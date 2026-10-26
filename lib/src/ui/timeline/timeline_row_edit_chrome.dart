@@ -7,7 +7,10 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../input/hit_gate.dart';
-import '../widgets/axis_bar_gesture.dart' show owningDragAlong;
+import '../widgets/axis_bar_gesture.dart'
+    show
+        OwningHorizontalDragGestureRecognizer,
+        OwningVerticalDragGestureRecognizer;
 import 'axis_turn.dart' show offsetAlong, partAlong, rectAlong;
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
 
@@ -904,10 +907,9 @@ class _TimelineRowEditChromeLayerState
   /// ⛔The claim half is not worn here and does not need to be: it answers
   /// pans that ASK, and the only ones that could hear this press are this
   /// layer's own, which the router gives one target per press.
-  late final DragGestureRecognizer _gripDrag = owningDragAlong(
-    widget.axis,
-    debugOwner: this,
-  );
+  late final DragGestureRecognizer _gripDrag = widget.axis == Axis.horizontal
+      ? OwningHorizontalDragGestureRecognizer(debugOwner: this)
+      : OwningVerticalDragGestureRecognizer(debugOwner: this);
   late final TapGestureRecognizer _addTap = TapGestureRecognizer(
     debugOwner: this,
   );
