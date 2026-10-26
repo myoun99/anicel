@@ -220,9 +220,22 @@ class WritesLand extends RendersHeld {
   @override
   int levelsOf(Object held) => _gpu.levelsOf(held);
 
+  /// Runs once, as the next write is in and before the store hears of it:
+  /// what comes to the screen meanwhile.
+  void Function()? beforeTheNextLands;
+
   @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
-      _gpu.write(held, base, levels);
+  Future<bool> write(
+    Object held,
+    List<BaseWrite> base,
+    LevelWrites? levels,
+  ) async {
+    final written = await _gpu.write(held, base, levels);
+    final meanwhile = beforeTheNextLands;
+    beforeTheNextLands = null;
+    meanwhile?.call();
+    return written;
+  }
 }
 
 /// Why this runner cannot write into a frame's picture, or null when it can.

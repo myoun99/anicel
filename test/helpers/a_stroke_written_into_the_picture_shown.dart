@@ -396,140 +396,164 @@ void aStrokeIsWrittenIntoThePictureShown({
     overlay.dispose();
   }, skip: skipped);
 
-  testWidgets('🚨the next stroke\'s step while the picture moves to the '
-      'frame\'s next key is written into it there, and shows once it is in '
-      '— not left out until the move lands', (tester) async {
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetDevicePixelRatio);
-    const lineage = 'a-step-while-it-moves';
-    final cels = storeWithTheCel();
-    final images = LayerFrameImageCache(frameStore: cels);
-    addTearDown(images.dispose);
-    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
-    BitmapSurfacePainter painterOfTheCel() => BitmapSurfacePainter(
-      surface: BrushFrameDisplayCacheService(
+  for (final painted in [true, false]) {
+    testWidgets('🚨the next stroke\'s step while the picture moves to the '
+        'frame\'s next key is written into it there, and shows once it is in '
+        '— not left out until the move lands'
+        '${painted ? '' : ', nor the frame drawn as it stands where the step '
+                  'came before the move did'}', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      const lineage = 'a-step-while-it-moves';
+      final cels = storeWithTheCel();
+      final images = LayerFrameImageCache(frameStore: cels);
+      addTearDown(images.dispose);
+      final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+      BitmapSurfacePainter painterOfTheCel() => BitmapSurfacePainter(
+        surface: BrushFrameDisplayCacheService(
+          frameStore: cels,
+          canvasSize: canvasSize,
+        ).prepareFramePreview(key).previewSurface,
+        overlayModel: overlay,
+        showTransparentBackground: false,
+        lineage: lineage,
+      );
+      final gpu = WritesLand();
+      final store = FramePictureStore<FramePictureKey>(gpu: gpu);
+      addTearDown(store.dispose);
+      final run = runOf(images, store);
+      final view = CanvasViewport(panX: 8, panY: 4);
+      final before = run.pictures.keyOfStack(nodes, frame);
+
+      await pump(
+        tester,
+        run,
+        key: const ValueKey(0),
+        view: view,
+        live: painterOfTheCel(),
+      );
+      expect(
+        await settleAsync(tester, () => store.bytesOf(before) != null),
+        isTrue,
+        reason: 'LIVENESS: the frame\'s picture is made',
+      );
+      await lendBothClocks(tester, rounds: 2);
+      final first = TileCoord(x: 0, y: 0);
+      overlay.showResultTiles([
+        PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
+      ]);
+      await tester.pump();
+      await inThePicture(
+        tester,
+        store.landingOf(keptByTheCanvas(tester, before)),
+      );
+
+      // The pen lifts while the stroke's last step is on its way: the
+      // picture's move to the frame's next key waits behind it, and what the
+      // lift hands on is patched in under the key it moves to.
+      gpu.holdsRenders = true;
+      addTearDown(gpu.letAllThrough);
+      final last = TileCoord(x: 1, y: 0);
+      final lastStep = tileOf(last, stroke, (at) => at.dx < 24 && at.dy < 8);
+      overlay.showResultTiles([PromotedStrokeTile(last, lastStep, 1)]);
+      await tester.pump();
+      expect(
+        await settleAsync(tester, () => gpu.rendersWaiting == 1),
+        isTrue,
+        reason: '⛔premise: the last step is on its way into the picture',
+      );
+      final drawn = BrushFrameDisplayCacheService(
         frameStore: cels,
         canvasSize: canvasSize,
-      ).prepareFramePreview(key).previewSurface,
-      overlayModel: overlay,
-      showTransparentBackground: false,
-      lineage: lineage,
-    );
-    final gpu = WritesLand();
-    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
-    addTearDown(store.dispose);
-    final run = runOf(images, store);
-    final view = CanvasViewport(panX: 8, panY: 4);
-    final before = run.pictures.keyOfStack(nodes, frame);
-
-    await pump(
-      tester,
-      run,
-      key: const ValueKey(0),
-      view: view,
-      live: painterOfTheCel(),
-    );
-    expect(
-      await settleAsync(tester, () => store.bytesOf(before) != null),
-      isTrue,
-      reason: 'LIVENESS: the frame\'s picture is made',
-    );
-    await lendBothClocks(tester, rounds: 2);
-    final first = TileCoord(x: 0, y: 0);
-    overlay.showResultTiles([
-      PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
-    ]);
-    await tester.pump();
-    await inThePicture(
-      tester,
-      store.landingOf(keptByTheCanvas(tester, before)),
-    );
-
-    // The pen lifts while the stroke's last step is on its way: the
-    // picture's move to the frame's next key waits behind it, and what the
-    // lift hands on is patched in under the key it moves to.
-    gpu.holdsRenders = true;
-    addTearDown(gpu.letAllThrough);
-    final last = TileCoord(x: 1, y: 0);
-    final lastStep = tileOf(last, stroke, (at) => at.dx < 24 && at.dy < 8);
-    overlay.showResultTiles([PromotedStrokeTile(last, lastStep, 1)]);
-    await tester.pump();
-    expect(
-      await settleAsync(tester, () => gpu.rendersWaiting == 1),
-      isTrue,
-      reason: '⛔premise: the last step is on its way into the picture',
-    );
-    final drawn = BrushFrameDisplayCacheService(
-      frameStore: cels,
-      canvasSize: canvasSize,
-    ).prepareFramePreview(key).previewSurface;
-    cels.storeBakedSurface(
-      key,
-      BitmapSurface(
-        canvasSize: canvasSize,
-        tileSize: tileSize,
-        tiles: {
-          ...drawn.tiles,
-          first: tileOf(first, stroke, (_) => true),
-          last: lastStep,
-        },
-      ),
-    );
-    cels.markCelEdited(key);
-    overlay.reset();
-    final after = run.pictures.keyOfStack(nodes, frame);
-    expect(after, isNot(before), reason: '⛔premise: the frame\'s key moved');
-    await pump(
-      tester,
-      run,
-      key: const ValueKey(0),
-      view: view,
-      live: painterOfTheCel(),
-    );
-    expect(
-      store.peek(after),
-      isNull,
-      reason: 'LIVENESS: the picture is still on its way to its next key',
-    );
-
-    final moving = store.landingOf(after);
-    final second = TileCoord(x: 1, y: 1);
-    overlay.showResultTiles([
-      PromotedStrokeTile(
-        second,
-        tileOf(second, stroke, (at) => at.dx < 24 && at.dy < 24),
-        2,
-      ),
-    ]);
-    await tester.pump();
-    final secondStep = store.landingOf(keptByTheCanvas(tester, after));
-    expect(
-      secondStep,
-      isNot(same(moving)),
-      reason: 'the next stroke\'s step is on its way into the picture under '
-          'the key it moves to, behind the move',
-    );
-
-    gpu.letAllThrough();
-    await inThePicture(tester, secondStep);
-    expect(
-      differences(
-        await asItStands(
-          tester,
-          images,
-          picture: after,
-          view: view,
-          live: painterOfTheCel(),
+      ).prepareFramePreview(key).previewSurface;
+      cels.storeBakedSurface(
+        key,
+        BitmapSurface(
+          canvasSize: canvasSize,
+          tileSize: tileSize,
+          tiles: {
+            ...drawn.tiles,
+            first: tileOf(first, stroke, (_) => true),
+            last: lastStep,
+          },
         ),
-        await onScreen(tester),
-      ),
-      isEmpty,
-      reason: 'the step shows once it is in the picture it moved',
-    );
+      );
+      cels.markCelEdited(key);
+      overlay.reset();
+      final after = run.pictures.keyOfStack(nodes, frame);
+      expect(
+        after,
+        isNot(before),
+        reason: '⛔premise: the frame\'s key moved',
+      );
+      await pump(
+        tester,
+        run,
+        key: const ValueKey(0),
+        view: view,
+        live: painterOfTheCel(),
+      );
+      expect(
+        store.peek(after),
+        isNull,
+        reason: 'LIVENESS: the picture is still on its way to its next key',
+      );
 
-    await tester.pumpWidget(const SizedBox());
-    overlay.dispose();
-  }, skip: skipped);
+      final moving = store.landingOf(after);
+      expect(
+        moving,
+        isNotNull,
+        reason: 'the stroke is stored and nothing no cel stores is shown: '
+            'the picture moves to the frame\'s own key',
+      );
+      final second = TileCoord(x: 1, y: 1);
+      void showTheSecondStep() => overlay.showResultTiles([
+        PromotedStrokeTile(
+          second,
+          tileOf(second, stroke, (at) => at.dx < 24 && at.dy < 24),
+          2,
+        ),
+      ]);
+      if (painted) {
+        showTheSecondStep();
+        await tester.pump();
+      } else {
+        // The pen put down again at once: the step is on screen as the last
+        // one's write is in — before the move comes in, painted only after.
+        gpu.beforeTheNextLands = showTheSecondStep;
+        gpu.letAllThrough();
+        await inThePicture(tester, moving);
+      }
+      final secondStep = store.landingOf(keptByTheCanvas(tester, after));
+      expect(
+        secondStep,
+        allOf(isNotNull, isNot(same(moving))),
+        reason: 'the next stroke\'s step is on its way into the picture under '
+            'the key it moves to, behind the move — ⛔not the frame drawn as '
+            'it stands from here, a step at a time',
+      );
+
+      gpu.letAllThrough();
+      await inThePicture(tester, secondStep);
+      expect(
+        differences(
+          await asItStands(
+            tester,
+            images,
+            picture: after,
+            view: view,
+            live: painterOfTheCel(),
+          ),
+          await onScreen(tester),
+        ),
+        isEmpty,
+        reason: 'the step shows once it is in the picture it moved',
+      );
+
+      await tester.pumpWidget(const SizedBox());
+      overlay.dispose();
+    }, skip: skipped);
+  }
 
   testWidgets('🚨a stroke that lands changes nothing on another screen '
       'showing its frame — not the frame without the stroke for a moment', (

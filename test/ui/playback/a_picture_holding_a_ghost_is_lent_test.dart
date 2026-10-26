@@ -125,6 +125,7 @@ void main() {
       FramePictureStore<FramePictureKey> store,
       StackRun run,
       ActiveStrokeOverlayModel overlay,
+      WritesLand gpu,
       FramePictureKey key,
     })
   >
@@ -146,7 +147,8 @@ void main() {
     addTearDown(images.dispose);
     final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
     addTearDown(overlay.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesLand());
+    final gpu = WritesLand();
+    final store = FramePictureStore<FramePictureKey>(gpu: gpu);
     addTearDown(store.dispose);
     final run = runOver(
       images,
@@ -187,7 +189,7 @@ void main() {
       reason: 'LIVENESS: the frame\'s picture is made',
     );
     await lendBothClocks(tester, rounds: 2);
-    return (store: store, run: run, overlay: overlay, key: key);
+    return (store: store, run: run, overlay: overlay, gpu: gpu, key: key);
   }
 
   /// Shows [tile] over the frame and waits for it to be in the picture.
@@ -206,7 +208,7 @@ void main() {
   testWidgets('shown a ghost, a canvas holds its frame\'s picture as its own '
       '— the frame there all the same — and gives it back once the ghost '
       'goes', (tester) async {
-    final (:store, :run, :overlay, :key) = await standing(tester);
+    final (:store, :run, :overlay, gpu: _, :key) = await standing(tester);
     final lent = keptByTheCanvas(tester, key);
 
     await shows(
@@ -231,11 +233,19 @@ void main() {
     await shows(tester, overlay, store, key, overlay.reset);
     expect(store.holds(key), isTrue, reason: 'given back to the frame');
     expect(store.holds(lent), isFalse);
+
+    await tester.pumpWidget(const SizedBox());
+    expect(
+      store.pinnedBytes,
+      0,
+      reason: 'the canvas gone holds nothing on screen: its hold went with '
+          'the picture, lent and given back',
+    );
   }, skip: noFlutterGpu != null);
 
   testWidgets('a canvas that goes with its frame\'s picture lent takes it '
       'along — the frame missing, to be laid as it is', (tester) async {
-    final (:store, :run, :overlay, :key) = await standing(tester);
+    final (:store, :run, :overlay, gpu: _, :key) = await standing(tester);
     final lent = keptByTheCanvas(tester, key);
     await shows(
       tester,
@@ -248,6 +258,35 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(store.settled);
+    expect(store.holds(lent), isFalse, reason: 'let go with the canvas');
+    expect(store.holds(key), isFalse, reason: 'never given back with a ghost');
+    expect(run.pictures.has(frame), isFalse);
+  }, skip: noFlutterGpu != null);
+
+  testWidgets('a canvas that goes while its ghost is on its way into the '
+      'picture takes the picture along — nothing comes in under the key it '
+      'was lent under', (tester) async {
+    final (:store, :run, :overlay, :gpu, :key) = await standing(tester);
+    final lent = keptByTheCanvas(tester, key);
+    gpu.holdsRenders = true;
+    addTearDown(gpu.letAllThrough);
+    overlay.showResultTiles([ghostTile]);
+    await tester.pump();
+    expect(
+      await settleAsync(tester, () => gpu.rendersWaiting == 1),
+      isTrue,
+      reason: '⛔premise: the ghost is on its way into the picture',
+    );
+    expect(store.landingOf(lent), isNotNull, reason: '⛔premise: lent');
+
+    await tester.pumpWidget(const SizedBox());
+    expect(
+      store.landingOf(lent),
+      isNull,
+      reason: 'nothing is on its way to the canvas gone',
+    );
+    gpu.letAllThrough();
+    await lendBothClocks(tester, rounds: 4);
     expect(store.holds(lent), isFalse, reason: 'let go with the canvas');
     expect(store.holds(key), isFalse, reason: 'never given back with a ghost');
     expect(run.pictures.has(frame), isFalse);

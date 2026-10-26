@@ -354,9 +354,12 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (key == _showing && _shown != null) {
       return;
     }
-    // A stroke's landing moves the picture shown to where this view keeps it
-    // ([_keptUnder]) — its own, where the live rows show what no cel stores.
-    final there = _store.peek(key == _moving ? _keptAs! : key);
+    // ⛔Not peeked under this view's own key ([_keptUnder]) where a landing
+    // moved the picture there: it is the one shown already, and the view
+    // goes on as the move's own until it is given back — then taken under
+    // [key]. Peeked there too, no screen told the two apart (F-473's
+    // mutants, 2026-10-26).
+    final there = _store.peek(key);
     if (there != null) {
       _take(key, there);
       return;
@@ -387,9 +390,8 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (identical(there, _shown?.picture)) {
       // ⛔Not let go and taken again: what the picture holds of the live
       // rows it holds under this one, and the next stroke patches in from
-      // there — let go, every stroke after the first would be drawn as it
-      // stands whole, a step at a time; and a picture kept as this view's
-      // own would go with it.
+      // there — let go, a stroke whose first step came before the last
+      // one's landing would be drawn as it stands whole, a step at a time.
       _showing = key;
       _moving = null;
       _drawnOn = _celNow();
