@@ -781,6 +781,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             currentRowHooks: TimelineCurrentRowHooks(
               currentRow: _session.standing.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
+              onSettledPress: _session.clearTimelineSelections,
             ),
             rowDragHooks: _rowDragHooks,
             onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,

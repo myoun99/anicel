@@ -2,6 +2,7 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
+import '../widgets/instant_tap_region.dart';
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
@@ -12,6 +13,7 @@ import 'dart:ui' show ClipOp;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/app_input_settings.dart' show AppInput;
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
@@ -574,21 +576,28 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       ? '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}'
       : '$_keyPrefix-lane-value-field-${layer.id}-${lane.laneId}-$part';
 
-  /// Pressing anywhere on the label stands on this lane. OPAQUE so the
+  /// Pressing anywhere on the label stands on this lane — on the PRESS, as
+  /// the layer row's label picks, so a sweep started here stands here first
+  /// ([TimelineCurrentRowHooks.onStandOnLane], F-476). OPAQUE so the
   /// padding and the gaps stand too; the navigator buttons, the group
-  /// twirl and the value editor sit DEEPER and keep winning the arena,
-  /// which is what makes one press surface over the whole cell safe.
+  /// twirl and the value editor sit DEEPER and claim their own presses
+  /// (`controlOwnsTap`), which is what makes one press surface over the
+  /// whole cell safe.
   Widget _standable(Widget cell) {
-    final stand = widget.currentRowHooks?.onStandOnLane;
+    final hooks = widget.currentRowHooks;
+    final stand = hooks?.onStandOnLane;
     if (stand == null) {
       return cell;
     }
-    return GestureDetector(
+    final settled = hooks?.onSettledPress;
+    return InstantTapRegion(
       key: ValueKey<String>(
         '$_keyPrefix-lane-stand-cell-${layer.id}-${lane.laneId}',
       ),
       behavior: HitTestBehavior.opaque,
-      onTap: () => stand(layer.id, lane.laneId),
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      onTap: (_) => stand(layer.id, lane.laneId),
+      onSettledTap: settled == null ? null : (_) => settled(),
       child: cell,
     );
   }

@@ -993,6 +993,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       LaneRowAddress(layerId, laneId),
                       panel: WorkingPanel.storyboard,
                     ),
+                    onSettledPress: _session.clearTimelineSelections,
                   ),
                   rowDragHooks: _rowDragHooks,
                   // The span half — the select hooks of [_rowDragHooks] only
