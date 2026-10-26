@@ -31,11 +31,37 @@ final class FramePictureKey {
     required this.cutId,
     required this.page,
     required this.signature,
+    this.standingFor,
   });
 
   final CutId cutId;
   final FramePage page;
   final CutFrameCompositeSignature signature;
+
+  /// The screen whose own picture of the frame this is — null for the
+  /// frame's, the one every screen and run asks for.
+  final Object? standingFor;
+
+  /// 🚨[screen]'s own picture of this frame: what the frame stores, with
+  /// what that screen's live rows show over it and no cel stores — a
+  /// stamp's ghost, a stroke on its way (`FramePictureView`). Equal to no
+  /// key another screen can ask for, so what only one screen shows is in
+  /// no picture another reads. ↩️Patched under the frame's own key, a ghost
+  /// the screen left with stayed in the frame's picture, shown wherever the
+  /// frame was shown next (F-473, 유저 2026-10-26 「들고있다가 다른프레임
+  /// 이동하면 남아있음 … 제대로 층 안나눈게 혹시 원인인가?」).
+  FramePictureKey standingOn(Object screen) => FramePictureKey._(
+    cutId: cutId,
+    page: page,
+    signature: signature,
+    standingFor: screen,
+  );
+
+  /// The frame's own key — the one this stands on for a screen
+  /// ([standingOn]), or this.
+  FramePictureKey get ofTheFrame => standingFor == null
+      ? this
+      : FramePictureKey._(cutId: cutId, page: page, signature: signature);
 
   @override
   bool operator ==(Object other) =>
@@ -43,14 +69,17 @@ final class FramePictureKey {
       other is FramePictureKey &&
           other.cutId == cutId &&
           other.page == page &&
-          other.signature == signature;
+          other.signature == signature &&
+          identical(other.standingFor, standingFor);
 
   @override
-  int get hashCode => Object.hash(cutId, page, signature);
+  int get hashCode =>
+      Object.hash(cutId, page, signature, identityHashCode(standingFor));
 
   @override
   String toString() =>
-      'FramePictureKey(cutId: $cutId, page: $page, signature: $signature)';
+      'FramePictureKey(cutId: $cutId, page: $page, signature: $signature'
+      '${standingFor == null ? '' : ', standing for $standingFor'})';
 }
 
 /// The key of the picture [nodes] — a stack of [cutId]'s, drawn on

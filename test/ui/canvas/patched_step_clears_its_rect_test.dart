@@ -185,7 +185,7 @@ void main() {
         overlay.updateRegion(source: rasterizer, region: region);
       });
       await tester.pump();
-      final landing = patched.landingOf(shown);
+      final landing = patched.landingOf(keptByTheCanvas(tester, shown));
       expect(
         landing,
         isNotNull,

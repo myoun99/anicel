@@ -174,8 +174,17 @@ class FramePictures implements PlaybackPictures {
   bool gaveUpAt(FramePictureKey key) =>
       !_isThere(key) && _gaveNothing.containsKey(key);
 
+  /// 🚨A FRAME WHOSE PICTURE A CANVAS HOLDS AS ITS OWN IS THERE — lent while
+  /// the canvas shows what no cel stores over it ([FramePictureKey
+  /// .standingOn]), and given back under the frame's key once it does not.
+  /// ⛔Not missing meanwhile: a walk would lay the frame on screen again,
+  /// and the picture given back would take a key another holds (F-473).
   bool _isThere(FramePictureKey key) =>
-      store.holds(key) || drawsOnlyItsPage(key);
+      store.holds(key) ||
+      store.holdsWhere(
+        (held) => held.standingFor != null && held.ofTheFrame == key,
+      ) ||
+      drawsOnlyItsPage(key);
 
   @override
   bool has(DemandedPicture picture) => _isThere(keyOf(picture));

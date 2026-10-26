@@ -217,6 +217,12 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// The key a stroke's landing is moving the picture shown to.
   FramePictureKey? _moving;
 
+  /// The key the store keeps the picture shown under: the frame's own
+  /// where it holds what the frame stores, and this view's
+  /// ([FramePictureKey.standingOn]) where it holds what only the live rows
+  /// show ([_keptUnder]).
+  FramePictureKey? _keptAs;
+
   /// The key this view asked to be made ([FramePictureView.laysWhatItMisses]).
   FramePictureKey? _making;
 
@@ -348,7 +354,9 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (key == _showing && _shown != null) {
       return;
     }
-    final there = _store.peek(key);
+    // A stroke's landing moves the picture shown to where this view keeps it
+    // ([_keptUnder]) — its own, where the live rows show what no cel stores.
+    final there = _store.peek(key == _moving ? _keptAs! : key);
     if (there != null) {
       _take(key, there);
       return;
@@ -376,25 +384,32 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// Shows [there], the picture of [key] — the one shown already where a
   /// stroke's landing moved it here, what it holds of the live rows kept.
   void _take(FramePictureKey key, FramePicture there) {
-    final moved = identical(there, _shown?.picture);
-    final held = _held;
+    if (identical(there, _shown?.picture)) {
+      // ⛔Not let go and taken again: what the picture holds of the live
+      // rows it holds under this one, and the next stroke patches in from
+      // there — let go, every stroke after the first would be drawn as it
+      // stands whole, a step at a time; and a picture kept as this view's
+      // own would go with it.
+      _showing = key;
+      _moving = null;
+      _drawnOn = _celNow();
+      return;
+    }
     final image = there.image.clone();
     _letGo(_store);
     _store.retainPin(key);
+    _keptAs = key;
     _shown = (picture: there, image: image);
     _showing = key;
-    final cel = _celDrawnOn();
-    _drawnOn = cel == null ? null : _pictures.celNow(cel);
-    if (moved) {
-      // ⛔Not let go with the key it left: what the picture holds of the
-      // live rows it holds under this one, and the next stroke patches in
-      // from there — let go, every stroke after the first would be drawn
-      // as it stands whole, a step at a time.
-      _held = held;
-      return;
-    }
+    _drawnOn = _celNow();
     _standing.whole = false;
     _tell();
+  }
+
+  /// The cel the pen is on as the key of the picture shown reads it.
+  CelAsOf? _celNow() {
+    final cel = _celDrawnOn();
+    return cel == null ? null : _pictures.celNow(cel);
   }
 
   /// A frame with nothing of it to wait for — its page alone, or one whose
@@ -494,12 +509,16 @@ class _FramePictureViewState extends State<FramePictureView> {
     // up here first, as the move's own, until the change went in under the
     // key a picture moves to: the same texels.
     _repaint.value += 1;
-    if (_standing.whole || !_store.move(from: from, to: key)) {
+    // ⛔Not [_held]: the stroke's lift lets go of its overlay in the call
+    // that commits it, and what the picture held of it is no longer shown.
+    final to = _keptUnder(key, _live?.tokens);
+    if (_standing.whole || !_store.move(from: _keptAs!, to: to)) {
       return false;
     }
+    _keepAs(to);
     _moving = key;
     unawaited(
-      _store.landingOf(key)!.then((_) {
+      _store.landingOf(to)!.then((_) {
         if (mounted && _moving == key) {
           setState(_look);
         }
@@ -529,12 +548,39 @@ class _FramePictureViewState extends State<FramePictureView> {
       return;
     }
     final now = live.tokens;
-    if (!live.steady ||
-        (now != null && (now.overlay.isNotEmpty || now.previews.isNotEmpty))) {
+    if (!live.steady || _showsUnstored(now)) {
       _standing.whole = true;
       return;
     }
     _held = now;
+  }
+
+  /// Whether the live rows, as [tokens] tell them, show what no cel stores
+  /// — the overlay's tiles, a preview the painter floats.
+  static bool _showsUnstored(LiveSurfaceTokens? tokens) =>
+      tokens != null &&
+      (tokens.overlay.isNotEmpty || tokens.previews.isNotEmpty);
+
+  /// The key the picture of [key] is kept under once it holds the live
+  /// rows as [tokens] tell them: [key] where they show nothing no cel
+  /// stores, else this view's own ([FramePictureKey.standingOn]) — a
+  /// picture under the frame's key is the frame, for every screen that
+  /// asks for it.
+  FramePictureKey _keptUnder(
+    FramePictureKey key,
+    LiveSurfaceTokens? tokens,
+  ) => _showsUnstored(tokens) ? key.standingOn(this) : key;
+
+  /// The picture shown is kept under [key] from here on — held there for
+  /// this view.
+  void _keepAs(FramePictureKey key) {
+    final kept = _keptAs!;
+    if (key == kept) {
+      return;
+    }
+    _store.retainPin(key);
+    _store.releasePin(kept);
+    _keptAs = key;
   }
 
   /// What the live rows moved since the picture shown last held them goes
@@ -611,13 +657,15 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (rect.isEmpty) {
       return;
     }
-    if (!_store.patch(from: key, to: key, rect: rect, draw: drawing.draw)) {
+    final to = _keptUnder(key, _held);
+    if (!_store.patch(from: _keptAs!, to: to, rect: rect, draw: drawing.draw)) {
       _standing.whole = true;
       return;
     }
+    _keepAs(to);
     // Shown once its texels are in the picture, at every level.
     unawaited(
-      _store.landingOf(key)!.then((_) {
+      _store.landingOf(to)!.then((_) {
         if (mounted) {
           _repaint.value += 1;
         }
@@ -626,15 +674,24 @@ class _FramePictureViewState extends State<FramePictureView> {
   }
 
   /// Lets go of what is shown, and of [store]'s hold on its picture.
+  ///
+  /// A picture kept as this view's own goes with it: what it holds past
+  /// the frame's stored pixels is no picture of the frame's
+  /// ([FramePictureKey.standingOn]).
   void _letGo(FramePictureStore<FramePictureKey> store) {
     if (_shown case (:final image, picture: _)) {
       image.dispose();
-      store.releasePin(_showing!);
+      final kept = _keptAs!;
+      store.releasePin(kept);
+      if (kept.standingFor != null) {
+        store.letGo(kept);
+      }
     }
     _shown = null;
     _asItStands = null;
     _showing = null;
     _moving = null;
+    _keptAs = null;
     _held = null;
   }
 

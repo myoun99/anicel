@@ -90,6 +90,16 @@ Finder theFramesPicture({Finder? within}) {
       .first;
 }
 
+/// The key [frame]'s picture is kept under by the canvas standing on it
+/// while it holds what only the canvas's live rows show — a step on its
+/// way, a ghost ([FramePictureKey.standingOn]) — the frame's own picture
+/// under [view] where a test names one.
+FramePictureKey keptByTheCanvas(
+  WidgetTester tester,
+  FramePictureKey frame, {
+  Finder? view,
+}) => frame.standingOn(tester.state(view ?? theFramesPicture()));
+
 /// [view] on a screen of its own, [size] logical pixels at the window's
 /// top left over [under] — what [screen] shows ([shotOf]).
 Widget onAScreen(

@@ -102,6 +102,9 @@ class FramePictureStore<K extends Object> {
   /// screen drew last.
   bool holds(K key) => _entries.containsKey(key);
 
+  /// [holds] for every key [test] passes: whether any is there.
+  bool holdsWhere(bool Function(K key) test) => _entries.keys.any(test);
+
   /// The bytes [key]'s picture holds ([estimatedBytes]' word), or null
   /// where there is none — what a warmer's walk weighs the window by; no
   /// use of the picture either ([holds]).
@@ -273,6 +276,15 @@ class FramePictureStore<K extends Object> {
     letGo: (entry) => _letGo(entry.value),
     laterThan: laterThan,
   );
+
+  /// Lets go of [key]'s picture — under every key it answers to, and the
+  /// one a patch is moving it to — and answers whoever waits on it.
+  void letGo(K key) {
+    final entry = _entries[key] ?? _becoming[key]?.entry;
+    if (entry != null) {
+      _letGo(entry);
+    }
+  }
 
   /// Declares a holder of [key]'s picture — one the screen draws. Balanced
   /// by [releasePin]; counts nest.

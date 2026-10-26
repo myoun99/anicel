@@ -274,7 +274,7 @@ void aStrokeIsWrittenIntoThePictureShown({
           ),
         ]);
         await tester.pump();
-        final step = store.landingOf(picture);
+        final step = store.landingOf(keptByTheCanvas(tester, picture));
         expect(
           step,
           isNotNull,
@@ -367,7 +367,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     ]);
     await tester.pump();
     expect(
-      store.landingOf(picture),
+      store.landingOf(keptByTheCanvas(tester, picture)),
       isNull,
       reason: '⛔premise: a picture does not grow — no patch goes past it',
     );
@@ -440,7 +440,10 @@ void aStrokeIsWrittenIntoThePictureShown({
       PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
     ]);
     await tester.pump();
-    await inThePicture(tester, store.landingOf(before));
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, before)),
+    );
 
     // The pen lifts while the stroke's last step is on its way: the
     // picture's move to the frame's next key waits behind it, and what the
@@ -499,7 +502,7 @@ void aStrokeIsWrittenIntoThePictureShown({
       ),
     ]);
     await tester.pump();
-    final secondStep = store.landingOf(after);
+    final secondStep = store.landingOf(keptByTheCanvas(tester, after));
     expect(
       secondStep,
       isNot(same(moving)),
@@ -636,7 +639,10 @@ void aStrokeIsWrittenIntoThePictureShown({
     final drawnTile = tileOf(first, stroke, strokeAt.contains);
     overlay.showResultTiles([PromotedStrokeTile(first, drawnTile, 1)]);
     await tester.pump();
-    await inThePicture(tester, store.landingOf(before));
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, before)),
+    );
     final drawn = await otherPaints();
     expect(
       differences(shown, drawn),
@@ -724,7 +730,10 @@ void aStrokeIsWrittenIntoThePictureShown({
       PromotedStrokeTile(first, tileOf(first, stroke, strokeAt.contains), 1),
     ]);
     await tester.pump();
-    await inThePicture(tester, store.landingOf(before));
+    await inThePicture(
+      tester,
+      store.landingOf(keptByTheCanvas(tester, before)),
+    );
 
     // The pen lifts: the stroke is the cel's, and the pen's row is drawn
     // by a painter of what it holds now.
@@ -778,7 +787,7 @@ void aStrokeIsWrittenIntoThePictureShown({
     ]);
     await tester.pump();
     expect(
-      store.landingOf(after),
+      store.landingOf(keptByTheCanvas(tester, after)),
       isNotNull,
       reason: 'the next stroke is written into the picture under its new '
           'key — not the frame drawn as it stands a step at a time',
