@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -34,6 +35,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectGroupLaneId;
 import 'package:anicel/src/ui/timeline/reference_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
@@ -231,6 +234,29 @@ void main() {
       reason: 'standing on the transform, the box is the layer\'s',
     );
     expect(referenceOf(s, row).poseAt(0).center, CanvasPoint(x: 1200, y: 827));
+    await wrapUp(tester, s);
+  });
+
+  testWidgets('standing on a cel number on the file\'s row, the box is the '
+      'number\'s — the move tool in hand or not (F-477)', (tester) async {
+    final (s, row, tool) = await onTheCanvas(tester);
+    s.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+    final number = s.layerById(row.id)!.effects.single;
+    expect(number.kind, EffectKind.celNumber, reason: '⛔전제');
+
+    for (final inHand in [CanvasTool.brush, CanvasTool.move]) {
+      tool.value = tool.value.copyWith(tool: inHand);
+      s.standOnRow(LaneRowAddress(row.id, effectGroupLaneId(number.id)));
+      await tester.pump();
+      expect(boxOf(tester)?.turn, isNull, reason: '$inHand: no turn');
+      expect(boxOf(tester)?.move, isNotNull, reason: '$inHand');
+    }
+    boxOf(tester)!.move!.committed(CanvasPoint(x: 1200, y: 827));
+    expect(
+      s.layerById(row.id)!.effects.single.stand.position.keyAt(0)?.value,
+      CanvasPoint(x: 1200, y: 827),
+    );
+    expect(referenceOf(s, row).fx.isEmpty, isTrue, reason: 'the file stays');
     await wrapUp(tester, s);
   });
 

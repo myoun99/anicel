@@ -20,6 +20,8 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
+    show PlaybackScope;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
@@ -196,6 +198,27 @@ void main() {
     final box = boxOf(tester)!;
     expect(box.corners[2].x - box.corners[0].x, closeTo(width * 2, 1e-6));
     expectPoint(middleOf(box), CanvasPoint(x: 1170, y: 827));
+    await wrapUp(tester, s);
+  });
+
+  test('only an effect that draws its own picture brings a box', () {
+    const blur = EffectId('blur');
+    final effects = [LayerEffect.defaults(id: blur, kind: EffectKind.blur)];
+    expect(effectBoxedOn(effects, effectGroupLaneId(blur)), isNull);
+    expect(effectBoxedOn(effects, effectLaneId(blur, 'blurX')), isNull);
+  });
+
+  testWidgets('a run shows the film: no box while it plays', (tester) async {
+    final (s, row, id) = await onTheCanvas(tester);
+    s.standOnRow(LaneRowAddress(row.id, effectGroupLaneId(id)));
+    await tester.pump();
+    expect(boxOf(tester), isNotNull, reason: '⛔전제');
+
+    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    expect(boxOf(tester), isNull);
+
+    s.playbackRig.playback.stop();
     await wrapUp(tester, s);
   });
 

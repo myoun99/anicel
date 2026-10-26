@@ -554,13 +554,6 @@ class LayerEffect {
     for (final spec in effectParametersOf(kind)) spec.id,
   ];
 
-  /// Whether this effect carries any animation at all (the lane group
-  /// header's key union asks).
-  bool get isAnimated =>
-      stand.isNotEmpty ||
-      ink.isNotEmpty ||
-      parameters.values.any((value) => value.isAnimated);
-
   Map<String, dynamic> toJson() => {
     'id': id.toJson(),
     'kind': kind.toJson(),

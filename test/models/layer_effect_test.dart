@@ -278,7 +278,6 @@ void main() {
         ),
       );
       expect(LayerEffect.fromJson(keyed.toJson()), keyed);
-      expect(keyed.isAnimated, isTrue);
       final bare = LayerEffect.defaults(
         id: const EffectId('n'),
         kind: EffectKind.celNumber,
