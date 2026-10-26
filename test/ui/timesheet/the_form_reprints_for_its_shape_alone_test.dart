@@ -135,20 +135,10 @@ void main() {
       base,
       info: info.copyWith(exposureBarThreshold: () => 3),
     ),
-  };
-
-  // The sheet's shape: its columns, its pages, its header boxes, its frame
-  // rate and the language its words are printed in.
-  final shapes = <String, TimesheetDocumentPainter>{
-    'a column added': form(
-      base.copyWith(
-        layers: [
-          ...base.layers,
-          layer('b', 'B', {0: 48}),
-        ],
-      ),
-    ),
-    // The letter over a column is the layer's name.
+    // The letter over a cel row's column is that row's name — a value, not
+    // the form's (F-485, 유저 2026-10-27: 「A같은 셀 이름은 텍스트 층에
+    // 넣도록」), and a row taking a blank slot prints that letter alone.
+    // ↩️Both were the form's shape until then.
     'a layer renamed': form(
       base.copyWith(
         layers: [
@@ -156,6 +146,19 @@ void main() {
         ],
       ),
     ),
+    'a row in a blank slot': form(
+      base.copyWith(
+        layers: [
+          ...base.layers,
+          layer('b', 'B', {0: 48}),
+        ],
+      ),
+    ),
+  };
+
+  // The sheet's shape: its columns, its pages, its header boxes, its frame
+  // rate and the language its words are printed in.
+  final shapes = <String, TimesheetDocumentPainter>{
     'the frame rate changed': form(base, fps: 30),
     // The same page length, so the rate alone tells the seconds apart.
     'the frame rate changed, the page as long': form(
