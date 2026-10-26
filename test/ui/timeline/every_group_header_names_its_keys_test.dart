@@ -44,6 +44,8 @@ void main() {
           position: placeNamedAtThree(),
           scale: placeNamedAtThree(),
         ),
+        // F-477: and the colour it is written in.
+        ink: PropertyTrack<int>().withKey(3, 0xFF000000).withKeyName(3, 'A'),
       );
       final lanes = effectPropertyLanes([effect], isExpanded: (_) => true);
       expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');

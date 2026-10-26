@@ -68,7 +68,7 @@ void main() {
   final number = LayerEffect(
     id: const EffectId('number'),
     kind: EffectKind.celNumber,
-    parameters: {'red': EffectParameter(value: 255)},
+    ink: PropertyTrack<int>.empty().withKey(0, 0xFFFF0000),
   );
   final blur = LayerEffect(
     id: const EffectId('blur'),
