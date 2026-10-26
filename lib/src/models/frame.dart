@@ -33,11 +33,15 @@ enum InbetweenMark {
 }
 
 /// The mark a drawing without a cel number wears where the number would
-/// stand — mark 2, the filled ● (F-149), drawn as the dot inside a block is
+/// stand — mark 1, the hollow ○, drawn as the mark inside a block is
 /// (유저 2026-09-24), on the sheet, the timeline, the flip HUD, the
 /// storyboard and in a save's notice — on every row but one whose picture
 /// is the layer ([drawingHeadOf]).
-const InbetweenMark unnamedDrawingMark = InbetweenMark.two;
+///
+/// 🗣️F-469 (유저 2026-10-25): 「이름없는 프레임의 기본마크, 앞으로 마크1 사용.
+/// 지금 마크2인 채운 점 사용되고있음. 다른곳도 같은곳있으면 확인해서 법
+/// 통일」. ↩️Mark 2, the filled ● (F-149), until then.
+const InbetweenMark unnamedDrawingMark = InbetweenMark.one;
 
 /// What a drawing's head wears where its block starts: a [word] — its cel
 /// number — or, with none, a [mark].

@@ -13,16 +13,20 @@ enum FrameCountEntry { frames, secondsPlusFrames }
 class AppFrameCountSettings {
   const AppFrameCountSettings({
     this.lastEntry = FrameCountEntry.frames,
-    this.lastEveryMark = InbetweenMark.two,
+    this.lastEveryMark = _firstEveryMark,
   });
 
   final FrameCountEntry lastEntry;
 
   /// The mark the mark-every window last picked — it opens on it, as the
   /// count window opens on [lastEntry]: 🗣️I-130-Q2 (유저 2026-10-25 「창에서
-  /// 마크를 고른다」 — 지난번 고른 것 기억). ● (mark 2) until one is picked,
-  /// the one mark the window laid before marks were two.
+  /// 마크를 고른다」 — 지난번 고른 것 기억).
   final InbetweenMark lastEveryMark;
+
+  /// What it opens on until one is picked: mark 1, the ○ — 🗣️F-469 (유저
+  /// 2026-10-25 「기본마크, 앞으로 마크1 사용 … 다른곳도 같은곳있으면 확인해서
+  /// 법 통일」). ↩️The ●, the one mark the window laid before marks were two.
+  static const InbetweenMark _firstEveryMark = InbetweenMark.one;
 
   AppFrameCountSettings copyWith({
     FrameCountEntry? lastEntry,
@@ -44,7 +48,7 @@ class AppFrameCountSettings {
             FrameCountEntry.frames,
         lastEveryMark:
             InbetweenMark.values.asNameMap()[json['lastEveryMark']] ??
-            InbetweenMark.two,
+            _firstEveryMark,
       );
 
   @override

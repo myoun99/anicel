@@ -496,32 +496,32 @@ void main() {
     await openWindow(tester);
     expect(
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
-      (false, true),
-      reason: 'never picked: the ●, the one mark it laid before',
+      (true, false),
+      reason: 'never picked: the ○ — 🗣️F-469 「기본마크, 앞으로 마크1 사용」',
     );
-    await tester.tap(markPick(InbetweenMark.one));
+    await tester.tap(markPick(InbetweenMark.two));
     await tester.pumpAndSettle();
     expect(
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
-      (true, false),
+      (false, true),
     );
     await typeAndApply(tester, '3');
 
     expect(wornAt(session, idA, 0), {
-      1: InbetweenMark.one,
-      4: InbetweenMark.one,
-      7: InbetweenMark.one,
+      1: InbetweenMark.two,
+      4: InbetweenMark.two,
+      7: InbetweenMark.two,
     });
     expect(
       AppFrameCountSettings.settings.value.lastEveryMark,
-      InbetweenMark.one,
+      InbetweenMark.two,
       reason: 'remembered where a restart reads it',
     );
 
     await openWindow(tester);
     expect(
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
-      (true, false),
+      (false, true),
       reason: '지난번 고른 것 기억',
     );
     session.playbackRig.prerenderScheduler.cancel();
@@ -548,7 +548,7 @@ void main() {
     }
 
     besideTheNumber('mark-every-field');
-    await tester.tap(markPick(InbetweenMark.one));
+    await tester.tap(markPick(InbetweenMark.two));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('mark-every-entry-seconds')));
     await tester.pumpAndSettle();
@@ -557,7 +557,7 @@ void main() {
       AppFrameCountSettings.settings.value,
       const AppFrameCountSettings(
         lastEntry: FrameCountEntry.secondsPlusFrames,
-        lastEveryMark: InbetweenMark.one,
+        lastEveryMark: InbetweenMark.two,
       ),
       reason: 'switching the entry keeps the mark picked, and the other way',
     );

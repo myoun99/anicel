@@ -66,7 +66,7 @@ enum EffectKind {
   /// 적는 거야. 그래서 fx 로 하는 거고」 · 「체인 위치 고정 반대 — 블러 걸고
   /// 싶은 상황을 막는 제한」: a link of the chain like any other, so what
   /// follows it reads the letters too. 10-24 (I-65-Q1 a): 「레이어 이름 + 셀
-  /// 번호(A1) — 이름 없는 그림은 A●」.
+  /// 번호(A1) — 이름 없는 그림은 A●」 — ↩️「A○」 since F-469 (기본마크 = 마크1).
   celNumber('celNumber');
 
   const EffectKind(this.jsonValue);

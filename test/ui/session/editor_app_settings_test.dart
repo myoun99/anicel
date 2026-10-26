@@ -187,12 +187,12 @@ void main() {
       const AppFrameGridSettings(blockFrameLines: true),
     );
     // The count window's entry (I-24-open-entry) and the mark-every window's
-    // mark (I-130-Q2) — seconds+frames and the ○, because frames and the ●
-    // are the defaults a lost store returns.
+    // mark (I-130-Q2) — seconds+frames and the ●, because frames and the ○
+    // are the defaults a lost store returns (F-469).
     appSettingsOf(first).setFrameCountSettings(
       const AppFrameCountSettings(
         lastEntry: FrameCountEntry.secondsPlusFrames,
-        lastEveryMark: InbetweenMark.one,
+        lastEveryMark: InbetweenMark.two,
       ),
     );
     // How the canvas shows a camera's path (I-89 ④) — every field off its
@@ -254,7 +254,7 @@ void main() {
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
           AppFrameCountSettings.settings.value.lastEveryMark ==
-              InbetweenMark.one &&
+              InbetweenMark.two &&
           CameraPathSettings.settings.value.tickEvery == 6 &&
           PixelVerbSettings.settings.value.binarizeThreshold == 179 &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
@@ -273,7 +273,7 @@ void main() {
       AppFrameCountSettings.settings.value,
       const AppFrameCountSettings(
         lastEntry: FrameCountEntry.secondsPlusFrames,
-        lastEveryMark: InbetweenMark.one,
+        lastEveryMark: InbetweenMark.two,
       ),
     );
     expect(

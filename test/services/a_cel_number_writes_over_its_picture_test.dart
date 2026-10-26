@@ -253,7 +253,8 @@ void main() {
     );
     expect(
       lettersOf(drawing(frameName: null, effects: [number('n')])).text,
-      'A●',
+      'A○',
+      reason: '↩️「A●」 until F-469: 「기본마크, 앞으로 마크1 사용」',
     );
   });
 

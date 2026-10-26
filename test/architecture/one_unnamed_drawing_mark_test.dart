@@ -93,11 +93,11 @@ void main() {
     }
     expect(
       text,
-      contains('const InbetweenMark unnamedDrawingMark = InbetweenMark.two;'),
+      contains('const InbetweenMark unnamedDrawingMark = InbetweenMark.one;'),
       reason:
           '🚨유저: 「중간나누기 마크1로서 작동했으면」 — the unnamed drawing '
-          'wears a mark itself, as data, not a glyph of its own; the ● it '
-          'wore is mark 2 since I-130',
+          'wears a mark itself, as data, not a glyph of its own: mark 1, '
+          'the ○ (F-469 「앞으로 마크1 사용」)',
     );
     expect(text, contains("InbetweenMark.one => '○'"));
     expect(
