@@ -124,6 +124,13 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
 
   void _onFieldsChanged() => setState(() {});
 
+  /// The dialogue as typed, which the preview shows and OK keeps: every
+  /// space is a glyph's place on the block, the ends' too. 🗣️F-484 (유저
+  /// 2026-10-27): 「띄어쓰기 할때마다도 라이브로 보여지도록」. ↩️Both
+  /// trimmed it (since 07-09, nobody's order), so a space typed at the end
+  /// showed only once a letter followed it, and OK dropped it.
+  String get _dialogue => _dialogueController.text;
+
   @override
   void dispose() {
     _seNameController.dispose();
@@ -150,7 +157,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
     Navigator.of(context).pop(
       SeInstanceDialogResult(
         seName: _seNameController.text.trim(),
-        dialogue: _dialogueController.text.trim(),
+        dialogue: _dialogue,
         seTypes: _seTypes.shownIn([for (final cut in widget.cuts) cut.id]),
         unlinkedAudioTokens: Set.unmodifiable(_unlinked),
         audioOffsets: Map.unmodifiable({
@@ -303,7 +310,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
       ),
       preview: InstanceEditPreview.se(
         axis: widget.previewAxis,
-        dialogue: _dialogueController.text.trim(),
+        dialogue: _dialogue,
         seName: _seNameController.text.trim(),
       ),
       onSubmit: _submit,
