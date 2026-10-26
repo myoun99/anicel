@@ -593,6 +593,11 @@ void main() {
         reason: mark.name,
       );
       expect((pick.icon, pick.label), (face, editorActionLabel(action)));
+      expect(
+        pressed.shortcuts,
+        [action],
+        reason: 'its tooltip follows its own action\'s live key (I-19)',
+      );
     }
     session.playbackRig.prerenderScheduler.cancel();
   });
