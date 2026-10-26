@@ -149,10 +149,11 @@ void main() {
     ).mark;
     final dot = _marker(
       LayerKind.animation,
-      TimelineCellExposureState.markTwoHeld,
+      TimelineCellExposureState.markOneHeld,
     ).mark;
-    // ↩️The mark the quote calls 마크1 is mark 2 since I-130 swapped the names.
-    expect(head, InbetweenMark.two);
-    expect(dot, InbetweenMark.two);
+    // ↩️The mark the quote calls 마크1 was mark 2 once I-130 swapped the
+    // names; F-469 (유저 2026-10-27) put the unnamed head on mark 1 again.
+    expect(head, InbetweenMark.one);
+    expect(dot, InbetweenMark.one);
   });
 }

@@ -20,8 +20,8 @@ void main() {
     expect(celNumberOf(' \t'), isNull);
   });
 
-  test('no name wears the in-between mark — the filled dot (F-149), one '
-      'mark as DATA (2026-09-24), and mark 2 of two (I-130)', () {
+  test('no name wears the in-between mark — one mark as DATA (2026-09-24), '
+      'and mark 1 of two (F-469)', () {
     // 🗣️유저 2026-09-16: 「일단 이름 없는 기본상태를 속이 찬 동그라미로
     // 통일적용 … 추후 두번째 중간나누기 마크(속이 빈)를 활용할지도
     // 모르겠지만 당장은 제거」. The GLYPHS are pinned here by value — every
@@ -33,8 +33,9 @@ void main() {
     // 🗣️유저 2026-09-24: 「데이터적으로도 같은 취급시키는거 맞지? 중간나누기
     // 마크1로서 작동했으면」 — the unnamed head wears a mark as data, the
     // one the dot inside a block wore. ↩️That mark was named 1 then; I-130
-    // named the filled ● mark 2.
-    expect(unnamedDrawingMark, InbetweenMark.two);
+    // named the filled ● mark 2, and F-469 (유저 2026-10-27) put the
+    // unnamed head on mark 1, the ringed ○.
+    expect(unnamedDrawingMark, InbetweenMark.one);
     expect(drawingHeadOf('A1', kind: cel), (word: 'A1', mark: null));
     expect(drawingHeadOf(null, kind: cel), (
       word: '',

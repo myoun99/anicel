@@ -354,7 +354,11 @@ void main() {
       final [_, disc] = marksOf(InbetweenMark.two).toList();
       expect(ring.line, closeTo(inbetweenMarkRingWidth, 1e-9));
       expect(disc.line, isNull, reason: 'mark 2 is filled');
-      expect(head.line, isNull, reason: 'the unnamed head wears mark 2');
+      expect(
+        head.line,
+        closeTo(inbetweenMarkRingWidth, 1e-9),
+        reason: 'the unnamed head wears mark 1 (F-469)',
+      );
       expect(ring.center, disc.center);
       expect(ring.size, _sizeNear(disc.size));
       expect(ring.color, disc.color);
@@ -731,7 +735,11 @@ void main() {
       reason: 'the small one — the sheet\'s dot',
     );
     expect(dot.size, _sizeNear(head.size));
-    expect(head.line, isNull, reason: 'the unnamed head wears mark 2');
+    expect(
+      head.line,
+      closeTo(inbetweenMarkRingWidth, 1e-9),
+      reason: 'the unnamed head wears mark 1 (F-469)',
+    );
     expect(
       dot.line,
       dotMark == InbetweenMark.one
