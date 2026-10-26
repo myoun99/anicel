@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/audio_sync_settings.dart';
 import '../../models/working_panel.dart';
 import '../camera/camera_view_toggle_button.dart';
 import '../editor_session_manager.dart';
@@ -82,26 +81,19 @@ class FramePanelTransport extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ValueListenableBuilder<AudioSyncSettings>(
-          valueListenable: session.appSettings.audioSyncSettings,
-          builder: (context, audio, _) => PlaybackTransportControls(
-            controller: session.playbackRig.playback,
-            scope: transport.scope,
-            playbackStartFrame: transport.startFrame,
-            onSkipToStart: transport.skipToStart,
-            resolveMeterPeaks: () =>
-                session.playbackRig.audioDeviceTransport.meterPeaks,
-            isVoiceRecording: session.voiceRecording.isVoiceRecording,
-            onToggleVoiceRecording: () =>
-                toggleVoiceRecordingWithFeedback(context, session),
-            voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
-            resolveStrings: () => session.uiStrings,
-            playsWithout:
-                session.playbackRig.audioDeviceTransport.playsWithout,
-            playbackLevel: audio.playbackLevel,
-            onPlaybackLevelChanged: session.playbackRig.setPlaybackLevel,
-            onPlaybackLevelSettled: session.playbackRig.settlePlaybackLevel,
-          ),
+        PlaybackTransportControls(
+          controller: session.playbackRig.playback,
+          scope: transport.scope,
+          playbackStartFrame: transport.startFrame,
+          onSkipToStart: transport.skipToStart,
+          resolveMeterPeaks: () =>
+              session.playbackRig.audioDeviceTransport.meterPeaks,
+          isVoiceRecording: session.voiceRecording.isVoiceRecording,
+          onToggleVoiceRecording: () =>
+              toggleVoiceRecordingWithFeedback(context, session),
+          voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
+          resolveStrings: () => session.uiStrings,
+          playsWithout: session.playbackRig.audioDeviceTransport.playsWithout,
         ),
         CameraViewToggleButton(
           view: session.cameraViewMode,

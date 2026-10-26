@@ -291,10 +291,6 @@ enum AppStrings {
   String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
 
-  /// The canvas's own level, at the end of a frame panel's transport
-  /// (I-85).
-  String get playbackLevelTooltip => _s('playbackLevelTooltip');
-
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
   String get fpsAudioTitleTemplate => _s('fpsAudioTitleTemplate');
@@ -2032,7 +2028,6 @@ enum AppStrings {
     'layerAudioPanHelp':
         'Pan applies on the device mixer path (equal-power law).',
     'audioMute': 'Mute',
-    'playbackLevelTooltip': 'Playback volume',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
@@ -3284,7 +3279,6 @@ enum AppStrings {
     'audioPanLabel': 'パン',
     'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
     'audioMute': 'ミュート',
-    'playbackLevelTooltip': '再生音量',
     'audioSolo': 'ソロ',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
@@ -4967,7 +4961,6 @@ enum AppStrings {
     'audioPanLabel': '팬',
     'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
     'audioMute': '음소거',
-    'playbackLevelTooltip': '재생 음량',
     'audioSolo': '솔로',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
@@ -6642,7 +6635,6 @@ enum AppStrings {
     'layerAudioPanHelp':
         'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioMute': 'Muet',
-    'playbackLevelTooltip': 'Volume de lecture',
     'audioSolo': 'Solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
@@ -8432,7 +8424,6 @@ enum AppStrings {
     'audioPanLabel': '声像',
     'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
     'audioMute': '静音',
-    'playbackLevelTooltip': '播放音量',
     'audioSolo': '独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':

@@ -16,7 +16,6 @@ import '../text/text_measure.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_tooltip.dart';
-import '../widgets/sound_level_bar.dart';
 import '../widgets/tick_layer.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
@@ -118,22 +117,10 @@ class PlaybackTransportControls extends StatelessWidget {
     this.voiceRecordClipLit,
     this.resolveStrings,
     this.playsWithout,
-    this.playbackLevel,
-    this.onPlaybackLevelChanged,
-    this.onPlaybackLevelSettled,
   });
 
   final CanvasPlaybackController controller;
   final PlaybackScope scope;
-
-  /// How loud the canvas plays, 0..1 (I-85): non-null stands its bar at the
-  /// row's end, right of the level meter — the output's meter, then the
-  /// output's level (유저 2026-10-24 Q2 「레벨 미터 오른쪽(줄 끝)」).
-  final double? playbackLevel;
-
-  /// Every step of the bar under the hand, and once where it lets go.
-  final ValueChanged<double>? onPlaybackLevelChanged;
-  final ValueChanged<double>? onPlaybackLevelSettled;
 
   /// What the device transport's run plays without
   /// ([AudioDeviceTransport.playsWithout]) — the front slot counts the
@@ -241,31 +228,12 @@ class PlaybackTransportControls extends StatelessWidget {
             // holds for what it paints: since T29 a silent meter paints
             // nothing, so the seat costs no chrome.
             if (resolveMeterPeaks != null) _meter(controlsThisScope),
-            if (playbackLevel case final level?) _levelBar(level),
             // ⛔The DROP readout is not here any more — it leads the row
             // (T29). Trailing a `min`-width row is exactly what made the
             // buttons move when its digits appeared.
           ],
         );
       },
-    );
-  }
-
-  /// The canvas's level — the bar every sound level in the app is
-  /// ([SoundLevelBar]), named by its tooltip in the program's language.
-  Padding _levelBar(double level) {
-    final strings = resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
-    return Padding(
-      padding: const EdgeInsets.only(left: 6),
-      child: AppTooltip(
-        message: strings.playbackLevelTooltip,
-        child: SoundLevelBar(
-          keyValue: 'playback-level-bar',
-          level: level,
-          onChanged: onPlaybackLevelChanged,
-          onChangeEnd: onPlaybackLevelSettled,
-        ),
-      ),
     );
   }
 
