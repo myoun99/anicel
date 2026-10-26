@@ -1390,39 +1390,44 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
 
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
 /// entries whose frame has no artwork drop out, and a group left empty by
-/// that drops with them (an empty buffer is a wasted saveLayer).
+/// that drops with them (an empty buffer is a wasted saveLayer) — save one
+/// a cel number is written on, which stands bare ([mapCompositeLeaves]).
 List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
 }) {
-  CutFrameCompositeLayer? surfaceOf(CutFrameCompositeEntry entry) {
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
-      return null;
-    }
-    return CutFrameCompositeLayer(
-      surface: surface,
-      opacity: entry.opacity,
-      blendMode: entry.blendMode,
-      placement: entry.placement,
-      effects: entry.effects,
-    );
-  }
+  CutFrameCompositeLayer? layerOf(
+    CutFrameCompositeRow row,
+    BitmapSurface? Function(CutFrameCompositeEntry entry) surfaceOf,
+  ) => switch (row) {
+    // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
+    // tree for a live row, and only it owns the surface to fill the slot
+    // with; every other route resolves surfaces from stored frames.
+    // Reached here it would be a caller handing a live row to a route
+    // that cannot draw it, so it contributes nothing rather than guessing.
+    CutFrameCompositeLiveRow() => null,
+    CutFrameCompositeEntry() => switch (surfaceOf(row)) {
+      final surface? => CutFrameCompositeLayer(
+        surface: surface,
+        opacity: row.opacity,
+        blendMode: row.blendMode,
+        placement: row.placement,
+        effects: row.effects,
+      ),
+      null => null,
+    },
+  };
 
   return List.unmodifiable(
     mapCompositeLeaves(
       resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
-      (row) => switch (row) {
-        // ⛔THIS ROUTE HAS NO LIVE PIXELS. Only the editing stack asks the
-        // tree for a live row, and only it owns the surface to fill the
-        // slot with; every other route resolves surfaces from stored
-        // frames. Reached here it would be a caller handing a live row to
-        // a route that cannot draw it, so it contributes nothing rather
-        // than guessing.
-        CutFrameCompositeLiveRow() => null,
-        CutFrameCompositeEntry() => surfaceOf(row),
-      },
+      (row) => layerOf(
+        row,
+        (entry) => surfaceResolver(entry.layer, entry.frame),
+      ),
+      bare: (row) =>
+          layerOf(row, (_) => BitmapSurface(canvasSize: cut.canvasSize)),
     ),
   );
 }

@@ -384,9 +384,10 @@ class FramePictures implements PlaybackPictures {
 
   /// The picture [nodes] — a stack of [picture]'s frame — draw as their
   /// cels stand now: each cel the picture is made of ([_drawn]) from its
-  /// stored pixels. A cel found here unreadable, or held at another canvas
-  /// size, is noted and drawn without — so the key asked after this
-  /// ([keyOfStack]) is of the picture it gave.
+  /// stored pixels, and none of any other — a row a cel number is written
+  /// on stands bare ([stackedFrameOf]). A cel found here unreadable, or
+  /// held at another canvas size, is noted and drawn without — so the key
+  /// asked after this ([keyOfStack]) is of the picture it gave.
   ///
   /// ⚠️Reads a cel not in hand on this thread ([readIn] first).
   FrameDrawingNow drawingNow(
@@ -396,10 +397,11 @@ class FramePictures implements PlaybackPictures {
     final page = pageOf(picture);
     (Object, StackTrace)? thrown;
     final frame = stackedFrameOf(
-      _drawnOf(nodes),
+      nodes,
       page: page,
-      surfaceOf: (cel) =>
-          _readNow(cel, page, (error, stack) => thrown ??= (error, stack)),
+      surfaceOf: (cel) => _drawn(cel)
+          ? _readNow(cel, page, (error, stack) => thrown ??= (error, stack))
+          : null,
     );
     return (frame: frame, thrown: thrown);
   }

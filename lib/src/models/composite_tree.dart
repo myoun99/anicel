@@ -205,13 +205,14 @@ final class CompositeCelNumber<L> extends CompositeNode<L> {
 
   /// The row the letters are written on — ⚠️THE SAME NODE as the leaf that
   /// paints it, as [CompositeOpaque.of] is its base: a route asks the row's
-  /// payload where it lies. The folds keep it so ([mapCompositeLeaves]); a
-  /// row that maps to nothing takes its letters with it.
+  /// payload where it lies. The folds keep it so ([mapCompositeLeaves]);
+  /// where the row has no picture it is the row standing bare, in no other
+  /// place in the tree (F-481).
   final CompositeLeaf<L> on;
 
   final CelNumberLetters letters;
 
-  /// ⛔EMPTY: [on] stands in the tree as its own leaf.
+  /// ⛔EMPTY: [on] stands in the tree as its own leaf, or nowhere.
   @override
   List<CompositeNode<L>> get children => const [];
 }
@@ -491,11 +492,22 @@ List<CompositeNode<L>> onUnderlay<L>(
 /// bearing: a cel with no artwork and an image the cache has not decoded
 /// yet both drop here.
 ///
+/// 🚨A ROW A CEL NUMBER IS WRITTEN ON STANDS though it maps to null: the
+/// number draws a picture of its own, and a block exposed with nothing
+/// drawn on it is there all the same (F-481, 유저 2026-10-26 「빈블록이라도
+/// 존재하면 보이도록 고정 … 이 규칙을 공용화해서 다른곳에서도 적용할예정」).
+/// [bare] is the row as it stands with nothing drawn — the letters are
+/// written on that, and it stands for the row there alone
+/// ([CompositeCelNumber.on]), as nothing of it paints. A route whose [map]
+/// drops no row that is there leaves [bare] out; where it answers null,
+/// the letters go with the row.
+///
 /// Perf: one pass per node per frame — tens of nodes, never per pixel.
 List<CompositeNode<M>> mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
-  M? Function(L payload) map,
-) => _mapCompositeLeaves<L, M>(nodes, map, kept: Map.identity());
+  M? Function(L payload) map, {
+  M? Function(L payload)? bare,
+}) => _mapCompositeLeaves<L, M>(nodes, map, bare: bare, kept: Map.identity());
 
 /// [mapCompositeLeaves], with [kept] the nodes a later node points back at
 /// — a clip's base ([CompositeOpaque.of]), a row a cel number is written on
@@ -504,10 +516,16 @@ List<CompositeNode<M>> mapCompositeLeaves<L, M>(
 List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
   List<CompositeNode<L>> nodes,
   M? Function(L payload) map, {
+  required M? Function(L payload)? bare,
   required Map<CompositeNode<L>, CompositeNode<M>?> kept,
 }) {
   List<CompositeNode<M>> fold(List<CompositeNode<L>> list) =>
-      _mapCompositeLeaves(list, map, kept: kept);
+      _mapCompositeLeaves(list, map, bare: bare, kept: kept);
+  CompositeLeaf<M>? bareOf(CompositeLeaf<L> row) =>
+      switch (bare?.call(row.payload)) {
+        final payload? => CompositeLeaf<M>(payload),
+        null => null,
+      };
   CompositeNode<M>? keptOf(CompositeNode<L> node) =>
       kept.containsKey(node) ? kept[node] : fold([node]).singleOrNull;
   final out = <CompositeNode<M>>[];
@@ -594,8 +612,7 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
           out.add(CompositeOpaque<M>(base));
         }
       case CompositeCelNumber<L>(:final on, :final letters):
-        // A row with no picture here takes its letters with it.
-        if (keptOf(on) case final CompositeLeaf<M> row) {
+        if (keptOf(on) ?? bareOf(on) case final CompositeLeaf<M> row) {
           out.add(CompositeCelNumber<M>(on: row, letters: letters));
         }
     }

@@ -249,8 +249,9 @@ typedef StoredRow = ({CutFrameCompositeLayer layer, int? tint});
 /// the paper as the root's bottom row, folders, adjustments, blends over
 /// their backdrops, effects and poses — with every row drawn from its own
 /// tiles, by the body the live row is drawn with ([_PaintCelSurface], from
-/// what [storedRowOf] hands for it). No second compositor: a frame's
-/// picture is what the canvas would show of it.
+/// what [storedRowOf] hands for it) — or, for a row a cel number is written
+/// on with none, [bareRowOf]'s ([mapCompositeLeaves]). No second
+/// compositor: a frame's picture is what the canvas would show of it.
 ///
 /// Under [live], the rows a canvas that stands holds live are drawn as it
 /// draws them ([_liveRowOf]) — the frame AS IT STANDS, what a still
@@ -270,19 +271,25 @@ final class StackedFrame {
     List<CompositeNode<CanvasStackRow>> nodes, {
     required FramePage page,
     required StoredRow? Function(CanvasStackRow row) storedRowOf,
+    required StoredRow? Function(CanvasStackRow row) bareRowOf,
     ({LiveRows rows, LiftedRowPainters painters})? live,
   }) {
-    final drawn = mapCompositeLeaves<CanvasStackRow, _PaintRow>(nodes, (row) {
-      if (live != null) {
-        if (_liveRowOf(row, live.rows, live.painters) case final row?) {
-          return row;
+    _PaintRow? paintOf(StoredRow? row) => switch (row) {
+      final stored? => _PaintCelSurface(stored),
+      null => null,
+    };
+    final drawn = mapCompositeLeaves<CanvasStackRow, _PaintRow>(
+      nodes,
+      (row) {
+        if (live != null) {
+          if (_liveRowOf(row, live.rows, live.painters) case final row?) {
+            return row;
+          }
         }
-      }
-      return switch (storedRowOf(row)) {
-        final stored? => _PaintCelSurface(stored),
-        null => null,
-      };
-    });
+        return paintOf(storedRowOf(row));
+      },
+      bare: (row) => paintOf(bareRowOf(row)),
+    );
     final liftedRows =
         live?.painters._drawn(live.rows.liftedRows) ??
         const <BrushFrameKey, _LiftedRowPaint>{};

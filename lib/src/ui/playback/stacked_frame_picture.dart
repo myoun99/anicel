@@ -119,16 +119,18 @@ FramePictureKey framePictureKeyOf(
 
 /// [nodes] on [page] as the canvas's own body draws them ([StackedFrame]):
 /// every row from its cel's stored surface ([surfaceOf]) — save, under
-/// [live], the rows a canvas that stands holds live.
+/// [live], the rows a canvas that stands holds live. A row with none that
+/// a cel number is written on stands bare ([mapCompositeLeaves]).
 StackedFrame stackedFrameOf(
   List<CompositeNode<CanvasStackRow>> nodes, {
   required FramePage page,
   required BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
   ({LiveRows rows, LiftedRowPainters painters})? live,
-}) => StackedFrame.of(
-  nodes,
-  page: page,
-  storedRowOf: (row) {
+}) {
+  StoredRow? rowOf(
+    CanvasStackRow row,
+    BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
+  ) {
     final stacked = _stackedCelOf(row);
     final surface = stacked == null ? null : surfaceOf(stacked.cel);
     return stacked == null || surface == null
@@ -143,9 +145,17 @@ StackedFrame stackedFrameOf(
             ),
             tint: stacked.tint,
           );
-  },
-  live: live,
-);
+  }
+
+  return StackedFrame.of(
+    nodes,
+    page: page,
+    storedRowOf: (row) => rowOf(row, surfaceOf),
+    bareRowOf: (row) =>
+        rowOf(row, (_) => BitmapSurface(canvasSize: page.canvasSize)),
+    live: live,
+  );
+}
 
 /// Every cel [nodes] — a stack of a frame's — draw, bottom to top: the cels
 /// its key is signed by and its drawing reads ([_stackedCelOf]).
@@ -165,14 +175,21 @@ Iterable<BrushFrameKey> stackedCelsOf(
 /// [nodes] with only the rows whose cel the picture is [drawn] of — a row
 /// left out dropped as [mapCompositeLeaves] drops one, by the reading the
 /// key and the drawing take ([_stackedCelOf]), so a picture keyed by what
-/// is left is the picture drawn of it.
+/// is left is the picture drawn of it. One a cel number is written on
+/// stands bare, as what the letters are written on alone: the key signs it
+/// there, and a drawing that reads none of its cel lays it bare
+/// ([stackedFrameOf]).
 List<CompositeNode<CanvasStackRow>> stackOfDrawnCels(
   List<CompositeNode<CanvasStackRow>> nodes, {
   required bool Function(BrushFrameKey cel) drawn,
-}) => mapCompositeLeaves(nodes, (row) {
-  final stacked = _stackedCelOf(row);
-  return stacked == null || drawn(stacked.cel) ? row : null;
-});
+}) => mapCompositeLeaves(
+  nodes,
+  (row) {
+    final stacked = _stackedCelOf(row);
+    return stacked == null || drawn(stacked.cel) ? row : null;
+  },
+  bare: (row) => row,
+);
 
 /// A row of a stack as a frame's picture takes it: the cel it draws, and
 /// how.

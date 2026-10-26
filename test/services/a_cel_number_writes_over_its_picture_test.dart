@@ -220,6 +220,23 @@ void main() {
     expect(nodes.single, isA<_Leaf>());
   });
 
+  test('on a block with nothing drawn the letters are written all the '
+      'same, on the row standing bare — which paints nothing, and stands '
+      'nowhere else in the tree (F-481)', () {
+    List<CompositeNode<CutFrameCompositeLayer>> blankPlanOf(Layer layer) =>
+        planCutFrameCompositeTree(
+          cut: cutOf(layer),
+          frameIndex: 0,
+          surfaceResolver: (_, _) => null,
+        );
+    expect(blankPlanOf(drawing()), isEmpty, reason: 'no number: it drops');
+    final nodes = blankPlanOf(drawing(effects: [number('n')]));
+    final [letters as _Number] = (nodes.single as _Group).children;
+    expect(letters.letters.text, 'A1');
+    expect(letters.on.payload.surface.showsSomething, isFalse);
+    expect(preorderNodes(nodes).whereType<_Leaf>(), isEmpty);
+  });
+
   CelNumberLetters lettersOf(Layer layer) =>
       preorderNodes(planOf(layer)).whereType<_Number>().single.letters;
 
