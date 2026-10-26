@@ -558,7 +558,7 @@ class ExportFrameRenderer {
     return [
       if (renderService.background.a > 0 || paper != null)
         ExportLayerRow(
-          name: AppText.strings.exBackground,
+          name: AppText.notation.exBackground,
           draw: () => drawn(renderService, paper: paper),
         ),
       ...?childrenOf[null],
@@ -1405,7 +1405,7 @@ class ExportFrameRenderer {
           name: name,
           draw: () => drawn(_transparentRenderService, overlayPass: pass),
         );
-    final strings = AppText.strings;
+    final strings = AppText.notation;
     return [
       if (renderService.background.a > 0)
         ExportLayerRow(

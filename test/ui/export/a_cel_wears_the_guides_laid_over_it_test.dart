@@ -247,7 +247,7 @@ void main() {
 
       expect(
         [for (final row in rows) row.name],
-        ['A', AppText.strings.exLayGuides],
+        ['A', AppText.notation.exLayGuides],
       );
       expect(
         (rows.last.opacity, rows.last.blendMode),

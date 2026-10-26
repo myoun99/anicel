@@ -415,11 +415,11 @@ void main() {
 
       final (clear, _) = await written(session, psdSpec());
       expect(layout(onGround), [
-        '${AppText.strings.exBackground} 255 norm shown',
+        '${AppText.notation.exBackground} 255 norm shown',
         ...layout(clear),
       ]);
       expect(
-        rowNamed(onGround, AppText.strings.exBackground).pixels,
+        rowNamed(onGround, AppText.notation.exBackground).pixels,
         only({
           for (var y = 0; y < size.height; y += 1)
             for (var x = 0; x < size.width; x += 1) (x, y): [255, 255, 255, 255],

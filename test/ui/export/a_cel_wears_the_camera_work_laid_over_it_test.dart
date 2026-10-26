@@ -229,7 +229,7 @@ void main() {
 
       expect(
         [for (final row in rows) row.name],
-        [AppText.strings.exBackground, 'A', AppText.strings.tlKindCamera],
+        [AppText.notation.exBackground, 'A', AppText.notation.tlKindCamera],
       );
       expect(
         (rows.last.opacity, rows.last.blendMode),

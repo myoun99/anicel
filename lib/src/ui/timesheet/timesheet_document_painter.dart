@@ -1017,11 +1017,17 @@ class TimesheetDocumentPainter extends CustomPainter
   );
 
   /// What the paper and the form print from — the sheet's SHAPE: the
-  /// columns and the letter over each, the pages, the header boxes, the
-  /// frame rate and the notation. A value typed on the sheet is not in it.
+  /// columns and the letters the form prints over them
+  /// ([TimesheetColumnKind.titleLayer]), the pages, the header boxes, the
+  /// frame rate and the notation. A value typed on the sheet is not in it,
+  /// nor a cel row's name.
   Object get _formShape => (
     ByList([
-      for (final column in document.columns) (column.kind, column.label),
+      for (final column in document.columns)
+        (
+          column.kind,
+          column.kind.titleLayer == SheetPaintLayer.form ? column.label : null,
+        ),
     ]),
     ByList([
       for (final page in document.pages)

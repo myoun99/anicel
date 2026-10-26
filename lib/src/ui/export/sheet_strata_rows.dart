@@ -17,7 +17,8 @@ const List<SheetPaintLayer> paperSheetStrata = [
 /// A sheet's [strata] as a Photoshop document's rows, bottom-up (I-117 —
 /// 유저 2026-10-21: 「타임시트는 알듯이 층 나눠져있는대로 출력. 컷봉투도
 /// 마찬가지. 밑 흰색 용지, 서식, 텍스트들, 잉크 이런식으로」): each drawn
-/// alone by [draw], laid whole, and named as the stratum is.
+/// alone by [draw], laid whole, and named as the stratum is — in the
+/// notation language, as the sheet prints ([AppText.notation]).
 List<ExportLayerRow> sheetStrataRows(
   List<SheetPaintLayer> strata,
   Future<ui.Image> Function(Set<SheetPaintLayer> layers) draw,
@@ -27,9 +28,9 @@ List<ExportLayerRow> sheetStrataRows(
 ];
 
 String _nameOf(SheetPaintLayer stratum) => switch (stratum) {
-  SheetPaintLayer.paper => AppText.strings.exStratumPaper,
-  SheetPaintLayer.form => AppText.strings.exStratumForm,
-  SheetPaintLayer.content => AppText.strings.exStratumContent,
-  SheetPaintLayer.picture => AppText.strings.exStratumPicture,
-  SheetPaintLayer.ink => AppText.strings.exStratumInk,
+  SheetPaintLayer.paper => AppText.notation.exStratumPaper,
+  SheetPaintLayer.form => AppText.notation.exStratumForm,
+  SheetPaintLayer.content => AppText.notation.exStratumContent,
+  SheetPaintLayer.picture => AppText.notation.exStratumPicture,
+  SheetPaintLayer.ink => AppText.notation.exStratumInk,
 };

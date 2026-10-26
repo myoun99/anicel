@@ -20,6 +20,12 @@ abstract final class AppText {
   static AppStrings get strings =>
       AppStrings.of(settings.value.programLanguage);
 
+  /// The NOTATION-language table, read at call time: every word a file an
+  /// export writes carries — a Photoshop document's row names too (F-485,
+  /// 유저 2026-10-27: 「출력물 언어, 표기용 언어에 맞춤」).
+  static AppStrings get notation =>
+      AppStrings.of(settings.value.notationLanguage);
+
   /// The PROGRAM language itself — for the vocabularies that localize
   /// through their own `labelFor` (blend modes, effect kinds) instead of
   /// through a string key.

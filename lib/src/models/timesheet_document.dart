@@ -12,6 +12,7 @@ import 'layer_mark.dart';
 import 'layer_process.dart';
 import 'project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'se_line_type.dart';
+import 'sheet_paint_layer.dart' show SheetPaintLayer;
 import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
@@ -57,7 +58,19 @@ enum TimesheetColumnKind {
   se,
 
   /// A camera-instruction column.
-  camera,
+  camera;
+
+  /// The stratum that prints this kind's column title
+  /// ([TimesheetColumn.label]): a cel row's name — A, B — is a value the
+  /// film holds and prints with the values, while an S slot's and a camera
+  /// slot's letters are the form's own (F-485, 유저 2026-10-27: 「서식은
+  /// 진짜 서식만 있어야함. 그래서 A같은 셀 이름은 텍스트 층에 넣도록. S1이나
+  /// S2 이런 글자는 서식에 있어도 됨」). ↩️Every title printed with the
+  /// form, and a Photoshop document's form row carried the cels' names.
+  SheetPaintLayer get titleLayer => switch (this) {
+    action || cel => SheetPaintLayer.content,
+    se || camera => SheetPaintLayer.form,
+  };
 }
 
 /// One cell of a timesheet column (one frame row).

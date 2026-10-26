@@ -279,7 +279,7 @@ void main() {
 
       expect(
         [for (final row in onWhite) row.name],
-        [AppText.strings.exBackground, 'A', 'A 影'],
+        [AppText.notation.exBackground, 'A', 'A 影'],
       );
       expect(await pictureOf(onWhite.first), only({
         for (var y = 0; y < size.height; y += 1)
@@ -387,7 +387,7 @@ void main() {
             (layer.name, layer.opacity, layer.blendKey),
         ],
         [
-          (AppText.strings.exBackground, 255, 'norm'),
+          (AppText.notation.exBackground, 255, 'norm'),
           ('A', 255, 'norm'),
           ('A 影', 128, 'mul '),
         ],

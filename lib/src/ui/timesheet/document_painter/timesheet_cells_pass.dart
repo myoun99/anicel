@@ -298,34 +298,35 @@ class _TimesheetCellsPass {
     return seRanges;
   }
 
-  /// The column titles on the letter row, when the form draws.
+  /// The group titles, when the form draws, and the column titles on the
+  /// letter row, each where its stratum draws
+  /// ([TimesheetColumnKind.titleLayer]).
   void _paintColumnTitles(Canvas canvas, _HalfFrame sheet) {
     if (_painter._drawForm) {
       _painter._bands.paintGroupTitles(canvas, sheet.left, sheet.columnsTop);
-      for (
-        var column = 0;
-        column < _painter.document.columns.length;
-        column += 1
-      ) {
-        // Unbacked slots print nothing — no placeholder letters.
-        if (_painter.document.columns[column].label.isEmpty) {
-          continue;
-        }
-        final columnLeft =
-            sheet.left + _painter.layout.columnLeftInHalf(column);
-        final columnWidth = _painter.layout.columnWidthFor(
-          _painter.document.columns[column].kind,
-        );
-        _painter._text(
-          canvas,
-          _painter.document.columns[column].label,
-          Offset(columnLeft + columnWidth / 2, sheet.lettersTop + 2),
-          fontSize: 9,
-          color: TimesheetDocumentPainter._ink,
-          centeredAtX: true,
-          maxWidth: columnWidth - 2,
-        );
+    }
+    for (
+      var column = 0;
+      column < _painter.document.columns.length;
+      column += 1
+    ) {
+      final kind = _painter.document.columns[column].kind;
+      // Unbacked slots print nothing — no placeholder letters.
+      if (_painter.document.columns[column].label.isEmpty ||
+          !_painter._draws(kind.titleLayer)) {
+        continue;
       }
+      final columnLeft = sheet.left + _painter.layout.columnLeftInHalf(column);
+      final columnWidth = _painter.layout.columnWidthFor(kind);
+      _painter._text(
+        canvas,
+        _painter.document.columns[column].label,
+        Offset(columnLeft + columnWidth / 2, sheet.lettersTop + 2),
+        fontSize: 9,
+        color: TimesheetDocumentPainter._ink,
+        centeredAtX: true,
+        maxWidth: columnWidth - 2,
+      );
     }
   }
 
