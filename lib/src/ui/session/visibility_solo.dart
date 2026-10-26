@@ -6,6 +6,8 @@ import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
+import '../../services/cut_frame_composite_plan.dart'
+    show clipBaseOf, clipsToLayerBelow;
 import '../../services/project_tree_editor.dart';
 import 'session_roles.dart';
 
@@ -35,10 +37,11 @@ class VisibilitySolo {
   /// The legend eye's SOLO MODE (R4 #7 rework — REAL eye flips, user rule):
   /// engaging it snapshots every row's eye (cut layers + track SE) but the
   /// camera's, the camera view (F-363-Q2), turns every other non-active eye
-  /// OFF and the active one ON — the rows show it and playback/fill follow
+  /// OFF and the active one ON, with what it needs to show (its folders, the
+  /// base it clips to) — the rows show it and playback/fill follow
   /// naturally, exactly like clicking the eyes by hand (view-ish controller
-  /// writes, not undoable). Switching the active
-  /// layer re-solos; disengaging restores each eye from the snapshot.
+  /// writes, not undoable). Switching the active layer re-solos;
+  /// disengaging restores each eye from the snapshot.
   /// Leaving the cut exits the mode (restoring first) — the snapshot is
   /// cut-scoped.
   ///
@@ -88,33 +91,7 @@ class VisibilitySolo {
       return;
     }
     final stack = _project.layers;
-    // 🚨THE ANCESTORS STAY ON. Solo means "show this row alone", and a row
-    // inside a folder is not shown by its own eye — turning every OTHER row
-    // off turned its folders off with them, so soloing a row inside a folder
-    // hid the very thing it was soloing. On the editing canvas that read as
-    // "nothing happened"; in playback and export the frame came out EMPTY.
-    final keepShown = <LayerId>{
-      activeId,
-      for (final folder in stack.ancestryOf(
-        stack.where((layer) => layer.id == activeId).firstOrNull?.folderId,
-      ))
-        folder.id,
-    };
-    // 🚨AND STANDING ON A FOLDER SOLOS WHAT IT HOLDS (F-129, 유저 2026-09-14:
-    // 「폴더에 서있으면 폴더 내용물 전부 on해서 보여주도록. 중첩이 몇개있던
-    // 관계없이 내용물 전부」) — its whole subtree, the folders nested in it
-    // and their rows too. A row that holds nothing has an empty subtree, so
-    // every row asks this one way.
-    //
-    // ↩️F-324 (유저 2026-10-09): 「폴더 비지블솔로시, 내부 레이어 모든게
-    // on되서 보이는데, 그게아니라 내부에서 off해둔 레이어는 그거 유지해서
-    // 보여주도록」. The subtree was turned ON whatever its own eyes said, so
-    // a row hidden inside the folder came up with it. Each row it holds
-    // shows the eye it had BEFORE the solo — the snapshot's, not the one the
-    // solo gave it while you stood somewhere else.
-    final heldByIt = {
-      for (final member in stack.subtreeMembersOf(activeId)) member.id,
-    };
+    final (:keepShown, :heldByIt) = _rowsTheSoloShows(stack, activeId);
     // ⛔ONE pass, and the eye is read ONCE per row. Splitting the two
     // batches into two comprehensions read the row's own eye twice, and
     // `hidden_folder_is_hidden_test`'s downward ratchet caught it — that
@@ -136,6 +113,60 @@ class VisibilitySolo {
     // is one undo step rather than a screenful」). F-125 took the solo out of
     // history altogether — see [_layerVisibilitySoloEnabled].
     _writeEyes(flips);
+  }
+
+  /// The rows the solo shows standing on [activeId]: those it turns on
+  /// whatever their eyes ([keepShown]), and those that show the eyes they
+  /// had before it ([heldByIt]).
+  ({Set<LayerId> keepShown, Set<LayerId> heldByIt}) _rowsTheSoloShows(
+    List<Layer> stack,
+    LayerId activeId,
+  ) {
+    // 🚨F-470 (유저 2026-10-25): 「클리핑 기능이 작동하는 레이어에 솔로시 지금
+    // 한 행만 보여서 그림이 사라지는데, 클튜나 포토샵 확인한 바로는 보여야할것들이
+    // 보임 … b를 솔로하면 b랑 a랑 남아서 보임. c를 솔로하면 a랑 c랑 남아서
+    // 보임」. A row that clips to the layer below shows only where its base
+    // has pixels, so the base is soloed with it — the composite's own base
+    // ([clipBaseOf]), and none of the rows that clip to it besides.
+    final active = stack.byId(activeId);
+    final cut = _project.activeCutOrNull;
+    final soloed = [
+      activeId,
+      if (active != null && cut != null && clipsToLayerBelow(active))
+        ?clipBaseOf(cut, active)?.id,
+    ];
+    return (
+      // 🚨THE ANCESTORS STAY ON. Solo means "show this row alone", and a row
+      // inside a folder is not shown by its own eye — turning every OTHER
+      // row off turned its folders off with them, so soloing a row inside a
+      // folder hid the very thing it was soloing. On the editing canvas that
+      // read as "nothing happened"; in playback and export the frame came
+      // out EMPTY.
+      keepShown: {
+        for (final id in soloed) ...{
+          id,
+          for (final folder in stack.ancestryOf(stack.byId(id)?.folderId))
+            folder.id,
+        },
+      },
+      // 🚨AND STANDING ON A FOLDER SOLOS WHAT IT HOLDS (F-129, 유저
+      // 2026-09-14: 「폴더에 서있으면 폴더 내용물 전부 on해서 보여주도록.
+      // 중첩이 몇개있던 관계없이 내용물 전부」) — its whole subtree, the
+      // folders nested in it and their rows too. A row that holds nothing has
+      // an empty subtree, so every row asks this one way — a folder a row
+      // clips to as well.
+      //
+      // ↩️F-324 (유저 2026-10-09): 「폴더 비지블솔로시, 내부 레이어 모든게
+      // on되서 보이는데, 그게아니라 내부에서 off해둔 레이어는 그거 유지해서
+      // 보여주도록」. The subtree was turned ON whatever its own eyes said, so
+      // a row hidden inside the folder came up with it. Each row it holds
+      // shows the eye it had BEFORE the solo — the snapshot's, not the one
+      // the solo gave it while you stood somewhere else.
+      heldByIt: {
+        for (final id in soloed)
+          for (final member in stack.subtreeMembersOf(id)) member.id,
+      },
+    );
   }
 
   /// 🚨★★★**THE FILE NEVER SEES A VIEW STATE.**
@@ -192,8 +223,9 @@ class VisibilitySolo {
   /// 🚨F-458 (유저 2026-10-23): 「비지블 off인 레이어에서 활성레이어솔로인
   /// 상태라도 색변환이나 그런 보여야만 할수있는 조작관련 가능하게. 왜냐면
   /// 보이고있는거니까」. Nor is a row the solo SHOWS off for an edit — the
-  /// one you stand on and the folders above it, whatever the user had left
-  /// their eyes at: the screen shows it, so an edit reaches it.
+  /// one you stand on, the folders above it and the base it clips to
+  /// (F-470), whatever the user had left their eyes at: the screen shows
+  /// it, so an edit reaches it.
   /// ↩️F-399 asked the file's eye there too — 「a row the solo shows only
   /// because you stand on it is not one an edit reaches」, the session's
   /// own call (10-21) — so the row you were looking at refused its colour
