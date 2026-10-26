@@ -34,6 +34,9 @@ import '../../helpers/scrollable_of.dart';
 ///
 /// The fit is the closest zoom at which the panel's end line stands inside
 /// its window — a step of the bar (F-403) — with the axis at its start.
+///
+/// 🗣️F-472 (유저 2026-10-26): 「엔드라인조차 안보이니까 엔드라인뒤 1코마까지
+/// 추가로 보여주는걸로」 — one koma past the end line stands in it too.
 void main() {
   const frames = 120;
   const step = TimelineZoomLimits.referencePixelsPerFrame / 1000;
@@ -132,7 +135,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final zoom = timelineZoom(tester);
-    expectFits(zoom, frames, frameAxisOf(tester).viewportDimension);
+    expectFits(zoom, frames + 1, frameAxisOf(tester).viewportDimension);
     expect(frameAxisOf(tester).pixels, 0, reason: 'at its start');
     expect(session.timelineZoom.zoomOf(session.activeCutId), zoom);
   });
@@ -161,7 +164,7 @@ void main() {
 
     expectFits(
       session.panelViews.storyboardPixelsPerFrame.value,
-      movie,
+      movie + 1,
       keptAxisWindows[kept]!,
     );
     expect(kept.value, 0, reason: 'at its start');
@@ -213,7 +216,7 @@ void main() {
 
     expectFits(
       timelineZoom(tester),
-      frames,
+      frames + 1,
       frameAxisOf(tester).viewportDimension,
     );
   });

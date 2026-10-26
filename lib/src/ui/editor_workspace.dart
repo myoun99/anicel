@@ -957,6 +957,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// ([keptAxisWindows]), through the zoom's one writer; and the axis at
   /// its start.
   ///
+  /// 🗣️F-472 (유저 2026-10-26): 「줌 fit 버튼의 동작이 너무 빡빡함. 엔드라인
+  /// 조차 안보이니까 엔드라인뒤 1코마까지 추가로 보여주는걸로」 — so it fits
+  /// one koma past the end line, on both panels. ↩️It fitted the end line
+  /// alone, which then stood on the window's very edge.
+  ///
   /// ⚠️The start is written a frame later: the grid re-anchors its axis on
   /// the playhead when the zoom it is built at changes
   /// ([applyZoomAnchoredScroll]), which would move it off the start again.
@@ -984,7 +989,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     write(
       TimelineZoomLimits.fitting(
         window,
-        frames: frames,
+        frames: frames + 1,
         framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
       ),
     );
