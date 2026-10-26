@@ -166,12 +166,15 @@ void main() {
         ),
       );
 
-  Future<void> undoKey(WidgetTester tester) async {
+  Future<void> controlKey(WidgetTester tester, LogicalKeyboardKey key) async {
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyEvent(key);
     await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
     await tester.pump();
   }
+
+  Future<void> undoKey(WidgetTester tester) =>
+      controlKey(tester, LogicalKeyboardKey.keyZ);
 
   /// [key] on the window's paper — the editor behind the window prints a
   /// sheet of its own.
@@ -311,7 +314,7 @@ void main() {
   });
 
   testWidgets('a tool key and the undo keys reach the window; a key of the '
-      'editor\'s own panels stands behind it', (tester) async {
+      'editor\'s own menus stands behind it', (tester) async {
     final session = film();
     addTearDown(session.dispose);
     final (:road, :invoked, held: _) = recordingKeyRoad(session);
@@ -321,9 +324,16 @@ void main() {
       editing: paperEditingKit(session),
       keys: road,
     );
+    // ↩️It pressed H, which the shipped keys leave unbound — a key nothing
+    // would have taken, window or not.
+    expect(
+      road.bindings.activatorsFor(EditorActionIds.fileSave),
+      contains(const SingleActivator(LogicalKeyboardKey.keyS, control: true)),
+      reason: 'the key pressed is the menu\'s',
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyH);
+    await controlKey(tester, LogicalKeyboardKey.keyS);
     await undoKey(tester);
     await tester.pump();
 
