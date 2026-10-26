@@ -50,6 +50,40 @@ void main() {
     );
   });
 
+  // R4 #6: the legend's master-opacity bar reads gray at rest and lights
+  // while adjusting — a resting state, which F-474's own colour is not.
+  testWidgets('a resting colour gives way to the accent while dragged', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host(
+        FieldSlider(
+          value: 0.5,
+          min: 0,
+          max: 1,
+          label: 'Size',
+          unit: '%',
+          restingAccent: AppColors.textDim,
+          onChanged: (_) {},
+        ),
+      ),
+    );
+    final track = find.descendant(
+      of: find.byType(FieldSlider),
+      matching: find.byType(OwningAxisGrip),
+    );
+    expect(track, paints..rect(color: AppColors.textDim));
+
+    final hand = await tester.startGesture(tester.getCenter(track));
+    await hand.moveBy(const Offset(10, 0));
+    await tester.pump();
+    await hand.moveBy(const Offset(10, 0));
+    await tester.pump();
+    expect(track, paints..rect(color: AppColors.accent), reason: 'dragged');
+    await hand.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('nothing marks the fill edge — the fill is the mark', (
     tester,
   ) async {
