@@ -294,9 +294,7 @@ class _InteractiveCanvasBuild {
     // its own switch, as the transform's box is on the transform's
     // ([effectBoxedOn]).
     final effectBox =
-        !_isPlaybackActive &&
-            !isCameraLayerActive &&
-            activeLayer != null &&
+        activeLayer != null &&
             standing is LaneRowAddress &&
             standing.layerId == activeLayer.id
         ? effectBoxedOn(activeLayer.effects, standing.laneId)
