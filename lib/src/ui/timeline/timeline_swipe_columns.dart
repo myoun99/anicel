@@ -63,6 +63,7 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   visibility: _visibility(hooks),
   onion: _onion(hooks),
   fx: _fx(hooks),
+  clip: _clip(hooks),
   timesheet: _timesheet(hooks),
   laneToggle: _laneToggle(hooks),
   lanePin: switch (_lanePin(hooks)) {
@@ -97,6 +98,8 @@ typedef RailSwipeHooks = ({
   bool Function(Layer layer) wearsBaseComposite,
   void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroupEnabled,
   bool? Function(LayerId layerId, String headerLaneId)? laneGroupOnOf,
+  ValueChanged<LayerId>? onToggleLayerClip,
+  bool Function(LayerId layerId)? layerClipsOf,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   bool Function(LayerId layerId)? layerOnTimesheetOf,
   ValueChanged<LayerId>? onToggleLayerLanes,
@@ -159,6 +162,8 @@ RailSwipeHooks timelineRailSwipeHooks(
   wearsBaseComposite: (layer) => attachRowWearsBaseComposite(layer, layers),
   onToggleLaneGroupEnabled: hooks.onToggleLaneGroupEnabled,
   laneGroupOnOf: hooks.laneGroupOnOf,
+  onToggleLayerClip: hooks.onToggleLayerClip,
+  layerClipsOf: hooks.layerClipsOf,
   onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
   layerOnTimesheetOf: hooks.layerOnTimesheetOf,
   onToggleLayerLanes: hooks.onToggleLayerLanes,
@@ -329,6 +334,23 @@ RailToggle<TimelineDisplayRow>? _timesheet(RailSwipeHooks hooks) {
             layerCarriesTimesheetToggle(row.layer)
         ? hooks.layerOnTimesheetOf?.call(row.layer.id) ??
               row.layer.onTimesheet
+        : null,
+    toggle: (row) => onToggle(row.layer.id),
+  );
+}
+
+/// 🗣️F-475 (유저 2026-10-26): 「클리핑버튼도 위아래 드래그로 여러 버튼
+/// 동시조작 가능하게」. A row of a kind that cannot clip carries no button
+/// ([LayerKind.takesClipping], the row's own rule) and a lane row's slot is
+/// its group's reset — both null.
+///
+/// Read LIVE where the host reads it, as every column is.
+RailToggle<TimelineDisplayRow>? _clip(RailSwipeHooks hooks) {
+  final onToggle = hooks.onToggleLayerClip;
+  if (onToggle == null) return null;
+  return (
+    valueOf: (row) => !row.isLane && row.layer.kind.takesClipping
+        ? hooks.layerClipsOf?.call(row.layer.id) ?? row.layer.clipsToBelow
         : null,
     toggle: (row) => onToggle(row.layer.id),
   );

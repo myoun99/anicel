@@ -177,7 +177,7 @@ void main() {
     AppInput.settings.value = _navigating;
     final handed = <Set<PointerDeviceKind>?>[];
     await tester.pumpWidget(
-      FingerModeDevices.timelineEditPan(
+      FingerModeDevices.tool(
         key: _probe,
         builder: (context, devices) {
           handed.add(devices);
@@ -196,7 +196,7 @@ void main() {
       touchDragOneFinger: CanvasTouchDragAction.draw,
     );
     await tester.pump();
-    expect(handed.last, contains(PointerDeviceKind.touch));
+    expect(handed.last, isNull, reason: 'one finger draws: every device');
 
     await tester.pumpWidget(const SizedBox());
     AppInput.settings.value = _navigating;

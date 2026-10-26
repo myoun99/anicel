@@ -1,11 +1,12 @@
-// THE RAIL'S PAINT-SWIPE: A DRAG THAT STARTS ON A COLUMN LATCHES THE
-// OPPOSITE OF THE FIRST ROW'S VALUE AND SETS EVERY ROW IT CROSSES TO IT —
-// EACH ROW ONCE WHILE THE STRETCH HOLDS IT AND BACK WHEN THE CURSOR DRAWS
-// BACK FROM IT (F-182), ROWS THAT ALREADY AGREE LEFT ALONE, ROWS WITH NO
-// CONTROL SKIPPED, AND A PRESS ON A SPACER STARTS NOTHING.
+// THE RAIL'S PAINT-SWIPE: A DRAG THAT STARTS ON A COLUMN'S BUTTON SPREADS
+// WHAT ITS PRESS WROTE — THE OPPOSITE OF THE FIRST ROW'S VALUE — TO EVERY
+// ROW IT CROSSES: EACH ROW ONCE WHILE THE STRETCH HOLDS IT AND BACK WHEN THE
+// CURSOR DRAWS BACK FROM IT (F-182), ROWS THAT ALREADY AGREE LEFT ALONE,
+// ROWS WITH NO CONTROL SKIPPED, AND A PRESS NO BUTTON TOOK STARTS NOTHING.
 //
 // No test named this widget (audit 2026-09-03) although both rails wear
-// it. These pins drive it with four rows of one column.
+// it. These pins drive it with four rows of one column, each control a
+// button that acts on the down, as a rail row's does.
 //
 // 🚨★★★AND THE ROWS IT CROSSES ARE THE ONES IN THE SEGMENT, NOT THE ONES
 // A POINTER HAPPENED TO REPORT (F-66, 유저 2026-09-10: 「렉걸리는 상태에서
@@ -15,17 +16,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show RailSwipeColumnPointer;
 import 'package:anicel/src/ui/timeline/rail_column_swipe.dart';
 
 const double _rowHeight = 40;
 
 class _Rail {
-  _Rail(this.values);
+  _Rail(this.values, {this.buttons = true});
 
-  _Rail.four() : values = {0: false, 1: false, 2: true, 3: null};
+  _Rail.four()
+    : values = {0: false, 1: false, 2: true, 3: null},
+      buttons = true;
 
   final Map<int, bool?> values;
   final toggled = <int>[];
+
+  /// Whether a row with a control wears its BUTTON in the column's band, as
+  /// a rail's rows do — or the band is bare.
+  final bool buttons;
 
   /// How many rows the resolver was asked about, and how often — the
   /// per-move cost, so 「the sweep does work per BUTTON」 can be measured
@@ -67,6 +76,16 @@ class _Rail {
   }
 }
 
+/// A column's button as a rail row wears it: the STRONG claim
+/// ([RailSwipeColumnPointer]), and its press fired on the down — a rail
+/// row's button acts at tap-down.
+Widget _button(VoidCallback press) => RailSwipeColumnPointer(
+  child: Listener(
+    behavior: HitTestBehavior.opaque,
+    onPointerDown: (_) => press(),
+  ),
+);
+
 void main() {
   Future<_Rail> pump(WidgetTester tester, [_Rail? rail]) async {
     final subject = rail ?? _Rail.four();
@@ -84,6 +103,23 @@ void main() {
               child: SizedBox(
                 width: 200,
                 height: _rowHeight * (subject.values.length + 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final MapEntry(key: row, value: on)
+                        in subject.values.entries)
+                      SizedBox(
+                        width: 60,
+                        height: _rowHeight,
+                        child: on == null
+                            ? null
+                            : subject.buttons
+                            ? _button(() => subject.column.toggle(row))
+                            // The row's own plate, which no button claims.
+                            : const ColoredBox(color: Colors.transparent),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -129,6 +165,23 @@ void main() {
     final rail = await pump(tester);
     await swipe(tester, from: const Offset(120, 20), to: 150);
     await swipe(tester, from: const Offset(30, 200), to: 230);
+    expect(rail.toggled, isEmpty);
+  });
+
+  // 🚨F-475: what was pressed decides. A press in the band that no button
+  // took is the rail's — it scrolls, or drags the row — and starts no sweep.
+  // ↩️It did: the band itself started one, a pen's 4px past each slot
+  // included, so a press beside a button swept that button's column.
+  testWidgets('a press in the band its button did not take sweeps nothing', (
+    tester,
+  ) async {
+    // The rows below DISAGREE with the pressed one, so a sweep begun here
+    // would show whatever it latched.
+    final rail = await pump(
+      tester,
+      _Rail({0: false, 1: true, 2: true}, buttons: false),
+    );
+    await swipe(tester, from: const Offset(30, 20), to: 110);
     expect(rail.toggled, isEmpty);
   });
 

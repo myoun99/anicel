@@ -954,19 +954,25 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// ([LayerKind.takesClipping]) — every OTHER kind reserves the slot so the
   /// legend header's column icons line up over one Excel-style grid
   /// (R-toolbar round).
+  ///
+  /// A toggle COLUMN, as the eye's is (F-475, 유저 2026-10-26: 「클리핑버튼도
+  /// 위아래 드래그로 여러 버튼 동시조작 가능하게」) — kept in step with the
+  /// grid's swipe column list, see [RailSwipeColumnPointer].
   Widget? _clipToggle(BuildContext context) {
     final onToggle = onToggleLayerClip;
     if (onToggle == null || !layer.kind.takesClipping) return null;
-    return ClipButton(
-      name: '$keyPrefix-layer-clip-${layer.id}',
-      isOn: layer.clipsToBelow,
-      size: railSlotBox(
-        axis,
-        slot: layerClipSlotWidth,
-        across: 26,
-        iconSize: 16,
+    return RailSwipeColumnPointer(
+      child: ClipButton(
+        name: '$keyPrefix-layer-clip-${layer.id}',
+        isOn: layer.clipsToBelow,
+        size: railSlotBox(
+          axis,
+          slot: layerClipSlotWidth,
+          across: 26,
+          iconSize: 16,
+        ),
+        onPressed: () => onToggle(layerIdNow(context, layer.id)),
       ),
-      onPressed: () => onToggle(layerIdNow(context, layer.id)),
     );
   }
 

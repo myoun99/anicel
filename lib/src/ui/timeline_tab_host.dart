@@ -855,6 +855,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             laneGroupOnOf: _session.laneVerbs.isLaneGroupOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             layerOnTimesheetOf: _session.layerSwitches.isLayerOnTimesheet,
+            layerClipsOf: _session.layerSwitches.isLayerClipping,
             onToggleLayerLanes: widget.rail.toggleLayerLanes,
             hiddenSections: widget.rail.hiddenSections,
             onToggleSection: widget.rail.toggleSection,

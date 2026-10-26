@@ -197,6 +197,11 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
+  /// Whether [layerId] clips to the layer below RIGHT NOW — a LIVE read, for
+  /// the same reason as [isLayerOnTimesheet]: the clip column's sweep spreads
+  /// what its press just set (F-475).
+  bool isLayerClipping(LayerId layerId) => _rowAnywhere(layerId).clipsToBelow;
+
   /// Flips the layer's clip to the layer below (I-92) — one undo step.
   /// ↩️It was the fill's reference flag (R20-C2), which the display
   /// composite never read.

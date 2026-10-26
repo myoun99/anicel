@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/input/eager_pan_gesture_recognizer.dart';
-import 'package:anicel/src/ui/input/finger_mode_devices.dart';
 import 'package:anicel/src/ui/input/timeline_edit_pan.dart';
 
 const _pan = ValueKey<String>('pan');
@@ -33,16 +32,19 @@ _hooks(_Heard heard) => (
   onCancel: () => heard.add('cancel'),
 );
 
-/// The pan as it was built — the devices' builder around a detector.
+/// The pan as it was built — a detector built again whenever the input
+/// settings move (the `FingerModeDevices` constructor it went through is
+/// gone with its last user, F-475).
 Widget _asItWas(
   _Heard heard, {
   bool Function(Offset down, Offset now)? firstStepAt,
   Widget? child,
 }) {
   final hooks = _hooks(heard);
-  return FingerModeDevices.timelineEditPan(
+  return ValueListenableBuilder<AppInputSettings>(
     key: _pan,
-    builder: (context, devices) => RawGestureDetector(
+    valueListenable: AppInput.settings,
+    builder: (context, settings, child) => RawGestureDetector(
       behavior: HitTestBehavior.translucent,
       gestures: <Type, GestureRecognizerFactory>{
         EagerPanGestureRecognizer:
@@ -50,7 +52,7 @@ Widget _asItWas(
               () => EagerPanGestureRecognizer(debugOwner: heard),
               (recognizer) {
                 recognizer.firstStepAt = firstStepAt;
-                recognizer.supportedDevices = devices;
+                recognizer.supportedDevices = AppInput.timelineEditPanDevices;
                 recognizer.gestureSettings =
                     MediaQuery.maybeGestureSettingsOf(context);
                 recognizer.dragStartBehavior = DragStartBehavior.down;
@@ -63,6 +65,7 @@ Widget _asItWas(
       },
       child: child,
     ),
+    child: child,
   );
 }
 

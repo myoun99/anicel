@@ -72,7 +72,7 @@ class SessionRowButtonPresses {
         valueOf: (id) => _ifRow(
           id,
           (layer) => layer.kind.takesClipping,
-          (id) => _row(id)!.clipsToBelow,
+          session.layerSwitches.isLayerClipping,
         ),
         flip: session.layerSwitches.toggleLayerClip,
         description: 'Toggle clip to layer below',

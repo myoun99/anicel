@@ -28,35 +28,58 @@ void main() {
   /// and a new drag surface earns a line here by asking too. Controls are
   /// not in it — they CLAIM rather than ask, which is the other half of
   /// the same law and lives in `control_press_claim`.
-  const mustAsk = <String, String>{
-    'lib/src/ui/canvas/canvas_selection_layer.dart':
-        'the marquee, the transform box and its handles — and the '
-        '확정/취소 buttons float inside its own Listener',
-    'lib/src/ui/brush/canvas_panel/canvas_panel_tap.dart':
-        'the tool tap and the stamp drag: the other half of the canvas',
-    'lib/src/ui/canvas/canvas_viewport_gesture_layer.dart':
-        'pan / zoom / rotate of the view itself',
-    'lib/src/ui/canvas/text/cel_text_tool_layer.dart':
-        'the text tool: every press on the canvas while it is in hand — a '
-        'text begun, taken, moved, sized, turned',
-    'lib/src/ui/input/eager_pan_gesture_recognizer.dart':
-        'the rails\' column drag, which every row recogniser goes through',
-    'lib/src/ui/timeline/rail_column_swipe.dart':
-        'the swipe column, which mounts the STRONG claim over the weak one',
-    'lib/src/ui/widgets/instant_tap_region.dart':
-        'dismiss-on-outside-press: a press on a control is not "outside"',
+  ///
+  /// A surface stands DOWN for a control's press and asks
+  /// `controlOwnsTap(`. The swipe column is the one that stands UP: its
+  /// drag is the verb of the button it was pressed on, so it asks whether
+  /// that button took the STRONG claim — `valueControlOwnsPointer(` — and
+  /// runs on nothing else (F-475).
+  const mustAsk = <String, ({String what, String asks})>{
+    'lib/src/ui/canvas/canvas_selection_layer.dart': (
+      what:
+          'the marquee, the transform box and its handles — and the '
+          '확정/취소 buttons float inside its own Listener',
+      asks: 'controlOwnsTap(',
+    ),
+    'lib/src/ui/brush/canvas_panel/canvas_panel_tap.dart': (
+      what: 'the tool tap and the stamp drag: the other half of the canvas',
+      asks: 'controlOwnsTap(',
+    ),
+    'lib/src/ui/canvas/canvas_viewport_gesture_layer.dart': (
+      what: 'pan / zoom / rotate of the view itself',
+      asks: 'controlOwnsTap(',
+    ),
+    'lib/src/ui/canvas/text/cel_text_tool_layer.dart': (
+      what:
+          'the text tool: every press on the canvas while it is in hand — a '
+          'text begun, taken, moved, sized, turned',
+      asks: 'controlOwnsTap(',
+    ),
+    'lib/src/ui/input/eager_pan_gesture_recognizer.dart': (
+      what: 'the rails\' column drag, which every row recogniser goes through',
+      asks: 'controlOwnsTap(',
+    ),
+    'lib/src/ui/timeline/rail_column_swipe.dart': (
+      what: 'the swipe column, the drag of the button it was pressed on',
+      asks: 'valueControlOwnsPointer(',
+    ),
+    'lib/src/ui/widgets/instant_tap_region.dart': (
+      what: 'dismiss-on-outside-press: a press on a control is not "outside"',
+      asks: 'controlOwnsTap(',
+    ),
   };
 
   test('every drag surface asks whether a control took the press', () {
     final silent = <String>[];
-    for (final entry in mustAsk.entries) {
-      final source = File(entry.key).readAsStringSync();
+    for (final MapEntry(key: path, value: (:what, :asks))
+        in mustAsk.entries) {
+      final source = File(path).readAsStringSync();
       // ⚠️The CALL, not the name: a file that imports the question and
       // never puts it is as silent as one that never heard of it (found
       // 2026-10-07 by a mutant that took the asking out of the text
       // tool's layer and left its import standing).
-      if (!source.contains('controlOwnsTap(')) {
-        silent.add('${entry.key} — ${entry.value}');
+      if (!source.contains(asks)) {
+        silent.add('$path — $what (asks `$asks`)');
       }
     }
     expect(

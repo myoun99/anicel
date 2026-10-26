@@ -1,21 +1,24 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart'
+    show DragGestureRecognizer, DragStartBehavior, PointerDownEvent;
 import 'package:flutter/material.dart';
 import '../../services/history_manager.dart';
 import '../input/control_press_claim.dart' show PressFireWatch;
 import '../input/value_control_pointers.dart';
-import '../input/finger_mode_devices.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
     show
         LayerRailColumnWidths,
+        RailSwipeColumnPointer,
+        layerClipSlotWidth,
         layerFxSlotWidth,
         layerGraphSlotWidth,
         layerLanePinSlotWidth,
         layerOnionSlotWidth,
         layerVisibilitySlotWidth;
-import '../widgets/axis_gesture_detector.dart';
+import '../widgets/axis_bar_gesture.dart'
+    show isOwningDragAlong, owningDragAlong;
 import 'axis_turn.dart' show partAcross, partAlong;
 import 'timeline_row_edges.dart';
 import 'timeline_visible_range.dart';
@@ -220,9 +223,30 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   final List<_Stroke<TRow>> _strokes = <_Stroke<TRow>>[];
   final Set<Object> _held = <Object>{};
 
-  /// The pointer that opened this gesture — the latch asks whether a control
-  /// claimed it. No drag callback carries the id, so a Listener reads it.
-  int? _downPointer;
+  /// The sweep's drag — offered a press only when it landed on a column's
+  /// button ([_offer]), and taken on that press's first movement, any way
+  /// it goes.
+  ///
+  /// 🚨★★★F-475 (유저 2026-10-26): 「버튼에서 시작한 조작은 스크롤을
+  /// 발동시키지않음 … 법 하나로 통일」. A column's button stands its press
+  /// down for this drag (the strong claim — [RailSwipeColumnPointer]), so
+  /// THIS is what holds the press against the scrollers, and it is the law
+  /// every drag verb on a control keeps ([owningDragAlong]): taken on the
+  /// first movement. ↩️It was a one-axis drag that waited for the device's
+  /// slop along the rail, and a pull ACROSS the rail never reached it — the
+  /// sheet's two-way drag (F-351) took it and scrolled the rows: 「비지블이나
+  /// 어니언은 좌우로하면 위아래 스크롤이 발동」.
+  ///
+  /// ⛔EVERY DEVICE. ↩️A finger was left out (F-8: the rail had to scroll
+  /// under a finger, and a sweep that took every press on the rail killed
+  /// that), so a finger pulled from a column's button scrolled the rows —
+  /// 유저 2026-08-29: 「터치 좌표가 버튼인데 거기서 움직였다고 스크롤이
+  /// 발생하는게 심각한 버그야」. The sweep is offered a column's presses
+  /// alone now, so a finger off the buttons still scrolls the rail.
+  late DragGestureRecognizer _drag = _sweepDrag();
+
+  /// The column the press the drag holds landed on.
+  int _pressedColumn = -1;
 
   /// The history as it stood just before a column's button fired on this
   /// press ([PressFireWatch]) — the button writes its step before the
@@ -341,6 +365,7 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     }
   }
 
+  /// The column whose slot on the row under [local] holds it, or -1.
   int _columnAt(Offset local) {
     final row = _rowAt(_along(local));
     if (row == null) {
@@ -356,57 +381,87 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     return -1;
   }
 
-  bool _start(int columnIndex, double alongPosition) {
+  /// Offers the sweep [event]'s press — when a column's BUTTON took it, and
+  /// only then.
+  ///
+  /// 🚨★★★WHAT WAS PRESSED DECIDES (유저 2026-08-30: 「클릭이 버튼이면
+  /// 스크롤 절대 발생안하게한다」). A column's button takes the strong claim
+  /// on its own down ([RailSwipeColumnPointer]), deeper than this, so by now
+  /// it has said so. A press anywhere else on the rail — the name, a slot
+  /// with no button, the slider — is not the sweep's: it scrolls, drags the
+  /// row or is the slider's, as it would with no sweep here at all.
+  void _offer(PointerDownEvent event) {
+    if (!valueControlOwnsPointer(event.pointer)) {
+      return;
+    }
+    final column = _columnAt(event.localPosition);
+    if (column < 0) {
+      return;
+    }
+    _pressedColumn = column;
+    _drag.addPointer(event);
+  }
+
+  DragGestureRecognizer _sweepDrag() =>
+      owningDragAlong(widget.axis, debugOwner: this)
+        // 🚨I-1, measured: with the default `DragStartBehavior.start` a
+        // swipe MISSES A ROW. The recogniser reports its start where it WON
+        // the arena and drops the movement that won as a delta, so no update
+        // ever names the row in between. `down` fixes both halves: the start
+        // reports the press, and the first movement arrives as an update.
+        // The reason the default exists — content must not jump by the slop
+        // when the drag begins — does not apply to a gesture that moves
+        // nothing and only paints the rows it passes.
+        ..dragStartBehavior = DragStartBehavior.down
+        ..onStart = ((details) =>
+            _start(_pressedColumn, _along(details.localPosition)))
+        ..onUpdate = ((details) => _sweepTo(_along(details.localPosition)))
+        ..onEnd = ((_) => _end())
+        ..onCancel = _end;
+
+  /// Latches the sweep on [columnIndex], from the row under [alongPosition].
+  ///
+  /// 🚨★★★ITS BUTTON HAS ALREADY DONE THIS ROW. 유저 2026-08-30: 「버튼은
+  /// 기본적으로 **누른순간 작동**하고 **누른채로 드래그시 일괄조작** 작동」.
+  /// The press fired the button during the pointer-down — [_offer] takes
+  /// only a press a column's button took — so the row already holds what was
+  /// asked for, and the sweep spreads THAT. Painting it again toggles it
+  /// straight back (measured: the row appeared twice in the toggle log).
+  ///
+  /// ⚠️So every column must read LIVE — a `valueOf` closing over a captured
+  /// model object still reports the last frame and sweeps backwards (that is
+  /// why `isLayerOnTimesheet` exists).
+  ///
+  /// ↩️A press BESIDE a button started a sweep too: a column's band was
+  /// padded 4px past its slot either side 「so a thin band is easy to hit
+  /// with a pen」 (the eye's first swipe, 2026-07-15 — nobody asked for it),
+  /// and that press, which fired nothing, painted its own row first. The
+  /// slots stand edge to edge, so the pad was the next button's: pressing
+  /// the onion near the eye and pulling down swept the EYE column (F-475).
+  void _start(int columnIndex, double alongPosition) {
     final row = _rowAt(alongPosition);
     if (row == null) {
-      return false;
+      return;
     }
     final column = widget.columns[columnIndex];
-    // A row carrying no control in this column has no value to latch, so
-    // there is no swipe to start — pressing an attach row's arrow must not
-    // begin painting the sheet column it stands in.
+    // A row carrying no control in this column has no value to latch —
+    // pressing an attach row's arrow must not begin painting the sheet
+    // column it stands in.
     final value = column.valueOf(row.row);
     if (value == null) {
-      return false;
+      return;
     }
     _column = column;
-    // 🚨★★★DID ITS OWN BUTTON ALREADY DO THIS ROW?
-    //
-    // 유저 2026-08-30: 「버튼은 기본적으로 **누른순간 작동**하고 **누른채로
-    // 드래그시 일괄조작** 작동」. A press that landed ON the button fired it
-    // during the pointer-down, so the row already holds what was asked for —
-    // and the sweep spreads THAT. Painting it again toggles it straight back
-    // (measured: the row appeared twice in the toggle log).
-    //
-    // ⛔A press inside the band but OFF the button — the 4px tolerance a thin
-    // column carries for a pen — fired nothing, so that row still has to be
-    // painted and the target is the opposite of what it reads.
-    //
-    // ⚠️THE VALUE CANNOT TELL THESE APART, so the CLAIM does. A button
-    // claims the pointer on its own down, deeper than this detector, so by
-    // now it has claimed if it was pressed at all. ⚠️And every column must
-    // read LIVE for this to hold — a `valueOf` closing over a captured model
-    // object still reports the last frame and sweeps backwards (that is why
-    // `isLayerOnTimesheet` exists).
-    final pointer = _downPointer;
-    final pressedItsButton = pointer != null && controlOwnsTap(pointer);
-    _targetValue = pressedItsButton ? value : !value;
-    _strokes.clear();
+    _targetValue = value;
+    _strokes
+      ..clear()
+      ..add((id: row.id, row: row.row, pressed: false, steps: 0));
     _held
       ..clear()
       ..add(row.id);
     _startAlong = alongPosition;
-    // The button's own step is part of the sweep when it fired; otherwise
-    // the sweep's first write is this row's.
-    _sweepMark = pressedItsButton
-        ? _pressMark
-        : RailSweepHistory.maybeOf(context)?.history.mark;
-    _strokes.add(
-      pressedItsButton
-          ? (id: row.id, row: row.row, pressed: false, steps: 0)
-          : _paint(row),
-    );
-    return true;
+    // The button's own step is the sweep's first.
+    _sweepMark = _pressMark;
   }
 
   void _end() {
@@ -425,168 +480,29 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (event) => _downPointer = event.pointer,
-      // ⛔Cleared on the way out: a stale id would let the NEXT press be read
-      // as 「a button already did this」 when nothing claimed at all — and a
-      // stale mark would fold from a press that is long gone.
-      onPointerUp: (event) {
-        _downPointer = null;
-        _pressMark = null;
-      },
-      onPointerCancel: (event) {
-        _downPointer = null;
-        _pressMark = null;
-      },
-      child: PressFireWatch(
-        beforeFire: _markPress,
-        child: _RailSwipeDetector(
-          axis: widget.axis,
-          columnAt: _columnAt,
-          alongOf: _along,
-          onStart: _start,
-          onUpdate: _sweepTo,
-          onEnd: _end,
-          child: widget.child,
-        ),
-      ),
-    );
+  void didUpdateWidget(RailColumnSwipe<TRow> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!isOwningDragAlong(_drag, widget.axis)) {
+      _drag.dispose();
+      _drag = _sweepDrag();
+    }
   }
-}
-
-/// The gesture half, kept apart from the painting half because it knows
-/// nothing about rails: it reports which column a press is in and where
-/// down the rail, and the state above decides what that means.
-///
-/// [onStart] latches (returns false to decline, e.g. the down landed on a
-/// spacer, or between columns); [onUpdate] paints each crossed row; [onEnd]
-/// clears. A vertical-drag recognizer, so single taps still reach the
-/// buttons and the outer scroll keeps working — see [supportedDevices] for
-/// the other half of that (F-8).
-class _RailSwipeDetector extends StatefulWidget {
-  const _RailSwipeDetector({
-    required this.axis,
-    required this.alongOf,
-    required this.columnAt,
-    required this.onStart,
-    required this.onUpdate,
-    required this.onEnd,
-    required this.child,
-  });
-
-  /// Which way the rows run — the only thing here that knows about axes.
-  final Axis axis;
-
-  /// The coordinate ALONG the rail, out of a rail-local point.
-  final double Function(Offset local) alongOf;
-
-  /// Which COLUMN a press at this rail-local point is in, or -1 for none.
-  final int Function(Offset local) columnAt;
-
-  /// The press: which COLUMN it landed in, and where ALONG the rail. Returns
-  /// false to decline.
-  final bool Function(int columnIndex, double alongPosition) onStart;
-  final ValueChanged<double> onUpdate;
-  final VoidCallback onEnd;
-  final Widget child;
 
   @override
-  State<_RailSwipeDetector> createState() => _RailSwipeDetectorState();
-}
-
-class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
-  bool _engaged = false;
-  int _pressedColumn = -1;
+  void dispose() {
+    _drag.dispose();
+    super.dispose();
+  }
 
   @override
-  Widget build(BuildContext context) {
-
-    void down(DragDownDetails details) {
-      _pressedColumn = widget.columnAt(details.localPosition);
-      _engaged = _pressedColumn >= 0;
-    }
-
-    void start(DragStartDetails details) {
-      if (!_engaged) {
-        return;
-      }
-      _engaged = widget.onStart(
-        _pressedColumn,
-        widget.alongOf(details.localPosition),
-      );
-    }
-
-    void update(DragUpdateDetails details) {
-      if (_engaged) {
-        widget.onUpdate(widget.alongOf(details.localPosition));
-      }
-    }
-
-    void end(DragEndDetails _) {
-      if (_engaged) {
-        widget.onEnd();
-      }
-      _engaged = false;
-    }
-
-    void cancel() {
-      if (_engaged) {
-        widget.onEnd();
-      }
-      _engaged = false;
-    }
-
-    return FingerModeDevices.timelineEditPan(
-      builder: (context, devices) => AxisGestureDetector(
-        axis: widget.axis,
-        behavior: HitTestBehavior.translucent,
-        // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
-        // 사양 통일」). The doc above claims the outer vertical scroll keeps
-        // working outside the band; it did not, and a finger on the rail
-        // scrolled nothing at all (measured — the frame area beside it
-        // moved 90px on the same drag).
-        //
-        // ⛔A recognizer that has already WON cannot hand the gesture back:
-        // declining inside `onVerticalDragStart` leaves the swipe undone and
-        // the scroll dead, which is the shape this file's own neighbours are
-        // warned about ([AppInput.toolPointerDevices]). The band check runs
-        // after the arena is over, so it can only ever be the second half
-        // of the answer.
-        //
-        // 결정 10 is the first half, already written and already read by
-        // every other edit pan on this surface: a finger scrolls the
-        // timeline, and becomes the pointer the moment one finger is the
-        // drawing hand.
-        supportedDevices: devices,
-        // 🚨I-1, measured: with the default `DragStartBehavior.start` a
-        // swipe MISSES A ROW, and which row depends on what you compare
-        // against. The recognizer reports its start at the position where
-        // it WON the arena — one slop-length, ~18px, past the press on a
-        // 28px row — and it deliberately drops the movement that won as a
-        // delta, so no update ever names the row in between. Press the top
-        // row's toggle and drag: either the row you pressed or the row
-        // under the slop went unpainted.
-        //
-        // `down` is the answer rather than a remembered press position,
-        // because it fixes BOTH halves: the start reports the press, and
-        // the slop movement arrives as an update. The reason the default
-        // exists — content must not jump by the slop when the drag begins —
-        // does not apply to a gesture that moves nothing and only paints
-        // the rows it passes.
-        dragStartBehavior: DragStartBehavior.down,
-        // 🚨ONE recogniser family, chosen by the axis — the law this rail
-        // wrote down first; [AxisGestureDetector] is where it lives now,
-        // for every axis drag.
-        onDragDown: down,
-        onDragStart: start,
-        onDragUpdate: update,
-        onDragEnd: end,
-        onDragCancel: cancel,
-        child: widget.child,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Listener(
+    onPointerDown: _offer,
+    // ⛔Cleared on the way out: a stale mark would fold from a press that is
+    // long gone.
+    onPointerUp: (event) => _pressMark = null,
+    onPointerCancel: (event) => _pressMark = null,
+    child: PressFireWatch(beforeFire: _markPress, child: widget.child),
+  );
 }
 
 /// What a rail can do with ONE toggle column on ONE row: read it, flip it.
@@ -621,6 +537,10 @@ typedef RailToggle<TRow> = ({
 /// and the opacity field is a slider. None has a value a sweep could paint.
 /// If one ever gains a boolean, it gains a parameter here and both rails get
 /// it in the same commit.
+///
+/// 🗣️F-475 (유저 2026-10-26): 「클리핑버튼도 위아래 드래그로 여러 버튼
+/// 동시조작 가능하게」. ↩️The clip toggle (I-92) came after this list and
+/// never joined it — not left out, forgotten.
 List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   required double crossExtent,
   required double leadingOrigin,
@@ -630,6 +550,7 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
   RailToggle<TRow>? fx,
+  RailToggle<TRow>? clip,
   RailToggle<TRow>? timesheet,
   RailToggle<TRow>? laneToggle,
   ({RailToggle<TRow> toggle, double inset})? lanePin,
@@ -658,20 +579,16 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
         optionalColumns: optionalColumns,
       );
 
-  /// The column right before [after].
+  /// The column right before [after] — its slot, and nothing either side:
+  /// the slots stand edge to edge, so anything past one is the next
+  /// button's (F-475; the pad that was here is told at
+  /// `_RailColumnSwipeState._start`).
   ({double start, double end}) Function(TRow row) trailingBand(
     LayerRailTrailingSlot after,
     double width,
   ) {
     final edge = trailingEdge(after);
-    // A little tolerance so a thin band is easy to hit with a pen.
-    //
-    // ⛔None on the leading bands: the twirl and the sheet toggle are
-    // ADJACENT, so a padded band could only ever eat into its neighbour.
-    // The trailing bands can afford the slack because it is what makes a
-    // thin column easy to hit, and that argument stops applying the moment
-    // the 4px belongs to another control.
-    final at = (start: edge - width - 4, end: edge + 4);
+    final at = (start: edge - width, end: edge);
     return (_) => at;
   }
 
@@ -721,6 +638,8 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
       ),
     if (fx != null)
       column(trailingBand(LayerRailTrailingSlot.onion, layerFxSlotWidth), fx),
+    if (clip != null)
+      column(trailingBand(LayerRailTrailingSlot.fx, layerClipSlotWidth), clip),
     if (graph != null)
       column(nameEndBand(graph.after, layerGraphSlotWidth), graph.toggle),
     if (lanePin != null)

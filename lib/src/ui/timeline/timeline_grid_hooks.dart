@@ -134,6 +134,7 @@ class TimelineGridHooks {
     this.laneGroupOnOf,
     this.layerEyeOnOf,
     this.layerOnTimesheetOf,
+    this.layerClipsOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -489,6 +490,11 @@ class TimelineGridHooks {
   /// [layerEyeOnOf] — the read the session keeps for it
   /// (`isLayerOnTimesheet`).
   final bool Function(LayerId layerId)? layerOnTimesheetOf;
+
+  /// A LIVE read of a layer’s clip to the layer below, for the same reason
+  /// as [layerEyeOnOf] — the read the session keeps for it
+  /// (`isLayerClipping`).
+  final bool Function(LayerId layerId)? layerClipsOf;
 
   final ValueChanged<LayerId>? onToggleLayerLanes;
 

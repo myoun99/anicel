@@ -102,6 +102,9 @@ class _StoryboardRailSweep {
       laneGroupOnOf: groupOnOf == null
           ? null
           : (rowId, header) => groupOnOf(_held(rowId), header),
+      // This rail hands its rows no clip toggle, so they carry none.
+      onToggleLayerClip: null,
+      layerClipsOf: null,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
       layerOnTimesheetOf: _readHeld(widget.layerOnTimesheetOf),
       onToggleLayerLanes: twirl == null

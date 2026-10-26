@@ -61,6 +61,10 @@ void main() {
               onAddLayer: () {},
               onToggleLayerVisibility: (id) =>
                   setState(() => visible[id] = !visible[id]!),
+              // Read LIVE, as the host reads the session: the sweep latches
+              // what the press wrote, and its first move can come before
+              // the frame that shows it (F-475).
+              layerEyeOnOf: (id) => visible[id]!,
               onLayerOpacityChanged: (_, _) {},
               onToggleLayerTimesheet: (_) {},
               onLayerMarkSelected: (_, _) {},
