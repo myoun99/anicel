@@ -76,6 +76,7 @@ class FieldSlider extends StatefulWidget {
     this.onChangeEnd,
     this.valueTextBuilder,
     this.restingText,
+    this.color,
     this.restingAccent,
     this.label,
     this.scale = FieldSliderScale.linear,
@@ -129,6 +130,7 @@ class FieldSlider extends StatefulWidget {
     this.fillOrigin,
   }) : nameInside = false,
        restingText = null,
+       color = null,
        restingAccent = null,
        stops = null,
        height = defaultHeight,
@@ -170,6 +172,7 @@ class FieldSlider extends StatefulWidget {
     required this.onChanged,
     this.onChangeEnd,
     this.restingText,
+    this.color,
     this.restingAccent,
     this.label,
     this.height = defaultHeight,
@@ -239,9 +242,19 @@ class FieldSlider extends StatefulWidget {
   /// second one with a digit count of its own.
   final String Function(double value, String derived)? valueTextBuilder;
 
-  /// Fill/edge color while NOT interacting; the drag always paints the
-  /// accent (the legend's master-opacity bar reads gray at rest, accent
-  /// while adjusting — R4 #6). Null = accent always.
+  /// The bar's own fill/edge colour, at rest and while dragged alike — null
+  /// is the app's accent.
+  ///
+  /// 🗣️F-474 (유저 2026-10-26): 「어니언스킨, 막대색이 지정된 색인거 좋은데,
+  /// 막대 편집할때만 앱 강조색 되어있음 … 지정된 색으로 유지되도록」 — the
+  /// onion bar's side tint is its colour, not a resting state: a separate
+  /// question from [restingAccent]'s. ↩️The tint rode [restingAccent], and
+  /// the drag painted the accent over it.
+  final Color? color;
+
+  /// Fill/edge color while NOT interacting; the drag paints [color] (the
+  /// legend's master-opacity bar reads gray at rest, accent while adjusting
+  /// — R4 #6). Null = [color] always.
   final Color? restingAccent;
 
   /// Inside-left label; `null` renders the micro variant (value only).
@@ -890,9 +903,8 @@ class _FieldSliderState extends State<FieldSlider> {
       );
     }
 
-    final accent = dragging
-        ? AppColors.accent
-        : (widget.restingAccent ?? AppColors.accent);
+    final own = widget.color ?? AppColors.accent;
+    final accent = dragging ? own : (widget.restingAccent ?? own);
     Widget writingIn(TextStyle ink) {
       final value = valueStyle?.merge(ink) ?? ink;
       if (widget.label == null) {
