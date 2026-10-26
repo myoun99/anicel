@@ -1122,7 +1122,7 @@ class StoryboardToolbarPanelContext
     }
     // The rows rung, second as on the shared ladder (F-359) — its press
     // confirms first ([deletePress]).
-    if (session.layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
+    if (session.rowsHoldWhatDeleteTakes) {
       return PillSubject.layers;
     }
     if (session.cells.canDeleteCellForSelection) {
@@ -1143,7 +1143,7 @@ class StoryboardToolbarPanelContext
   @override
   void deleteSelectionSubject() {
     if (session.storyboardRows.storyboardSelectedCutIds.isNotEmpty ||
-        session.layerVerbs.deletableSelectedLayerIds().isNotEmpty) {
+        session.rowsHoldWhatDeleteTakes) {
       session.deleteSelectionSubject();
       return;
     }

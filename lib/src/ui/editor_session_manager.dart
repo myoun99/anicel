@@ -38,6 +38,7 @@ import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/layer_effect.dart' show EffectId;
 import '../models/layer_id.dart';
 import '../models/standing_place.dart';
 import '../models/layer_kind.dart';
@@ -3167,9 +3168,34 @@ class EditorSessionManager extends ChangeNotifier
         cuts:
             cutsAreThisPanels &&
             storyboardRows.storyboardSelectedCutIds.isNotEmpty,
-        layers: () => layerVerbs.deletableSelectedLayerIds().isNotEmpty,
+        layers: () => rowsHoldWhatDeleteTakes,
         cells: () => cells.canDeleteCellAtCurrentFrame,
       );
+
+  /// THE ROWS RUNG of the shared delete, asked by both panels' ladders:
+  /// whether the selected rows hold a layer it may delete, or an effect an
+  /// fx header row names ([effectsToDeleteOfRows], F-476).
+  bool get rowsHoldWhatDeleteTakes =>
+      layerVerbs.deletableSelectedLayerIds().isNotEmpty ||
+      effectsToDeleteOfRows().isNotEmpty;
+
+  /// The effects the shared delete takes of the selected ROWS besides their
+  /// layers: what their fx header rows name on rows that stay (F-476,
+  /// [LaneVerbs.effectsNamedByRows]) — a row that goes takes its chain with
+  /// it.
+  List<({Layer row, List<EffectId> effects})> effectsToDeleteOfRows() {
+    final layers = layerVerbs.deletableSelectedLayerIds();
+    final going = {
+      ...layers,
+      for (final row in layerVerbs.rowsHeldBy(layers)) row.id,
+    };
+    return [
+      for (final named in laneVerbs.effectsNamedByRows(
+        rowSelectionVerbs.rowSelection.value,
+      ))
+        if (!going.contains(named.row.id)) named,
+    ];
+  }
 
   /// Runs whatever [deleteSubject] names. One undo step either way — the cell
   /// path already composes its own.
@@ -3178,7 +3204,11 @@ class EditorSessionManager extends ChangeNotifier
       case PillSubject.cuts:
         cutVerbs.deleteActiveCut();
       case PillSubject.layers:
-        layerVerbs.deleteSelectedLayers();
+        final effects = effectsToDeleteOfRows();
+        historyManager.runAsOneStep('Delete rows', () {
+          laneVerbs.removeEffectsNamedByRows(effects);
+          layerVerbs.deleteSelectedLayers();
+        });
       case PillSubject.cells:
         cells.deleteCellAtCurrentFrame();
       case PillSubject.nothing:

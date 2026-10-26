@@ -63,7 +63,8 @@ class LayerVerbs {
   /// A row's kind decides what the edit DOES, never whether the row could
   /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
   /// rows simply contribute nothing here instead of being kept out of the
-  /// selection.
+  /// selection. An fx header row's effect is the delete's other half
+  /// (F-476, `EditorSessionManager.effectsToDeleteOfRows`).
   ///
   /// A row another selected row takes along ([rowsHeldBy]) is that row's:
   /// the one that holds it alone is deleted, and takes it along — a folder

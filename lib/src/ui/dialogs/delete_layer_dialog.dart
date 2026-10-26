@@ -5,7 +5,11 @@ import 'app_confirm_dialog.dart';
 
 /// Confirmation dialog for deleting a layer. Pops `true` to confirm.
 class DeleteLayerDialog extends StatelessWidget {
-  const DeleteLayerDialog({super.key, required this.rows});
+  const DeleteLayerDialog({
+    super.key,
+    required this.rows,
+    this.effects = const [],
+  });
 
   /// Every row that goes, by name, as the rail lists them — top first: the
   /// rows the delete names, and what they take along.
@@ -25,6 +29,11 @@ class DeleteLayerDialog extends StatelessWidget {
   /// it takes listed under it — OPEN, since the list is what there is to see.
   final List<String> rows;
 
+  /// The effects that go with them, off rows that stay — the selected fx
+  /// header rows' (F-476), listed under a heading of their own since they
+  /// are not layers. Empty lists none.
+  final List<String> effects;
+
   @override
   Widget build(BuildContext context) {
     final keys = confirmDialogKeys('delete-layer');
@@ -36,6 +45,12 @@ class DeleteLayerDialog extends StatelessWidget {
       message: strings.deleteLayersMessage,
       details: [
         NoticeDetails(rows, heading: strings.deleteLayersHeading, open: true),
+        if (effects.isNotEmpty)
+          NoticeDetails(
+            effects,
+            heading: strings.deleteEffectsHeading,
+            open: true,
+          ),
       ],
       actions: confirmActions(
         context,

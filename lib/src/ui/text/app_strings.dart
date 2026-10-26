@@ -361,6 +361,7 @@ enum AppStrings {
   /// '{name}' is replaced with the layer name.
   String get deleteLayersMessage => _s('deleteLayersMessage');
   String get deleteLayersHeading => _s('deleteLayersHeading');
+  String get deleteEffectsHeading => _s('deleteEffectsHeading');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
 
   /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
@@ -2061,6 +2062,7 @@ enum AppStrings {
     'deleteLayerTitle': 'Delete layer',
     'deleteLayersMessage': 'Delete the layers below?',
     'deleteLayersHeading': 'Layers to delete',
+    'deleteEffectsHeading': 'Effects to delete',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
         'Each frame listed takes a name another frame on its layer already '
@@ -3312,6 +3314,7 @@ enum AppStrings {
     'deleteLayerTitle': 'レイヤーの削除',
     'deleteLayersMessage': '下のレイヤーを削除しますか？',
     'deleteLayersHeading': '削除するレイヤー',
+    'deleteEffectsHeading': '削除するエフェクト',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
         '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
@@ -4992,6 +4995,7 @@ enum AppStrings {
     'deleteLayerTitle': '레이어 삭제',
     'deleteLayersMessage': '아래 레이어를 삭제할까요?',
     'deleteLayersHeading': '삭제할 레이어',
+    'deleteEffectsHeading': '삭제할 이펙트',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
         '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
@@ -6664,6 +6668,7 @@ enum AppStrings {
     'deleteLayerTitle': 'Supprimer le calque',
     'deleteLayersMessage': 'Supprimer les calques ci-dessous ?',
     'deleteLayersHeading': 'Calques à supprimer',
+    'deleteEffectsHeading': 'Effets à supprimer',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
         'Chaque image listée prend un nom déjà utilisé par une autre image de '
@@ -8451,6 +8456,7 @@ enum AppStrings {
     'deleteLayerTitle': '删除图层',
     'deleteLayersMessage': '要删除下列图层吗？',
     'deleteLayersHeading': '要删除的图层',
+    'deleteEffectsHeading': '要删除的效果',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
         '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'

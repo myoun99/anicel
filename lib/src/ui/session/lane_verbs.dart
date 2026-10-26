@@ -2287,7 +2287,8 @@ class LaneVerbs {
     required bool range,
   }) =>
       _laneSpanHasKeys(lane) ||
-      (range && _effectsNamedByHeaders(lane).isNotEmpty);
+      (range &&
+          _effectsNamedByHeaders(lane.layerId, lane.spanLaneIds).isNotEmpty);
 
   /// Whether the span [laneVerbRange] answers with is the live lane RANGE —
   /// not the row stood on, nor the camera row's band.
@@ -2436,37 +2437,88 @@ class LaneVerbs {
   /// THE delete of one lane span ([deleteForLaneSelection]'s law): a RANGE's
   /// fx headers take their effects, and every lane left loses its keys.
   void _deleteForLaneSpan(TimelineLaneSelection lane, {required bool range}) {
-    final removed = range ? _effectsNamedByHeaders(lane) : const <EffectId>[];
+    final removed = range
+        ? _effectsNamedByHeaders(lane.layerId, lane.spanLaneIds)
+        : const <EffectId>[];
     if (removed.isEmpty) {
       removeLaneKeysForSelection(lane);
       return;
     }
     final layer = laneVerbLayerFor(lane.layerId)!;
     _project.historyManager.runAsOneStep('Delete', () {
-      var effects = layer.effects;
-      for (final effectId in removed) {
-        effects = effectsWithRemoved(effects, effectId) ?? effects;
-      }
-      _commitLaneEffects(layer, effects, description: 'Remove effect');
+      _removeEffects(layer, removed);
       // The removed effects' header lanes resolve to nothing now, so the
       // same span takes only the keys on the lanes that are left.
       removeLaneKeysForSelection(lane);
     });
   }
 
-  /// The effects a live lane RANGE names by their HEADER rows — none for the
-  /// span of the row being stood on, which is not a range.
+  /// 🗣️F-476 (유저 2026-10-26): 「레이어쪽 fx 선택범위로 선택하고
+  /// 삭제할수있게하라고. 물론 기본fx는 삭제못하는데 fx 추가해서 넣은거
+  /// 삭제하는기능 … 삭제같은 공용버튼도 선택범위로 대상 인식하는거 fx만
+  /// 빠져있는거같은데 법 통일」.
+  ///
+  /// The effects the rail's selected [rows] name by their HEADER rows, per
+  /// row — what the shared delete takes of them, by the law a range over
+  /// those headers is deleted by (F-87, [_effectsNamedByHeaders]). Transform
+  /// is no effect, so its header names none. ↩️The rows rung counted layer
+  /// rows alone (「lane rows … contribute nothing here」, 08-12) after F-87
+  /// gave the band its fx, so a rail selection of fx headers fell through
+  /// to the frame axis.
+  List<({Layer row, List<EffectId> effects})> effectsNamedByRows(
+    Iterable<TimelineRowAddress> rows,
+  ) {
+    final laneIdsByRow = <LayerId, List<String>>{};
+    for (final row in rows) {
+      if (row case LaneRowAddress(:final layerId, :final laneId)) {
+        (laneIdsByRow[layerId] ??= []).add(laneId);
+      }
+    }
+    return [
+      for (final MapEntry(key: layerId, value: laneIds)
+          in laneIdsByRow.entries)
+        if (_effectsNamedByHeaders(layerId, laneIds) case final effects
+            when effects.isNotEmpty)
+          (row: laneVerbLayerFor(layerId)!, effects: effects),
+    ];
+  }
+
+  /// Takes [named] ([effectsNamedByRows]) off their rows — inside the
+  /// caller's one step.
+  void removeEffectsNamedByRows(
+    List<({Layer row, List<EffectId> effects})> named,
+  ) {
+    for (final (:row, :effects) in named) {
+      _removeEffects(row, effects);
+    }
+  }
+
+  /// [layer]'s chain without [removed], committed as one edit.
+  void _removeEffects(Layer layer, Iterable<EffectId> removed) {
+    var effects = layer.effects;
+    for (final effectId in removed) {
+      effects = effectsWithRemoved(effects, effectId) ?? effects;
+    }
+    _commitLaneEffects(layer, effects, description: 'Remove effect');
+  }
+
+  /// The effects [laneIds] of [layerId]'s row name by their HEADERS — a live
+  /// lane RANGE's (none for the span of the row being stood on, which is not
+  /// a range), and the rail's row selection's ([effectsNamedByRows]).
   ///
   /// ↩️It read the live range itself to tell the two apart; a band's lanes
   /// are ranges too and live in no lane range, so the caller says which
   /// ([_deleteForLaneSpan]'s `range`).
-  List<EffectId> _effectsNamedByHeaders(TimelineLaneSelection lane) {
-    final layer = laneVerbLayerFor(lane.layerId);
+  List<EffectId> _effectsNamedByHeaders(
+    LayerId layerId,
+    Iterable<String> laneIds,
+  ) {
+    final layer = laneVerbLayerFor(layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return const [];
     }
     final ids = <EffectId>[];
-    for (final laneId in lane.spanLaneIds) {
+    for (final laneId in laneIds) {
       final address = parseEffectLaneId(laneId);
       if (address == null || address.parameterId != null) {
         continue;
