@@ -236,12 +236,17 @@ void main() {
     );
     session.onionSkin.toggleOnionSkin();
     session.dispose();
+    final warmer = session.playbackRig.prerenderScheduler;
+    expect(warmer.demand, isNull, reason: '⛔premise: let go, it follows none');
 
+    app.onionSkinSettings.value = app.onionSkinSettings.value.copyWith(
+      mode: OnionSkinMode.images,
+    );
     expect(
-      () => app.onionSkinSettings.value = app.onionSkinSettings.value
-          .copyWith(mode: OnionSkinMode.images),
-      returnsNormally,
-      reason: 'a pegs change asked the warmer of a session already gone',
+      warmer.demand,
+      isNull,
+      reason: 'a pegs change asked the warmer of a session already gone — '
+          'the app\'s settings held on to the whole of it',
     );
   });
 }
