@@ -40,7 +40,8 @@ import '../../helpers/timeline_zoom.dart';
 /// 추가로 보여주는걸로」 — one koma past the end line stands in it too.
 void main() {
   const frames = 120;
-  const step = TimelineZoomLimits.referencePixelsPerFrame / 1000;
+  /// A step of the bar: 1% of its 100%, half the zoom a cut opens at (F-491).
+  const step = TimelineZoomLimits.referencePixelsPerFrame / 200;
 
   Cut cut(String id, int duration) => Cut(
     id: CutId(id),
@@ -189,10 +190,10 @@ void main() {
     });
 
     test('a fit that falls between two steps takes the wider', () {
-      // 1000 / 100 = 10px is 520.83 steps of 0.1% of 19.2px.
+      // 1000 / 100 = 10px is 104.17 steps of 1% of 9.6px.
       expect(
         TimelineZoomLimits.fitting(1000, frames: 100, framesPerSecond: fps),
-        closeTo(520 * step, 1e-9),
+        closeTo(104 * step, 1e-9),
       );
     });
   });

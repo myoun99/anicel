@@ -68,9 +68,9 @@ void main() {
     tester,
   ) async {
     await pump(tester);
-    expect(said(tester), '100.0%');
+    expect(said(tester), '200%');
     await pump(tester, pixelsPerFrame: 12);
-    expect(said(tester), '62.5%');
+    expect(said(tester), '125%');
   });
 
   testWidgets('a drag of ten pixels moves the zoom ten percent, onto a step', (
@@ -78,10 +78,10 @@ void main() {
   ) async {
     final run = await pump(tester);
     await drag(tester, 10);
-    expect(run.zoom.value, closeTo(reference * 1.1, 1e-9));
-    expect(said(tester), '110.0%');
+    expect(run.zoom.value, closeTo(reference * 1.05, 1e-9));
+    expect(said(tester), '210%');
     await drag(tester, -30);
-    expect(run.zoom.value, closeTo(reference * 0.8, 1e-9));
+    expect(run.zoom.value, closeTo(reference * 0.9, 1e-9));
     expect(
       run.emitted.every(
         (zoom) =>
@@ -100,7 +100,7 @@ void main() {
     );
     await drag(tester, 10);
     expect(run.emitted, isEmpty);
-    expect(said(tester), '200.0%');
+    expect(said(tester), '400%');
   });
 
   testWidgets('a drag past the widest zoom stops at it', (tester) async {
@@ -116,7 +116,7 @@ void main() {
   testWidgets('🗣️F-463 (10-27): 「타임라인 줌 버튼에 연필버튼 삭제」 — no '
       'number is typed into it', (tester) async {
     await pump(tester);
-    expect(said(tester), '100.0%', reason: '⛔전제: the readout is up');
+    expect(said(tester), '200%', reason: '⛔전제: the readout is up');
     expect(
       find.byKey(const ValueKey<String>('timeline-zoom-readout-edit')),
       findsNothing,
@@ -130,7 +130,7 @@ void main() {
     final run = await pump(tester, turns: false);
     await drag(tester, 10);
     expect(run.zoom.value, reference);
-    expect(said(tester), '100.0%');
+    expect(said(tester), '200%');
   });
 
   testWidgets('🗣️F-463: no − and no + beside it — the fit is beside the '

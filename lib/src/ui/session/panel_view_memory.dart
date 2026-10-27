@@ -22,9 +22,10 @@ class PanelViewMemory {
     defaultStoryboardPixelsPerFrame,
   );
 
-  /// 40% on the bar — a zoom on one of its steps, so the first nudge moves
+  /// 80% on the bar — a zoom on one of its steps, so the first nudge moves
   /// the number with the zoom (F-403, [TimelineZoomLimits.clamped]).
-  /// ↩️8 pixels a frame: 33.3% then, between two steps now.
+  /// ↩️The same zoom read 40% from F-403 to F-491; 8 pixels a frame before
+  /// it: 33.3% then, between two steps now.
   static const double defaultStoryboardPixelsPerFrame =
       400 * TimelineZoomLimits.referencePixelsPerFrame / 1000;
 

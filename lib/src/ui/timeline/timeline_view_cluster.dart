@@ -92,9 +92,10 @@ class TimelineViewCluster extends StatelessWidget {
   /// The zoom readout's words — the canvas zoom readout's.
   static const TextStyle _zoomStyle = TextStyle(fontSize: 12);
 
-  /// The digits the zoom readout writes after the point — every digit the
-  /// zoom has (F-403: a step is 0.1%).
-  static const int _zoomDecimals = 1;
+  /// The digits the zoom readout writes after the point — none: a step is
+  /// a whole percent (F-491). ↩️One from F-403 to F-491, when a step was
+  /// 0.1%.
+  static const int _zoomDecimals = 0;
 
   /// What the cluster adds to the height it was drawn at where it is shown:
   /// the zoom readout's one line grown under the OS text size.
@@ -189,7 +190,7 @@ class TimelineViewCluster extends StatelessWidget {
       tooltip: AppText.strings.viewZoomDrag,
       // As wide as the widest zoom it writes, so no digit moves the row.
       width: TextMeasure(context, style)
-          .widest(everyDigitIn((d) => '$d$d$d.$d%'))
+          .widest(everyDigitIn((d) => '$d$d$d%'))
           .ceilToDouble(),
       enabled: onChanged != null,
       textStyle: _zoomStyle,

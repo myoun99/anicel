@@ -903,8 +903,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// The timeline's zoom follows the active cut: each cut shows at the zoom
   /// it was left at ([TimelineZoomMemory]), and a cut nobody zoomed at the
-  /// zoom to work at, the one the bar reads as 100% (F-403) — not at the
-  /// zoom the last cut was left at.
+  /// zoom to work at (F-403; 200% on the bar since F-491) — not at the zoom
+  /// the last cut was left at.
   void _followTimelineZoomToCut() {
     final session = widget.session;
     final cut = session.activeCutId;
