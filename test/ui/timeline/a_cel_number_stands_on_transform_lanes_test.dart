@@ -244,7 +244,7 @@ void main() {
   test('no parameter of any kind is named as a stand lane is — the id '
       'alone tells them apart', () {
     for (final kind in EffectKind.values) {
-      for (final spec in effectParametersOf(kind)) {
+      for (final spec in kind.parameters) {
         expect(effectStandLanes, isNot(contains(spec.id)), reason: kind.name);
       }
     }

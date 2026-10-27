@@ -171,33 +171,96 @@ List<double>? resolveColorMatrixIgnoringSpatial(
 ) {
   List<double>? matrix;
   for (final effect in effects) {
-    final next = switch (effect.kind) {
-      EffectKind.brightnessContrast => brightnessContrastMatrix(
-        brightness: effect.parameter('brightness'),
-        contrast: effect.parameter('contrast'),
-      ),
-      EffectKind.hueSaturation => hueSaturationMatrix(
-        hueDegrees: effect.parameter('hue'),
-        saturation: effect.parameter('saturation'),
-        lightness: effect.parameter('lightness'),
-      ),
-      EffectKind.blur => null,
-      // A color key changes ALPHA by a threshold test — there is no color
-      // matrix for it, the same way there is none for a blur. The reader
-      // this serves samples one pixel, so it applies the keys itself
-      // (`CelColorKey.alphaFor`) rather than asking for a matrix that
-      // cannot exist.
-      EffectKind.deleteColor || EffectKind.keepColor => null,
-      // Letters laid over the picture are spatial work too — what stands at
-      // one point is the picture's, as under a blur.
-      EffectKind.celNumber => null,
-    };
-    if (next == null) {
-      continue;
+    if (_paintPartOf(effect, DrawSpace.canvas) case _ColourPart(:final next)) {
+      matrix = matrix == null ? next : composeColorMatrices(next, matrix);
     }
-    matrix = matrix == null ? next : composeColorMatrices(next, matrix);
   }
   return matrix;
+}
+
+/// What ONE sampled effect is to a paint — the one place each kind's paint
+/// is written (I-132 「fx 하나 = 한 곳」): a colour matrix, a spatial filter, or
+/// nothing a paint can carry. Both readers of a chain — the painter
+/// ([resolveCompositeEffectPaint]) and the eyedropper's matrix
+/// ([resolveColorMatrixIgnoringSpatial]) — ask it, so a colour kind's matrix
+/// is spelled once. ↩️Each wrote its own switch, the matrices twice.
+sealed class _PaintPart {
+  const _PaintPart();
+}
+
+final class _ColourPart extends _PaintPart {
+  const _ColourPart(this.next);
+
+  final List<double> next;
+}
+
+final class _SpatialPart extends _PaintPart {
+  const _SpatialPart(this.filter, {required this.outset});
+
+  final ui.ImageFilter filter;
+  final double outset;
+}
+
+/// A kind no paint carries: the chain is split before a paint is resolved.
+final class _SplitPart extends _PaintPart {
+  const _SplitPart(this.splitBy);
+
+  /// What takes it out of the chain — the assert's word to a route that
+  /// resolved a chain without splitting it.
+  final String splitBy;
+}
+
+_PaintPart _paintPartOf(ResolvedLayerEffect effect, DrawSpace space) =>
+    switch (effect.kind) {
+      EffectKind.brightnessContrast => _ColourPart(
+        brightnessContrastMatrix(
+          brightness: effect.parameter('brightness'),
+          contrast: effect.parameter('contrast'),
+        ),
+      ),
+      EffectKind.hueSaturation => _ColourPart(
+        hueSaturationMatrix(
+          hueDegrees: effect.parameter('hue'),
+          saturation: effect.parameter('saturation'),
+          lightness: effect.parameter('lightness'),
+        ),
+      ),
+      EffectKind.blur => _blurPart(effect, space),
+      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
+      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
+      // has already applied them to the surface this paint will draw. A
+      // color key changes ALPHA by a threshold test — there is no color
+      // matrix for it, the same way there is none for a blur; the eyedropper
+      // applies the keys itself (`CelColorKey.alphaFor`).
+      EffectKind.deleteColor || EffectKind.keepColor => const _SplitPart(
+        'Source-pixel effects must be split off before a paint is '
+        'resolved — see splitSourceEffects.',
+      ),
+      // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
+      // its own: the row's tree splits the chain where it stands
+      // (`celNumberedRow`), so no chain handed to a paint holds one. Letters
+      // laid over the picture are spatial work too — what stands at one
+      // point is the picture's, as under a blur.
+      EffectKind.celNumber => const _SplitPart(
+        'A cel number splits the chain before a paint is resolved — see '
+        'celNumberedRow.',
+      ),
+    };
+
+_SpatialPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
+  final radiusX = effect.parameter('blurX') * space.scale;
+  final radiusY = effect.parameter('blurY') * space.scale;
+  return _SpatialPart(
+    ui.ImageFilter.blur(
+      sigmaX: radiusX * blurSigmaPerRadius,
+      sigmaY: radiusY * blurSigmaPerRadius,
+      // DECAL, not the clamp default: a layer's artwork must not smear
+      // its edge pixels outward forever — outside its coverage there is
+      // nothing, and that is what the picture should show.
+      tileMode: ui.TileMode.decal,
+    ),
+    outset: blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY),
+  );
 }
 
 /// Translates [effects] (already sampled at a frame) into paint state.
@@ -263,62 +326,22 @@ CompositeEffectPaint resolveCompositeEffectPaint(
   }
 
   for (final effect in effects) {
-    switch (effect.kind) {
-      // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
-      // color keys out in the shared visit and `celSurfaceWithSourceEffects`
-      // has already applied them to the surface this paint will draw.
+    switch (_paintPartOf(effect, space)) {
       // Reaching here means a route resolved a chain without splitting it —
       // an assert rather than a silent skip, because the silent version
       // looks exactly like "the artist set Amount to 0".
-      case EffectKind.deleteColor:
-      case EffectKind.keepColor:
-        assert(
-          false,
-          'Source-pixel effects must be split off before a paint is '
-          'resolved — see splitSourceEffects.',
-        );
-      // ⛔AND SO MUST A CEL NUMBER. It is no paint state but a picture of
-      // its own: the row's tree splits the chain where it stands
-      // (`celNumberedRow`), so no chain handed to a paint holds one.
-      case EffectKind.celNumber:
-        assert(
-          false,
-          'A cel number splits the chain before a paint is resolved — see '
-          'celNumberedRow.',
-        );
-      case EffectKind.brightnessContrast:
-        final matrix = brightnessContrastMatrix(
-          brightness: effect.parameter('brightness'),
-          contrast: effect.parameter('contrast'),
-        );
+      case _SplitPart(:final splitBy):
+        assert(false, splitBy);
+      case _ColourPart(:final next):
         pendingColor = pendingColor == null
-            ? matrix
-            : composeColorMatrices(matrix, pendingColor!);
-      case EffectKind.hueSaturation:
-        final matrix = hueSaturationMatrix(
-          hueDegrees: effect.parameter('hue'),
-          saturation: effect.parameter('saturation'),
-          lightness: effect.parameter('lightness'),
-        );
-        pendingColor = pendingColor == null
-            ? matrix
-            : composeColorMatrices(matrix, pendingColor!);
-      case EffectKind.blur:
+            ? next
+            : composeColorMatrices(next, pendingColor!);
+      case _SpatialPart(:final filter, outset: final spread):
         flushPendingColor();
-        final radiusX = effect.parameter('blurX') * space.scale;
-        final radiusY = effect.parameter('blurY') * space.scale;
-        final blur = ui.ImageFilter.blur(
-          sigmaX: radiusX * blurSigmaPerRadius,
-          sigmaY: radiusY * blurSigmaPerRadius,
-          // DECAL, not the clamp default: a layer's artwork must not smear
-          // its edge pixels outward forever — outside its coverage there is
-          // nothing, and that is what the picture should show.
-          tileMode: ui.TileMode.decal,
-        );
         chain = chain == null
-            ? blur
-            : ui.ImageFilter.compose(outer: blur, inner: chain!);
-        outset += blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY);
+            ? filter
+            : ui.ImageFilter.compose(outer: filter, inner: chain!);
+        outset += spread;
     }
   }
 

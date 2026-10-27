@@ -9,7 +9,7 @@ import 'package:anicel/src/models/transform_track.dart';
 /// rows share effect ids — which is how a value crosses 겸용 cuts now that
 /// their chains mirror only their shape.
 void main() {
-  final radiusId = effectParametersOf(EffectKind.blur).first.id;
+  final radiusId = EffectKind.blur.parameters.first.id;
 
   PropertyTrack<double> track(Map<int, (double, String?)> spec) =>
       PropertyTrack<double>(

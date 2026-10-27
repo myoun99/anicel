@@ -36,7 +36,7 @@ void main() {
         id: const EffectId('e'),
         kind: kind,
         parameters: {
-          for (final spec in effectParametersOf(kind))
+          for (final spec in kind.parameters)
             spec.id: EffectParameter(track: namedAtThree()),
         },
         // I-65: where a cel number stands is among its members too.

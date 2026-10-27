@@ -221,7 +221,7 @@ List<LayerEffect>? effectsWithGroupReset(
   return _editEffect(effects, address.effectId, (effect) {
     var next = effect;
     var changed = false;
-    for (final spec in effectParametersOf(effect.kind)) {
+    for (final spec in effect.kind.parameters) {
       final parameter = effect.parameterOf(spec.id);
       if (parameter.track.isEmpty) {
         if (parameter.value == spec.defaultValue) {
@@ -346,7 +346,7 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
   double? numberHeld(List<LayerEffect> effects, double shown) => _readLane(
     effects,
     laneId,
-    (effect, lane) => effectParameterSpecOf(effect.kind, lane)?.clamp(shown),
+    (effect, lane) => effect.kind.parameterSpec(lane)?.clamp(shown),
   );
 }
 
@@ -563,7 +563,7 @@ List<LayerEffect>? _editParameter(
   EffectParameter? Function(EffectParameter parameter, EffectParameterSpec spec)
   edit,
 ) => _editLane(effects, laneId, (effect, parameterId) {
-  final spec = effectParameterSpecOf(effect.kind, parameterId);
+  final spec = effect.kind.parameterSpec(parameterId);
   if (spec == null) {
     return null;
   }

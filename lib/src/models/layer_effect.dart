@@ -45,18 +45,128 @@ final class EffectId extends StringId {
 ///
 /// Levels/curves and glow are the natural next entries; both need a lookup
 /// table or a second pass, which is a later slice — not a different model.
+///
+/// 🚨THE EFFECT-KIND CAPABILITY TABLE — `LayerKind`'s law (audit round 8):
+/// every question the app asks about a kind is a COLUMN, and every kind
+/// answers it in its own declaration as a REQUIRED named parameter, so a new
+/// kind is a compile error until it has answered them all. 유저 I-132
+/// (2026-10-26): 「fx 들 전체적으로 법 통일」 — a kind used to be answered in
+/// five places (a label switch, `== EffectKind.x` tests, a parameter map,
+/// two composite switches). ⛔TWO COLUMNS THAT MATCH TODAY ARE STILL TWO
+/// COLUMNS: [drawsItsOwnPicture], [isBasic] and [staysOnItsRow] hold the
+/// same trues and name three facts.
 enum EffectKind {
-  brightnessContrast('brightnessContrast'),
-  hueSaturation('hueSaturation'),
-  blur('blur'),
+  brightnessContrast(
+    'brightnessContrast',
+    label: 'Brightness & Contrast',
+    parameters: [
+      EffectParameterSpec(
+        id: 'brightness',
+        label: 'Brightness',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'contrast',
+        label: 'Contrast',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+  hueSaturation(
+    'hueSaturation',
+    label: 'Hue/Saturation',
+    parameters: [
+      EffectParameterSpec(
+        id: 'hue',
+        label: 'Hue',
+        defaultValue: 0,
+        minimum: -180,
+        maximum: 180,
+        unit: EffectParameterUnit.degrees,
+      ),
+      EffectParameterSpec(
+        id: 'saturation',
+        label: 'Saturation',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'lightness',
+        label: 'Lightness',
+        defaultValue: 0,
+        minimum: -100,
+        maximum: 100,
+      ),
+    ],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+  blur(
+    'blur',
+    label: 'Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'blurX',
+        label: 'Blur Width',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+      EffectParameterSpec(
+        id: 'blurY',
+        label: 'Blur Height',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
 
   /// Erase every pixel whose color is within [tolerance] of the key color.
-  deleteColor('deleteColor'),
+  deleteColor(
+    'deleteColor',
+    label: 'Delete Color',
+    parameters: colorKeyParameterSpecs,
+    spreadsPixels: false,
+    runsOnSourcePixels: true,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
 
   /// Erase every pixel whose color is NOT within [tolerance] of the key
   /// color — the same comparison with the answer inverted, which is why
   /// the two share [colorKeyParameterSpecs] rather than repeating it.
-  keepColor('keepColor'),
+  keepColor(
+    'keepColor',
+    label: 'Keep Color',
+    parameters: colorKeyParameterSpecs,
+    spreadsPixels: false,
+    runsOnSourcePixels: true,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
 
   /// The CEL NUMBER (I-65): the row's name and its drawing's, in letters
   /// laid over the row's picture — 「A1」 — where [LayerEffect.stand] puts
@@ -67,9 +177,29 @@ enum EffectKind {
   /// 싶은 상황을 막는 제한」: a link of the chain like any other, so what
   /// follows it reads the letters too. 10-24 (I-65-Q1 a): 「레이어 이름 + 셀
   /// 번호(A1) — 이름 없는 그림은 A●」 — ↩️「A○」 since F-469 (기본마크 = 마크1).
-  celNumber('celNumber');
+  celNumber(
+    'celNumber',
+    label: 'Cel Number',
+    // Where the letters stand, how big and in what colour are the effect's
+    // [LayerEffect.stand] and [LayerEffect.ink], not parameters.
+    parameters: [],
+    spreadsPixels: false,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: true,
+    isBasic: true,
+    staysOnItsRow: true,
+  );
 
-  const EffectKind(this.jsonValue);
+  const EffectKind(
+    this.jsonValue, {
+    required this.label,
+    required this.parameters,
+    required this.spreadsPixels,
+    required this.runsOnSourcePixels,
+    required this.drawsItsOwnPicture,
+    required this.isBasic,
+    required this.staysOnItsRow,
+  });
 
   final String jsonValue;
 
@@ -84,19 +214,17 @@ enum EffectKind {
   /// reversed that rule for every name a model carries), keyed by
   /// [jsonValue] in the string tables — `EffectKindWords` in
   /// `ui/text/model_vocabulary.dart`, which a model cannot import.
-  String get label => switch (this) {
-    EffectKind.brightnessContrast => 'Brightness & Contrast',
-    EffectKind.hueSaturation => 'Hue/Saturation',
-    EffectKind.blur => 'Blur',
-    EffectKind.deleteColor => 'Delete Color',
-    EffectKind.keepColor => 'Keep Color',
-    EffectKind.celNumber => 'Cel Number',
-  };
+  final String label;
+
+  /// The kind's parameters, in the order the lanes show them. The specs ARE
+  /// the schema — the lane UI, the value parser, the JSON round-trip and the
+  /// resolver all read this list instead of repeating a switch per effect.
+  final List<EffectParameterSpec> parameters;
 
   /// Whether this kind SPREADS pixels outside their own coverage — the
   /// question the composite asks before deciding a folder must buffer, and
   /// the reason a blur can never be folded into a member's own draw.
-  bool get spreadsPixels => this == EffectKind.blur;
+  final bool spreadsPixels;
 
   /// Whether this kind is computed over the SOURCE pixels — the cel's own
   /// tile bytes, before anything is drawn — rather than over what the
@@ -113,8 +241,7 @@ enum EffectKind {
   /// cel bytes; a folder keys the picture it composed now, through a
   /// fragment shader proven identical to this pass. `splitSourceEffects`
   /// reads this to find the leading run and nothing else does.
-  bool get runsOnSourcePixels =>
-      this == EffectKind.deleteColor || this == EffectKind.keepColor;
+  final bool runsOnSourcePixels;
 
   /// Whether this kind DRAWS a picture of its own over the row's — the cel
   /// number's letters — rather than filtering the picture it is handed. Such
@@ -125,7 +252,7 @@ enum EffectKind {
   /// ⚠️Only a row whose drawings carry cel numbers takes one — the letters
   /// print that number (`LayerKind.numbersItsDrawings`: the same fact the
   /// auto naming reads, the kinds whose drawings are named by number).
-  bool get drawsItsOwnPicture => this == EffectKind.celNumber;
+  final bool drawsItsOwnPicture;
 
   /// Whether an output that keeps only the BASIC fx keeps this kind
   /// (`ExportLayerFx.basic`, `layerAsOutput`).
@@ -133,14 +260,24 @@ enum EffectKind {
   /// 🗣️I-65-Q3 (유저 2026-10-25): 「기본만 켬은 지금까지 말햇던 셀번호나
   /// 참조fx같은것만 키고 트랜스폼 포함해서 나머지 끄는것」. The reference fx is
   /// the row's, not a link of this chain ([Layer.mediaReference]).
-  bool get isBasic => this == EffectKind.celNumber;
+  final bool isBasic;
 
   /// Whether only the row that carries this link wears it — an attach row
   /// wears its base's chain short of it (`chainWornBy`).
   ///
   /// 🗣️I-65-Q4 (유저 2026-10-25): 「fx 를 단 행만 적는다 — 어태치는 번호 없이
   /// 나머지 fx 만 입는다」.
-  bool get staysOnItsRow => this == EffectKind.celNumber;
+  final bool staysOnItsRow;
+
+  /// The parameter [id] of this kind — null for an id it does not declare.
+  EffectParameterSpec? parameterSpec(String id) {
+    for (final spec in parameters) {
+      if (spec.id == id) {
+        return spec;
+      }
+    }
+    return null;
+  }
 
   String toJson() => jsonValue;
 
@@ -197,73 +334,6 @@ class EffectParameterSpec {
 
   double clamp(double value) => value.clamp(minimum, maximum).toDouble();
 }
-
-/// Every effect kind's parameters, in the order the lanes show them.
-const Map<EffectKind, List<EffectParameterSpec>> effectParameterSpecs = {
-  EffectKind.brightnessContrast: [
-    EffectParameterSpec(
-      id: 'brightness',
-      label: 'Brightness',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-    EffectParameterSpec(
-      id: 'contrast',
-      label: 'Contrast',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-  ],
-  EffectKind.hueSaturation: [
-    EffectParameterSpec(
-      id: 'hue',
-      label: 'Hue',
-      defaultValue: 0,
-      minimum: -180,
-      maximum: 180,
-      unit: EffectParameterUnit.degrees,
-    ),
-    EffectParameterSpec(
-      id: 'saturation',
-      label: 'Saturation',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-    EffectParameterSpec(
-      id: 'lightness',
-      label: 'Lightness',
-      defaultValue: 0,
-      minimum: -100,
-      maximum: 100,
-    ),
-  ],
-  EffectKind.blur: [
-    EffectParameterSpec(
-      id: 'blurX',
-      label: 'Blur Width',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 500,
-      unit: EffectParameterUnit.pixels,
-    ),
-    EffectParameterSpec(
-      id: 'blurY',
-      label: 'Blur Height',
-      defaultValue: 0,
-      minimum: 0,
-      maximum: 500,
-      unit: EffectParameterUnit.pixels,
-    ),
-  ],
-  EffectKind.deleteColor: colorKeyParameterSpecs,
-  EffectKind.keepColor: colorKeyParameterSpecs,
-  // Where the letters stand, how big and in what colour are the effect's
-  // [LayerEffect.stand] and [LayerEffect.ink], not parameters.
-  EffectKind.celNumber: [],
-};
 
 /// The color keys' parameters — ONE list for both kinds, because erase and
 /// keep are the same comparison with the answer inverted. Two copies would
@@ -331,18 +401,6 @@ const List<EffectParameterSpec> colorKeyParameterSpecs = [
     maximum: 100,
   ),
 ];
-
-List<EffectParameterSpec> effectParametersOf(EffectKind kind) =>
-    effectParameterSpecs[kind]!;
-
-EffectParameterSpec? effectParameterSpecOf(EffectKind kind, String id) {
-  for (final spec in effectParametersOf(kind)) {
-    if (spec.id == id) {
-      return spec;
-    }
-  }
-  return null;
-}
 
 /// One animatable effect parameter, in the AE property shape: a VALUE plus
 /// an optional key [track]. Keys win where they exist — an empty track
@@ -434,7 +492,7 @@ class LayerEffect {
     TransformTrack? stand,
     PropertyTrack<int>? ink,
   }) : parameters = Map.unmodifiable({
-         for (final spec in effectParametersOf(kind))
+         for (final spec in kind.parameters)
            spec.id:
                parameters?[spec.id] ??
                EffectParameter(value: spec.defaultValue),
@@ -503,7 +561,7 @@ class LayerEffect {
   EffectParameter parameterOf(String id) =>
       parameters[id] ??
       EffectParameter(
-        value: effectParameterSpecOf(kind, id)?.defaultValue ?? 0,
+        value: kind.parameterSpec(id)?.defaultValue ?? 0,
       );
 
   /// [id] is for a copy that stands beside its source — a paste, a
@@ -554,7 +612,7 @@ class LayerEffect {
   /// its [ink], then its parameters.
   List<String> get lanes => [
     if (kind.drawsItsOwnPicture) ...[...effectStandLanes, effectInkLane],
-    for (final spec in effectParametersOf(kind)) spec.id,
+    for (final spec in kind.parameters) spec.id,
   ];
 
   Map<String, dynamic> toJson() => {
@@ -625,11 +683,11 @@ class LayerEffect {
 }
 
 double _specDefault(EffectKind kind, String parameterId) =>
-    effectParameterSpecOf(kind, parameterId)?.defaultValue ?? 0;
+    kind.parameterSpec(parameterId)?.defaultValue ?? 0;
 
 /// An effect with its parameters SAMPLED at one frame — what the composite
 /// carries and what the caches compare. Values are in
-/// [effectParametersOf]'s order, which is the only order anything builds
+/// [EffectKind.parameters]' order, which is the only order anything builds
 /// them in.
 class ResolvedLayerEffect {
   ResolvedLayerEffect({
@@ -651,7 +709,7 @@ class ResolvedLayerEffect {
   final int? ink;
 
   double parameter(String id) {
-    final specs = effectParametersOf(kind);
+    final specs = kind.parameters;
     for (var index = 0; index < specs.length; index += 1) {
       if (specs[index].id == id) {
         return index < values.length
@@ -671,7 +729,7 @@ class ResolvedLayerEffect {
     if (kind.drawsItsOwnPicture) {
       return false;
     }
-    final specs = effectParametersOf(kind);
+    final specs = kind.parameters;
     for (
       var index = 0;
       index < specs.length && index < values.length;
@@ -759,7 +817,7 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
     if (!effect.enabled) {
       continue;
     }
-    final specs = effectParametersOf(effect.kind);
+    final specs = effect.kind.parameters;
     final sample = ResolvedLayerEffect(
       kind: effect.kind,
       values: [

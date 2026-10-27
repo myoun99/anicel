@@ -160,7 +160,7 @@ List<PropertyLaneRow> effectPropertyLanes(
         ..addAll(_standLanes(effect, standAt))
         ..add(_inkLane(effect, valued: valueAt != null));
     }
-    for (final (index, spec) in effectParametersOf(effect.kind).indexed) {
+    for (final (index, spec) in effect.kind.parameters.indexed) {
       final parameter = effect.parameterOf(spec.id);
       rows.add(
         PropertyLaneRow(

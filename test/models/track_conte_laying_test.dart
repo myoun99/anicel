@@ -303,7 +303,7 @@ void main() {
 
     test('— the eye, and the conte\'s own fx by their shape, each cut '
         'keeping its own numbers', () {
-      final radius = effectParametersOf(EffectKind.blur).first.id;
+      final radius = EffectKind.blur.parameters.first.id;
       LayerEffect blur(double value) => LayerEffect(
         id: const EffectId('blur'),
         kind: EffectKind.blur,

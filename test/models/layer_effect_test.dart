@@ -69,7 +69,7 @@ void main() {
             id: const EffectId('e1'),
             kind: kind,
           );
-          for (final spec in effectParametersOf(kind)) {
+          for (final spec in kind.parameters) {
             expect(effect.parameterOf(spec.id).value, spec.defaultValue);
           }
           // A filter changes no pixel until a value moves; a kind that

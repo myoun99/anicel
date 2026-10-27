@@ -44,7 +44,7 @@ void main() {
         reason: channel,
       );
     }
-    expect(effectParametersOf(EffectKind.celNumber), isEmpty);
+    expect(EffectKind.celNumber.parameters, isEmpty);
   });
 
   test('a colour picked keys it at the playhead — and the letters are '
