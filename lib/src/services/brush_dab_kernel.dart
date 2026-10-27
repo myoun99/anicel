@@ -490,6 +490,18 @@ class NativeDabBatcher {
   );
 }
 
+/// Stages [plan] alone as the engine's dab batch and returns its spec — how
+/// a kernel other than the dab blend reads a dab (the blur's coverage,
+/// I-75): the same fields, staged by the same call.
+Pointer<QaDabSpecStruct> stageDabAlone(
+  QaNativeEngine native,
+  BrushDabPlan plan,
+) {
+  native.beginDabBatch(1);
+  _prepareDab(native, 0, plan);
+  return native.stagedDabSpecs;
+}
+
 void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
   native.prepareDabAt(
     index,

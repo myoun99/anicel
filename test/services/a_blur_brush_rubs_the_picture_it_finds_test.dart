@@ -17,6 +17,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/qa_blur_kernel.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/brush_blur_stroke_landing.dart';
@@ -258,6 +259,11 @@ void main() {
       debugQaEngineLibraryPathOverride = dllPath;
       QaNativeEngine.debugForceDartFallback = false;
       expect(QaNativeEngine.instance, isNotNull);
+      expect(
+        QaBlurKernel.instance,
+        isNotNull,
+        reason: 'the engine is loaded, so its blur runs in the C',
+      );
       body();
     });
   }
@@ -479,10 +485,11 @@ void main() {
     required double hardness,
     int sequence = 0,
     double? pathStep,
+    double size = 24,
   }) => BrushDab(
     center: CanvasPoint(x: x, y: 64),
     color: 0xFF000000,
-    size: 24,
+    size: size,
     opacity: 1,
     flow: flow,
     hardness: hardness,
@@ -496,6 +503,12 @@ void main() {
   onEachEngine('one hard dab leaves exactly the picture blurred under it, '
       'by the law written beside it', () {
     expectByTheLaw([dabAt(96, flow: 1, hardness: 1)]);
+  });
+
+  onEachEngine('a dab wide enough to share its passes out among threads '
+      'lays the law too', () {
+    // 84px: a window of 168² pixels, past the C's 128² floor for the pool.
+    expectByTheLaw([dabAt(96, flow: 0.7, hardness: 0.6, size: 84)]);
   });
 
   onEachEngine('soft dabs rubbed over each other each read what the ones '

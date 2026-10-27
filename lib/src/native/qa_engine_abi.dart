@@ -299,7 +299,11 @@ import '../core/on_a_worker.dart';
 ///   wherever it lies (board a-one-pixel-dab-drops-out-by-where-it-lies Q6,
 ///   유저 2026-10-25). 0 keeps them along the radius. `qa_dab_spec_sizeof`
 ///   moves.
-const int kQaEngineAbiVersion = 57;
+/// - v58: `qa_blur_dab` and `qa_blur_result_tile` — the blur brush (I-75,
+///   유저 Q1 「섞기 그룹에 「흐리기」」): a dab rewrites the picture under it,
+///   read through a `qa_blur_tile` table (`qa_blur_tile_sizeof`), at the C
+///   speed its finest step needs.
+const int kQaEngineAbiVersion = 58;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

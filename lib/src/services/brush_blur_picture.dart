@@ -1,3 +1,4 @@
+import 'dart:ffi' show Pointer, StructPointer, Uint16, Uint8, nullptr;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -7,6 +8,8 @@ import '../models/brush_dab.dart';
 import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
+import '../native/qa_blur_kernel.dart';
+import '../native/qa_native_engine.dart';
 import 'brush_dab_kernel.dart';
 
 /// 🗣️I-75 흐리기 — THE CEL A BLUR STROKE WORKS ON, and the one law every
@@ -47,20 +50,40 @@ import 'brush_dab_kernel.dart';
 /// The tool's OPACITY and the SELECTION are not here: they cap how far the
 /// finished picture may move from the cel ([resultTile]'s mask), exactly as
 /// they cap a paint stroke's accumulated buffer.
+///
+/// With the engine loaded a dab and a finished tile are the C's
+/// (`qa_blur_dab`, `qa_blur_result_tile`, ABI 58) — a blur dab costs far
+/// more than a paint dab, and the brush lays at the finest step. The passes
+/// below are the reference it matches byte for byte, and what runs without
+/// the engine.
 class BrushBlurPicture {
   BrushBlurPicture({required this.base, required this.wall})
     : tileSize = base.tileSize;
 
   /// The cel as the stroke found it — what every pixel the stroke has not
-  /// rewritten still reads.
+  /// rewritten still reads. ⚠️It also keeps its tiles alive while the C
+  /// reads them through raw pointers ([BitmapTile.readPixels]).
   final BitmapSurface base;
   final PasteboardWall wall;
   final int tileSize;
 
+  /// The engine and its blur kernels — null where the passes below run.
+  final ({QaNativeEngine engine, QaBlurKernel kernel})? _native =
+      _nativeRoute();
+
+  static ({QaNativeEngine engine, QaBlurKernel kernel})? _nativeRoute() {
+    final engine = QaNativeEngine.instance;
+    final kernel = QaBlurKernel.instance;
+    return engine == null || kernel == null
+        ? null
+        : (engine: engine, kernel: kernel);
+  }
+
   /// The rewritten tiles: premultiplied RGBA at 16 bits (alpha × 257, a
   /// channel × alpha × 257 / 255), each complete — made from [base] whole
-  /// the first time a dab writes into it.
-  final Map<TileCoord, Uint16List> _tiles = {};
+  /// for every tile a dab's rectangle meets. Native-backed under the
+  /// engine, whose kernel writes them ([dispose] lets them go).
+  final Map<TileCoord, _Rewritten> _tiles = {};
 
   /// The empty planes a dab's paint coverage is measured on, cleared after
   /// every dab.
@@ -108,8 +131,74 @@ class BrushBlurPicture {
     if (plan == null) {
       return null;
     }
-    final laid = _measureLaid(plan);
     _radius = blurRadiusOf(dab);
+    _rewriteUnder(plan.clip);
+    final native = _native;
+    if (native == null || !_blurInC(native, plan)) {
+      _blurInDart(plan);
+    }
+    return plan.clip;
+  }
+
+  /// Makes the rewritten tile of every tile [clip] meets — what both
+  /// routes write a dab into.
+  void _rewriteUnder(DirtyRegion clip) {
+    final right = floorDiv(clip.rightExclusive - 1, tileSize);
+    final bottom = floorDiv(clip.bottomExclusive - 1, tileSize);
+    for (var y = floorDiv(clip.top, tileSize); y <= bottom; y += 1) {
+      for (var x = floorDiv(clip.left, tileSize); x <= right; x += 1) {
+        _tileFor(TileCoord(x: x, y: y));
+      }
+    }
+  }
+
+  /// The C's dab: the picture over the window the blur reads, a tile table
+  /// row by row. False when the C could not get its buffers — it has
+  /// written nothing, and the passes below run instead.
+  bool _blurInC(
+    ({QaNativeEngine engine, QaBlurKernel kernel}) native,
+    BrushDabPlan plan,
+  ) {
+    final reach = _radius * 3;
+    final x0 = floorDiv(plan.left - reach, tileSize);
+    final y0 = floorDiv(plan.top - reach, tileSize);
+    final x1 = floorDiv(plan.rightExclusive + reach - 1, tileSize);
+    final y1 = floorDiv(plan.bottomExclusive + reach - 1, tileSize);
+    final tilesWide = x1 - x0 + 1;
+    final table = native.kernel.tiles(tilesWide * (y1 - y0 + 1));
+    for (var y = y0; y <= y1; y += 1) {
+      for (var x = x0; x <= x1; x += 1) {
+        final coord = TileCoord(x: x, y: y);
+        final entry = table[(y - y0) * tilesWide + (x - x0)];
+        entry.own = _tiles[coord]?.buffer?.pointer.cast<Uint16>() ?? nullptr;
+        entry.cel = _celPointer(coord);
+      }
+    }
+    return native.kernel.blurDab(
+      stageDabAlone(native.engine, plan),
+      tilesWide: tilesWide,
+      tileX0: x0,
+      tileY0: y0,
+      tileSize: tileSize,
+      rect: (
+        left: plan.left,
+        top: plan.top,
+        rightExclusive: plan.rightExclusive,
+        bottomExclusive: plan.bottomExclusive,
+      ),
+      radius: _radius,
+    );
+  }
+
+  /// The cel's tile at [coord] for the C to read, or `nullptr` where it has
+  /// none. The pointer outlives [BitmapTile.readPixels]: [base] holds the
+  /// tile, so it stays reachable as long as this picture is.
+  Pointer<Uint8> _celPointer(TileCoord coord) =>
+      base.tileAt(coord)?.readPixels((pointer, _) => pointer) ?? nullptr;
+
+  /// The passes in Dart — the reference the C matches.
+  void _blurInDart(BrushDabPlan plan) {
+    final laid = _measureLaid(plan);
     final reach = _radius * 3;
     final width = plan.rightExclusive - plan.left;
     final wide = width + reach * 2;
@@ -135,7 +224,6 @@ class BrushBlurPicture {
       _blurLine((values: _across, from: column * 4, step: rowValues), tall);
       _moveColumn(plan, laid, column);
     }
-    return plan.clip;
   }
 
   void _ensureRoom({required int width, required int wide, required int tall}) {
@@ -214,7 +302,7 @@ class BrushBlurPicture {
       final span = spanEnd - x;
       final from = (rowOffset + x - tileLeft) * 4;
       final coord = TileCoord(x: tileX, y: tileY);
-      final own = _tiles[coord];
+      final own = _tiles[coord]?.values;
       if (own != null) {
         into.setRange(out, out + span * 4, own, from);
       } else {
@@ -321,7 +409,7 @@ class BrushBlurPicture {
         if (share == 0) {
           continue;
         }
-        own ??= _tileFor(TileCoord(x: tileX, y: tileY));
+        own ??= _tileFor(TileCoord(x: tileX, y: tileY)).values;
         final o = ((at - tileY * tileSize) * tileSize + localX) * 4;
         final b = (reach + at - top) * 4;
         own[o] = _toward(own[o], _lineB[b], share);
@@ -344,12 +432,35 @@ class BrushBlurPicture {
       ? (difference * factor * 2 + whole) ~/ (whole * 2)
       : -((-difference * factor * 2 + whole) ~/ (whole * 2));
 
-  /// The rewritten tile at [coord], made from the cel's the first time.
-  Uint16List _tileFor(TileCoord coord) => _tiles.putIfAbsent(coord, () {
-    final values = Uint16List(tileSize * tileSize * 4);
-    base.tileAt(coord)?.readPixels((_, view) => _premultiplyInto(values, view));
-    return values;
+  /// The rewritten tile at [coord], made from the cel's the first time —
+  /// in the engine's memory when its kernel is to write it.
+  _Rewritten _tileFor(TileCoord coord) => _tiles.putIfAbsent(coord, () {
+    final count = tileSize * tileSize * 4;
+    final buffer = _native?.engine.acquireTileBuffer(count * 2, zeroed: false);
+    final values = buffer == null
+        ? Uint16List(count)
+        : buffer.view.buffer.asUint16List(buffer.view.offsetInBytes, count);
+    final cel = base.tileAt(coord);
+    if (cel == null) {
+      values.fillRange(0, count, 0);
+    } else {
+      cel.readPixels((_, view) => _premultiplyInto(values, view));
+    }
+    return (values: values, buffer: buffer);
   });
+
+  /// Lets the engine's memory go — the rewritten tiles it holds. The
+  /// stroke's end ([BrushLiveStrokeRasterizer.clear]).
+  void dispose() {
+    final engine = _native?.engine;
+    for (final tile in _tiles.values) {
+      final buffer = tile.buffer;
+      if (engine != null && buffer != null) {
+        engine.releaseTileBuffer(buffer);
+      }
+    }
+    _tiles.clear();
+  }
 
   /// The finished tile at [coord]: the cel moved toward the rewritten
   /// picture by [mask] (the selection folded with the tool's opacity, as a
@@ -360,14 +471,48 @@ class BrushBlurPicture {
   /// Where nothing moved the bytes ARE the cel's: premultiplying a byte to
   /// 16 bits and back returns it exactly (the rounding error stays under
   /// half a level at every alpha).
-  ({Uint8List bytes, bool changed})? resultTile(
+  ///
+  /// Under the engine the C makes it, into [into] — the buffer the
+  /// coordinate's last result held — or a fresh one; the caller owns the
+  /// buffer it is handed back in.
+  ({Uint8List bytes, bool changed, QaNativeTileBuffer? buffer})? resultTile(
     TileCoord coord, {
-    Uint8List? mask,
+    ({Uint8List bytes, QaNativeTileBuffer? buffer})? mask,
+    QaNativeTileBuffer? into,
   }) {
     final own = _tiles[coord];
     if (own == null) {
       return null;
     }
+    final native = _native;
+    final ownBuffer = own.buffer;
+    final maskPointer = mask == null ? nullptr : mask.buffer?.pointer;
+    if (native != null && ownBuffer != null && maskPointer != null) {
+      final out =
+          into ??
+          native.engine.acquireTileBuffer(
+            tileSize * tileSize * 4,
+            zeroed: false,
+          );
+      final changed = native.kernel.resultTile(
+        own: ownBuffer.pointer.cast<Uint16>(),
+        cel: _celPointer(coord),
+        mask: maskPointer,
+        tileSize: tileSize,
+        out: out.pointer,
+      );
+      return (bytes: out.view, changed: changed, buffer: out);
+    }
+    final made = _resultInDart(coord, own.values, mask?.bytes);
+    return (bytes: made.bytes, changed: made.changed, buffer: null);
+  }
+
+  /// [resultTile] in Dart — the reference the C matches.
+  ({Uint8List bytes, bool changed}) _resultInDart(
+    TileCoord coord,
+    Uint16List own,
+    Uint8List? mask,
+  ) {
     final pixelCount = tileSize * tileSize;
     final bytes = Uint8List(pixelCount * 4);
     base.tileAt(coord)?.copyPixelsInto(bytes);
@@ -425,3 +570,7 @@ class BrushBlurPicture {
 /// next one `step` values on — a line buffer's (step 4), or one column of
 /// the rows' blur (step: a row's values).
 typedef _Line = ({Uint16List values, int from, int step});
+
+/// A rewritten tile: its values, and the engine's buffer they live in when
+/// the C writes them.
+typedef _Rewritten = ({Uint16List values, QaNativeTileBuffer? buffer});

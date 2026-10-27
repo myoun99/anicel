@@ -2185,6 +2185,10 @@ class QaNativeEngine {
 
   /// Opens a batch of [dabCount] dabs: room for their specs and clips, and
   /// the arena back to its start.
+  /// The specs [prepareDabAt] staged — what a kernel other than the dab
+  /// blend reads a dab through (the blur's coverage, I-75).
+  Pointer<QaDabSpecStruct> get stagedDabSpecs => _dabSpecs.pointer;
+
   void beginDabBatch(int dabCount) {
     _dabSpecs.ensure(dabCount);
     _dabClips.ensure(dabCount * 4);

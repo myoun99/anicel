@@ -418,6 +418,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _maskTiles.clear();
     _uniformMask = null;
     _results.clear();
+    _blur?.dispose();
     _blur = null;
     _strokeBounds = null;
     _blendedDabCount = 0;
@@ -567,24 +568,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
           if (!existing.changed) {
             continue; // Equal to the base: nothing to show (see below).
           }
-          final buffer = existing.native;
-          results[entry.slot] = PreBlendedOverlayTile._lazy(
-            existing.bytes,
-            tileSize,
-            revision,
-            buffer != null
-                ? () {
-                    final scratch = native.premultipliedTileScratch(
-                      buffer.pointer,
-                      tileSize * tileSize,
-                    );
-                    return (view: scratch.view, free: scratch.free);
-                  }
-                : () => (
-                    view: premultipliedRgbaCopy(existing.bytes),
-                    free: _nothing,
-                  ),
-          );
+          results[entry.slot] = _shownLazily(existing);
           continue;
         }
         final reused = existing?.native;
@@ -715,11 +699,28 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (!result.changed) {
       return null; // Equal to the base: the committed tile already shows it.
     }
+    return _shownLazily(result);
+  }
+
+  /// A resident [result] as the overlay shows it: its premultiplied form
+  /// made only if the door asks for it — by the engine where the bytes are
+  /// the engine's (a blur's result is, on this route too).
+  PreBlendedOverlayTile _shownLazily(_ResultTile result) {
+    final buffer = result.native;
+    final native = _native;
     return PreBlendedOverlayTile._lazy(
       result.bytes,
       tileSize,
       result.revision,
-      () => (view: premultipliedRgbaCopy(result.bytes), free: _nothing),
+      buffer != null && native != null
+          ? () {
+              final scratch = native.premultipliedTileScratch(
+                buffer.pointer,
+                tileSize * tileSize,
+              );
+              return (view: scratch.view, free: scratch.free);
+            }
+          : () => (view: premultipliedRgbaCopy(result.bytes), free: _nothing),
     );
   }
 
@@ -842,10 +843,11 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     if (blur != null) {
       final made = blur.resultTile(
         TileCoord(x: tileX, y: tileY),
-        mask: mask?.bytes,
+        mask: mask == null ? null : (bytes: mask.bytes, buffer: mask.buffer),
+        into: existing?.native,
       );
       final result = _ResultTile(
-        native: null,
+        native: made?.buffer,
         bytes: made?.bytes ?? Uint8List(0),
         revision: revision,
         changed: made?.changed ?? false,
