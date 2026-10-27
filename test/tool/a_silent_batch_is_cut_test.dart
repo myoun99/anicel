@@ -6,7 +6,15 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/affected_tests.dart'
-    show BatchSilence, finishedByCounter, kSilentBatch, stillRunning;
+    show
+        BatchKind,
+        BatchSilence,
+        finishedByCounter,
+        flutterTestArguments,
+        kReporter,
+        kSilentBatch,
+        lastSkipCount,
+        stillRunning;
 
 /// 🗣️유저 2026-10-21, tests-crowd-the-machine-Q17 「15분 동안 끝나는 테스트가
 /// 없으면 배치를 끊는다」: a batch that finishes no test for [kSilentBatch] is
@@ -35,6 +43,26 @@ void main() {
       finishedByCounter('+7: shrinks to ~100px under the drop zone'),
       7,
     );
+  });
+
+  test('🧪every batch names the reporter whose counter this watch reads — '
+      'left unnamed, GitHub Actions prints none (10-28, PR #1485)', () {
+    expect(kReporter, '--reporter=expanded');
+    for (final kind in BatchKind.values) {
+      expect(
+        flutterTestArguments(['test/a_test.dart'], kind: kind),
+        contains(kReporter),
+        reason: '$kind',
+      );
+    }
+    // What `--reporter=expanded` says of a test, and what `github` says.
+    const expanded = '00:41 +934 ~3 -1: test/a_test.dart: draws';
+    const github = '✅ test/a_test.dart: draws';
+    expect(finishedByCounter(expanded), 938);
+    expect(lastSkipCount(expanded), 3);
+    expect(finishedByCounter(github), isNull,
+        reason: 'the shape the watch could not hear: cut at fifteen minutes '
+            'while tests were still finishing');
   });
 
   test('🚨a batch that finishes no test for fifteen minutes is past it — '
