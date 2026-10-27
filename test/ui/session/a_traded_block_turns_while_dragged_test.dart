@@ -7,8 +7,20 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -172,5 +184,87 @@ void main() {
     s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3, targetLayerId: base);
 
     expect(heard(), isEmpty);
+  });
+
+  // The other drag that hangs a picture somewhere else: a block carried onto
+  // another row ([BlockMoveDragPreview.rekeys]). The rows it leaves and lands
+  // on are laid again; a FOLDER over the row it lands on is not, and its
+  // band is white wherever a member's block holds a picture.
+  test('a block carried into a folder turns the folder\'s band white while '
+      'the hand is down, and the folder is told so', () {
+    const canvas = CanvasSize(width: 16, height: 16);
+    const out = LayerId('out');
+    const into = LayerId('in');
+    const folder = LayerId('F');
+    final s = EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('carry'),
+        name: 'carry',
+        createdAt: DateTime.utc(2026, 10, 27),
+        tracks: [
+          Track(
+            id: const TrackId('t'),
+            name: 'V',
+            cuts: [
+              Cut(
+                id: const CutId('c'),
+                name: 'c',
+                duration: 12,
+                canvasSize: canvas,
+                layers: [
+                  Layer(
+                    id: out,
+                    name: 'out',
+                    frames: [
+                      Frame(
+                        id: const FrameId('out0'),
+                        duration: 1,
+                        strokes: const [],
+                      ),
+                    ],
+                    timeline: {
+                      0: TimelineExposure.drawing(
+                        const FrameId('out0'),
+                        length: 1,
+                      ),
+                    },
+                  ),
+                  Layer(id: into, name: 'in', frames: const [], folderId: folder),
+                  createFolderLayer(id: folder, name: 'F'),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    addTearDown(s.dispose);
+    s.renderCaches.brushFrameStore.storeBakedSurface(
+      s.brushFrameKeyForCut(s.requireActiveCut, out, const FrameId('out0')),
+      BitmapSurface(
+        canvasSize: canvas,
+        tileSize: 4,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            size: 4,
+            pixels: Uint8List(4 * 4 * 4)..fillRange(0, 4 * 4 * 4, 0xFF),
+          ),
+        },
+      ),
+    );
+    expect(drawn(s, folder), isFalse, reason: '⛔전제: no member drew there');
+    final heard = hearing(s, [folder]);
+
+    s.selectLayer(out);
+    s.updateFrameRangeSelectionDrag(layerId: out, anchorIndex: 0, headIndex: 0);
+    expect(s.rangeMove.beginFrameRangeMoveDrag(out), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: into);
+
+    expect(
+      drawn(s, folder),
+      isTrue,
+      reason: 'the picture is on its way into the folder',
+    );
+    expect(heard(), {folder});
   });
 }
