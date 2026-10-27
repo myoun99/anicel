@@ -145,17 +145,73 @@ void main() {
       'is the group\'s', () {
     final before = planOf(drawing(effects: [blur('b'), number('n')]));
     final after = planOf(drawing(effects: [number('n'), blur('b')]));
-    final beforeGroup = before.single as _Group;
+    final [row as _Leaf, _ as _Number] = before;
+    expect(kindsOf(row.payload.effects), ['blur']);
     final afterGroup = after.single as _Group;
-    expect(kindsOf(beforeGroup.effects), isEmpty);
-    expect(kindsOf((beforeGroup.children.first as _Leaf).payload.effects), [
-      'blur',
-    ]);
     expect(kindsOf(afterGroup.effects), ['blur']);
     expect(
       kindsOf((afterGroup.children.first as _Leaf).payload.effects),
       isEmpty,
     );
+  });
+
+  // 🚨The folder's law (`folderNeedsCompositeBuffer`): one picture only
+  // where the two do not distribute.
+  test('a numbered row that changes nothing of how the two land is no '
+      'group — the letters lie over the row in their place, as a folder '
+      'that changes nothing is no group', () {
+    final nodes = planOf(drawing(effects: [blur('before'), number('n')]));
+    final [row as _Leaf, letters as _Number] = nodes;
+    expect(identical(letters.on, row), isTrue);
+    expect(
+      (row.payload.opacity, row.payload.blendMode),
+      (1.0, LayerBlendMode.normal),
+    );
+    expect(preorderNodes(nodes).whereType<_Group>(), isEmpty);
+  });
+
+  test('its strength alone makes the two one picture, and so does its '
+      'blend alone', () {
+    final faint = planOf(drawing(effects: [number('n')], opacity: 0.5));
+    final added = planOf(
+      drawing(effects: [number('n')], blend: LayerBlendMode.add),
+    );
+    for (final (says, nodes, opacity, blendMode) in [
+      ('a strength below 1', faint, 0.5, LayerBlendMode.normal),
+      ('a blend other than normal', added, 1.0, LayerBlendMode.add),
+    ]) {
+      final group = nodes.single as _Group;
+      expect(
+        (group.opacity, group.blendMode),
+        (opacity, blendMode),
+        reason: says,
+      );
+      expect(group.children.last, isA<_Number>(), reason: says);
+    }
+  });
+
+  // I-92-Q3 a: what clips or is clipped to is cut or cuts as one picture.
+  test('a numbered row clipped to, or clipping, is one picture with its '
+      'letters', () {
+    final numbered = drawing(effects: [number('n')]);
+    final other = drawing(name: 'B').copyWith(id: const LayerId('b'));
+    List<CompositeNode<CutFrameCompositeLayer>> planOfRows(
+      List<Layer> layers,
+    ) => planCutFrameCompositeTree(
+      cut: cutOf(numbered).copyWith(layers: layers),
+      frameIndex: 0,
+      surfaceResolver: (_, _) => surface,
+    );
+    final asBase = planOfRows([
+      numbered,
+      other.copyWith(clipsToBelow: true),
+    ]).single as CompositeClip<CutFrameCompositeLayer>;
+    expect(asBase.base, isA<_Group>(), reason: 'clipped to');
+    final asClipping = planOfRows([
+      other,
+      numbered.copyWith(clipsToBelow: true),
+    ]).single as CompositeClip<CutFrameCompositeLayer>;
+    expect(asClipping.scope.last, isA<_Group>(), reason: 'clipping');
   });
 
   test('a second number is a group around the first, which keeps the row\'s '
@@ -227,7 +283,7 @@ void main() {
         );
     expect(blankPlanOf(drawing()), isEmpty, reason: 'no number: it drops');
     final nodes = blankPlanOf(drawing(effects: [number('n')]));
-    final [letters as _Number] = (nodes.single as _Group).children;
+    final [letters as _Number] = nodes;
     expect(letters.letters.text, 'A1');
     expect(letters.on.payload.surface.showsSomething, isFalse);
     expect(preorderNodes(nodes).whereType<_Leaf>(), isEmpty);

@@ -359,9 +359,7 @@ bool folderNeedsCompositeBuffer({
   required Layer folder,
   required int frameIndex,
 }) {
-  if (folder.blendMode.isolatesGroup ||
-      clipsToLayerBelow(folder) ||
-      _isClipBase(cut, folder)) {
+  if (folder.blendMode.isolatesGroup || meetsAClip(cut, folder)) {
     return true;
   }
   if (resolveFolderEffectsAt(
@@ -404,6 +402,14 @@ Layer? clipBaseOf(Cut cut, Layer row) {
   }
   return null;
 }
+
+/// Whether [row] is cut or cuts by the clip law (I-92) — it clips to the
+/// layer below, or one clips to it — and so meets the clip as ONE picture:
+/// a folder its members as one ([folderNeedsCompositeBuffer]), a row with
+/// its cel number's letters ([celNumberedRow]). Asked of the rows as they
+/// stand, not of what shows at a frame.
+bool meetsAClip(Cut cut, Layer row) =>
+    clipsToLayerBelow(row) || _isClipBase(cut, row);
 
 /// Whether a row clips to [row] ([clipBaseOf]): the nearest row of its
 /// folder above it, of those in the picture, clips to the layer below.
@@ -1352,28 +1358,32 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       liveLayerId: liveLayerId,
     ));
     if (row != null) {
-      place(
-        layer,
-        celNumberedRow(
-          paint: (
-            opacity: row.opacity,
-            blendMode: row.blendMode,
-            effects: row.effects,
-          ),
-          rowOf: row.withPaint,
-          text: celNumberText(
-            rowName: layer.name,
-            drawingName: switch (row) {
-              CutFrameCompositeEntry(:final frame) => frame.name,
-              // Drawn on where nothing is exposed yet: the drawing the pen
-              // makes, which is born unnamed.
-              CutFrameCompositeLiveRow() => null,
-            },
-            kind: layer.kind,
-          ),
-          paper: cut.canvasSize,
+      final [standing, ...over] = celNumberedRow(
+        paint: (
+          opacity: row.opacity,
+          blendMode: row.blendMode,
+          effects: row.effects,
         ),
+        rowOf: row.withPaint,
+        text: celNumberText(
+          rowName: layer.name,
+          drawingName: switch (row) {
+            CutFrameCompositeEntry(:final frame) => frame.name,
+            // Drawn on where nothing is exposed yet: the drawing the pen
+            // makes, which is born unnamed.
+            CutFrameCompositeLiveRow() => null,
+          },
+          kind: layer.kind,
+        ),
+        paper: cut.canvasSize,
+        asOnePicture: meetsAClip(cut, layer),
       );
+      place(layer, standing);
+      // The letters over a row that neither clips nor is clipped to — so
+      // [place] laid it last in its list.
+      for (final letters in over) {
+        addTo(layer.folderId, letters);
+      }
     }
   }
   // A row in an advanced blend goes over a picture of its scope — once

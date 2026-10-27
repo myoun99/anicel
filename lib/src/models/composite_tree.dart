@@ -197,7 +197,8 @@ final class CompositeOpaque<L> extends CompositeNode<L> {
 }
 
 /// A row's CEL NUMBER (I-65): [letters] written over the row's picture, where
-/// [on] — the row's own leaf, beside it in their group — lies, so they move
+/// [on] — the row's own leaf, laid just before it, in their group where the
+/// two are one picture — lies, so they move
 /// with it. It paints nothing of [on]'s: the row's picture is that leaf's
 /// (`celNumberedRow` makes the two).
 final class CompositeCelNumber<L> extends CompositeNode<L> {
@@ -399,7 +400,7 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
         null,
       ),
       // ⛔As it stands: its row is a leaf painting normal (`celNumberedRow`
-      // gives the row's blend to their group), which this fold hands on as
+      // gives any other blend to their group), which this fold hands on as
       // the very node it was — the one [CompositeCelNumber.on] names.
       CompositeCelNumber<L>() => (node, null),
     };

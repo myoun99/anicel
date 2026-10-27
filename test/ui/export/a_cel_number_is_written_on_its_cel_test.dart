@@ -358,14 +358,19 @@ void main() {
 
     /// A cut whose row wears [effects] — with a row attached to it beside
     /// it — each drawing a black pixel in the paper's corner: a cel with no
-    /// artwork is not written.
-    EditorSessionManager sessionOf(List<LayerEffect> effects) {
+    /// artwork is not written. [clipped], the attached row clips to the
+    /// numbered one and is green all over.
+    EditorSessionManager sessionOf(
+      List<LayerEffect> effects, {
+      bool clipped = false,
+    }) {
       final attach = Layer(
         id: attachId,
         name: 'A影',
         frames: [drawing],
         timeline: {0: TimelineExposure.drawing(drawing.id, length: 4)},
         attachedToLayerId: layerId,
+        clipsToBelow: clipped,
       );
       final session = EditorSessionManager(
         initialProject: Project(
@@ -397,16 +402,27 @@ void main() {
       addTearDown(session.dispose);
       const tile = 256;
       final pixels = Uint8List(tile * tile * 4)..[3] = 255;
+      final green = Uint8List(tile * tile * 4);
+      for (var at = 0; at < green.length; at += 4) {
+        green
+          ..[at + 1] = 255
+          ..[at + 3] = 255;
+      }
       final cut = session.requireActiveCut;
       for (final id in [layerId, attachId]) {
+        final all = clipped && id == attachId;
         session.renderCaches.brushFrameStore.storeRebuiltDisplayCache(
           key: session.brushFrameKeyForCut(cut, id, drawing.id),
           previewSurface: BitmapSurface(canvasSize: canvas, tileSize: tile)
               .putTiles([
-                (
-                  coord: TileCoord(x: 0, y: 0),
-                  tile: BitmapTile(size: tile, pixels: pixels),
-                ),
+                for (final (x, y)
+                    in all
+                        ? const [(0, 0), (1, 0), (0, 1), (1, 1)]
+                        : const [(0, 0)])
+                  (
+                    coord: TileCoord(x: x, y: y),
+                    tile: BitmapTile(size: tile, pixels: all ? green : pixels),
+                  ),
               ]),
         );
       }
@@ -414,15 +430,18 @@ void main() {
     }
 
     /// The cel of row [of] — its base wearing [effects] — written with the
-    /// tab's FX [fx]: its straight RGBA.
+    /// tab's FX [fx]: its straight RGBA. [clipped], with the attached row
+    /// clipping to it in the cel ([sessionOf]).
     Future<Uint8List> celOf(
       List<LayerEffect> effects, {
       ExportLayerFx fx = ExportLayerFx.on,
       LayerId of = layerId,
+      bool clipped = false,
     }) async {
-      final session = sessionOf(effects);
+      final session = sessionOf(effects, clipped: clipped);
       final cut = session.requireActiveCut;
       final layer = cut.layers.firstWhere((layer) => layer.id == of);
+      final attach = cut.layers.firstWhere((layer) => layer.id == attachId);
       final image =
           await ExportFrameRenderer(
             session: session,
@@ -432,8 +451,8 @@ void main() {
             ExportCelGroupTask(
               cut: cut,
               baseLayer: layer,
-              members: [layer],
-              memberFrames: [drawing],
+              members: [layer, if (clipped) attach],
+              memberFrames: [drawing, if (clipped) drawing],
               baseFrame: drawing,
               celName: '1',
               fileName: 'A1.png',
@@ -509,6 +528,29 @@ void main() {
         expect(redOf(attached, canvas.width).count, 0);
         expect(attached, await celOf([blur], of: attachId));
         expect(attached, isNot(await celOf(const [], of: attachId)));
+      });
+      await tester.pumpAndSettle();
+    });
+
+    // I-92: a row clipped to is cut by as ONE picture, as a folder is
+    // (`meetsAClip`) — the numbered row's letters with its pixels, as the
+    // cut's own tree cuts it.
+    testWidgets('a row clipped to the numbered one is cut by its letters '
+        'too', (tester) async {
+      await tester.runAsync(() async {
+        final cel = await celOf([number], clipped: true);
+        expect(
+          redOf(cel, canvas.width).count,
+          0,
+          reason: 'laid over the clip, the letters would show red',
+        );
+        var green = 0;
+        for (var at = 0; at < cel.length; at += 4) {
+          if (cel[at + 1] == 255 && cel[at + 3] == 255) {
+            green += 1;
+          }
+        }
+        expect(green, greaterThan(100), reason: 'cut to the letters');
       });
       await tester.pumpAndSettle();
     });

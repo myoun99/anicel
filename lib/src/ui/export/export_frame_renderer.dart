@@ -518,13 +518,12 @@ class ExportFrameRenderer {
     // the frame is ([_composite]).
     Future<ui.Image> drawn(
       CameraFrameRenderService service, {
-      CompositeNode<CutFrameCompositeLayer>? Function()? laid,
+      List<CompositeNode<CutFrameCompositeLayer>> Function()? laid,
       ProjectBackground? paper,
     }) async {
       await _hydrate(task.cut, frameIndex);
-      final row = laid?.call();
       return service.renderThroughCamera(
-        nodes: [?row],
+        nodes: laid?.call() ?? const [],
         pose: view.pose,
         cameraFrameSize: view.frameSize,
         cutTo: task.cut.canvasSize,
@@ -597,9 +596,9 @@ class ExportFrameRenderer {
   /// [layer]'s [drawing] by itself — whole, in no blend, its pose and its
   /// effects on it, its cel number with them ([celNumberedRow]): the
   /// picture a layered file lays by the row's own strength and blend
-  /// ([frameRows]). None where it exposes no cel here, or one with nothing
-  /// on it.
-  CompositeNode<CutFrameCompositeLayer>? _laidAlone(
+  /// ([frameRows]). Nothing where it exposes no cel here, or one with
+  /// nothing on it.
+  List<CompositeNode<CutFrameCompositeLayer>> _laidAlone(
     Cut cut,
     Layer layer,
     ({Frame? frame, ResolvedRowRender render}) drawing,
@@ -607,7 +606,7 @@ class ExportFrameRenderer {
     final frame = drawing.frame;
     final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
     if (frame == null || surface == null) {
-      return null;
+      return const [];
     }
     return celNumberedRow(
       paint: _alone(drawing.render.effects),
@@ -624,6 +623,8 @@ class ExportFrameRenderer {
         kind: layer.kind,
       ),
       paper: cut.canvasSize,
+      // By itself in its picture: the file clips the picture, not a node.
+      asOnePicture: false,
     );
   }
 
@@ -1357,18 +1358,21 @@ class ExportFrameRenderer {
     );
     final stack = <CompositeNode<_CelLaid>>[];
     for (final row in cel.rows) {
-      clips.place(
-        row.cut,
-        row.layer,
-        // R26 #30: the delivery cel is the stack as composited — the
-        // members' strengths and blends apply.
-        _celNumbered(row, (
+      // R26 #30: the delivery cel is the stack as composited — the
+      // members' strengths and blends apply.
+      final [standing, ...over] = _celNumbered(
+        row,
+        (
           opacity: row.layer.opacity,
           blendMode: row.layer.blendMode,
           effects: row.effects,
-        )),
-        into: stack,
+        ),
+        asOnePicture: meetsAClip(row.cut, row.layer),
       );
+      clips.place(row.cut, row.layer, standing, into: stack);
+      // The letters over a row that neither clips nor is clipped to — so
+      // [clips] laid it last in [stack].
+      stack.addAll(over);
     }
     final shown = mapCompositeLeaves<_CelLaid, CutFrameCompositeLayer>(
       stack,
@@ -1442,9 +1446,10 @@ class ExportFrameRenderer {
           clipped: clipsToLayerBelow(row.layer),
           draw: () => drawn(
             _transparentRenderService,
-            nodes: mapCompositeLeaves([
-              _celNumbered(row, _alone(row.effects)),
-            ], _laidInTheCel),
+            nodes: mapCompositeLeaves(
+              _celNumbered(row, _alone(row.effects), asOnePicture: false),
+              _laidInTheCel,
+            ),
           ),
         ),
       if (cel.guides case final guides?) laidOver(strings.exLayGuides, guides),
@@ -1527,18 +1532,23 @@ class ExportFrameRenderer {
       };
 
   /// [row] — a row of its cel — as the tree of a cel lays it with [paint]:
-  /// its leaf, or the group its cel number makes of it ([celNumberedRow]).
-  CompositeNode<_CelLaid> _celNumbered(_CelRow row, RowPaint paint) =>
-      celNumberedRow(
-        paint: paint,
-        rowOf: (paint) => (row: row, paint: paint),
-        text: celNumberText(
-          rowName: row.layer.name,
-          drawingName: row.frame.name,
-          kind: row.layer.kind,
-        ),
-        paper: row.cut.canvasSize,
-      );
+  /// its leaf, with the letters its cel number writes over it, or the
+  /// group the two make ([celNumberedRow], [asOnePicture]).
+  List<CompositeNode<_CelLaid>> _celNumbered(
+    _CelRow row,
+    RowPaint paint, {
+    required bool asOnePicture,
+  }) => celNumberedRow(
+    paint: paint,
+    rowOf: (paint) => (row: row, paint: paint),
+    text: celNumberText(
+      rowName: row.layer.name,
+      drawingName: row.frame.name,
+      kind: row.layer.kind,
+    ),
+    paper: row.cut.canvasSize,
+    asOnePicture: asOnePicture,
+  );
 
   /// [effects] whole and in no blend: the picture a layered file keeps and
   /// lays by the row's own strength and blend ([celGroupRows]), or a clip's
