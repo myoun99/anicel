@@ -95,7 +95,6 @@ class CellInstances {
       _withTheBandsLanes(
         () => _trackSe.createTrackSeEntriesForRange(trackRange),
       );
-      _changes.notifyChanged();
       return true;
     }
     // R10 #19: a live lane SPAN, or the property row you are STANDING on
@@ -161,10 +160,6 @@ class CellInstances {
 
   /// [cells] — the band's cells filled — in ONE undo step with the keys of
   /// the band's lane rows ([LaneVerbs.createKeysForBandLanes]).
-  ///
-  /// The lanes go FIRST: a camera key's undo puts back the whole project as
-  /// it stood before it, so it must be the last thing undone (a step undoes
-  /// in reverse).
   void _withTheBandsLanes(void Function() cells) =>
       _project.historyManager.runAsOneStep('Create selected cells', () {
         _laneVerbs.createKeysForBandLanes();
