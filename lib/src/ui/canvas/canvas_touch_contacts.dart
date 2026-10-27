@@ -91,6 +91,17 @@ class CanvasTouchContacts {
       AppInput.settings.value.strokeFingerModifier &&
       aFingerDownBesides(pointer);
 
+  /// Whether a finger holds a MOVE drag's Shift — one resting on the glass
+  /// ([aFingerDownBesides]) beside a pen's or a mouse's drag. A drag
+  /// [byTouch] takes none: its second finger stays what it was.
+  ///
+  /// 🗣️유저 2026-09-22: 「수정자는 항상 그렇지만 터치 입구도 존재하게」 —
+  /// and how far, as the stamp's drag settled it (I-121-Q1, 유저
+  /// 2026-10-22: 「펜으로 끄는 스탬프에 한해 … 손가락으로 끄는 스탬프는
+  /// 지금처럼 두 번째 손가락 = 핀치」).
+  static bool aFingerHoldsAMovesShift({required bool byTouch}) =>
+      !byTouch && aFingerDownBesides(null);
+
   /// 🚨★★★D34 최종 (유저 2026-08-23, 실기): 「**커서는 일단 커서ui랑 같은곳에
   /// 있는게 최우선**이고, **터치는 커서 없애고 펜은 커서 보이는채로 유지**하는
   /// 그런것만 가능할까싶은데」

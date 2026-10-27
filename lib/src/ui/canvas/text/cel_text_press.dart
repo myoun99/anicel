@@ -155,6 +155,18 @@ bool _carriesTheBox(PointerDownEvent event) {
       CanvasTouchContacts.aFingerDownBesides(event.pointer);
 }
 
+/// How far the hand went on the cel, [from] → [to], for a press that
+/// MOVES something — the box, the cross: kept to one way while Shift is
+/// held (I-136, [TransformBoxLaw.oneWay]), asked at every move.
+///
+/// ⚠️The KEY alone: a finger beside the press is the text's Ctrl already
+/// ([_carriesTheBox]), and one that carries the box rests on through the
+/// drag — read as Shift too, every carry by finger would keep to one way.
+CanvasPoint _movedOnTheCel(Offset from, Offset to) {
+  final travel = CanvasPoint(x: to.dx - from.dx, y: to.dy - from.dy);
+  return ModifierKeys.isShiftPressed ? TransformBoxLaw.oneWay(travel) : travel;
+}
+
 CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
   final (:scene, :cel, :event, :artwork) = pressed;
   final layout = session.shown.layout;
@@ -367,10 +379,7 @@ final class _InsidePress extends CelTextPress {
       return;
     }
     final travel = TransformBoxLaw.wholePixels(
-      CanvasPoint(
-        x: artwork.dx - this.artwork.dx,
-        y: artwork.dy - this.artwork.dy,
-      ),
+      _movedOnTheCel(this.artwork, artwork),
     );
     scene.tool.carry(dx: travel.x.toInt(), dy: travel.y.toInt());
   }
@@ -429,9 +438,12 @@ final class _CrossPress extends CelTextPress {
     if (session == null) {
       return;
     }
+    final moved = _movedOnTheCel(this.artwork, artwork);
     scene.tool.carryCross(
       start +
-          session.shown.layout.onCanvas.alongItsLines(artwork - this.artwork),
+          session.shown.layout.onCanvas.alongItsLines(
+            Offset(moved.x, moved.y),
+          ),
     );
   }
 

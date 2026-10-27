@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset;
 
+import '../../core/one_way.dart';
 import '../../models/canvas_point.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
@@ -166,9 +167,7 @@ final class TwoScales extends ScaleLaneForm {
       return null;
     }
     final (across, down) = pair;
-    final alongAcross = dragDelta.dx.abs() >= dragDelta.dy.abs();
-    final dx = alongAcross ? dragDelta.dx : 0.0;
-    final dy = alongAcross ? 0.0 : dragDelta.dy;
+    final (dx, dy) = keptToOneWay(dragDelta.dx, dragDelta.dy);
     return '${columnValueText(across + dx * _percentPerPixel)}, '
         '${columnValueText(down + dy * _percentPerPixel)}%';
   }

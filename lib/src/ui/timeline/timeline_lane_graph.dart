@@ -7,6 +7,7 @@ import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 
 import '../../core/neighbour_pairs.dart';
+import '../../core/one_way.dart';
 import '../../models/key_mark.dart' show KeyMark;
 import '../../models/key_side.dart'
     show
@@ -1004,11 +1005,11 @@ class _LaneGraphPictureState extends State<LaneGraphPicture> {
       return moved;
     }
     final axis = widget.frameAxis.axis;
-    final along = partAlong(axis, moved);
-    final across = partAcross(axis, moved);
-    return along.abs() >= across.abs()
-        ? offsetAlong(axis, along: along, across: 0)
-        : offsetAlong(axis, along: 0, across: across);
+    final (along, across) = keptToOneWay(
+      partAlong(axis, moved),
+      partAcross(axis, moved),
+    );
+    return offsetAlong(axis, along: along, across: across);
   }
 
   /// What [inHand]'s lifted keys say once the hand has gone

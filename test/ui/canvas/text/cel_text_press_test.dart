@@ -1433,6 +1433,74 @@ void main() {
       expect(begun.single.anchor, CanvasPoint(x: 10, y: 10));
     });
   });
+
+  // 🗣️I-136 (유저 2026-10-27): 「캔버스에서 어떤 조작 할때도 쉬프트 통해
+  // 누른상태면 한쪽으로만. 즉 x,y가 있다치면 x 안건들고 y만 이동」.
+  group('Shift keeps what a text\'s press MOVES to one way (I-136)', () {
+    setUp(CanvasTouchContacts.reset);
+    tearDown(CanvasTouchContacts.reset);
+
+    void holdShift() {
+      HardwareKeyboard.instance.handleKeyEvent(
+        const KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey.shiftLeft,
+          logicalKey: LogicalKeyboardKey.shiftLeft,
+          timeStamp: Duration.zero,
+        ),
+      );
+      addTearDown(HardwareKeyboard.instance.clearState);
+    }
+
+    test('its box goes across alone, or down alone — whichever the hand '
+        'went further, in whole pixels', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      holdShift();
+
+      final down = press(scene, 12, 12)!;
+      move(scene, down, 14.4, 12);
+      move(scene, down, 19.6, 15.4);
+      up(scene, down, 19.6, 15.4);
+
+      expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 16, y: 8));
+      expect(tool.hold, CelTextHold.box);
+    });
+
+    test('its cross keeps to one way', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      final take = press(scene, 10, 10)!;
+      up(scene, take, 10, 10);
+      holdShift();
+
+      final down = press(scene, 17, 14)!;
+      move(scene, down, 22, 20);
+      up(scene, down, 22, 20);
+
+      expect(tool.crossOffCentre, const Offset(0, 6));
+    });
+
+    test('⛔a finger resting beside the press is the text\'s Ctrl, not its '
+        'Shift — read as both, every carry by a finger would keep to one '
+        'way', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      CanvasTouchContacts.noteAppWide(
+        const PointerDownEvent(pointer: 9, kind: PointerDeviceKind.touch),
+      );
+
+      final down = press(scene, 12, 12)!;
+      move(scene, down, 14.4, 12);
+      move(scene, down, 19.6, 15.4);
+      up(scene, down, 19.6, 15.4);
+
+      expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 16, y: 11));
+      expect(tool.hold, CelTextHold.box);
+    });
+  });
 }
 
 /// What a press on nothing began a text with.
