@@ -405,6 +405,7 @@ class CameraFrameRenderService {
         extentOf: extentOf,
         placementOf: placementOf,
         shownWithin: null,
+        held: null,
       ),
     );
     canvas.restore();

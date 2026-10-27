@@ -13,12 +13,23 @@ import 'subtree_image_composite.dart';
 /// stands for ([extentOf]) and where it lies ([placementOf]) — what a
 /// buffer around it covers, and where the letters on it lie — and what of
 /// the canvas is shown, where a blend can read the frame
-/// ([drawBlendOverBackdrop]'s `shownWithin`).
+/// ([drawBlendOverBackdrop]'s `shownWithin`) — and where the pictures its
+/// nodes are drawn into are held ([held]).
 typedef CompositeRoute<L> = ({
   void Function(Canvas canvas, L row, double rasterScale) paintRow,
   Rect Function(L row) extentOf,
   LayerPlacement? Function(L row) placementOf,
   Rect? shownWithin,
+  SubtreeHolding<L>? held,
+});
+
+/// Where a route holds the pictures of its nodes ([HeldSubtreeRasters]):
+/// what a node draws ([keyOf] — null for one drawn afresh each time), and
+/// whether one drawn whole here is kept ([keeps]).
+typedef SubtreeHolding<L> = ({
+  HeldSubtreeRasters rasters,
+  Object? Function(CompositeNode<L> node) keyOf,
+  bool keeps,
 });
 
 /// Paints [nodes] onto [canvas] at [rasterScale] — the scale the CTM this
@@ -91,6 +102,23 @@ class _CompositeTreeWalk<L> {
         placementOf: route.placementOf,
       );
 
+  /// Where [node]'s picture is held, where the route holds them and knows
+  /// what [node] draws — kept where [within] cuts none of it.
+  SubtreeHold? _holdOf(CompositeNode<L> node, Rect within) {
+    final held = route.held;
+    final key = held?.keyOf(node);
+    if (held == null || key == null) {
+      return null;
+    }
+    return SubtreeHold(
+      held.rasters,
+      key: key,
+      keeps:
+          held.keeps &&
+          _bufferBoundsOf(node, within) == _bufferBoundsOf(node, Rect.largest),
+    );
+  }
+
   /// A folder: its children buffered as one image, blended once with the
   /// folder's paint.
   void _group(
@@ -159,6 +187,7 @@ class _CompositeTreeWalk<L> {
       paintSubtree: (into, scale) => paint(into, children, scale, groupRect),
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
+      held: _holdOf(node, within),
     );
   }
 
@@ -194,6 +223,7 @@ class _CompositeTreeWalk<L> {
           paint(into, children, scale, pass.bufferBounds),
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
+      held: _holdOf(node, within),
     );
   }
 
@@ -239,6 +269,7 @@ class _CompositeTreeWalk<L> {
         blendMode: blendMode,
         effects: CompositeEffectPaint.none,
       ),
+      held: _holdOf(node, within),
     );
   }
 }

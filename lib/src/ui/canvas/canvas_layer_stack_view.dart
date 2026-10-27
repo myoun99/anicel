@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/collection_equality.dart';
+import '../../core/tree_nodes.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show CutFrameCompositeLayer;
 import '../../models/bitmap_surface.dart';
@@ -31,6 +32,8 @@ import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../../services/cel_source_effect_pass.dart';
 import '../../services/cel_surface_as_shown.dart';
+import '../../services/playback/cut_frame_composite_signature.dart'
+    show CompositeLayerSignature, CutFrameCompositeSignature;
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 
@@ -238,9 +241,21 @@ typedef LiveSurfaceTokens = ({
 });
 
 /// A row as a frame's body draws it from its cel's stored pixels
-/// ([StackedFrame.of]): the layer, and the tint an onion ghost wears over
-/// it — null on every row of a frame's own tree.
-typedef StoredRow = ({CutFrameCompositeLayer layer, int? tint});
+/// ([StackedFrame.of]): the layer, the tint an onion ghost wears over it —
+/// null on every row of a frame's own tree — and what it draws, as a
+/// frame's picture is signed by it (null where that is not told: a node
+/// holding it is drawn afresh each time, [HeldNodePictures]).
+typedef StoredRow = ({
+  CutFrameCompositeLayer layer,
+  int? tint,
+  CompositeLayerSignature? signature,
+});
+
+/// Where a frame's picture keeps the pictures its nodes are drawn into
+/// ([HeldSubtreeRasters]) — and whether the frame drawn here keeps the ones
+/// it draws whole: the frame laid for a screen that stands on it, every row
+/// in hand. A stroke's step patched into it only finds them.
+typedef HeldNodePictures = ({HeldSubtreeRasters rasters, bool keeps});
 
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the
@@ -273,6 +288,7 @@ final class StackedFrame {
     required StoredRow? Function(CanvasStackRow row) storedRowOf,
     required StoredRow? Function(CanvasStackRow row) bareRowOf,
     ({LiveRows rows, LiftedRowPainters painters})? live,
+    HeldNodePictures? held,
   }) {
     _PaintRow? paintOf(StoredRow? row) => switch (row) {
       final stored? => _PaintCelSurface(stored),
@@ -307,6 +323,7 @@ final class StackedFrame {
             paperBackground: page.paperBackground,
             devicePixelRatio: devicePixelRatio,
             debugDisableSingleBuffer: debugDisableSingleBuffer,
+            held: held,
           ),
     );
   }
@@ -610,9 +627,13 @@ final class _PaintCelSurface extends _SurfaceRow {
       blendMode = row.layer.blendMode,
       placement = row.layer.placement,
       effects = row.layer.effects,
-      tint = row.tint;
+      tint = row.tint,
+      signature = row.signature;
 
   final BitmapSurfacePainter painter;
+
+  /// What it draws ([StoredRow.signature]).
+  final CompositeLayerSignature? signature;
   @override
   final double opacity;
   @override
@@ -693,7 +714,12 @@ final class _LayerStackPainter {
     required this.paperBackground,
     this.devicePixelRatio = 1.0,
     this.debugDisableSingleBuffer = false,
+    this.held,
   });
+
+  /// Where the frame's picture finds its nodes' pictures drawn before, and
+  /// whether it keeps the ones it draws whole ([StackedFrame.of]).
+  final HeldNodePictures? held;
 
   /// What moves the live rows' pixels: the live row's surface and stroke,
   /// the float, and each lifted row's surface and float — a drag step

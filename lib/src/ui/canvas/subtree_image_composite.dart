@@ -3,8 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/draw_space.dart';
+import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
 import 'layer_blend_shader.dart';
@@ -310,6 +312,9 @@ typedef BlitSubtree = void Function(Paint paint, {bool stepped});
 /// blits once, an adjustment wraps a crossfade `saveLayer` around two. Passing
 /// the structure in rather than a single paint is what lets an adjustment
 /// rasterise its scope ONCE where two `saveLayer`s painted the children twice.
+///
+/// [held] is where the node's raster may already be, drawn whole, and where
+/// a whole one is kept ([HeldSubtreeRasters]).
 void drawSubtreeAsImage({
   required Canvas canvas,
   required Rect bounds,
@@ -318,6 +323,7 @@ void drawSubtreeAsImage({
   required void Function(Canvas into, double rasterScale) paintSubtree,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
+  SubtreeHold? held,
 }) {
   final plan = _planSubtreeRaster(
     bounds: bounds,
@@ -325,6 +331,28 @@ void drawSubtreeAsImage({
     maxPixelSide: maxPixelSide,
   );
   if (plan == null) {
+    return;
+  }
+  if (held?.covering(plan) case final whole?) {
+    // The grid the whole lies on, cut to what is asked: it lands where a
+    // raster of the part would, which samples on the whole's grid
+    // ([_planSubtreeRaster]).
+    final there = SubtreeRasterPlan(
+      bounds: plan.bounds,
+      destination: whole.plan.destination,
+      pixelWidth: whole.plan.pixelWidth,
+      pixelHeight: whole.plan.pixelHeight,
+      scale: whole.plan.scale,
+      rasterScale: whole.plan.rasterScale,
+    );
+    compose(
+      (paint, {bool stepped = true}) => _blitSubtreeRaster(
+        canvas: canvas,
+        image: stepped ? whole.image : whole.raster,
+        plan: there,
+        paint: paint,
+      ),
+    );
     return;
   }
   final recorder = ui.PictureRecorder();
@@ -335,7 +363,104 @@ void drawSubtreeAsImage({
     plan: plan,
     compose: compose,
     steps: steps,
+    held: held,
   );
+}
+
+/// A node's sub-tree rastered WHOLE — its raster, the chain's steps on it,
+/// and the grid they lie on — held for the next draw of the same node
+/// ([HeldSubtreeRasters]).
+typedef HeldSubtreeRaster = ({
+  SubtreeRasterPlan plan,
+  ui.Image raster,
+  ui.Image image,
+});
+
+/// Where [drawSubtreeAsImage] finds a node's raster drawn whole, by [key] —
+/// what the node draws — and, where [keeps], keeps the one it draws whole.
+final class SubtreeHold {
+  const SubtreeHold(this.rasters, {required this.key, required this.keeps});
+
+  final HeldSubtreeRasters rasters;
+
+  /// What the node draws, its pixels' every input ([HeldSubtreeRasters]).
+  final Object key;
+
+  /// Whether the raster drawn here is the node's whole and may be kept.
+  final bool keeps;
+
+  /// The raster held for [key] that [plan] can be cut from: drawn at the
+  /// scale the walk is at — one held is never magnified ([_finishSubtreeRaster])
+  /// — and covering it.
+  HeldSubtreeRaster? covering(SubtreeRasterPlan plan) {
+    final whole = rasters._held.use(key);
+    if (whole == null || whole.plan.rasterScale != plan.rasterScale) {
+      return null;
+    }
+    final destination = whole.plan.destination;
+    return destination.expandToInclude(plan.destination) == destination
+        ? whole
+        : null;
+  }
+}
+
+/// 🚨★A NODE THAT DREW THE SAME PICTURE DOES NOT DRAW IT AGAIN — a folder, a
+/// clip, an adjustment's scope: one picture of its sub-tree ([drawSubtreeAsImage]),
+/// kept by what it draws where it was drawn whole, and cut from when the
+/// same node is drawn again in part (card
+/// paint-walk-redoes-the-same-work-each-step, 🔬2026-10-27: beside ten
+/// folders at 50%, each a picture of its own, a stroke's every step drew
+/// all ten again — a step on the screen p50 166ms against 85 with the
+/// folders at 100%, Windows, profile).
+///
+/// [bytes] bounds what is held together, and one raster past it is not
+/// kept at all: it is drawn as it was before.
+final class HeldSubtreeRasters {
+  HeldSubtreeRasters({required int Function() bytes})
+    : _bytes = bytes,
+      _held = Lru(
+        limit: bytes,
+        costOf: _bytesOf,
+        letGo: (_, held) => _letGo(held),
+      );
+
+  final int Function() _bytes;
+  final Lru<Object, HeldSubtreeRaster> _held;
+
+  /// How many rasters are held.
+  int get length => _held.length;
+
+  /// What the rasters held weigh ([estimatedImageBytes]).
+  int get heldBytes => _held.held;
+
+  void _keep(Object key, HeldSubtreeRaster whole) {
+    if (_bytesOf(whole) > _bytes()) {
+      _letGo(whole);
+      return;
+    }
+    if (_held.keep(key, whole) case final replaced?) {
+      _letGo(replaced);
+    }
+  }
+
+  /// Lets go of every raster held.
+  void clear() {
+    for (final held in _held.values) {
+      _letGo(held);
+    }
+    _held.clear();
+  }
+
+  static int _bytesOf(HeldSubtreeRaster held) =>
+      estimatedImageBytes(held.plan.pixelWidth, held.plan.pixelHeight) *
+      (identical(held.image, held.raster) ? 1 : 2);
+
+  static void _letGo(HeldSubtreeRaster held) {
+    if (!identical(held.image, held.raster)) {
+      held.image.dispose();
+    }
+    held.raster.dispose();
+  }
 }
 
 /// 🚨★★★A CLIPPING GROUP IS ONE PICTURE ([CompositeClip], I-92) — an image,
@@ -352,6 +477,7 @@ void drawClipAsImage({
   required void Function(Canvas into, double rasterScale) paintBase,
   required void Function(Canvas into, double rasterScale) paintScope,
   required Paint paint,
+  SubtreeHold? held,
 }) => drawSubtreeAsImage(
   canvas: canvas,
   bounds: bounds,
@@ -363,6 +489,7 @@ void drawClipAsImage({
     into.restore();
   },
   compose: (blit) => blit(paint),
+  held: held,
 );
 
 /// A clip's base painted with its alpha made 1 ([CompositeOpaque]) — the
@@ -769,6 +896,7 @@ void _finishSubtreeRaster({
   required SubtreeRasterPlan plan,
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
+  SubtreeHold? held,
 }) {
   assert(() {
     debugSubtreeRasterCount += 1;
@@ -798,6 +926,15 @@ void _finishSubtreeRaster({
       ),
     );
   } finally {
+    if (held != null && held.keeps && !plan.magnifies) {
+      // Handles of their own: the ones below are let go of here.
+      final kept = raster.clone();
+      held.rasters._keep(held.key, (
+        plan: plan,
+        raster: kept,
+        image: identical(image, raster) ? kept : image.clone(),
+      ));
+    }
     // ⚠️Safe HERE and nowhere earlier: the draws put the image into this
     // frame's display list and the engine holds its own claim from that
     // moment. What `dispose` releases is this handle, not the pixels the

@@ -386,6 +386,8 @@ const _imageHolders = <String, String>{
       'a cut block borrows one picture per cell from the storyboard '
       'thumbnail store, which owns and counts them (thumbnailBytes); the '
       'block only carries them into a paint',
+  'lib/src/ui/canvas/subtree_image_composite.dart → _held':
+      'counted:heldBytes',
   'lib/src/ui/canvas/bitmap_tile_image_cache.dart → _images':
       'counted:liveImageBytes',
   'lib/src/ui/sheet/sheet_image_cache.dart → _images':

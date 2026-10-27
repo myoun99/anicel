@@ -98,11 +98,18 @@ class PlaybackCacheBudget implements PictureRoom {
   /// moment it landed. They are one object now, and nothing is kept whole.
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     wantedAt: _run.pictures.wantedAt(_run.demand),
-    lentBytes: _lentBytes,
+    lentBytes: _besideThePictures,
   );
 
   @override
-  int get bytes => _playbackCacheBudgetEnforcer.room(lentBytes: _lentBytes);
+  int get bytes =>
+      _playbackCacheBudgetEnforcer.room(lentBytes: _besideThePictures);
+
+  /// What the line holds beside the frames' pictures, which give way to it:
+  /// what is [lent], and the pictures the nodes of the frame a screen
+  /// stands on are held in (`FramePictures.heldNodes`) — a page at the
+  /// most, taken off the pictures made ahead, never laid past the line.
+  int get _besideThePictures => _lentBytes + _run.pictures.heldNodes.heldBytes;
 
   @override
   bool makeRoomFor({required int bytes, required int step}) =>
@@ -122,8 +129,14 @@ class PlaybackCacheBudget implements PictureRoom {
   int _lentBytes = 0;
 
   /// How much of the line a run may hold now — all of it but what the
-  /// playback caches will not give back.
-  int get lendableBytes => _playbackCacheBudgetEnforcer.lendableBytes();
+  /// playback caches will not give back, and the frame's nodes held
+  /// ([_besideThePictures]).
+  int get lendableBytes {
+    final lendable =
+        _playbackCacheBudgetEnforcer.lendableBytes() -
+        _run.pictures.heldNodes.heldBytes;
+    return lendable < 0 ? 0 : lendable;
+  }
 
   /// A run holds [bytes] on this line from now on, and the playback caches
   /// give way to it at once — 0 when its last row is let go.
@@ -133,8 +146,11 @@ class PlaybackCacheBudget implements PictureRoom {
   }
 
   /// The OS memory warning, the playback caches' share: the enforcer
-  /// lowers its cap, and the trim runs against the lowered cap at once.
+  /// lowers its cap, and the trim runs against the lowered cap at once —
+  /// the frame's nodes held let go of first, as they only make a stroke's
+  /// steps cheaper.
   void respondToMemoryPressure() {
+    _run.pictures.heldNodes.clear();
     _playbackCacheBudgetEnforcer.respondToMemoryPressure();
     enforcePlaybackCacheBudget();
   }

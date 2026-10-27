@@ -102,30 +102,42 @@ FramePictureKey framePictureKeyOf(
       final stacked = _stackedCelOf(row);
       return stacked == null
           ? null
-          : CompositeLayerSignature(
-              layerId: stacked.cel.layerId,
-              frameId: stacked.cel.frameId,
-              opacity: stacked.opacity,
-              sourceRevision: revisionOf(stacked.cel),
-              blendMode: stacked.blendMode,
-              placement: stacked.placement,
-              effects: stacked.effects,
-              tint: stacked.tint,
-            );
+          : _signatureOf(stacked, revisionOf(stacked.cel));
     }),
     canvasSize: page.canvasSize,
   ),
 );
 
+/// [stacked] as a frame's picture is signed by it, its cel at [revision]
+/// — the key's rows ([framePictureKeyOf]) and the drawing's
+/// ([stackedFrameOf]), one reading.
+CompositeLayerSignature _signatureOf(_StackedCel stacked, int revision) =>
+    CompositeLayerSignature(
+      layerId: stacked.cel.layerId,
+      frameId: stacked.cel.frameId,
+      opacity: stacked.opacity,
+      sourceRevision: revision,
+      blendMode: stacked.blendMode,
+      placement: stacked.placement,
+      effects: stacked.effects,
+      tint: stacked.tint,
+    );
+
 /// [nodes] on [page] as the canvas's own body draws them ([StackedFrame]):
 /// every row from its cel's stored surface ([surfaceOf]) — save, under
 /// [live], the rows a canvas that stands holds live. A row with none that
 /// a cel number is written on stands bare ([mapCompositeLeaves]).
+///
+/// Under [held], its nodes find the pictures they were drawn into before
+/// ([HeldNodePictures]) — each row signed as the frame's key signs it, its
+/// cel at the revision [held] reads ([framePictureKeyOf]).
 StackedFrame stackedFrameOf(
   List<CompositeNode<CanvasStackRow>> nodes, {
   required FramePage page,
   required BitmapSurface? Function(BrushFrameKey cel) surfaceOf,
   ({LiveRows rows, LiftedRowPainters painters})? live,
+  ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})?
+  held,
 }) {
   StoredRow? rowOf(
     CanvasStackRow row,
@@ -144,6 +156,13 @@ StackedFrame stackedFrameOf(
               effects: stacked.effects,
             ),
             tint: stacked.tint,
+            signature: switch (held) {
+              (:final revisionOf, pictures: _) => _signatureOf(
+                stacked,
+                revisionOf(stacked.cel),
+              ),
+              null => null,
+            },
           );
   }
 
@@ -154,6 +173,7 @@ StackedFrame stackedFrameOf(
     bareRowOf: (row) =>
         rowOf(row, (_) => BitmapSurface(canvasSize: page.canvasSize)),
     live: live,
+    held: held?.pictures,
   );
 }
 

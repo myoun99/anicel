@@ -9,6 +9,7 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/cel_content_notes.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
+import '../canvas/subtree_image_composite.dart' show HeldSubtreeRasters;
 import '../quiet_turns.dart';
 import 'frame_picture_store.dart';
 import 'layer_frame_image_cache.dart';
@@ -87,6 +88,42 @@ class FramePictures implements PlaybackPictures {
   /// again and a run is not held for a frame that will not come. A new
   /// content is a new key.
   final Lru<FramePictureKey, bool> _gaveNothing = Lru(entryCap: () => 256);
+
+  /// 🚨★THE PICTURES THE NODES OF A FRAME A SCREEN STANDS ON WERE DRAWN INTO
+  /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
+  /// 실측 5): kept as the frame is laid for that screen ([makeShown]), and
+  /// found as a stroke's steps are patched into it ([frameAsItStands]) — a
+  /// folder drawn whole is not drawn again for each step that does not
+  /// touch it.
+  ///
+  /// ⚖️One page of them at the most — the page of the frame last kept on
+  /// ([estimatedImageBytes]): the screen is fed by the frame's picture, and
+  /// these only make its patches cheaper. Past it they are let go of, and a
+  /// patch draws the node as it did before.
+  late final HeldSubtreeRasters heldNodes = HeldSubtreeRasters(
+    bytes: () => _heldNodeBytes,
+  );
+  int _heldNodeBytes = 0;
+
+  /// Where a frame drawn on [page] finds its nodes' pictures ([heldNodes]),
+  /// its rows signed as its key signs them — and keeps the ones it draws
+  /// whole where it [keeps].
+  ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})
+  _holding(FramePage page, {required bool keeps}) {
+    if (keeps) {
+      _heldNodeBytes = estimatedImageBytes(
+        page.canvasSize.width,
+        page.canvasSize.height,
+      );
+    }
+    return (
+      pictures: (rasters: heldNodes, keeps: keeps),
+      revisionOf: _revisionOf,
+    );
+  }
+
+  /// Lets go of the pictures the frames' nodes are held in ([heldNodes]).
+  void dispose() => heldNodes.clear();
 
   /// Whether the frame's picture is made of [cel]: one with something to
   /// draw — a cel with nothing in it draws nothing, and N frames of blank
@@ -325,7 +362,7 @@ class FramePictures implements PlaybackPictures {
       return false;
     }
     final nodes = nodesOf();
-    final made = drawingNow(nodes, picture);
+    final made = drawingNow(nodes, picture, keepsNodes: shownNow);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
     if (!drawsOnlyItsPage(key) &&
@@ -389,11 +426,15 @@ class FramePictures implements PlaybackPictures {
   /// held at another canvas size, is noted and drawn without — so the key
   /// asked after this ([keyOfStack]) is of the picture it gave.
   ///
+  /// Where it [keepsNodes], the pictures its nodes are drawn into whole are
+  /// kept ([heldNodes]).
+  ///
   /// ⚠️Reads a cel not in hand on this thread ([readIn] first).
   FrameDrawingNow drawingNow(
     List<CompositeNode<CanvasStackRow>> nodes,
-    DemandedPicture picture,
-  ) {
+    DemandedPicture picture, {
+    bool keepsNodes = false,
+  }) {
     final page = pageOf(picture);
     (Object, StackTrace)? thrown;
     final frame = stackedFrameOf(
@@ -402,6 +443,7 @@ class FramePictures implements PlaybackPictures {
       surfaceOf: (cel) => _drawn(cel)
           ? _readNow(cel, page, (error, stack) => thrown ??= (error, stack))
           : null,
+      held: _holding(page, keeps: keepsNodes),
     );
     return (frame: frame, thrown: thrown);
   }
@@ -472,6 +514,7 @@ class FramePictures implements PlaybackPictures {
           ? layerImages.storedSurfaceOrNull(cel, canvasSize: page.canvasSize)
           : null,
       live: live,
+      held: _holding(page, keeps: false),
     );
   }
 

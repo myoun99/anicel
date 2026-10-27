@@ -409,5 +409,6 @@ class PlaybackRig implements PlaybackRun {
     audioDeviceTransport.dispose();
     playback.dispose();
     prerenderScheduler.dispose();
+    framePictures.dispose();
   }
 }

@@ -339,7 +339,16 @@ class _LayerStackPaintPass {
     if (extent.isEmpty) {
       return;
     }
+    _held = switch (_painter.held) {
+      (:final rasters, :final keeps) => (
+        rasters: rasters,
+        keyOf: _drawsOf,
+        keeps: keeps,
+      ),
+      null => null,
+    };
     _paintCutWhereItEnds(into, extent, shownWithin: extent);
+    _held = null;
   }
 
   /// The frame composed into [into] and cut where it ends — at [edge], the
@@ -662,6 +671,7 @@ class _LayerStackPaintPass {
       extentOf: _extentOf,
       placementOf: _placementOf,
       shownWithin: _shownWithin,
+      held: _held,
     ),
   );
 
@@ -930,6 +940,38 @@ class _LayerStackPaintPass {
   /// paper it does not cover, 261 pixels a step (↩️the bake went with
   /// one-picture-per-frame ②-5a).
   Rect? _shownWithin;
+
+  /// Where the nodes of the frame's picture find their pictures drawn
+  /// before ([HeldNodePictures]) — while [paintFrame] draws it, and only
+  /// then: what the screen draws as it stands has rows not in hand.
+  SubtreeHolding<_PaintRow>? _held;
+
+  /// What [node] draws, as a frame's picture is signed by it
+  /// ([CutFrameCompositeSignature]) — null where a row of it is drawn live
+  /// or stands for no cel: that node is drawn afresh each time. ⚠️A row
+  /// with no signature would drop out of the signing ([mapCompositeLeaves])
+  /// and leave a key that misses it — the first stroke on an empty cel, in
+  /// a folder held with nothing of it.
+  Object? _drawsOf(CompositeNode<_PaintRow> node) {
+    for (final each in preorderNodes([node])) {
+      if (each case CompositeLeaf(:final payload)
+          when _signatureOf(payload) == null) {
+        return null;
+      }
+    }
+    return switch (CutFrameCompositeSignature.of(
+      mapCompositeLeaves([node], _signatureOf),
+      canvasSize: _painter.canvasSize,
+    ).nodes) {
+      [final only] => only,
+      _ => null,
+    };
+  }
+
+  static CompositeLayerSignature? _signatureOf(_PaintRow row) => switch (row) {
+    _PaintCelSurface(:final signature) => signature,
+    _ => null,
+  };
 
   /// Everything this stack is, in CANVAS space: the paper and then the
   /// layers over it — against the screen directly (the walk) or into the

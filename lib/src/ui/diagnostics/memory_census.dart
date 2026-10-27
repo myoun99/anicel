@@ -218,11 +218,14 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     ),
     if (textures)
       // The frames' pictures every screen shows (one-picture-per-frame),
-      // the ones on screen in its detail.
+      // the ones on screen in its detail — and the pictures of the nodes
+      // they are drawn of, held for a stroke's patches (`heldNodes`).
       MemoryCensusItem(
         id: 'framePictures',
         bytes: sum(
-          (session) => session.renderCaches.framePictureStore.estimatedBytes,
+          (session) =>
+              session.renderCaches.framePictureStore.estimatedBytes +
+              session.playbackRig.framePictures.heldNodes.heldBytes,
         ),
         detail: sum(
           (session) => session.renderCaches.framePictureStore.pinnedBytes,
