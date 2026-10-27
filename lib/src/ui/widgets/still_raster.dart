@@ -137,10 +137,12 @@ class StillRaster extends SingleChildRenderObjectWidget {
   static int _capturesEver = 0;
 
   /// The frame the last image of ANY region was taken on — one a frame. A
-  /// snapshot is a fixed price (1.6–2.0 ms of raster on the real Windows
-  /// app, whatever its size, 2026-09-25), and the regions one pick changes
-  /// become still together: taken on the same frame, their prices landed on
-  /// it at once.
+  /// snapshot cost a fixed price on the real Windows app (1.6–2.0 ms of
+  /// raster whatever its size, 2026-09-25) and one that grows with its
+  /// pixels on the Surface (Impeller GLES, 3567×2166: 5–31 ms, the 18–31 ms
+  /// ones 3.0–3.7 M pixels — 10-27, F-244-drag-start), and the regions one
+  /// pick changes become still together: taken on the same frame, their
+  /// prices landed on it at once.
   static int? _lastCaptureFrame;
 
   @override
@@ -1044,9 +1046,11 @@ class _Strata {
   /// that puts its rows back where they were taken, 1:1 ([fit]), with
   /// [tint] over each where the repaints are shown.
   ///
-  /// ⛔One image, not one a stratum: a snapshot costs a fixed price on the
-  /// raster thread whatever its size (1.6–2.0 ms on the real Windows app,
-  /// 09-25), and a region cut at every tick has several strata.
+  /// ⛔One image, not one a stratum: a snapshot costs a price of its own on
+  /// the raster thread besides its pixels (1.6–2.0 ms on the real Windows
+  /// app whatever its size, 09-25; on the Surface the pixels outweigh it —
+  /// [StillRaster._lastCaptureFrame]), and a region cut at every tick has
+  /// several strata.
   static _Strata take(
     _Layout layout,
     Size size,
