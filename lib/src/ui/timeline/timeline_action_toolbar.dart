@@ -925,16 +925,24 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// The FRAME pill — the verbs a rough pass wears out, none of them folded.
   ///
-  /// 🚨Nothing on it outside its groups shows a value, its name included:
-  /// the pill holds zones of its own (the groups below), so it cannot bake
-  /// whole as the layer pill does — a bake inside a bake freezes — and what
-  /// is not in a group is built again only with the bar.
-  Widget _framePill() => CommandPill(
+  /// 🚨Nothing on it outside its groups shows a value but its name: the
+  /// pill holds zones of its own (the groups below), so it cannot bake
+  /// whole as the layer pill does — a bake inside a bake freezes — and is
+  /// built again only for its name, in a zone of its own, as the cut pill.
+  /// ↩️The name was a group of its own inside the pill, built where the
+  /// pill could not see it, so the tail paid an icon's 5 after a word's 7
+  /// (frame-pill-tail-breath-regressed — 유저 #7 again).
+  Widget _framePill() => _StaticCommandGroup(
+    news: _news,
+    gates: () => AppText.settings.value.programLanguage,
+    builder: (context) => _frameCommandPill(),
+    zoned: true,
+  );
+
+  Widget _frameCommandPill() => CommandPill(
     key: const ValueKey<String>('timeline-toolbar-frame-group'),
-    head: _StaticCommandGroup(
-      news: _news,
-      gates: () => AppText.settings.value.programLanguage,
-      builder: (context) => PillNameCell(
+    head: CommandGroupZone(
+      child: PillNameCell(
         keyValue: 'timeline-frame-menu-button',
         label: AppText.strings.tlFrame,
         tooltip: AppText.strings.tlFrameCommands,

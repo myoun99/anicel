@@ -105,12 +105,24 @@ class CommandPill extends StatelessWidget {
   /// ★So the tail READS the head rather than guessing at it. 「The pill owes
   /// its contents the same margin on both ends」 is what the old note
   /// already said; the constant just could not say it.
+  ///
+  /// ⛔And it never guesses. Anything else answered an icon's 5, which is
+  /// what the frame pill paid after its word's 7 the day its name went into
+  /// a gated group the pill could not see into — and what the headless
+  /// pill paid after its 2 from the first day (frame-pill-tail-breath-
+  /// regressed, 2026-10-27).
   static double _tailBreathFor(Widget? head) => switch (head) {
     // A head baked in a zone of its own is still its cell.
     CommandGroupZone(:final child) => _tailBreathFor(child),
     PillNameCell(label: _?) => PillNameCell.textBreath,
-    _ => PillNameCell.iconBreath,
+    PillNameCell() => PillNameCell.iconBreath,
+    null => _headlessBreath,
+    _ => throw StateError('a pill reads its head, and this one hides it'),
   };
+
+  /// What a headless pill pays its first verb, where the name cell would
+  /// have stood.
+  static const double _headlessBreath = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +144,10 @@ class CommandPill extends StatelessWidget {
           children: [
             // A headless pill still owes its first verb the same breath the
             // name cell would have carried.
-            if (head case final head?) head else const SizedBox(width: 2),
+            if (head case final head?)
+              head
+            else
+              const SizedBox(width: _headlessBreath),
             ...children,
             // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
             // 이상해보임」.
