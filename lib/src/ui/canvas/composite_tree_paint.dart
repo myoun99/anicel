@@ -127,7 +127,12 @@ class _CompositeTreeWalk<L> {
   /// Drawn in place, each node held as it was ([_holdOf]), where no picture
   /// of them is held and none drawn here would be kept
   /// ([SubtreeHold.findsOrKeeps]) — a picture of them for one draw is a
-  /// draw for nothing.
+  /// draw for nothing. ⚖️And where none of them is a picture of its own
+  /// ([_isAPicture]): rows, letters and the paper are drawn straight, a
+  /// draw each, and a picture of them cuts no work. 🔬Held all the same,
+  /// a page of the canvas was the paper's alone under a pen on the bottom
+  /// row (1920×1080, 8.3 MB, the whole app on Windows, 2026-10-27), and a
+  /// step over rows with no folder among them was the same either way.
   void _belowThePen(
     Canvas canvas,
     List<CompositeNode<L>> run,
@@ -137,7 +142,7 @@ class _CompositeTreeWalk<L> {
     final held = route.held;
     final keys = [for (final node in run) held?.keyOf(node)];
     final bounds = within.intersect(canvas.getLocalClipBounds());
-    final hold = held == null || run.isEmpty || keys.contains(null)
+    final hold = held == null || !run.any(_isAPicture) || keys.contains(null)
         ? null
         : SubtreeHold(
             held.rasters,
@@ -168,6 +173,17 @@ class _CompositeTreeWalk<L> {
       held: hold,
     );
   }
+
+  /// Whether [node] is drawn as a picture of its own — a buffer the walk
+  /// rasters — rather than straight onto what it lies on.
+  static bool _isAPicture(CompositeNode<Object?> node) => switch (node) {
+    CompositeLeaf() || CompositeCelNumber() => false,
+    CompositeGroup() ||
+    CompositeAdjustment() ||
+    CompositeBackdropBlend() ||
+    CompositeClip() ||
+    CompositeOpaque() => true,
+  };
 
   /// Whether [node] holds the row a pen draws on ([SubtreeHolding.drawnOn]).
   bool _holdsThePen(CompositeNode<L> node) {

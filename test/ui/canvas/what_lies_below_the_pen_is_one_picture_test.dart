@@ -261,7 +261,7 @@ void main() {
   });
 
   test('what lies below is laid in place where its one picture would be '
-      'shrunk to fit — and is not kept', () async {
+      'shrunk to fit — the folder in it then kept on its own', () async {
     const wide = CanvasSize(width: maxSubtreeRasterSide + 8, height: 8);
     final page = pageOn(
       ProjectBackground.defaultBackground,
@@ -282,10 +282,10 @@ void main() {
       ),
       'pen': BitmapSurface(canvasSize: wide, tileSize: 8),
     };
-    final nodes = [rowOf('below'), pen()];
+    final nodes = [folder([rowOf('below')]), pen()];
     final laid = frame(nodes, keeps: true, page: page, cels: cels);
     final pixels = await drawn(laid, laid.drawing.extent);
-    expect(held, hasLength(0));
+    expect(held, hasLength(1));
     final fresh = frame(nodes, page: page, cels: cels);
     expect(pixels, await drawn(fresh, fresh.drawing.extent));
   });
@@ -321,8 +321,11 @@ void main() {
   test('🚨in a folder, what lies below the pen there is one picture more — '
       'the folder the pen is in is not kept: each step changes it', () async {
     final nodes = [
-      rowOf('below'),
-      folder([rowOf('ramp'), rowOf('other'), pen()]),
+      folder([rowOf('below')]),
+      folder([
+        folder([rowOf('ramp'), rowOf('other')]),
+        pen(),
+      ]),
     ];
     await lay(nodes);
     expect(held, hasLength(2), reason: 'below the folder, and inside it');
@@ -335,7 +338,7 @@ void main() {
   test('a folder over the pen is kept on its own, beside what lies below',
       () async {
     final nodes = [
-      rowOf('below'),
+      folder([rowOf('below')]),
       pen(),
       folder([rowOf('ramp'), rowOf('other')]),
     ];
@@ -344,7 +347,18 @@ void main() {
 
     final stepped = await aStep(nodes);
     expect(stepped.rasters, 0);
-    expect(stepped.freshRasters, 1, reason: '⛔premise: the folder');
+    expect(stepped.freshRasters, 2, reason: '⛔premise: the folders');
+    expect(stepped.pixels, stepped.fresh);
+  });
+
+  test('⚖️rows and the paper alone under the pen are drawn straight — no '
+      'picture of them is kept: it would cut no work', () async {
+    final nodes = [rowOf('below'), rowOf('ramp'), pen()];
+    await lay(nodes);
+    expect(held, hasLength(0));
+
+    final stepped = await aStep(nodes);
+    expect(stepped.rasters, 0);
     expect(stepped.pixels, stepped.fresh);
   });
 
