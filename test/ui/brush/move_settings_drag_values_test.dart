@@ -754,6 +754,25 @@ void main() {
     );
   });
 
+  testWidgets('a mesh count is typed whole: its pad\'s − and . are dark', (
+    tester,
+  ) async {
+    await pumpMoveSettings(
+      tester,
+      applied: [],
+      onResampleModeChanged: (_) {},
+      mode: TransformMode.mesh,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('move-mesh-columns-field-edit')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      thePadsLitKeys(tester),
+      (minus: false, point: false),
+    );
+  });
+
   /// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
   /// 있다」 · 「변형도구의 툴설정의 메시도 마찬가지」. ↩️The rows kept their
   /// place and dimmed outside 메쉬.

@@ -68,7 +68,7 @@ Future<void> showNumberPad(
 /// again, a point with no digit before it is typed after a zero, and a
 /// lone leading zero gives way to the digit after it.
 TextEditingValue numberPadTyped(TextEditingValue value, String text) {
-  final (:start, :end) = _selectionIn(value);
+  final TextSelection(:start, :end) = value.selection;
   final kept = value.text.replaceRange(start, end, '');
   if (text == '.' && kept.contains('.')) {
     return value;
@@ -92,7 +92,7 @@ TextEditingValue numberPadTyped(TextEditingValue value, String text) {
 /// over a number still whole in the selection — else the number's sign,
 /// turned.
 TextEditingValue numberPadNegated(TextEditingValue value) {
-  final (:start, :end) = _selectionIn(value);
+  final TextSelection(:start, :end) = value.selection;
   if (start == 0 && end == value.text.length) {
     return numberPadTyped(value, '-');
   }
@@ -110,21 +110,12 @@ TextEditingValue numberPadNegated(TextEditingValue value) {
 /// What the backspace key makes of [value]: the selection gone, or the
 /// character before the caret.
 TextEditingValue numberPadErased(TextEditingValue value) {
-  final (:start, :end) = _selectionIn(value);
+  final TextSelection(:start, :end) = value.selection;
   final from = start == end ? (start - 1).clamp(0, start) : start;
   return TextEditingValue(
     text: value.text.replaceRange(from, end, ''),
     selection: TextSelection.collapsed(offset: from),
   );
-}
-
-/// [value]'s selection in order, or its end where it has none.
-({int start, int end}) _selectionIn(TextEditingValue value) {
-  final selection = value.selection;
-  if (!selection.isValid) {
-    return (start: value.text.length, end: value.text.length);
-  }
-  return (start: selection.start, end: selection.end);
 }
 
 class _NumberPad extends StatefulWidget {
@@ -180,7 +171,8 @@ class _NumberPadState extends State<_NumberPad> {
   /// Whether the number is typed by the keyboard: its top was pressed.
   bool _keyboard = false;
 
-  /// Whether the pad has said what it ends with — once, as the field does.
+  /// Whether the pad closed itself — ✓, Enter, Escape — so the pop that
+  /// follows is not a press away ([_closedFromOutside]).
   bool _settled = false;
 
   /// The pad and its field are one region: a press on a key is not a
@@ -197,18 +189,12 @@ class _NumberPadState extends State<_NumberPad> {
       setState(() => _controller.value = edit(_controller.value));
 
   void _commit([String? text]) {
-    if (_settled) {
-      return;
-    }
     _settled = true;
     widget.onSubmit(toHalfWidthNumerals(text ?? _controller.text).trim());
     widget.close();
   }
 
   void _abandon() {
-    if (_settled) {
-      return;
-    }
     _settled = true;
     widget.close();
   }
@@ -219,7 +205,6 @@ class _NumberPadState extends State<_NumberPad> {
     if (_settled) {
       return;
     }
-    _settled = true;
     if (_controller.text != widget.initialText) {
       widget.onSubmit(toHalfWidthNumerals(_controller.text).trim());
     }

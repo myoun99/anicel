@@ -314,6 +314,11 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
+      expect(
+        thePadsLitKeys(tester),
+        (minus: false, point: true),
+        reason: 'a zoom takes a point and no minus',
+      );
       await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),

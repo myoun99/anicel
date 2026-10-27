@@ -119,6 +119,11 @@ void main() {
         find.byKey(const ValueKey<String>('settings-zoom-ceiling-new-edit')),
       );
       await tester.pumpAndSettle();
+      expect(
+        thePadsLitKeys(tester),
+        (minus: false, point: true),
+        reason: 'a percent takes a point and no minus',
+      );
       await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('settings-zoom-ceiling-new-input')),

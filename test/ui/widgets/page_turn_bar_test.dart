@@ -247,9 +247,13 @@ void main() {
     expect(turns, isEmpty);
     expect(find.byKey(input), findsNothing);
 
-    // Its pencil types one.
+    // Its pencil types one, in digits alone.
     await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
+    expect(
+      thePadsLitKeys(tester),
+      (minus: false, point: false),
+    );
     await openThePadsKeyboard(tester);
     await tester.enterText(find.byKey(input), '3');
     await tester.testTextInput.receiveAction(TextInputAction.done);

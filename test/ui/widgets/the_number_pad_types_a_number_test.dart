@@ -15,6 +15,9 @@ import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/number_pad.dart';
 
+import '../../helpers/ime_draft.dart';
+import '../../helpers/number_pad_keyboard.dart';
+
 TextEditingValue _whole(String text) => TextEditingValue(
   text: text,
   selection: TextSelection(baseOffset: 0, extentOffset: text.length),
@@ -132,6 +135,22 @@ void main() {
     expect(number, findsNothing, reason: 'the pad is gone');
   });
 
+  testWidgets('erase and ✓ stand two keys tall beside the keys', (
+    tester,
+  ) async {
+    await pumpBox(tester);
+    await openPad(tester);
+    Rect at(String name) => tester.getRect(key(name));
+    expect(
+      (at('backspace').top, at('backspace').bottom),
+      (at('7').top, at('4').bottom),
+    );
+    expect(
+      (at('enter').top, at('enter').bottom),
+      (at('1').top, at('minus').bottom),
+    );
+  });
+
   testWidgets('the number on top is the field once pressed: the keyboard '
       'types it, all of it selected, and the keys still type into it', (
     tester,
@@ -139,8 +158,7 @@ void main() {
     final typed = await pumpBox(tester);
     await openPad(tester);
     await press(tester, '4');
-    await tester.tap(number);
-    await tester.pump();
+    await openThePadsKeyboard(tester);
     final editable = tester.widget<EditableText>(find.byType(EditableText));
     expect(
       editable.controller.selection,
@@ -158,6 +176,36 @@ void main() {
     await tester.pump();
     expect(typed, ['90']);
     expect(field, findsNothing);
+  });
+
+  testWidgets('with the keyboard up a hardware key is the field\'s alone, '
+      'and the keyboard asks for no minus a value cannot take', (
+    tester,
+  ) async {
+    await pumpBox(tester, signed: false);
+    await openPad(tester);
+    await openThePadsKeyboard(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
+    await tester.pump();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      '100',
+      reason: 'the pad types no key the field hears',
+    );
+    expect(
+      tester.widget<TextField>(field).keyboardType,
+      const TextInputType.numberWithOptions(decimal: true),
+    );
+  });
+
+  testWidgets('✓ hands on what an IME still composes, its numerals '
+      'half-width', (tester) async {
+    final typed = await pumpBox(tester);
+    await openPad(tester);
+    await openThePadsKeyboard(tester);
+    await composeDraft(tester, field, '１２');
+    await press(tester, 'enter');
+    expect(typed, ['12']);
   });
 
   testWidgets('a press away commits what was typed, and drops an untouched '
@@ -181,8 +229,7 @@ void main() {
   ) async {
     final typed = await pumpBox(tester);
     await openPad(tester);
-    await tester.tap(number);
-    await tester.pump();
+    await openThePadsKeyboard(tester);
     await tester.enterText(field, '42');
     await tester.tapAt(const Offset(4, 4));
     await tester.pumpAndSettle();
@@ -201,8 +248,7 @@ void main() {
     expect(number, findsNothing);
 
     await openPad(tester);
-    await tester.tap(number);
-    await tester.pump();
+    await openThePadsKeyboard(tester);
     await tester.enterText(field, '8');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
@@ -226,21 +272,28 @@ void main() {
     expect(typed, ['17']);
   });
 
-  bool lit(WidgetTester tester, String name) =>
-      tester.widget<AppIconButtonFace>(key(name)).onPressed != null;
+  testWidgets('a hardware key that comes full-width types its digit', (
+    tester,
+  ) async {
+    await pumpBox(tester);
+    await openPad(tester);
+    await tester.sendKeyEvent(LogicalKeyboardKey.digit3, character: '３');
+    await tester.pump();
+    expect(tester.widget<Text>(number).data, '3');
+  });
 
   testWidgets('a key the value cannot take is dark', (tester) async {
     await pumpBox(tester);
     await openPad(tester);
-    expect((lit(tester, 'minus'), lit(tester, 'point')), (true, true));
+    expect(thePadsLitKeys(tester), (minus: true, point: true));
     await tester.tapAt(const Offset(4, 4));
     await tester.pump();
 
     await pumpBox(tester, signed: false);
     await openPad(tester);
     expect(
-      (lit(tester, 'minus'), lit(tester, 'point')),
-      (false, true),
+      thePadsLitKeys(tester),
+      (minus: false, point: true),
       reason: 'a zoom takes a point and no minus',
     );
     await tester.tapAt(const Offset(4, 4));
@@ -249,11 +302,11 @@ void main() {
     await pumpBox(tester, text: '4', digitsOnly: true);
     await openPad(tester);
     expect(
-      (lit(tester, 'minus'), lit(tester, 'point')),
-      (false, false),
+      thePadsLitKeys(tester),
+      (minus: false, point: false),
       reason: 'a count takes neither',
     );
-    expect(lit(tester, '0'), isTrue);
+    expect(thePadsKeyIsLit(tester, '0'), isTrue);
   });
 
   testWidgets('the minus types a negative number', (tester) async {
@@ -266,13 +319,12 @@ void main() {
   });
 
   testWidgets('while its pad is open the box wears the typed frame, its name '
-      'and its number where they stood', (tester) async {
+      'and its number where they stood — and rests once it closes', (
+    tester,
+  ) async {
     await pumpBox(tester);
     final restingRight = tester.getRect(find.text('100%')).right;
-    await openPad(tester);
-    expect(find.text('X'), findsOneWidget);
-    expect(tester.getRect(find.text('100%')).right, restingRight);
-    final frames = tester
+    Iterable<Decoration> frames() => tester
         .widgetList<DecoratedBox>(
           find.ancestor(
             of: find.text('100%'),
@@ -280,16 +332,20 @@ void main() {
           ),
         )
         .map((decorated) => decorated.decoration);
-    expect(
-      frames,
-      contains(
-        FieldSlider.frameOf(
-          FieldSlider.defaultHeight,
-          enabled: true,
-          typed: true,
-        ),
-      ),
+    Decoration frame({required bool typed}) => FieldSlider.frameOf(
+      FieldSlider.defaultHeight,
+      enabled: true,
+      typed: typed,
     );
+
+    await openPad(tester);
+    expect(find.text('X'), findsOneWidget);
+    expect(tester.getRect(find.text('100%')).right, restingRight);
+    expect(frames(), contains(frame(typed: true)));
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    expect(frames(), contains(frame(typed: false)));
   });
 
   testWidgets('a settings bar\'s pencil opens the same pad: a minus where it '
@@ -319,13 +375,11 @@ void main() {
         );
     Finder barKey(String name) =>
         find.byKey(ValueKey<String>('field-slider-type-pad-$name'));
-    bool barLit(String name) =>
-        tester.widget<AppIconButtonFace>(barKey(name)).onPressed != null;
 
     await pumpBar(min: -10, divisions: 20);
     await tester.tap(find.byKey(const ValueKey<String>('field-slider-type')));
     await tester.pump();
-    expect((barLit('minus'), barLit('point')), (true, false));
+    expect(thePadsLitKeys(tester), (minus: true, point: false));
     await tester.tap(barKey('minus'));
     await tester.tap(barKey('4'));
     await tester.tap(barKey('enter'));
@@ -335,7 +389,7 @@ void main() {
     await pumpBar(min: 0, divisions: 100);
     await tester.tap(find.byKey(const ValueKey<String>('field-slider-type')));
     await tester.pump();
-    expect((barLit('minus'), barLit('point')), (false, true));
+    expect(thePadsLitKeys(tester), (minus: false, point: true));
   });
 
   testWidgets('the keys wear the app\'s one button, edged', (tester) async {

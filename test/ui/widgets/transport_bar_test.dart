@@ -653,6 +653,11 @@ void main() {
       );
       await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
+      expect(
+        thePadsLitKeys(tester),
+        (minus: false, point: false),
+        reason: 'a frame is typed in digits alone',
+      );
       await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('in-input')), '13');
       await tester.testTextInput.receiveAction(TextInputAction.done);
