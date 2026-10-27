@@ -3,7 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -197,6 +199,31 @@ void main() {
       final row = cut.layers.firstWhere((layer) => layer.name == name);
       expect(row.folderId, isNull, reason: name);
     }
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a PSD let go on the canvas standing on a folder goes INSIDE '
+      'it, and you stand on the folder still (F-492)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.layerStack.addLayerOfKind(LayerKind.folder);
+    final folder = s.activeLayer!;
+    expect(folder.kind, LayerKind.folder, reason: 'the premise: on it');
+
+    await tester.runAsync(() async {
+      final path = await writePsd();
+      return s.importDoors.importPsdExpanded(
+        path: path,
+        destination: ImportDestination.activeCutLayer,
+        spot: const AboveActiveLayerSpot(),
+      );
+    });
+
+    final layers = s.activeCutOrNull!.layers;
+    final root = layers.firstWhere((layer) => layer.name == 'BG_a12');
+    expect(root.folderId, folder.id);
+    expect(folderStructureProblem(layers), isNull);
+    expect(s.activeLayerId, folder.id);
     await tester.pumpAndSettle();
   });
 }
