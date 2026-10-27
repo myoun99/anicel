@@ -225,8 +225,11 @@ class PlaybackTransportControls extends StatelessWidget {
             // digits grew into reserved space and no button moved. An overlay
             // keeps that — it moves nothing because it takes nothing.
             //
-            // 🗣️F-463-Q1 (유저 2026-10-27, 16:46 그대로): the least of the
-            // transport its bar shows — 「재생은 맨 왼쪽 버튼 하나」.
+            // 🗣️F-463-Q1 (유저 2026-10-27 20:2x): the least of the bar's
+            // right group — the transport and the zoom as one — its bar
+            // shows: 「줌쪽부터 가려지도록 … 오른쪽묶음은 오른쪽묶음에서
+            // 제일 왼쪽이 남는구조」. ↩️(15:23) it was the transport's alone,
+            // the zoom kept by its own last button.
             FoldFloor(child: _skipToStartButton()),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.

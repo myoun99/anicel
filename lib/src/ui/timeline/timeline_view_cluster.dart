@@ -7,7 +7,6 @@ import '../text/readout_text.dart' show readoutText;
 import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
-import '../widgets/kept_tail_row.dart' show FoldFloor;
 import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
@@ -102,25 +101,21 @@ class TimelineViewCluster extends StatelessWidget {
     onPressed: onZoomFit,
   );
 
+  // ↩️Its last button was the least of it its bar showed, under F-463-Q1's
+  // 「묶음 안에서 재생 · 줌이 따로」 (15:23) — until the answer became one
+  // right group, kept by the transport's first button (20:2x: 「줌쪽부터
+  // 가려지도록」).
   @override
-  Widget build(BuildContext context) {
-    final buttons = [
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _zoomReadout(context),
       // 🗣️F-463: 「그 옆의 줌 fit버튼은 그대로」 — I-111's 「위치는 줌
       // 확대버튼 오른쪽」, the + gone from beside it.
       _zoomFitButton(),
       ...trailing,
-    ];
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _zoomReadout(context),
-        ...buttons.take(buttons.length - 1),
-        // 🗣️F-463-Q1 (유저 2026-10-27, 16:46 그대로): the least of the
-        // cluster its bar shows — 「줌은 맨 오른쪽 버튼 하나」.
-        FoldFloor(child: buttons.last),
-      ],
-    );
-  }
+    ],
+  );
 
   /// The zoom as a number to drag — 🗣️F-463 (유저 2026-10-25): 「축소,확대
   /// 버튼 없애고, 슬라이더는 캔버스패널의 줌 위젯마냥 숫자로 이루어진 위젯에

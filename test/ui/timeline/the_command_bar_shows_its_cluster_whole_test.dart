@@ -59,7 +59,7 @@ void main() {
   const insets = 2 * TimelineCommandBar.leadingInset;
 
   /// The pills' overflow scroller — the bar's first: the transport and the
-  /// cluster stand in scrollers of their own after it (F-463-Q1).
+  /// cluster stand in one of their own after it (F-463-Q1).
   final pills = find.byType(SingleChildScrollView).first;
 
   for (final withLeading in [true, false]) {

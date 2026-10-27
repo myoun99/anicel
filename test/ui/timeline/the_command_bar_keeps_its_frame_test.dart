@@ -41,7 +41,7 @@ void main() {
       tester.widget<TimelineCommandBar>(find.byType(TimelineCommandBar));
 
   /// The pills' scroller — the bar's first (F-463-Q1: the transport and the
-  /// zoom stand in scrollers of their own after it).
+  /// zoom stand in one of their own after it).
   Widget scroller(WidgetTester tester) => tester.widget(
     find
         .descendant(

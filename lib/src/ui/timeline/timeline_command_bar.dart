@@ -138,12 +138,14 @@ class TimelineCommandBar extends StatelessWidget {
 /// ↩️The layer was the frame counter's, which read the cursor and moved
 /// the row with its width (I-22 ③), until F-463 took the counter off.
 ///
-/// The groups give way as [FloorFoldRow] lays them: the pills first, down
-/// to the cut pill ([FoldFloor], 「컷알약까지 최소폭」), then the zoom down
-/// to its last button, then the transport down to its first (F-463-Q1:
-/// 「묶음 안에서 재생 · 줌이 따로」) — each in a scroller of its own, the
-/// zoom's showing its end — and below that all of them, smaller. In a
-/// 360px window the timeline's bar had 248px for its two ends' 252
+/// The two groups give way as [FloorFoldRow] lays them: the pills first,
+/// down to the cut pill ([FoldFloor], 「컷알약까지 최소폭」), then the
+/// transport and the zoom, as one, down to the transport's first button —
+/// the zoom's end hidden first (F-463-Q1, 유저 10-27 20:2x: 「오른쪽묶음은
+/// 오른쪽묶음에서 제일 왼쪽이 남는구조」), each group in a scroller of its
+/// own — and below that both, smaller. ↩️「묶음 안에서 재생 · 줌이 따로」
+/// (15:23) gave the transport and the zoom a scroller each. In a 360px
+/// window the timeline's bar had 248px for its two ends' 252
 /// (`timeline-row-overflows-at-360`, measured 2026-10-14) — a row too
 /// narrow for what it keeps never runs off.
 class _BarFrame extends StatelessWidget {
@@ -182,17 +184,16 @@ class _BarFrame extends StatelessWidget {
                 ),
               )
             : null,
-        middle: transport
+        tail: transport
             ? const SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: _Seat(_Piece.transport),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: TimelineCommandBar._gap,
+                  children: [_Seat(_Piece.transport), _Seat(_Piece.cluster)],
+                ),
               )
-            : null,
-        tail: const SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: _Seat(_Piece.cluster),
-        ),
+            : const _Seat(_Piece.cluster),
       ),
     ),
   );

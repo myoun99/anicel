@@ -57,8 +57,8 @@ class KeptTailRow extends StatelessWidget {
       _KeptEnds(head: head, tail: tail, gap: gap, headKeeps: headKeeps);
 }
 
-/// A ROW OF GROUPS THAT GIVE WAY IN TURN, EACH DOWN TO A FLOOR — and below
-/// their floors, ALL of them, smaller by one factor: the frame panels'
+/// A ROW OF TWO GROUPS THAT GIVE WAY IN TURN, EACH DOWN TO A FLOOR — and
+/// below their floors, BOTH, smaller by one factor: the frame panels'
 /// command bar.
 ///
 /// 🗣️F-463 ⑥ (유저 2026-10-25 16:46): 「각 묶음마다 최소길이가 있어서 그
@@ -66,19 +66,23 @@ class KeptTailRow extends StatelessWidget {
 /// 컷알약까지 최소폭 … 먼저 컷/레이어/프레임쪽 줄어들고」 · (17:15)
 /// 「왼쪽묶음에 전처럼 컷/레이어/프레임/fx 등을 한 묶음, 재생버튼쪽은
 /// 오른쪽에 줌쪽 버튼이랑 같은묶음」. The [head] is the pills: it takes the
-/// room the others leave, down to its floor — the [FoldFloor] inside it,
-/// and [headPadding] round that. The [middle] and the [tail] are the
-/// transport and the zoom, at their own widths at the row's end; once the
-/// head stands at its floor they give way too — the tail first, then the
-/// middle — each down to the [FoldFloor] inside it (a group with none keeps
-/// its own width). Where the row cannot hold every floor, all of them are
-/// shown smaller by ONE factor. Each group is laid out at the width it is
-/// left: what does not stand in it is the group's own to scroll.
+/// room the [tail] leaves, down to its floor — the [FoldFloor] inside it,
+/// and [headPadding] round that. The [tail] is the transport and the zoom,
+/// at its own width at the row's end; once the head stands at its floor
+/// the tail gives way too, down to the [FoldFloor] inside it (a tail with
+/// none keeps its own width). Where the row cannot hold both floors, both
+/// are shown smaller by ONE factor. The tail is laid out at the width it is
+/// left: what does not stand in it is its own to scroll.
 ///
-/// 🗣️F-463-Q1 (유저 2026-10-27): 「묶음 안에서 재생 · 줌이 따로 — 16:46
-/// 그대로」 — the zoom down to its last button, then the transport down to
-/// its first. ↩️Until that answer the transport and the zoom were ONE tail
-/// that gave way as a whole, only smaller.
+/// 🗣️F-463-Q1 (유저 2026-10-27 20:2x): 「재생이랑 줌을 같은 묶음으로
+/// 오른쪽묶음으로서 하고싶은건데」 · 「줌쪽부터 가려지도록. 즉 왼쪽묶음은
+/// 마지막에 왼쪽이 남고, 오른쪽묶음은 오른쪽묶음에서 제일 왼쪽이 남는구조」
+/// — the tail is ONE group, kept by its first button as the head is by its
+/// first pill. ↩️The answer was 「묶음 안에서 재생 · 줌이 따로」 (15:23): the
+/// zoom gave way down to its last button and then the transport down to
+/// its first, in a scroller each, as a middle group here. ↩️And before
+/// that the transport and the zoom were one tail that did not give way,
+/// only shown smaller.
 ///
 /// ↩️The bar was a [KeptTailRow] with the transport kept at its start: the
 /// pills took whatever the two ends left, down to nothing (F-111-Q2, 유저
@@ -88,23 +92,19 @@ class FloorFoldRow extends StatefulWidget {
   const FloorFoldRow({
     super.key,
     this.head,
-    this.middle,
     required this.tail,
     this.gap = 0,
     this.headPadding = 0,
   });
 
   /// The group that gives way first, down to its [FoldFloor]. Null leaves
-  /// the whole row the others': no gap is kept before them, and no floor.
+  /// the whole row the tail's: no gap is kept before it, and no floor.
   final Widget? head;
-
-  /// The group before the [tail], which gives way last.
-  final Widget? middle;
 
   /// The group at the row's end, which gives way after the head.
   final Widget tail;
 
-  /// Between each group and the next.
+  /// Between the head and the tail.
   final double gap;
 
   /// What the head holds round its floor — the padding its scroller stands
@@ -130,7 +130,6 @@ class _FloorFoldRowState extends State<FloorFoldRow> {
   Widget build(BuildContext context) => _FloorEnds(
     readings: _readings,
     head: _floored(_Part.head, widget.head),
-    middle: _floored(_Part.middle, widget.middle),
     tail: _floored(_Part.tail, widget.tail)!,
     gap: widget.gap,
     headPadding: widget.headPadding,
@@ -139,9 +138,9 @@ class _FloorFoldRowState extends State<FloorFoldRow> {
 
 /// What a [FloorFoldRow]'s group keeps when it gives way: the least of it
 /// that is shown — the cut pill of the frame panels' pills (「컷알약까지
-/// 최소폭」), the transport's first button, the zoom's last. It stands
-/// where its group's scroller shows it at its floor; outside a
-/// [FloorFoldRow] it is its child alone.
+/// 최소폭」), the transport's first button. It stands where its group's
+/// scroller shows it at its floor; outside a [FloorFoldRow] it is its
+/// child alone.
 class FoldFloor extends SingleChildRenderObjectWidget {
   const FoldFloor({super.key, required Widget super.child});
 
@@ -188,7 +187,7 @@ class _RenderFoldFloor extends RenderProxyBox {
   }
 }
 
-enum _Part { head, middle, tail }
+enum _Part { head, tail }
 
 class _KeptEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
   const _KeptEnds({
@@ -204,12 +203,11 @@ class _KeptEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
   final double headKeeps;
 
   @override
-  Iterable<_Part> get slots => const [_Part.head, _Part.tail];
+  Iterable<_Part> get slots => _Part.values;
 
   @override
   Widget? childForSlot(_Part slot) => switch (slot) {
     _Part.head => head,
-    _Part.middle => null,
     _Part.tail => tail,
   };
 
@@ -227,7 +225,6 @@ class _FloorEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
   const _FloorEnds({
     required this.readings,
     required this.head,
-    required this.middle,
     required this.tail,
     required this.gap,
     required this.headPadding,
@@ -235,7 +232,6 @@ class _FloorEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
 
   final Map<_Part, _FloorReading> readings;
   final Widget? head;
-  final Widget? middle;
   final Widget tail;
   final double gap;
   final double headPadding;
@@ -246,7 +242,6 @@ class _FloorEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
   @override
   Widget? childForSlot(_Part slot) => switch (slot) {
     _Part.head => head,
-    _Part.middle => middle,
     _Part.tail => tail,
   };
 
@@ -414,16 +409,10 @@ class _RenderKeptEnds extends _RenderScaledParts {
   }
 }
 
-/// A group at a [FloorFoldRow]'s end as it stands at its own size: shown
-/// [fit] of itself where it is taller than the row, as a scaling box shows
-/// it, [own] wide so — and the least of it the row may show, [floor].
-typedef _EndGroup = ({
-  _Part part,
-  RenderBox box,
-  double fit,
-  double own,
-  double floor,
-});
+/// A [FloorFoldRow]'s tail as it stands at its own size: shown [fit] of
+/// itself where it is taller than the row, as a scaling box shows it,
+/// [own] wide so — and the least of it the row may show, [floor].
+typedef _TailAtItsOwn = ({double fit, double own, double floor});
 
 class _RenderFloorEnds extends _RenderScaledParts {
   _RenderFloorEnds(
@@ -448,25 +437,23 @@ class _RenderFloorEnds extends _RenderScaledParts {
     parentUsesSize: true,
   );
 
-  /// The least [head] is shown at: laid out first where the ends leave it
+  /// The least [head] is shown at: laid out first where the tail leaves it
   /// ([room]), which is where its [FoldFloor] is measured.
   double _floorOf(RenderBox head, double room) {
     _layAt(head, math.max(0, room), size.height);
     return (_readings[_Part.head]!.width ?? 0) + _headPadding;
   }
 
-  /// [box], the group at [part], laid out at its own size — where its
-  /// [FoldFloor] is measured; all of it is its floor where it holds none.
-  _EndGroup _endOf(_Part part, RenderBox box) {
-    box.layout(const BoxConstraints(), parentUsesSize: true);
-    final own = box.size;
+  /// [tail] laid out at its own size — where its [FoldFloor] is measured;
+  /// all of it is its floor where it holds none.
+  _TailAtItsOwn _atItsOwn(RenderBox tail) {
+    tail.layout(const BoxConstraints(), parentUsesSize: true);
+    final own = tail.size;
     final fit = own.height > size.height ? size.height / own.height : 1.0;
     return (
-      part: part,
-      box: box,
       fit: fit,
       own: own.width * fit,
-      floor: (_readings[part]!.width ?? own.width) * fit,
+      floor: (_readings[_Part.tail]!.width ?? own.width) * fit,
     );
   }
 
@@ -474,39 +461,34 @@ class _RenderFloorEnds extends _RenderScaledParts {
   void performLayout() {
     size = constraints.biggest;
     final head = _head;
-    // The groups at the row's end, in the order they give way.
-    final ends = [
-      for (final part in const [_Part.tail, _Part.middle])
-        if (childForSlot(part) case final box?) _endOf(part, box),
-    ];
-    final gaps = _gap * (ends.length - (head == null ? 1 : 0));
-    final room = ends.fold(size.width - gaps, (left, end) => left - end.own);
+    final tail = _tail;
+    final atItsOwn = _atItsOwn(tail);
+    final gap = head == null ? 0.0 : _gap;
+    final room = size.width - gap - atItsOwn.own;
     final floor = head == null ? 0.0 : _floorOf(head, room);
-    // Past the head's floor, the ends give way in turn, each to its own.
-    var over = math.max(0.0, floor - room);
-    final widths = <double>[];
-    for (final end in ends) {
-      final gives = math.min(over, math.max(0.0, end.own - end.floor));
-      widths.add(end.own - gives);
-      over -= gives;
-    }
-    // Below every floor, all of them at their floors, smaller by one factor.
-    final scale = over > 0 ? size.width / (size.width + over) : 1.0;
+    // Past the head's floor, the tail gives way, down to its own.
+    final over = math.max(0.0, floor - room);
+    final gives = math.min(
+      over,
+      math.max(0.0, atItsOwn.own - atItsOwn.floor),
+    );
+    final shownTail = atItsOwn.own - gives;
+    // Below both floors, both of them at their floors, smaller by one factor.
+    final under = over - gives;
+    final scale = under > 0 ? size.width / (size.width + under) : 1.0;
     if (head != null) {
-      final width = scale < 1
-          ? floor
-          : widths.fold(size.width - gaps, (left, shown) => left - shown);
+      final width = scale < 1 ? floor : size.width - gap - shownTail;
       _layAt(head, width, size.height / scale);
       _put(_Part.head, head, 0, scale);
     }
-    var right = size.width;
-    for (final (i, end) in ends.indexed) {
-      if (widths[i] < end.own) {
-        _layAt(end.box, widths[i] / end.fit, double.infinity);
-      }
-      right -= widths[i] * scale;
-      _put(end.part, end.box, right, end.fit * scale);
-      right -= _gap * scale;
+    if (gives > 0) {
+      _layAt(tail, shownTail / atItsOwn.fit, double.infinity);
     }
+    _put(
+      _Part.tail,
+      tail,
+      size.width - shownTail * scale,
+      atItsOwn.fit * scale,
+    );
   }
 }
