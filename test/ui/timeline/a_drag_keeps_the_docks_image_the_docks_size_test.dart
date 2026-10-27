@@ -15,6 +15,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/panels/panel_scrollbar.dart';
+import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 import 'package:anicel/src/ui/widgets/still_raster.dart';
@@ -32,6 +34,14 @@ import 'package:anicel/src/ui/widgets/still_raster.dart';
 /// A new mark painted over a moving tick in a large boundary grows it
 /// again, and this says so. A column over the cursor — the frame area's own
 /// edge, drawn over it — is its due; a part the size of the rows is not.
+///
+/// 🖥️On a desktop, with the app's scroll behaviour, as the app stands
+/// there: the behaviour bars every scrollable on a desktop
+/// ([AppScrollBehavior]), and a bar is a mark over the moving ticks. 🔬A
+/// harness without it (10-28, the Surface's re-measure) wore Flutter's own
+/// `Scrollbar`, whose foreground picture is the size of its scroll view —
+/// the panel's body — and the image stood at 1.93 times the dock; with the
+/// app's, 1.00. ↩️This ran on the test's Android, where nothing is barred.
 void main() {
   const frames = 240;
   const rows = 12;
@@ -103,10 +113,16 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: buildAppTheme(),
+          scrollBehavior: const AppScrollBehavior(),
           home: HomePage(initialProject: project()),
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        find.byType(PanelScrollbar),
+        findsWidgets,
+        reason: '⛔premise: the desktop bars its scrollables',
+      );
       for (var i = 0; i < StillRaster.maxStillFrames; i += 1) {
         await frame(tester);
       }
@@ -168,6 +184,6 @@ void main() {
         session.edgeDrag.cancelExposureEdgeDrag();
       }
       await tester.pump();
-    });
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
   }
 }
