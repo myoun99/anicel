@@ -720,6 +720,14 @@ void main() {
   /// bundled to fit: the session reads the switch from the tool and the
   /// paper from the row's cut, each at the call (`LaneVerbs`), so a value
   /// of the two would be built at every call first.
+  /// ⚠️426 → 427 on 2026-10-28 under the same ceiling (F-489 — 유저
+  /// 2026-10-27: 「이름 없는 블록의 기본 마크1,2인지 설정할수있게」):
+  /// `timelineCellMarker` (five) takes the mark an unnamed drawing wears,
+  /// as the row's host heard the pick. 🔬`clean_code_diff` against the
+  /// lane's base (`f2d4f1e21`) named that one added and nothing gone.
+  /// ⛔Not bundled to fit: the name and the mark meet only in the head's
+  /// one case ([drawingHeadOf]), and a value of the two would be built for
+  /// every cell first.
   const wideSignatures = 427;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
@@ -1036,6 +1044,16 @@ void main() {
   /// against the lane's base (`e059586e1`) named those two and no other.
   /// ⛔Not split to fit: it is one record of what this rail reads and
   /// presses, field for field the grids' (`timelineRailSwipeHooks`).
+  ///
+  /// ⚠️409 → 411 on 2026-10-28 under the same ceiling (F-489 — the mark an
+  /// unnamed block wears is a pick): `TimelineRowCellsPainter
+  /// ._resolveCellModelAt` (63) hands the pick to the head's two writers —
+  /// a ghost's and every other cell's — and `_RowCellsPicture.build` (61)
+  /// hands the row the pick its grid law heard. 🔬`clean_code_diff`
+  /// against the lane's base (`f2d4f1e21`) named those two and no other
+  /// (the Display section's grows none: its two grid rows read the one
+  /// setting under one listener). ⛔Not split to fit: each is the one
+  /// table of what a cell writes, and of what a row is drawn by.
   const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.

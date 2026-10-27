@@ -76,27 +76,35 @@ class DisplaySettingsSection extends StatelessWidget {
         ),
         ValueListenableBuilder<AppFrameGridSettings>(
           valueListenable: AppFrameGridSettings.settings,
-          builder: (context, grid, _) => SettingsSwitchRow(
-            tileKey: const ValueKey<String>('settings-block-frame-lines'),
-            label: strings.blockFrameLinesLabel,
-            value: grid.blockFrameLines,
-            onChanged: (shown) => session.appSettings.setFrameGridSettings(
-              grid.copyWith(blockFrameLines: shown),
-            ),
-          ),
+          builder: (context, grid, _) => _frameGridRows(grid),
         ),
-        ValueListenableBuilder<AppFrameGridSettings>(
-          valueListenable: AppFrameGridSettings.settings,
-          builder: (context, grid, _) => settingsEnumPickerRow(
-            keyValue: 'settings-unnamed-mark',
-            label: strings.unnamedMarkLabel,
-            value: grid.unnamedMark,
-            values: InbetweenMark.values,
-            labelOf: (mark) => editorActionLabel(markToggleActionOf(mark)),
-            onPicked: (mark) => session.appSettings.setFrameGridSettings(
-              grid.copyWith(unnamedMark: mark),
-            ),
-          ),
+      ],
+    );
+  }
+
+  /// The rows of how the frame grid draws ([AppFrameGridSettings]): the
+  /// lines inside a block, and the mark an unnamed block wears (F-489).
+  Widget _frameGridRows(AppFrameGridSettings grid) {
+    final strings = AppText.strings;
+    void pick(AppFrameGridSettings next) =>
+        session.appSettings.setFrameGridSettings(next);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('settings-block-frame-lines'),
+          label: strings.blockFrameLinesLabel,
+          value: grid.blockFrameLines,
+          onChanged: (shown) => pick(grid.copyWith(blockFrameLines: shown)),
+        ),
+        settingsEnumPickerRow(
+          keyValue: 'settings-unnamed-mark',
+          label: strings.unnamedMarkLabel,
+          value: grid.unnamedMark,
+          values: InbetweenMark.values,
+          labelOf: (mark) => editorActionLabel(markToggleActionOf(mark)),
+          onPicked: (mark) => pick(grid.copyWith(unnamedMark: mark)),
         ),
       ],
     );

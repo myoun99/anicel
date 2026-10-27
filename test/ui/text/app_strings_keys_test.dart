@@ -348,6 +348,7 @@ void main() {
     // R11: the interface scale, in the Display section.
     'uiScaleLabel': (s) => s.uiScaleLabel,
     'blockFrameLinesLabel': (s) => s.blockFrameLinesLabel,
+    'unnamedMarkLabel': (s) => s.unnamedMarkLabel,
     'drawingCursorLabel': (s) => s.drawingCursorLabel,
     'drawingCursorBrush': (s) => s.drawingCursorBrush,
     'drawingCursorPen': (s) => s.drawingCursorPen,
