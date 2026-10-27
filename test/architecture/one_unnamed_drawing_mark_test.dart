@@ -130,8 +130,9 @@ void main() {
   });
 
   test('nobody else spells a mark, nobody asks whether a frame name is '
-      'empty, and nobody else hands a drawing the unnamed mark — and the '
-      'ledger names only files that still spell a mark of their own', () {
+      'empty, nobody else hands a drawing the unnamed mark, and nobody hands '
+      'out a mark as a value of its own — and the ledger names only files '
+      'that still spell a mark of their own', () {
     final offenders = <String>[];
     final spellers = <String, List<int>>{};
     var scanned = 0;
