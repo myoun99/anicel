@@ -154,6 +154,38 @@ void main() {
     expect(_positionKeys(_seRow(session)), [0]);
   });
 
+  test('a storyboard band over an S row alone fills its gap — no lane '
+      'needed', () {
+    final session = _session();
+    session.updateTrackRowRangeSelectionByFrame(
+      layerId: _s1,
+      anchorGlobalFrame: 0,
+      headGlobalFrame: 5,
+      anchorRow: const LayerRowAddress(_s1),
+      spanRows: const [LayerRowAddress(_s1)],
+    );
+    expect(session.cellInstances.canCreateInstanceForSelection, isTrue);
+
+    session.cellInstances.createInstancesForSelection();
+
+    expect(_starts(_seRow(session)), [0, 3]);
+    expect(_positionKeys(_seRow(session)), [0], reason: 'no lane was swept');
+  });
+
+  test('a storyboard band over a full S row, no lane swept, has nothing to '
+      'make — the ＋ is dark', () {
+    final session = _session();
+    session.updateTrackRowRangeSelectionByFrame(
+      layerId: _s1,
+      anchorGlobalFrame: 0,
+      headGlobalFrame: 2,
+      anchorRow: const LayerRowAddress(_s1),
+      spanRows: const [LayerRowAddress(_s1)],
+    );
+
+    expect(session.cellInstances.canCreateInstanceForSelection, isFalse);
+  });
+
   test('a storyboard band whose S row has no gap still keys its lane — the '
       'lane alone is something to make', () {
     final session = _session();
