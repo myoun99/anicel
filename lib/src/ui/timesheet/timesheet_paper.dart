@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
+import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_info.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../brush/brush_tool_state.dart';
@@ -172,7 +173,7 @@ class TimesheetPaper extends StatelessWidget {
         }
       },
       TimesheetHeaderField.name: (name) =>
-          session.cutVerbs.setCutSheetArtist(cutId, name),
+          session.cutVerbs.setCutStaffName(cutId, sheetArtistMark, name),
     };
   }
 }

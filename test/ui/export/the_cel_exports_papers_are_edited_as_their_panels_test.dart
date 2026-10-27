@@ -10,6 +10,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -111,9 +112,10 @@ void main() {
     EditorSessionManager session, {
     PaperEditing? editing,
     EditorKeyRoad? keys,
+    CelsExportSpec spec = everything,
   }) async {
     AppExport.settings.value = AppExportSettings(
-      lastSpecs: const ExportTabSpecs(cels: everything),
+      lastSpecs: ExportTabSpecs(cels: spec),
     );
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -279,6 +281,43 @@ void main() {
     expect(overlay.controller, same(kit.envelopeInk));
     expect(overlay.brushToolState, same(kit.tool));
     expect(overlay.windows, isNotEmpty);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️I-127-Q1 (유저 2026-10-25): 「봉투 용지 패널에도 넣고, 셀 출력은 그대로
+  // 부른다」.
+  testWidgets('the envelope\'s staff box is typed into as its panel\'s — '
+      'the cut\'s worker, printed at once', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpCels(
+      tester,
+      session,
+      editing: paperEditingKit(session),
+      // The envelope's own paper: the cut's here is 8px, its words a
+      // fraction of a pixel tall.
+      spec: CelsExportSpec(
+        kinds: everything.kinds,
+        envelopePaper: CutEnvelopePaperMode.sheet,
+      ),
+    );
+    await standOn(tester, 'document-envelope');
+
+    final box = onPaper('cut-envelope-staff-name-genga-edit');
+    await tester.ensureVisible(box);
+    await tester.pump();
+    await tester.tap(box, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    await tester.enterText(onPaper('cut-envelope-edit-field'), 'ユキ');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    const key = LayerMark(process: LayerProcess.key);
+    expect(session.cutById(cutId)!.metadata.staffNameFor(key), 'ユキ');
+    expect(
+      (paperShown(tester) as ExportEnvelopePage).source.staff[key.keySlug],
+      'ユキ',
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 

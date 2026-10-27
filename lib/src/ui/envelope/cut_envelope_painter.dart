@@ -193,7 +193,7 @@ class CutEnvelopePainter extends CustomPainter
             placed,
             size: placed.box.contentSize,
             align: placed.box.contentAlign,
-            color: const Color(0xFF1A1A18),
+            color: envelopeValueInk,
           );
         case (text: _, image: final path?):
           final image = imageFor?.call(path);
@@ -268,32 +268,25 @@ class CutEnvelopePainter extends CustomPainter
     required Color color,
     bool top = false,
   }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: face.copyWith(
-          color: color,
-          fontSize: size * layout.textScale,
-          height: 1.1,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-      ellipsis: '…',
-    )..layout(maxWidth: placed.width - 4 * layout.textScale);
-
-    final inset = 3 * layout.textScale;
+    final painter = envelopeLine(
+      text,
+      envelopeWordsStyle(face, layout, size: size, color: color),
+      layout,
+      placed,
+    );
+    final slot = envelopeLineSlot(
+      layout,
+      placed,
+      painter.height,
+      align: align,
+      top: top,
+    );
     final x = switch (align) {
-      EnvelopeAlign.left => placed.x + inset,
-      EnvelopeAlign.right => placed.right - inset - painter.width,
-      EnvelopeAlign.center => placed.x + (placed.width - painter.width) / 2,
+      EnvelopeAlign.left => slot.left,
+      EnvelopeAlign.right => slot.right - painter.width,
+      EnvelopeAlign.center => slot.center.dx - painter.width / 2,
     };
-    // Labels hug the top of their cell (the printed head of a column);
-    // values sit centred in the space that leaves.
-    final y = top
-        ? placed.y + inset
-        : placed.y + (placed.height - painter.height) / 2;
-    painter.paint(canvas, Offset(x, y));
+    painter.paint(canvas, Offset(x, slot.top));
     painter.dispose();
   }
 
@@ -319,3 +312,63 @@ class CutEnvelopePainter extends CustomPainter
     _draws(SheetPaintLayer.ink) ? (inkOwner, BySet(liveInkKeys)) : null,
   );
 }
+
+/// The ink a box's value is printed in.
+const Color envelopeValueInk = Color(0xFF1A1A18);
+
+/// The style [layout] sets a box's words in at [size] — the form's text
+/// size, quoted at its design width.
+TextStyle envelopeWordsStyle(
+  TextStyle face,
+  CutEnvelopeLayout layout, {
+  required double size,
+  required Color color,
+}) => face.copyWith(
+  color: color,
+  fontSize: size * layout.textScale,
+  height: 1.1,
+);
+
+/// [text] laid out as [placed] sets it: one line, cut short where the box
+/// runs out. The caller disposes it.
+TextPainter envelopeLine(
+  String text,
+  TextStyle style,
+  CutEnvelopeLayout layout,
+  PlacedEnvelopeBox placed,
+) => TextPainter(
+  text: TextSpan(text: text, style: style),
+  textDirection: TextDirection.ltr,
+  maxLines: 1,
+  ellipsis: '…',
+)..layout(maxWidth: _lineWidth(layout, placed));
+
+/// The rect [placed] sets a line [lineHeight] tall in, at [align]: where
+/// the painter prints it and where the in-place editor types it
+/// (I-127-Q1) — one place for the two.
+///
+/// Labels hug the top of their cell (the printed head of a column, [top]);
+/// values sit centred in the space that leaves.
+Rect envelopeLineSlot(
+  CutEnvelopeLayout layout,
+  PlacedEnvelopeBox placed,
+  double lineHeight, {
+  required EnvelopeAlign align,
+  bool top = false,
+}) {
+  final inset = 3 * layout.textScale;
+  final width = _lineWidth(layout, placed);
+  final left = switch (align) {
+    EnvelopeAlign.left => placed.x + inset,
+    EnvelopeAlign.right => placed.right - inset - width,
+    EnvelopeAlign.center => placed.x + (placed.width - width) / 2,
+  };
+  final y = top
+      ? placed.y + inset
+      : placed.y + (placed.height - lineHeight) / 2;
+  return Rect.fromLTWH(left, y, width, lineHeight);
+}
+
+/// How wide a line may run in [placed].
+double _lineWidth(CutEnvelopeLayout layout, PlacedEnvelopeBox placed) =>
+    placed.width - 4 * layout.textScale;

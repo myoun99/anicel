@@ -15,6 +15,7 @@ import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_photo_drop.dart';
 import '../sheet/sheet_strata.dart';
 import '../text/app_face.dart';
+import 'cut_envelope_edit_layer.dart';
 import 'cut_envelope_ink.dart';
 import 'cut_envelope_overlay.dart';
 import 'cut_envelope_painter.dart';
@@ -141,6 +142,20 @@ class CutEnvelopePaper extends StatelessWidget {
                 liveChanges: strokeHold,
               ),
             ),
+            // Under the ink windows: reachable exactly when the brush is off
+            // (the switch doubles as the edit-mode switch), as on the
+            // timesheet. A bare form has no cut to name a worker on.
+            if (owner != null)
+              Positioned.fill(
+                child: CutEnvelopeEditLayer(
+                  key: const ValueKey<String>('cut-envelope-edit-layer'),
+                  layout: layout,
+                  source: source,
+                  viewport: viewport,
+                  onStaffNamed: (stage, name) =>
+                      session.cutVerbs.setCutStaffName(owner, stage, name),
+                ),
+              ),
             if (inking)
               Positioned.fill(
                 // The tool-state boundary: the brush reaches only this

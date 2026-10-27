@@ -147,12 +147,30 @@ String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
       _ => null,
     };
   }
-  if (parts.length == 3 && parts.first == 'staff' && parts.last == 'name') {
-    final name = source.staff[parts[1]] ?? '';
+  if (_staffSlugIn(parts) case final slug?) {
+    final name = source.staff[slug] ?? '';
     return name.isEmpty ? null : name;
   }
   return null;
 }
+
+/// The stage whose worker a `{staff.<label>.name}` binding prints — the
+/// stage a name typed into its box names (I-127-Q1) — or null for any
+/// other binding, and for a label no stage has.
+LayerMark? envelopeStaffMarkOf(String binding) {
+  final path = _token.firstMatch(binding.trim())?.group(1);
+  final slug = path == null ? null : _staffSlugIn(path.split('.'));
+  if (slug == null) {
+    return null;
+  }
+  return everyLayerMark().where((mark) => mark.keySlug == slug).firstOrNull;
+}
+
+/// The label a binding's [parts] name the worker of, or null.
+String? _staffSlugIn(List<String> parts) =>
+    parts.length == 3 && parts.first == 'staff' && parts.last == 'name'
+    ? parts[1]
+    : null;
 
 /// The media asset PATH an image binding resolves to: `{logo}`. Null
 /// leaves the box empty.

@@ -12,20 +12,30 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_document.dart'
+    show sheetArtistMark;
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
+import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart'
+    show SheetStrokeHold;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -304,7 +314,11 @@ void main() {
     testWidgets('the name box: its one line is typed on its printed glyphs, '
         'centred as printed (I-112)', (tester) async {
       await pumpSheet(tester);
-      session.cutVerbs.setCutSheetArtist(session.activeCutId!, '大川ユキ');
+      session.cutVerbs.setCutStaffName(
+        session.activeCutId!,
+        sheetArtistMark,
+        '大川ユキ',
+      );
       await tester.pumpAndSettle();
       final box = tester.getRect(
         find.byKey(const ValueKey<String>('timesheet-name-edit-p0')),
@@ -314,5 +328,99 @@ void main() {
         isEmpty,
       );
     });
+  });
+
+  /// 🗣️I-127-Q1 (유저 2026-10-25): 「봉투 용지 패널에도 넣고」 — the
+  /// envelope's staff boxes, a line set as its form sets it: left, centred
+  /// or right.
+  group('the envelope\'s staff box', () {
+    const key = LayerMark(process: LayerProcess.key);
+    final form = CutEnvelopeForm(
+      id: 'aligned',
+      name: 'Aligned',
+      aspectRatio: 2,
+      boxes: [
+        for (final (i, align) in [
+          (0, EnvelopeAlign.left),
+          (1, EnvelopeAlign.center),
+          (2, EnvelopeAlign.right),
+        ])
+          EnvelopeBox(
+            id: 'staff-$i',
+            rect: EnvelopeRect(
+              x: 0.05,
+              y: 0.1 + i * 0.3,
+              width: 0.6,
+              height: 0.2,
+            ),
+            contentKind: EnvelopeContentKind.text,
+            binding: '{staff.${key.keySlug}.name}',
+            contentSize: 20,
+            contentAlign: align,
+          ),
+      ],
+    );
+
+    Future<void> pumpEnvelope(WidgetTester tester) async {
+      await loadTheAppFaces();
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      final hold = SheetStrokeHold(brushInput: (_) {});
+      addTearDown(hold.dispose);
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DefaultTextStyle.merge(
+              style: const TextStyle(
+                fontFamily: AppTypography.bundledFamily,
+                fontFamilyFallback: AppTypography.bundledFallback,
+              ),
+              child: RepaintBoundary(
+                key: boundary,
+                child: CutEnvelopePaper(
+                  session: session,
+                  layout: CutEnvelopeLayout.fit(
+                    form: form,
+                    paperWidth: 1000,
+                    paperHeight: 500,
+                  ),
+                  source: CutEnvelopeSource(
+                    staff: {key.keySlug: '大川ユキ'},
+                  ),
+                  owner: session.activeCutId,
+                  viewport: CanvasViewport(),
+                  strokeHold: hold,
+                  cacheInvalidationSink:
+                      session.renderCaches.cacheInvalidationHub,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final field = find.byKey(
+      const ValueKey<String>('cut-envelope-edit-field'),
+    );
+
+    for (final (i, align) in [(0, 'left'), (1, 'centred'), (2, 'right')]) {
+      testWidgets('a box set $align: its one line is typed on its printed '
+          'glyphs', (tester) async {
+        await pumpEnvelope(tester);
+        final box = tester.getRect(
+          find.byKey(ValueKey<String>('cut-envelope-staff-$i-edit')),
+        );
+        expect(
+          await openAndCompare(tester, box: box, field: field),
+          isEmpty,
+        );
+      });
+    }
   });
 }

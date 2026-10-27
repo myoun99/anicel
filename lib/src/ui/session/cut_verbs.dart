@@ -266,18 +266,20 @@ class CutVerbs {
   String? activeCutNoteOf(int page) =>
       _project.activeCutOrNull?.metadata.noteOf(page);
 
-  /// Names [cutId]'s sheet worker — the 러프원화 a sheet's name box prints
-  /// ([sheetArtistMark]) — on it and its 겸용 siblings, as 컷 설정 names a
-  /// stage (I-112: the box and the setting are one name). The cut is the
-  /// one the paper prints (I-127). A name changes no cut's shape, so — as
-  /// there — the repaint is the whole of the reaction.
-  void setCutSheetArtist(CutId cutId, String name) => _activeCut.onCutQuietly(
-    cutId,
-    (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
-      cutIds: [cutId],
-      names: {sheetArtistMark: name},
-    ),
-  );
+  /// Names [cutId]'s [stage] worker — the one a paper's box prints: the
+  /// timesheet's name box the 러프원화 ([sheetArtistMark]), an envelope's
+  /// staff box its own stage (I-127-Q1) — on it and its 겸용 siblings, as
+  /// 컷 설정 names a stage (I-112: the box and the setting are one name).
+  /// The cut is the one the paper prints (I-127). A name changes no cut's
+  /// shape, so — as there — the repaint is the whole of the reaction.
+  void setCutStaffName(CutId cutId, LayerMark stage, String name) =>
+      _activeCut.onCutQuietly(
+        cutId,
+        (cutId) => _project.cutCommandCoordinator.setCutStaffNames(
+          cutIds: [cutId],
+          names: {stage: name},
+        ),
+      );
 
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut((cutId) => _writeNote(cutId, page, note));

@@ -12,6 +12,16 @@ enum SheetTextForm {
 
   /// One line centred across the rect, from its top: a header box's value.
   centredLine,
+
+  /// One line from the rect's left, from its top: an envelope box's value
+  /// its form sets left (I-127-Q1).
+  leftLine,
+
+  /// One line up to the rect's right, from its top.
+  rightLine;
+
+  /// Whether the words are one line, cut short where the rect ends.
+  bool get isLine => this != paragraph;
 }
 
 /// One place on a sheet whose typed text a tap edits in place.
@@ -61,7 +71,8 @@ class SheetTextTarget {
 /// ACTION had a field that mounted under the page instead. Those are
 /// paragraphs; the timesheet's name box is a line ([SheetTextForm]) — the
 /// one header box edited in place again (I-112, 유저 2026-10-19), after
-/// 09-25 printed every header box and edited none.
+/// 09-25 printed every header box and edited none — and so are the
+/// envelope's staff boxes, set as their form sets them (I-127-Q1).
 ///
 /// The layer sits UNDER the ink layer in a sheet's stack, so the sheet's
 /// brush switch is the mode switch: brush on → the pen draws (taps
@@ -248,8 +259,8 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
     final paper = target.textRect;
     // The field's caret room stands after the words whichever way they are
     // set: centred in the rect it is laid in less that room, a line
-    // centres where the printer centres it.
-    final line = target.form == SheetTextForm.centredLine;
+    // centres where the printer centres it — and ends where it ends.
+    final line = target.form.isLine;
     return [
       Positioned.fromRect(
         rect: _onScreen(_printedWords(target)),
@@ -300,7 +311,12 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
                     autofocus: true,
                     maxLines: line ? 1 : null,
                     expands: !line,
-                    textAlign: line ? TextAlign.center : TextAlign.start,
+                    textAlign: switch (target.form) {
+                      SheetTextForm.centredLine => TextAlign.center,
+                      SheetTextForm.rightLine => TextAlign.end,
+                      SheetTextForm.paragraph ||
+                      SheetTextForm.leftLine => TextAlign.start,
+                    },
                     // The printer's style and nothing else: a field lays
                     // its words out in the theme's input style with this
                     // one over it, and whatever this leaves unset — the
@@ -346,7 +362,7 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
   /// it for the edges of the glyphs.
   Rect _printedWords(SheetTextTarget target) {
     final slot = target.textRect;
-    final line = target.form == SheetTextForm.centredLine;
+    final line = target.form.isLine;
     final painter = TextPainter(
       text: TextSpan(text: target.text, style: target.style),
       textDirection: TextDirection.ltr,
@@ -354,7 +370,11 @@ class _SheetTextEditLayerState extends State<SheetTextEditLayer> {
       ellipsis: line ? '…' : null,
     )..layout(maxWidth: slot.width);
     final printed = Rect.fromLTWH(
-      line ? slot.center.dx - painter.width / 2 : slot.left,
+      switch (target.form) {
+        SheetTextForm.centredLine => slot.center.dx - painter.width / 2,
+        SheetTextForm.rightLine => slot.right - painter.width,
+        SheetTextForm.paragraph || SheetTextForm.leftLine => slot.left,
+      },
       slot.top,
       painter.width,
       painter.height,
