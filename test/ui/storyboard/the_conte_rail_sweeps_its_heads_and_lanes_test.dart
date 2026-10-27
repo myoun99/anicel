@@ -23,7 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
-    show effectGroupLaneId;
+    show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
@@ -153,16 +153,17 @@ void main() {
 
   /// Presses [from] and walks the pointer to [to] — found afresh each step,
   /// as a row twirled or a graph opened slides every row under it — its
-  /// down and first move in one frame.
-  Future<void> sweep(WidgetTester tester, String from, String to) async {
-    final start = tester.getCenter(find.named(from));
+  /// down and first move in one frame. Finders, for a button keyed rather
+  /// than named, as a lane's ◆ is ([sweep] takes names).
+  Future<void> sweepBetween(WidgetTester tester, Finder from, Finder to) async {
+    final start = tester.getCenter(from);
     final gesture = await tester.startGesture(
       start,
       kind: PointerDeviceKind.mouse,
     );
     var at = start;
     for (var step = 0; step < 400; step += 1) {
-      final gap = tester.getCenter(find.named(to)).dy - at.dy;
+      final gap = tester.getCenter(to).dy - at.dy;
       if (gap.abs() < 1) {
         break;
       }
@@ -173,6 +174,10 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
   }
+
+  /// [sweepBetween] the buttons named [from] and [to].
+  Future<void> sweep(WidgetTester tester, String from, String to) =>
+      sweepBetween(tester, find.named(from), find.named(to));
 
   Track track(EditorSessionManager session, TrackId id) => session.repository
       .requireProject()
@@ -651,5 +656,129 @@ void main() {
           '— the start read by the conte in hand: by its own id the host finds '
           'no row, and the sweep would spread off',
     );
+  });
+
+  // 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — a lane's ◆ is a toggle
+  // column too, pressed on each lane as the lane's own ◆ presses it.
+  group('the ◆ column', () {
+    /// Stands in cut b at its own frame 3 — a frame the global playhead
+    /// does not name, so a lane keyed on the wrong one shows.
+    Future<int> standInB(
+      EditorSessionManager session,
+      WidgetTester tester,
+    ) async {
+      session.selectCut(const CutId('b'));
+      session.selectFrameIndex(3);
+      await tester.pumpAndSettle();
+      final global = session.activeCutGlobalStartFrame + 3;
+      expect(global, isNot(3), reason: '⛔전제: b starts after frame 0');
+      return global;
+    }
+
+    Finder diamond(LayerId row, String lane) =>
+        find.byKey(ValueKey<String>('storyboard-lane-key-toggle-$row-$lane'));
+
+    testWidgets('🚨it keys every lane of the V row it crosses on its TRACK, at '
+        'the global playhead — past the effect header between', (
+      tester,
+    ) async {
+      final session = await pump(tester);
+      final global = await standInB(session, tester);
+      await tap(tester, 'storyboard-track-lane-toggle-t1');
+      for (final effect in effects) {
+        await tap(
+          tester,
+          'storyboard-lane-group-toggle-$carrier-${effectGroupLaneId(effect)}',
+        );
+      }
+
+      await sweepBetween(
+        tester,
+        diamond(carrier, effectLaneId(effects.first, 'blurX')),
+        diamond(carrier, effectLaneId(effects.last, 'blurY')),
+      );
+
+      expect(
+        [
+          for (final effect in track(session, t1).effects)
+            for (final parameter in ['blurX', 'blurY'])
+              [...effect.parameterOf(parameter).track.keys.keys],
+        ],
+        [
+          for (var lane = 0; lane < 4; lane += 1) [global],
+        ],
+      );
+    });
+
+    testWidgets('🚨it keys a projection row\'s lanes on the layer of the cut '
+        'stood in, at that cut\'s own frame', (tester) async {
+      final session = await pump(tester);
+      await standInB(session, tester);
+      await tap(tester, 'storyboard-lane-toggle-b-conte');
+      await tap(
+        tester,
+        'storyboard-lane-group-toggle-$conteRow-transform-group',
+      );
+
+      await sweepBetween(
+        tester,
+        diamond(conteRow, 'position'),
+        diamond(conteRow, 'rotation'),
+      );
+
+      Map<String, List<int>> keysOf(String id) {
+        final track = row(session, id).transformTrack;
+        return {
+          'position': [...track.position.keys.keys],
+          'scale': [...track.scale.keys.keys],
+          'rotation': [...track.rotation.keys.keys],
+        };
+      }
+
+      expect(keysOf('b-conte'), {
+        'position': [3],
+        'scale': [3],
+        'rotation': [3],
+      }, reason: 'b\'s own 3');
+      expect(keysOf('a-conte'), {
+        'position': <int>[],
+        'scale': <int>[],
+        'rotation': <int>[],
+      });
+    });
+
+    testWidgets('⛔in a gap a projection row\'s ◆ is inert — a press there '
+        'starts no sweep', (tester) async {
+      final session = await pump(tester);
+      await tap(tester, 'storyboard-lane-toggle-a-conte');
+      await tap(
+        tester,
+        'storyboard-lane-group-toggle-$conteRow-transform-group',
+      );
+      await tap(tester, 'storyboard-lane-toggle-t2-s1');
+      await tap(tester, 'storyboard-lane-group-toggle-t2-s1-transform-group');
+      session.selectCut(const CutId('c'));
+      await tester.pumpAndSettle();
+      final start = diamond(conteRow, 'position');
+      expect(
+        start,
+        findsOneWidget,
+        reason: 'the fixture: the row keeps its lanes with no cut stood in',
+      );
+
+      await sweepBetween(
+        tester,
+        start,
+        diamond(const LayerId('t2-s1'), 'position'),
+      );
+
+      expect(
+        [...row(session, 't2-s1').transformTrack.position.keys.keys],
+        isEmpty,
+        reason:
+            'no cut of the row is stood in, so its ◆ has nothing to key — '
+            'and a ◆ a tap cannot press starts no sweep',
+      );
+    });
   });
 }

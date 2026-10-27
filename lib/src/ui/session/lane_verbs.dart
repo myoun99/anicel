@@ -60,9 +60,15 @@ import '../timeline/se_name_tag_lane_policy.dart'
         seNameTagLaneDisplayOrder,
         seNameTagLaneTakesSides,
         seNameTagLaneUsesName;
-import '../timeline/property_lane_model.dart' show LaneKeyValues;
+import '../timeline/property_lane_model.dart'
+    show LaneKeyValues, PropertyLaneRow, laneGroupKey;
+import '../timeline/property_lanes_for_row.dart' show propertyLanesForRow;
+import '../timeline/timeline_current_row.dart' show laneGroupOf;
 import '../timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane, transformLaneDisplayOrder;
+    show
+        cameraPropertyLanes,
+        transformGroupHeaderLane,
+        transformLaneDisplayOrder;
 import '../timeline/timeline_drag_preview.dart'
     show
         LaneEditPreview,
@@ -1046,6 +1052,92 @@ class LaneVerbs {
     for (final effect in layer.effects) {
       if (effect.id == effectId) {
         return effect.enabled;
+      }
+    }
+    return null;
+  }
+
+  /// Whether [laneId] of [layerId] holds a key at [frameIndex] — what its
+  /// ◆ shows — as the project holds it NOW ([_laneNowAt]). [frameIsGlobal]:
+  /// see [_laneVerbFrameAt].
+  ///
+  /// 🚨A LIVE READ, as [isLaneGroupOn] is: the rail's bulk-drag spreads
+  /// what the press just set (F-475), and a lane row built at the last
+  /// frame still carries the keys from before it.
+  bool? isLaneKeyedAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex, {
+    required bool frameIsGlobal,
+  }) => switch (_laneNowAt(
+    layerId,
+    laneId,
+    frameIndex,
+    frameIsGlobal: frameIsGlobal,
+  )) {
+    (:final lane, :final frame)? => lane.keyedFrames.contains(frame),
+    null => null,
+  };
+
+  /// [laneId]'s value at [frameIndex] as its row writes it
+  /// ([PropertyLaneRow.valueLabel]) — read as [isLaneKeyedAt] is.
+  String? laneValueAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex, {
+    required bool frameIsGlobal,
+  }) => switch (_laneNowAt(
+    layerId,
+    laneId,
+    frameIndex,
+    frameIsGlobal: frameIsGlobal,
+  )) {
+    (:final lane, :final frame)? => lane.valueLabel?.call(frame),
+    null => null,
+  };
+
+  /// [laneId] of the row [layerId] names, as the project holds it this
+  /// instant ([laneVerbLayerFor]), and the frame [frameIndex] names on it —
+  /// the lane its row would show if it were built now, off the lists the
+  /// rails draw: the camera row's its cut's camera's
+  /// ([cameraPropertyLanes]), every other row's with the lane's own group
+  /// open ([propertyLanesForRow]), valued on the row itself.
+  ({PropertyLaneRow lane, int frame})? _laneNowAt(
+    LayerId layerId,
+    String laneId,
+    int frameIndex, {
+    required bool frameIsGlobal,
+  }) {
+    final layer = laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return null;
+    }
+    final group = laneGroupOf(laneId);
+    final lanes = layer.kind == LayerKind.camera
+        ? cameraPropertyLanes(
+            layer,
+            _laneTransformTrackOf(layer),
+            canvasSize: _cutWriting(layer)?.canvasSize,
+          )
+        : propertyLanesForRow(
+            layer: layer,
+            rows: _cutWriting(layer)?.layers ?? const [],
+            expandedGroupKeys: {
+              if (group != null) laneGroupKey(layer.id, group),
+            },
+            valueSourceAt: (frame) => (layer: layer, frame: frame),
+            poseCentre: null,
+          );
+    for (final lane in lanes) {
+      if (lane.laneId == laneId) {
+        return (
+          lane: lane,
+          frame: _laneVerbFrameAt(
+            layerId,
+            frameIndex,
+            frameIsGlobal: frameIsGlobal,
+          ),
+        );
       }
     }
     return null;

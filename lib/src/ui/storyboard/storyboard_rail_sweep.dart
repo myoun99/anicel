@@ -132,6 +132,14 @@ class _StoryboardRailSweep {
       laneGroupOpenOf: groupOpenOf == null
           ? null
           : (rowId, header) => groupOpenOf(_held(rowId), header),
+      // A lane row's hand is its label's ([_StoryboardRailRows._laneHandOf]).
+      laneHandOf: (row) => switch (_rows._laneHandOf(row.layer.id)) {
+        (edit: final edit?, :final cursor) => (
+          edit: edit,
+          frame: laneRowFrame(cursor),
+        ),
+        _ => null,
+      },
     );
   }
 

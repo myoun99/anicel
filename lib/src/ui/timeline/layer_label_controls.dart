@@ -1670,6 +1670,12 @@ enum RailSwipeColumn {
 
   /// A lane group header's twirl — Transform, an effect.
   laneGroupToggle,
+
+  /// A lane's ◆: a key at the frame its row stands on, made or taken away.
+  laneKey,
+
+  /// A flag lane's ring — its value at the frame its row stands on.
+  laneFlag,
 }
 
 /// [RailSwipeColumnPointer]'s box: the strong claim, and the column it

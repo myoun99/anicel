@@ -271,11 +271,12 @@ class _StoryboardRowsAndLabels {
   /// ([_StoryboardRailRows._seLanes]) or a V row's fx chain
   /// ([_StoryboardRailRows._trackEffectLanes]): the group headers plus the
   /// twirled-open member lanes, storyboard-prefixed. [active] gates the
-  /// navigator's frame jumps and value edits.
+  /// navigator's frame jumps and value edits; what they edit with, and at
+  /// which frame, is [carrier]'s row's hand
+  /// ([_StoryboardRailRows._laneHandOf]) — the column sweep's too.
   List<Widget> laneLabels({
     required Layer carrier,
     required List<PropertyLaneRow> lanes,
-    required PropertyLaneEditCallbacks? laneEdit,
     required bool active,
 
     /// The group each header twirls, per LANE, by [laneGroupKey] on the row
@@ -287,7 +288,6 @@ class _StoryboardRowsAndLabels {
     /// ↩️An S and a V row's groups were the rail's own twirls
     /// (`onToggleTransformGroup`), and a list said which verb turned it.
     required String Function(PropertyLaneRow lane) groupKeyOf,
-    ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
 
     /// The header's own ON/OFF switch (AE's per-effect eyeball). Null leaves
@@ -325,6 +325,7 @@ class _StoryboardRowsAndLabels {
     );
     final toggleGroup = _state.widget.onToggleLaneGroupKey;
     final selection = _state.widget.rowSelection;
+    final hand = _state._railRows._laneHandOf(carrier.id);
     Widget row(Layer shown, PropertyLaneRow lane) {
       final seated = _seatedOf(carrier.id, lane);
       Widget label(TimelineGraphSeat? seat) => TimelineLaneControlsRow(
@@ -333,9 +334,9 @@ class _StoryboardRowsAndLabels {
         metrics: metrics,
         width: _state._naturalRailWidth,
         height: seated?.extent ?? laneHeight,
-        frameCursor: frameCursor,
+        frameCursor: hand.cursor,
         onSelectFrame: active ? onSelectFrame : null,
-        laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
+        laneEdit: lane.isGroupHeader || !active ? null : hand.edit,
         onToggleLaneGroup: toggleGroup == null
             ? null
             : (_, _) => toggleGroup(groupKeyOf(lane)),
@@ -367,12 +368,13 @@ class _StoryboardRowsAndLabels {
       );
     }
 
-    // The track's rows — V and S alike, their keys are the track's — pass the
-    // GLOBAL playhead (R4b). ↩️The S rows passed the ACTIVE cut's local cursor
-    // until F-102, which put their values and keys at the wrong frame in any
-    // cut but the first. Either way the row SUBSCRIBES — itself, on a layer
-    // of its own — so a committed seek rebuilds these label cells and lays
-    // out nothing else (the timeline rail's own line).
+    // The track's rows — V and S alike, their keys are the track's — stand
+    // on the GLOBAL playhead (R4b, [_StoryboardRailRows._laneHandOf]).
+    // ↩️The S rows passed the ACTIVE cut's local cursor until F-102, which
+    // put their values and keys at the wrong frame in any cut but the
+    // first. Either way the row SUBSCRIBES — itself, on a layer of its own
+    // — so a committed seek rebuilds these label cells and lays out nothing
+    // else (the timeline rail's own line).
     return [
       for (final lane in lanes)
         if (follow == null) row(carrier, lane) else follow(carrier, lane, row),

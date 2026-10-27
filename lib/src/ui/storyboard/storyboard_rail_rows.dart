@@ -52,6 +52,14 @@ typedef _LanesDrawn = ({
   Widget Function(TimelineDisplayRow row, double height) strip,
 });
 
+/// What a lane row of this rail keys and sets its lane with — the [edit]
+/// its label calls — and the [cursor] naming the frame it stands on
+/// ([_StoryboardRailRows._laneHandOf]).
+typedef _LaneHand = ({
+  PropertyLaneEditCallbacks? edit,
+  ValueListenable<int?>? cursor,
+});
+
 /// THE RAIL'S ROWS AND LANES — the rows the storyboard's rail shows for
 /// a track and its SE rows, in display order, filtered; their extents,
 /// sections and geometry; the subject and row at a rail position; the
@@ -804,7 +812,6 @@ class _StoryboardRailRows {
       groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
       lanes: lanes,
       follow: (_, lane, row) => _followingSeLane(track, layer, lane, row),
-      laneEdit: _state.widget.layerLaneEdit,
       onToggleGroupEnabled: onToggleEnabled == null
           ? null
           : (lane) => onToggleEnabled(layer, lane),
@@ -812,12 +819,11 @@ class _StoryboardRailRows {
       // The row exists or it does not; the open cut is not part of the
       // question (user, 2026-08-09).
       active: true,
-      // An S row's keys are the TRACK's, so its labels read and seek the
-      // GLOBAL playhead, as the V rows' do (R4b). ↩️They read the ACTIVE
-      // cut's local cursor (#844 carried the frame over as it was): in any
-      // cut but the first the value showed at the wrong frame, and the ◆
-      // keyed there (F-102).
-      frameCursor: _state.widget.playheadFrame,
+      // An S row's keys are the TRACK's, so its labels seek the GLOBAL
+      // playhead they stand on ([_laneHandOf]), as the V rows' do (R4b).
+      // ↩️They read the ACTIVE cut's local cursor (#844 carried the frame
+      // over as it was): in any cut but the first the value showed at the
+      // wrong frame, and the ◆ keyed there (F-102).
       onSelectFrame: _state.widget.onSeekGlobalFrame,
       graphVerbs: _laneGraphVerbs,
     );
@@ -954,9 +960,6 @@ class _StoryboardRailRows {
       lanes: labels.lanes,
       groupKeyOf: (lane) => laneGroupKey(labels.shown.id, lane.laneId),
       follow: stood == null ? null : follow,
-      laneEdit: stood == null
-          ? null
-          : _state.widget.cutLaneEdit?.landingOn(stood.layer),
       onToggleGroupEnabled: stood == null || toggleEnabled == null
           ? null
           : (lane) => toggleEnabled(stood.layer, lane),
@@ -964,7 +967,6 @@ class _StoryboardRailRows {
           ? null
           : (lane) => reset(stood.layer, lane),
       active: stood != null,
-      frameCursor: stood == null ? null : _state.widget.cutFrameCursor,
       onSelectFrame: stood == null || seek == null
           ? null
           : (frame) => seek(stood.cut.id, frame),
@@ -1127,7 +1129,6 @@ class _StoryboardRailRows {
                       ),
               ),
             ),
-            laneEdit: _state.widget.trackLaneEditFor?.call(track),
             onToggleGroupEnabled:
                 _state.widget.onToggleTrackEffectEnabled == null
                 ? null
@@ -1147,7 +1148,6 @@ class _StoryboardRailRows {
                     lane.laneId,
                   ),
             active: true,
-            frameCursor: _state.widget.playheadFrame,
             onSelectFrame: _state.widget.onSeekGlobalFrame,
             graphVerbs: _laneGraphVerbs,
           ),
@@ -2263,6 +2263,45 @@ class _StoryboardRailRows {
     final trackId = trackIdOfProjectionRow(rowId);
     final track = trackId == null ? null : _trackNamed(trackId);
     return track == null ? null : _inHand(track, LayerRowAddress(rowId));
+  }
+
+  /// What a lane of [rowId]'s row keys and sets its lane with, and where it
+  /// stands ([_LaneHand]) — ONE answer for its label and for the column
+  /// sweep that presses its ◆ and its flag ring (F-475), so a stroke
+  /// presses a lane where the lane's own button would:
+  ///
+  /// - the V row's lane carrier, its TRACK's verbs;
+  /// - a projection row, the verbs of the layer it has in hand of the cut
+  ///   the session stands in, at that cut's own frame — and none while no
+  ///   cut is stood in there (I-73 ④ⓔ);
+  /// - an S row, its layer's.
+  ///
+  /// The track's rows — V and S alike, their keys are the track's — stand
+  /// on the GLOBAL playhead (R4b). ↩️The S rows read the ACTIVE cut's local
+  /// cursor (#844 carried the frame over as it was): in any cut but the
+  /// first the value showed at the wrong frame, and the ◆ keyed there
+  /// (F-102).
+  _LaneHand _laneHandOf(LayerId rowId) {
+    final widget = _state.widget;
+    if (trackIdOfTransformLaneCarrier(rowId) case final trackId?) {
+      return (
+        edit: switch (_trackNamed(trackId)) {
+          final track? => widget.trackLaneEditFor?.call(track),
+          null => null,
+        },
+        cursor: widget.playheadFrame,
+      );
+    }
+    if (trackIdOfProjectionRow(rowId) == null) {
+      return (edit: widget.layerLaneEdit, cursor: widget.playheadFrame);
+    }
+    return switch (_rowInHand(rowId)) {
+      (cut: _, :final layer, stood: true)? => (
+        edit: widget.cutLaneEdit?.landingOn(layer),
+        cursor: widget.cutFrameCursor,
+      ),
+      _ => (edit: null, cursor: null),
+    };
   }
 
   /// Every lane of every track's table ([_trackGroupSlots]) seated for the

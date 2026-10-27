@@ -12,6 +12,7 @@ import 'layer_rail_columns.dart';
 import 'property_lane_model.dart';
 import 'rail_column_swipe.dart';
 import 'timeline_grid_hooks.dart';
+import 'timeline_lane_rows.dart' show laneRowFrame;
 import 'timeline_layer_controls_row.dart'
     show TimelineGroupFold, timelineGroupFoldFor;
 
@@ -47,7 +48,13 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   lanePin: _lanePin(hooks),
   groupFold: _groupFold(hooks),
   laneGroupToggle: _laneGroupToggle(hooks),
+  laneKey: _laneKey(hooks),
+  laneFlag: _laneFlag(hooks),
 );
+
+/// What a lane row is handed to key and set its lane with: the verbs its
+/// label calls and the frame it stands on ([laneRowFrame]).
+typedef LaneRowHand = ({PropertyLaneEditCallbacks edit, int frame});
 
 /// What a rail's column sweep reads of its host: the verbs its rows'
 /// buttons call, and the reads it paints by — live where the host can read
@@ -88,6 +95,9 @@ typedef RailSwipeHooks = ({
   bool Function(LayerId layerId)? groupFoldOpenOf,
   void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup,
   bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf,
+  // What a lane row's ◆ and its flag's ring are pressed with, as its label
+  // is handed them — null on a row handed none (F-475).
+  LaneRowHand? Function(TimelineDisplayRow row) laneHandOf,
 });
 
 /// Which of a rail's verbs a ROW is handed, as its label is — what the row
@@ -160,6 +170,11 @@ RailSwipeHooks timelineRailSwipeHooks(
   groupFoldOpenOf: hooks.groupFoldOpenOf,
   onToggleLaneGroup: hooks.onToggleLaneGroup,
   laneGroupOpenOf: hooks.laneGroupOpenOf,
+  // A grid hands every lane row its one set of verbs, at its cursor.
+  laneHandOf: (_) => switch (hooks.laneEdit) {
+    final edit? => (edit: edit, frame: laneRowFrame(hooks.frameCursor)),
+    null => null,
+  },
 );
 
 /// I-89 ③: a header graph's button, on each row that heads one — a
@@ -390,3 +405,65 @@ RailToggle<TimelineDisplayRow>? _laneGroupToggle(RailSwipeHooks hooks) {
     },
   );
 }
+
+/// 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — a lane's ◆: a key at the
+/// frame its row stands on, made or taken away, on each member lane that
+/// shows one ([PropertyLaneRow.showsKeyNavigator]) and is handed its verbs.
+///
+/// Read LIVE ([PropertyLaneEditCallbacks.keyedNow]), as every column is: the
+/// press keys its row before the sweep can read it.
+RailToggle<TimelineDisplayRow> _laneKey(RailSwipeHooks hooks) => (
+  valueOf: (row) => switch (_laneInHand(hooks, row)) {
+    (:final lane, :final hand)?
+        when !lane.isGroupHeader && lane.showsKeyNavigator =>
+      hand.edit.keyedNow?.call(row.layer, lane, hand.frame),
+    _ => null,
+  },
+  toggle: (row) {
+    if (_laneInHand(hooks, row) case (:final lane, :final hand)?) {
+      hand.edit.onToggleKeyAt(row.layer, lane, hand.frame);
+    }
+  },
+);
+
+/// A FLAG lane's ring ([PropertyLaneValueKind.boolean]) — its value at the
+/// frame its row stands on, on each lane whose value the row is handed a
+/// way to set — read LIVE ([PropertyLaneEditCallbacks.valueNow]) as the ◆
+/// is.
+RailToggle<TimelineDisplayRow> _laneFlag(RailSwipeHooks hooks) => (
+  valueOf: (row) => switch (_flagNow(hooks, row)) {
+    final word? => word == flagLaneWord(true),
+    null => null,
+  },
+  toggle: (row) {
+    if ((_laneInHand(hooks, row), _flagNow(hooks, row))
+        case ((:final lane, :final hand)?, final word?)) {
+      hand.edit.onSetValue?.call(
+        row.layer,
+        lane,
+        hand.frame,
+        flagLaneWord(word != flagLaneWord(true)),
+      );
+    }
+  },
+);
+
+/// [row]'s flag as its ring shows it now — null on a row that wears none.
+String? _flagNow(RailSwipeHooks hooks, TimelineDisplayRow row) =>
+    switch (_laneInHand(hooks, row)) {
+      (:final lane, :final hand)?
+          when lane.valueKind == PropertyLaneValueKind.boolean &&
+              hand.edit.onSetValue != null =>
+        hand.edit.valueNow?.call(row.layer, lane, hand.frame),
+      _ => null,
+    };
+
+/// [row]'s lane and what it is handed, or null for a layer row or a lane
+/// handed nothing.
+({PropertyLaneRow lane, LaneRowHand hand})? _laneInHand(
+  RailSwipeHooks hooks,
+  TimelineDisplayRow row,
+) => switch ((row.lane, hooks.laneHandOf(row))) {
+  (final lane?, final hand?) => (lane: lane, hand: hand),
+  _ => null,
+};

@@ -520,7 +520,8 @@ typedef RailToggle<TRow> = ({
 /// 동시조작 가능하게 … 다른버튼도 조사」. ↩️The clip toggle (I-92) came after
 /// this list and never joined it — not left out, forgotten; and the two
 /// folds, a group's at the end of a row's name and a lane group's twirl,
-/// had no band to be found by.
+/// had no band to be found by. So were a lane's ◆ and a flag lane's ring:
+/// each a switch of its row's own, at the frame the row stands on.
 List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
@@ -532,6 +533,8 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
   RailToggle<TRow>? lanePin,
   RailToggle<TRow>? groupFold,
   RailToggle<TRow>? laneGroupToggle,
+  RailToggle<TRow>? laneKey,
+  RailToggle<TRow>? laneFlag,
 }) => [
   for (final (column, toggle) in [
     (RailSwipeColumn.visibility, visibility),
@@ -544,6 +547,8 @@ List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
     (RailSwipeColumn.lanePin, lanePin),
     (RailSwipeColumn.groupFold, groupFold),
     (RailSwipeColumn.laneGroupToggle, laneGroupToggle),
+    (RailSwipeColumn.laneKey, laneKey),
+    (RailSwipeColumn.laneFlag, laneFlag),
   ])
     if (toggle != null)
       (column: column, valueOf: toggle.valueOf, toggle: toggle.toggle),

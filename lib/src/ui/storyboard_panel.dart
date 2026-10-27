@@ -114,6 +114,7 @@ import 'timeline/timeline_lane_rows.dart'
         TimelineLaneControlsRow,
         TimelineLaneFrameRow,
         TimelineLaneKeysLine,
+        laneRowFrame,
         timelineHollowKeyFrames,
         timelineKeysLineSpan,
         timelineLaneKeySpan,

@@ -120,6 +120,11 @@ const double _laneColumnEndPadding = 4;
 const double _laneChipSize = 9;
 const double _laneChipGap = 2;
 
+/// The frame a lane row stands on — where its ◆ keys and its value is read
+/// and set: its cursor's, or the first without one. A rail's bulk-drag
+/// presses a lane it crosses at the same frame (F-475).
+int laneRowFrame(ValueListenable<int?>? cursor) => cursor?.value ?? 0;
+
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
 /// next key) and the property's value at the playhead — tappable to type a
@@ -383,24 +388,28 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           enabled: previousKey != null && onSelectFrame != null,
           onTap: () => onSelectFrame!(previousKey!),
         ),
-        _NavigatorButton(
-          buttonKey: ValueKey<String>(
-            '$_keyPrefix-lane-key-toggle-${layer.id}-${lane.laneId}',
-          ),
-          enabled: laneEdit != null,
-          onTap: () =>
-              laneEdit!.onToggleKeyAt(layer, lane, _frame),
-          child: Transform.rotate(
-            angle: 0.785398,
-            child: Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                color: keyedNow ? colorScheme.primary : Colors.transparent,
-                border: Border.all(
-                  color: keyedNow
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
+        // A drag from the ◆ sweeps the keys down the rail (F-475); the
+        // arrows beside it act, they do not switch.
+        RailSwipeColumnPointer(
+          column: RailSwipeColumn.laneKey,
+          child: _NavigatorButton(
+            buttonKey: ValueKey<String>(
+              '$_keyPrefix-lane-key-toggle-${layer.id}-${lane.laneId}',
+            ),
+            enabled: laneEdit != null,
+            onTap: () => laneEdit!.onToggleKeyAt(layer, lane, _frame),
+            child: Transform.rotate(
+              angle: 0.785398,
+              child: Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: keyedNow ? colorScheme.primary : Colors.transparent,
+                  border: Border.all(
+                    color: keyedNow
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ),
@@ -434,34 +443,29 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     // there is nothing between the two states to scrub through.
     if (lane.valueKind == PropertyLaneValueKind.boolean &&
         laneEdit?.onSetValue != null) {
-      final on = valueLabel == 'on';
+      final on = valueLabel == flagLaneWord(true);
+      void flip() =>
+          laneEdit!.onSetValue!.call(layer, lane, _frame, flagLaneWord(!on));
+      // A drag from the ring sweeps the flags down the rail (F-475).
       return _atValueEnd(
-        ControlPressClaim(
-          onPressed: () => laneEdit!.onSetValue!.call(
-            layer,
-            lane,
-            _frame,
-            on ? 'off' : 'on',
-          ),
-          child: InkWell(
-            mouseCursor: AppCursors.press,
-            key: ValueKey<String>(
-              '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
-            ),
-            onTap: silentPress(
-              () => laneEdit!.onSetValue!.call(
-                layer,
-                lane,
-                _frame,
-                on ? 'off' : 'on',
+        RailSwipeColumnPointer(
+          column: RailSwipeColumn.laneFlag,
+          child: ControlPressClaim(
+            onPressed: flip,
+            child: InkWell(
+              mouseCursor: AppCursors.press,
+              key: ValueKey<String>(
+                '$_keyPrefix-lane-toggle-${layer.id}-${lane.laneId}',
               ),
-            ),
-            // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very cell:
-            // 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check box, and a
-            // CHECK MARK is what 「선택 표시는 색상만」 names outright.
-            child: SizedBox.square(
-              dimension: FieldSlider.defaultHeight,
-              child: Center(child: BooleanDot(value: on, size: 14)),
+              onTap: silentPress(flip),
+              // The app's one boolean (guide-sym ⑥⑧ — 유저 named this very
+              // cell: 「네임태그fx의 bold랑 쇼 다이얼로그」). It drew a check
+              // box, and a CHECK MARK is what 「선택 표시는 색상만」 names
+              // outright.
+              child: SizedBox.square(
+                dimension: FieldSlider.defaultHeight,
+                child: Center(child: BooleanDot(value: on, size: 14)),
+              ),
             ),
           ),
         ),
@@ -631,7 +635,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   /// The frame the row reads its lane at, current whenever [_onTheCursor]
   /// builds.
-  int get _frame => widget.frameCursor?.value ?? 0;
+  int get _frame => laneRowFrame(widget.frameCursor);
 
   /// [cell], built again on every frame the cursor moves to.
   Widget _onTheCursor(BuildContext context, WidgetBuilder cell) {
