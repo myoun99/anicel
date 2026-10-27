@@ -340,53 +340,62 @@ void main() {
           ),
         );
 
-    const pills = [
-      'part-line',
-      'part-fill',
-      'type-brush',
-      'type-plain',
-      'corners-sharp',
-      'corners-round',
-    ];
-
-    // Whatever is chosen IN this panel (F-478-Q2 asks whether that holds);
-    // 「그리기」 under a tile with an inside alone (F-478-Q1).
-    testWidgets('🚨every row is there whatever is chosen in the panel', (
-      tester,
-    ) async {
-      for (final state in [
-        shapeTool(),
-        shapeTool(options: plain),
-        shapeTool(options: fill),
-        shapeTool(shape: CanvasShapeKind.line),
+    // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 —
+    // a row is there only where what is chosen IN this panel leaves it
+    // something to say, as 「그리기」 is only under a tile with an inside
+    // (F-478-Q1). ↩️The rest kept their place whatever was chosen, and lost
+    // their tap.
+    testWidgets('🚨each row is there only where what is chosen leaves it '
+        'something to say', (tester) async {
+      // Each row by a key of its own: the part, the type, the corners, the
+      // edge and the ratio lock.
+      const rows = [
+        'part-line',
+        'type-brush',
+        'corners-sharp',
+        'anti-alias-switch',
+        'ratio-lock-switch',
+      ];
+      for (final (state, there) in [
+        (shapeTool(), {'part-line', 'type-brush', 'ratio-lock-switch'}),
+        (
+          shapeTool(options: plain),
+          {
+            'part-line',
+            'type-brush',
+            'corners-sharp',
+            'anti-alias-switch',
+            'ratio-lock-switch',
+          },
+        ),
+        (
+          shapeTool(options: fill),
+          {'part-line', 'anti-alias-switch', 'ratio-lock-switch'},
+        ),
+        (
+          shapeTool(shape: CanvasShapeKind.line),
+          {'type-brush', 'ratio-lock-switch'},
+        ),
       ]) {
         await pump(tester, state);
-        final hasInside = canvasShapeEncloses(state.drawShape);
-        for (final key in pills) {
+        for (final key in rows) {
           expect(
             find.byKey(ValueKey<String>('shape-tool-$key')),
-            hasInside || !key.startsWith('part-')
-                ? findsOneWidget
-                : findsNothing,
-            reason: '$key under ${state.shapeOptions.toJson()}',
+            there.contains(key) ? findsOneWidget : findsNothing,
+            reason: '$key under ${state.drawShape} '
+                '${state.shapeOptions.toJson()}',
           );
         }
-        expect(row(tester, 'anti-alias'), isNotNull);
-        expect(row(tester, 'ratio-lock'), isNotNull);
       }
     });
 
-    testWidgets('a line of the brush type: the type is to choose; the '
-        'corners and the edge are the plain line\'s, and off', (tester) async {
+    testWidgets('a line of the brush type is what is chosen first, and its '
+        'type is to choose', (tester) async {
       await pump(tester, shapeTool());
 
       expect(pill(tester, 'part-line').selected, isTrue);
       expect(pill(tester, 'type-brush').selected, isTrue);
       expect(pill(tester, 'type-plain').onTap, isNotNull);
-      expect(pill(tester, 'corners-sharp').onTap, isNull);
-      expect(pill(tester, 'corners-round').onTap, isNull);
-      expect(row(tester, 'anti-alias').onChanged, isNull);
-      expect(row(tester, 'ratio-lock').onChanged, isNotNull);
     });
 
     testWidgets('「일반」 is chosen by its pill, and then its corners and its '
@@ -412,24 +421,15 @@ void main() {
       expect(row(tester, 'anti-alias').value, isFalse);
     });
 
-    testWidgets('🚨「채움」 has no line: the type and the corners keep their '
-        'place and lose their tap — the edge is the fill\'s to set', (
-      tester,
-    ) async {
+    // With 「채움」 there is no type and no corners — the table above.
+    testWidgets('🚨「채움」 has no line, and the edge is the fill\'s to set — '
+        'a line again brings back the line it was', (tester) async {
       final tools = await pump(tester, shapeTool(options: plain));
 
       await tester.tap(find.byKey(const ValueKey('shape-tool-part-fill')));
       await tester.pump();
       expect(tools.value.shapeOptions.part, ShapePart.fill);
       expect(pill(tester, 'part-fill').selected, isTrue);
-      for (final key in [
-        'type-brush',
-        'type-plain',
-        'corners-sharp',
-        'corners-round',
-      ]) {
-        expect(pill(tester, key).onTap, isNull, reason: key);
-      }
       expect(
         tools.value.shapeOptions.type,
         ShapeLineType.plain,
@@ -440,7 +440,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('shape-tool-part-line')));
       await tester.pump();
       expect(tools.value.shapeOptions.part, ShapePart.line);
-      expect(pill(tester, 'type-plain').onTap, isNotNull);
+      expect(pill(tester, 'type-plain').selected, isTrue);
+      expect(pill(tester, 'corners-sharp').onTap, isNotNull);
     });
 
     // 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만

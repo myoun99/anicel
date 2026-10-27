@@ -250,22 +250,15 @@ void main() {
     expect(read().tipMask, isNull);
   });
 
-  testWidgets('⛔the texture sliders WAKE UP with a texture, they do not '
-      'appear', (tester) async {
-    // Picking a texture used to push two new rows into the panel right where
-    // the popup had just been — 「자리는 항상 예약하고 내용만 바꾼다」.
+  // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」.
+  // ↩️They stood DEAD until a texture was picked: picking one had pushed two
+  // new rows into the panel right where the popup had just been — 「자리는
+  // 항상 예약하고 내용만 바꾼다」 — the cost the answer took.
+  testWidgets('the texture sliders come with the texture picked, and take '
+      'the hand', (tester) async {
     const density = ValueKey<String>('brush-tool-texture-density-slider');
     final read = await pumpPanel(tester, tips: [_entry('tip-1', 'Mine')]);
-    expect(find.byKey(density), findsOneWidget);
-
-    await tester.ensureVisible(find.byKey(density));
-    await tester.drag(find.byKey(density), const Offset(-60, 0));
-    await tester.pumpAndSettle();
-    expect(
-      read().textureDensity,
-      1.0,
-      reason: 'dead until there is a texture for it to thin',
-    );
+    expect(find.byKey(density), findsNothing, reason: '⛔premise: no paper');
 
     final swatch = find.byKey(
       const ValueKey<String>('brush-tip-picker-texture'),

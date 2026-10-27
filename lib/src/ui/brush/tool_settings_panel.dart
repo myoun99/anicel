@@ -373,12 +373,12 @@ class _ShapeFillSettings extends StatelessWidget {
 /// whatever was chosen for the other shapes. ↩️It kept its place there with
 /// 「채움」 refused (「없다가 생기는 UI 금지」).
 ///
-/// The rest keep their place and lose their tap where what is chosen IN
-/// this panel leaves them nothing to say — whether they go too is
-/// F-478-Q2's question, not this law's:
+/// 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 — so
+/// do the rows what is chosen IN this panel leaves nothing to say.
+/// ↩️They kept their place and lost their tap:
 ///
-/// - 「채움」 has no line, so the type and the corners are off (Q9: 「채움은
-///   타입과 무관하다」);
+/// - 「채움」 has no line, so no type and no corners (Q9: 「채움은 타입과
+///   무관하다」);
 /// - the corners are the PLAIN line's (Q8), and so is the edge switch —
 ///   with the fill's. A line of the brush type has the brush's own edge.
 ///
@@ -408,16 +408,15 @@ class _ShapeToolSettings extends StatelessWidget {
       title: strings.toolShape,
       children: [
         if (canvasShapeEncloses(state.drawShape)) _partRow(strings),
-        _typeRow(strings),
-        _cornersRow(strings),
-        SettingsSwitchRow(
-          tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
-          label: strings.brAntiAlias,
-          value: _options.antiAlias,
-          onChanged: state.shapeDrawsWithTheBrush
-              ? null
-              : (value) => _set(_options.copyWith(antiAlias: value)),
-        ),
+        if (_laysLine) _typeRow(strings),
+        if (_laysPlainLine) _cornersRow(strings),
+        if (!state.shapeDrawsWithTheBrush)
+          SettingsSwitchRow(
+            tileKey: const ValueKey<String>('shape-tool-anti-alias-switch'),
+            label: strings.brAntiAlias,
+            value: _options.antiAlias,
+            onChanged: (value) => _set(_options.copyWith(antiAlias: value)),
+          ),
         SettingsSwitchRow(
           tileKey: const ValueKey<String>('shape-tool-ratio-lock-switch'),
           label: strings.shapeToolRatioLock,
@@ -442,8 +441,7 @@ class _ShapeToolSettings extends StatelessWidget {
     onPick: (part) => () => _set(_options.copyWith(part: part)),
   );
 
-  /// 「타입」: what lays the line — it takes a press only where a line is
-  /// laid.
+  /// 「타입」: what lays the line — there only where a line is laid.
   Widget _typeRow(AppStrings strings) => ToolSettingChoiceRow<ShapeLineType>(
     tool: 'shape-tool',
     name: 'type',
@@ -457,8 +455,7 @@ class _ShapeToolSettings extends StatelessWidget {
         label: strings.shapeToolTypePlain,
       ),
     ],
-    onPick: (type) =>
-        _laysLine ? () => _set(_options.copyWith(type: type)) : null,
+    onPick: (type) => () => _set(_options.copyWith(type: type)),
   );
 
   /// 「모서리」: the plain line's alone.
@@ -479,9 +476,7 @@ class _ShapeToolSettings extends StatelessWidget {
         label: strings.shapeToolCornersRound,
       ),
     ],
-    onPick: (corners) => _laysPlainLine
-        ? () => _set(_options.copyWith(corners: corners))
-        : null,
+    onPick: (corners) => () => _set(_options.copyWith(corners: corners)),
   );
 }
 
