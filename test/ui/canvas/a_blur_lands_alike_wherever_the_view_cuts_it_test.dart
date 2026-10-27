@@ -129,13 +129,19 @@ void main() {
   CompositeNode<CanvasStackRow> rowOf({
     required bool drawnOn,
     List<ResolvedLayerEffect> effects = const [],
+    LayerBlendMode blendMode = LayerBlendMode.normal,
   }) => CompositeLeaf<CanvasStackRow>(
     drawnOn
-        ? CanvasActiveLayerRow(opacity: 1, effects: effects)
+        ? CanvasActiveLayerRow(
+            opacity: 1,
+            effects: effects,
+            blendMode: blendMode,
+          )
         : CanvasLayerImageRequest(
             frameKey: frameKey,
             opacity: 1,
             effects: effects,
+            blendMode: blendMode,
           ),
   );
 
@@ -160,21 +166,11 @@ void main() {
       ], effects: blur),
     ],
     'a blurred row': (drawnOn) => [rowOf(drawnOn: drawnOn, effects: blur)],
-    // A colour key before the blur is a step, so the row drawn on is an
-    // image of its own whatever is decided for the plain one.
-    'a blurred row keyed first': (drawnOn) => [
-      rowOf(
-        drawnOn: drawnOn,
-        effects: [
-          // Key white, tolerance 0, amount 100 — the bars are not white, so
-          // it keys nothing and only makes the step.
-          ResolvedLayerEffect(
-            kind: EffectKind.deleteColor,
-            values: const [255, 255, 255, 0, 100],
-          ),
-          ...blur,
-        ],
-      ),
+    // A row in add is drawn as an image of its own (`blendsAsImage`), so
+    // the row drawn on reads its blur off a raster whatever is decided for
+    // the plain one. ([paperless]: add over white paper is white.)
+    'a blurred row in add': (drawnOn) => [
+      rowOf(drawnOn: drawnOn, effects: blur, blendMode: LayerBlendMode.add),
     ],
     'a blurring adjustment': (drawnOn) => [
       CompositeAdjustment(
@@ -192,16 +188,20 @@ void main() {
     ],
   };
 
+  /// The scenes drawn with no paper.
+  const paperless = {'a blurred row in add'};
+
   StackedFrame frameOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     ({LayerFrameImageCache cache, BitmapSurfacePainter pen}) ink, {
     required bool drawnOn,
+    bool paper = true,
   }) => stackedFrameOf(
     nodes,
     page: (
       canvasSize: canvasSize,
       pasteboardReach: PasteboardReach.whole,
-      paintPaper: true,
+      paintPaper: paper,
       paperBackground: ProjectBackground.defaultBackground,
     ),
     surfaceOf: (cel) =>
@@ -345,7 +345,12 @@ void main() {
       testWidgets('$name, ${drawnOn ? 'its row drawn on' : 'a cel'}: '
           'a pan by a pixel moves the blur by a pixel, as the frame\'s '
           'picture lays it', (tester) async {
-        final frame = frameOf(nodesOf(drawnOn), bars(), drawnOn: drawnOn);
+        final frame = frameOf(
+          nodesOf(drawnOn),
+          bars(),
+          drawnOn: drawnOn,
+          paper: !paperless.contains(name),
+        );
         final picture = await pictureOf(tester, frame);
         final pictureWidth = picture.extent.width.toInt();
         await expectPansAlike(
