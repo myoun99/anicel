@@ -387,6 +387,54 @@ void main() {
     expect(stepped.pixels, stepped.fresh);
   });
 
+  /// A pen over a row that blends with its backdrop: the paper lies in that
+  /// blend, the bottom of the frame ([onUnderlay]).
+  List<CompositeNode<CanvasStackRow>> overABlend() => [
+    CompositeBackdropBlend(
+      backdrop: [rowOf('below'), folder([rowOf('other')])],
+      source: rowOf('ramp'),
+      blendMode: LayerBlendMode.overlay,
+    ),
+    pen(),
+  ];
+
+  test('🚨under a pen over a row that blends with its backdrop, all below is '
+      'one picture — the paper in that blend with it', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await LayerBlendShader.load();
+    held = HeldSubtreeRasters(bytes: () => 0, bytesBelow: () => 1 << 20);
+    final nodes = overABlend();
+    await lay(nodes);
+    expect(held, hasLength(1));
+
+    final stepped = await aStep(nodes);
+    expect(stepped.rasters, 0);
+    expect(stepped.freshRasters, greaterThan(0), reason: '⛔premise');
+    expect(stepped.pixels, stepped.fresh);
+  });
+
+  test('what lies below a pen over a blend is drawn again where the paper in '
+      'that blend is not the one it was kept on', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    await LayerBlendShader.load();
+    held = HeldSubtreeRasters(bytes: () => 0, bytesBelow: () => 1 << 20);
+    final nodes = overABlend();
+    await lay(nodes);
+    expect(held, hasLength(1), reason: '⛔premise');
+
+    final grey = pageOn(const ProjectBackground.color(0xFF808080));
+    debugSubtreeRasterCount = 0;
+    final pixels = await drawn(
+      frame(nodes, keeps: false, live: penStep, page: grey),
+      step,
+    );
+    expect(debugSubtreeRasterCount, greaterThan(0));
+    expect(
+      pixels,
+      await drawn(frame(nodes, live: penStep, page: grey), step),
+    );
+  });
+
   test('⚖️where what lies below does not fit its shelf it is drawn in place '
       '— a folder in it then kept on its own', () async {
     held = HeldSubtreeRasters(bytes: () => 1 << 20);

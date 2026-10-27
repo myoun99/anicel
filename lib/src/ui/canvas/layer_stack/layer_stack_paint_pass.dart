@@ -976,22 +976,39 @@ class _LayerStackPaintPass {
   /// The paper draws what it is laid with, where, on which edge
   /// ([_paintPaperInto]) — at the buffer's own ratio, as a frame's picture
   /// is drawn: what lies below a pen holds it ([SubtreeHolding.drawnOn]).
+  ///
+  /// 🚨A NODE THE PAPER LIES IN draws its rows and the paper: a blend at
+  /// the bottom of the frame reads the paper in its backdrop
+  /// ([onUnderlay]), the one place it can lie, so the rows signed and the
+  /// paper say all it draws. ↩️It stood for no cel there, and what lies
+  /// below a pen over such a row had no key: 🔬S5_BA cut 352 (67 rows, a
+  /// multiply row under the one drawn on) drew three pictures again each
+  /// step — p50 28.7ms from step to screen against 6.6 with only the drawn
+  /// row on (10-28, the whole app, Windows, profile).
   Object? _drawsOf(CompositeNode<_PaintRow> node) {
-    if (node case CompositeLeaf(payload: _PaintPaper())) {
-      return (
-        paper: _painter.paperBackground,
-        on: _canvasRect,
-        antiAlias: _displayEdgeAntiAliased,
-      );
-    }
-    if (holdsRow(node, (row) => _signatureOf(row) == null)) {
+    if (holdsRow(
+      node,
+      (row) => row is! _PaintPaper && _signatureOf(row) == null,
+    )) {
       return null;
     }
-    return switch (CutFrameCompositeSignature.of(
-      mapCompositeLeaves([node], _signatureOf),
-      canvasSize: _painter.canvasSize,
-    ).nodes) {
-      [final only] => only,
+    final paper = holdsRow(node, (row) => row is _PaintPaper)
+        ? (
+            paper: _painter.paperBackground,
+            on: _canvasRect,
+            antiAlias: _displayEdgeAntiAliased,
+          )
+        : null;
+    return switch ((
+      paper,
+      CutFrameCompositeSignature.of(
+        mapCompositeLeaves([node], _signatureOf),
+        canvasSize: _painter.canvasSize,
+      ).nodes,
+    )) {
+      (final paper?, []) => paper,
+      (null, [final only]) => only,
+      (final paper?, [final only]) => (paper: paper, rows: only),
       _ => null,
     };
   }
