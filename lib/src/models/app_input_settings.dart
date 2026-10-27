@@ -57,7 +57,7 @@ class AppInputSettings {
     this.navigationModifierRotationLock = false,
     this.rotationSnapDegrees = 15,
     this.zoomSnapPercents = defaultZoomSnapPercents,
-    this.zoomCeilingPercent,
+    this.zoomCeiling,
     // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
     this.drawingCursor = DrawingCursor.crosshair,
     this.touchIgnored = false,
@@ -152,7 +152,14 @@ class AppInputSettings {
   /// 캔버스만」 (I-27-Q1) and, there, 「화면에 맞추기도 최대 줌에서 멈춘다」
   /// (I-27-Q2): the drawing canvas reads this for the view under it, and
   /// no other document view does.
-  final double? zoomCeilingPercent;
+  ///
+  /// ⛔ITS KEY IS NOT `zoomCeilingPercent`. Until F-480 that key held the
+  /// number kept while the lock was OFF — 100 in every file that had ever
+  /// been saved — so the one number reading that key read every such file
+  /// as locked at 100% (F-490, 유저 2026-10-27: 「최대 줌 잠금, 100%인상태인데
+  /// 기본값 아무것도 없도록」). A key no earlier file wrote reads them as no
+  /// lock, with no code that reads the earlier shape (no production data).
+  final double? zoomCeiling;
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
   /// modifier constraint glues the CURRENT zoom to the nearest entry —
@@ -288,7 +295,7 @@ class AppInputSettings {
     bool? navigationModifierRotationLock,
     double? rotationSnapDegrees,
     List<double>? zoomSnapPercents,
-    Object? zoomCeilingPercent = _unset,
+    Object? zoomCeiling = _unset,
     DrawingCursor? drawingCursor,
     bool? touchIgnored,
   }) => AppInputSettings(
@@ -313,9 +320,9 @@ class AppInputSettings {
     // ⚠️Through `num`: the parameter is untyped so that null can mean
     // 「take the lock off」, and a whole number written `150` arrives as an
     // int.
-    zoomCeilingPercent: identical(zoomCeilingPercent, _unset)
-        ? this.zoomCeilingPercent
-        : (zoomCeilingPercent as num?)?.toDouble(),
+    zoomCeiling: identical(zoomCeiling, _unset)
+        ? this.zoomCeiling
+        : (zoomCeiling as num?)?.toDouble(),
     drawingCursor: drawingCursor ?? this.drawingCursor,
     touchIgnored: touchIgnored ?? this.touchIgnored,
   );
@@ -337,7 +344,7 @@ class AppInputSettings {
     'navigationModifierRotationLock': navigationModifierRotationLock,
     'rotationSnapDegrees': rotationSnapDegrees,
     'zoomSnapPercents': zoomSnapPercents,
-    'zoomCeilingPercent': zoomCeilingPercent,
+    'zoomCeiling': zoomCeiling,
     'drawingCursor': drawingCursor.name,
     'touchIgnored': touchIgnored,
   };
@@ -418,7 +425,7 @@ class AppInputSettings {
       current: defaultZoomSnapPercents,
     ),
     // A lock at nothing, or below it, is a file somebody edited by hand.
-    zoomCeilingPercent: switch (json['zoomCeilingPercent']) {
+    zoomCeiling: switch (json['zoomCeiling']) {
       final num percent when percent > 0 && percent.isFinite =>
         percent.toDouble(),
       _ => null,
@@ -448,7 +455,7 @@ class AppInputSettings {
       other.navigationModifierRotationLock == navigationModifierRotationLock &&
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
-      other.zoomCeilingPercent == zoomCeilingPercent &&
+      other.zoomCeiling == zoomCeiling &&
       other.drawingCursor == drawingCursor &&
       other.touchIgnored == touchIgnored;
 
@@ -470,7 +477,7 @@ class AppInputSettings {
     navigationModifierRotationLock,
     rotationSnapDegrees,
     Object.hashAll(zoomSnapPercents),
-    zoomCeilingPercent,
+    zoomCeiling,
     drawingCursor,
     touchIgnored,
   ]);

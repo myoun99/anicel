@@ -399,13 +399,13 @@ void main() {
       expect(said(), isNull, reason: 'off until the user locks one');
 
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        zoomCeilingPercent: 150,
+        zoomCeiling: 150,
       );
       await tester.pumpAndSettle();
       expect(said(), 150);
 
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        zoomCeilingPercent: null,
+        zoomCeiling: null,
       );
       await tester.pumpAndSettle();
       expect(said(), isNull);

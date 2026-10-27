@@ -149,14 +149,14 @@ void main() {
         'foot, and then takes no more', (tester) async {
       await pumpDialog(tester);
       expect(said(tester), AppText.strings.commonNone);
-      expect(AppInput.settings.value.zoomCeilingPercent, isNull);
+      expect(AppInput.settings.value.zoomCeiling, isNull);
 
       await open(tester);
       expect(canPress(tester, add), isTrue, reason: 'empty, it takes one');
       await tester.tap(add);
       await tester.pumpAndSettle();
 
-      expect(AppInput.settings.value.zoomCeilingPercent, 100);
+      expect(AppInput.settings.value.zoomCeiling, 100);
       expect(row('100'), findsOneWidget, reason: 'the list stays open');
       expect(said(tester), '100');
       expect(canPress(tester, add), isFalse, reason: 'one is all it holds');
@@ -172,7 +172,7 @@ void main() {
     testWidgets('🚨its − lets the lock go, and the next ＋ locks at the '
         'number at the foot', (tester) async {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
-        zoomCeilingPercent: 100,
+        zoomCeiling: 100,
       );
       await pumpDialog(tester);
       await open(tester);
@@ -184,7 +184,7 @@ void main() {
 
       await tester.tap(remove('100'));
       await tester.pumpAndSettle();
-      expect(AppInput.settings.value.zoomCeilingPercent, isNull);
+      expect(AppInput.settings.value.zoomCeiling, isNull);
       expect(row('100'), findsNothing);
       expect(said(tester), AppText.strings.commonNone);
 
@@ -192,7 +192,7 @@ void main() {
       await tester.tap(add);
       await tester.pumpAndSettle();
       expect(
-        AppInput.settings.value.zoomCeilingPercent,
+        AppInput.settings.value.zoomCeiling,
         1600,
         reason: 'a number no view can stand on becomes the nearest one can',
       );

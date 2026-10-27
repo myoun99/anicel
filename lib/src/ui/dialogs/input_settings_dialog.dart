@@ -217,9 +217,9 @@ class InputSettingsSection extends StatelessWidget {
               keyValue: 'settings-zoom-ceiling',
               pickerKey: const ValueKey<String>('settings-zoom-ceiling'),
               label: strings.inputZoomCeiling,
-              percentsOf: (settings) => [?settings.zoomCeilingPercent],
+              percentsOf: (settings) => [?settings.zoomCeiling],
               withPercents: (settings, lock) =>
-                  settings.copyWith(zoomCeilingPercent: lock.firstOrNull),
+                  settings.copyWith(zoomCeiling: lock.firstOrNull),
               most: 1,
             ),
             // The CSP-style tablet service switch (PEN-2) — Windows
