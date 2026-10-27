@@ -333,15 +333,6 @@ void main() {
 
   for (final MapEntry(key: name, value: nodesOf) in scenes.entries) {
     for (final drawnOn in [false, true]) {
-      // ⛔Not a blurred row while it is the row drawn on: its blur rides a
-      // `saveLayer` the view cuts, and the exact route — the row rastered on
-      // the grid — cost 2.1–2.6x on the path a stroke redraws every step
-      // (🔬Windows app 2026-10-27, raster p50 4.4–5.0 → 10.3–11.5 ms; the
-      // other scenes did not move). Whether to pay it is the user's:
-      // nested-folder-buffers-read-past-the-view-Q1.
-      if (name == 'a blurred row' && drawnOn) {
-        continue;
-      }
       testWidgets('$name, ${drawnOn ? 'its row drawn on' : 'a cel'}: '
           'a pan by a pixel moves the blur by a pixel, as the frame\'s '
           'picture lays it', (tester) async {

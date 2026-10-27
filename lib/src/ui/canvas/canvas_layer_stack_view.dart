@@ -980,23 +980,26 @@ final class _LayerStackPainter {
   ) {
     for (final node in list) {
       if (node case CompositeLeaf(payload: final _PaintActiveSurface active)) {
-        // ⛔A POSE, or a chain of the row's own that spreads, is not told.
-        // 🔬Told through the pose and grown by the spread, the step's patch
-        // came apart from the frame drawn as it stands (Impeller tester,
+        // ⛔A POSE is not told. 🔬Told through it, the step's patch came
+        // apart from the frame drawn as it stands (Impeller tester,
         // 2026-10-27): the row turned by 30° and enlarged 2.5×, a few
         // pixels on the seam of the stroke's tile up to 4/255 at every
-        // view, patched there or over the whole picture alike; the row
-        // blurred, at 200% alone, a band 2.5 canvas pixels wide along that
-        // tile's edges. Why is not read through — the frame laid before
-        // the step and the frame drawn as it stands agreed to the pixel,
-        // and the patch draws the same body. A folder or an adjustment over
-        // the row, drawn as one image, agreed at every view.
-        // ↩️The pose was refused as putting the row's pixels somewhere else
-        // entirely, which its placement can tell: it is the patch that does
-        // not agree.
-        return active.placement == null &&
-                resolveCompositeEffectPlan(active.effects).outsetPixels == 0
-            ? rect
+        // view, patched there or over the whole picture alike. Why is not
+        // read through — the frame laid before the step and the frame drawn
+        // as it stands agreed to the pixel, and the patch draws the same
+        // body. ↩️The pose was refused as putting the row's pixels
+        // somewhere else entirely, which its placement can tell: it is the
+        // patch that does not agree.
+        //
+        // A chain of the row's own that spreads is told by its spread, as a
+        // folder's is: the row reads it off a raster on the canvas's grid
+        // (`_LayerStackPaintPass._paintSurfaceRow`). ↩️It was not told until
+        // that raster (nested-folder-buffers-read-past-the-view-Q1 = c,
+        // 2026-10-27): its blur rode a `saveLayer` the patch's clip cut,
+        // and at 200% the patch came apart from the frame along the
+        // stroke's tile by a band 2.5 canvas pixels wide.
+        return active.placement == null
+            ? _spreadBy(active.effects, rect)
             : null;
       }
       if (node is CompositeGroup<_PaintRow> &&

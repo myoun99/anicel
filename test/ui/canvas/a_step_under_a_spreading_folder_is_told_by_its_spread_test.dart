@@ -23,11 +23,13 @@ import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🚨A STEP UNDER A FOLDER OR AN ADJUSTMENT THAT SPREADS IS TOLD BY ITS
 /// SPREAD — where it moved, grown by as far as each chain it passes
-/// through reads past a pixel — and a step on a row posed, or spreading of
-/// its own, is not told at all ([StackedFrame.movedSince]): a canvas that
-/// stands patches the first into its picture and draws the frame as it
+/// through reads past a pixel, the row's own chain among them — and a step
+/// on a row posed is not told at all ([StackedFrame.movedSince]): a canvas
+/// that stands patches the first into its picture and draws the frame as it
 /// stands for the second (one-picture-per-frame, 유저 2026-10-25 「원본 기준
-/// 위에서 푼다」). ↩️A spread anywhere over the row was not told.
+/// 위에서 푼다」). ↩️A spread anywhere over the row was not told, and the
+/// row's own until it read its spread off the canvas's grid
+/// (nested-folder-buffers-read-past-the-view-Q1 = c).
 ///
 /// The width is asserted, not that a rect came: a rect that is not grown
 /// by the spread still comes, and patches a step whose blur it cuts.
@@ -171,14 +173,20 @@ void main() {
     expect(moved.located, isFalse);
   });
 
-  testWidgets('⛔a row that spreads of its own is not told — in a blurred '
-      'folder neither', (tester) async {
-    expect((await aDabUnder(tester, [row(effects: blur)])).located, isFalse);
-    expect(
-      (await aDabUnder(tester, [
-        blurredFolder([row(effects: blur)]),
-      ])).located,
-      isFalse,
-    );
+  testWidgets('a row that blurs of its own: grown by its own blur', (
+    tester,
+  ) async {
+    final moved = await aDabUnder(tester, [row(effects: blur)]);
+    expect(moved.located, isTrue);
+    expect(moved.dirty, const Rect.fromLTRB(-5, -5, 13, 13));
+  });
+
+  testWidgets('a row that blurs of its own in a blurred folder: grown by '
+      'both', (tester) async {
+    final moved = await aDabUnder(tester, [
+      blurredFolder([row(effects: blur)]),
+    ]);
+    expect(moved.located, isTrue);
+    expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
   });
 }

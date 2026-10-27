@@ -804,10 +804,10 @@ class _LayerStackPaintPass {
     // 🚨THE LIVE LAYER'S OWN CONTENT, AS A CLOSURE — because a
     // colour key BELOW a painted effect has to key what that
     // effect made, and a shader cannot sample a `saveLayer`.
-    // ⛔Only that case and an advanced blend (below) rasterise. A
-    // plainly buffered layer keeps the cheaper `saveLayer`:
-    // 🧪measured, the image route costs 3.2x on the path a stroke
-    // redraws every step.
+    // ⛔Only that case, an advanced blend and a chain that spreads
+    // (below) rasterise. A plainly buffered layer keeps the cheaper
+    // `saveLayer`: 🧪measured, the image route costs 3.2x on the path a
+    // stroke redraws every step.
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(slot.painter.storableRect);
@@ -876,7 +876,20 @@ class _LayerStackPaintPass {
     // a buffered row still wears here is add's `plus`.
     final blendsAsImage =
         needsBuffer && activePaint.blendMode != BlendMode.srcOver;
-    if (activePlan.preSteps.isNotEmpty || blendsAsImage) {
+    // 🚨★★★A CHAIN OF THE ROW'S OWN THAT SPREADS READS A RASTER ON THE
+    // CANVAS'S GRID, as a folder's does ([rasterCellFor];
+    // nested-folder-buffers-read-past-the-view-Q1 = c, 유저 2026-10-27
+    // 「정확하게, 값은 줄여서」). A blur reduces what it reads on a grid
+    // counted from that picture's corner, and the `saveLayer` it rode
+    // starts where the clip cuts it: the same ink blurred another way at
+    // each pixel of a pan, and another way than the frame's picture
+    // (🔬Windows app: 3–4/255 pan to pan, 4–6/255 from the picture). On
+    // the grid the row's step is told as a folder's is
+    // (`_whereTheLiveRowShows`), so a stroke patches the frame's picture
+    // as far as its spread reaches and a pan draws the picture — where the
+    // row drawn on had the whole view drawn as it stands at every paint.
+    final spreads = activePlan.outsetPixels > 0;
+    if (activePlan.preSteps.isNotEmpty || blendsAsImage || spreads) {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
@@ -891,13 +904,7 @@ class _LayerStackPaintPass {
       );
     } else {
       if (needsBuffer) {
-        canvas.saveLayer(
-          effectBufferBounds(
-            slot.painter.storableRect,
-            activeEffects.outsetPixels,
-          ),
-          activePaint,
-        );
+        canvas.saveLayer(slot.painter.storableRect, activePaint);
       }
       paintLiveBody(canvas);
       if (needsBuffer) {

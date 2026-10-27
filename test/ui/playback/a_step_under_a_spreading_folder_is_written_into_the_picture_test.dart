@@ -13,12 +13,14 @@ import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 
 import '../../helpers/a_stroke_written_into_the_picture_shown.dart';
 
-/// 🚨A STEP UNDER A FOLDER OR AN ADJUSTMENT THAT SPREADS IS WRITTEN INTO
-/// THE PICTURE TOO (one-picture-per-frame, 유저 2026-10-25 「원본 기준 위에서
-/// 푼다」): where it shows is grown by the chain's spread and patched there
+/// 🚨A STEP UNDER A FOLDER OR AN ADJUSTMENT THAT SPREADS — OR ON A ROW
+/// THAT SPREADS OF ITS OWN — IS WRITTEN INTO THE PICTURE TOO
+/// (one-picture-per-frame, 유저 2026-10-25 「원본 기준 위에서 푼다」): where
+/// it shows is grown by the chain's spread and patched there
 /// ([aStrokeIsWrittenIntoThePictureShown]), pixel for pixel what the frame
 /// drawn as it stands shows. ↩️It drew the frame as it stands, the whole
-/// view at canvas resolution, at every step.
+/// view at canvas resolution, at every step — on a row blurred of its own
+/// until nested-folder-buffers-read-past-the-view-Q1 = c (2026-10-27).
 ///
 /// The stroke ends a pixel short of its tile's edge, so the blur carries it
 /// past the tile — and past the pixel the change is widened by.
@@ -34,10 +36,12 @@ void main() {
     ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 4]),
   ];
 
-  CompositeNode<CanvasStackRow> row(BrushFrameKey cel) =>
-      CompositeLeaf<CanvasStackRow>(
-        CanvasActiveLayerRow(opacity: 1, frameKey: cel),
-      );
+  CompositeNode<CanvasStackRow> row(
+    BrushFrameKey cel, {
+    List<ResolvedLayerEffect> effects = const [],
+  }) => CompositeLeaf<CanvasStackRow>(
+    CanvasActiveLayerRow(opacity: 1, frameKey: cel, effects: effects),
+  );
 
   group('a row in a blurred folder', () {
     aStrokeIsWrittenIntoThePictureShown(
@@ -47,6 +51,33 @@ void main() {
       stack: (cel) => [
         CompositeGroup<CanvasStackRow>(
           children: [row(cel)],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: blur,
+        ),
+      ],
+      withThePinsOfNoView: false,
+    );
+  });
+
+  group('a row that blurs of its own', () {
+    aStrokeIsWrittenIntoThePictureShown(
+      views: views,
+      ratios: ratios,
+      strokeAt: strokeAt,
+      stack: (cel) => [row(cel, effects: blur)],
+      withThePinsOfNoView: false,
+    );
+  });
+
+  group('a row that blurs of its own in a blurred folder', () {
+    aStrokeIsWrittenIntoThePictureShown(
+      views: views,
+      ratios: ratios,
+      strokeAt: strokeAt,
+      stack: (cel) => [
+        CompositeGroup<CanvasStackRow>(
+          children: [row(cel, effects: blur)],
           opacity: 1,
           blendMode: LayerBlendMode.normal,
           effects: blur,
