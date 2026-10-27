@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/dart_sources.dart';
 import '../helpers/source_ledger.dart';
@@ -58,5 +60,23 @@ void main() {
           'these are in the ledger and not in the tree any more, or not as '
           'many times — take the line out or lower its count:',
     );
+  });
+
+  test('each file that makes one draws through drawShadedRect', () {
+    final calls = RegExp(r'(?<!void )\bdrawShadedRect\(');
+    for (final MapEntry(key: path, value: entry) in ledger.entries) {
+      final drawn = File(path)
+          .readAsLinesSync()
+          .map((line) => line.trim())
+          .where((code) => !code.startsWith('//') && !code.startsWith('*'))
+          .map((code) => calls.allMatches(code).length)
+          .fold(0, (sum, count) => sum + count);
+      expect(
+        drawn,
+        greaterThanOrEqualTo(entry.count),
+        reason: '$path makes ${entry.count} ImageShader and draws through '
+            '`drawShadedRect` $drawn times',
+      );
+    }
   });
 }
