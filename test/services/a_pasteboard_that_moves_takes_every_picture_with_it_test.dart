@@ -978,8 +978,13 @@ void main() {
       final command = SetProjectPasteboardCommand(
         repository: f.repository,
         brushFrameStore: f.store,
-        size: PasteboardSize.two,
+        size: PasteboardSize.oneAndAHalf,
       )..execute();
+      expect(
+        f.store.bakedSurfaceOrNull(cut)!.tiles.length,
+        lessThan(before.tiles.length),
+        reason: 'premise: the move cut the cel',
+      );
       expect(await command.parkPayload(), isTrue);
       command.undo();
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
@@ -992,9 +997,15 @@ void main() {
       final command = SetProjectPasteboardCommand(
         repository: f.repository,
         brushFrameStore: f.store,
-        size: PasteboardSize.two,
+        size: PasteboardSize.oneAndAHalf,
       )..execute();
+      expect(
+        f.store.getOrCreateFrame(cut).sourceRevision,
+        isNot(named),
+        reason: 'premise: the move cut the cel',
+      );
       expect(await command.parkPayload(), isTrue);
+      expect(command.estimatedRetainedBytes(undone: false), 0);
       command.undo();
       expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
     });
