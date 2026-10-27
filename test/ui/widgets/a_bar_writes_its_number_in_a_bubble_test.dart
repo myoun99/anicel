@@ -120,6 +120,39 @@ void main() {
     expect(typing, findsNothing);
   });
 
+  testWidgets('a bubble is as wide as the widest word its bar can say, '
+      'whatever the bar says now — 「그냥 고정크기로하자」', (tester) async {
+    late BuildContext context;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Builder(
+          builder: (built) {
+            context = built;
+            return const SizedBox();
+          },
+        ),
+      ),
+    );
+    double widthAt(double value) => FieldSliderValueBubble.widthIn(context, [
+      FieldSlider(
+        label: 'Size',
+        nameInside: false,
+        value: value,
+        min: 1,
+        max: 100,
+        axis: Axis.vertical,
+        height: 20,
+        bubble: FieldSliderBubble(),
+        onChanged: (_) {},
+      ),
+    ]);
+
+    final widest = widthAt(100);
+    expect(widthAt(10), widest, reason: '「10.0」 says less than 「100.0」');
+    expect(widthAt(1), widest);
+  });
+
   testWidgets('a bubble bar asks no room of its track — its number is in '
       'its bubble — and the run its number would stand in is the column '
       'an upright bar measures', (tester) async {
