@@ -22,9 +22,11 @@ import 'package:anicel/src/ui/text/model_vocabulary.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/timeline/layer_name_commands.dart';
+import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import '../flyout_test_helpers.dart' show readCommandEnabled;
 
 /// 🗣️F-476 (유저 2026-10-26): 「레이어쪽에서 fx를 선택범위로 선택하고
 /// 삭제한다는거, 몇번을 말하는건지 … 레이어쪽 fx 선택범위로 선택하고
@@ -448,6 +450,7 @@ void main() {
       _select(session, [_header(session, EffectKind.blur), celNumber]);
       pill.copyFrame();
       session.selectLayer(const LayerId('f'));
+      expect(pill.canPasteIndependentFrame, isTrue, reason: 'it takes one');
       pill.pasteIndependentFrame();
       expect(_effectsOf(session, 'f'), [EffectKind.blur]);
     });
@@ -558,6 +561,67 @@ void main() {
         EffectKind.blur,
       ]);
       expect(_effectsOf(session, 'y'), _both);
+    });
+
+    test('parked in a gap, with no cut to duplicate, the storyboard '
+        'duplicates the V row\'s fx its rail selected', () {
+      final session = _session();
+      session.effectsAndFx.addEffectToTrack(_track, EffectKind.blur);
+      session.cutVerbs.createCut();
+      final cuts = session.repository.requireProject().tracks.single.cuts;
+      session.repository.updateCutLeadingGap(
+        cutId: cuts[1].id,
+        leadingGapFrames: 4,
+      );
+      session.selectCut(cuts[0].id);
+      session.selectGlobalFrame(cuts[0].duration + 1);
+      expect(session.activeCutOrNull, isNull, reason: '⛔전제: in the gap');
+      _select(session, [
+        LaneRowAddress(
+          trackTransformLaneCarrierId(_track),
+          effectGroupLaneId(_trackEffects(session).single.id),
+        ),
+      ]);
+      final pill = StoryboardToolbarPanelContext(session);
+
+      expect(pill.canDuplicate, isTrue);
+      pill.duplicate();
+      expect(_trackEffects(session), hasLength(2));
+    });
+
+    testWidgets('on the bar: a copy over the rail\'s fx header lights the '
+        'paste beside it', (tester) async {
+      final session = _session();
+      await tester.binding.setSurfaceSize(const Size(2400, 200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Material(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: TimelineActionToolbar(
+                session: session,
+                panelContext: TimelineToolbarPanelContext(session),
+                onAddLayer: () {},
+                onRenameLayer: () {},
+                onDeleteLayer: () {},
+                onEditInstance: () {},
+                onCreateInstance: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      _select(session, [_header(session, EffectKind.blur)]);
+      await tester.pump();
+      const paste = ValueKey<String>('shared-paste-independent-button');
+      expect(await readCommandEnabled(tester, paste), isFalse, reason: '⛔전제');
+
+      const copy = ValueKey<String>('shared-copy-button');
+      await tester.tap(find.byKey(copy));
+      await tester.pump();
+
+      expect(await readCommandEnabled(tester, paste), isTrue);
     });
   });
 }
