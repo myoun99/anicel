@@ -14,6 +14,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart' show LayerFolderQueries;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -835,6 +836,40 @@ void main() {
           [false, true],
           reason: 'the mirror\'s picture rides to 6..10 with it — read where '
               'it stood, the white stayed at 0..4',
+        );
+        s.rangeMove.cancelFrameRangeMoveDrag();
+      });
+
+      test('an organizer holding the mirrors of a row outside it follows that '
+          'row\'s drag', () {
+        final s = _session([_row('a', const {0: 4})]);
+        s.selectLayer(const LayerId('a'));
+        s.folders.addAttachedLayer(AttachedPlacement.above);
+        s.folders.groupActiveAttachIntoFolder();
+        final organizer = s.requireActiveCut.layers.folderLayers.single.id;
+        expect(
+          [_layer(s, 'a').folderId, _blocks(_band(s, organizer))],
+          [null, {0: 4}],
+          reason: '⛔전제: a stands outside the organizer its mirror is in',
+        );
+        s.updateFrameRangeSelectionDrag(
+          layerId: const LayerId('a'),
+          anchorIndex: 1,
+          headIndex: 1,
+        );
+        s.rangeMove.beginFrameRangeMoveDrag(const LayerId('a'));
+
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        final shown = timelineRowPreviewLayer(
+          s.dragPreview.value,
+          _band(s, organizer),
+        );
+        expect(
+          shown == null ? null : _blocks(shown),
+          {6: 4},
+          reason: 'no row of the organizer\'s own is in the drag\'s hand, so '
+              'asked by id the organizer stood still until the release',
         );
         s.rangeMove.cancelFrameRangeMoveDrag();
       });
