@@ -86,7 +86,6 @@ class SettingsPickerRow extends StatelessWidget {
     required this.picked,
     required this.entriesBuilder,
     this.help,
-    this.enabled = true,
   });
 
   /// The button's key — what the list is opened by.
@@ -101,9 +100,6 @@ class SettingsPickerRow extends StatelessWidget {
   /// See [SettingsSwitchRow.help].
   final String? help;
 
-  /// False dims the row and keeps the list shut.
-  final bool enabled;
-
   /// How wide a settings control stands at the end of its row.
   static const double width = 180;
 
@@ -111,14 +107,12 @@ class SettingsPickerRow extends StatelessWidget {
   Widget build(BuildContext context) => SettingsRow(
     label: label,
     help: help,
-    enabled: enabled,
     control: SizedBox(
       width: width,
       child: PanelFlyoutButton(
         key: pickerKey,
         label: picked,
         expand: true,
-        enabled: enabled,
         entriesBuilder: entriesBuilder,
       ),
     ),
@@ -147,7 +141,6 @@ class SettingsBarRow extends StatelessWidget {
     this.divisions,
     this.unit = '',
     this.valueTextBuilder,
-    this.help,
   });
 
   /// The bar's key — what a hand drags.
@@ -163,13 +156,9 @@ class SettingsBarRow extends StatelessWidget {
   final String unit;
   final String Function(double value, String derived)? valueTextBuilder;
 
-  /// See [SettingsSwitchRow.help].
-  final String? help;
-
   @override
   Widget build(BuildContext context) => SettingsRow(
     label: label,
-    help: help,
     control: SizedBox(
       width: SettingsPickerRow.width,
       child: FieldSlider.cell(
