@@ -272,11 +272,11 @@ void main() {
       effects: [effect],
     );
 
-    PropertyTrack<double> blurXOf(List<LayerEffect> effects) =>
+    PropertyTrack<double> blurrinessOf(List<LayerEffect> effects) =>
         effects.single.parameters['blurriness']!.track;
 
     test('global keys arrive on the cut-local axis', () {
-      final local = blurXOf(
+      final local = blurrinessOf(
         window.displayLayer(withEffect(blurWith({40: 7}))).effects,
       );
       expect(local.keys.keys.toList(), [20]);
@@ -284,7 +284,7 @@ void main() {
     });
 
     test('a key from an EARLIER cut is dropped, not folded onto frame 0', () {
-      final local = blurXOf(
+      final local = blurrinessOf(
         window.displayLayer(withEffect(blurWith({8: 99, 20: 3}))).effects,
       );
       expect(local.keys.keys.toList(), [0]);
@@ -299,7 +299,7 @@ void main() {
       const first = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 24);
       final layer = withEffect(blurWith({0: 1, 6: 2}));
       expect(
-        blurXOf(first.displayLayer(layer).effects).keys.keys.toList(),
+        blurrinessOf(first.displayLayer(layer).effects).keys.keys.toList(),
         [0, 6],
       );
     });

@@ -145,9 +145,9 @@ void main() {
             .withKeyName(0, name),
       );
 
-  /// A blur whose blurX has a key at frame 0 holding [value], named [name]
+  /// A blur whose blurriness has a key at frame 0 holding [value], named [name]
   /// — the same effect on either cel, as a link group's chain is.
-  List<LayerEffect> blurXAt0(double value, {String? name}) => [
+  List<LayerEffect> blurrinessAt0(double value, {String? name}) => [
     LayerEffect(
       id: const EffectId('fx'),
       kind: EffectKind.blur,
@@ -303,8 +303,8 @@ void main() {
   test('so is a name given to an effect key of that row', () {
     final session = standingInA(
       linkedCels: (
-        a: celHolding('a', effects: blurXAt0(3, name: 'N')),
-        b: celHolding('b', effects: blurXAt0(8)),
+        a: celHolding('a', effects: blurrinessAt0(3, name: 'N')),
+        b: celHolding('b', effects: blurrinessAt0(8)),
       ),
     );
     session.laneRangeSelection.value = TimelineLaneSelection(
