@@ -599,6 +599,54 @@ void main() {
     expect(region.rasterBytes, inInclusiveRange(1, _onceBytes(tester)));
   });
 
+  testWidgets('🚨a tick reaches no further than the clips above it — laid out '
+      'past its clip, it lets what is painted beside the clip go under it', (
+    tester,
+  ) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    await _pump(
+      tester,
+      _regionWith(
+        at,
+        wrap: (tick) => ClipRect(
+          child: OverflowBox(
+            alignment: Alignment.topLeft,
+            minHeight: 200,
+            maxHeight: 200,
+            child: tick,
+          ),
+        ),
+        after: const Positioned(
+          left: 0,
+          top: 60,
+          width: 100,
+          height: 100,
+          child: RepaintBoundary(child: ColoredBox(color: _cover)),
+        ),
+      ),
+    );
+    expect(
+      tester.getSize(find.byType(TickLayer)).height,
+      200,
+      reason: '⛔premise: the tick is laid out over the cover, past its clip',
+    );
+    await _moveUntilStill(tester, at);
+    final region = _region(tester);
+
+    expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise');
+    expect(region.rasterBytes, inInclusiveRange(1, _onceBytes(tester)));
+    expect(
+      capturePixelAt(
+        tester,
+        await captureBytes(tester),
+        const Offset(_left + 50, _top + 110),
+      ),
+      _cover,
+      reason: 'drawn where it was painted',
+    );
+  });
+
   testWidgets('🚨a picture under a fade stays with the fade — sunk under the '
       'tick apart from the rest of the group, where the two overlap the one '
       'would show through the other', (tester) async {
