@@ -13,8 +13,7 @@ class _TimelineDelete {
   /// Standing ANYWHERE inside a real drawing block deletes it (UI-R17 #1)
   /// — the old head-only rule made held cells feel dead.
   bool canDeleteCellAt({required Layer layer, required int frameIndex}) {
-    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    return block != null && !block.entry.ghost;
+    return authoredDrawingBlockAt(layer.timeline, frameIndex) != null;
   }
 
   /// Whether a block stands at [at] on [layerId]'s OWN row, in its edit

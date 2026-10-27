@@ -29,11 +29,11 @@ List<({int startIndex, int length})> emptyGapsBetween(
   for (var index = startIndex; index <= endIndexExclusive; index += 1) {
     final block = index >= endIndexExclusive || index < 0
         ? null
-        : coveringDrawingBlockAt(layer.timeline, index);
+        : authoredDrawingBlockAt(layer.timeline, index);
     final covered =
         index >= endIndexExclusive ||
         index < 0 ||
-        (block != null && !block.entry.ghost);
+        block != null;
     if (!covered) {
       gapStart ??= index;
       continue;

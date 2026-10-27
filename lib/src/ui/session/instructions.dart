@@ -50,13 +50,10 @@ class Instructions {
   MapEntry<int, InstructionEvent>? instructionSpanAt(
     LayerId layerId,
     int frameIndex,
-  ) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return null;
-    }
-    return instructionSpanCovering(layer.instructions, frameIndex);
-  }
+  ) => switch (_directionRow(layerId)) {
+    final layer? => instructionSpanCovering(layer.instructions, frameIndex),
+    null => null,
+  };
 
   /// Whether [createDefaultInstructionEventAtCurrentFrame] makes a block —
   /// the ONE sentence its press and the ＋ that lights for it read (T25).
@@ -113,8 +110,8 @@ class Instructions {
     InstructionEvent event, {
     int? createLengthFrames,
   }) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
+    final layer = _directionRow(layerId);
+    if (layer == null) {
       return null;
     }
 
@@ -123,11 +120,11 @@ class Instructions {
       1,
       1 << 20,
     );
-    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    final edits = covering != null && !covering.entry.ghost;
+    final covering = authoredDrawingBlockAt(layer.timeline, frameIndex);
+    final edits = covering != null;
     final Layer Function(Layer row) spans;
     if (edits) {
-      final drawing = covering.entry.frameId!;
+      final drawing = covering.frameId;
       if (_drawingSaying(layer, event.writing, besides: drawing)
           case final held?) {
         return held;
@@ -195,13 +192,8 @@ class Instructions {
     InstructionEvent event,
     FrameId held,
   ) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
-    }
-    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    final drawing = covering?.entry.frameId;
-    if (covering == null || covering.entry.ghost || drawing == null) {
+    final drawing = _directionBlockAt(layerId, frameIndex)?.frameId;
+    if (drawing == null) {
       return;
     }
     final bank = _controllers.timelineController.bankLanesOf(layerId);
@@ -217,6 +209,21 @@ class Instructions {
     );
     _changes.notifyChanged();
   }
+
+  /// [layerId]'s row where it is a direction row; null for any other.
+  Layer? _directionRow(LayerId layerId) =>
+      switch (_project.layerById(layerId)) {
+        final layer? when layer.kind == LayerKind.instruction => layer,
+        _ => null,
+      };
+
+  /// The block a person wrote covering [frameIndex] on the direction row
+  /// [layerId] — what a link and a delete of a block stand on.
+  TimelineDrawingBlock? _directionBlockAt(LayerId layerId, int frameIndex) =>
+      switch (_directionRow(layerId)) {
+        final layer? => authoredDrawingBlockAt(layer.timeline, frameIndex),
+        null => null,
+      };
 
   /// The drawing of [layer] — other than [besides] — that already says
   /// what [writing] says: the one holding the name it gives
@@ -265,12 +272,8 @@ class Instructions {
   /// Removes the instruction span covering [frameIndex] — the block it is,
   /// with its drawing, by the delete button's own code; one undo step.
   void removeInstructionEventAt(LayerId layerId, int frameIndex) {
-    final layer = _project.layerById(layerId);
-    if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
-    }
-    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    if (covering == null || covering.entry.ghost) {
+    final covering = _directionBlockAt(layerId, frameIndex);
+    if (covering == null) {
       return;
     }
     _controllers.timelineController.deleteBlocksForLayer(

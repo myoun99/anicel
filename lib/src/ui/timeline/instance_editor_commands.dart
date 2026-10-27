@@ -652,21 +652,21 @@ Future<void> _editSpanInstance(
   );
 }
 
-/// The direction row's commit: [event] said on the block covering
-/// [frameIndex] — and, where it says what another drawing of the row says,
-/// the link offered first, listing the drawing the link throws away.
+/// The direction row's commit: what the window says, said on the block
+/// covering [frameIndex] — and, where it says what another drawing of the
+/// row says, the link offered first, listing the drawing the link throws
+/// away.
 ///
 /// 🗣️I-72-direction-link (유저 2026-10-08): 「같은이름이라는 규칙을
 /// 시작이름,끝이름,지시 세개 같으면 같은 링크로서」 — what a block says is
 /// its drawing's name ([linkNameOfWriting]), so this is a rename onto a
 /// held name ([_renameSelectedFrame]): Link joins, Cancel writes nothing.
-Future<void> _commitInstruction(
+Future<void> Function(InstructionEvent event) _instructionCommit(
   BuildContext context,
   EditorSessionManager session,
   LayerId layerId,
   int frameIndex,
-  InstructionEvent event,
-) async {
+) => (event) async {
   final project = session.repository.requireProject();
   final shown = switch (layerAnywhereOrNull(project, layerId)) {
     final layer? => coveringDrawingBlockAt(layer.timeline, frameIndex),
@@ -700,7 +700,7 @@ Future<void> _commitInstruction(
       decline: null,
     ),
   );
-}
+};
 
 Future<void> _editInstructionEvent(
   BuildContext context,
@@ -724,8 +724,7 @@ Future<void> _editInstructionEvent(
   // The direction row's events are one frame each; the cell you opened
   // is the span.
   length: (_) => 1,
-  commit: (event) =>
-      _commitInstruction(context, session, layerId, frameIndex, event),
+  commit: _instructionCommit(context, session, layerId, frameIndex),
 ));
 
 /// The TRANSITION row's instance: the span at the playhead on the GLOBAL axis.

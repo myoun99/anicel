@@ -3,7 +3,7 @@ import '../../models/frame.dart' show InbetweenMark;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
-import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
+import '../../models/timeline_coverage.dart' show authoredDrawingBlockAt;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'range_selections.dart';
@@ -174,8 +174,8 @@ class LayerMarks {
       return const {};
     }
     final here = _controllers.timelineController.currentFrameIndex;
-    final block = coveringDrawingBlockAt(layer.timeline, here);
-    if (block == null || block.entry.ghost) {
+    final block = authoredDrawingBlockAt(layer.timeline, here);
+    if (block == null) {
       return const {};
     }
     return _withFrames({

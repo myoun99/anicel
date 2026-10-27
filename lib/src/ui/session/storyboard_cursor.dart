@@ -290,8 +290,8 @@ class StoryboardCursor {
     if (row == null || frame < 0) {
       return null;
     }
-    final block = coveringDrawingBlockAt(row.timeline, frame);
-    if (block == null || block.entry.ghost) {
+    final block = authoredDrawingBlockAt(row.timeline, frame);
+    if (block == null) {
       return null;
     }
     return StoryboardCursorRowBlock(layerId, block.startIndex, block.length);
@@ -313,11 +313,11 @@ class StoryboardCursor {
     if (row == null) {
       return null;
     }
-    final panel = coveringDrawingBlockAt(
+    final panel = authoredDrawingBlockAt(
       row.timeline,
       _controllers.timelineController.currentFrameIndex,
     );
-    if (panel == null || panel.entry.ghost || panel.startIndex < 0) {
+    if (panel == null || panel.startIndex < 0) {
       return null;
     }
     return StoryboardCursorStoryboardPanel(

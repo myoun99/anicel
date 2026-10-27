@@ -47,8 +47,7 @@ class _TimelineBlankSpans {
       final layer = _controller._requireLayer(layerId);
       var covered = false;
       for (var index = startIndex; index < endExclusive; index += 1) {
-        final block = coveringDrawingBlockAt(layer.timeline, index);
-        if (block != null && !block.entry.ghost) {
+        if (authoredDrawingBlockAt(layer.timeline, index) != null) {
           covered = true;
           break;
         }

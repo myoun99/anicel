@@ -36,8 +36,8 @@ class _TimelineDrawingFrames {
     if (frameIndex < layerBlockFloor(layer)) {
       return false;
     }
-    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
-    if (block == null || block.entry.ghost) {
+    final block = authoredDrawingBlockAt(layer.timeline, frameIndex);
+    if (block == null) {
       return true;
     }
     if (frameIndex > block.startIndex) {

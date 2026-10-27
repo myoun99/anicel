@@ -67,6 +67,19 @@ TimelineDrawingBlock? coveringDrawingBlockAt(
   return block;
 }
 
+/// The block a person WROTE covering [frameIndex]: [coveringDrawingBlockAt]
+/// with a ghost read as no block — a ghost is what a hold or a repeat
+/// projects from the block that owns it, and it goes when that block goes
+/// (`laneExposesFrame`'s filter), so a verb standing on one stands on
+/// nothing of its own.
+TimelineDrawingBlock? authoredDrawingBlockAt(
+  SplayTreeMap<int, TimelineExposure> timeline,
+  int frameIndex,
+) => switch (coveringDrawingBlockAt(timeline, frameIndex)) {
+  final block? when !block.entry.ghost => block,
+  _ => null,
+};
+
 /// Whether [frameIndex] is a HELD cell of a drawn block: covered past the
 /// block's head, where its drawing is held on rather than drawn. A ghost's
 /// cells are derived from its source, so none of them is held.
@@ -74,8 +87,8 @@ bool isHeldCellAt(
   SplayTreeMap<int, TimelineExposure> timeline,
   int frameIndex,
 ) {
-  final block = coveringDrawingBlockAt(timeline, frameIndex);
-  return block != null && !block.entry.ghost && frameIndex > block.startIndex;
+  final block = authoredDrawingBlockAt(timeline, frameIndex);
+  return block != null && frameIndex > block.startIndex;
 }
 
 /// The frame id exposed at [frameIndex]; `null` for empty cells.
