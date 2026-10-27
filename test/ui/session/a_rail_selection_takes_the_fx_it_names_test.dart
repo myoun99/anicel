@@ -14,6 +14,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
+import 'package:anicel/src/services/project_lookup.dart' show rowTwirlsOf;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/lane_verbs.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -196,9 +197,7 @@ void main() {
       LaneRowAddress(const LayerId('y'), effectLaneId(blur, 'blurX')),
     ]);
 
-    expect(lanesOf(session).effectsNamedByRows(
-      session.rowSelectionVerbs.rowSelection.value,
-    ), isEmpty);
+    expect(lanesOf(session).effectsNamedBySelectedRows, isEmpty);
     expect(session.deleteSubject, isNot(PillSubject.layers));
   });
 
@@ -300,5 +299,183 @@ void main() {
 
     expect(_stack(session), ['y']);
     expect(_effectsOf(session, 'y'), [EffectKind.blur]);
+  });
+
+  /// 🗣️F-476-Q1 (유저 2026-10-27): 「b + 복제도」 — the pill's copy, cut,
+  /// paste and duplicate take the effects the rail names as its delete does.
+  group('copy · cut · paste · duplicate (F-476-Q1)', () {
+    /// y's blur moved off its default, so a copy has a number to carry.
+    void blurAtSeven(EditorSessionManager session) {
+      final blur = _layer(session, 'y').effects.first;
+      session.effectsAndFx.updateLayerEffects(const LayerId('y'), [
+        blur.withParameter('blurX', EffectParameter(value: 7)),
+        ..._layer(session, 'y').effects.skip(1),
+      ]);
+    }
+
+    test('「고른 fx 를 복사 … 다른 레이어에 서서 붙여넣으면 그 레이어의 fx '
+        '끝에」: the copy takes the effect, the paste puts it on the row you '
+        'stand on — the same numbers, an effect of its own, one undo', () {
+      final session = _session();
+      blurAtSeven(session);
+      final pill = TimelineToolbarPanelContext(session);
+      _select(session, [_header(session, EffectKind.blur)]);
+
+      expect(pill.canCopyFrame, isTrue);
+      pill.copyFrame();
+      session.selectLayer(const LayerId('x'));
+      final steps = session.historyManager.undoCount;
+      expect(pill.canPasteIndependentFrame, isTrue);
+      pill.pasteIndependentFrame();
+
+      final pasted = _layer(session, 'x').effects.single;
+      expect(pasted.kind, EffectKind.blur);
+      expect(pasted.parameterOf('blurX').value, 7);
+      expect(pasted.id, isNot(_idOf(session, EffectKind.blur)));
+      expect(_effectsOf(session, 'y'), _both, reason: 'a copy leaves them');
+      expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
+      session.undo();
+      expect(_effectsOf(session, 'x'), isEmpty);
+    });
+
+    test('pasted twice, they are two effects, each shown where it lands', () {
+      final session = _session();
+      final pill = TimelineToolbarPanelContext(session);
+      _select(session, [
+        _header(session, EffectKind.blur),
+        _header(session, EffectKind.hueSaturation),
+      ]);
+      pill.copyFrame();
+      session.selectLayer(const LayerId('x'));
+
+      pill.pasteIndependentFrame();
+      pill.pasteIndependentFrame();
+
+      final pasted = _layer(session, 'x').effects;
+      expect([for (final effect in pasted) effect.kind], [..._both, ..._both]);
+      expect({for (final effect in pasted) effect.id}, hasLength(4));
+      final twirls = rowTwirlsOf(
+        session.repository.requireProject(),
+        const LayerId('x'),
+      )!;
+      expect(twirls.lanesExpanded, isTrue);
+      expect(twirls.expandedLaneGroups, {
+        for (final effect in pasted) effectGroupLaneId(effect.id),
+      }, reason: 'F-396: an effect that appears shows itself');
+    });
+
+    test('the cut takes it off its row and into the hand, in one undo', () {
+      final session = _session();
+      final pill = TimelineToolbarPanelContext(session);
+      _select(session, [_header(session, EffectKind.hueSaturation)]);
+      final steps = session.historyManager.undoCount;
+
+      expect(pill.canCutRun, isTrue);
+      pill.cutRun();
+      expect(_effectsOf(session, 'y'), [EffectKind.blur]);
+      expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
+
+      session.selectLayer(const LayerId('x'));
+      pill.pasteIndependentFrame();
+      expect(_effectsOf(session, 'x'), [EffectKind.hueSaturation]);
+    });
+
+    test('effects in hand light no link paste, and the storyboard\'s paste '
+        'stays dark as its fx menu\'s add does', () {
+      final session = _session();
+      _select(session, [_header(session, EffectKind.blur)]);
+      TimelineToolbarPanelContext(session).copyFrame();
+      session.selectLayer(const LayerId('x'));
+
+      expect(TimelineToolbarPanelContext(session).canPasteLinkedFrame, isFalse);
+      expect(
+        StoryboardToolbarPanelContext(session).canPasteIndependentFrame,
+        isFalse,
+      );
+    });
+
+    test('one copy in hand: effects let the rows go, and rows the effects', () {
+      final session = _session();
+      final pill = TimelineToolbarPanelContext(session);
+      _select(session, [const LayerRowAddress(LayerId('x'))]);
+      pill.copyFrame();
+      expect(session.layerClipboard.hasLayerClipboard, isTrue);
+
+      _select(session, [_header(session, EffectKind.blur)]);
+      pill.copyFrame();
+      expect(session.effectClipboard.holdsEffects, isTrue);
+      expect(session.layerClipboard.hasLayerClipboard, isFalse);
+
+      _select(session, [const LayerRowAddress(LayerId('x'))]);
+      pill.copyFrame();
+      expect(session.effectClipboard.holdsEffects, isFalse);
+    });
+
+    test('⚠️rows beside another row\'s header: the copy takes the rows '
+        '(F-476-Q3 asks)', () {
+      final session = _session();
+      _select(session, [
+        const LayerRowAddress(LayerId('x')),
+        _header(session, EffectKind.hueSaturation),
+      ]);
+
+      TimelineToolbarPanelContext(session).copyFrame();
+
+      expect(session.layerClipboard.hasLayerClipboard, isTrue);
+      expect(session.effectClipboard.holdsEffects, isFalse);
+    });
+
+    for (final (panel, contextOf) in <(String, ToolbarPanelContext Function(
+      EditorSessionManager,
+    ))>[
+      ('timeline', TimelineToolbarPanelContext.new),
+      ('storyboard', StoryboardToolbarPanelContext.new),
+    ]) {
+      test('「복제 … 같은 레이어에 하나 더(바로 아래에)」 on the $panel: a copy '
+          'of each named effect right below it, in one undo', () {
+        final session = _session();
+        blurAtSeven(session);
+        final source = _idOf(session, EffectKind.blur);
+        final pill = contextOf(session);
+        _select(session, [_header(session, EffectKind.blur)]);
+        final steps = session.historyManager.undoCount;
+
+        expect(pill.canDuplicate, isTrue);
+        pill.duplicate();
+
+        final chain = _layer(session, 'y').effects;
+        expect([for (final effect in chain) effect.kind], [
+          EffectKind.blur,
+          EffectKind.blur,
+          EffectKind.hueSaturation,
+        ]);
+        expect(chain.first.id, source);
+        expect(chain[1].id, isNot(source));
+        expect(chain[1].parameterOf('blurX').value, 7);
+        expect(_stack(session), ['x', 'y'], reason: 'no row is duplicated');
+        expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
+        session.undo();
+        expect(_effectsOf(session, 'y'), _both);
+      });
+    }
+
+    test('the V row\'s header duplicates the TRACK\'s effect', () {
+      final session = _session();
+      session.effectsAndFx.addEffectToTrack(_track, EffectKind.blur);
+      _select(session, [
+        LaneRowAddress(
+          trackTransformLaneCarrierId(_track),
+          effectGroupLaneId(_trackEffects(session).single.id),
+        ),
+      ]);
+
+      TimelineToolbarPanelContext(session).duplicate();
+
+      expect([for (final effect in _trackEffects(session)) effect.kind], [
+        EffectKind.blur,
+        EffectKind.blur,
+      ]);
+      expect(_effectsOf(session, 'y'), _both);
+    });
   });
 }

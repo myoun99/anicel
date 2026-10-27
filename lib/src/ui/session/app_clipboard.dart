@@ -1,4 +1,5 @@
 import '../../models/bitmap_surface.dart';
+import 'effect_clipboard.dart' show EffectBoard;
 import 'frame_clipboard.dart' show FrameBoard;
 import 'key_clipboard.dart' show KeyBoard;
 import 'layer_clipboard.dart' show LayerBoard;
@@ -42,9 +43,18 @@ import 'text_clipboard.dart' show TextBoard;
 ///
 /// 🗣️I-101 (유저 2026-10-15): 「텍스트를 선택한 상태(변형박스로 변한
 /// 상태)에서 복사 가능」 — the TEXT board is the pill's fourth, on the list.
+///
+/// 🗣️F-476-Q1 (유저 2026-10-27): 「b + 복제도」 — the EFFECT board is the
+/// fifth: the effects a rail selection's fx headers name.
 class AppClipboard {
   AppClipboard() {
-    final letGoes = [frames.letGo, layers.letGo, keys.letGo, texts.letGo];
+    final letGoes = [
+      frames.letGo,
+      layers.letGo,
+      keys.letGo,
+      texts.letGo,
+      effects.letGo,
+    ];
     void Function() lettingGoAllBut(void Function() own) => () {
       for (final letGo in letGoes) {
         if (letGo != own) {
@@ -56,6 +66,7 @@ class AppClipboard {
     layers.onTake = lettingGoAllBut(layers.letGo);
     keys.onTake = lettingGoAllBut(keys.letGo);
     texts.onTake = lettingGoAllBut(texts.letGo);
+    effects.onTake = lettingGoAllBut(effects.letGo);
   }
 
   final FrameBoard frames = FrameBoard();
@@ -66,6 +77,9 @@ class AppClipboard {
 
   /// The text a copy of one held by its box took ([TextBoard], I-101).
   final TextBoard texts = TextBoard();
+
+  /// The effects a copy of a rail selection took ([EffectBoard], F-476).
+  final EffectBoard effects = EffectBoard();
 
   /// 픽셀 복사's board (I-55) — a third payload with a third set of verbs,
   /// which the frame copy neither reads nor overwrites (유저 2026-10-01:

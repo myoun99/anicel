@@ -208,7 +208,7 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
 
 /// The boards the shared pill's copy takes into — one copy in hand,
 /// whichever of them took it (`AppClipboard`).
-enum _Board { text, rows, keys, frames }
+enum _Board { text, rows, effects, keys, frames }
 
 /// The clipboard's four buttons, said ONCE for both panels: a panel answers
 /// only WHERE its press stands ([clipboardPlace]), and the board's verbs
@@ -248,8 +248,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// WHAT the cut takes is what the copy takes ([_boardTaken]): 복사 and
   /// 잘라내기 are ONE pair (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고
   /// 클립 저장」, `FrameClipboard.canCopyAt`) — a text in hand, the selected
-  /// rows, a lane's keys, the frame axis. Rows the copy takes claim the
-  /// press even when none of them may be lifted
+  /// rows or the effects their fx headers name, a lane's keys, the frame
+  /// axis. Rows the copy takes claim the press even when none of them may
+  /// be lifted
   /// ([LayerClipboard.canCutSelectedRows]) — the button dims rather than
   /// cut the frame under them. ↩️It asked the frame board alone: under a
   /// row selection it lifted the standing row's block while the copy beside
@@ -260,7 +261,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   bool get canCutRun => switch (_boardTaken) {
     _Board.rows => session.layerClipboard.canCutSelectedRows,
     _Board.frames => session.clipboard.canCutAt(clipboardPlace),
-    _Board.text || _Board.keys => true,
+    _Board.text || _Board.effects || _Board.keys => true,
     null => false,
   };
 
@@ -271,6 +272,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.textClipboard.cut();
       case _Board.rows:
         session.layerClipboard.cutSelectedRows();
+      case _Board.effects:
+        session.effectClipboard.cut();
       case _Board.keys:
         session.keyClipboard.cut();
       case _Board.frames:
@@ -289,12 +292,21 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// answers (F-388).
   PillSubject get _copySubject => pillSubjectOn(
     cuts: false,
-    layers: () =>
-        rowsAreThisPanels && session.layerClipboard.canCopySelectedRows,
+    layers: () => _copiesRows || session.effectClipboard.namesEffects,
     cells: () =>
         session.keyClipboard.canCopy ||
         session.clipboard.canCopyAt(clipboardPlace),
   );
+
+  /// Whether the rows rung's copy takes the selected ROWS — ahead of the
+  /// effects fx headers name on other rows beside them.
+  ///
+  /// ⚠️The hand holds ONE board's copy (`AppClipboard`), so a selection of
+  /// rows and another row's fx header copies the rows — a session's pick,
+  /// asked on the board (F-476-Q3): Delete takes both, but a paste of both
+  /// would land in two places at once.
+  bool get _copiesRows =>
+      rowsAreThisPanels && session.layerClipboard.canCopySelectedRows;
 
   /// THE BOARD the copy takes into here — and the cut lifts for — or null
   /// where they take nothing. One answer for both buttons and their keys.
@@ -308,7 +320,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       return _Board.text;
     }
     return switch (_copySubject) {
-      PillSubject.layers => _Board.rows,
+      PillSubject.layers when _copiesRows => _Board.rows,
+      PillSubject.layers => _Board.effects,
       PillSubject.cells when session.keyClipboard.canCopy => _Board.keys,
       PillSubject.cells => _Board.frames,
       PillSubject.cuts || PillSubject.nothing => null,
@@ -325,6 +338,8 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
         session.textClipboard.copy();
       case _Board.rows:
         session.layerClipboard.copySelectedRows();
+      case _Board.effects:
+        session.effectClipboard.copy();
       case _Board.keys:
         session.keyClipboard.copy();
       case _Board.frames:
@@ -356,9 +371,17 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// the text let go of when it was taken (one copy in hand).
   bool get _pastesText => session.textClipboard.holdsText;
 
+  /// Whether a paste here puts down EFFECTS: the hand holds them (F-476-Q1)
+  /// — an add of them, so where the fx menu's add is lit
+  /// ([servesActiveLayerVerbs]). Like a text they light no link
+  /// ([EffectClipboard.pasteIndependent]).
+  bool get _pastesEffects => session.effectClipboard.holdsEffects;
+
   @override
   bool get canPasteIndependentFrame => _pastesRows
       ? session.layerClipboard.canPasteRows
+      : _pastesEffects
+      ? servesActiveLayerVerbs && session.effectClipboard.canPasteIndependent
       : _pastesKeys
       ? session.keyClipboard.canPasteIndependent
       : _pastesText
@@ -372,6 +395,10 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
 
   @override
   void pasteIndependentFrame() {
+    if (_pastesEffects) {
+      session.effectClipboard.pasteIndependent();
+      return;
+    }
     if (_pastesKeys) {
       session.keyClipboard.pasteIndependent();
       return;
@@ -626,11 +653,24 @@ class TimelineToolbarPanelContext
   /// selected rows, else the row you stand on (유저 확정 2026-08-13:
   /// 「복제는 현재 액티브인 대상」). R5q1: cuts are the storyboard's noun, so
   /// this panel's press does not reach for them — as its delete does not.
+  ///
+  /// 🗣️F-476-Q1 (유저 2026-10-27): 「복제 버튼이 고른 fx 를 같은 레이어에
+  /// 하나 더 만든다(바로 아래에)」 — the fx headers among the selected rows
+  /// name what is selected too, after the rows as the copy takes them
+  /// ([_copiesRows]).
   @override
-  bool get canDuplicate => session.layerVerbs.canDuplicateActiveLayer;
+  bool get canDuplicate =>
+      session.effectClipboard.namesEffects ||
+      session.layerVerbs.canDuplicateActiveLayer;
 
   @override
-  void duplicate() => session.layerVerbs.duplicateActiveLayer();
+  void duplicate() => _duplicatesEffects
+      ? session.effectClipboard.duplicate()
+      : session.layerVerbs.duplicateActiveLayer();
+
+  bool get _duplicatesEffects =>
+      session.layerVerbs.duplicatableSelectedLayerIds().isEmpty &&
+      session.effectClipboard.namesEffects;
 
   @override
   AutoNameTargets? get autoNameTargets => session.blockNaming.timelineTargets;
@@ -1221,12 +1261,21 @@ class StoryboardToolbarPanelContext
   /// 🗣️F-455 — the cut pill's 컷 복제 came here, cuts being this panel's
   /// noun (R5q1): the selected cuts, else the cut you stand on (유저 확정
   /// 2026-08-13: 「복제는 현재 액티브인 대상」), as one block after them
-  /// (F-455-Q1: 「선택한 컷 전부」 — `CutVerbs.duplicateActiveCut`).
+  /// (F-455-Q1: 「선택한 컷 전부」 — `CutVerbs.duplicateActiveCut`). Under
+  /// no band of cuts, the fx headers the rail selected name what is
+  /// selected (F-476-Q1), as they do for its delete.
   @override
-  bool get canDuplicate => session.activeCutOrNull != null;
+  bool get canDuplicate =>
+      session.activeCutOrNull != null || session.effectClipboard.namesEffects;
 
   @override
-  void duplicate() => session.cutVerbs.duplicateActiveCut();
+  void duplicate() => _duplicatesEffects
+      ? session.effectClipboard.duplicate()
+      : session.cutVerbs.duplicateActiveCut();
+
+  bool get _duplicatesEffects =>
+      session.storyboardRows.storyboardSelectedCutIds.isEmpty &&
+      session.effectClipboard.namesEffects;
 
   /// 자동 이름 지정 on this panel (I-18: 「대상은 선택된 블록들(컷이나
   /// 프레임)이 있으면 선택한 대상만」). The selected cuts first; a CELL band —

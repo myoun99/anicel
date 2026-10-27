@@ -98,37 +98,83 @@ class EffectsAndFx {
   /// cut's frames — appending to that would write them back onto the
   /// track's row at the wrong frames.
   void addEffectToActiveLayer(EffectKind kind) {
+    if (canAddEffectToActiveLayer(kind)) {
+      _appendToActiveLayer([
+        (id) => LayerEffect.defaults(id: id, kind: kind),
+      ], description: 'Add ${kind.label}');
+    }
+  }
+
+  /// Whether the active row takes any of [effects] — each by the gate an
+  /// add of its kind keeps ([canAddEffectToActiveLayer]).
+  bool canAddEffectCopiesToActiveLayer(List<LayerEffect> effects) =>
+      effects.any((effect) => canAddEffectToActiveLayer(effect.kind));
+
+  /// 🗣️F-476-Q1 (유저 2026-10-27, 「b + 복제도」): a paste of effects is an
+  /// ADD of them — each the active row takes, a copy under an id of its
+  /// own, at the end of its chain, shown as an add shows it. One undo.
+  void addEffectCopiesToActiveLayer(List<LayerEffect> effects) =>
+      _appendToActiveLayer([
+        for (final effect in effects)
+          if (canAddEffectToActiveLayer(effect.kind))
+            (id) => effect.copyWith(id: id),
+      ], description: 'Paste effects');
+
+  /// Appends what [made] makes, each under an id minted for the row, to the
+  /// active row's chain, and shows them ([showEffects]) — one undo.
+  void _appendToActiveLayer(
+    List<LayerEffect Function(EffectId id)> made, {
+    required String description,
+  }) {
     final active = _selection.activeLayer;
-    if (active == null || !canAddEffectToActiveLayer(kind)) {
+    if (active == null || made.isEmpty) {
       return;
     }
     final layer = _project.commitLayerById(active.id) ?? active;
-    _effectSequence += 1;
-    final effect = LayerEffect.defaults(
-      // Timestamped like the frame ids: the lane address embeds this, so
-      // two effects added in the same session must never collide.
-      id: EffectId(
-        'fx-${layer.id.value}-'
-        '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
-      ),
-      kind: kind,
-    );
-    final description = 'Add ${kind.label}';
+    final effects = [
+      for (final make in made) make(mintEffectId(layer.id.value)),
+    ];
+    final history = _project.historyManager;
     _activeCut.onCutOfRowQuietly(
       layer.id,
-      (cutId) => _project.historyManager.executeAsOneStep(description, [
-        ..._project.cutCommandCoordinator.layerEffectsCommands(
-          cutId: cutId,
-          layerId: layer.id,
-          effects: effectsWithAdded(layer.effects, effect),
-          description: description,
-        ),
-        ?_laneGroupShown(layer.id, effectGroupLaneId(effect.id)),
-      ]),
+      (cutId) => history.runAsOneStep(description, () {
+        history.executeAsOneStep(
+          description,
+          _project.cutCommandCoordinator.layerEffectsCommands(
+            cutId: cutId,
+            layerId: layer.id,
+            effects: effects.fold(layer.effects, effectsWithAdded),
+            description: description,
+          ),
+        );
+        showEffects(layer.id, effects);
+      }),
+    );
+  }
+
+  /// A fresh id for an effect on [owner]'s chain. Timestamped like the
+  /// frame ids: the lane address embeds it, so two effects minted in the
+  /// same session must never collide.
+  EffectId mintEffectId(String owner) {
+    _effectSequence += 1;
+    return EffectId(
+      'fx-$owner-${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
     );
   }
 
   int _effectSequence = 0;
+
+  /// Shows [effects] on [row]: its lanes twirled down and each effect's
+  /// header open (F-396) — each a step of the caller's ONE, so it runs
+  /// inside it; one show reads what the one before it opened.
+  void showEffects(LayerId row, Iterable<LayerEffect> effects) {
+    for (final effect in effects) {
+      final shown = _laneGroupShown(row, effectGroupLaneId(effect.id));
+      if (shown != null) {
+        _project.historyManager.execute(shown);
+      }
+    }
+  }
 
   /// An effect parameter's resolved value at [frameIndex] — the lane value
   /// column and the key-freeze source, read through the SAME resolver the
@@ -337,9 +383,9 @@ class EffectsAndFx {
     _changes.notifyChanged();
   }
 
-  /// Adds an effect to the V row's chain. Ids are minted the way a layer's
-  /// are (the lane address embeds them, so two adds in one session must not
-  /// collide) — off the TRACK id, since that is what carries the chain.
+  /// Adds an effect to the V row's chain. Its id is minted as a layer's is
+  /// ([mintEffectId]) — off the TRACK id, since that is what carries the
+  /// chain.
   /// Shown as a layer's is: the row's lanes — its lane carrier's — and
   /// the effect's header open in the same undo step (F-396).
   ///
@@ -351,12 +397,8 @@ class EffectsAndFx {
     if (track == null || kind.drawsItsOwnPicture) {
       return;
     }
-    _effectSequence += 1;
     final effect = LayerEffect.defaults(
-      id: EffectId(
-        'fx-${trackId.value}-'
-        '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
-      ),
+      id: mintEffectId(trackId.value),
       kind: kind,
     );
     final description = 'Add ${kind.label}';

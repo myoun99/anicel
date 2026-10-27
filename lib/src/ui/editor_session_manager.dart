@@ -150,6 +150,7 @@ import 'session/storyboard_rows.dart';
 import 'session/app_clipboard.dart';
 import 'session/frame_clipboard.dart';
 import 'session/layer_clipboard.dart';
+import 'session/effect_clipboard.dart';
 import 'session/key_clipboard.dart';
 import 'session/text_clipboard.dart';
 import 'session/active_cut_controllers.dart';
@@ -767,6 +768,7 @@ class EditorSessionManager extends ChangeNotifier
   late final FrameClipboard clipboard = FrameClipboard(board: _appClipboard.frames, project: this, selection: this, changes: this, frameIds: this, controllers: activeCutControllers, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore);
   late final LayerClipboard layerClipboard = LayerClipboard(board: _appClipboard.layers, project: this, selection: this, changes: this, layerStack: layerStack, renderCaches: renderCaches, mediaBytesOf: projectFile.mediaByteSourceFor, staging: mediaStagingStore, rowSelection: rowSelectionVerbs, layerVerbs: layerVerbs);
   late final KeyClipboard keyClipboard = KeyClipboard(board: _appClipboard.keys, laneVerbs: laneVerbs, changes: this);
+  late final EffectClipboard effectClipboard = EffectClipboard(board: _appClipboard.effects, laneVerbs: laneVerbs, effectsAndFx: effectsAndFx, changes: this);
   late final TextClipboard textClipboard = TextClipboard(
     board: _appClipboard.texts,
     project: this,
@@ -3181,8 +3183,8 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The effects the shared delete takes of the selected ROWS besides their
   /// layers: what their fx header rows name on rows that stay (F-476,
-  /// [LaneVerbs.effectsNamedByRows]) — a row that goes takes its chain with
-  /// it.
+  /// [LaneVerbs.effectsNamedBySelectedRows]) — a row that goes takes its
+  /// chain with it.
   List<({Layer row, List<EffectId> effects})> effectsToDeleteOfRows() {
     final layers = layerVerbs.deletableSelectedLayerIds();
     final going = {
@@ -3190,9 +3192,7 @@ class EditorSessionManager extends ChangeNotifier
       for (final row in layerVerbs.rowsHeldBy(layers)) row.id,
     };
     return [
-      for (final named in laneVerbs.effectsNamedByRows(
-        rowSelectionVerbs.rowSelection.value,
-      ))
+      for (final named in laneVerbs.effectsNamedBySelectedRows)
         if (!going.contains(named.row.id)) named,
     ];
   }

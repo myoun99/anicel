@@ -2550,18 +2550,17 @@ class LaneVerbs {
   /// 삭제하는기능 … 삭제같은 공용버튼도 선택범위로 대상 인식하는거 fx만
   /// 빠져있는거같은데 법 통일」.
   ///
-  /// The effects the rail's selected [rows] name by their HEADER rows, per
+  /// The effects the rail's selected rows name by their HEADER rows, per
   /// row — what the shared delete takes of them, by the law a range over
-  /// those headers is deleted by (F-87, [_effectsNamedByHeaders]). Transform
-  /// is no effect, so its header names none. ↩️The rows rung counted layer
-  /// rows alone (「lane rows … contribute nothing here」, 08-12) after F-87
-  /// gave the band its fx, so a rail selection of fx headers fell through
-  /// to the frame axis.
-  List<({Layer row, List<EffectId> effects})> effectsNamedByRows(
-    Iterable<TimelineRowAddress> rows,
-  ) {
+  /// those headers is deleted by (F-87, [_effectsNamedByHeaders]), and what
+  /// the pill's copy, cut and duplicate take (F-476-Q1, `EffectClipboard`).
+  /// Transform is no effect, so its header names none. ↩️The rows rung
+  /// counted layer rows alone (「lane rows … contribute nothing here」,
+  /// 08-12) after F-87 gave the band its fx, so a rail selection of fx
+  /// headers fell through to the frame axis.
+  List<({Layer row, List<EffectId> effects})> get effectsNamedBySelectedRows {
     final laneIdsByRow = <LayerId, List<String>>{};
-    for (final row in rows) {
+    for (final row in _selection.rowSelection.value) {
       if (row case LaneRowAddress(:final layerId, :final laneId)) {
         (laneIdsByRow[layerId] ??= []).add(laneId);
       }
@@ -2575,15 +2574,37 @@ class LaneVerbs {
     ];
   }
 
-  /// Takes [named] ([effectsNamedByRows]) off their rows — inside the
-  /// caller's one step.
+  /// Takes [named] ([effectsNamedBySelectedRows]) off their rows — as ONE
+  /// [step], or a part of the caller's.
   void removeEffectsNamedByRows(
-    List<({Layer row, List<EffectId> effects})> named,
-  ) {
+    List<({Layer row, List<EffectId> effects})> named, {
+    String step = 'Remove effects',
+  }) => _project.historyManager.runAsOneStep(step, () {
     for (final (:row, :effects) in named) {
       _removeEffects(row, effects);
     }
-  }
+  });
+
+  /// 🗣️F-476-Q1 (유저 2026-10-27, 「b + 복제도」): 복제 of the effects
+  /// [named] — a copy of each, an effect of its own, right below it on its
+  /// row, shown as an added one is ([EffectsAndFx.showEffects]). One undo.
+  void duplicateEffectsNamedByRows(
+    List<({Layer row, List<EffectId> effects})> named,
+  ) => _project.historyManager.runAsOneStep('Duplicate effects', () {
+    for (final (:row, :effects) in named) {
+      final copies = {
+        for (final effect in row.effects)
+          if (effects.contains(effect.id))
+            effect.id: effect.copyWith(
+              id: _effectsAndFx.mintEffectId(row.id.value),
+            ),
+      };
+      _commitLaneEffects(row, [
+        for (final effect in row.effects) ...[effect, ?copies[effect.id]],
+      ], description: 'Duplicate effects');
+      _effectsAndFx.showEffects(row.id, copies.values);
+    }
+  });
 
   /// [layer]'s chain without [removed], committed as one edit.
   void _removeEffects(Layer layer, Iterable<EffectId> removed) {

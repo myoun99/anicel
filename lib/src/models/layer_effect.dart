@@ -506,7 +506,10 @@ class LayerEffect {
         value: effectParameterSpecOf(kind, id)?.defaultValue ?? 0,
       );
 
+  /// [id] is for a copy that stands beside its source — a paste, a
+  /// duplicate — which has to be an effect of its own (F-476).
   LayerEffect copyWith({
+    EffectId? id,
     EffectKind? kind,
     bool? enabled,
     Map<String, EffectParameter>? parameters,
@@ -514,7 +517,7 @@ class LayerEffect {
     PropertyTrack<int>? ink,
   }) {
     return LayerEffect(
-      id: id,
+      id: id ?? this.id,
       kind: kind ?? this.kind,
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
