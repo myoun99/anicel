@@ -1,4 +1,5 @@
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart' show defaultInbetweenMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
@@ -129,6 +130,13 @@ void main() {
     final exposure = a.timeline[0]!;
     expect(exposure.length, 4);
     expect(exposure.breakdownOffsets, const [2]);
+    expect(
+      exposure.breakdownMarks,
+      {2: defaultInbetweenMark},
+      reason:
+          'a TVPaint mark says no kind, so it wears the default — '
+          '🗣️I-130-csp-import-Q2 (유저 2026-10-27) 「모를 때는 ○마크1」',
+    );
 
     // The bake carries the slot key the session resolves.
     expect(plan.bakes, hasLength(1));

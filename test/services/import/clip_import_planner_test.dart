@@ -9,6 +9,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart' show defaultInbetweenMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -842,6 +843,13 @@ void main() {
           [1],
         ],
         reason: 'the label on 「2」\'s head is that key — nothing more',
+      );
+      expect(
+        base.timeline.values.first.breakdownMarks,
+        {1: defaultInbetweenMark},
+        reason:
+            '🗣️I-130-csp-import-Q2 (유저 2026-10-27): a mark whose kind the '
+            'file is not read for wears the default — 「모를 때는 ○마크1」',
       );
     });
 

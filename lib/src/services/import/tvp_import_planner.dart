@@ -148,11 +148,13 @@ TvpImportPlan planTvpImport({
       timeline[block.start] = TimelineExposure.drawing(
         frameId,
         length: block.length,
-        // Every TVPaint mark reads as mark 2, the ● there was before
-        // I-130 — which of the two each is, is I-130-csp-import's.
+        // A TVPaint mark carries a colour, never which of the two marks it
+        // is, so every one reads as the default mark — 🗣️I-130-csp-import-Q2
+        // (유저 2026-10-27): 「모를 때는 ○마크1」. ↩️Mark 2, the ● there was
+        // before I-130, until then.
         breakdownMarks: {
           for (final offset in block.breakdownOffsets)
-            offset: InbetweenMark.two,
+            offset: defaultInbetweenMark,
         },
       );
     }

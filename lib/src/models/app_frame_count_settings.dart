@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'frame.dart' show InbetweenMark;
+import 'frame.dart' show InbetweenMark, defaultInbetweenMark;
 
 /// How a frame count is typed (I-24): as frames, or as seconds+frames.
 enum FrameCountEntry { frames, secondsPlusFrames }
@@ -13,7 +13,7 @@ enum FrameCountEntry { frames, secondsPlusFrames }
 class AppFrameCountSettings {
   const AppFrameCountSettings({
     this.lastEntry = FrameCountEntry.frames,
-    this.lastEveryMark = _firstEveryMark,
+    this.lastEveryMark = defaultInbetweenMark,
   });
 
   final FrameCountEntry lastEntry;
@@ -21,12 +21,11 @@ class AppFrameCountSettings {
   /// The mark the mark-every window last picked — it opens on it, as the
   /// count window opens on [lastEntry]: 🗣️I-130-Q2 (유저 2026-10-25 「창에서
   /// 마크를 고른다」 — 지난번 고른 것 기억).
+  ///
+  /// Until one is picked, [defaultInbetweenMark] — 🗣️F-469 (유저 2026-10-25
+  /// 「기본마크, 앞으로 마크1 사용 … 다른곳도 같은곳있으면 확인해서 법 통일」).
+  /// ↩️The ●, the one mark the window laid before marks were two.
   final InbetweenMark lastEveryMark;
-
-  /// What it opens on until one is picked: mark 1, the ○ — 🗣️F-469 (유저
-  /// 2026-10-25 「기본마크, 앞으로 마크1 사용 … 다른곳도 같은곳있으면 확인해서
-  /// 법 통일」). ↩️The ●, the one mark the window laid before marks were two.
-  static const InbetweenMark _firstEveryMark = InbetweenMark.one;
 
   AppFrameCountSettings copyWith({
     FrameCountEntry? lastEntry,
@@ -48,7 +47,7 @@ class AppFrameCountSettings {
             FrameCountEntry.frames,
         lastEveryMark:
             InbetweenMark.values.asNameMap()[json['lastEveryMark']] ??
-            _firstEveryMark,
+            defaultInbetweenMark,
       );
 
   @override

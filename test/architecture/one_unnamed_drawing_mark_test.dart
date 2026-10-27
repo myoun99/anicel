@@ -36,11 +36,20 @@ import '../helpers/source_ledger.dart';
 /// the unnamed head keeps the filled ●, which is mark 2 now. ↩️Until then the
 /// ● was mark 1 and the ○ was spelled nowhere.
 ///
+/// 🚨★★AND ONE DEFAULT MARK (F-469 · I-130-csp-import-Q2). 유저 2026-10-25:
+/// 「이름없는 프레임의 기본마크, 앞으로 마크1 사용 … 다른곳도 같은곳있으면
+/// 확인해서 법 통일」, and 10-27 for a dot a file does not say the kind of:
+/// 「모를 때는 ○마크1」. F-469 left the answer spelled twice — the unnamed
+/// head and the mark-every window, each its own `InbetweenMark.one` — and the
+/// TVPaint and Clip Studio imports each spelled the ● the one mark had been.
+/// Now `defaultInbetweenMark` in the home is the answer all four read.
+///
 /// ⛔SO THIS SCANS SOURCE: copies that agree today all pass a behaviour
 /// test. Either glyph spelled outside the home, a
-/// `frameName == null || frameName.isEmpty` anywhere, or the unnamed mark
+/// `frameName == null || frameName.isEmpty` anywhere, the unnamed mark
 /// named anywhere but the home — a surface deciding for itself that a drawing
-/// with no number wears it — has started the next copy.
+/// with no number wears it — or a mark handed out as a value of its own
+/// (`= InbetweenMark.one`, `?? …`, `offset: …`) has started the next copy.
 void main() {
   const home = 'lib/src/models/frame.dart';
   const marks = ['●', '○'];
@@ -54,6 +63,10 @@ void main() {
   final blankNameCheck = RegExp(
     r'frameName\s*==\s*null\s*\|\|\s*frameName\.isEmpty',
   );
+
+  /// A mark given as a value — a default, a fallback, a map's entry — not
+  /// one a `switch` arm answers for its case or a button names as its own.
+  final aMarkOfItsOwn = RegExp(r'(=|\?\?|:)\s*InbetweenMark\.(one|two)\b');
 
   /// The code on each line of [file] with its comment cut off — a comment
   /// may NAME the mark, and several explain it.
@@ -93,11 +106,20 @@ void main() {
     }
     expect(
       text,
-      contains('const InbetweenMark unnamedDrawingMark = InbetweenMark.one;'),
+      contains('const InbetweenMark defaultInbetweenMark = InbetweenMark.one;'),
+      reason:
+          'the default mark is mark 1, the ○ (F-469 「앞으로 마크1 사용」 · '
+          'I-130-csp-import-Q2 「모를 때는 ○마크1」)',
+    );
+    expect(
+      text,
+      contains(
+        'const InbetweenMark unnamedDrawingMark = defaultInbetweenMark;',
+      ),
       reason:
           '🚨유저: 「중간나누기 마크1로서 작동했으면」 — the unnamed drawing '
-          'wears a mark itself, as data, not a glyph of its own: mark 1, '
-          'the ○ (F-469 「앞으로 마크1 사용」)',
+          'wears a mark itself, as data, not a glyph of its own: the default '
+          'one (F-469 「다른곳도 같은곳있으면 확인해서 법 통일」)',
     );
     expect(text, contains("InbetweenMark.one => '○'"));
     expect(
@@ -126,6 +148,12 @@ void main() {
         if (path != home && code.contains('unnamedDrawingMark')) {
           offenders.add(
             '$path:$line hands out the unnamed mark — ask drawingHeadOf',
+          );
+        }
+        if (path != home && aMarkOfItsOwn.hasMatch(code)) {
+          offenders.add(
+            '$path:$line hands out a mark of its own — read '
+            'defaultInbetweenMark',
           );
         }
       }

@@ -604,13 +604,14 @@ final class _BaseRow extends _Row {
           out[block.start] = TimelineExposure.drawing(
             frameId,
             length: block.end - block.start,
-            // Every Clip Studio mark reads as mark 2, the ● there was
-            // before I-130 — which of the two each is, is
-            // I-130-csp-import's.
+            // Every Clip Studio mark reads as the default mark until its
+            // kind is read off the file (I-130-csp-import-Q1, a sample with
+            // both) — 🗣️Q2 (유저 2026-10-27): 「모를 때는 ○마크1」.
+            // ↩️Mark 2, the ● there was before I-130, until then.
             breakdownMarks: {
               for (final label in track.labels)
                 if (label > head && label < end)
-                  label - head: InbetweenMark.two,
+                  label - head: defaultInbetweenMark,
             },
           );
         }
