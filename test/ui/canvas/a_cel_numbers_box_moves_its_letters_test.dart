@@ -201,6 +201,29 @@ void main() {
     await wrapUp(tester, s);
   });
 
+  testWidgets('on a row laid elsewhere, the box frames the letters where the '
+      'row shows them, and a drop keys where they stand on the row\'s own '
+      'paper', (tester) async {
+    final (s, row, id) = await onTheCanvas(tester);
+    // The row's picture laid 130 to the right of where it rests.
+    s.standOnRow(LaneRowAddress(row.id, transformGroupHeaderLane.laneId));
+    await tester.pump();
+    boxOf(tester)!.move!.committed(CanvasPoint(x: 1300, y: 827));
+    s.standOnRow(LaneRowAddress(row.id, effectGroupLaneId(id)));
+    await tester.pump();
+
+    final box = boxOf(tester)!;
+    expectPoint(box.pose.center, CanvasPoint(x: 1300, y: 827));
+    expectPoint(middleOf(box), CanvasPoint(x: 1300, y: 827));
+
+    box.move!.committed(CanvasPoint(x: 1400, y: 900));
+    expectPoint(
+      numberOf(s, row).stand.position.keyAt(0)!.value,
+      CanvasPoint(x: 1270, y: 900),
+    );
+    await wrapUp(tester, s);
+  });
+
   test('only an effect that draws its own picture brings a box', () {
     const blur = EffectId('blur');
     final effects = [LayerEffect.defaults(id: blur, kind: EffectKind.blur)];
