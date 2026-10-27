@@ -33,7 +33,7 @@ void main() {
   const ratios = [1.0, 1.5];
   const strokeAt = Rect.fromLTRB(6, 6, 15, 15);
   final blur = [
-    ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 4]),
+    ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 0]),
   ];
 
   CompositeNode<CanvasStackRow> row(

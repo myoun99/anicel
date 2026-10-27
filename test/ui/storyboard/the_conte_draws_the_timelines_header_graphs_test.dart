@@ -468,7 +468,7 @@ void main() {
   testWidgets('a pinned lane of another row is a guest in every open graph '
       '— an S row\'s and the V row\'s, their groups shut', (tester) async {
     final key = laneGroupKey(s1, transform);
-    final blurX = effectLaneId(blur, 'blurX');
+    final blurX = effectLaneId(blur, 'blurriness');
     await pump(
       tester,
       project(
@@ -513,7 +513,7 @@ void main() {
       ),
       dragPreview: preview,
     );
-    final blurX = effectLaneId(blur, 'blurX');
+    final blurX = effectLaneId(blur, 'blurriness');
     final saturation = effectLaneId(hue, 'saturation');
     Set<int> drawnKeys(String key, String laneId) => {
       for (final line
@@ -560,7 +560,7 @@ void main() {
     // group no graph is open over.
     preview.value = LaneEditPreview.track(
       trackId: trackId,
-      trackEffects: [keyed(blurred, 'blurX', 3), keyed(hued, 'saturation', 5)],
+      trackEffects: [keyed(blurred, 'blurriness', 3), keyed(hued, 'saturation', 5)],
     );
     await tester.pump();
     expect(drawnKeys(fxKey, blurX), {3});
@@ -607,7 +607,7 @@ void main() {
     final seKey = laneGroupKey(s1, transform);
     final fxKey = laneGroupKey(carrier, effectGroupLaneId(blur));
     final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
-    final blurX = blurred.parameters['blurX']!;
+    final blurX = blurred.parameters['blurriness']!;
     final session = await pump(
       tester,
       project(
@@ -622,7 +622,7 @@ void main() {
         ],
         effects: [
           blurred.withParameter(
-            'blurX',
+            'blurriness',
             blurX.copyWith(
               track: blurX.track
                   .withKey(0, 0, outgoing: const EaseSide())
@@ -679,7 +679,7 @@ void main() {
     );
     await pull(fxKey);
     expect(
-      track().effects.single.parameters['blurX']!.track.keyAt(0)!.outgoing,
+      track().effects.single.parameters['blurriness']!.track.keyAt(0)!.outgoing,
       isNot(const EaseSide()),
     );
   });
@@ -689,7 +689,7 @@ void main() {
       'and where a lane\'s row is (F-367-Q3)', (tester) async {
     final seKey = laneGroupKey(s1, transform);
     final blurred = LayerEffect.defaults(id: blur, kind: EffectKind.blur);
-    final blurX = blurred.parameters['blurX']!;
+    final blurX = blurred.parameters['blurriness']!;
     final seen = <Size>{};
     for (final pixelsPerFrame in const [12.0, 40.0]) {
       await pump(
@@ -704,7 +704,7 @@ void main() {
           ],
           effects: [
             blurred.withParameter(
-              'blurX',
+              'blurriness',
               blurX.copyWith(track: blurX.track.withKey(0, 10)),
             ),
           ],
@@ -721,7 +721,7 @@ void main() {
             find.descendant(
               of: find.byKey(
                 ValueKey<String>(
-                  'storyboard-track-lane-row-0-${effectLaneId(blur, 'blurX')}',
+                  'storyboard-track-lane-row-0-${effectLaneId(blur, 'blurriness')}',
                 ),
               ),
               matching: find.byType(TimelineLaneKeyMarker),
@@ -789,7 +789,7 @@ void main() {
     final first = labelOf(carrier, header);
     final next = labelOf(carrier, effectGroupLaneId(hue));
     final lastMember = tester
-        .getBottomLeft(labelOf(carrier, effectLaneId(blur, 'blurY')))
+        .getBottomLeft(labelOf(carrier, effectLaneId(blur, 'blurDimensions')))
         .dy;
     final from = tester.getCenter(first);
 

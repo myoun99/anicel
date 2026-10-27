@@ -109,7 +109,7 @@ void main() {
   );
 
   final blurred = [
-    ResolvedLayerEffect(kind: EffectKind.blur, values: [blur, blur]),
+    ResolvedLayerEffect(kind: EffectKind.blur, values: [blur, 0]),
   ];
 
   final scenes = <String, List<CompositeNode<CanvasStackRow>>>{

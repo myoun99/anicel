@@ -41,14 +41,14 @@ void main() {
     rotation: PropertyTrack<double>().withKey(0, 0).withKey(8, 45),
     opacity: PropertyTrack<double>().withKey(0, 1).withKey(8, 0.25),
   );
-  final blur = LayerEffect(
-    id: const EffectId('blur'),
-    kind: EffectKind.blur,
+  final grade = LayerEffect(
+    id: const EffectId('grade'),
+    kind: EffectKind.brightnessContrast,
     parameters: {
-      'blurX': EffectParameter(
+      'brightness': EffectParameter(
         track: PropertyTrack<double>().withKey(0, 0).withKey(8, 16),
       ),
-      'blurY': EffectParameter(value: 4),
+      'contrast': EffectParameter(value: 4),
     },
   );
   final layer = Layer(
@@ -56,7 +56,7 @@ void main() {
     name: 'A',
     frames: const [],
     transformTrack: track,
-    effects: [blur],
+    effects: [grade],
   );
 
   /// [row]'s lanes, every group open — read off [source] where one is
@@ -69,7 +69,7 @@ void main() {
     rows: [row],
     expandedGroupKeys: {
       laneGroupKey(row.id, transformGroupHeaderLane.laneId),
-      laneGroupKey(row.id, effectGroupLaneId(blur.id)),
+      laneGroupKey(row.id, effectGroupLaneId(grade.id)),
       laneGroupKey(row.id, seNameTagGroupLaneId),
     },
     valueSourceAt: source ?? (frame) => (layer: row, frame: frame),
@@ -86,8 +86,8 @@ void main() {
         if (lane.curve != null) lane,
     ];
     expect([for (final lane in drawn) lane.laneId], [
-      effectLaneId(blur.id, 'blurX'),
-      effectLaneId(blur.id, 'blurY'),
+      effectLaneId(grade.id, 'brightness'),
+      effectLaneId(grade.id, 'contrast'),
       'anchor-point',
       'position',
       'scale',
@@ -131,8 +131,8 @@ void main() {
         'scale': [pose.scale.x * 100, pose.scale.y * 100],
         'rotation': [pose.rotationDegrees],
         'opacity': [opacity * 100],
-        effectLaneId(blur.id, 'blurX'): [
-          effectParameterValueAt(layer.effects, blur.id, 'blurX', frame),
+        effectLaneId(grade.id, 'brightness'): [
+          effectParameterValueAt(layer.effects, grade.id, 'brightness', frame),
         ],
       };
       expect(
@@ -195,12 +195,12 @@ void main() {
       0: straight,
       8: (incoming: const EaseSide(), outgoing: KeySide.linear),
     });
-    expect(laneOf(lanes, effectLaneId(blur.id, 'blurX')).curve!.sides, {
+    expect(laneOf(lanes, effectLaneId(grade.id, 'brightness')).curve!.sides, {
       0: straight,
       8: straight,
     });
     expect(
-      laneOf(lanes, effectLaneId(blur.id, 'blurY')).curve!.sides,
+      laneOf(lanes, effectLaneId(grade.id, 'contrast')).curve!.sides,
       isEmpty,
       reason: 'a value no key holds',
     );
@@ -246,8 +246,8 @@ void main() {
     };
     const point = [LaneCurvePalette.across, LaneCurvePalette.down];
     expect(partsOf(lanesOf(layer)), {
-      effectLaneId(blur.id, 'blurX'): [LaneCurvePalette.effectParameter(0)],
-      effectLaneId(blur.id, 'blurY'): [LaneCurvePalette.effectParameter(1)],
+      effectLaneId(grade.id, 'brightness'): [LaneCurvePalette.effectParameter(0)],
+      effectLaneId(grade.id, 'contrast'): [LaneCurvePalette.effectParameter(1)],
       'anchor-point': point,
       'position': point,
       'scale': [LaneCurvePalette.scale, LaneCurvePalette.scaleDown],
@@ -291,7 +291,7 @@ void main() {
           if (lane.isGroupHeader) lane.laneId: lane.headsAGraph,
       },
       {
-        effectGroupLaneId(blur.id): true,
+        effectGroupLaneId(grade.id): true,
         transformGroupHeaderLane.laneId: true,
         seNameTagGroupLaneId: false,
       },

@@ -311,9 +311,17 @@ _PaintPart _paintPartOf(ResolvedLayerEffect effect, DrawSpace space) =>
       ),
     };
 
-_SpatialPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
-  final radiusX = effect.parameter('blurX') * space.scale;
-  final radiusY = effect.parameter('blurY') * space.scale;
+/// A Gaussian of no blurriness changes no pixel, whichever way it runs — as
+/// [_directionalBlurPart]'s length.
+_PaintPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
+  final radius = effect.parameter('blurriness') * space.scale;
+  if (radius <= 0) {
+    return const _NoPart();
+  }
+  // The words of Blur Dimensions, in order: both, across, up and down.
+  final dimensions = effect.parameter('blurDimensions').round();
+  final radiusX = dimensions == 2 ? 0.0 : radius;
+  final radiusY = dimensions == 1 ? 0.0 : radius;
   return _SpatialPart(
     ui.ImageFilter.blur(
       sigmaX: radiusX * blurSigmaPerRadius,

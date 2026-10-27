@@ -64,7 +64,7 @@ void main() {
     effects: effects,
   );
 
-  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 4])];
+  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 0])];
 
   const service = CameraFrameRenderService();
 

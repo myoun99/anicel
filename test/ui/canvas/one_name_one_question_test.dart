@@ -44,10 +44,10 @@ void main() {
 
     test('it scales the blur and leaves colour alone', () {
       final full = resolveCompositeEffectPaint([
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
       ]);
       final half = resolveCompositeEffectPaint(
-        [ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12])],
+        [ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0])],
         space: const DrawSpace.preScaled(0.5),
       );
       expect(full.outsetPixels, 12);

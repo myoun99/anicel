@@ -53,8 +53,7 @@ LayerEffect _blur({double radius = 9}) => LayerEffect(
   id: const EffectId('fx-blur'),
   kind: EffectKind.blur,
   parameters: {
-    'blurX': EffectParameter(value: radius),
-    'blurY': EffectParameter(value: radius),
+    'blurriness': EffectParameter(value: radius),
   },
 );
 

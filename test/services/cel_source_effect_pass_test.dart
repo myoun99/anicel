@@ -322,7 +322,7 @@ void main() {
     test('splitSourceEffects keeps each half in its own order', () {
       final effects = [
         key(),
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 4]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 0]),
       ];
       final split = splitSourceEffects(effects);
       expect(split.source.single.kind, EffectKind.colorKey);
@@ -331,7 +331,7 @@ void main() {
 
     test('a chain with no keys is handed straight through', () {
       final effects = [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 4]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [4, 0]),
       ];
       expect(identical(splitSourceEffects(effects).paint, effects), isTrue);
     });
@@ -343,7 +343,7 @@ void main() {
       // chain has painted so far.
       final blur = ResolvedLayerEffect(
         kind: EffectKind.blur,
-        values: const [4, 4],
+        values: const [4, 0],
       );
       final key = ResolvedLayerEffect(
         kind: EffectKind.colorKey,
@@ -360,7 +360,7 @@ void main() {
     test('a chain that opens with paint has no CPU half at all', () {
       final blur = ResolvedLayerEffect(
         kind: EffectKind.blur,
-        values: const [4, 4],
+        values: const [4, 0],
       );
       final key = ResolvedLayerEffect(
         kind: EffectKind.colorKey,

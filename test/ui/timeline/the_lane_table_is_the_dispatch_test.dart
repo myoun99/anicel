@@ -141,12 +141,12 @@ void main() {
       id: const EffectId('e1'),
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(track: keyed(4.0, at: 5)),
-        'blurY': EffectParameter(track: keyed(1.0, at: 9)),
+        'blurriness': EffectParameter(track: keyed(4.0, at: 5)),
+        'blurDimensions': EffectParameter(track: keyed(1.0, at: 9)),
       },
     );
-    final x = effectLaneId(const EffectId('e1'), 'blurX');
-    final y = effectLaneId(const EffectId('e1'), 'blurY');
+    final x = effectLaneId(const EffectId('e1'), 'blurriness');
+    final y = effectLaneId(const EffectId('e1'), 'blurDimensions');
     final header = effectGroupLaneId(const EffectId('e1'));
 
     test('a parameter lane reads and writes its own parameter and no '
@@ -154,8 +154,8 @@ void main() {
       expect(effectLaneLens(x)!.keyFrames([blur()]), {5});
       expect(effectLaneLens(y)!.keyFrames([blur()]), {9});
       final cleared = effectLaneLens(x)!.update([blur()], clear)!;
-      expect(cleared.single.parameterOf('blurX').track.keys.keys, isEmpty);
-      expect(cleared.single.parameterOf('blurY').track.keys.keys, [9]);
+      expect(cleared.single.parameterOf('blurriness').track.keys.keys, isEmpty);
+      expect(cleared.single.parameterOf('blurDimensions').track.keys.keys, [9]);
     });
 
     test('the header sums its members\' keys but holds no track to edit', () {
@@ -166,7 +166,7 @@ void main() {
     test('an effect that is not in the chain, or a foreign id, is null', () {
       expect(
         effectLaneLens(
-          effectLaneId(const EffectId('zz'), 'blurX'),
+          effectLaneId(const EffectId('zz'), 'blurriness'),
         )!.update([blur()], clear),
         isNull,
       );
@@ -201,12 +201,12 @@ void main() {
     });
 
     test('effects', () {
-      final x = effectLaneId(const EffectId('e1'), 'blurX');
+      final x = effectLaneId(const EffectId('e1'), 'blurriness');
       final effects = [
         LayerEffect(
           id: const EffectId('e1'),
           kind: EffectKind.blur,
-          parameters: {'blurX': EffectParameter(track: keyed(4.0, at: 2))},
+          parameters: {'blurriness': EffectParameter(track: keyed(4.0, at: 2))},
         ),
       ];
       final shifted = effectLaneLens(x)!.keysMoved(effects, (
@@ -214,7 +214,7 @@ void main() {
         rangeEndIndexExclusive: 5,
         to: (frame) => frame + 3,
       ))!;
-      expect(shifted.single.parameterOf('blurX').track.keys.keys, [5]);
+      expect(shifted.single.parameterOf('blurriness').track.keys.keys, [5]);
     });
 
     test('an unknown lane is null on every table', () {

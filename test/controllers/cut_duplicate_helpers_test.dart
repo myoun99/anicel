@@ -218,7 +218,7 @@ void main() {
                 LayerEffect(
                   id: const EffectId('fx-1'),
                   kind: EffectKind.blur,
-                  parameters: {'blurX': EffectParameter(value: 7)},
+                  parameters: {'blurriness': EffectParameter(value: 7)},
                 ),
               ],
             ),
@@ -251,7 +251,7 @@ void main() {
         expect(copy.audioGain, 0.4);
         expect(copy.audioPan, -0.6);
         expect(copy.seNameTag, isNotNull);
-        expect(copy.effects.single.parameterOf('blurX').value, 7);
+        expect(copy.effects.single.parameterOf('blurriness').value, 7);
         // Run behaviours used to be addressed by FRAME ID and had to be
         // remapped onto the copy's cels, or the next rederive dropped them.
         // Since F-134 the mark rides the block itself: the copied block

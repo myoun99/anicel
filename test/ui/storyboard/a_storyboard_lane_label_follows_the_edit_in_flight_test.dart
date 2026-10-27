@@ -112,7 +112,7 @@ void main() {
       'storyboard-lane-group-toggle-$carrier-${effectGroupLaneId(effectId)}',
     );
     final value =
-        'storyboard-lane-value-$carrier-${effectLaneId(effectId, 'blurX')}';
+        'storyboard-lane-value-$carrier-${effectLaneId(effectId, 'blurriness')}';
     final before = label(tester, value);
 
     final gesture = await scrub(tester, value, 4);
@@ -123,13 +123,13 @@ void main() {
       effectParameterValueAt(
         session.activeTrack.effects,
         effectId,
-        'blurX',
+        'blurriness',
         0,
       ),
       effectParameterValueAt(
         [LayerEffect.defaults(id: effectId, kind: EffectKind.blur)],
         effectId,
-        'blurX',
+        'blurriness',
         0,
       ),
       reason: 'the track itself is untouched until the release',

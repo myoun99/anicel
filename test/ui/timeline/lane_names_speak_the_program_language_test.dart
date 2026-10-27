@@ -185,7 +185,8 @@ class _RailWords {
 
   final String audio;
 
-  /// A Blur and a Color Key, each header followed by its parameters.
+  /// A Gaussian Blur and a Color Key, each header followed by its
+  /// parameters.
   final List<String> effects;
 }
 
@@ -214,9 +215,9 @@ const _rail = <AppLanguage, _RailWords>{
     ],
     audio: 'Audio',
     effects: [
-      'Blur',
-      'Blur Width',
-      'Blur Height',
+      'Gaussian Blur',
+      'Blurriness',
+      'Blur Dimensions',
       'Color Key',
       'Key Operation',
       'Key Red',
@@ -243,9 +244,9 @@ const _rail = <AppLanguage, _RailWords>{
     ],
     audio: '音声',
     effects: [
-      'ぼかし',
-      'ぼかしの幅',
-      'ぼかしの高さ',
+      'ブラー（ガウス）',
+      'ブラー',
+      'ブラーの方向',
       'カラーキー',
       'キー操作',
       'キー色の赤',
@@ -272,9 +273,9 @@ const _rail = <AppLanguage, _RailWords>{
     ],
     audio: '오디오',
     effects: [
-      '흐림 효과',
-      '흐림 너비',
-      '흐림 높이',
+      '가우시안 흐림',
+      '흐림 정도',
+      '흐림 방향',
       '색상 키',
       '키 작업',
       '키 색 빨강',
@@ -309,9 +310,9 @@ const _rail = <AppLanguage, _RailWords>{
     ],
     audio: 'Audio',
     effects: [
+      'Flou gaussien',
       'Flou',
-      'Largeur du flou',
-      'Hauteur du flou',
+      'Dimensions du flou',
       'Masquage par couleur',
       'Opération',
       'Rouge de la clé',
@@ -337,6 +338,6 @@ const _rail = <AppLanguage, _RailWords>{
       '显示台词',
     ],
     audio: '音频',
-    effects: ['模糊', '模糊宽度', '模糊高度', '颜色键', '主要操作', '键色红', '键色绿', '键色蓝', '容差', '数量'],
+    effects: ['高斯模糊', '模糊度', '模糊方向', '颜色键', '主要操作', '键色红', '键色绿', '键色蓝', '容差', '数量'],
   ),
 };

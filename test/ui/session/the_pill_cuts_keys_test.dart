@@ -112,7 +112,7 @@ void main() {
     final blur = now().effects.single.id;
     s.laneVerbs.setLaneValueAt(
       before.id,
-      effectLaneId(blur, 'blurX'),
+      effectLaneId(blur, 'blurriness'),
       4,
       '1',
       frameIsGlobal: false,
@@ -122,7 +122,7 @@ void main() {
     double? blurX(int frame) => now()
         .effects
         .single
-        .parameters['blurX']!
+        .parameters['blurriness']!
         .track
         .keys[frame]
         ?.value;

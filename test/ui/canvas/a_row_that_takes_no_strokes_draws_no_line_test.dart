@@ -153,7 +153,7 @@ void main() {
   testWidgets('on the fx row over a cel no line starts, nothing lands, and '
       'the playhead is free afterwards', (tester) async {
     final (session, blur) = await pumpWithAnFx(tester);
-    final lanes = [effectGroupLaneId(blur), effectLaneId(blur, 'blurX')];
+    final lanes = [effectGroupLaneId(blur), effectLaneId(blur, 'blurriness')];
     for (final lane in lanes) {
       await standOn(
         tester,

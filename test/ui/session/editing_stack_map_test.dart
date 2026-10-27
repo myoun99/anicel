@@ -172,7 +172,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
     s.effectsAndFx.updateLayerEffects(s.activeLayer!.id, [
-      effect(EffectKind.blur, 'blurX', 8),
+      effect(EffectKind.blur, 'blurriness', 8),
     ]);
     final (map, _) = stackOf(s);
 

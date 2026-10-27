@@ -40,7 +40,7 @@ void main() {
   );
 
   ResolvedLayerEffect blur({double radius = 4}) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   /// A chain whose STEP carries a blur: a key, then a blur, then a second key
   /// — the only shape that puts painted state inside a step rather than on

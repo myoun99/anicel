@@ -29,7 +29,7 @@ void main() {
     return session;
   }
 
-  final blurLane = effectLaneId(const EffectId('e1'), 'blurX');
+  final blurLane = effectLaneId(const EffectId('e1'), 'blurriness');
 
   LaneEditSubject subjectOf({List<LayerEffect> effects = const []}) =>
       LaneEditSubject(
@@ -70,7 +70,7 @@ void main() {
       id: const EffectId('e1'),
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(
+        'blurriness': EffectParameter(
           track: PropertyTrack<double>().withKey(0, 1).withKey(8, 2),
         ),
       },
@@ -90,7 +90,7 @@ void main() {
 
     expect(edit.transform.own?.rotation.keys[8]?.value, 55);
     expect(
-      edit.effects?.single.parameters['blurX']?.track.keys[8]?.value,
+      edit.effects?.single.parameters['blurriness']?.track.keys[8]?.value,
       7,
     );
   });

@@ -35,7 +35,7 @@ void main() {
   LayerEffect blur(double radius, {String id = 'e-blur'}) => LayerEffect(
     id: EffectId(id),
     kind: EffectKind.blur,
-    parameters: {'blurX': EffectParameter(value: radius)},
+    parameters: {'blurriness': EffectParameter(value: radius)},
   );
 
   LayerEffect brightness(double amount, {String id = 'e-bright'}) =>
@@ -87,7 +87,7 @@ void main() {
         ]),
       );
       expect(entry.effects, hasLength(1));
-      expect(entry.effects.single.parameter('blurX'), 6);
+      expect(entry.effects.single.parameter('blurriness'), 6);
     });
 
     test('are absent when the row carries none — the common case is free', () {
@@ -106,7 +106,7 @@ void main() {
         id: const EffectId('e'),
         kind: EffectKind.blur,
         parameters: {
-          'blurX': EffectParameter(
+          'blurriness': EffectParameter(
             track: PropertyTrack<double>(
               keys: {
                 0: const PropertyKey<double>(0),
@@ -121,7 +121,7 @@ void main() {
       ]);
       expect(entryOf(source, frameIndex: 0).effects, isEmpty);
       expect(
-        entryOf(source, frameIndex: 2).effects.single.parameter('blurX'),
+        entryOf(source, frameIndex: 2).effects.single.parameter('blurriness'),
         4,
         reason: 'the same cel, a different filter — per FRAME, not per cel',
       );
@@ -148,7 +148,7 @@ void main() {
       expect(entries, hasLength(2));
       for (final entry in entries) {
         expect(
-          entry.effects.single.parameter('blurX'),
+          entry.effects.single.parameter('blurriness'),
           4,
           reason: '${entry.layer.id} must wear the base\'s blur',
         );
@@ -236,7 +236,7 @@ void main() {
       );
       final leaf = tree.single as CompositeLeaf<CutFrameCompositeRow>;
       final entry = leaf.payload as CutFrameCompositeEntry;
-      expect(entry.effects.single.parameter('blurX'), 4);
+      expect(entry.effects.single.parameter('blurriness'), 4);
     });
   });
 
@@ -335,7 +335,7 @@ void main() {
         id: const EffectId('e'),
         kind: EffectKind.blur,
         parameters: {
-          'blurX': EffectParameter(
+          'blurriness': EffectParameter(
             track: PropertyTrack<double>(
               keys: {
                 0: const PropertyKey<double>(0),

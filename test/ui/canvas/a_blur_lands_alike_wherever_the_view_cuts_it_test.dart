@@ -75,7 +75,7 @@ void main() {
   // up to 5 (a blurred folder), 3 (a folder in one), 2 (an adjustment) — the
   // exact claim on the same cells is what holds those.
   const rounding = 2;
-  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [40, 40])];
+  final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [40, 0])];
 
   const frameKey = BrushFrameKey(
     projectId: ProjectId('p'),

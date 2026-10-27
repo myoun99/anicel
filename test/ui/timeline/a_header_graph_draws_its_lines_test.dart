@@ -605,7 +605,7 @@ const _blurId = EffectId('blur');
 
 String get _transform => transformGroupHeaderLane.laneId;
 String get _blur => effectGroupLaneId(_blurId);
-String get _blurWidth => effectLaneId(_blurId, 'blurX');
+String get _blurWidth => effectLaneId(_blurId, 'blurriness');
 String get _transformGroup => laneGroupKey(_drawId, _transform);
 String get _cameraGroup => laneGroupKey(_camId, _transform);
 
@@ -723,7 +723,7 @@ final Layer _layer = Layer(
       id: _blurId,
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(
+        'blurriness': EffectParameter(
           track: PropertyTrack<double>().withKey(0, 0).withKey(8, 16),
         ),
       },

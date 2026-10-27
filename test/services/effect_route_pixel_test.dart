@@ -23,7 +23,7 @@ void main() {
   );
 
   ResolvedLayerEffect blur(double radius) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   Future<ui.Image> rasterize(void Function(Canvas canvas) draw) async {
     final recorder = ui.PictureRecorder();

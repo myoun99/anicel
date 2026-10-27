@@ -234,7 +234,7 @@ void main() {
       opacity: 1.0,
       blendMode: LayerBlendMode.normal,
       placement: null,
-      effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1])],
+      effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 0])],
     ),
     // A colour key LEADING the chain runs on the cel's own pixels, which
     // the surface's painter carries — the paint takes the rest alone. Here

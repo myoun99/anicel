@@ -37,7 +37,7 @@ void main() {
   LayerEffect blur(String id) => LayerEffect(
     id: EffectId(id),
     kind: EffectKind.blur,
-    parameters: {'blurX': EffectParameter(value: 3)},
+    parameters: {'blurriness': EffectParameter(value: 3)},
   );
 
   LayerEffect number(

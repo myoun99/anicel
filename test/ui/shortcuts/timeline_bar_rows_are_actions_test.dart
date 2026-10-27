@@ -174,11 +174,11 @@ void main() {
       );
       expect(
         editorActionLabel(addEffectActionId(EffectKind.blur)),
-        'Add Blur',
+        'Add Gaussian Blur',
       );
       expect(
         addEffectActionLabel(EffectKind.blur, AppLanguage.ko),
-        '흐림 효과 추가',
+        '가우시안 흐림 추가',
       );
     });
 
@@ -195,7 +195,7 @@ void main() {
       expect(layerKindDisplayName(LayerKind.folder), '폴더');
       expect(
         editorActionLabel(addEffectActionId(EffectKind.blur)),
-        '흐림 효과 추가',
+        '가우시안 흐림 추가',
       );
     });
 

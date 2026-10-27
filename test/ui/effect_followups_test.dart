@@ -402,7 +402,7 @@ void main() {
           LayerEffect(
             id: const EffectId('b'),
             kind: EffectKind.blur,
-            parameters: {'blurX': EffectParameter(value: 4)},
+            parameters: {'blurriness': EffectParameter(value: 4)},
           ),
         ],
       );

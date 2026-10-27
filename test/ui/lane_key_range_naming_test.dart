@@ -327,7 +327,7 @@ void main() {
     final layerId = session.activeLayer!.id;
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     Layer layer() => session.layers.firstWhere((each) => each.id == layerId);
-    final laneId = effectLaneId(layer().effects.single.id, 'blurX');
+    final laneId = effectLaneId(layer().effects.single.id, 'blurriness');
     session.updateLaneRangeSelectionDrag(
       layerId: layerId,
       laneId: laneId,
@@ -342,7 +342,7 @@ void main() {
       const KeyTypePick(sides: KeySidesEdit.hold),
     );
 
-    final track = layer().effects.single.parameterOf('blurX').track;
+    final track = layer().effects.single.parameterOf('blurriness').track;
     for (final frame in [1, 2, 3]) {
       expect(track.keyAt(frame)!.outgoing, KeyExit.hold);
       expect(
@@ -360,17 +360,17 @@ void main() {
     session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     Layer layer() => session.layers.firstWhere((each) => each.id == layerId);
     final effect = layer().effects.single;
-    final parameter = effect.parameterOf('blurX');
+    final parameter = effect.parameterOf('blurriness');
     session.effectsAndFx.updateLayerEffects(layerId, [
       effect.withParameter(
-        'blurX',
+        'blurriness',
         EffectParameter(
           value: parameter.value,
           track: parameter.track.withKey(0, 3).withKey(4, 8),
         ),
       ),
     ]);
-    final laneId = effectLaneId(effect.id, 'blurX');
+    final laneId = effectLaneId(effect.id, 'blurriness');
     void selectFrame(int frame) => session.updateLaneRangeSelectionDrag(
       layerId: layerId,
       laneId: laneId,
@@ -378,7 +378,7 @@ void main() {
       headIndex: frame,
       spanLaneIds: [laneId],
     );
-    blur() => layer().effects.single.parameterOf('blurX').track;
+    blur() => layer().effects.single.parameterOf('blurriness').track;
 
     selectFrame(0);
     expect(laneVerbs.setLaneKeyNamesForSelection('A'), isFalse);

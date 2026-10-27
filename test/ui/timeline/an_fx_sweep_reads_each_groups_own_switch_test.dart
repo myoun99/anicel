@@ -139,7 +139,7 @@ void main() {
     // lays them out — so a sweep up from the plain row crosses the
     // Transform header, a switch, and then the effect's lowest member.
     final lowestMember = [
-      for (final parameter in ['blurX', 'blurY'])
+      for (final parameter in ['blurriness', 'blurDimensions'])
         tester
             .getCenter(
               find.byKey(

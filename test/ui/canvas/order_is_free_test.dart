@@ -29,7 +29,7 @@ void main() {
   setUpAll(ColourKeyShader.load);
 
   ResolvedLayerEffect blur(double radius) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   ResolvedLayerEffect deleteRed() => ResolvedLayerEffect(
     kind: EffectKind.colorKey,

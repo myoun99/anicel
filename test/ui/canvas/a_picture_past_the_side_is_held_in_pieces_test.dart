@@ -362,7 +362,7 @@ void main() {
       center: CanvasPoint(x: 194, y: -24),
       zoom: 4,
     );
-    final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 3]);
+    final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 0]);
 
     for (final (name, draw, posed) in [
       ('laid down texel for texel', drawing(), false),
@@ -460,7 +460,7 @@ void main() {
       rotationDegrees: 17,
     );
     final blurred = [
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 3]),
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [3, 0]),
     ];
 
     CompositeNode<CutFrameCompositeLayer> row(
@@ -507,7 +507,7 @@ void main() {
                 opacity: 0.9,
                 blendMode: LayerBlendMode.multiply,
                 effects: [
-                  ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2]),
+                  ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 0]),
                 ],
               ),
             ];

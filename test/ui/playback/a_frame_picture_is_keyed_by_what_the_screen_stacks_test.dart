@@ -120,7 +120,7 @@ void main() {
       'a row\'s effects': keyOf(
         stack(
           effects: [
-            ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1]),
+            ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 0]),
           ],
         ),
       ),
@@ -220,7 +220,7 @@ void main() {
     ];
     const placement = LayerPlacement(1, 0, 0, 1, 3, 2);
     final effects = [
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1]),
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 0]),
     ];
     expect(
       keyOf(

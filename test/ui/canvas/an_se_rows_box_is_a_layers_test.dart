@@ -215,7 +215,7 @@ void main() {
       LayerEffect(
         id: const EffectId('blur'),
         kind: EffectKind.blur,
-        parameters: {'blurX': EffectParameter(value: 2)},
+        parameters: {'blurriness': EffectParameter(value: 2)},
       ),
     ]);
     final view = CanvasViewCommands();
@@ -333,7 +333,7 @@ void main() {
       expect((await colourAt(tag(), beside)).a, 0);
       final blurred = tag(
         effects: [
-          ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 12]),
+          ResolvedLayerEffect(kind: EffectKind.blur, values: const [12, 0]),
         ],
       );
       expect((await colourAt(blurred, beside)).a, greaterThan(0));
@@ -347,7 +347,7 @@ void main() {
       expect((await colourAt(tag(), far)).a, 0);
       final blurred = tag(
         effects: [
-          ResolvedLayerEffect(kind: EffectKind.blur, values: const [90, 90]),
+          ResolvedLayerEffect(kind: EffectKind.blur, values: const [90, 0]),
         ],
       );
       expect((await colourAt(blurred, far)).a, greaterThan(0));
@@ -362,7 +362,7 @@ void main() {
             effects: [
               ResolvedLayerEffect(
                 kind: EffectKind.blur,
-                values: [radius, radius],
+                values: [radius, 0],
               ),
             ],
           ),

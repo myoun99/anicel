@@ -153,9 +153,9 @@ void main() {
     test('an effect\'s header', () {
       final effect = LayerEffect(
         id: const EffectId('e1'),
-        kind: EffectKind.blur,
+        kind: EffectKind.brightnessContrast,
         parameters: {
-          'blurX': EffectParameter(
+          'brightness': EffectParameter(
             track: PropertyTrack<double>(
               keys: {
                 3: const PropertyKey<double>(4, outgoing: KeyExit.hold),
@@ -163,7 +163,7 @@ void main() {
               },
             ),
           ),
-          'blurY': EffectParameter(
+          'contrast': EffectParameter(
             track: PropertyTrack<double>(
               keys: {7: const PropertyKey<double>(1)},
             ),

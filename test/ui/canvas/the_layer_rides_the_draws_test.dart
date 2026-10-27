@@ -655,7 +655,7 @@ void main() {
         effects: [
           ResolvedLayerEffect(
             kind: EffectKind.blur,
-            values: const [4, 4],
+            values: const [4, 0],
           ),
         ],
       );

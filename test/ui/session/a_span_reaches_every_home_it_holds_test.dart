@@ -23,13 +23,13 @@ import 'package:flutter_test/flutter_test.dart';
 /// then worked the fx chain alone or the transform alone, and a span of
 /// the name tag's lanes made, took and named nothing.
 void main() {
-  final blurLane = effectLaneId(const EffectId('e1'), 'blurX');
+  final blurLane = effectLaneId(const EffectId('e1'), 'blurriness');
 
   LayerEffect blur(Map<int, PropertyKey<double>> keys) => LayerEffect(
     id: const EffectId('e1'),
     kind: EffectKind.blur,
     parameters: {
-      'blurX': EffectParameter(track: PropertyTrack<double>(keys: keys)),
+      'blurriness': EffectParameter(track: PropertyTrack<double>(keys: keys)),
     },
   );
 
@@ -65,7 +65,7 @@ void main() {
       .layerById(row.id)!
       .effects
       .single
-      .parameters['blurX']!
+      .parameters['blurriness']!
       .track
       .keys
       .keys
@@ -138,14 +138,14 @@ void main() {
         10: const PropertyKey<double>(10, incoming: EaseSide()),
       }),
     ]);
-    final shown = s.layerById(cel.id)!.effects.single.parameters['blurX']!;
+    final shown = s.layerById(cel.id)!.effects.single.parameters['blurriness']!;
     final before = {for (var f = 1; f < 10; f += 1) f: shown.resolveAt(f)};
     final lane = span(cel, [blurLane], 1, 10);
     s.laneRangeSelection.value = lane;
 
     s.laneVerbs.createLaneKeysForSelection(lane);
 
-    final made = s.layerById(cel.id)!.effects.single.parameters['blurX']!;
+    final made = s.layerById(cel.id)!.effects.single.parameters['blurriness']!;
     expect(
       {for (var f = 1; f < 10; f += 1) f: made.track.keyAt(f)!.value},
       before,

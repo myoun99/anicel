@@ -270,7 +270,7 @@ void main() {
     const a = LayerId('a');
     const b = LayerId('b');
     final transform = laneGroupKey(a, transformGroupHeaderLane.laneId);
-    final blur = laneGroupKey(a, effectLaneId(const EffectId('blur'), 'blurX'));
+    final blur = laneGroupKey(a, effectLaneId(const EffectId('blur'), 'blurriness'));
     final seat = TimelineGraphSeat(
       groupKey: transform,
       graph: const LaneGraph(),

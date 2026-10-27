@@ -341,7 +341,7 @@ void main() {
       CompositeGroup<_Cel>(
         opacity: 0.5,
         blendMode: LayerBlendMode.normal,
-        effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1])],
+        effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 0])],
         children: [
           cel('under', 1, tiles: [TileCoord(x: 1, y: 0)]),
           cel('over', 2, tiles: [TileCoord(x: 1, y: 1)]),
@@ -409,7 +409,7 @@ void main() {
         4,
         tiles: [TileCoord(x: -1, y: 0), TileCoord(x: 3, y: 1)],
         paint: paintOf(
-          effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 2])],
+          effects: [ResolvedLayerEffect(kind: EffectKind.blur, values: [2, 0])],
         ),
       ),
     ],

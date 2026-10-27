@@ -27,7 +27,7 @@ void main() {
 
   test('the same kind with different values is a different effect', () {
     final a = ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 2]);
-    final b = ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 3]);
+    final b = ResolvedLayerEffect(kind: EffectKind.blur, values: [1, 1]);
     expect(a, isNot(equals(b)));
   });
 }

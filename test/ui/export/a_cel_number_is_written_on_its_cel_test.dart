@@ -74,8 +74,7 @@ void main() {
     id: const EffectId('blur'),
     kind: EffectKind.blur,
     parameters: {
-      'blurX': EffectParameter(value: 4),
-      'blurY': EffectParameter(value: 4),
+      'blurriness': EffectParameter(value: 4),
     },
   );
 

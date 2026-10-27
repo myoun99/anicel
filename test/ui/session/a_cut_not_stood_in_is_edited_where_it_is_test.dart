@@ -152,7 +152,7 @@ void main() {
       id: const EffectId('fx'),
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(
+        'blurriness': EffectParameter(
           track: PropertyTrack<double>.empty()
               .withKey(0, value)
               .withKeyName(0, name),
@@ -309,14 +309,14 @@ void main() {
     );
     session.laneRangeSelection.value = TimelineLaneSelection(
       layerId: const LayerId('b-cel'),
-      laneId: effectLaneId(const EffectId('fx'), 'blurX'),
+      laneId: effectLaneId(const EffectId('fx'), 'blurriness'),
       startIndex: 0,
       endIndexExclusive: 1,
     );
     PropertyKey<double>? key() => celOf(
       session,
       'b',
-    ).effects.single.parameterOf('blurX').track.keyAt(0);
+    ).effects.single.parameterOf('blurriness').track.keyAt(0);
 
     expect(
       session.laneVerbs.setLaneKeyNamesForSelection('N'),

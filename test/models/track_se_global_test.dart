@@ -254,7 +254,7 @@ void main() {
       id: const EffectId('fx-1'),
       kind: EffectKind.blur,
       parameters: {
-        'blurX': EffectParameter(
+        'blurriness': EffectParameter(
           track: keys.entries.fold<PropertyTrack<double>>(
             PropertyTrack<double>(),
             (track, entry) => track.withKey(entry.key, entry.value),
@@ -273,7 +273,7 @@ void main() {
     );
 
     PropertyTrack<double> blurXOf(List<LayerEffect> effects) =>
-        effects.single.parameters['blurX']!.track;
+        effects.single.parameters['blurriness']!.track;
 
     test('global keys arrive on the cut-local axis', () {
       final local = blurXOf(

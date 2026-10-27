@@ -684,7 +684,7 @@ void main() {
     AdjustmentScopePass freshPass() => resolveAdjustmentScopePass(
       bounds: rect,
       effects: [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [3, 3]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [3, 0]),
       ],
       mix: 0.5,
     );

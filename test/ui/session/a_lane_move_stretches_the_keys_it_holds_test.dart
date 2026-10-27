@@ -100,7 +100,7 @@ void main() {
     keyed(TransformTrack.empty().copyWith(rotation: keys({0: 10, 8: 20})));
     s.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
     final effects = s.activeLayer!.effects;
-    final blur = effectLaneId(effects.single.id, 'blurX');
+    final blur = effectLaneId(effects.single.id, 'blurriness');
     s.effectsAndFx.updateLayerEffects(
       id,
       effectsWithLaneKeyToggled(effects, laneId: blur, frameIndex: 0)!,
@@ -111,7 +111,7 @@ void main() {
 
     expect(rotation(), {0: 10, 16: 20});
     expect(
-      s.activeLayer!.effects.single.parameterOf('blurX').track.keys.keys,
+      s.activeLayer!.effects.single.parameterOf('blurriness').track.keys.keys,
       [0],
     );
   });

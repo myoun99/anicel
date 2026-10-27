@@ -21,7 +21,7 @@ void main() {
       ResolvedLayerEffect(kind: EffectKind.brightnessContrast, values: [value, 0]);
 
   ResolvedLayerEffect blur(double radius) =>
-      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, radius]);
+      ResolvedLayerEffect(kind: EffectKind.blur, values: [radius, 0]);
 
   group('the tint folds into the chain instead of taking its slot', () {
     test('a tint alone still resolves to a color filter', () {

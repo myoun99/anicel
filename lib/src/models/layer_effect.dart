@@ -120,25 +120,38 @@ enum EffectKind {
     isBasic: false,
     staysOnItsRow: false,
   ),
+
+  /// AE's Gaussian Blur: `blurriness` each way along its `blurDimensions`.
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」 —
+  /// this blur, Blur Width and Height, was a Gaussian already, so it takes
+  /// AE's name and items: one Blurriness and the menu of the dimensions it
+  /// runs along, where two radii stood. Its math stays (🗣️I-132-Q4:
+  /// 「식은 지금대로」) — Blurriness is the radius the width and height were.
+  /// The range is ours: no help page gives AE's.
   blur(
     'blur',
-    label: 'Blur',
+    label: 'Gaussian Blur',
     parameters: [
       EffectParameterSpec(
-        id: 'blurX',
-        label: 'Blur Width',
+        id: 'blurriness',
+        label: 'Blurriness',
         defaultValue: 0,
         minimum: 0,
         maximum: 500,
         unit: EffectParameterUnit.pixels,
       ),
-      EffectParameterSpec(
-        id: 'blurY',
-        label: 'Blur Height',
-        defaultValue: 0,
-        minimum: 0,
-        maximum: 500,
-        unit: EffectParameterUnit.pixels,
+      EffectParameterSpec.choice(
+        id: 'blurDimensions',
+        label: 'Blur Dimensions',
+        choices: [
+          EffectChoice(
+            id: 'horizontalAndVertical',
+            label: 'Horizontal and Vertical',
+          ),
+          EffectChoice(id: 'horizontal', label: 'Horizontal'),
+          EffectChoice(id: 'vertical', label: 'Vertical'),
+        ],
       ),
     ],
     spreadsPixels: true,

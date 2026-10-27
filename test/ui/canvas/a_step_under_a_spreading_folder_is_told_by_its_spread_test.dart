@@ -37,7 +37,7 @@ void main() {
   // 24×8 at tile size 8: the dab's tile is 8 wide.
   const canvasSize = CanvasSize(width: 24, height: 8);
   final blur = [
-    ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 4]),
+    ResolvedLayerEffect(kind: EffectKind.blur, values: [4, 0]),
   ];
 
   BrushDab dabAt(double x) => BrushDab(

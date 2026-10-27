@@ -79,15 +79,15 @@ void main() {
     expect(effects, hasLength(2));
     expect(effects.first.id, isNot(effects.last.id));
     expect(
-      effectLaneId(effects.first.id, 'blurX'),
-      isNot(effectLaneId(effects.last.id, 'blurX')),
+      effectLaneId(effects.first.id, 'blurriness'),
+      isNot(effectLaneId(effects.last.id, 'blurriness')),
     );
   });
 
   test('a lane value edit reaches the composite and undoes in one step', () {
     effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final layer = session.activeLayer!;
-    final laneId = effectLaneId(layer.effects.single.id, 'blurX');
+    final laneId = effectLaneId(layer.effects.single.id, 'blurriness');
 
     final edited = effectsWithLaneValueEdited(
       layer.effects,
@@ -96,25 +96,25 @@ void main() {
       input: '9',
       scaleLinked: false,
     )!;
-    effectsOf(session).updateLayerEffects(layer.id, edited, description: 'Set Blur Width');
+    effectsOf(session).updateLayerEffects(layer.id, edited, description: 'Set Blurriness');
 
     // R9 #18: the edit lands as a KEY, and one key resolves to itself at
     // every frame — so the pixels are what the static slot used to give.
     expect(
-      session.activeLayer!.effects.single.parameterOf('blurX').resolveAt(0),
+      session.activeLayer!.effects.single.parameterOf('blurriness').resolveAt(0),
       9,
     );
     expect(
       stackEffectsOf(
         session.editingCanvas.stack.nodes,
-      ).single.parameter('blurX'),
+      ).single.parameter('blurriness'),
       9,
       reason: 'the editing canvas reads the same resolver the routes do',
     );
 
     session.undo();
     expect(
-      session.activeLayer!.effects.single.parameterOf('blurX').resolveAt(0),
+      session.activeLayer!.effects.single.parameterOf('blurriness').resolveAt(0),
       0,
     );
     expect(stackEffectsOf(session.editingCanvas.stack.nodes), isEmpty);
@@ -127,7 +127,7 @@ void main() {
       layer.id,
       effectsWithLaneValueEdited(
         layer.effects,
-        laneId: effectLaneId(layer.effects.single.id, 'blurX'),
+        laneId: effectLaneId(layer.effects.single.id, 'blurriness'),
         frameIndex: 0,
         input: '9',
         scaleLinked: false,
@@ -195,7 +195,7 @@ void main() {
       base.id,
       effectsWithLaneValueEdited(
         base.effects,
-        laneId: effectLaneId(base.effects.single.id, 'blurX'),
+        laneId: effectLaneId(base.effects.single.id, 'blurriness'),
         frameIndex: 0,
         input: '9',
         scaleLinked: false,
@@ -217,7 +217,7 @@ void main() {
       fail('the attach row with no cel must still get an active node');
     }
 
-    expect(activeNodeEffects().single.parameter('blurX'), 9);
+    expect(activeNodeEffects().single.parameter('blurriness'), 9);
     // …and the BASE's fx switch is what bypasses it.
     effectsOf(session).toggleLayerFx(base.id);
     expect(activeNodeEffects(), isEmpty);
@@ -453,7 +453,7 @@ void main() {
     effectsOf(session).addEffectToActiveLayer(EffectKind.blur);
     final layer = session.activeLayer!;
     final effectId = layer.effects.single.id;
-    final laneId = effectLaneId(effectId, 'blurX');
+    final laneId = effectLaneId(effectId, 'blurriness');
     var effects = layer.effects;
     for (final frame in [2, 3]) {
       effects = effectsWithLaneKeyToggled(
@@ -477,7 +477,7 @@ void main() {
 
     expect(
       session.activeLayer!.effects.single
-          .parameterOf('blurX')
+          .parameterOf('blurriness')
           .track
           .keys
           .keys
@@ -487,7 +487,7 @@ void main() {
     session.undo();
     expect(
       session.activeLayer!.effects.single
-          .parameterOf('blurX')
+          .parameterOf('blurriness')
           .track
           .keys
           .keys

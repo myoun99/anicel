@@ -694,14 +694,14 @@ void main() {
 
       await sweepBetween(
         tester,
-        diamond(carrier, effectLaneId(effects.first, 'blurX')),
-        diamond(carrier, effectLaneId(effects.last, 'blurY')),
+        diamond(carrier, effectLaneId(effects.first, 'blurriness')),
+        diamond(carrier, effectLaneId(effects.last, 'blurDimensions')),
       );
 
       expect(
         [
           for (final effect in track(session, t1).effects)
-            for (final parameter in ['blurX', 'blurY'])
+            for (final parameter in ['blurriness', 'blurDimensions'])
               [...effect.parameterOf(parameter).track.keys.keys],
         ],
         [

@@ -45,7 +45,7 @@ void main() {
     widthBudget: 300,
     shot: const LayerPlacement.identity(),
     effects: [
-      ResolvedLayerEffect(kind: EffectKind.blur, values: const [2, 2]),
+      ResolvedLayerEffect(kind: EffectKind.blur, values: const [2, 0]),
     ],
     content: const TextCelContent(
       text: 'タモツ',
@@ -136,7 +136,7 @@ void main() {
         LayerEffect(
           id: const EffectId('blur'),
           kind: EffectKind.blur,
-          parameters: {'blurX': EffectParameter(value: 2)},
+          parameters: {'blurriness': EffectParameter(value: 2)},
         ),
       ]);
       final renderer = ExportFrameRenderer(session: s);

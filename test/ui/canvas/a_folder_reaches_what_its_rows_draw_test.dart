@@ -145,7 +145,7 @@ void main() {
       opacity: 0.7,
       blendMode: LayerBlendMode.multiply,
       effects: [
-        ResolvedLayerEffect(kind: EffectKind.blur, values: const [2, 2]),
+        ResolvedLayerEffect(kind: EffectKind.blur, values: const [2, 0]),
       ],
     ),
     CompositeGroup<CanvasStackRow>(
