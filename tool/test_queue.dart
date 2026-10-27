@@ -82,6 +82,18 @@ const kMachineSuites = 10;
 /// ten (four blocks), 10.9 at fourteen, 12.9 at sixteen, 14.5 at eighteen
 /// and 12.2 at twenty, where each file ran 16% slower; no file went flaky
 /// at any of them. Other machines keep ten until they are measured.
+///
+/// 📏THE SURFACE PRO 11 SAYS 8 (measured 10-27 15:56–18:46; Core Ultra 7
+/// 268V, four performance cores and four low-power ones, eight threads;
+/// Best performance, on AC). Its line saw almost no runs, so the same 90
+/// untagged files (1,492 record-seconds) ran through it alone at each
+/// count, 38 times in mirrored order. Suites truly at work, with the
+/// load of other processes taken out (each core of it cost about one):
+/// 4.1 at four, 4.4 at six, 4.6 at eight, 4.5 at ten, 4.3 at twelve, 4.6
+/// at fourteen, 4.1 at sixteen — flat from six to fourteen, and fourteen
+/// side by side with ten lost by 0.5 in four pairs. At the same work the
+/// fewer suites win: each file ran 1.8 times its four-suite time at eight
+/// against 2.4 at ten, with less memory held. No file failed at any count.
 const kSuitesFile = 'suites';
 
 /// The suites [line] holds between its runs: what its [kSuitesFile] says,
