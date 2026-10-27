@@ -1513,13 +1513,17 @@ class _RastersInTurn implements FramePictureGpu {
   }
 
   @override
+  ui.Image renderInTurn(ui.Picture picture, int width, int height) =>
+      throw UnsupportedError('holds no texture: no patch is rastered');
+
+  @override
   Object? hold(ui.Image image) => null;
 
   @override
   int levelsOf(Object held) => 1;
 
   @override
-  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
+  Future<bool> write(Object held, LevelWrites writes) =>
       throw UnsupportedError('holds no texture');
 }
 
