@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors, buildAppThem
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/number_pad_keyboard.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
@@ -127,10 +128,12 @@ void main() {
 
     await tester.tap(label);
     await tester.pumpAndSettle();
+    // The pad, not its field: a pencil's pad opens with no field in it
+    // (I-134), so a field missing says nothing about what opened.
     expect(
-      find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
+      theNumberPadsNumber,
       findsNothing,
-      reason: 'and a tap opens no field',
+      reason: 'and a tap opens no pad',
     );
   });
 
