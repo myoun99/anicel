@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/color_palette_file_service.dart';
-import 'color_palette_strip.dart';
+import 'color_palettes.dart';
 import 'color_rgb_panel.dart';
 import 'color_status_bar.dart';
 import 'color_wheel_panel.dart';
@@ -44,16 +44,24 @@ class ColorPickerPanel extends StatelessWidget {
   final ValueChanged<int> onColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
 
-  /// What the RGB panel costs in a group: its three bars, the padding
-  /// around them, and the status bar every kind shares.
+  /// What [kind] costs in a group that cannot shrink: the status bar every
+  /// kind shares and, under the wheel and the RGB bars, the default palette
+  /// (I-131) — with the bars themselves, the one picker with nothing that
+  /// can give, and the wheel's margin. Null for the palette, which scrolls
+  /// its own.
   ///
-  /// Published so the dock that hands out heights can honour it — the bars
-  /// are the one picker with nothing that can shrink. The status bar is
-  /// asked where the panel is shown: it grows with the OS text size.
-  static double rgbContentExtentIn(BuildContext context) =>
-      ColorRgbPanel.contentHeight +
-      _pickerPadding +
-      ColorStatusBar.heightIn(context);
+  /// Published so the dock that hands out heights can honour it. The status
+  /// bar is asked where the panel is shown: it grows with the OS text size.
+  static double? contentExtentIn(BuildContext context, ColorPickerKind kind) {
+    final fixed =
+        PaletteUnderPicker.maxExtent + ColorStatusBar.heightIn(context);
+    return switch (kind) {
+      ColorPickerKind.wheel => ColorWheelPanel.inset * 2 + fixed,
+      ColorPickerKind.rgb =>
+        ColorRgbPanel.contentHeight + _pickerPadding + fixed,
+      ColorPickerKind.palette => null,
+    };
+  }
 
   /// What every kind needs ACROSS: the readout laid out whole. Its cells are
   /// fixed on purpose (the digits must not move), so a group narrower than
@@ -70,6 +78,16 @@ class ColorPickerPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: _picker()),
+        // I-131-Q2: 「고르개와 상태 바 사이에 기본 팔레트가 늘 「작게」로
+        // 선다」 — under the two pickers, not in the palette panel, which
+        // shows every palette itself.
+        if (kind != ColorPickerKind.palette)
+          PaletteUnderPicker(
+            palettes: palette,
+            color: color,
+            onColorChanged: onColorChanged,
+            onPalettesChanged: onPaletteChanged,
+          ),
         ColorStatusBar(color: color, onColorChanged: onColorChanged),
       ],
     );
@@ -85,18 +103,11 @@ class ColorPickerPanel extends StatelessWidget {
           child: ColorRgbPanel(color: color, onColorChanged: onColorChanged),
         );
       case ColorPickerKind.palette:
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-          // The scroll view belongs to the PALETTE, not to the panel frame:
-          // the wheel and the RGB bars must not scroll.
-          child: SingleChildScrollView(
-            child: ColorPaletteStrip(
-              palette: palette,
-              currentColor: color,
-              onColorSelected: onColorChanged,
-              onPaletteChanged: onPaletteChanged,
-            ),
-          ),
+        return ColorPalettesPanel(
+          palettes: palette,
+          color: color,
+          onColorChanged: onColorChanged,
+          onPalettesChanged: onPaletteChanged,
         );
     }
   }

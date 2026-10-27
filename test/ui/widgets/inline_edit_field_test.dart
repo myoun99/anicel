@@ -1,5 +1,5 @@
-// THE ONE INLINE NUMERIC FIELD: ENTER SUBMITS THE TRIMMED TEXT, ESCAPE
-// CANCELS WITHOUT SUBMITTING.
+// THE ONE INLINE FIELD: ENTER SUBMITS THE TRIMMED TEXT, ESCAPE CANCELS
+// WITHOUT SUBMITTING.
 //
 // No test named this widget (audit 2026-09-03) although every typed
 // readout in the app goes through it. These pins drive it as a user does.
@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/ui/widgets/inline_numeric_field.dart';
+import 'package:anicel/src/ui/widgets/inline_edit_field.dart';
 
 import '../../helpers/ime_draft.dart';
 
@@ -23,7 +23,7 @@ void main() {
           body: Center(
             child: SizedBox(
               width: 80,
-              child: InlineNumericField(
+              child: InlineEditField(
                 initialText: '12',
                 onSubmit: submitted.add,
                 onCancel: () => cancelled.add(1),
@@ -69,7 +69,7 @@ void main() {
                     if (open)
                       SizedBox(
                         width: 80,
-                        child: InlineNumericField(
+                        child: InlineEditField(
                           initialText: '12',
                           onSubmit: (_) => setState(() => open = false),
                           onCancel: () => setState(() => open = false),
@@ -90,7 +90,7 @@ void main() {
     bool numberHasIt(WidgetTester tester) => tester
         .widget<EditableText>(
           find.descendant(
-            of: find.byType(InlineNumericField),
+            of: find.byType(InlineEditField),
             matching: find.byType(EditableText),
           ),
         )
@@ -112,7 +112,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.byType(InlineNumericField), findsNothing, reason: 'closed');
+      expect(find.byType(InlineEditField), findsNothing, reason: 'closed');
       expect(before.hasFocus, isTrue);
       await tester.pumpWidget(const SizedBox());
       before.dispose();
@@ -128,7 +128,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.byType(InlineNumericField), findsNothing, reason: 'closed');
+      expect(find.byType(InlineEditField), findsNothing, reason: 'closed');
       expect(before.hasFocus, isTrue);
       await tester.pumpWidget(const SizedBox());
       before.dispose();
@@ -192,6 +192,42 @@ void main() {
       await tester.pump();
 
       expect(seen.submitted, ['50']);
+    });
+
+    // I-131: a palette's name is typed into the same field — and a name is
+    // not a number, so F-355's half-width reading is not its law.
+    testWidgets('a NAME is handed over as it was typed, numerals and all, '
+        'from the text keyboard', (tester) async {
+      final submitted = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 120,
+                child: InlineEditField.name(
+                  initialText: 'Skin',
+                  onSubmit: submitted.add,
+                  onCancel: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).keyboardType,
+        TextInputType.text,
+      );
+
+      await composeDraft(tester, find.byType(TextField), '肌２');
+      await commitDraft(tester, '肌２');
+      expect(shown(tester), '肌２');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+
+      expect(submitted, ['肌２']);
     });
   });
 }

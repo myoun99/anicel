@@ -232,7 +232,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// person pressed into a text. While they stay in hand it is taken back
   /// from NOBODY only — from no text field: a field the person opened to
   /// type a number into keeps it until it closes, and the keyboard comes
-  /// back as it leaves (`InlineNumericField`). ↩️It was taken back at every
+  /// back as it leaves (`InlineEditField`). ↩️It was taken back at every
   /// change of the tool — a bake landing, a setting set — from whoever held
   /// it.
   void _syncField() {

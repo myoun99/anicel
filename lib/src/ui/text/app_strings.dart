@@ -1109,6 +1109,32 @@ enum AppStrings {
   String get transportNextFrame => _s('transportNextFrame');
   String get colorRecent => _s('colorRecent');
   String get colorBackgroundSwap => _s('colorBackgroundSwap');
+  String get paletteViewCompact => _s('paletteViewCompact');
+  String get paletteViewCards => _s('paletteViewCards');
+  String get paletteNew => _s('paletteNew');
+
+  /// A new palette's name, 「팔레트 N」 (I-131-Q2), and back: the number a
+  /// name of that pattern carries, null for any other name — both read off
+  /// the one template, so the two cannot disagree.
+  String paletteNumbered(int number) =>
+      _s('paletteNumberedTemplate').replaceAll('{n}', '$number');
+  int? paletteNumberOf(String name) {
+    final template = RegExp.escape(_s('paletteNumberedTemplate'));
+    final number = RegExp(
+      '^${template.replaceAll(RegExp.escape('{n}'), r'(\d+)')}\$',
+    ).firstMatch(name)?.group(1);
+    return number == null ? null : int.parse(number);
+  }
+
+  String get paletteMakeDefault => _s('paletteMakeDefault');
+  String get paletteDuplicate => _s('paletteDuplicate');
+  String paletteCopyName(String name) =>
+      _s('paletteCopyTemplate').replaceAll('{name}', name);
+  String get paletteDeleteTitle => _s('paletteDeleteTitle');
+  String paletteDeleteBody(String name) =>
+      _s('paletteDeleteTemplate').replaceAll('{name}', name);
+  String get paletteRemoveCurrent => _s('paletteRemoveCurrent');
+  String get paletteMore => _s('paletteMore');
   String get penPressureTitle => _s('penPressureTitle');
   String get brushDynamicsTitle => _s('brushDynamicsTitle');
   String get curveSourcePressure => _s('curveSourcePressure');
@@ -2514,6 +2540,17 @@ enum AppStrings {
     'transportNextFrame': 'Next frame',
     'colorRecent': 'Recent',
     'colorBackgroundSwap': 'Background colour (tap to swap)',
+    'paletteViewCompact': 'Compact',
+    'paletteViewCards': 'Cards',
+    'paletteNew': 'New palette',
+    'paletteNumberedTemplate': 'Palette {n}',
+    'paletteMakeDefault': 'Make default',
+    'paletteDuplicate': 'Duplicate',
+    'paletteCopyTemplate': '{name} copy',
+    'paletteDeleteTitle': 'Delete palette',
+    'paletteDeleteTemplate': 'Delete the palette "{name}"?',
+    'paletteRemoveCurrent': 'Remove the current colour',
+    'paletteMore': 'More',
     'penPressureTitle': 'Pen pressure',
     'brushDynamicsTitle': 'Response',
     'curveSourcePressure': 'Pressure',
@@ -3983,6 +4020,17 @@ enum AppStrings {
     'transportNextFrame': '次のフレーム',
     'colorRecent': '最近',
     'colorBackgroundSwap': '背景色（タップで入れ替え）',
+    'paletteViewCompact': 'コンパクト',
+    'paletteViewCards': 'カード',
+    'paletteNew': '新しいパレット',
+    'paletteNumberedTemplate': 'パレット {n}',
+    'paletteMakeDefault': 'デフォルトにする',
+    'paletteDuplicate': '複製',
+    'paletteCopyTemplate': '{name} のコピー',
+    'paletteDeleteTitle': 'パレットを削除',
+    'paletteDeleteTemplate': 'パレット「{name}」を削除しますか？',
+    'paletteRemoveCurrent': '今の色を外す',
+    'paletteMore': 'その他',
     'penPressureTitle': '筆圧',
     'brushDynamicsTitle': '入り抜き',
     'curveSourcePressure': '筆圧',
@@ -5659,6 +5707,17 @@ enum AppStrings {
     'transportNextFrame': '다음 프레임',
     'colorRecent': '최근',
     'colorBackgroundSwap': '배경색 (눌러서 교체)',
+    'paletteViewCompact': '작게',
+    'paletteViewCards': '카드',
+    'paletteNew': '새 팔레트',
+    'paletteNumberedTemplate': '팔레트 {n}',
+    'paletteMakeDefault': '기본 팔레트로',
+    'paletteDuplicate': '복제',
+    'paletteCopyTemplate': '{name} 사본',
+    'paletteDeleteTitle': '팔레트 삭제',
+    'paletteDeleteTemplate': '「{name}」 팔레트를 삭제할까요?',
+    'paletteRemoveCurrent': '지금 색 빼기',
+    'paletteMore': '더 보기',
     'penPressureTitle': '필압',
     'brushDynamicsTitle': '반응',
     'curveSourcePressure': '필압',
@@ -7380,6 +7439,17 @@ enum AppStrings {
     'transportNextFrame': 'Image suivante',
     'colorRecent': 'Récentes',
     'colorBackgroundSwap': 'Couleur de fond (toucher pour échanger)',
+    'paletteViewCompact': 'Compact',
+    'paletteViewCards': 'Cartes',
+    'paletteNew': 'Nouvelle palette',
+    'paletteNumberedTemplate': 'Palette {n}',
+    'paletteMakeDefault': 'Définir par défaut',
+    'paletteDuplicate': 'Dupliquer',
+    'paletteCopyTemplate': 'Copie de {name}',
+    'paletteDeleteTitle': 'Supprimer la palette',
+    'paletteDeleteTemplate': 'Supprimer la palette « {name} » ?',
+    'paletteRemoveCurrent': 'Retirer la couleur actuelle',
+    'paletteMore': 'Plus',
     'penPressureTitle': 'Pression du stylet',
     'brushDynamicsTitle': 'Réponse',
     'curveSourcePressure': 'Pression',
@@ -9077,6 +9147,17 @@ enum AppStrings {
     'transportNextFrame': '下一帧',
     'colorRecent': '最近',
     'colorBackgroundSwap': '背景色（点按交换）',
+    'paletteViewCompact': '紧凑',
+    'paletteViewCards': '卡片',
+    'paletteNew': '新建调色板',
+    'paletteNumberedTemplate': '调色板 {n}',
+    'paletteMakeDefault': '设为默认',
+    'paletteDuplicate': '复制',
+    'paletteCopyTemplate': '{name} 副本',
+    'paletteDeleteTitle': '删除调色板',
+    'paletteDeleteTemplate': '要删除调色板“{name}”吗？',
+    'paletteRemoveCurrent': '移除当前颜色',
+    'paletteMore': '更多',
     'penPressureTitle': '笔压',
     'brushDynamicsTitle': '响应',
     'curveSourcePressure': '笔压',

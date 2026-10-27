@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../text/full_width_numerals.dart';
 import 'selected_text_controller.dart';
 
-/// The ONE inline numeric field (R10 R5).
+/// The ONE inline field (R10 R5).
 ///
 /// Every place in this app where a readout turns into something you type
 /// into wants the identical field: it takes focus the moment it appears
@@ -15,13 +15,19 @@ import 'selected_text_controller.dart';
 /// copies of that had drifted apart — the canvas readouts', the slider's,
 /// and the colour window's about to be a fourth.
 ///
+/// ★A NAME is typed into it too ([InlineEditField.name]) — a palette's,
+/// renamed where it stands (I-131). It was the inline NUMERIC field until
+/// then: every readout that opened one was a number, and a fifth field
+/// that focused, escaped and committed the same way for words would have
+/// been the copy the line above is about.
+///
 /// What is deliberately NOT here is the ENTRY GESTURE. The host decides
 /// what turns into this field and when, because that is the only part
 /// that legitimately differs: a value label swaps itself out in place, a
 /// colour field sits in a status bar. The app's rule about which gesture
 /// that may be — a single tap, never a double — is a rule about hosts.
-class InlineNumericField extends StatefulWidget {
-  const InlineNumericField({
+class InlineEditField extends StatefulWidget {
+  const InlineEditField({
     super.key,
     required this.initialText,
     required this.onSubmit,
@@ -34,7 +40,36 @@ class InlineNumericField extends StatefulWidget {
     this.inputFormatters,
     this.controller,
     this.groupId,
-  });
+  }) : number = true,
+       decoration = null;
+
+  /// A name, typed on the text keyboard and handed over as it was typed
+  /// — its numerals too: reading them half-width is a NUMBER's law
+  /// (F-355), and a name is not one. [decoration] dresses it; null stands
+  /// it bare, as a number stands in its readout's place.
+  const InlineEditField.name({
+    super.key,
+    required this.initialText,
+    required this.onSubmit,
+    required this.onCancel,
+    this.fieldKey,
+    this.textStyle,
+    this.textAlign = TextAlign.start,
+    this.decoration,
+  }) : number = false,
+       signed = false,
+       keyboardType = TextInputType.text,
+       inputFormatters = const [],
+       controller = null,
+       groupId = null;
+
+  /// Whether the text is a number's, whose numerals are read half-width.
+  final bool number;
+
+  /// What the field wears instead of standing bare — a name typed into
+  /// the app's own field box where the readout was a label of its own
+  /// (I-131's palette name). The theme fills in whatever it leaves out.
+  final InputDecoration? decoration;
 
   /// Seeds the field, and is selected whole so the first keystroke
   /// replaces it — the readout you tapped IS the thing you are replacing.
@@ -51,8 +86,8 @@ class InlineNumericField extends StatefulWidget {
   /// the field (I-134).
   final Object? groupId;
 
-  /// The text on commit, its numerals half-width; the host parses and
-  /// clamps, because only the host knows the units.
+  /// The text on commit, trimmed — a number's numerals half-width; the
+  /// host parses and clamps, because only the host knows the units.
   final ValueChanged<String> onSubmit;
 
   /// Escape, and any other abandonment. The host restores its readout.
@@ -77,10 +112,10 @@ class InlineNumericField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
 
   @override
-  State<InlineNumericField> createState() => _InlineNumericFieldState();
+  State<InlineEditField> createState() => _InlineEditFieldState();
 }
 
-class _InlineNumericFieldState extends State<InlineNumericField> {
+class _InlineEditFieldState extends State<InlineEditField> {
   late final TextEditingController _controller =
       widget.controller ?? selectedTextController(widget.initialText);
 
@@ -89,7 +124,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
   /// treats a commit as an undo step must not get two.
   bool _done = false;
 
-  final FocusNode _focus = FocusNode(debugLabel: 'inline-numeric-field');
+  final FocusNode _focus = FocusNode(debugLabel: 'inline-edit-field');
 
   /// 🚨F-353 (유저 2026-10-14: 「텍스트 편집중인 상황에서 크기쪽 연필누르면
   /// 텍스트 선택되지 않은 상태. 추가로 자간같은거 연필누르면 여러 박스가
@@ -127,7 +162,8 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
     _done = true;
     // Read half-width (F-355): a tap away commits a draft the IME still
     // holds as it is, which no formatter has seen.
-    widget.onSubmit(toHalfWidthNumerals(_controller.text).trim());
+    final text = _controller.text;
+    widget.onSubmit((widget.number ? toHalfWidthNumerals(text) : text).trim());
   }
 
   /// Tapping AWAY commits what you typed — but if you typed nothing, it
@@ -186,18 +222,20 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
         // the field always has: a box typed in drew a second, smaller box
         // inside itself (유저 2026-10-11: 「직접입력눌렀을때 텍스트편집박스가
         // 너무 작아. 오른쪽에도 이상한 패딩있고」).
-        decoration: const InputDecoration(
-          filled: false,
-          isDense: true,
-          isCollapsed: true,
-          contentPadding: EdgeInsets.zero,
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          focusedErrorBorder: InputBorder.none,
-        ),
+        decoration:
+            widget.decoration ??
+            const InputDecoration(
+              filled: false,
+              isDense: true,
+              isCollapsed: true,
+              contentPadding: EdgeInsets.zero,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              focusedErrorBorder: InputBorder.none,
+            ),
         // ⛔Enter does not let go of the keyboard. A stock field lets go of
         // it to its SCOPE, which forgets who held it before — the text on
         // the canvas then had it back only if the number changed something

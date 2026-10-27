@@ -21,7 +21,6 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../../native/device_battery.dart';
 import '../../native/window_full_screen.dart';
-import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_value_group.dart';
 import '../brush/tools_panel.dart' show RailButton;
@@ -96,9 +95,6 @@ class EditorTopStrip extends StatelessWidget {
     this.door,
     this.keyRoad,
     this.brushTool,
-    this.colorBackground,
-    this.colorPalette,
-    this.onColorPaletteChanged,
     this.battery,
   });
 
@@ -135,19 +131,6 @@ class EditorTopStrip extends StatelessWidget {
   ///
   /// Null leaves the right end empty (passive hosts and focused tests).
   final ValueNotifier<BrushToolState>? brushTool;
-
-  /// The colour control's other two pieces: the spare (background) slot and
-  /// the pinned palette. The FOREGROUND colour is not here — it rides
-  /// [brushTool], which is where a colour has always lived.
-  ///
-  /// All three are null together in practice; the colour button needs the
-  /// set, so a host that supplies part of it gets no button.
-  final ValueNotifier<int>? colorBackground;
-  final ValueNotifier<ColorPaletteState>? colorPalette;
-
-  /// Palette writes go back through the host because they PERSIST — the
-  /// strip must not learn where a palette file lives.
-  final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
   /// The device's battery, at the strip's very end (I-103-Q1) — null on a
   /// device without one, which keeps no place for it ([DeviceBattery]).

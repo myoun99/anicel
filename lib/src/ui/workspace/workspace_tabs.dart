@@ -224,10 +224,9 @@ class _WorkspaceTabs {
       // The RGB bars are a FIXED stack — three rows, nothing that can give —
       // so the panel states what they cost and a group shorter than that
       // scrolls rather than clipping the blue channel off the bottom. The
-      // wheel and the palette both shrink on their own and say nothing.
-      minContentHeight: kind == ColorPickerKind.rgb
-          ? ColorPickerPanel.rgbContentExtentIn(_state.context)
-          : null,
+      // wheel shrinks on its own, but the default palette under it does not
+      // (I-131), so it states that much; the palette scrolls its own.
+      minContentHeight: ColorPickerPanel.contentExtentIn(_state.context, kind),
       minContentWidth: ColorPickerPanel.minContentWidthIn(_state.context),
       builder: (context) {
         final palette = _state.widget.colorPalette;

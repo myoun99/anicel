@@ -1,12 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/color_palette_file_service.dart';
-import 'package:anicel/src/ui/color/color_palette_strip.dart';
-import 'package:anicel/src/ui/color/color_wheel_panel.dart';
+import 'package:anicel/src/ui/color/color_panels.dart';
 import 'package:anicel/src/ui/media/media_pool_panel.dart';
+import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
 /// R10-①: the Color and Media panels must lay out WITHOUT overflow at any
 /// squeezed dock size — a docked panel can be dragged very small.
@@ -34,38 +32,26 @@ void main() {
     ),
   );
 
-  /// The color tab's composition (wheel above, palette strip below) as the
-  /// workspace mounts it — the palette cap yields to the wheel on squat
-  /// panels (the R10-① fix; keep in sync with editor_workspace.dart).
-  Widget colorTab() => LayoutBuilder(
-    builder: (context, constraints) {
-      final paletteCap = math.min(
-        140.0,
-        math.max(0.0, constraints.maxHeight - 120),
-      );
-      return Column(
-        children: [
-          Expanded(
-            child: ColorWheelPanel(color: 0xFF3366CC, onColorChanged: (_) {}),
-          ),
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: paletteCap),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: ColorPaletteStrip(
-                palette: const ColorPaletteState(
-                  pinned: [0xFF000000, 0xFFFF0000, 0xFF00FF00, 0xFF0000FF],
-                  recent: [0xFF111111, 0xFF222222, 0xFF333333],
-                ),
-                currentColor: 0xFF3366CC,
-                onColorSelected: (_) {},
-                onPaletteChanged: (_) {},
-              ),
-            ),
-          ),
-        ],
-      );
-    },
+  /// A colour panel ON ITS FLOOR — inside the scrollers the dock gives a
+  /// tab that publishes one (`EditorPanelTabs._onItsFloor`): the default
+  /// palette under the wheel and the RGB bars does not shrink (I-131), and
+  /// the floor is what keeps it from cutting the status bar off.
+  Widget colorTab(ColorPickerKind kind) => Builder(
+    builder: (context) => OverflowScrollers(
+      minWidth: ColorPickerPanel.minContentWidthIn(context),
+      minHeight: ColorPickerPanel.contentExtentIn(context, kind) ?? 0,
+      child: ColorPickerPanel(
+        kind: kind,
+        color: 0xFF3366CC,
+        palette: ColorPaletteState.starter('Palette 1')
+            .withNewPalette('Palette 2')
+            .withView(PaletteView.cards)
+            .withRecentColor(0xFF111111)
+            .withRecentColor(0xFF222222),
+        onColorChanged: (_) {},
+        onPaletteChanged: (_) {},
+      ),
+    ),
   );
 
   Widget mediaPanel() => MediaPoolPanel(
@@ -98,13 +84,22 @@ void main() {
     return exception;
   }
 
-  testWidgets('the Color panel never overflows at squeezed sizes', (
-    tester,
-  ) async {
-    for (final size in probeSizes) {
-      await tester.pumpWidget(host(size, colorTab()));
-      await tester.pump();
-      expect(describeException(tester), isNull, reason: 'color tab at $size');
+  testWidgets('the Color panels never overflow at squeezed sizes, with '
+      'their words read at twice the size too', (tester) async {
+    for (final kind in ColorPickerKind.values) {
+      for (final textScale in const [1.0, 2.0]) {
+        for (final size in probeSizes) {
+          await tester.pumpWidget(
+            host(size, colorTab(kind), textScale: textScale),
+          );
+          await tester.pump();
+          expect(
+            describeException(tester),
+            isNull,
+            reason: '$kind at $size, words ×$textScale',
+          );
+        }
+      }
     }
   });
 

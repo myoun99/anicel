@@ -271,10 +271,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// nothing in the workspace reads a colour any more.
   final ValueNotifier<int> _colorWheelBackground = ValueNotifier(0xFFFFFFFF);
 
-  /// The pinned palette + recent colours (P4), persisted app-side — which is
-  /// itself an argument for it living here rather than beside a panel.
+  /// The palettes + recent colours (P4 → I-131), persisted app-side — which
+  /// is itself an argument for it living here rather than beside a panel.
   final ValueNotifier<ColorPaletteState> _colorPalette = ValueNotifier(
-    const ColorPaletteState(),
+    ColorPaletteState.starter(AppText.strings.paletteNumbered(1)),
   );
   ColorPaletteFileService? _paletteService;
 
@@ -432,9 +432,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     door: _workspaceDoor,
     keyRoad: _keyRoad,
     brushTool: _brushTool,
-    colorBackground: _colorWheelBackground,
-    colorPalette: _colorPalette,
-    onColorPaletteChanged: _setColorPalette,
     battery: widget.battery,
   );
 
@@ -515,11 +512,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppText.settings.addListener(_relabel);
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
-      _paletteService?.loadOrDefaults().then((palette) {
-        if (mounted) {
-          _colorPalette.value = palette;
-        }
-      }),
+      _paletteService
+          ?.loadOrDefaults(starterName: AppText.strings.paletteNumbered(1))
+          .then((palette) {
+            if (mounted) {
+              _colorPalette.value = palette;
+            }
+          }),
     );
     // Apple Pencil double-tap (PEN-5): honor the user's SYSTEM Pencil
     // preference — the switch actions toggle brush↔eraser; the palette/

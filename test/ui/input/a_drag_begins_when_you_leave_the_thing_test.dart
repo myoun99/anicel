@@ -132,10 +132,14 @@ void main() {
         // rule instead of Flutter's slop.
         'lib/src/ui/brush/brush_preset_panel.dart',
         'lib/src/ui/brush/brush_preset_reorder_grid.dart',
+        // I-131: a palette's place is stood on too — a press picks its
+        // colour, or fills it — and a drag moves it to another place.
+        'lib/src/ui/color/color_palettes.dart',
       ]),
       reason:
-          '⛔the brush cell and the group tab are the drag sources you must '
-          'first STAND on. A third name here is either a new standing '
+          '⛔the brush cell, the group tab and the palette place are the '
+          'drag sources you must first STAND on. A fourth name here is '
+          'either a new standing '
           'surface — say so at the site — or F-126 quietly coming undone '
           'somewhere it was never the question',
     );
