@@ -253,8 +253,8 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a screen that draws nothing live makes no picture of a page '
-      'alone, and draws it as it stands', (tester) async {
+  testWidgets('a run — a screen that draws nothing live — makes no picture '
+      'of a page alone, and draws it as it stands', (tester) async {
     final nodes = rowOn(cel);
     final (cels: _, :run, :store) = aPage(() => nodes);
     final blank = run.pictures.keyOfStack(nodes, page);
@@ -269,8 +269,6 @@ void main() {
           picture: page,
           nodes: nodes,
           viewport: view,
-          laysWhatItMisses: true,
-          wholeFrames: false,
         ),
       ),
     );
