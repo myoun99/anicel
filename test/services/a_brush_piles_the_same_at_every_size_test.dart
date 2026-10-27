@@ -218,6 +218,9 @@ void main() {
       // its flow fell from 0.9 to 0.35 with the other pencils', so the paper
       // still shows through a stroke laid once.
       'builtin-shading-pencil': 0.0857,
+      // I-75 (10-27): the blur, made since — how far one dab at its own
+      // size moves the picture toward its blur, not what it laid before.
+      'builtin-blur': 0.0853,
     };
     final byId = {for (final p in defaultBrushPresets) p.id.value: p};
     for (final preset in defaultBrushPresets) {
