@@ -323,8 +323,8 @@ class _StaticCommandGroup extends StatelessWidget {
   final WidgetBuilder builder;
 
   /// Whether what [builder] makes lays its own zones
-  /// ([CommandGroupZone]) — the cut pill's, round its name — rather than
-  /// baking whole here.
+  /// ([CommandGroupZone]) — the frame pill's, round its groups — rather
+  /// than baking whole here.
   final bool zoned;
 
   @override
@@ -928,7 +928,8 @@ class TimelineActionToolbar extends StatelessWidget {
   /// 🚨Nothing on it outside its groups shows a value but its name: the
   /// pill holds zones of its own (the groups below), so it cannot bake
   /// whole as the layer pill does — a bake inside a bake freezes — and is
-  /// built again only for its name, in a zone of its own, as the cut pill.
+  /// built again only for its name, in a zone of its own. ↩️The cut pill
+  /// was zoned too, round the cut's name (F-463 ④ to F-491).
   /// ↩️The name was a group of its own inside the pill, built where the
   /// pill could not see it, so the tail paid an icon's 5 after a word's 7
   /// (frame-pill-tail-breath-regressed — 유저 #7 again).
@@ -1244,7 +1245,8 @@ class TimelineActionToolbar extends StatelessWidget {
         // nowhere to make one, and a bake keyed on the language alone kept
         // the ＋ lit through it.
         // 🗣️F-463 ⑥: 「컷쪽은 컷알약까지 최소폭」 — the least of the pills
-        // the bar shows ([FoldFloor]).
+        // the bar shows ([FoldFloor]), and the transport before them is
+        // kept with it (F-491).
         FoldFloor(
           child: _StaticCommandGroup(
             news: _news,
@@ -1253,7 +1255,6 @@ class TimelineActionToolbar extends StatelessWidget {
               session.cutPlacement.canCreateCut,
             ),
             builder: (context) => CutCommandGroup(session: session),
-            zoned: true,
           ),
         ),
         const SizedBox(width: 6),

@@ -237,6 +237,7 @@ void main() {
                       zooms.add(value);
                       zoom.value = value;
                     },
+                    cutName: const AlwaysStoppedAnimation<String>(''),
                   ),
                 ),
               ],

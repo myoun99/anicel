@@ -8,9 +8,9 @@ import '../widgets/tick_layer.dart';
 import 'timeline_view_cluster.dart';
 
 /// The ONE command-bar row both frame panels wear, in TWO groups (F-463):
-/// the panel's action controls on the left, and on the right the panel's
-/// transport with the shared `TimelineViewCluster` after it, in a row of a
-/// FIXED height.
+/// on the left the panel's transport and its action controls after it
+/// (F-491), and on the right the shared `TimelineViewCluster` — the cut's
+/// name, the zoom and its fit — in a row of a FIXED height.
 ///
 /// Fixed, and that is the whole point. The timeline and the storyboard used
 /// to MEASURE their own bars and land on different numbers — 54 against 36
@@ -59,7 +59,9 @@ class TimelineCommandBar extends StatelessWidget {
 
   static const EdgeInsets padding = EdgeInsets.fromLTRB(8, 4, 8, 4);
 
-  /// The gap between the bar's edge and the first pill, on TOP of [padding].
+  /// The inset the host's controls stand in, on TOP of [padding] — the gap
+  /// between the bar's edge and the first pill until F-491 put the
+  /// transport before them.
   ///
   /// It belongs to the bar rather than to whatever is handed in, which is
   /// ⑫ (user, 2026-08-12: 「타임라인과 스토리보드의 버튼 패딩이 다르다 —
@@ -70,22 +72,26 @@ class TimelineCommandBar extends StatelessWidget {
   /// got it twice.
   static const double leadingInset = 2;
 
-  /// The panel's transport, in the bar's right group before the cluster —
-  /// 🗣️F-463 (유저 2026-10-25): 「재생버튼쪽은 오른쪽에 줌쪽 버튼이랑
-  /// 같은묶음. 즉 왼쪽/오른쪽 총 두 묶음으로」. Outside the overflow
-  /// scroller, so a scrolled pill row does not move it, and the fold, which
-  /// keeps the bar, keeps it on screen.
+  /// The panel's transport, at the start of the bar's left group, before
+  /// the host's controls — 🗣️F-491 (유저 2026-10-27 23:15): 「다시 번복해서
+  /// 미안한데, 재생쪽은 역시 왼쪽 묶음의 제일 왼쪽으로 옮기도록. 이유는
+  /// 재생쪽이 충분히 컴팩트해져서 가능하고 왼쪽이 더 보기쉬워서 … 왼쪽묶음은
+  /// 기존 버튼들에 왼쪽에 아까말한 재생버튼들 넣는느낌」. Outside the pills'
+  /// overflow scroller, so a scrolled pill row does not move it, and kept
+  /// with the cut pill when the bar narrows ([FoldFloor]).
   ///
-  /// ↩️It was KEPT at the bar's start (유저 2026-10-08, F-111-Q1 「버튼행 맨
-  /// 왼쪽에 고정 — 알약 칸 밖」), and before that it stood on the region's
-  /// 문턱 from 2026-08-10 (「왼쪽 정렬이면 패널을 추가할 때 재생 버튼이
-  /// 밀린다」 — it had led this bar's scrolling row, and slid as the row
-  /// changed shape). At the bar's end it is where it was for that reason
-  /// too: 「존재할 거면 늘 그 자리에」.
+  /// ↩️It stood in the bar's right group before the cluster from F-463
+  /// (유저 2026-10-25: 「재생버튼쪽은 오른쪽에 줌쪽 버튼이랑 같은묶음. 즉
+  /// 왼쪽/오른쪽 총 두 묶음으로」). Before that it was KEPT at the bar's
+  /// start, as now (유저 2026-10-08, F-111-Q1 「버튼행 맨 왼쪽에 고정 — 알약
+  /// 칸 밖」), and before that it stood on the region's 문턱 from 2026-08-10
+  /// (「왼쪽 정렬이면 패널을 추가할 때 재생 버튼이 밀린다」 — it had led this
+  /// bar's scrolling row, and slid as the row changed shape): 「존재할 거면
+  /// 늘 그 자리에」.
   final Widget? transport;
 
-  /// The host's own controls (actions, cut group) — the bar's left group.
-  /// Null leaves the bar's start empty.
+  /// The host's own controls (actions, cut group) — the rest of the bar's
+  /// left group, after the transport. Null leaves the transport alone there.
   ///
   /// Handed in as a plain ROW: the bar pads it and gives it the overflow
   /// scroller. That was the other half of ⑫ — a `leading` that scrolled
@@ -138,14 +144,18 @@ class TimelineCommandBar extends StatelessWidget {
 /// ↩️The layer was the frame counter's, which read the cursor and moved
 /// the row with its width (I-22 ③), until F-463 took the counter off.
 ///
-/// The two groups give way as [FloorFoldRow] lays them: the pills first,
-/// down to the cut pill ([FoldFloor], 「컷알약까지 최소폭」), then the
-/// transport and the zoom, as one, down to the transport's first button —
-/// the zoom's end hidden first (F-463-Q1, 유저 10-27 20:2x: 「오른쪽묶음은
-/// 오른쪽묶음에서 제일 왼쪽이 남는구조」), each group in a scroller of its
-/// own — and below that both, smaller. ↩️「묶음 안에서 재생 · 줌이 따로」
-/// (15:23) gave the transport and the zoom a scroller each. In a 360px
-/// window the timeline's bar had 248px for its two ends' 252
+/// The two groups give way as [FloorFoldRow] lays them: the left first,
+/// its pills hidden from its end down to the cut pill ([FoldFloor] —
+/// 「컷알약까지 최소폭」, with the transport before it), then the right,
+/// hidden from its START down to the zoom fit and what stands after it
+/// (🗣️F-491 23:15: 「오른쪽 묶음 줄기시작할때, 지금 스크롤의 제일 왼쪽이
+/// 마지막에 남을텐데, 그게아니라 오른쪽이 마지막에 남도록. 즉 지금으로 치면
+/// fit버튼」) — each group in a scroller of its own — and below that both,
+/// smaller. ↩️The right group was the transport and the zoom, kept by the
+/// transport's first button (F-463-Q1, 10-27 20:2x: 「오른쪽묶음은
+/// 오른쪽묶음에서 제일 왼쪽이 남는구조」), and (15:23) 「묶음 안에서 재생 ·
+/// 줌이 따로」 gave the two a scroller each. In a 360px window the
+/// timeline's bar had 248px for its two ends' 252
 /// (`timeline-row-overflows-at-360`, measured 2026-10-14) — a row too
 /// narrow for what it keeps never runs off.
 class _BarFrame extends StatelessWidget {
@@ -161,40 +171,61 @@ class _BarFrame extends StatelessWidget {
       padding: TimelineCommandBar.padding,
       child: FloorFoldRow(
         gap: TimelineCommandBar._gap,
-        headPadding: leading ? 2 * TimelineCommandBar.leadingInset : 0,
-        head: leading
-            ? const Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: TimelineCommandBar.leadingInset,
-                ),
-                // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
-                // 스크롤바」): the app's bar exists only while the row
-                // overflows and costs no layout when it does not.
-                // ↩️The host's controls stood on a layer of their own here
-                // (I-57, 10-14): the counter and the cut name beside the zoom
-                // changed their widths, moved the row, and the scroller laid
-                // out at its new width painted the controls again — 🔬86
-                // render objects of the storyboard's toolbar the frame after
-                // every crossing. Nothing on the bar changes its width with
-                // playback since F-463: the counter is gone, and the cut's
-                // name is the cut pill's, in a place of its own width.
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: _Seat(_Piece.leading),
-                ),
-              )
-            : null,
-        tail: transport
-            ? const SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: TimelineCommandBar._gap,
-                  children: [_Seat(_Piece.transport), _Seat(_Piece.cluster)],
-                ),
-              )
-            : const _Seat(_Piece.cluster),
+        headPadding: leading ? TimelineCommandBar.leadingInset : 0,
+        // The transport is kept whole: a floor of its own, which the cut
+        // pill's reaches past where the pills hold one.
+        head: switch ((transport, leading)) {
+          (true, true) => const Row(
+            children: [
+              FoldFloor(child: _Seat(_Piece.transport)),
+              Expanded(child: _PillStrip(after: TimelineCommandBar._gap)),
+            ],
+          ),
+          (true, false) => const Row(
+            children: [FoldFloor(child: _Seat(_Piece.transport))],
+          ),
+          (false, true) => const _PillStrip(after: 0),
+          (false, false) => null,
+        },
+        // Reversed: it stands at its end, and hides from its start.
+        tail: const SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true,
+          child: _Seat(_Piece.cluster),
+        ),
       ),
+    ),
+  );
+}
+
+/// The host's controls in the bar's left group, in the bar's inset and an
+/// overflow scroller of their own — [after] the transport's gap, inside the
+/// strip, so a strip given way to nothing leaves the transport its place.
+class _PillStrip extends StatelessWidget {
+  const _PillStrip({required this.after});
+
+  final double after;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(
+      left: after + TimelineCommandBar.leadingInset,
+      right: TimelineCommandBar.leadingInset,
+    ),
+    // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는 스크롤바」):
+    // the app's bar exists only while the row overflows and costs no layout
+    // when it does not.
+    // ↩️The host's controls stood on a layer of their own here (I-57,
+    // 10-14): the counter and the cut name beside the zoom changed their
+    // widths, moved the row, and the scroller laid out at its new width
+    // painted the controls again — 🔬86 render objects of the storyboard's
+    // toolbar the frame after every crossing. Nothing on the bar changes its
+    // width with playback since F-463: the counter is gone, and the cut's
+    // name stands in a place of its own width — the cut pill's until F-491,
+    // the head of the right group's since.
+    child: const SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: _Seat(_Piece.leading),
     ),
   );
 }

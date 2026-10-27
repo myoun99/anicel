@@ -185,8 +185,9 @@ class CommandPill extends StatelessWidget {
 ///
 /// Siblings, never nesting — a bake inside a bake is the one thing that
 /// freezes, and a tick layer inside one keeps it from baking at all. So a
-/// pill with something that ticks in it (the cut's name, F-463 ④) is zoned
-/// round it, a zone on either side.
+/// pill with bakes of its own in it (the frame pill's groups), or with
+/// something that ticks in it (the cut's name did, F-463 ④ to F-491), is
+/// zoned round them, a zone on either side.
 class CommandGroupZone extends StatelessWidget {
   const CommandGroupZone({super.key, required this.child});
 

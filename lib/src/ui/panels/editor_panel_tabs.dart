@@ -114,8 +114,8 @@ class EditorPanelTab {
   // 유저 확정 2026-08-10): the frame panels' transport and settings pill,
   // right-aligned ahead of the group's own [EditorPanelTabs.trailing]. The
   // settings went to the top strip and the transport to the head of the
-  // panel's own bar (F-111-Q1, 10-08) — its right group since F-463 — and
-  // no tab put anything there.
+  // panel's own bar (F-111-Q1, 10-08) — its right group from F-463, its
+  // left group's head since F-491 — and no tab put anything there.
 
   /// How tall this panel needs to be when the region is COLLAPSED — see
   /// [PanelCollapsedScope] for why the shell owns this at all.

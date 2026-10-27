@@ -123,7 +123,9 @@ void main() {
               height: rowHeight,
               child: FloorFoldRow(
                 gap: gap,
-                headPadding: 2 * padding,
+                // The padding after the floor: the one before it is where the
+                // floor stands in its group.
+                headPadding: padding,
                 head: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: padding),
                   child: SingleChildScrollView(
@@ -296,23 +298,49 @@ void main() {
 
   // ↩️F-463-Q1's 「묶음 안에서 재생 · 줌이 따로」 (15:23) gave this row a
   // middle group, the tail and it giving way in turn, until the answer
-  // became one right group (20:2x).
-  group('🗣️F-463-Q1 (유저 10-27 20:2x: 「오른쪽묶음은 오른쪽묶음에서 제일 '
-      '왼쪽이 남는구조」): past the head\'s floor the TAIL gives way, down to '
-      'its own floor — kept by its start, as the head is', () {
+  // became one right group (20:2x), kept by its start until F-491.
+  group('🗣️F-491 (유저 10-27 23:15: 「오른쪽이 마지막에 남도록 … 왼쪽묶음은 '
+      '… 제일 왼쪽것이 마지막으로 남는구조」): past the head\'s floor the TAIL '
+      'gives way, down to its own floor — the head kept by its start, the '
+      'tail by its end', () {
+    const lead = ValueKey<String>('lead');
     const headFloor = ValueKey<String>('head-floor');
     const tailFloor = ValueKey<String>('tail-floor');
     const gap = 8.0;
 
-    /// A group 100 wide in a scroller of its own — its [floor] the first 30
-    /// of it.
-    Widget group(Key floor) => SingleChildScrollView(
+    /// The head: 20 that stand before its floor, the floor's 30, and 70
+    /// after — the last in a scroller of its own, as the bar's pills after
+    /// its transport.
+    Widget head() => const Row(
+      children: [
+        SizedBox(key: lead, width: 20, height: 10),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FoldFloor(
+                  child: SizedBox(key: headFloor, width: 30, height: 10),
+                ),
+                SizedBox(width: 70, height: 10),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+
+    /// The tail: 70, then its floor's 30 — in a scroller that stands at
+    /// its end.
+    Widget tail() => const SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      reverse: true,
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          FoldFloor(child: SizedBox(key: floor, width: 30, height: 10)),
-          const SizedBox(width: 70, height: 10),
+          SizedBox(width: 70, height: 10),
+          FoldFloor(child: SizedBox(key: tailFloor, width: 30, height: 10)),
         ],
       ),
     );
@@ -326,11 +354,7 @@ void main() {
               child: SizedBox(
                 width: width,
                 height: rowHeight,
-                child: FloorFoldRow(
-                  gap: gap,
-                  head: group(headFloor),
-                  tail: group(tailFloor),
-                ),
+                child: FloorFoldRow(gap: gap, head: head(), tail: tail()),
               ),
             ),
           ),
@@ -346,29 +370,30 @@ void main() {
       await pumpRow(tester, 250);
 
       expect(tester.takeException(), isNull);
-      expect(tester.getRect(groupOf(headFloor)).width, 250 - gap - 100);
+      expect(tester.getRect(groupOf(headFloor)).width, 250 - gap - 100 - 20);
       expect(
         tester.getRect(groupOf(tailFloor)),
         const Rect.fromLTWH(150, 15, 100, 10),
       );
     });
 
-    testWidgets('narrower, the head at its floor, the tail gives way from '
-        'its END — its floor whole at its start, the rest its own to '
-        'scroll', (tester) async {
-      // The head at its 30; the tail is left 120 − 30 − 8.
-      await pumpRow(tester, 120);
+    testWidgets('narrower, the head at its floor — what stands before it '
+        'kept too — and the tail gives way from its START: its floor whole '
+        'at its end, the rest its own to scroll', (tester) async {
+      // The head at its 20 + 30; the tail is left 140 − 50 − 8.
+      await pumpRow(tester, 140);
 
       expect(tester.takeException(), isNull);
+      expect(tester.getRect(find.byKey(lead)).left, 0);
       expect(tester.getRect(groupOf(headFloor)).width, 30);
       expect(
         tester.getRect(groupOf(tailFloor)),
-        const Rect.fromLTWH(38, 15, 82, 10),
+        const Rect.fromLTWH(58, 15, 82, 10),
       );
       expect(
         tester.getRect(find.byKey(tailFloor)),
-        const Rect.fromLTWH(38, 15, 30, 10),
-        reason: 'its floor whole, at its start',
+        const Rect.fromLTWH(110, 15, 30, 10),
+        reason: 'its floor whole, at its end',
       );
       final hidden = tester
           .state<ScrollableState>(
@@ -378,8 +403,12 @@ void main() {
             ),
           )
           .position;
-      expect(hidden.pixels, 0, reason: 'shown from its start');
-      expect(hidden.maxScrollExtent, 100 - 82, reason: 'its end to scroll to');
+      expect(hidden.pixels, 0, reason: 'shown from its end');
+      expect(
+        hidden.maxScrollExtent,
+        100 - 82,
+        reason: 'its start to scroll to',
+      );
     });
 
     testWidgets('🚨below both floors, both of them at their floors, smaller '
@@ -388,7 +417,7 @@ void main() {
       await pumpRow(tester, width);
 
       expect(tester.takeException(), isNull);
-      const factor = width / (30 + gap + 30);
+      const factor = width / (20 + 30 + gap + 30);
       for (final floor in [headFloor, tailFloor]) {
         final group = tester.getRect(groupOf(floor));
         expect(group.width, moreOrLessEquals(30 * factor), reason: '$floor');
@@ -401,7 +430,12 @@ void main() {
         );
       }
       expect(tester.getRect(groupOf(tailFloor)).right, moreOrLessEquals(width));
-      expect(tester.getRect(groupOf(headFloor)).left, 0);
+      expect(tester.getRect(find.byKey(lead)).left, 0);
+      expect(
+        tester.getRect(find.byKey(lead)).width,
+        moreOrLessEquals(20 * factor),
+        reason: 'what stands before the head\'s floor, smaller with it',
+      );
     });
   });
 }

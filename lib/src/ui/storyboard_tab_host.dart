@@ -173,8 +173,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// on it hears its own gates ([toolbarGateNews]).
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptToolbar = {};
 
-  /// The transport in the bar's right group (F-463), kept as the timeline
-  /// host keeps its own — what its buttons show, they hear themselves.
+  /// The transport at the head of the bar's left group (F-491), kept as the
+  /// timeline host keeps its own — what its buttons show, they hear
+  /// themselves.
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
 
   // ⛔The storyboard's playhead channel is the SESSION's now
@@ -508,7 +509,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       unawaited(editOnPanel(context, _session, panel: _toolbarPanel));
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
-  /// copy of it: the cut group left, the transport and the view cluster right.
+  /// copy of it: the transport and the cut group left, the view cluster
+  /// right (F-491).
   Widget _commandBar(BuildContext context) {
     return TimelineCommandBar(
       // The same transport the timeline's bar leads with — a different
@@ -529,10 +531,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // ⛔The TRANSPORT and the camera-view toggle are not in this row:
-          // the bar seats them in its right group, outside this row's scroller
-          // (F-463; F-111-Q1 pinned them at its head). ↩️They stood on the 문턱
-          // from 2026-08-10. What stays here is what reaches into THIS panel's
-          // own contents.
+          // the bar seats them at the head of its left group, outside this
+          // row's scroller (F-491; in its right group from F-463, at its head
+          // from F-111-Q1). ↩️They stood on the 문턱 from 2026-08-10. What
+          // stays here is what reaches into THIS panel's own contents.
           //
           // ★THE SAME FOUR PILLS the timeline mounts — literally the same
           // widget (유저: 스토리보드 레이어의 프레임을 조절해야 하고 레이어도
@@ -595,6 +597,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           onZoomFit: widget.onZoomFit,
+          cutName: _session.cutUnderPlayhead.cutName,
           trailing: null,
         ),
         () => TimelineViewCluster(
@@ -602,6 +605,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           onZoomFit: widget.onZoomFit,
+          cutName: _session.cutUnderPlayhead.cutName,
         ),
       ),
     );

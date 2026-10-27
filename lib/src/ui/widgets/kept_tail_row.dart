@@ -63,26 +63,29 @@ class KeptTailRow extends StatelessWidget {
 ///
 /// 🗣️F-463 ⑥ (유저 2026-10-25 16:46): 「각 묶음마다 최소길이가 있어서 그
 /// 길이만큼까지만 줄고, 그 이상으로 줄때 전체적으로 작아짐. 우선 컷쪽은
-/// 컷알약까지 최소폭 … 먼저 컷/레이어/프레임쪽 줄어들고」 · (17:15)
-/// 「왼쪽묶음에 전처럼 컷/레이어/프레임/fx 등을 한 묶음, 재생버튼쪽은
-/// 오른쪽에 줌쪽 버튼이랑 같은묶음」. The [head] is the pills: it takes the
-/// room the [tail] leaves, down to its floor — the [FoldFloor] inside it,
-/// and [headPadding] round that. The [tail] is the transport and the zoom,
-/// at its own width at the row's end; once the head stands at its floor
-/// the tail gives way too, down to the [FoldFloor] inside it (a tail with
-/// none keeps its own width). Where the row cannot hold both floors, both
-/// are shown smaller by ONE factor. The tail is laid out at the width it is
-/// left: what does not stand in it is its own to scroll.
+/// 컷알약까지 최소폭 … 먼저 컷/레이어/프레임쪽 줄어들고」. The [head] takes
+/// the room the [tail] leaves, down to its floor — from its start to the
+/// end of the [FoldFloor] inside it, and [headPadding] after that. The
+/// [tail] stands at its own width at the row's end; once the head stands at
+/// its floor the tail gives way too, down to its floor — from the start of
+/// the [FoldFloor] inside it to its end (a tail with none keeps its own
+/// width). Where the row cannot hold both floors, both are shown smaller
+/// by ONE factor. The tail is laid out at the width it is left: what does
+/// not stand in it is its own to scroll.
 ///
-/// 🗣️F-463-Q1 (유저 2026-10-27 20:2x): 「재생이랑 줌을 같은 묶음으로
-/// 오른쪽묶음으로서 하고싶은건데」 · 「줌쪽부터 가려지도록. 즉 왼쪽묶음은
-/// 마지막에 왼쪽이 남고, 오른쪽묶음은 오른쪽묶음에서 제일 왼쪽이 남는구조」
-/// — the tail is ONE group, kept by its first button as the head is by its
-/// first pill. ↩️The answer was 「묶음 안에서 재생 · 줌이 따로」 (15:23): the
-/// zoom gave way down to its last button and then the transport down to
-/// its first, in a scroller each, as a middle group here. ↩️And before
-/// that the transport and the zoom were one tail that did not give way,
-/// only shown smaller.
+/// 🗣️F-491 (유저 2026-10-27 23:15): 「재생쪽은 역시 왼쪽 묶음의 제일
+/// 왼쪽으로 옮기도록 … 오른쪽묶음엔 컷이름/줌/fit 이순서로 남도록. 그리고
+/// 공간 좁아서 오른쪽 묶음 줄기시작할때, 지금 스크롤의 제일 왼쪽이 마지막에
+/// 남을텐데, 그게아니라 오른쪽이 마지막에 남도록 … 왼쪽묶음은 … 줄어들때도
+/// 같은룰대로 제일 왼쪽것이 마지막으로 남는구조」 — the head is the
+/// transport and the pills, kept by its start; the tail is the cut's name,
+/// the zoom and its fit, kept by its end. ↩️F-463 ⑥ (17:15: 「왼쪽묶음에
+/// 전처럼 컷/레이어/프레임/fx 등을 한 묶음, 재생버튼쪽은 오른쪽에 줌쪽
+/// 버튼이랑 같은묶음」) and F-463-Q1 (20:2x: 「오른쪽묶음은 오른쪽묶음에서
+/// 제일 왼쪽이 남는구조」) put the transport before the zoom in the tail,
+/// kept by its first button; (15:23) 「묶음 안에서 재생 · 줌이 따로」 kept
+/// each by a button of its own, as a middle group here; and before that
+/// the two were one tail that did not give way, only shown smaller.
 ///
 /// ↩️The bar was a [KeptTailRow] with the transport kept at its start: the
 /// pills took whatever the two ends left, down to nothing (F-111-Q2, 유저
@@ -107,8 +110,8 @@ class FloorFoldRow extends StatefulWidget {
   /// Between the head and the tail.
   final double gap;
 
-  /// What the head holds round its floor — the padding its scroller stands
-  /// in.
+  /// What the head holds past its floor's end — the padding its scroller
+  /// stands in on that side.
   final double headPadding;
 
   @override
@@ -137,10 +140,16 @@ class _FloorFoldRowState extends State<FloorFoldRow> {
 }
 
 /// What a [FloorFoldRow]'s group keeps when it gives way: the least of it
-/// that is shown — the cut pill of the frame panels' pills (「컷알약까지
-/// 최소폭」), the transport's first button. It stands where its group's
-/// scroller shows it at its floor; outside a [FloorFoldRow] it is its
-/// child alone.
+/// that is shown — reckoned from the end its group keeps, so what stands
+/// between that end and the floor is kept with it. The head keeps its
+/// start, down to its floor's end: the transport and the cut pill of the
+/// frame panels' left group (「컷알약까지 최소폭」 · F-491: the transport at
+/// its start). The tail keeps its end, down to its floor's start: the zoom
+/// fit and what stands after it (F-491: 「오른쪽이 마지막에 남도록. 즉
+/// 지금으로 치면 fit버튼」). Outside a [FloorFoldRow] it is its child alone.
+///
+/// ↩️The floor was its own width alone, at its group's start, until F-491
+/// put the transport before the cut pill.
 class FoldFloor extends SingleChildRenderObjectWidget {
   const FoldFloor({super.key, required Widget super.child});
 
@@ -150,15 +159,46 @@ class FoldFloor extends SingleChildRenderObjectWidget {
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) =>
-      (renderObject as _RenderFoldFloor).reading = _FloorScope.readingOf(
-        context,
-      );
+      (renderObject as _RenderFoldFloor).keepIn(_FloorScope.readingOf(context));
 }
 
-/// The width a [FoldFloor] was laid out at, for the row round it to read
-/// once it has laid its group out — null where its group holds none.
+/// Where a group's [FoldFloor]s stand, for the row round it to read once it
+/// has laid the group out — none where its group holds none.
 class _FloorReading {
-  double? width;
+  /// Each floor the group holds, at the width it was laid out at — its own
+  /// to say: the row may read the size of its group, not of what the group
+  /// holds.
+  final Map<_RenderFoldFloor, double> _widths = {};
+
+  /// How much of its group its floors keep, from the start ([fromTheEnd]
+  /// false) to the farthest floor's end, or from the farthest floor's start
+  /// to the end — in the group as it is laid out, unscrolled: a scroller
+  /// lays what it holds at its own origin and moves it only where it paints
+  /// it.
+  double? reach({required bool fromTheEnd}) {
+    double? farthest;
+    for (final MapEntry(key: floor, value: width) in _widths.entries) {
+      // Off the tree for now — moved, or folded away — it keeps nothing.
+      if (!floor.attached) {
+        continue;
+      }
+      RenderBox group = floor;
+      var start = 0.0;
+      for (
+        var parent = group.parent;
+        parent is RenderBox && parent is! _RenderFloorEnds;
+        parent = group.parent
+      ) {
+        if (group.parentData case final BoxParentData data) {
+          start += data.offset.dx;
+        }
+        group = parent;
+      }
+      final reach = fromTheEnd ? group.size.width - start : start + width;
+      farthest = math.max(farthest ?? reach, reach);
+    }
+    return farthest;
+  }
 }
 
 class _FloorScope extends InheritedWidget {
@@ -176,14 +216,29 @@ class _FloorScope extends InheritedWidget {
 }
 
 class _RenderFoldFloor extends RenderProxyBox {
-  _RenderFoldFloor(this.reading);
+  _RenderFoldFloor(this._reading);
 
-  _FloorReading? reading;
+  _FloorReading? _reading;
+
+  /// Where the floor says what it keeps — its group's reading.
+  void keepIn(_FloorReading? value) {
+    if (!identical(value, _reading)) {
+      _reading?._widths.remove(this);
+      _reading = value;
+      markNeedsLayout();
+    }
+  }
 
   @override
   void performLayout() {
     super.performLayout();
-    reading?.width = size.width;
+    _reading?._widths[this] = size.width;
+  }
+
+  @override
+  void dispose() {
+    _reading?._widths.remove(this);
+    super.dispose();
   }
 }
 
@@ -441,7 +496,8 @@ class _RenderFloorEnds extends _RenderScaledParts {
   /// ([room]), which is where its [FoldFloor] is measured.
   double _floorOf(RenderBox head, double room) {
     _layAt(head, math.max(0, room), size.height);
-    return (_readings[_Part.head]!.width ?? 0) + _headPadding;
+    return (_readings[_Part.head]!.reach(fromTheEnd: false) ?? 0) +
+        _headPadding;
   }
 
   /// [tail] laid out at its own size — where its [FoldFloor] is measured;
@@ -453,7 +509,8 @@ class _RenderFloorEnds extends _RenderScaledParts {
     return (
       fit: fit,
       own: own.width * fit,
-      floor: (_readings[_Part.tail]!.width ?? own.width) * fit,
+      floor:
+          (_readings[_Part.tail]!.reach(fromTheEnd: true) ?? own.width) * fit,
     );
   }
 

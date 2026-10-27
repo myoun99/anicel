@@ -1,7 +1,5 @@
 import 'dart:async' show unawaited;
-import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
@@ -17,12 +15,8 @@ import 'session/canvas_adjust.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'text/app_strings.dart';
-import 'text/text_measure.dart';
-import 'theme/app_theme.dart' show AppColors;
-import 'widgets/app_tooltip.dart';
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
-import 'widgets/tick_layer.dart';
 import 'timeline/layer_label_controls.dart'
     show layerMarkColor, layerMarkFlyoutEntries;
 
@@ -250,163 +244,67 @@ List<PanelFlyoutEntry> cutMenuEntries(
 class _CutCommandGroupState extends State<CutCommandGroup> {
   EditorSessionManager get session => widget.session;
 
-  /// 🚨Baked in TWO zones round the cut's name ([CommandGroupZone]): the
-  /// name ticks, and a tick layer inside a bake keeps it from baking — the
-  /// pill whole painted through on every frame it was asked for (🔬F-463,
-  /// `panel_static_raster_test`).
+  /// Baked whole, as the layer pill is. ↩️In TWO zones round the cut's name
+  /// ([CommandGroupZone]) from F-463 ④: the name ticked, and a tick layer
+  /// inside a bake kept the pill from baking (`panel_static_raster_test`).
+  /// The name stands at the head of the bar's right group since F-491
+  /// (`TimelineViewCluster`).
   @override
   Widget build(BuildContext context) {
     return CommandPill(
-      head: CommandGroupZone(
-        child: PillNameCell(
-          keyValue: 'cut-menu-button',
-          label: AppText.strings.tlCut,
-          tooltip: AppText.strings.cutCommands,
-          entriesBuilder: () => cutMenuEntries(context, session),
-        ),
+      head: PillNameCell(
+        keyValue: 'cut-menu-button',
+        label: AppText.strings.tlCut,
+        tooltip: AppText.strings.cutCommands,
+        entriesBuilder: () => cutMenuEntries(context, session),
       ),
-      children: [
-        _CutName(name: session.cutUnderPlayhead.cutName),
-        CommandGroupZone(child: _verbs()),
-      ],
+      children: _verbs(),
     );
   }
 
   /// The pill's verbs after the name.
-  Widget _verbs() => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      const PillDivider(),
-      // #18 — the button reads the SAME sentence the verb runs on
-      // ([CutPlacement.cutCreationPlan], the T25 law). The bare
-      // tear-off before this could never go null, so the button lit in
-      // exactly the states where pressing it did something other than
-      // it promised — a gap press appended at the track's end, and the
-      // frame buttons lit for that far-away cut. (Comment sits ABOVE
-      // the button, and names the add glyph only in prose: the ＋-accent
-      // source contract reads a ±320-char window around the glyph
-      // constant — prose between it and its `accent:` pushes the answer
-      // out of the window, and the constant's literal name inside a
-      // comment is a match of its own.)
-      StrapIconButton(
-        buttonKey: 'new-cut-button',
-        // `add` and not `add_photo_alternate`: which noun it adds is what
-        // the pill around it already says, and 「＋가 있는 모든 곳」 wears
-        // the same glyph (유저 확정).
-        icon: Icons.add,
-        accent: true,
-        // 🗣️I-40: this button IS the New cut action's entrance, so it
-        // wears that action's name and shows its key (I-19). No band
-        // ([newCutPress] has why).
-        tooltip: editorActionLabel(EditorActionIds.cutNew),
-        shortcuts: const [EditorActionIds.cutNew],
-        onPressed: newCutPress(session),
-      ),
-      // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
-      // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.
-      //
-      // This button was kept back once, and the reason is worth keeping
-      // because it is the reason that expired rather than a reason that
-      // was wrong: the shared delete reaches a cut through a cut
-      // SELECTION, the cut axis lives only on the storyboard, so removing
-      // this would leave the timeline unable to delete a cut at all — the
-      // same mistake as pulling the layer delete before ⑨ built row
-      // selection.
-      //
-      // 유저 2026-08-13 retired the premise, not the reasoning: 「타임라인
-      // 에서 컷 선택은 못해도되. 할필요도없어. **컷 편집은 스토리보드
-      // 패널에서 하는거고**」 — and the cut pill itself is only here 「일단
-      // 통일성으로」. A capability the timeline is not supposed to have is
-      // not a capability the timeline loses.
-    ],
-  );
-}
-
-/// The name of the cut the panel's playhead stands in, inside the cut pill
-/// right of its 「컷」 — 🗣️F-463 ④ (유저 2026-10-25): 「컷 번호 보여주는거만
-/// 컷 알약안에, 컷 버튼 오른쪽에 표시하도록 변경. 글자는 숫자+영어기준
-/// 5글자까지만 정상적으로 표시하도록. 그 이상은 생략. 호버하면 풀네임
-/// 뜨도록 툴팁표시」. ↩️It stood between the frame counter and the zoom's −
-/// (I-57, 유저 2026-10-01), up to 160px wide.
-///
-/// Its place is always laid, as wide as five of the widest digit or Latin
-/// letter and the `…` after them, and the name is what changes — a gap's
-/// empty name keeps it. A name past five characters keeps its first five;
-/// one in a wider script ends where the place does.
-class _CutName extends StatelessWidget {
-  const _CutName({required this.name});
-
-  final ValueListenable<String> name;
-
-  /// How many characters stand whole — 「숫자+영어기준 5글자」.
-  static const int _wholeCharacters = 5;
-
-  static const String _digitsAndLatin =
-      '${decimalDigits}ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-
-  /// The name cell's words ([PillNameCell]), the name's weight.
-  static const TextStyle _style = TextStyle(
-    fontSize: 11.5,
-    fontWeight: FontWeight.w600,
-    color: AppColors.text,
-  );
-
-  /// Between the name and the divider after it.
-  static const double _breath = 2;
-
-  static const String _ellipsis = '…';
-
-  static String _shown(String name) =>
-      name.characters.length > _wholeCharacters
-      ? '${name.characters.take(_wholeCharacters)}$_ellipsis'
-      : name;
-
-  /// A line of each script a name is written in, for the place's height.
-  static const List<String> _scripts = ['0', 'あ', '가'];
-
-  @override
-  Widget build(BuildContext context) {
-    final style = DefaultTextStyle.of(context).style.merge(_style);
-    final measure = TextMeasure(context, style);
-    final width = measure
-        .widest(
-          everyDigitIn(
-            (character) => '${character * _wholeCharacters}$_ellipsis',
-            digits: _digitsAndLatin,
-          ),
-        )
-        .ceilToDouble();
-    final height = _scripts
-        .map((line) => measure.size(line).height)
-        .reduce(math.max)
-        .ceilToDouble();
-    return Padding(
-      padding: const EdgeInsets.only(right: _breath),
-      child: SizedBox(
-        width: width,
-        height: height,
-        // 🚨ON A TICK LAYER (I-22 ③): a scrub crosses into another cut on a
-        // move, and the name turns over with it — inside the pill's bake it
-        // took the bake again and repainted the bar's strip at every
-        // crossing (`a_scrub_repaints_only_its_tick_layers_test`). Here it
-        // is drawn live, in a place of its own size.
-        child: TickLayer(
-          child: ValueListenableBuilder<String>(
-            valueListenable: name,
-            builder: (context, name, _) => AppTooltip(
-              message: name,
-              child: Text(
-                _shown(name),
-                key: const ValueKey<String>('timeline-cut-name'),
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: style,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  List<Widget> _verbs() => [
+    const PillDivider(),
+    // #18 — the button reads the SAME sentence the verb runs on
+    // ([CutPlacement.cutCreationPlan], the T25 law). The bare
+    // tear-off before this could never go null, so the button lit in
+    // exactly the states where pressing it did something other than
+    // it promised — a gap press appended at the track's end, and the
+    // frame buttons lit for that far-away cut. (Comment sits ABOVE
+    // the button, and names the add glyph only in prose: the ＋-accent
+    // source contract reads a ±320-char window around the glyph
+    // constant — prose between it and its `accent:` pushes the answer
+    // out of the window, and the constant's literal name inside a
+    // comment is a match of its own.)
+    StrapIconButton(
+      buttonKey: 'new-cut-button',
+      // `add` and not `add_photo_alternate`: which noun it adds is what
+      // the pill around it already says, and 「＋가 있는 모든 곳」 wears
+      // the same glyph (유저 확정).
+      icon: Icons.add,
+      accent: true,
+      // 🗣️I-40: this button IS the New cut action's entrance, so it
+      // wears that action's name and shows its key (I-19). No band
+      // ([newCutPress] has why).
+      tooltip: editorActionLabel(EditorActionIds.cutNew),
+      shortcuts: const [EditorActionIds.cutNew],
+      onPressed: newCutPress(session),
+    ),
+    // ⛔THE CUT DELETE IS GONE (T24, 유저 2026-08-13: 「컷알약 삭제버튼
+    // 일단 삭제. 공통버튼에 존재하니까」). ⑰'s one delete has it.
+    //
+    // This button was kept back once, and the reason is worth keeping
+    // because it is the reason that expired rather than a reason that
+    // was wrong: the shared delete reaches a cut through a cut
+    // SELECTION, the cut axis lives only on the storyboard, so removing
+    // this would leave the timeline unable to delete a cut at all — the
+    // same mistake as pulling the layer delete before ⑨ built row
+    // selection.
+    //
+    // 유저 2026-08-13 retired the premise, not the reasoning: 「타임라인
+    // 에서 컷 선택은 못해도되. 할필요도없어. **컷 편집은 스토리보드
+    // 패널에서 하는거고**」 — and the cut pill itself is only here 「일단
+    // 통일성으로」. A capability the timeline is not supposed to have is
+    // not a capability the timeline loses.
+  ];
 }

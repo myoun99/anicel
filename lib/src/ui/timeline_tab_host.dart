@@ -912,6 +912,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             onResetLaneGroup: (layer, lane) =>
                 _session.laneVerbs.resetLaneGroup(layer.id, lane.laneId),
             transport: timelineTransport,
+            cutName: _session.cutUnderPlayhead.cutName,
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
@@ -983,9 +984,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     TimelineActionToolbar,
     (ByIdentity(_session), BySet(widget.rail.hiddenSections)),
     // ⛔The TRANSPORT and the camera-view toggle are not on this toolbar:
-    // the bar seats them in its right group, outside the toolbar's scroller
-    // ([_buildTimelineTransport]). What is here is what reaches into THIS
-    // panel's own contents.
+    // the bar seats them at the head of its left group, outside the
+    // toolbar's scroller ([_buildTimelineTransport]; in its right group
+    // from F-463 to F-491). What is here is what reaches into THIS panel's
+    // own contents.
     () => TimelineActionToolbar(
       session: _session,
       // B8: this panel's dispatch context — the session's cut-local
@@ -1008,8 +1010,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     ),
   );
 
-  /// The transport in the bar's right group (F-463), kept while it is
-  /// built for this session — what its buttons show, they hear themselves.
+  /// The transport at the start of the bar's left group (F-491), kept while
+  /// it is built for this session — what its buttons show, they hear
+  /// themselves.
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
 
   Widget _buildTimelineTransport() => keptWhileSame(
@@ -1020,15 +1023,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   );
 
   /// The view cluster the bar wears with no cut to show: the panel's, with
-  /// nothing to zoom or fit. Its place is kept, so the transport beside it
-  /// in the bar's right group (F-463) stands where it stands with a cut —
-  /// ⛔없다가 생기는 UI. ↩️The gap's bar ended in nothing while the transport
-  /// led it (F-111-Q1).
+  /// nothing to zoom or fit. Its place is kept, so the bar's right group
+  /// stands where it stands with a cut — ⛔없다가 생기는 UI. ↩️The gap's bar
+  /// ended in nothing while the transport led it (F-111-Q1), and the
+  /// transport stood beside this cluster from F-463 to F-491.
   Widget _gapCluster() {
     Widget cluster(double pixelsPerFrame) => TimelineViewCluster(
       projectFrameRate: _session.projectSettings.projectFrameRate,
       pixelsPerFrame: pixelsPerFrame,
       onPixelsPerFrameChanged: null,
+      cutName: _session.cutUnderPlayhead.cutName,
       trailing: [
         TimelineOrientationToggle(
           orientation: widget.orientation,

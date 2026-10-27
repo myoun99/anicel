@@ -125,6 +125,7 @@ class TimelinePanel extends StatefulWidget {
     required this.orientation,
     required this.onOrientationChanged,
     this.transport,
+    this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.timelineActionToolbar,
     this.pixelsPerFrame = TimelinePanel.defaultPixelsPerFrame,
     this.onPixelsPerFrameChanged,
@@ -409,9 +410,13 @@ class TimelinePanel extends StatefulWidget {
   final TimelineOrientation orientation;
   final ValueChanged<TimelineOrientation> onOrientationChanged;
 
-  /// The panel's transport, at the head of its bar
+  /// The panel's transport, at the start of its bar's left group
   /// ([TimelineCommandBar.transport]).
   final Widget? transport;
+
+  /// The name of the cut the panel's playhead stands in, for the bar's
+  /// right group ([TimelineViewCluster.cutName]).
+  final ValueListenable<String> cutName;
 
   final Widget? timelineActionToolbar;
 
@@ -795,8 +800,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ONE command-bar row (R-toolbar round), and now literally the
-          // same widget the storyboard mounts: the host's action toolbar
-          // from its start, and the host's transport and the shared view
+          // same widget the storyboard mounts: the host's transport and its
+          // action toolbar from its start (F-491), and the shared view
           // cluster at its end (F-463).
           TimelineCommandBar(
             transport: widget.transport,
@@ -811,6 +816,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
+                cutName: widget.cutName,
                 // The orientation toggle below: what it shows, and where its
                 // press goes.
                 trailing: widget.orientation,
@@ -820,6 +826,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
+                cutName: widget.cutName,
                 trailing: [
                   TimelineOrientationToggle(
                     orientation: widget.orientation,

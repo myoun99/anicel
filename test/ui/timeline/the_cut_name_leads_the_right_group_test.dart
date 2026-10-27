@@ -11,7 +11,9 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/cut_command_group.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
@@ -22,11 +24,17 @@ import '../../helpers/timeline_host.dart';
 /// The tab as the app's window of 1600 × 1000 laid it.
 const _panel = Size(1003, 446);
 
-/// 🗣️F-463 ④ (유저 2026-10-25): 「컷 번호 보여주는거만 컷 알약안에, 컷
-/// 버튼 오른쪽에 표시하도록 변경. 글자는 숫자+영어기준 5글자까지만
+/// 🗣️F-491 (유저 2026-10-27): 「컷 이름 표시 역시 이게 아닌듯. 컷 버튼 옆에
+/// 있는데 너무 쓸데없이 공간차지함. 다른곳으로 이동하고싶음. 위치는 전처럼
+/// 오른쪽묶음의 제일 왼쪽에 위치. 정렬은 해당 위치에서 오른쪽정렬. 그리고 컷
+/// 이름 앞에 c 붙이도록. 즉 컷이름 500이면 c500 되도록」 · (23:15)
+/// 「오른쪽묶음엔 컷이름/줌/fit 이순서로 남도록」.
+///
+/// 🗣️F-463 ④ (유저 2026-10-25): 「글자는 숫자+영어기준 5글자까지만
 /// 정상적으로 표시하도록. 그 이상은 생략. 호버하면 풀네임 뜨도록
-/// 툴팁표시」. ↩️It stood between the frame counter and the zoom's −
-/// (I-57, 유저 2026-10-01) — the same on both tabs, as it is now.
+/// 툴팁표시」. ↩️It stood in the cut pill right of its 컷 from F-463 ④, and
+/// between the frame counter and the zoom's − before that (I-57, 유저
+/// 2026-10-01) — the same on both tabs, as it is now.
 void main() {
   Cut cut(String id, String name) => Cut(
     id: CutId(id),
@@ -36,7 +44,7 @@ void main() {
     layers: [Layer(id: LayerId('$id-layer'), name: 'A', frames: const [])],
   );
 
-  Project project({String first = 'c001', String second = 'c002'}) => Project(
+  Project project({String first = '001', String second = '002'}) => Project(
     id: const ProjectId('cut-name'),
     name: 'Cut name',
     createdAt: DateTime.utc(2026, 10, 1),
@@ -50,8 +58,7 @@ void main() {
   );
 
   const name = ValueKey<String>('timeline-cut-name');
-  const cutButton = ValueKey<String>('cut-menu-button');
-  const newCut = ValueKey<String>('new-cut-button');
+  const zoom = ValueKey<String>('timeline-zoom-readout');
 
   /// The tab alone — the timeline's ([pumpTimelineHost]) or the
   /// storyboard's ([pumpStoryboardHost]) — as the app's window of
@@ -73,31 +80,86 @@ void main() {
       )
       .message;
 
+  /// The bar's right group: the cut's name, the zoom and its fit.
+  final rightGroup = find.byType(TimelineViewCluster);
+
   for (final storyboard in [false, true]) {
     final tab = storyboard ? 'storyboard' : 'timeline';
 
-    testWidgets('the $tab names the cut inside its pill, right of 컷',
-        (tester) async {
+    testWidgets('the $tab names the cut with a c before it, at the head of '
+        'the bar\'s right group, out of the cut pill', (tester) async {
       final session = await open(tester, storyboard: storyboard);
 
       session.selectCut(const CutId('cut-a'));
       await tester.pumpAndSettle();
-      expect(shown(tester), 'c001');
+      expect(shown(tester), 'c001', reason: '「컷이름 500이면 c500」');
+      expect(
+        find.descendant(
+          of: find.byType(CutCommandGroup),
+          matching: find.byKey(name),
+        ),
+        findsNothing,
+        reason: '「컷 버튼 옆에 있는데 너무 쓸데없이 공간차지함」',
+      );
+      expect(
+        find.descendant(of: rightGroup, matching: find.byKey(name)),
+        findsOneWidget,
+      );
       final nameRect = tester.getRect(find.byKey(name));
-      expect(
-        tester.getRect(find.byKey(cutButton)).right,
-        lessThanOrEqualTo(nameRect.left),
-        reason: '「컷 버튼 오른쪽에」',
+      final zoomRect = tester.getRect(find.byKey(zoom));
+      final fitRect = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-zoom-fit-button')),
       );
       expect(
-        nameRect.right,
-        lessThanOrEqualTo(tester.getRect(find.byKey(newCut)).left),
-        reason: '「컷 알약안에」 — before the pill\'s ＋',
+        [nameRect.right <= zoomRect.left, zoomRect.right <= fitRect.left],
+        [isTrue, isTrue],
+        reason: '「오른쪽묶음엔 컷이름/줌/fit 이순서로」',
       );
+      final buttons = find.descendant(
+        of: rightGroup,
+        matching: find.byType(AppIconButton),
+      );
+      expect(buttons, findsWidgets, reason: '⛔전제');
+      for (final button in buttons.evaluate()) {
+        expect(
+          tester.getRect(find.byWidget(button.widget)).left,
+          greaterThanOrEqualTo(nameRect.right),
+          reason: '「오른쪽묶음의 제일 왼쪽에」: '
+              '${(button.widget as AppIconButton).keyValue} after it',
+        );
+      }
 
       session.selectCut(const CutId('cut-b'));
       await tester.pumpAndSettle();
       expect(shown(tester), 'c002', reason: 'the name follows the cut');
+    });
+
+    testWidgets('on the $tab, the name stands at its place\'s right, against '
+        'the zoom — a short one and the widest alike', (tester) async {
+      final session = await open(
+        tester,
+        storyboard: storyboard,
+        of: project(first: '1', second: 'WWWWW'),
+      );
+      session.selectCut(const CutId('cut-a'));
+      await tester.pumpAndSettle();
+      final short = tester.getRect(find.byKey(name));
+      final readout = tester.getRect(find.byKey(zoom));
+      expect(shown(tester), 'c1');
+
+      session.selectCut(const CutId('cut-b'));
+      await tester.pumpAndSettle();
+      final widest = tester.getRect(find.byKey(name));
+      expect(shown(tester), 'cWWWWW', reason: 'the widest five, whole');
+      expect(told(tester), 'cWWWWW');
+      expect(widest.width, greaterThan(short.width), reason: '⛔전제');
+      expect(short.right, widest.right, reason: '「오른쪽정렬」');
+      expect(
+        tester.getRect(find.byKey(zoom)),
+        readout,
+        reason: 'the place stays; only its words change',
+      );
+      expect(readout.left - widest.right, inInclusiveRange(0, 4));
     });
 
     testWidgets('on the $tab, five characters stand whole and a sixth is cut '
@@ -105,23 +167,12 @@ void main() {
       final session = await open(
         tester,
         storyboard: storyboard,
-        of: project(first: 'WWWWW', second: 'c00123'),
+        of: project(second: '001234'),
       );
-      session.selectCut(const CutId('cut-a'));
-      await tester.pumpAndSettle();
-      final five = tester.getRect(find.byKey(name));
-      expect(shown(tester), 'WWWWW', reason: 'the widest five, whole');
-      expect(told(tester), 'WWWWW');
-
       session.selectCut(const CutId('cut-b'));
       await tester.pumpAndSettle();
-      expect(shown(tester), 'c0012…', reason: '「그 이상은 생략」');
-      expect(told(tester), 'c00123', reason: '「호버하면 풀네임」');
-      expect(
-        tester.getRect(find.byKey(name)),
-        five,
-        reason: 'the place stays; only its words change',
-      );
+      expect(shown(tester), 'c00123…', reason: '「그 이상은 생략」');
+      expect(told(tester), 'c001234', reason: '「호버하면 풀네임」');
     });
 
     // 🗣️I-57, after seeing it (유저 2026-10-01): 「스크럽중에도 통일해서
@@ -176,9 +227,9 @@ void main() {
       session.frameScrub.scrubGlobalFrame(20);
       await tester.pump();
       final bar = tester.renderObject(find.byType(TimelineCommandBar));
-      // Inside the pill: the bar stands on one too.
+      // Inside the right group: the bar stands on one too.
       final own = find.descendant(
-        of: find.byType(CutCommandGroup),
+        of: rightGroup,
         matching: find.ancestor(
           of: find.byKey(name),
           matching: find.byType(TickLayer),
@@ -202,7 +253,7 @@ void main() {
     session.selectCut(const CutId('cut-a'));
     await tester.pumpAndSettle();
 
-    session.cutVerbs.renameCuts({const CutId('cut-a'): 'c010'});
+    session.cutVerbs.renameCuts({const CutId('cut-a'): '010'});
     await tester.pumpAndSettle();
 
     expect(shown(tester), 'c010');

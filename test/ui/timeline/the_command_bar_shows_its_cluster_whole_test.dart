@@ -54,12 +54,12 @@ void main() {
   final sides = TimelineCommandBar.padding.horizontal;
   const gap = 8.0;
 
-  /// The inset the leading's scroller stands in — the least a leading with
-  /// no [FoldFloor] in it is shown at.
-  const insets = 2 * TimelineCommandBar.leadingInset;
+  /// The inset after the leading's scroller — the least a leading with no
+  /// [FoldFloor] in it is shown at.
+  const inset = TimelineCommandBar.leadingInset;
 
-  /// The pills' overflow scroller — the bar's first: the transport and the
-  /// cluster stand in one of their own after it (F-463-Q1).
+  /// The pills' overflow scroller — the bar's first: the cluster stands in
+  /// one of its own after it (F-491).
   final pills = find.byType(SingleChildScrollView).first;
 
   for (final withLeading in [true, false]) {
@@ -73,7 +73,7 @@ void main() {
       expect(tester.takeException(), isNull);
       // Below the leading's floor — its inset, and the gap — all of it is
       // smaller by one factor (F-463 ⑥).
-      final kept = withLeading ? insets + gap : 0.0;
+      final kept = withLeading ? inset + gap : 0.0;
       final factor = (width - sides) / (kept + clusterWidth);
       final shown = tester.getRect(find.byKey(cluster));
       expect(shown.width, moreOrLessEquals(clusterWidth * factor));
@@ -85,9 +85,11 @@ void main() {
     });
   }
 
-  // 🗣️F-463 ⑥ (유저 2026-10-25 17:15): 「재생버튼쪽은 오른쪽에 줌쪽 버튼이랑
-  // 같은묶음」. ↩️F-111-Q1 pinned the transport at the bar's head.
-  group('with the transport beside the cluster (F-463)', () {
+  // 🗣️F-491 (유저 2026-10-27 23:15): 「재생쪽은 역시 왼쪽 묶음의 제일
+  // 왼쪽으로 옮기도록」. ↩️F-463 ⑥ (10-25 17:15: 「재생버튼쪽은 오른쪽에 줌쪽
+  // 버튼이랑 같은묶음」) stood it beside the cluster, and F-111-Q1 at the
+  // bar's head before that, as now.
+  group('with the transport at the bar\'s start (F-491)', () {
     const transport = ValueKey<String>('transport');
     const transportWidth = 236.0;
     const transportHeight = 28.0;
@@ -132,31 +134,31 @@ void main() {
         );
 
     testWidgets('where the bar holds them, the transport stands at its own '
-        'size before the cluster at the bar\'s end, and the pills\' scroller '
-        'from the bar\'s start', (tester) async {
+        'size at the bar\'s start, the pills\' scroller after it and the '
+        'cluster at the bar\'s end', (tester) async {
       const width = 800.0;
       await pumpBar(tester, width);
 
       final shown = tester.getRect(find.byKey(transport));
       final shownCluster = tester.getRect(find.byKey(cluster));
       expect(shown.size, const Size(transportWidth, transportHeight));
+      expect(shown.left, TimelineCommandBar.padding.left);
       expect(shownCluster.size, const Size(clusterWidth, clusterHeight));
       expect(
         shownCluster.right,
         width - TimelineCommandBar.padding.right,
       );
-      expect(shown.right, moreOrLessEquals(shownCluster.left - gap));
       final scroller = tester.getRect(pills);
-      expect(
-        scroller.width,
-        moreOrLessEquals(
-          width - sides - transportWidth - clusterWidth - 2 * gap - insets,
-        ),
-      );
       expect(
         scroller.left,
         moreOrLessEquals(
-          TimelineCommandBar.padding.left + TimelineCommandBar.leadingInset,
+          shown.right + gap + TimelineCommandBar.leadingInset,
+        ),
+      );
+      expect(
+        scroller.right,
+        moreOrLessEquals(
+          shownCluster.left - gap - TimelineCommandBar.leadingInset,
         ),
       );
       expect(
@@ -169,16 +171,17 @@ void main() {
       );
     });
 
-    testWidgets('🚨too narrow for the right group, the bar shows the '
-        'transport and the cluster all of each, smaller by one factor — none '
-        'of it runs off', (tester) async {
+    testWidgets('🚨too narrow for both ends, the bar shows the transport and '
+        'the cluster all of each, smaller by one factor — none of it runs '
+        'off', (tester) async {
       const width = 360.0;
       await pumpBar(tester, width);
 
       expect(tester.takeException(), isNull);
       final factor =
           (width - sides) /
-          (insets + gap + transportWidth + gap + clusterWidth);
+          (transportWidth + TimelineCommandBar.leadingInset + gap +
+              clusterWidth);
       final shownTransport = tester.getRect(find.byKey(transport));
       final shownCluster = tester.getRect(find.byKey(cluster));
       expect(
@@ -187,12 +190,17 @@ void main() {
       );
       expect(shownCluster.width, moreOrLessEquals(clusterWidth * factor));
       expect(
-        shownTransport.right,
-        moreOrLessEquals(shownCluster.left - gap * factor),
+        shownTransport.left,
+        moreOrLessEquals(TimelineCommandBar.padding.left),
       );
       expect(
         shownCluster.right,
         moreOrLessEquals(width - TimelineCommandBar.padding.right),
+      );
+      expect(
+        shownTransport.right,
+        lessThanOrEqualTo(shownCluster.left),
+        reason: 'nothing run over',
       );
     });
   });
@@ -209,7 +217,7 @@ void main() {
     final scroller = tester.getRect(pills);
     expect(
       scroller.width,
-      moreOrLessEquals(width - sides - clusterWidth - gap - insets),
+      moreOrLessEquals(width - sides - clusterWidth - gap - 2 * inset),
     );
     final middle = tester.getRect(find.byType(TimelineCommandBar)).center.dy;
     expect(shown.center.dy, moreOrLessEquals(middle));

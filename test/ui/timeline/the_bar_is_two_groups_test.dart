@@ -19,20 +19,25 @@ import '../../helpers/rail_group_button.dart';
 import '../../helpers/storyboard_host.dart';
 import '../../helpers/timeline_host.dart';
 
-/// 🗣️F-463 ⑥ (유저 2026-10-25 17:15): 「왼쪽묶음에 전처럼 컷/레이어/
-/// 프레임/fx 등을 한 묶음, 재생버튼쪽은 오른쪽에 줌쪽 버튼이랑 같은묶음.
-/// 즉 왼쪽/오른쪽 총 두 묶음으로 변경」 — and (16:46) 「각 묶음마다
-/// 최소길이가 있어서 … 우선 컷쪽은 컷알약까지 최소폭 … 먼저
-/// 컷/레이어/프레임쪽 줄어들고」: each frame panel's bar is the pills, in
-/// their overflow scroller, and the transport and the zoom at its end. The
-/// pills give way first, down to the cut pill, then the transport and the
-/// zoom as one, from the zoom's end down to the transport's first button
-/// (F-463-Q1, 10-27 20:2x: 「줌쪽부터 가려지도록. 즉 왼쪽묶음은 마지막에
-/// 왼쪽이 남고, 오른쪽묶음은 오른쪽묶음에서 제일 왼쪽이 남는구조」); below
-/// that both are shown smaller. ⑤ 「카메라버튼은 루프버튼 오른쪽에」.
+/// 🗣️F-491 (유저 2026-10-27 23:15): 「다시 번복해서 미안한데, 재생쪽은 역시
+/// 왼쪽 묶음의 제일 왼쪽으로 옮기도록 … 오른쪽묶음엔 컷이름/줌/fit
+/// 이순서로 남도록. 그리고 공간 좁아서 오른쪽 묶음 줄기시작할때, 지금
+/// 스크롤의 제일 왼쪽이 마지막에 남을텐데, 그게아니라 오른쪽이 마지막에
+/// 남도록. 즉 지금으로 치면 fit버튼. 왼쪽묶음은 기존 버튼들에 왼쪽에 아까말한
+/// 재생버튼들 넣는느낌. 줄어들때도 같은룰대로 제일 왼쪽것이 마지막으로
+/// 남는구조」 — and F-463 ⑥ (16:46) 「각 묶음마다 최소길이가 있어서 … 우선
+/// 컷쪽은 컷알약까지 최소폭 … 먼저 컷/레이어/프레임쪽 줄어들고」: each frame
+/// panel's bar is the transport and the pills after it, in their overflow
+/// scroller, and the cut's name, the zoom and its fit at its end. The pills
+/// give way first, down to the cut pill, the transport kept before it, then
+/// the right group from its start down to the fit; below that both are
+/// shown smaller. ⑤ 「카메라버튼은 루프버튼 오른쪽에」.
 ///
-/// ↩️F-111-Q1 (10-08 「버튼행 맨 왼쪽에 고정 — 알약 칸 밖」) pinned the
-/// transport at the bar's start; the transport still stands outside the
+/// ↩️F-463 ⑥ (17:15) 「재생버튼쪽은 오른쪽에 줌쪽 버튼이랑 같은묶음」 and
+/// F-463-Q1 (20:2x) 「오른쪽묶음은 오른쪽묶음에서 제일 왼쪽이 남는구조」
+/// stood the transport before the zoom, kept by its first button.
+/// F-111-Q1 (10-08 「버튼행 맨 왼쪽에 고정 — 알약 칸 밖」) pinned the
+/// transport at the bar's start before that, as now; it stands outside the
 /// pills' scroller, and the region's 문턱 still holds its tabs and its ⌃
 /// alone (F-111).
 ///
@@ -63,8 +68,8 @@ void main() {
   Finder barOf(Finder piece) =>
       find.ancestor(of: piece, matching: find.byType(TimelineCommandBar));
 
-  /// The pills' overflow scroller on [bar] — its first: the transport and
-  /// the zoom stand in one of their own after it (F-463-Q1).
+  /// The pills' overflow scroller on [bar] — its first: the right group
+  /// stands in one of its own after it (F-491).
   Finder scrollerOn(Finder bar) => find
       .descendant(of: bar, matching: find.byType(SingleChildScrollView))
       .first;
@@ -97,9 +102,11 @@ void main() {
       find.descendant(of: bar, matching: find.byType(TimelineViewCluster));
 
   for (final panel in panels) {
-    testWidgets('🚨the ${panel.name}\'s bar is two groups — the pills from '
-        'its start, the transport and the zoom at its end — and the camera '
-        'view stands right of the loop', (tester) async {
+    testWidgets('🚨the ${panel.name}\'s bar is two groups — the transport '
+        'and the pills from its start, the cut\'s name, the zoom and its fit '
+        'at its end — and the camera view stands right of the loop', (
+      tester,
+    ) async {
       await panel.pumpTab(tester);
 
       final transport = byKey(panel.transport);
@@ -114,6 +121,16 @@ void main() {
         reason: 'outside the pills\' scroller',
       );
       final barRect = tester.getRect(bar);
+      expect(
+        tester.getRect(transport).left,
+        moreOrLessEquals(barRect.left + TimelineCommandBar.padding.left),
+        reason: '「재생쪽은 역시 왼쪽 묶음의 제일 왼쪽으로」',
+      );
+      expect(
+        tester.getRect(transport).right,
+        lessThan(tester.getRect(scroller).left),
+        reason: '「기존 버튼들에 왼쪽에 … 재생버튼들」',
+      );
       final cluster = tester.getRect(clusterOn(bar));
       expect(
         cluster.right,
@@ -121,14 +138,9 @@ void main() {
         reason: 'the zoom ends the bar',
       );
       expect(
-        tester.getRect(transport).right,
-        lessThanOrEqualTo(cluster.left),
-        reason: '「재생버튼쪽은 오른쪽에 줌쪽 버튼이랑 같은묶음」',
-      );
-      expect(
         tester.getRect(scroller).right,
-        lessThan(tester.getRect(transport).left),
-        reason: 'the pills before it',
+        lessThan(cluster.left),
+        reason: 'the pills before the right group',
       );
 
       final camera = byKey(panel.camera);
@@ -157,9 +169,9 @@ void main() {
 
   for (final panel in panels) {
     testWidgets('🚨narrowed, the ${panel.name}\'s PILLS give way first — '
-        'down to the cut pill — then the transport and the zoom AS ONE, from '
-        'the zoom\'s end down to the transport\'s first button (F-463-Q1); '
-        'below that both are shown smaller, each floor whole', (tester) async {
+        'down to the cut pill, the transport kept before it — then the right '
+        'group from its START, down to the zoom fit; below that both are '
+        'shown smaller, each floor whole', (tester) async {
       await panel.pumpTab(tester);
       final transport = byKey(panel.transport);
       final bar = barOf(transport);
@@ -169,43 +181,35 @@ void main() {
         matching: find.byType(FoldFloor),
       );
       expect(floor, findsOneWidget, reason: '⛔전제: the cut pill');
-      final first = find.descendant(
-        of: transport,
+      expect(
+        find.ancestor(of: transport, matching: find.byType(FoldFloor)),
+        findsOneWidget,
+        reason: 'the transport kept whole, the cut pill\'s floor past it',
+      );
+      final last = find.descendant(
+        of: cluster,
         matching: find.byType(FoldFloor),
       );
       expect(
-        find.descendant(
-          of: first,
-          matching: byKey('playback-skip-to-start-button'),
-        ),
+        find.descendant(of: last, matching: byKey('timeline-zoom-fit-button')),
         findsOneWidget,
-        reason: '「오른쪽묶음에서 제일 왼쪽이 남는구조」',
+        reason: '「오른쪽이 마지막에 남도록. 즉 지금으로 치면 fit버튼」',
       );
-      expect(
-        find.descendant(of: cluster, matching: find.byType(FoldFloor)),
-        findsNothing,
-        reason: 'the zoom keeps no floor of its own',
-      );
-      final strip = stripOf(transport).first;
-      expect(
-        find.descendant(of: strip, matching: cluster),
-        findsOneWidget,
-        reason: '「재생이랑 줌을 같은 묶음으로」 — one scroller',
-      );
+      final strip = stripOf(cluster).first;
       double shown() => tester.getRect(strip).width;
-      final right = tester.getSize(
-        find.descendant(of: strip, matching: find.byType(Row)).first,
-      );
+      final right = tester.getSize(cluster);
       expect(
         shown(),
         moreOrLessEquals(right.width),
         reason: '⛔전제: at the app\'s size nothing gives way',
       );
-      final floorWidth = tester.getSize(floor).width;
-      final firstWidth = tester.getSize(first).width;
+      final left =
+          tester.getSize(transport).width + tester.getSize(floor).width;
+      final lastWidth = tester.getSize(last).width;
       final besideTheBar = appTab.width - tester.getRect(bar).width;
-      // The bar's padding, the pills' inset and the gap: 16 + 4 + 8.
-      const kept = 28.0;
+      // The bar's padding, the transport's gap, the pills' inset and the gap
+      // between the groups: 16 + 8 + 4 + 8.
+      const kept = 36.0;
       Future<void> narrowTo(double barWidth) async {
         final width = barWidth + besideTheBar;
         await tester.binding.setSurfaceSize(Size(width, appTab.height));
@@ -213,7 +217,8 @@ void main() {
         expect(tester.takeException(), isNull, reason: 'at $width');
       }
 
-      await narrowTo(floorWidth + right.width + kept + 20);
+      final transportAt = tester.getRect(transport).left;
+      await narrowTo(left + right.width + kept + 20);
       expect(
         shown(),
         moreOrLessEquals(right.width),
@@ -233,11 +238,16 @@ void main() {
         lessThanOrEqualTo(tester.getRect(scrollerOn(bar)).right),
         reason: 'the cut pill shown whole',
       );
+      expect(
+        tester.getRect(transport).left,
+        transportAt,
+        reason: 'the transport where it stood',
+      );
 
-      // Past the cut pill the right group gives way from the zoom's end,
-      // its first button at its start — and the cut pill is still whole IN
-      // the strip: the floor counts the inset the pills' scroller stands in.
-      await narrowTo(floorWidth + right.width + kept - 20);
+      // Past the cut pill the right group gives way from its start, its end
+      // shown at its end — and the cut pill is still whole IN the strip: the
+      // floor counts the inset the pills' scroller stands in.
+      await narrowTo(left + right.width + kept - 20);
       expect(
         tester.getRect(floor).right,
         lessThanOrEqualTo(tester.getRect(scrollerOn(bar)).right + 0.01),
@@ -245,34 +255,33 @@ void main() {
       );
       expect(shown(), moreOrLessEquals(right.width - 20));
       expect(
-        tester.getRect(first).left,
-        moreOrLessEquals(tester.getRect(strip).left),
-        reason: 'its first button shown, at its start',
+        tester.getRect(last).right,
+        moreOrLessEquals(tester.getRect(strip).right),
+        reason: 'its fit shown, at its end',
       );
       expect(
-        tester.getRect(cluster).right,
-        moreOrLessEquals(tester.getRect(strip).right + 20),
-        reason: '「줌쪽부터 가려지도록」',
+        tester.getRect(cluster).left,
+        moreOrLessEquals(tester.getRect(strip).left - 20),
+        reason: '「오른쪽이 마지막에 남도록」 — hidden from its start',
       );
 
       // Below both floors, both smaller — each floor and no more.
-      await narrowTo(floorWidth + firstWidth + kept - 30);
-      final shownFirst = tester.getRect(first);
+      await narrowTo(left + lastWidth + kept - 30);
+      final shownLast = tester.getRect(last);
       expect(
-        shownFirst.width,
-        lessThan(firstWidth - 0.5),
+        shownLast.width,
+        lessThan(lastWidth - 0.5),
         reason: 'below the floors the right group is smaller too',
       );
-      expect(shown(), moreOrLessEquals(shownFirst.width));
-      final shownFloor = tester.getRect(floor);
+      expect(shown(), moreOrLessEquals(shownLast.width));
       expect(
-        shownFloor.left,
+        tester.getRect(transport).left,
         greaterThanOrEqualTo(tester.getRect(bar).left),
       );
       expect(
-        shownFloor.right,
+        tester.getRect(floor).right,
         lessThanOrEqualTo(tester.getRect(strip).left),
-        reason: 'the cut pill whole, before the right group',
+        reason: 'the transport and the cut pill whole, before the right group',
       );
       expect(
         tester.getRect(strip).right,
@@ -436,10 +445,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  // ⛔없다가 생기는 UI: the transport stands beside the zoom (F-463), so the
-  // zoom keeps its place with no cut to zoom.
+  // ⛔없다가 생기는 UI: the right group keeps its place with no cut to zoom,
+  // and the transport at the bar's start keeps its own.
   testWidgets('with no cut selected, the transport stands where it stands '
-      'with one — and the zoom beside it, with nothing to zoom', (
+      'with one — and the right group too, with nothing to zoom', (
     tester,
   ) async {
     final session = await panels[0].pumpTab(tester);
@@ -486,11 +495,13 @@ void main() {
 
   // ↩️It showed its transport and its cluster WHOLE, smaller, until F-463-Q1
   // (유저 2026-10-27): each gave way to a button of its own (15:23, 「묶음
-  // 안에서 재생 · 줌이 따로」), and now the two as one, down to the
-  // transport's first (20:2x) — scrolling to the rest.
+  // 안에서 재생 · 줌이 따로」), then the two as one, down to the
+  // transport's first (20:2x), and since F-491 the right group down to its
+  // fit, the transport kept at the left group's start — scrolling to the
+  // rest.
   testWidgets('🚨the storyboard alone in a rail — narrower than its bar\'s '
       'floor, and narrowed to the least it can be — runs nothing over, and '
-      'still plays from its transport scrolled to its play button', (
+      'still plays from its transport', (
     tester,
   ) async {
     await pumpApp(tester, const Size(1600, 1000));
@@ -532,8 +543,8 @@ void main() {
     // A rail is narrower than the bar's floor: the right group shows less
     // than itself, the case this pins.
     final transport = byKey('playback-transport-allCuts');
-    final strip = stripOf(transport).first;
-    final group = find.descendant(of: strip, matching: find.byType(Row)).first;
+    final strip = stripOf(clusterOn(barOf(transport))).first;
+    final group = clusterOn(barOf(transport));
     expect(
       tester.getRect(strip).width,
       lessThan(tester.getSize(group).width - 0.5),

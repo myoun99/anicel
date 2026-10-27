@@ -43,6 +43,7 @@ void main() {
                   projectFrameRate: ProjectFrameRate.fps24,
                   pixelsPerFrame: pixelsPerFrame,
                   onPixelsPerFrameChanged: turns ? changed : null,
+                  cutName: const AlwaysStoppedAnimation<String>(''),
                 ),
               ),
             ],

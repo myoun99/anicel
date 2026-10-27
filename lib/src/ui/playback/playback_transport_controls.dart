@@ -11,7 +11,6 @@ import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_tooltip.dart';
-import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/tick_layer.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
@@ -229,12 +228,13 @@ class PlaybackTransportControls extends StatelessWidget {
             // digits grew into reserved space and no button moved. An overlay
             // keeps that — it moves nothing because it takes nothing.
             //
-            // 🗣️F-463-Q1 (유저 2026-10-27 20:2x): the least of the bar's
-            // right group — the transport and the zoom as one — its bar
-            // shows: 「줌쪽부터 가려지도록 … 오른쪽묶음은 오른쪽묶음에서
-            // 제일 왼쪽이 남는구조」. ↩️(15:23) it was the transport's alone,
-            // the zoom kept by its own last button.
-            FoldFloor(child: _skipToStartButton()),
+            // ↩️It was the least of the bar's right group — the transport
+            // and the zoom as one — its bar showed (a `FoldFloor`, F-463-Q1
+            // 유저 2026-10-27 20:2x: 「줌쪽부터 가려지도록 … 오른쪽묶음은
+            // 오른쪽묶음에서 제일 왼쪽이 남는구조」; (15:23) the transport's
+            // alone), until F-491 (23:15) put the transport at the start of
+            // the bar's left group, kept with the cut pill after it.
+            _skipToStartButton(),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
             //

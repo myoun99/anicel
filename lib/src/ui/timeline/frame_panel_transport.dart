@@ -36,7 +36,7 @@ PanelTransport panelTransportFor(
   ),
 };
 
-/// A frame panel's transport, in its command bar's right group
+/// A frame panel's transport, at the start of its command bar's left group
 /// ([TimelineCommandBar.transport]): its playback buttons and the camera
 /// view toggle — what [panel]'s transport drives is [panelTransportFor]'s
 /// answer.
@@ -49,12 +49,12 @@ PanelTransport panelTransportFor(
 /// right edge does not move — its tabs grow from the left — whereas a
 /// transport leading the command bar's scrolling row slid sideways every
 /// time the row changed shape: 「존재할 거면 늘 그 자리에」. Outside the
-/// bar's scroller — at its head, then in its right group (F-463) — it keeps
-/// that.
+/// pills' scroller — at the bar's head, in its right group from F-463, and at
+/// the head again since F-491 — it keeps that.
 ///
 /// ★And the ZOOM and the x-sheet toggle are not part of it: those reach into
-/// the panel's own contents and stand after it, in the view cluster. What
-/// is here means the same thing whichever panel is open.
+/// the panel's own contents and stand in the view cluster, the bar's right
+/// group. What is here means the same thing whichever panel is open.
 class FramePanelTransport extends StatelessWidget {
   const FramePanelTransport({
     super.key,
