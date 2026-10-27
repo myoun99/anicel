@@ -302,11 +302,12 @@ void main() {
     }
 
     test('whole bounds at 1:1 blit onto themselves', () {
-      rasterise(bounds: const Rect.fromLTWH(6, 4, 46, 42));
+      // On the grid's cells already ([blurReductionCell]).
+      rasterise(bounds: const Rect.fromLTWH(16, 32, 48, 32));
       final raster = debugLastSubtreeRaster!;
-      expect(raster.destination, const Rect.fromLTWH(6, 4, 46, 42));
-      expect(raster.pixelWidth, 46);
-      expect(raster.pixelHeight, 42);
+      expect(raster.destination, const Rect.fromLTWH(16, 32, 48, 32));
+      expect(raster.pixelWidth, 48);
+      expect(raster.pixelHeight, 32);
       expect(raster.scale, 1);
       // 1:1 by construction, and it says so instead of letting the default
       // decide.
@@ -315,22 +316,24 @@ void main() {
 
     test('fractional bounds snap OUTWARD, never to the nearest', () {
       // 🚨THE CASE ROUNDING SURVIVES. At scale 1.5 a left edge of 6.37 sits
-      // at device 9.555: floor keeps device 9 (canvas 6.0) and rounding
-      // would take device 10 (canvas 6.667) — a column of the group thrown
-      // away. Rounding a RIGHT edge loses one the same way.
+      // at device 9.555: the cell's floor keeps device 0 and rounding would
+      // take device 16 (canvas 10.667) — columns of the group thrown away.
+      // A bottom at device 70.38 rounds to 64 and loses rows the same way.
+      // ↩️On whole pixels (9 · 7 · 80 · 71) until the grid took cells of
+      // [blurReductionCell] (nested-folder-buffers-read-past-the-view).
       rasterise(
         bounds: const Rect.fromLTWH(6.37, 4.82, 46.4, 42.1),
         scale: 1.5,
       );
       final raster = debugLastSubtreeRaster!;
-      expect(raster.destination.left, closeTo(9 / 1.5, 1e-9));
-      expect(raster.destination.top, closeTo(7 / 1.5, 1e-9));
+      expect(raster.destination.left, closeTo(0, 1e-9));
+      expect(raster.destination.top, closeTo(0, 1e-9));
       expect(raster.destination.right, closeTo(80 / 1.5, 1e-9));
-      expect(raster.destination.bottom, closeTo(71 / 1.5, 1e-9));
+      expect(raster.destination.bottom, closeTo(80 / 1.5, 1e-9));
       // The destination is exactly `pixels / scale` — the property that
       // makes the blit 1:1 and stops the group resampling twice.
-      expect(raster.pixelWidth, 71);
-      expect(raster.pixelHeight, 64);
+      expect(raster.pixelWidth, 80);
+      expect(raster.pixelHeight, 80);
       expect(
         raster.destination.width * raster.scale,
         closeTo(raster.pixelWidth, 1e-9),
@@ -344,10 +347,12 @@ void main() {
     });
 
     test('the cap clamps the scale, and the blit says it magnified', () {
-      rasterise(bounds: const Rect.fromLTWH(6, 4, 46, 42), maxPixelSide: 16);
+      // A cap of a few cells — the snap's room for a cell at each edge
+      // comes out of it ([blurReductionCell]).
+      rasterise(bounds: const Rect.fromLTWH(6, 4, 92, 84), maxPixelSide: 64);
       final raster = debugLastSubtreeRaster!;
-      expect(raster.pixelWidth, lessThanOrEqualTo(16));
-      expect(raster.pixelHeight, lessThanOrEqualTo(16));
+      expect(raster.pixelWidth, lessThanOrEqualTo(64));
+      expect(raster.pixelHeight, lessThanOrEqualTo(64));
       expect(raster.scale, lessThan(1));
       // ⛔`none` here would be nearest-neighbour on a ~3x magnification.
       expect(blitPaint.filterQuality, FilterQuality.low);
@@ -417,7 +422,7 @@ void main() {
       var childScale = double.nan;
       rasterise(
         bounds: const Rect.fromLTWH(6, 4, 46, 42),
-        maxPixelSide: 16,
+        maxPixelSide: 64,
         onChildScale: (scale) => childScale = scale,
       );
       expect(childScale, debugLastSubtreeRaster!.scale);
@@ -491,8 +496,9 @@ void main() {
       groupPaint: Paint()..color = const Color(0xFF000000),
       groupRect: rect,
       asImage: true,
-      // 46px of group through a 16px cap: the blit magnifies ~2.9×.
-      maxPixelSide: 16,
+      // 46px of group through 16px of room — a 48px cap less a cell at each
+      // edge for the snap ([blurReductionCell]): the blit magnifies ~2.9×.
+      maxPixelSide: 48,
     );
     var drewInside = 0;
     var escaped = 0;
@@ -675,13 +681,19 @@ void main() {
           compose: composeAdjustmentScope(canvas, pass),
         );
       } else {
-        // The recipe as it stood before this round.
+        // The recipe as layers: the scope drawn twice, the blur on a layer
+        // of its own inside the filtered pass — where the blit carries it
+        // ([AdjustmentScopePass.blitEffects]).
         canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
         canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
         drawChildren(canvas);
         canvas.restore();
         canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+        final carried = Paint();
+        pass.blitEffects.applyTo(carried);
+        canvas.saveLayer(pass.bufferBounds, carried);
         drawChildren(canvas);
+        canvas.restore();
         canvas.restore();
         canvas.restore();
       }

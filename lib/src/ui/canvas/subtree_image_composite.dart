@@ -189,10 +189,32 @@ SubtreeRasterPlan? debugLastSubtreeRaster;
 @visibleForTesting
 int debugSubtreeRasterCount = 0;
 
+/// 🚨★★★A SUB-TREE'S RASTER LIES ON THE CANVAS'S GRID OF THIS MANY RASTER
+/// PIXELS — its corner and its size — wherever the view cuts it (card
+/// nested-folder-buffers-read-past-the-view).
+///
+/// A blur reduces what it reads before it spreads it — to 1/2 … 1/16 by its
+/// sigma, on a grid counted from that picture's own corner (Impeller's
+/// Gaussian; 1/4 at a 40px blur). A raster cut where the view cuts it
+/// started one pixel further at each one-pixel pan, and the reduction fell
+/// on the ink another way each time. 🔬On the Windows app (2026-10-27, a
+/// blurred folder by the view's edge while the row in it is drawn on):
+/// 3–4/255 apart pan to pan in a probe, 190 → 211 in the verifier's — and,
+/// cut by the view's top and bottom, 4–6/255 apart from the frame's own
+/// picture everywhere, whose rasters nothing cuts. On this grid, counted
+/// from the canvas's origin, each reduction lands where it would on the
+/// whole: 0 apart, every pan, at the edge and inside, nested or not, the
+/// row drawn on or a cel, and 0 from the frame's picture.
+///
+/// What it costs is at most a cell less one of transparent texels at each
+/// edge.
+const int blurReductionCell = 16;
+
 /// The grid [bounds] rasterises on at [rasterScale], or null when there is
 /// nothing to draw.
 ///
-/// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD, and
+/// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD to
+/// whole cells of [blurReductionCell] pixels, and
 /// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
 /// that disagreed by a fraction would resample the sub-tree a second time.
 ///
@@ -209,18 +231,25 @@ SubtreeRasterPlan? _planSubtreeRaster({
   // 🚨THE SNAP IS PART OF THE CAP. Clamping the scale alone left the cap off
   // by one: `side * scale` landed exactly on the cap and then the OUTWARD
   // snap widened it, so the image came back one pixel over the limit it was
-  // clamped to. The snap can add up to a whole device pixel at each edge, so
+  // clamped to. The snap can add up to a cell less one at each edge, so
   // the room for both has to come out of the scale.
   //
   // A view so magnified the sub-tree alone overflows the cap shrinks the
   // way the display buffer does one level up — the same [scaleFittingSide],
   // now literally.
+  assert(
+    maxPixelSide > 2 * blurReductionCell,
+    'a cap holds a cell of room past the snap at each edge',
+  );
   final scale = scaleFittingSide(
     scale: rasterScale,
     bounds: bounds.size,
-    maxSide: (maxPixelSide - 2).toDouble(),
+    maxSide: (maxPixelSide - 2 * blurReductionCell).toDouble(),
   );
-  final destination = rectOutwardOnGrid(bounds.intersect(within), scale);
+  final destination = rectOutwardOnGrid(
+    bounds.intersect(within),
+    scale / blurReductionCell,
+  );
   final width = (destination.width * scale).round();
   final height = (destination.height * scale).round();
   if (width <= 0 || height <= 0) {

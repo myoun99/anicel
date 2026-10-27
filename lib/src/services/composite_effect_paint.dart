@@ -511,8 +511,24 @@ class AdjustmentScopePass {
     required this.filteredPaint,
     this.crossfadeLayerPaint,
     this.unfilteredPaint,
+    this.blitEffects = CompositeEffectPaint.none,
     this.preSteps = const [],
   });
+
+  /// The chain the filtered pass's BLIT carries: the whole of it where it
+  /// spreads (a blur), else none — the chain then rides [filteredPaint].
+  ///
+  /// 🚨A BLUR READS THE SCOPE'S RASTER, NEVER A LAYER (card
+  /// nested-folder-buffers-read-past-the-view). A blur reduces what it reads
+  /// on a grid counted from that picture's own corner, and a `saveLayer`'s
+  /// picture starts where the clip cuts it — at the view's edge, one pixel
+  /// further at each pan — while the raster lies on the canvas's grid
+  /// (`blurReductionCell`'s law). 🔬On the Windows app (2026-10-27) a blurred
+  /// adjustment by the view's edge came out 2/255 apart pan to pan, and
+  /// 4/255 apart from a blurred folder over the same row; with the blur on
+  /// the blit, 0 and 0. The layer keeps the pass's alpha and blend, so the
+  /// crossfade still adds layers ([composeAdjustmentScope]).
+  final CompositeEffectPaint blitEffects;
 
   /// The rasters the chain takes before either pass composites the scope —
   /// its colour keys, which are shaders and cannot ride a pass's paint.
@@ -525,7 +541,8 @@ class AdjustmentScopePass {
   /// The buffer bounds for every pass.
   final ui.Rect bufferBounds;
 
-  /// The filtered pass's paint. Non-null always.
+  /// The filtered pass's layer: its alpha and blend, and the chain where it
+  /// does not spread ([blitEffects]). Non-null always.
   final ui.Paint filteredPaint;
 
   /// Non-null ONLY when the scope must crossfade (a blur below full mix):
@@ -571,7 +588,9 @@ composeAdjustmentScope(
     canvas.restore();
   }
   canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-  blit(ui.Paint());
+  final carried = ui.Paint();
+  pass.blitEffects.applyTo(carried);
+  blit(carried);
   canvas.restore();
   if (pass.crossfades) {
     canvas.restore();
@@ -585,25 +604,8 @@ composeAdjustmentScope(
 /// A route runs it as ONE raster and one or two blits. The scope is the same
 /// picture in both passes, so it is rasterised once — on the playback route
 /// "drawing the scope" means awaiting every layer image in it, and the second
-/// pass was not a rounding error:
-/// ```dart
-/// drawSubtreeAsImage(
-///   canvas: canvas,
-///   bounds: pass.bufferBounds,
-///   space: space,
-///   paintSubtree: drawScope,
-///   compose: (blit) {
-///     if (pass.crossfades) {
-///       // An alpha group over two draws of one image — not a buffer
-///       // anything needs to sample, so it stays a layer.
-///       canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-///       blit(pass.unfilteredPaint!);
-///     }
-///     blit(pass.filteredPaint);
-///     if (pass.crossfades) canvas.restore();
-///   },
-/// );
-/// ```
+/// pass was not a rounding error. The blits go as [composeAdjustmentScope]
+/// lays them.
 AdjustmentScopePass resolveAdjustmentScopePass({
   required ui.Rect bounds,
   required List<ResolvedLayerEffect> effects,
@@ -627,12 +629,19 @@ AdjustmentScopePass resolveAdjustmentScopePass({
   final resolved = resolveCompositeEffectPlan(effects, space: space);
   final plan = resolved.finalPaint;
   final bufferBounds = effectBufferBounds(bounds, resolved.outsetPixels);
+  // What spreads rides the blit ([AdjustmentScopePass.blitEffects]); a
+  // chain per pixel rides the pass's layer, as it always did.
+  final blitEffects = plan.imageFilter == null
+      ? CompositeEffectPaint.none
+      : plan;
+  final layerEffects = blitEffects.isEmpty ? plan : CompositeEffectPaint.none;
   if (strength >= 1) {
     final paint = ui.Paint();
-    plan.applyTo(paint);
+    layerEffects.applyTo(paint);
     return AdjustmentScopePass(
       bufferBounds: bufferBounds,
       filteredPaint: paint,
+      blitEffects: blitEffects,
       preSteps: resolved.preSteps,
     );
   }
@@ -642,13 +651,14 @@ AdjustmentScopePass resolveAdjustmentScopePass({
   final filtered = ui.Paint()
     ..color = alphaOnly(strength)
     ..blendMode = ui.BlendMode.plus;
-  plan.applyTo(filtered);
+  layerEffects.applyTo(filtered);
   return AdjustmentScopePass(
     bufferBounds: bufferBounds,
     filteredPaint: filtered,
     crossfadeLayerPaint: ui.Paint(),
     unfilteredPaint: ui.Paint()
       ..color = alphaOnly(1 - strength),
+    blitEffects: blitEffects,
     preSteps: resolved.preSteps,
   );
 }

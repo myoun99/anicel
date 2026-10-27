@@ -200,7 +200,13 @@ void main() {
           canvas.restore();
         }
         canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+        // What spreads rides the blit, on a layer of its own here
+        // ([AdjustmentScopePass.blitEffects]).
+        final carried = Paint();
+        pass.blitEffects.applyTo(carried);
+        canvas.saveLayer(pass.bufferBounds, carried);
         drawScope();
+        canvas.restore();
         canvas.restore();
         if (pass.crossfades) {
           canvas.restore();
