@@ -380,6 +380,18 @@ bool qaEngineAbiMatches(DynamicLibrary library) {
   }
 }
 
+/// Whether [library]'s `[symbol]()` — the size the C lays a struct out at —
+/// is [dartSize], what Dart lays it out at. Both sides must agree on every
+/// byte, or every field read is garbage; whoever declares the struct asks.
+/// Throws where [library] has no [symbol].
+bool qaStructSizeMatches(
+  DynamicLibrary library,
+  String symbol,
+  int dartSize,
+) =>
+    library.lookupFunction<Int32 Function(), int Function()>(symbol).call() ==
+    dartSize;
+
 DynamicLibrary? _open(String? path) {
   if (path != null && path.isNotEmpty) {
     try {

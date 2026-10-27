@@ -881,28 +881,21 @@ class QaNativeEngine {
       // Struct-layout paranoia: both sides must agree on the spec's exact
       // byte layout, or every field read is garbage. Any mismatch means
       // Dart fallback, never a corrupt blend.
-      final specSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
+      if (!qaStructSizeMatches(
+            library,
             'qa_dab_spec_sizeof',
-          )
-          .call();
-      if (specSize != sizeOf<QaDabSpecStruct>()) {
-        return null;
-      }
-      final spanSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
+            sizeOf<QaDabSpecStruct>(),
+          ) ||
+          !qaStructSizeMatches(
+            library,
             'qa_tile_span_sizeof',
-          )
-          .call();
-      if (spanSize != sizeOf<QaTileSpanStruct>()) {
-        return null;
-      }
-      final celSpecSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
+            sizeOf<QaTileSpanStruct>(),
+          ) ||
+          !qaStructSizeMatches(
+            library,
             'qa_cel_pixel_spec_sizeof',
-          )
-          .call();
-      if (celSpecSize != sizeOf<QaCelPixelSpecStruct>()) {
+            sizeOf<QaCelPixelSpecStruct>(),
+          )) {
         return null;
       }
       final premultiplyRgba = library

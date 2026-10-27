@@ -80,12 +80,11 @@ class QaBlurKernel {
       return null;
     }
     try {
-      final tileSize = library
-          .lookupFunction<Int32 Function(), int Function()>(
-            'qa_blur_tile_sizeof',
-          )
-          .call();
-      if (tileSize != sizeOf<QaBlurTileStruct>()) {
+      if (!qaStructSizeMatches(
+        library,
+        'qa_blur_tile_sizeof',
+        sizeOf<QaBlurTileStruct>(),
+      )) {
         return null;
       }
       return QaBlurKernel._(

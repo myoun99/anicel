@@ -21,15 +21,22 @@ import 'qa_engine_abi.dart';
 /// on the path that actually reaches a speaker. Both must call it; the
 /// roster test in `qa_engine_abi_test.dart` fails if one stops.
 bool qaAudioStructLayoutsMatch(DynamicLibrary library) {
-  int sizeOfSymbol(String name) =>
-      library.lookupFunction<Int32 Function(), int Function()>(name).call();
   try {
-    return sizeOfSymbol('qa_audio_clip_sizeof') ==
-            sizeOf<QaAudioClipStruct>() &&
-        sizeOfSymbol('qa_audio_source_sizeof') ==
-            sizeOf<QaAudioSourceStruct>() &&
-        sizeOfSymbol('qa_audio_envelope_key_sizeof') ==
-            sizeOf<QaAudioEnvelopeKeyStruct>();
+    return qaStructSizeMatches(
+          library,
+          'qa_audio_clip_sizeof',
+          sizeOf<QaAudioClipStruct>(),
+        ) &&
+        qaStructSizeMatches(
+          library,
+          'qa_audio_source_sizeof',
+          sizeOf<QaAudioSourceStruct>(),
+        ) &&
+        qaStructSizeMatches(
+          library,
+          'qa_audio_envelope_key_sizeof',
+          sizeOf<QaAudioEnvelopeKeyStruct>(),
+        );
   } on Object {
     return false;
   }
