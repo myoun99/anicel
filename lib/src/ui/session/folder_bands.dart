@@ -7,6 +7,7 @@ import '../../models/timeline_exposure.dart';
 import '../../models/timeline_run_behavior.dart';
 import '../timeline/property_lane_model.dart'
     show folderAggregateRuns, folderGhostRuns;
+import '../timeline/timeline_drag_preview.dart' show rowShownWhileMoved;
 import 'session_roles.dart';
 
 /// [folder]'s row as the grids render it — its BAND: the folder carrying, as
@@ -44,19 +45,24 @@ Layer folderBandOf(Layer folder, Iterable<Layer> members) {
 
 /// The bands of the folders of [stack] that hold a row [shown] shows moved
 /// — each as the band its rows make where the drag has them. A folder's row
-/// is what its rows hold (F-311), so it follows the hand as they do.
+/// is what its rows hold (F-311), so it follows the hand as they do: each
+/// row read as it shows ([rowShownWhileMoved]), a mirror by its base (F-467).
 Map<LayerId, Layer> folderBandsFollowing(
   List<Layer> stack,
   Map<LayerId, Layer> shown,
 ) {
   final index = LayerFolderIndex(stack);
+  Layer? moved(Layer member) =>
+      rowShownWhileMoved(member, (layerId) => shown[layerId]);
   return {
     for (final folder in stack)
       if (folder.kind.groupsLayers)
-        if (index.subtreeMembersOf(folder.id) case final members
-            when members.any((member) => shown.containsKey(member.id)))
+        if ([
+          for (final member in index.subtreeMembersOf(folder.id))
+            (member: member, moved: moved(member)),
+        ] case final members when members.any((row) => row.moved != null))
           folder.id: folderBandOf(folder, [
-            for (final member in members) shown[member.id] ?? member,
+            for (final row in members) row.moved ?? row.member,
           ]),
   };
 }

@@ -882,8 +882,26 @@ Project _projectWithLayersSubstituted(
 /// What [layer]'s cut-local row SHOWS while [preview] is in flight, or null
 /// when the preview does not reach it — the row gate's answer, and the
 /// standing wash's, so the wash cannot ride a drag its row does not.
-Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) {
-  final direct = timelineDragPreviewLayerFor(preview, layer.id);
+Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) =>
+    rowShownWhileMoved(
+      layer,
+      (layerId) => timelineDragPreviewLayerFor(preview, layerId),
+    );
+
+/// What [layer]'s row shows while a drag has the rows [movedRowOf] answers
+/// for where it put them, or null when the drag does not reach it.
+///
+/// 🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 위치에
+/// 블록이 남아있는 버그. 이동끝나면 사라짐」. A folder's band and its grey
+/// asked the rows it holds by their own ids alone, so a synced attach row
+/// stood where its base had been: the band held the block twice, where the
+/// hand had it and where it was, until the release. They ask this now, as
+/// the row itself does.
+Layer? rowShownWhileMoved(
+  Layer layer,
+  Layer? Function(LayerId layerId) movedRowOf,
+) {
+  final direct = movedRowOf(layer.id);
   if (direct != null) {
     return direct;
   }
@@ -897,7 +915,7 @@ Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) {
   }
   final baseId = layer.attachedToLayerId;
   if (baseId != null) {
-    final previewBase = timelineDragPreviewLayerFor(preview, baseId);
+    final previewBase = movedRowOf(baseId);
     if (previewBase != null) {
       return attachedDisplayLayer(attached: layer, base: previewBase);
     }

@@ -41,7 +41,7 @@ import '../timeline/timeline_drag_preview.dart'
         TimelineDragPreview,
         celPixelsHungBy,
         celPixelsOf,
-        timelineDragPreviewLayerFor;
+        timelineRowPreviewLayer;
 import '../audio/sound_cannot_play.dart';
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
@@ -328,8 +328,7 @@ class LayerStack {
     return _folderBands
         .folderBandMembersOf(folder.id)
         .any(
-          (member) =>
-              asks(timelineDragPreviewLayerFor(preview, member.id) ?? member),
+          (member) => asks(timelineRowPreviewLayer(preview, member) ?? member),
         );
   }
 

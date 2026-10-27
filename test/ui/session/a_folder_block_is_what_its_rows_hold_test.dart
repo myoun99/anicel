@@ -2,6 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart'
+    show isSyncedAttachedLayer;
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -770,6 +773,71 @@ void main() {
         reason: 'b went to 11..15, and the folder shows what its rows hold',
       );
       s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    group('🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 '
+        '위치에 블록이 남아있는 버그. 이동끝나면 사라짐」 — a synced attach '
+        'row in it is read as its row shows it, by its base', () {
+      /// `a` standing 0..4 in F, and its mirror under it.
+      (EditorSessionManager, LayerId) mirrored() {
+        final s = _session([
+          _row('a', const {0: 4}, inside: 'F'),
+          _folderRow('F'),
+        ]);
+        s.selectLayer(const LayerId('a'));
+        s.folders.addAttachedLayer(AttachedPlacement.below);
+        final mirror = s.activeLayer!;
+        expect(
+          [isSyncedAttachedLayer(mirror), mirror.folderId, _blocks(mirror)],
+          [true, _folder, {0: 4}],
+          reason: '⛔전제: a mirror of a, in F, standing where a stands',
+        );
+        _selectFolderBlockAt(s, 1);
+        s.rangeMove.beginFrameRangeMoveDrag(_folder);
+        return (s, mirror.id);
+      }
+
+      test('the folder\'s block goes where the hand has it, and nowhere '
+          'else', () {
+        final (s, mirror) = mirrored();
+
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        final preview = s.dragPreview.value;
+        expect(
+          _blocks(timelineRowPreviewLayer(preview, _layer(s, mirror.value))!),
+          {6: 4},
+          reason: 'CONTROL: the mirror\'s own row follows its base',
+        );
+        expect(
+          _blocks(timelineRowPreviewLayer(preview, _band(s))!),
+          {6: 4},
+          reason: 'read off the mirror where it stood, the folder held the '
+              'block at 0..4 too until the release',
+        );
+        s.rangeMove.endFrameRangeMoveDrag();
+        expect(_blocks(_band(s)), {6: 4});
+      });
+
+      test('its picture greys and whitens the folder where the mirror goes',
+          () {
+        final (s, mirror) = mirrored();
+        final cel = _layer(s, mirror.value).timeline[0]!.frameId!;
+        _draw(s, mirror.value, cel.value);
+
+        s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 6);
+
+        final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s))!;
+        bool drawn(int frame) =>
+            stackOf(s).celHasContentForLayer(folder, frame);
+        expect(
+          [drawn(1), drawn(7)],
+          [false, true],
+          reason: 'the mirror\'s picture rides to 6..10 with it — read where '
+              'it stood, the white stayed at 0..4',
+        );
+        s.rangeMove.cancelFrameRangeMoveDrag();
+      });
     });
 
     test('…and on no folder whose rows stand still', () {
