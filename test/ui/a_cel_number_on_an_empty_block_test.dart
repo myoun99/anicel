@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OffsetLayer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -28,6 +29,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectLaneId;
 
 import '../helpers/a_canvas_standing_on_a_frame.dart' show noFlutterGpu;
+import '../helpers/app_faces.dart';
 import '../helpers/panel_finders.dart';
 import '../helpers/settle_async.dart';
 
@@ -422,5 +424,29 @@ void main() {
     for (final MapEntry(key: how, value: shown) in seen.entries) {
       expect(apart(numbered, shown), 0, reason: 'never drawn on, $how');
     }
+  }, skip: noFlutterGpu != null);
+
+  // 🗣️F-489 — an unnamed drawing's number is its row's name and the mark
+  // picked in Preferences, and a pick rewrites it where the canvas stands.
+  testWidgets('a mark picked for the unnamed drawing rewrites its number on '
+      'the canvas', (tester) async {
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    // The test font sets ○ and ● as one and the same box.
+    await loadTheAppFaces();
+    final session = await pump(tester);
+    final places = placesOf(tester, session);
+    final two = await shot(tester, places.letters);
+
+    AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+      unnamedMark: InbetweenMark.one,
+    );
+    await settle(tester);
+    expect(apart(two, await shot(tester, places.letters)), greaterThan(0));
+
+    AppFrameGridSettings.settings.value = const AppFrameGridSettings();
+    await settle(tester);
+    expect(apart(two, await shot(tester, places.letters)), 0);
   }, skip: noFlutterGpu != null);
 }

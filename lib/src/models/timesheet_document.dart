@@ -3,7 +3,8 @@ import 'camera_moves.dart';
 import 'camera_work_marks.dart' show cameraKeyLabel;
 import 'cut.dart';
 import 'cut_id.dart';
-import 'frame.dart' show DrawingHead, InbetweenMark, drawingHeadOf;
+import 'frame.dart'
+    show DrawingHead, InbetweenMark, defaultUnnamedDrawingMark, drawingHeadOf;
 import 'frame_id.dart';
 import 'key_range_move.dart' show transformKeyAgreedNames;
 import 'layer.dart';
@@ -385,6 +386,9 @@ class TimesheetDocument {
     // down held rows). The ACTION and SE blocks follow it; the CELL block
     // prints data always (F-453, below).
     bool dataSheet = false,
+    // The mark a drawing with no name wears (Preferences ▸ Display, F-489)
+    // — the app's pick, which `cutSheetDocument` hands every sheet.
+    InbetweenMark unnamedMark = defaultUnnamedDrawingMark,
   }) {
     const seColumnCount = 2;
     const cameraColumnCount = 2;
@@ -463,7 +467,7 @@ class TimesheetDocument {
       // the same law (F-406 · F-431); unbacked slots stay blank
       // handwriting space.
       for (var slot = 0; slot < actionSlots; slot += 1)
-        _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet),
+        _celRowColumn(TimesheetColumnKind.action, slot, actionLayers, rowCount, playbackFrameCount, dataSheet, unnamedMark),
       for (var slot = 0; slot < seColumnSlots; slot += 1)
         _seColumn(
           slot,
@@ -474,12 +478,13 @@ class TimesheetDocument {
           sources.clipToSheet,
           drawnFrameCount: drawnFrameCount,
           sheetOf: cut.id,
+          unnamedMark: unnamedMark,
         ),
       // 🗣️F-453 (유저 2026-10-23): 「타임시트패널의 셀란은 항상 데이터시트임.
       // 데이터시트 표기시트를 따르지않음. 데이터시트 고정이 업계 기본이기때문」 —
       // the CELL block prints its data whichever way the sheet reads.
       for (var slot = 0; slot < _slotCount(celColumnCount, cellLayers); slot += 1)
-        _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, true),
+        _celRowColumn(TimesheetColumnKind.cel, slot, cellLayers, rowCount, playbackFrameCount, true, unnamedMark),
       // CAM block: slot 0 keeps the camera transform keyframes; the
       // instruction rows (CAM 2 …) follow in layer order, growing the block
       // past the fixed count when a cut carries more.
@@ -524,6 +529,7 @@ class TimesheetDocument {
     Layer Function(Layer displayClone) clipToSheet, {
     required int drawnFrameCount,
     required CutId sheetOf,
+    required InbetweenMark unnamedMark,
   }) {
     return TimesheetColumn(
       kind: TimesheetColumnKind.se,
@@ -552,6 +558,7 @@ class TimesheetDocument {
               markEmptyRuns: false,
               seWritingOf: sheetOf,
               dataSheet: dataSheet,
+              unnamedMark: unnamedMark,
             )
           : _blankCells(rowCount),
       // SE drags preview live (UI-R18 #7): the timeline publishes
@@ -565,12 +572,13 @@ class TimesheetDocument {
               markEmptyRuns: false,
               seWritingOf: sheetOf,
               dataSheet: dataSheet,
+              unnamedMark: unnamedMark,
             )
           : null,
     );
   }
 
-  static TimesheetColumn _celRowColumn(TimesheetColumnKind kind, int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet) {
+  static TimesheetColumn _celRowColumn(TimesheetColumnKind kind, int slot, List<Layer> animationLayers, int rowCount, int playbackFrameCount, bool dataSheet, InbetweenMark unnamedMark) {
     return TimesheetColumn(
       kind: kind,
       label: slot < animationLayers.length
@@ -588,6 +596,7 @@ class TimesheetDocument {
               rowCount: rowCount,
               playbackFrameCount: playbackFrameCount,
               dataSheet: dataSheet,
+              unnamedMark: unnamedMark,
             )
           : _blankCells(rowCount),
       previewCellsBuilder: slot < animationLayers.length
@@ -596,6 +605,7 @@ class TimesheetDocument {
               rowCount: rowCount,
               playbackFrameCount: playbackFrameCount,
               dataSheet: dataSheet,
+              unnamedMark: unnamedMark,
             )
           : null,
     );
@@ -728,6 +738,7 @@ class TimesheetDocument {
     required Layer layer,
     required int rowCount,
     required int playbackFrameCount,
+    required InbetweenMark unnamedMark,
     bool markEmptyRuns = true,
     CutId? seWritingOf,
     bool dataSheet = false,
@@ -737,6 +748,7 @@ class TimesheetDocument {
       rowCount: rowCount,
       seWritingOf: seWritingOf,
       dataSheet: dataSheet,
+      unnamedMark: unnamedMark,
     );
     pass.writeBlocks();
     if (markEmptyRuns) {
@@ -853,6 +865,7 @@ List<TimesheetCell> timesheetLayerCells({
   required Layer layer,
   required int rowCount,
   required int playbackFrameCount,
+  required InbetweenMark unnamedMark,
   bool markEmptyRuns = true,
   CutId? seWritingOf,
   bool dataSheet = false,
@@ -861,6 +874,7 @@ List<TimesheetCell> timesheetLayerCells({
     layer: layer,
     rowCount: rowCount,
     playbackFrameCount: playbackFrameCount,
+    unnamedMark: unnamedMark,
     markEmptyRuns: markEmptyRuns,
     seWritingOf: seWritingOf,
     dataSheet: dataSheet,
@@ -878,6 +892,7 @@ class _LayerCellsPass {
     required this.rowCount,
     required this.dataSheet,
     required this.seWritingOf,
+    required InbetweenMark unnamedMark,
   }) : cells = List<TimesheetCell>.filled(rowCount, TimesheetCell.blank),
        covered = List<bool>.filled(rowCount, false),
        entries = layer.timeline.entries.toList(growable: false),
@@ -888,7 +903,11 @@ class _LayerCellsPass {
          // [drawingHeadOf] is the one place that decides which is which;
          // the cel export reads the same answer through [Frame.celNumber].
          for (final frame in layer.frames)
-           frame.id: drawingHeadOf(frame.name, kind: layer.kind),
+           frame.id: drawingHeadOf(
+             frame.name,
+             kind: layer.kind,
+             unnamedMark: unnamedMark,
+           ),
        },
        seEntriesByFrameId = <FrameId, SeEntryFields>{
          if (seWritingOf != null)

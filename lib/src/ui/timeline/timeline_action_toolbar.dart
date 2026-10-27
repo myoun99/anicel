@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/app_frame_count_settings.dart';
+import '../../models/app_frame_grid_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../../models/frame.dart' show InbetweenMark;
 import '../cut_command_group.dart';
@@ -74,14 +75,18 @@ Future<void> showTimelineCommaCountDialog(
 ///
 /// The window picks the mark — ○ or ● — opening on the one picked last:
 /// 🗣️I-130-Q2 (유저 2026-10-25 「창에서 마크를 고른다」 — 간격 숫자 옆에
-/// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로).
+/// ○ / ● 고르기(지난번 고른 것 기억). 자동 추가 버튼은 하나 그대로). Before
+/// any pick, on the mark an unnamed drawing wears (F-489-Q1 「둘 다
+/// 따라간다」).
 Future<void> showMarkEveryDialog(
   BuildContext context,
   EditorSessionManager session, {
   required ToolbarPanelContext panel,
 }) async {
   final strings = AppText.strings;
-  var mark = AppFrameCountSettings.settings.value.lastEveryMark;
+  var mark =
+      AppFrameCountSettings.settings.value.lastEveryMark ??
+      AppFrameGridSettings.settings.value.unnamedMark;
   final every = await _askFrameCount(
     context,
     session,
@@ -123,13 +128,6 @@ const _markEveryIcon = Icons.linear_scale;
 IconData _markIcon(InbetweenMark mark) => switch (mark) {
   InbetweenMark.one => Icons.circle_outlined,
   InbetweenMark.two => Icons.circle,
-};
-
-/// The action that toggles [mark] — its button's, and the name its pick
-/// in the mark-every window wears.
-String _markToggleAction(InbetweenMark mark) => switch (mark) {
-  InbetweenMark.one => EditorActionIds.frameToggleMarkOne,
-  InbetweenMark.two => EditorActionIds.frameToggleMarkTwo,
 };
 
 /// What a comma window names in its title's brackets: the kinds it
@@ -251,7 +249,7 @@ class _FrameCountWindowState extends State<_FrameCountWindow> {
                   for (final each in InbetweenMark.values)
                     PillItem(
                       keyValue: '${widget.keyPrefix}-mark-${each.name}',
-                      label: editorActionLabel(_markToggleAction(each)),
+                      label: editorActionLabel(markToggleActionOf(each)),
                       icon: _markIcon(each),
                       selected: each == mark,
                       onTap: () => _pick(each),
@@ -1049,8 +1047,8 @@ class TimelineActionToolbar extends StatelessWidget {
             ])
               _iconButton(
                 key: ValueKey<String>(key),
-                tooltip: editorActionLabel(_markToggleAction(mark)),
-                shortcuts: [_markToggleAction(mark)],
+                tooltip: editorActionLabel(markToggleActionOf(mark)),
+                shortcuts: [markToggleActionOf(mark)],
                 icon: _markIcon(mark),
                 onPressed: panelContext.canToggleMark
                     ? () => panelContext.toggleMark(mark)

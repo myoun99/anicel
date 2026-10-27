@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/app_frame_grid_settings.dart';
 import '../models/brush_frame_key.dart';
 import '../models/cel_number_letters.dart' show celNumberText;
 import '../models/layer_effect.dart';
@@ -672,6 +673,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,
         ?widget.expandedLaneLayerIds,
+        // The mark an unnamed drawing's cel number writes (F-489): the
+        // letters ride the editing stack, which a pick does not notify.
+        AppFrameGridSettings.settings,
         // The pasteboard is PROJECT data now (R3b, R28 #9 reversed): its
         // changes arrive through the session subscription above.
       ]),

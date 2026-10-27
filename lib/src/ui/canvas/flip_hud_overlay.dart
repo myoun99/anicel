@@ -3,7 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../models/app_frame_grid_settings.dart';
-import '../../models/frame.dart' show drawingHeadOf;
+import '../../models/frame.dart'
+    show InbetweenMark, defaultUnnamedDrawingMark, drawingHeadOf;
 import '../timeline/axis_turn.dart'
     show
         centerEndAlong,
@@ -291,6 +292,7 @@ class FlipHudOverlay extends StatelessWidget {
                 // The app's face for every word it writes (「앱은 한 글꼴」).
                 baseTextStyle: DefaultTextStyle.of(context).style,
                 blockFrameLines: grid.blockFrameLines,
+                unnamedMark: grid.unnamedMark,
               ),
             ),
           ),
@@ -309,6 +311,7 @@ class FlipHudPainter extends CustomPainter
     this.scrollCentre,
     this.standing = false,
     this.blockFrameLines = false,
+    this.unnamedMark = defaultUnnamedDrawingMark,
   });
 
   /// Whether the frame lines cross a block's body — the user's switch
@@ -316,6 +319,10 @@ class FlipHudPainter extends CustomPainter
   /// answer too. Off, the strip's grid goes UNDER the bodies, as the
   /// timeline's sheet lies under its paper.
   final bool blockFrameLines;
+
+  /// The mark a drawing with no name wears — the user's pick beside that
+  /// switch (F-489), which the timeline's heads wear too.
+  final InbetweenMark unnamedMark;
 
   final FlipHudSnapshot snapshot;
   final FlipHudAxis axis;
@@ -803,7 +810,11 @@ class FlipHudPainter extends CustomPainter
     FlipHudRow row,
     FlipHudRun run,
   ) {
-    final head = drawingHeadOf(run.label, kind: row.kind);
+    final head = drawingHeadOf(
+      run.label,
+      kind: row.kind,
+      unnamedMark: unnamedMark,
+    );
     final mark = head.mark;
     if (mark != null) {
       paintInbetweenMark(canvas, mark, (
@@ -991,5 +1002,6 @@ class FlipHudPainter extends CustomPainter
     baseTextStyle,
     standing,
     blockFrameLines,
+    unnamedMark,
   );
 }

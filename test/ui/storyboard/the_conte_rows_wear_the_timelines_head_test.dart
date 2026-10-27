@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -666,6 +667,35 @@ void main() {
       expect(shownMark('t1'), conteMark);
       expect(shownMark('t1-conte+1'), LayerMark.none);
       expect(shownMark('t1-conte-1'), LayerMark.none);
+    });
+
+    // 🗣️F-489 — the conte's strips are the timeline's rows, so their
+    // unnamed heads wear the mark picked in Preferences as well.
+    testWidgets('each seat\'s strip wears the unnamed mark picked', (
+      tester,
+    ) async {
+      addTearDown(
+        () => AppFrameGridSettings.settings.value =
+            const AppFrameGridSettings(),
+      );
+      await pumpPanel(tester, film(withRiders: true));
+      InbetweenMark shownMark(String row) => (tester
+              .widget<CustomPaint>(key('storyboard-conte-cells-$row'))
+              .painter!
+          as TimelineRowCellsPainter)
+          .unnamedMark;
+      const seats = ['t1', 't1-conte+1', 't1-conte-1'];
+      expect([for (final row in seats) shownMark(row)], [
+        for (final _ in seats) InbetweenMark.two,
+      ]);
+
+      AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+        unnamedMark: InbetweenMark.one,
+      );
+      await tester.pump();
+      expect([for (final row in seats) shownMark(row)], [
+        for (final _ in seats) InbetweenMark.one,
+      ]);
     });
   });
 }

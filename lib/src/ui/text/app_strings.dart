@@ -729,6 +729,7 @@ enum AppStrings {
   // --- Display (R11) ---
   String get uiScaleLabel => _s('uiScaleLabel');
   String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
+  String get unnamedMarkLabel => _s('unnamedMarkLabel');
   String get drawingCursorLabel => _s('drawingCursorLabel');
   String get drawingCursorBrush => _s('drawingCursorBrush');
   String get drawingCursorPen => _s('drawingCursorPen');
@@ -2386,6 +2387,7 @@ enum AppStrings {
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
     'blockFrameLinesLabel': 'Frame lines inside blocks',
+    'unnamedMarkLabel': 'Mark of an unnamed block',
     'drawingCursorLabel': 'Cursor',
     'drawingCursorBrush': 'Brush',
     'drawingCursorPen': 'Pen',
@@ -3678,6 +3680,7 @@ enum AppStrings {
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
     'blockFrameLinesLabel': 'ブロック内のフレーム線',
+    'unnamedMarkLabel': '名前のないブロックのマーク',
     'drawingCursorLabel': 'カーソル',
     'drawingCursorBrush': 'ブラシ',
     'drawingCursorPen': 'ペン',
@@ -5352,6 +5355,7 @@ enum AppStrings {
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
     'blockFrameLinesLabel': '블록 안 프레임선',
+    'unnamedMarkLabel': '이름 없는 블록의 마크',
     'drawingCursorLabel': '커서',
     'drawingCursorBrush': '브러시',
     'drawingCursorPen': '펜',

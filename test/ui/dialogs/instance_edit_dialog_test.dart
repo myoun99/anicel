@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
@@ -291,6 +292,37 @@ void main() {
         reason: 'switch $shown: a line at each koma boundary inside the '
             'block, or none',
       );
+    }
+  });
+
+  // 🗣️F-489 — the preview asks the row painter, so it wears the unnamed
+  // mark the user picked as the rows do.
+  testWidgets('the preview\'s rows wear the unnamed mark picked', (
+    tester,
+  ) async {
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    for (final mark in InbetweenMark.values) {
+      AppFrameGridSettings.settings.value = AppFrameGridSettings(
+        unnamedMark: mark,
+      );
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 500,
+              child: InstanceEditPreview.se(
+                axis: Axis.horizontal,
+                dialogue: '대사',
+                seName: '',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(previewCellsOf(tester).unnamedMark, mark);
     }
   });
 }

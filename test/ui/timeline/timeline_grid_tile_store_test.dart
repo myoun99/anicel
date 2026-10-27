@@ -71,6 +71,7 @@ void main() {
     TextStyle baseTextStyle = const TextStyle(fontSize: 11),
     Color? paperGround,
     bool blockFrameLines = false,
+    InbetweenMark unnamedMark = defaultUnnamedDrawingMark,
     int framesPerSecond = 0,
     bool shown = true,
     ValueListenable<int>? windowBucket,
@@ -93,6 +94,7 @@ void main() {
       tileStore: store,
       paperGround: paperGround,
       blockFrameLines: blockFrameLines,
+      unnamedMark: unnamedMark,
       framesPerSecond: framesPerSecond,
       shown: shown,
     );
@@ -815,9 +817,11 @@ void main() {
   // The block-frame-lines switch (유저 2026-09-24) bakes into the tile, and
   // so does the fps that makes a second boundary's line the strongest — a
   // flip of either is a changed LOOK, and a stale tile must not keep
-  // serving the other one.
-  test('the lines are part of the look — flipping the switch, or the fps '
-      'while they show, re-rasters the tile', () async {
+  // serving the other one. So does the unnamed head's mark the user picks
+  // (F-489) — the block here has no name, so its head wears it.
+  test('the lines and the unnamed mark are part of the look — flipping the '
+      'switch, the fps while they show, or the mark re-rasters the tile',
+      () async {
     if (!available) {
       markTestSkipped('qa_engine.dll not built');
       return;
@@ -847,8 +851,9 @@ void main() {
       return tile(painter)!;
     }
 
-    // ONE fact moves per step: the switch alone, then the fps alone — a key
-    // that saw only one of them would pass a step that moved both.
+    // ONE fact moves per step: the switch alone, then the fps alone, then
+    // the mark alone — a key that saw only one of them would pass a step
+    // that moved both.
     final off = painterFor(layer, store: store, framesPerSecond: 24);
     final first = await landed(off, null);
 
@@ -866,6 +871,16 @@ void main() {
       blockFrameLines: true,
       framesPerSecond: 30,
     );
-    await landed(otherFps, second);
+    final third = await landed(otherFps, second);
+
+    final otherMark = painterFor(
+      layer,
+      store: store,
+      blockFrameLines: true,
+      framesPerSecond: 30,
+      unnamedMark: InbetweenMark.one,
+    );
+    expect(otherMark.unnamedMark, isNot(otherFps.unnamedMark));
+    await landed(otherMark, third);
   });
 }

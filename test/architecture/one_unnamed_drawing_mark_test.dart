@@ -46,6 +46,15 @@ import '../helpers/source_ledger.dart';
 /// Studio import asks it no more, reading each label's kind off its file
 /// (I-130-csp-import-Q1).
 ///
+/// 🚨★★AND THE UNNAMED HEAD'S MARK IS A PICK (F-489). 유저 2026-10-27:
+/// 「이름 없는 블록의 기본 마크1,2인지 설정할수있게 … 기본값은 마크2로 둠」 —
+/// Preferences ▸ Display holds it (`AppFrameGridSettings.unnamedMark`), its
+/// first value `defaultUnnamedDrawingMark` beside the enum in the marks'
+/// own file, and `unnamedDrawingMark` in the home is the live pick. The
+/// mark-every window opens on it until one is picked (F-489-Q1 「둘 다
+/// 따라간다」); `defaultInbetweenMark` is the TVPaint import's alone until the
+/// save lane moves that line onto the pick too.
+///
 /// ⛔SO THIS SCANS SOURCE: copies that agree today all pass a behaviour
 /// test. Either glyph spelled outside the home, a
 /// `frameName == null || frameName.isEmpty` anywhere, the unnamed mark
@@ -54,6 +63,12 @@ import '../helpers/source_ledger.dart';
 /// (`= InbetweenMark.one`, `?? …`, `offset: …`) has started the next copy.
 void main() {
   const home = 'lib/src/models/frame.dart';
+
+  /// The marks' own file: the enum, each glyph, the unnamed head's first
+  /// value — apart from the home so the setting that holds the pick can
+  /// name the type without importing the home that reads it.
+  const markHome = 'lib/src/models/inbetween_mark.dart';
+  const homes = {home, markHome};
   const marks = ['●', '○'];
 
   /// The one other ● in lib, and why it is not the mark.
@@ -80,7 +95,8 @@ void main() {
   }
 
   test('premise: the mark and the answer have their one home', () {
-    final text = File(home).readAsStringSync();
+    // One line end whichever a checkout wrote: two pins span lines.
+    final text = File(home).readAsStringSync().replaceAll('\r\n', '\n');
     expect(text, contains('String? celNumberOf('));
     expect(
       text,
@@ -89,15 +105,21 @@ void main() {
           'the getter the sheet and the export read asks the same answer — '
           'a body of its own is the copy no behaviour test can see',
     );
+    expect(text, contains('DrawingHead drawingHeadOf('));
     expect(
       text,
       contains(
-        'DrawingHead drawingHeadOf(String? name, {required LayerKind kind})',
+        '  required LayerKind kind,\n'
+        '  required InbetweenMark unnamedMark,',
       ),
+      reason:
+          'a surface hands the head the mark its host heard, so a pick anew '
+          'draws it again (F-489)',
     );
+    final markText = File(markHome).readAsStringSync();
     for (final mark in marks) {
       final spelled = [
-        for (final (_, code) in codeLines(File(home)))
+        for (final (_, code) in codeLines(File(markHome)))
           if (code.contains(mark)) code,
       ];
       expect(
@@ -107,25 +129,36 @@ void main() {
       );
     }
     expect(
-      text,
-      contains('const InbetweenMark defaultInbetweenMark = InbetweenMark.one;'),
+      markText,
+      contains(
+        'const InbetweenMark defaultUnnamedDrawingMark = InbetweenMark.two;',
+      ),
       reason:
-          'the default mark is mark 1, the ○ (F-469 「앞으로 마크1 사용」 · '
-          'I-130-csp-import-Q2 「모를 때는 ○마크1」)',
+          'the unnamed head wears mark 2, the ●, until another is picked '
+          '(F-489 「업계일반적으론 마크2가 보통이라서 기본값은 마크2로 둠」)',
     );
     expect(
       text,
       contains(
-        'const InbetweenMark unnamedDrawingMark = defaultInbetweenMark;',
+        'InbetweenMark get unnamedDrawingMark =>\n'
+        '    AppFrameGridSettings.settings.value.unnamedMark;',
       ),
       reason:
           '🚨유저: 「중간나누기 마크1로서 작동했으면」 — the unnamed drawing '
-          'wears a mark itself, as data, not a glyph of its own: the default '
-          'one (F-469 「다른곳도 같은곳있으면 확인해서 법 통일」)',
+          'wears a mark itself, as data, not a glyph of its own: the one '
+          'Preferences ▸ Display picks (F-489)',
     );
-    expect(text, contains("InbetweenMark.one => '○'"));
     expect(
       text,
+      contains('const InbetweenMark defaultInbetweenMark = InbetweenMark.one;'),
+      reason:
+          'a TVPaint dot whose kind its file does not say is mark 1, the ○ '
+          '(I-130-csp-import-Q2 「모를 때는 ○마크1」) — until the save lane '
+          'moves it onto the pick (F-489-Q1)',
+    );
+    expect(markText, contains("InbetweenMark.one => '○'"));
+    expect(
+      markText,
       contains("InbetweenMark.two => '●'"),
       reason: 'each mark written as text is its one glyph',
     );
@@ -142,7 +175,7 @@ void main() {
       scanned += 1;
       final path = libPath(file);
       for (final (line, code) in codeLines(file)) {
-        if (path != home && marks.any(code.contains)) {
+        if (!homes.contains(path) && marks.any(code.contains)) {
           (spellers[path] ??= []).add(line);
         }
         if (blankNameCheck.hasMatch(code)) {
@@ -153,10 +186,10 @@ void main() {
             '$path:$line hands out the unnamed mark — ask drawingHeadOf',
           );
         }
-        if (path != home && aMarkOfItsOwn.hasMatch(code)) {
+        if (!homes.contains(path) && aMarkOfItsOwn.hasMatch(code)) {
           offenders.add(
-            '$path:$line hands out a mark of its own — read '
-            'defaultInbetweenMark',
+            '$path:$line hands out a mark of its own — read the pick '
+            '(AppFrameGridSettings.unnamedMark)',
           );
         }
       }

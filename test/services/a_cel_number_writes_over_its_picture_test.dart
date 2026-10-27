@@ -319,8 +319,10 @@ void main() {
     );
     expect(
       lettersOf(drawing(frameName: null, effects: [number('n')])).text,
-      'A○',
-      reason: '↩️「A●」 until F-469: 「기본마크, 앞으로 마크1 사용」',
+      'A●',
+      reason:
+          'the unnamed head\'s mark, mark 2 until another is picked (F-489) '
+          '— ↩️「A○」 from F-469 「기본마크, 앞으로 마크1 사용」',
     );
   });
 

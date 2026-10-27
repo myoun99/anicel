@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_frame_count_settings.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -40,10 +41,13 @@ import '../../helpers/run_edge_fixtures.dart';
 /// 추가함. 참고로 현재 인덱스에도 마크찍도록」 · 「중간나누기 마크는 토글이기
 /// 때문에 마크가 존재하는 곳은 토글규칙에 따라서 마크 삭제」.
 void main() {
-  // The mark the window opens on is an app-wide value that outlives a test:
-  // each starts from the product default.
-  void resetSettings() =>
-      AppFrameCountSettings.settings.value = const AppFrameCountSettings();
+  // The mark the window opens on is an app-wide value that outlives a test
+  // — and so is the unnamed drawing's it opens on before a pick: each
+  // starts from the product default.
+  void resetSettings() {
+    AppFrameCountSettings.settings.value = const AppFrameCountSettings();
+    AppFrameGridSettings.settings.value = const AppFrameGridSettings();
+  }
   setUp(resetSettings);
   tearDown(resetSettings);
 
@@ -496,33 +500,67 @@ void main() {
     await openWindow(tester);
     expect(
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
-      (true, false),
-      reason: 'never picked: the ○ — 🗣️F-469 「기본마크, 앞으로 마크1 사용」',
+      (false, true),
+      reason:
+          'never picked: the unnamed drawing\'s, the ● to begin with — '
+          '🗣️F-489-Q1 「둘 다 따라간다」',
     );
-    await tester.tap(markPick(InbetweenMark.two));
+    await tester.tap(markPick(InbetweenMark.one));
     await tester.pumpAndSettle();
     expect(
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
-      (false, true),
+      (true, false),
     );
     await typeAndApply(tester, '3');
 
     expect(wornAt(session, idA, 0), {
-      1: InbetweenMark.two,
-      4: InbetweenMark.two,
-      7: InbetweenMark.two,
+      1: InbetweenMark.one,
+      4: InbetweenMark.one,
+      7: InbetweenMark.one,
     });
     expect(
       AppFrameCountSettings.settings.value.lastEveryMark,
-      InbetweenMark.two,
+      InbetweenMark.one,
       reason: 'remembered where a restart reads it',
     );
 
     await openWindow(tester);
     expect(
       (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
-      (false, true),
+      (true, false),
       reason: '지난번 고른 것 기억',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🗣️F-489-Q1 「둘 다 따라간다」: never picked, the window opens on '
+      'the mark Preferences ▸ Display gave the unnamed drawing — and a pick '
+      'outlasts a later one there', (tester) async {
+    final session = await pumpEditor(tester);
+    standOn(session, idA, 1);
+    await tester.pumpAndSettle();
+    session.appSettings.setFrameGridSettings(
+      const AppFrameGridSettings(unnamedMark: InbetweenMark.one),
+    );
+
+    await openWindow(tester);
+    expect(
+      (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
+      (true, false),
+    );
+    await tester.tap(markPick(InbetweenMark.two));
+    await tester.pumpAndSettle();
+    await typeAndApply(tester, '3');
+    session.appSettings.setFrameGridSettings(const AppFrameGridSettings());
+    session.appSettings.setFrameGridSettings(
+      const AppFrameGridSettings(unnamedMark: InbetweenMark.one),
+    );
+
+    await openWindow(tester);
+    expect(
+      (picked(tester, InbetweenMark.one), picked(tester, InbetweenMark.two)),
+      (false, true),
+      reason: '지난번 고른 것 기억 — the pick, not the unnamed drawing\'s',
     );
     session.playbackRig.prerenderScheduler.cancel();
   });

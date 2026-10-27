@@ -693,6 +693,7 @@ class _CollapsedStrip extends StatelessWidget {
           pixelsPerFrame: pixelsPerFrame,
           baseTextStyle: baseTextStyle,
           frameStartIndex: frameStartIndex,
+          unnamedMark: TimelineGridLaw.unnamedMarkOf(context),
         ),
       ),
       TickLayer(
@@ -754,12 +755,17 @@ class _CollapsedStripPainter extends CustomPainter
     required this.row,
     required this.pixelsPerFrame,
     required this.baseTextStyle,
+    required this.unnamedMark,
     this.frameStartIndex = 0,
   });
 
   final FlipHudSnapshot snapshot;
   final FlipHudRow row;
   final double pixelsPerFrame;
+
+  /// The mark a drawing with no name wears — the host law's
+  /// ([TimelineGridLaw], Preferences ▸ Display, F-489).
+  final InbetweenMark unnamedMark;
 
   /// The ambient text style — the app's face for the strip's words.
   final TextStyle baseTextStyle;
@@ -827,7 +833,11 @@ class _CollapsedStripPainter extends CustomPainter
           ..strokeWidth = 1
           ..color = const Color(0x9EE9E7E2),
       );
-      final head = drawingHeadOf(run.label, kind: row.kind);
+      final head = drawingHeadOf(
+        run.label,
+        kind: row.kind,
+        unnamedMark: unnamedMark,
+      );
       final mark = head.mark;
       // The block's first cell as the law laid it (F-220).
       final place = (room: rect, firstCell: x(run.startIndex + 1) - left);
@@ -936,6 +946,7 @@ class _CollapsedStripPainter extends CustomPainter
         ByIdentity(row),
         pixelsPerFrame,
         baseTextStyle,
+        unnamedMark,
         frameStartIndex,
       );
 }

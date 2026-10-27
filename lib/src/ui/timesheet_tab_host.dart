@@ -2,8 +2,10 @@ import 'widgets/empty_state_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/app_frame_grid_settings.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../models/inbetween_mark.dart';
 import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
@@ -117,6 +119,7 @@ typedef _Printed = ({
   ByIdentity<Object> trackSe,
   ByIdentity<Object> transition,
   int fps,
+  InbetweenMark unnamedMark,
 });
 
 class _TimesheetTabHostState extends State<TimesheetTabHost> {
@@ -178,6 +181,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         ),
       ),
       fps: session.projectSettings.projectFps,
+      // An app preference, not the session's (F-489): a pick reprints.
+      unnamedMark: AppFrameGridSettings.settings.value.unnamedMark,
     );
   }
 
@@ -202,15 +207,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     return _layout ??= TimesheetDocumentLayout(document: _document!);
   }
 
-  /// The session's news as this sheet hears it: only a change to what it
-  /// prints ([_printedBy]).
+  /// The session's news — and the app's pick of the unnamed mark — as this
+  /// sheet hears it: only a change to what it prints ([_printedBy]).
   ///
   /// 🔬Every notify used to rebuild the sheet's shell — 50 elements, the
   /// panel's pill and layers round a document the memo then handed back
   /// unchanged — for a guide picked on the canvas or the onion switched on
   /// (session-news-rebuilds-unsliced, 2026-10-20).
   late final SlicedListenable<_Printed?> _printedNews = SlicedListenable(
-    widget.session,
+    Listenable.merge([widget.session, AppFrameGridSettings.settings]),
     () => _printedBy(widget.session),
   );
 

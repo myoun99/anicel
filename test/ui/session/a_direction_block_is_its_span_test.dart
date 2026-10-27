@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/frame.dart' show defaultUnnamedDrawingMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -283,6 +284,7 @@ void main() {
             layer: direction(),
             exposureState: TimelineCellExposureState.drawingStart,
             emptyRunStart: false,
+            unnamedMark: defaultUnnamedDrawingMark,
             frameName: name,
           ),
           timelineCellWritesNothing,

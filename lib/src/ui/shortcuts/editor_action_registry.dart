@@ -6,6 +6,7 @@ import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/export_format_selection.dart' show ExportStillFormat;
+import '../../models/inbetween_mark.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart' show EffectKind;
 import '../../models/layer_kind.dart';
@@ -723,6 +724,14 @@ String saveAsImageActionLabel(ExportStillFormat format, AppLanguage language) =>
 /// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
 String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
     '${AppStrings.of(language).brBlend}: ${mode.labelFor(language)}';
+
+/// The action that toggles [mark] — its button's, and the name the mark
+/// wears wherever one of the two is picked: the mark-every window, and
+/// Preferences ▸ Display's unnamed drawing (F-489).
+String markToggleActionOf(InbetweenMark mark) => switch (mark) {
+  InbetweenMark.one => EditorActionIds.frameToggleMarkOne,
+  InbetweenMark.two => EditorActionIds.frameToggleMarkTwo,
+};
 
 /// Registry ids (referenced from dispatch and menu labels).
 abstract final class EditorActionIds {

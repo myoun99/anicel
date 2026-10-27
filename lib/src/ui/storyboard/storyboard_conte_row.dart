@@ -446,6 +446,7 @@ class _StoryboardConteRow extends KeptPiece with _StoryboardRowRunLabels {
               viewportMainExtent: viewportWidth,
               paperGround: law?.ground,
               blockFrameLines: law?.blockFrameLines ?? false,
+              unnamedMark: TimelineGridLaw.unnamedMarkOf(context),
               framesPerSecond: law?.framesPerSecond ?? 0,
               celContent: _celContent(shown),
               shown: headShown,

@@ -364,6 +364,46 @@ void main() {
       expect(TimelineGridLaw.maybeOf(inner)!.blockFrameLines, isTrue);
     });
 
+    // 🗣️F-489 — the unnamed head's mark is the same app pick, so it rides
+    // the same law, and a surface with no host above it reads the pick.
+    testWidgets('the law carries the unnamed mark picked, and a reader with '
+        'no law reads the pick itself', (tester) async {
+      late BuildContext inner;
+      late BuildContext bare;
+      await tester.pumpWidget(
+        Column(
+          children: [
+            TimelineGridLaw(
+              ground: host,
+              framesPerSecond: 30,
+              child: Builder(
+                builder: (context) {
+                  inner = context;
+                  TimelineGridLaw.maybeOf(context);
+                  return const SizedBox();
+                },
+              ),
+            ),
+            Builder(
+              builder: (context) {
+                bare = context;
+                return const SizedBox();
+              },
+            ),
+          ],
+        ),
+      );
+      expect(TimelineGridLaw.unnamedMarkOf(inner), InbetweenMark.two,
+          reason: 'mark 2 until another is picked');
+      AppFrameGridSettings.settings.value =
+          const AppFrameGridSettings(unnamedMark: InbetweenMark.one);
+      await tester.pump();
+      expect(TimelineGridLaw.maybeOf(inner)!.unnamedMark, InbetweenMark.one);
+      expect(TimelineGridLaw.unnamedMarkOf(inner), InbetweenMark.one);
+      expect(TimelineGridLaw.maybeOf(bare), isNull, reason: '⛔전제');
+      expect(TimelineGridLaw.unnamedMarkOf(bare), InbetweenMark.one);
+    });
+
     testWidgets('the SE paper span draws the law\'s lines where the switch '
         'is on, and none where it is off', (tester) async {
       Future<List<({Rect rect, int argb})>> linesOn(bool shown) async {

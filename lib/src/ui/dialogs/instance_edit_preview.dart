@@ -201,6 +201,7 @@ class _InstanceEditPreviewState extends State<InstanceEditPreview> {
                               axis: axis,
                               paperGround: law.ground,
                               blockFrameLines: law.blockFrameLines,
+                              unnamedMark: law.unnamedMark,
                               framesPerSecond: law.framesPerSecond,
                             ),
                           );

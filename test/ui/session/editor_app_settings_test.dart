@@ -184,13 +184,18 @@ void main() {
     first.setUiScale(1.25);
     // The block frame lines (유저 2026-09-24) — a user setting, app-wide like
     // the accents; ON here because OFF is the default a lost store returns
-    // (↩️the other way round until 2026-10-01, 「기본값 off로」).
+    // (↩️the other way round until 2026-10-01, 「기본값 off로」). And the mark
+    // an unnamed drawing wears beside it (F-489) — the ○, because the ● is
+    // the default.
     appSettingsOf(first).setFrameGridSettings(
-      const AppFrameGridSettings(blockFrameLines: true),
+      const AppFrameGridSettings(
+        blockFrameLines: true,
+        unnamedMark: InbetweenMark.one,
+      ),
     );
     // The count window's entry (I-24-open-entry) and the mark-every window's
-    // mark (I-130-Q2) — seconds+frames and the ●, because frames and the ○
-    // are the defaults a lost store returns (F-469).
+    // mark (I-130-Q2) — seconds+frames and a pick, because frames and no
+    // pick are what a lost store returns (F-489-Q1).
     appSettingsOf(first).setFrameCountSettings(
       const AppFrameCountSettings(
         lastEntry: FrameCountEntry.secondsPlusFrames,
@@ -255,6 +260,8 @@ void main() {
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
+          AppFrameGridSettings.settings.value.unnamedMark ==
+              InbetweenMark.one &&
           AppFrameCountSettings.settings.value.lastEveryMark ==
               InbetweenMark.two &&
           CameraPathSettings.settings.value.tickEvery == 6 &&
@@ -270,7 +277,13 @@ void main() {
     expect(AppInput.settings.value.pressureCurve, penResponse);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
-    expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
+    expect(
+      AppFrameGridSettings.settings.value,
+      const AppFrameGridSettings(
+        blockFrameLines: true,
+        unnamedMark: InbetweenMark.one,
+      ),
+    );
     expect(
       AppFrameCountSettings.settings.value,
       const AppFrameCountSettings(
