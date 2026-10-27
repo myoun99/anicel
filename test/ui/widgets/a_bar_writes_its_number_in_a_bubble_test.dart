@@ -6,6 +6,8 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
+import '../../helpers/number_pad_keyboard.dart';
+
 /// 🗣️I-135 (유저 2026-10-27): the brush pill's bars — 「슬라이더 막대엔 텍스트
 /// 없애고, 연필버튼도 여기선 대체되니 없애고 … 막대 옆에 <20.0 … 이 위젯은
 /// 버튼이라 클릭가능. 클릭하면 연필버튼이랑 똑같은 동작으로 텍스트 직접
@@ -67,7 +69,8 @@ void main() {
     ),
   );
 
-  final typing = find.byKey(const ValueKey<String>('field-slider-type-input'));
+  // A press types as the pencil does: it opens the bar's number pad (I-134).
+  final typing = theNumberPadsNumber;
   final bubble = find.byKey(const ValueKey<String>('bubble'));
 
   testWidgets('a bar handed another bubble answers that one\'s press', (
@@ -79,9 +82,9 @@ void main() {
     await tester.tap(bubble);
     await tester.pumpAndSettle();
     expect(typing, findsOneWidget, reason: '⛔premise: its first one types');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(typing, findsNothing, reason: '⛔premise: the field closed');
+    expect(typing, findsNothing, reason: '⛔premise: the pad closed');
 
     await pumpBarAndBubble(tester, leads: second, follows: second);
     await tester.tap(bubble);

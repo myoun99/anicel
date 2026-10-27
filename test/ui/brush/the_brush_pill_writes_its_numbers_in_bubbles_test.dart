@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/brush_value_group.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/readout_text.dart';
 import 'package:anicel/src/ui/text/text_measure.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -23,6 +24,7 @@ import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 const sides = ['size', 'opacity'];
 
@@ -39,6 +41,15 @@ Finder wordsOf(String side) =>
     find.descendant(of: bubble(side), matching: find.byType(Text));
 
 final typing = find.byKey(const ValueKey<String>('field-slider-type-input'));
+
+/// The number a bubble writes, as the number pad its press opens shows it
+/// (I-134): the number alone ([readoutParts]).
+String numberOf(WidgetTester tester, String side) =>
+    readoutParts(tester.widget<Text>(wordsOf(side)).data!).single.number;
+
+/// What the open number pad shows at its top.
+String? padShows(WidgetTester tester) =>
+    tester.widget<Text>(theNumberPadsNumber).data;
 
 final capsule = find.byKey(const ValueKey<String>('canvas-brush-pill'));
 
@@ -241,9 +252,9 @@ void main() {
     }
   });
 
-  testWidgets('a press on a bubble types into its bar, as its pencil did, '
-      'with the bubble standing where it stood; the typed number lands, and '
-      'the bubble says it', (tester) async {
+  testWidgets('a press on a bubble opens its bar\'s number pad, as its '
+      'pencil did, with the bubble standing where it stood; the typed '
+      'number lands, and the bubble says it', (tester) async {
     final brushTool = await pumpPill(tester);
     final before = tester.getRect(bubble('size'));
     for (final side in sides) {
@@ -259,10 +270,10 @@ void main() {
 
     await tester.tap(bubble('size'));
     await tester.pumpAndSettle();
-    final input = find.descendant(of: bar('size'), matching: typing);
-    expect(input, findsOneWidget);
+    expect(padShows(tester), numberOf(tester, 'size'));
     expect(tester.getRect(bubble('size')), before, reason: 'it stays');
-    await tester.enterText(input, '25');
+    await openThePadsKeyboard(tester);
+    await tester.enterText(typing, '25');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(brushTool.value.activeSize, closeTo(25, 1e-9));
@@ -270,7 +281,7 @@ void main() {
 
     await tester.tap(bubble('opacity'));
     await tester.pumpAndSettle();
-    expect(find.descendant(of: bar('opacity'), matching: typing), findsOneWidget);
+    expect(padShows(tester), numberOf(tester, 'opacity'));
   });
 
   testWidgets('a tool that reads no size dims the size\'s bubble, and a '
@@ -293,10 +304,10 @@ void main() {
 
     await tester.tap(bubble('size'));
     await tester.pumpAndSettle();
-    expect(typing, findsNothing);
+    expect(theNumberPadsNumber, findsNothing);
     await tester.tap(bubble('opacity'));
     await tester.pumpAndSettle();
-    expect(find.descendant(of: bar('opacity'), matching: typing), findsOneWidget);
+    expect(padShows(tester), numberOf(tester, 'opacity'));
   });
 
   testWidgets('the lane beside the pill keeps no press but its bubbles\' — '
