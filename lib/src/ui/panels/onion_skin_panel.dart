@@ -260,9 +260,9 @@ class _OnionFalloffStripState extends State<_OnionFalloffStrip> {
   /// 「우선 슬라이더를 지금 쓰는 공용화된 슬라이더 사용」 — ↩️F-150 ②, 유저
   /// 2026-09-16: 「공용슬라이더 사용해서 통일화」, had it only ride
   /// [FieldSlider]'s drag in a strip of its own). Stood up, its number
-  /// standing as the brush pill's does, in the side's tint at rest and while
-  /// dragged ([FieldSlider.color], F-474) — the bar tap, drag, wheel and
-  /// claim of every other bar in the app.
+  /// standing down it a glyph to a cell ([FieldSlider.upright]), in the
+  /// side's tint at rest and while dragged ([FieldSlider.color], F-474) —
+  /// the bar tap, drag, wheel and claim of every other bar in the app.
   Widget _buildBar(int column, double width) {
     final settings = widget.settings;
     final target = _pegForColumn(column);

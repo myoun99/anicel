@@ -10,11 +10,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/brush_value_group.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
+import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
@@ -71,6 +73,9 @@ Future<bool> rowMarked(WidgetTester tester) async {
   return marked;
 }
 
+/// The pill's bars' numbers, each in its bubble beside the pill (I-135).
+const bubbles = ['brush-pill-size-bubble', 'brush-pill-opacity-bubble'];
+
 void expectInThePill(String why) {
   expect(find.byKey(pill), findsOneWidget, reason: why);
   for (final key in [
@@ -79,6 +84,13 @@ void expectInThePill(String why) {
     'brush-pill-opacity-bar',
   ]) {
     expect(inPill(key), findsOneWidget, reason: '$key — $why');
+  }
+  for (final key in bubbles) {
+    expect(
+      find.byKey(ValueKey<String>(key)),
+      findsOneWidget,
+      reason: '$key — $why',
+    );
   }
   for (final key in [
     ...parts,
@@ -92,6 +104,9 @@ void expectInThePill(String why) {
 
 void expectOnTheStrip(String why) {
   expect(find.byKey(pill), findsNothing, reason: why);
+  for (final key in bubbles) {
+    expect(find.byKey(ValueKey<String>(key)), findsNothing, reason: why);
+  }
   for (final key in [
     ...parts,
     'top-strip-size-bar',
@@ -201,8 +216,8 @@ void main() {
   });
 
   testWidgets('the pill as it was drawn (시안 판 6): 28 across, every part 20 '
-      'across and centred in it, the two bars one length — each its number '
-      'alone — and the blend as long as their tracks, written down it', (
+      'across and centred in it, the two bars one length — each without its '
+      'name — and the blend as long as their tracks, written down it', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -255,7 +270,7 @@ void main() {
     }
     expect(
       part('brush-tool-blend-menu-button').height,
-      size.height - FieldSlider.handsReach,
+      size.height - FieldSlider.bubbleHandsReach,
     );
     expect(
       find.descendant(
@@ -304,57 +319,64 @@ void main() {
     );
   });
 
-  testWidgets('the pill\'s bars write their widest numbers whole — at twice '
-      'the OS text too: the two one length, the longer one\'s', (tester) async {
+  testWidgets('the pill\'s numbers stand whole in their bubbles — at twice '
+      'the OS text too: the two bubbles one size, the wider number\'s', (
+    tester,
+  ) async {
     tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
-    await tester.tap(
-      find.descendant(
-        of: inPill('brush-pill-size-bar'),
-        matching: find.byKey(const ValueKey<String>('field-slider-type')),
-      ),
-    );
+    // The size's bubble is its bar's pencil: a press types into the bar, in
+    // the row turned a quarter clockwise — a field types a line, not a
+    // column — its start at the bar's right and its length down it.
+    await tester.tap(find.byKey(ValueKey<String>(bubbles.first)));
     await tester.pumpAndSettle();
-    // Typed in the row turned a quarter clockwise — a field types a line,
-    // not a column — its start at the bar's right and its length down it.
     final input = find.byKey(const ValueKey<String>('field-slider-type-input'));
+    expect(
+      find.descendant(of: inPill('brush-pill-size-bar'), matching: input),
+      findsOneWidget,
+    );
     final start = tester.getTopLeft(input);
     final end = tester.getBottomRight(input);
     expect(start.dx, greaterThan(end.dx), reason: 'the row is turned');
     expect(end.dy - start.dy, greaterThan(start.dx - end.dx));
     // Its frame is the bar's track, whole: as thick as the bar, and as long
-    // as it less the hands under it.
+    // as it less the ± under it.
     final typed = find.ancestor(of: input, matching: find.byType(RotatedBox));
     final stood = tester.getSize(inPill('brush-pill-size-bar'));
     expect(
       tester.getSize(typed),
-      Size(stood.width, stood.height - FieldSlider.handsReach),
+      Size(stood.width, stood.height - FieldSlider.bubbleHandsReach),
     );
     await tester.enterText(input, '2000');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
-    // The NUMBER each bar writes, which this is about — standing (I-125-Q1),
-    // so whole means its column has the room it asks for down the bar. Its
-    // hands are glyphs: on a bar this thick the ± glyph's box runs past its
-    // cell across the pair while its ink stays inside (value_hands.dart,
-    // `ValueSteps`).
-    for (final bar in ['brush-pill-size-bar', 'brush-pill-opacity-bar']) {
-      final number = find.descendant(
-        of: inPill(bar),
-        matching: find.byType(VerticalWritingText),
+    // The NUMBER each bubble writes, which this is about: whole means its
+    // line asks no more than the bubble's body holds inside its ring's room.
+    final bodies = [
+      for (final bubble in bubbles) find.byKey(ValueKey<String>(bubble)),
+    ];
+    expect(tester.getSize(bodies.last), tester.getSize(bodies.first));
+    final written = <String>[];
+    for (final body in bodies) {
+      final number = find.descendant(of: body, matching: find.byType(Text));
+      expect(number, findsOneWidget, reason: '⛔fixture premise: it writes');
+      written.add(tester.widget<Text>(number).data!);
+      final line = tester.renderObject<RenderParagraph>(
+        find.descendant(of: number, matching: find.byType(RichText)),
       );
-      expect(number, findsOneWidget, reason: '⛔fixture premise: $bar writes');
-      final asks = tester
-          .widget<VerticalWritingText>(number)
-          .naturalSizeIn(tester.element(number));
-      final has = tester.getSize(number);
-      expect(has.height, greaterThanOrEqualTo(asks.height), reason: bar);
-      expect(has.width, greaterThanOrEqualTo(asks.width), reason: bar);
+      expect(
+        line.getMaxIntrinsicWidth(double.infinity),
+        lessThanOrEqualTo(
+          tester.getSize(body).width - CanvasCapsule.barPillEnd * 2,
+        ),
+        reason: written.last,
+      );
     }
+    expect(written.first, '2000.0', reason: '⛔premise: the widest it says');
   });
 }
