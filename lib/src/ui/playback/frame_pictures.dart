@@ -371,21 +371,20 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
   }) async {
     await readInStack(nodes, picture);
-    if (shouldAbort()) {
-      return;
-    }
     final turn = await quietTurns.inAQuiet(_holdSpan, gone: shouldAbort);
     if (turn == null) {
       return;
     }
-    final made = drawingNow(nodes, picture, keepsNodes: true);
+    // A cel that cannot be read is noted and drawn without, as the frame's
+    // own making noted it and handed its throw on ([make]).
     final recorder = ui.PictureRecorder();
-    made.frame.drawing.draw(ui.Canvas(recorder));
+    drawingNow(
+      nodes,
+      picture,
+      keepsNodes: true,
+    ).frame.drawing.draw(ui.Canvas(recorder));
     recorder.endRecording().dispose();
     await turn.landed();
-    if (made.thrown case (final error, final stack)) {
-      Error.throwWithStackTrace(error, stack);
-    }
   }
 
   Future<bool> _make(
