@@ -151,6 +151,7 @@ class UndoSurfaceSnapshot {
     required this.key,
     required BitmapSurface snapshot,
     required BitmapSurface? sharedWith,
+    this.revision,
   }) : _canvasSize = snapshot.canvasSize,
        _pasteboardReach = snapshot.pasteboardReach,
        _tileSize = snapshot.tileSize,
@@ -161,6 +162,13 @@ class UndoSurfaceSnapshot {
   /// Which cel these pixels are — the blob header wants it, and a crash
   /// dump of the room can then say which drawing it was looking at.
   final BrushFrameKey key;
+
+  /// The cel's revision these pixels were, where the one that took them
+  /// knows it (`BrushFrameStore.adoptPasteboardReach`) — kept with them
+  /// through a park, so the cel given them back is at it again
+  /// (`BrushFrameStore.markCelEdited`'s `backTo` has why). Null: a new
+  /// revision, as any edit takes.
+  final int? revision;
 
   final CanvasSize _canvasSize;
 

@@ -305,7 +305,7 @@ void main() {
       store.storeBakedSurface(clean, inkInside());
       final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
       expect(taken.keys, [cut]);
-      expect(identical(taken[cut], before), isTrue);
+      expect(identical(taken[cut]?.picture, before), isTrue);
       expectCut(store.bakedSurfaceOrNull(cut));
       expect(
         store.bakedSurfaceOrNull(clean)!.pasteboardReach,
@@ -478,7 +478,7 @@ void main() {
         unreadable(store, refs);
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
         expect(taken.keys, [cut]);
-        expectSamePicture(taken[cut], drawn());
+        expectSamePicture(taken[cut]?.picture, drawn());
         expect(store.isCelCold(cut), isTrue);
         expect(store.isCelFileBacked(clean), isTrue);
         expect(store.dirtyCelKeysSinceSave, {cut});
@@ -503,7 +503,7 @@ void main() {
           final taken = ahead.adoptPasteboardReach(PasteboardReach.none);
           expect(taken.keys, [cut]);
           expect(takenHere.keys, [cut]);
-          expectSamePicture(taken[cut], takenHere[cut]!);
+          expectSamePicture(taken[cut]?.picture, takenHere[cut]!.picture);
           for (final key in [cut, clean]) {
             expectSamePicture(
               ahead.bakedSurfaceOrNull(key),
@@ -547,7 +547,7 @@ void main() {
         }
         expect(store.cutAheadOf(clean), isNull, reason: 'nothing of it cut');
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
-        expect(identical(taken[cut], before), isTrue);
+        expect(identical(taken[cut]?.picture, before), isTrue);
         expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isTrue);
         expect(store.cutAheadOf(cut), isNull, reason: 'let go once taken');
       });
@@ -603,7 +603,7 @@ void main() {
         final drawnSince = drawn();
         store.storeBakedSurface(cut, drawnSince);
         final taken = store.adoptPasteboardReach(PasteboardReach.quarter);
-        expect(identical(taken[cut], drawnSince), isTrue);
+        expect(identical(taken[cut]?.picture, drawnSince), isTrue);
         expect(identical(store.hotBakedSurfaceOrNull(cut), worked), isFalse);
         expectCut(store.bakedSurfaceOrNull(cut));
       });
@@ -846,6 +846,23 @@ void main() {
         command.undo();
         expectWhole(f.store.bakedSurfaceOrNull(cut), before);
       });
+
+      test('$tier: undone, the cel is at the revision that named what it is '
+          'given back — every picture made of it answers again (F-432 ④)', () {
+        final f = fixture((store) => keep(store, drawn()));
+        final named = f.store.getOrCreateFrame(cut).sourceRevision;
+        final command = SetProjectPasteboardCommand(
+          repository: f.repository,
+          brushFrameStore: f.store,
+          size: PasteboardSize.oneAndAHalf,
+        )..execute();
+        expect(f.store.getOrCreateFrame(cut).sourceRevision, isNot(named));
+        command.undo();
+        expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
+        command.execute();
+        command.undo();
+        expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
+      });
     }
 
     test('off leaves the paper alone; undo brings the pasteboard back', () {
@@ -966,6 +983,20 @@ void main() {
       expect(await command.parkPayload(), isTrue);
       command.undo();
       expectWhole(f.store.bakedSurfaceOrNull(cut), before);
+    });
+
+    test('a parked payload is laid back under the revision that named it',
+        () async {
+      final f = fixture((store) => store.storeBakedSurface(cut, drawn()));
+      final named = f.store.getOrCreateFrame(cut).sourceRevision;
+      final command = SetProjectPasteboardCommand(
+        repository: f.repository,
+        brushFrameStore: f.store,
+        size: PasteboardSize.two,
+      )..execute();
+      expect(await command.parkPayload(), isTrue);
+      command.undo();
+      expect(f.store.getOrCreateFrame(cut).sourceRevision, named);
     });
 
     test('a parked payload read back is let go off the UI thread', () async {
@@ -1130,7 +1161,9 @@ void main() {
             'all', () async {
           final store = kept();
           await store.cutCelsAhead(PasteboardReach.none);
-          final was = store.adoptPasteboardReach(PasteboardReach.none)[cel];
+          final was = store
+              .adoptPasteboardReach(PasteboardReach.none)[cel]
+              ?.picture;
 
           expectSamePicture(
             was,

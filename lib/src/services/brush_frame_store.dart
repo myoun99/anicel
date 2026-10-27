@@ -150,14 +150,16 @@ class BrushFrameStore {
   /// the new wall is cut away ([surfaceBehindReach]); a cel the cut does
   /// not touch keeps its bytes where they are.
   ///
-  /// Returns the pictures the cut changed, as they were before it — the
-  /// undo's whole payload: laid back once the wall is moved back
-  /// ([storeBakedSurface]), they restore every pixel.
+  /// Returns the pictures the cut changed, as they were before it, each
+  /// with the revision that named it — the undo's whole payload: laid back
+  /// under that name once the wall is moved back ([markCelEdited]'s
+  /// `backTo`), they restore every pixel, and every picture made of them
+  /// answers again.
   ///
   /// What the kept cels make of it may have been worked out AHEAD
   /// ([cutCelsAhead]); this takes those answers, and lets them go
   /// whichever way it moves.
-  Map<BrushFrameKey, BitmapSurface> adoptPasteboardReach(
+  Map<BrushFrameKey, WallCut> adoptPasteboardReach(
     PasteboardReach reach,
   ) {
     final ahead = _cutAhead;
@@ -201,15 +203,21 @@ class BrushFrameStore {
       cut.addAll(kept);
     }
     _dropCutAhead(ahead);
+    final named = <BrushFrameKey, WallCut>{};
+    for (final MapEntry(:key, value: picture) in cut.entries) {
+      final cel = _canonicalize(key);
+      named[key] = (
+        picture: picture,
+        revision: getOrCreateFrame(cel).sourceRevision,
+      );
+      _update(cel, _markCacheDirty);
+    }
     if (cut.isNotEmpty) {
-      for (final key in cut.keys) {
-        _update(_canonicalize(key), _markCacheDirty);
-      }
       celPixelRevision.value += 1;
     }
     _announceCrossings();
     _scheduleCooling();
-    return cut;
+    return named;
   }
 
   /// What [adoptPasteboardReach] to [reach] will make of the cels, worked
@@ -2209,18 +2217,38 @@ class BrushFrameStore {
   /// neither of which was ever read — while one call away the same word
   /// meant the opposite (`_invalidateBrushFrame(dirtyTiles: null)` says
   /// 「the whole frame」, and this said 「add nothing」).
-  BrushFrameDrawingState markCelEdited(BrushFrameKey key) {
-    final next = _update(_canonicalize(key), _markCacheDirty);
+  ///
+  /// [backTo] is the revision that named the pixels this edit lays back —
+  /// an undo giving a cel back the very picture a revision named
+  /// ([adoptPasteboardReach]'s answer). The cel is at that revision again,
+  /// and every picture made under it answers for it again.
+  ///
+  /// 🔬F-432 ④ (2026-10-27, Surface Pro 11, the verifier's pasteboard
+  /// project): undoing the pasteboard turned off gave its five cels new
+  /// revisions, so the frame's picture — the wall's whole 7040×4992 — was
+  /// made again from every tile, 0.5–1.1 s on the raster thread, while the
+  /// picture of exactly those pixels was still in the store.
+  /// ⛔Only for the pixels that revision named: a revision names one
+  /// picture of one cel, and a cache under it would show that picture for
+  /// any other.
+  BrushFrameDrawingState markCelEdited(BrushFrameKey key, {int? backTo}) {
+    final next = _update(
+      _canonicalize(key),
+      (state) => _markCacheDirty(state, revision: backTo),
+    );
     // The composite caches this edit just invalidated have no event of
     // their own (they self-validate by signature) — see [celPixelRevision].
     celPixelRevision.value += 1;
     return next;
   }
 
-  BrushFrameDrawingState _markCacheDirty(BrushFrameDrawingState state) {
+  BrushFrameDrawingState _markCacheDirty(
+    BrushFrameDrawingState state, {
+    int? revision,
+  }) {
     final next = state.copyWith(
       inactivePreviewDirty: true,
-      sourceRevision: _nextRevision(),
+      sourceRevision: revision ?? _nextRevision(),
     );
     final existing = _displayCaches[state.key];
     if (existing != null) {
@@ -2310,6 +2338,10 @@ class AnicelCelFileRef {
   /// cel that is not hot ([BrushFrameStore.celHasRenderableContent]).
   final bool showsSomething;
 }
+
+/// A picture a move of the pasteboard's wall cut from a cel, as it was, and
+/// the revision that named it ([BrushFrameStore.adoptPasteboardReach]).
+typedef WallCut = ({BitmapSurface picture, int revision});
 
 /// A kept cel rewritten: the bytes it is [kept] as now, in the room, and the
 /// picture it [was] — what the move that rewrote it hands its undo.
