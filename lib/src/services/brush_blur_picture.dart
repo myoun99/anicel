@@ -76,6 +76,9 @@ class BrushBlurPicture {
   Uint16List _lineA = Uint16List(0);
   Uint16List _lineB = Uint16List(0);
 
+  /// The box radius of the dab being blurred ([blurRadiusOf]).
+  int _radius = 1;
+
   /// The scratch's own tile edge — smaller than the cel's, so measuring a
   /// dab's coverage holds little more than the dab.
   static const int _scratchTileSize = 64;
@@ -92,7 +95,7 @@ class BrushBlurPicture {
   static int blurRadiusOf(BrushDab dab) => math.max(1, (dab.size / 6).round());
 
   /// Blurs the picture under [dab] by what it would have laid as paint.
-  /// Returns the rectangle it rewrote, or null when no pixel moved.
+  /// Returns the rectangle it rewrote, or null where it lays nothing.
   DirtyRegion? blurDab(BrushDab dab) {
     final plan = BrushDabPlan.of(
       // The colour is not this dab's to lay; opaque, so what it measures is
@@ -106,24 +109,18 @@ class BrushBlurPicture {
       return null;
     }
     final laid = _measureLaid(plan);
-    final left = plan.left;
-    final top = plan.top;
-    final width = plan.rightExclusive - left;
-    final height = plan.bottomExclusive - top;
-    final radius = blurRadiusOf(dab);
-    final reach = radius * 3;
+    _radius = blurRadiusOf(dab);
+    final reach = _radius * 3;
+    final width = plan.rightExclusive - plan.left;
     final wide = width + reach * 2;
-    final tall = height + reach * 2;
+    final tall = plan.bottomExclusive - plan.top + reach * 2;
     _ensureRoom(width: width, wide: wide, tall: tall);
 
-    // Along the rows: every row the blur reads, three passes, the dab's
-    // columns kept.
+    // Along the rows: every row the blur reads, the dab's columns kept.
     final rowValues = width * 4;
     for (var row = 0; row < tall; row += 1) {
-      _gatherRow(_lineA, left - reach, top - reach + row, wide);
-      _box(_lineA, _lineB, radius, wide - radius, radius);
-      _box(_lineB, _lineA, radius * 2, wide - radius * 2, radius);
-      _box(_lineA, _lineB, reach, wide - reach, radius);
+      _gatherRow(_lineA, plan.left - reach, plan.top - reach + row, wide);
+      _blurLine((values: _lineA, from: 0, step: 4), wide);
       _across.setRange(
         row * rowValues,
         (row + 1) * rowValues,
@@ -132,42 +129,13 @@ class BrushBlurPicture {
       );
     }
 
-    // Along the columns: three passes over each of the dab's columns, and
-    // its pixels moved toward what they leave.
-    var moved = false;
+    // Along the columns, read where the rows left them, and the dab's
+    // pixels moved toward what they leave.
     for (var column = 0; column < width; column += 1) {
-      for (var row = 0; row < tall; row += 1) {
-        final from = row * rowValues + column * 4;
-        final to = row * 4;
-        _lineA[to] = _across[from];
-        _lineA[to + 1] = _across[from + 1];
-        _lineA[to + 2] = _across[from + 2];
-        _lineA[to + 3] = _across[from + 3];
-      }
-      _box(_lineA, _lineB, radius, tall - radius, radius);
-      _box(_lineB, _lineA, radius * 2, tall - radius * 2, radius);
-      _box(_lineA, _lineB, reach, tall - reach, radius);
-      if (_moveColumn(
-        blurred: _lineB,
-        blurredStart: reach,
-        laid: laid,
-        laidStride: width,
-        column: column,
-        x: left + column,
-        top: top,
-        height: height,
-      )) {
-        moved = true;
-      }
+      _blurLine((values: _across, from: column * 4, step: rowValues), tall);
+      _moveColumn(plan, laid, column);
     }
-    return moved
-        ? DirtyRegion(
-            left: left,
-            top: top,
-            rightExclusive: plan.rightExclusive,
-            bottomExclusive: plan.bottomExclusive,
-          )
-        : null;
+    return plan.clip;
   }
 
   void _ensureRoom({required int width, required int wide, required int tall}) {
@@ -255,7 +223,10 @@ class BrushBlurPicture {
           into.fillRange(out, out + span * 4, 0);
         } else {
           tile.readPixels(
-            (_, view) => _premultiplyInto(into, out, view, from, span),
+            (_, view) => _premultiplyInto(
+              Uint16List.sublistView(into, out, out + span * 4),
+              Uint8List.sublistView(view, from, from + span * 4),
+            ),
           );
         }
       }
@@ -263,21 +234,15 @@ class BrushBlurPicture {
     }
   }
 
-  /// [count] straight 8-bit pixels of [source] from [from], premultiplied
-  /// to 16 bits into [into] at [out].
-  static void _premultiplyInto(
-    Uint16List into,
-    int out,
-    Uint8List source,
-    int from,
-    int count,
-  ) {
-    for (var i = 0; i < count * 4; i += 4) {
-      final alpha = source[from + i + 3];
-      into[out + i] = _premultiplied(source[from + i], alpha);
-      into[out + i + 1] = _premultiplied(source[from + i + 1], alpha);
-      into[out + i + 2] = _premultiplied(source[from + i + 2], alpha);
-      into[out + i + 3] = alpha * 257;
+  /// The straight 8-bit pixels of [source], premultiplied to 16 bits into
+  /// [into].
+  static void _premultiplyInto(Uint16List into, Uint8List source) {
+    for (var i = 0; i < source.length; i += 4) {
+      final alpha = source[i + 3];
+      into[i] = _premultiplied(source[i], alpha);
+      into[i + 1] = _premultiplied(source[i + 1], alpha);
+      into[i + 2] = _premultiplied(source[i + 2], alpha);
+      into[i + 3] = alpha * 257;
     }
   }
 
@@ -285,28 +250,37 @@ class BrushBlurPicture {
   static int _premultiplied(int channel, int alpha) =>
       (channel * alpha * 514 + 255) ~/ 510;
 
-  /// One box pass along a line of RGBA pixels: every pixel in [start, end)
-  /// of [target] takes the mean of the [radius] pixels of [source] either
-  /// side of it and itself, rounded half up. [source] must hold
-  /// [start] − [radius] to [end] + [radius].
-  static void _box(
-    Uint16List source,
-    Uint16List target,
-    int start,
-    int end,
-    int radius,
-  ) {
+  /// The three box passes along [line], [length] pixels long: the blur of
+  /// every pixel three radii in from either end, left in [_lineB].
+  void _blurLine(_Line line, int length) {
+    _box(line, _lineB, 1, length);
+    _box((values: _lineB, from: 0, step: 4), _lineA, 2, length);
+    _box((values: _lineA, from: 0, step: 4), _lineB, 3, length);
+  }
+
+  /// Box pass [pass] along [source], [length] pixels long: every pixel
+  /// [pass] radii in from either end takes into [target] the mean of the
+  /// [_radius] pixels either side of it and itself, rounded half up — what
+  /// the pass before left whole one radius further out.
+  void _box(_Line source, Uint16List target, int pass, int length) {
+    final radius = _radius;
+    final start = radius * pass;
+    final end = length - start;
+    final values = source.values;
+    final from = source.from;
+    final step = source.step;
     final count = radius * 2 + 1;
     final twice = count * 2;
     var r = 0;
     var g = 0;
     var b = 0;
     var a = 0;
-    for (var i = (start - radius) * 4; i <= (start + radius) * 4; i += 4) {
-      r += source[i];
-      g += source[i + 1];
-      b += source[i + 2];
-      a += source[i + 3];
+    for (var at = start - radius; at <= start + radius; at += 1) {
+      final i = from + at * step;
+      r += values[i];
+      g += values[i + 1];
+      b += values[i + 2];
+      a += values[i + 3];
     }
     for (var at = start; at < end; at += 1) {
       final o = at * 4;
@@ -315,66 +289,48 @@ class BrushBlurPicture {
       target[o + 2] = (b * 2 + count) ~/ twice;
       target[o + 3] = (a * 2 + count) ~/ twice;
       if (at + 1 < end) {
-        final enter = (at + radius + 1) * 4;
-        final leave = (at - radius) * 4;
-        r += source[enter] - source[leave];
-        g += source[enter + 1] - source[leave + 1];
-        b += source[enter + 2] - source[leave + 2];
-        a += source[enter + 3] - source[leave + 3];
+        final enter = from + (at + radius + 1) * step;
+        final leave = from + (at - radius) * step;
+        r += values[enter] - values[leave];
+        g += values[enter + 1] - values[leave + 1];
+        b += values[enter + 2] - values[leave + 2];
+        a += values[enter + 3] - values[leave + 3];
       }
     }
   }
 
-  /// Moves the dab's pixels down column [x] toward [blurred] (from
-  /// [blurredStart]) by what the dab laid there. A pixel's move reads only
-  /// itself and the finished blur, so writing column by column is the same
-  /// as writing all at once. Returns whether any value moved.
-  bool _moveColumn({
-    required Uint16List blurred,
-    required int blurredStart,
-    required Uint16List laid,
-    required int laidStride,
-    required int column,
-    required int x,
-    required int top,
-    required int height,
-  }) {
+  /// Moves [plan]'s pixels down its [column] toward the blur [_blurLine]
+  /// left in [_lineB], by what the dab [laid] there. A pixel's move reads
+  /// only itself and the finished blur, so writing column by column is the
+  /// same as writing all at once.
+  void _moveColumn(BrushDabPlan plan, Uint16List laid, int column) {
+    final width = plan.rightExclusive - plan.left;
+    final reach = _radius * 3;
+    final x = plan.left + column;
     final tileX = floorDiv(x, tileSize);
     final localX = x - tileX * tileSize;
-    final bottom = top + height;
-    var moved = false;
+    final top = plan.top;
+    final bottom = plan.bottomExclusive;
     var y = top;
     while (y < bottom) {
       final tileY = floorDiv(y, tileSize);
       final spanEnd = math.min(bottom, (tileY + 1) * tileSize);
       Uint16List? own;
       for (var at = y; at < spanEnd; at += 1) {
-        final row = at - top;
-        final share = laid[row * laidStride + column];
+        final share = laid[(at - top) * width + column];
         if (share == 0) {
           continue;
         }
         own ??= _tileFor(TileCoord(x: tileX, y: tileY));
         final o = ((at - tileY * tileSize) * tileSize + localX) * 4;
-        final b = (blurredStart + row) * 4;
-        final alpha = _toward(own[o + 3], blurred[b + 3], share);
-        final red = _toward(own[o], blurred[b], share);
-        final green = _toward(own[o + 1], blurred[b + 1], share);
-        final blue = _toward(own[o + 2], blurred[b + 2], share);
-        if (red != own[o] ||
-            green != own[o + 1] ||
-            blue != own[o + 2] ||
-            alpha != own[o + 3]) {
-          own[o] = red;
-          own[o + 1] = green;
-          own[o + 2] = blue;
-          own[o + 3] = alpha;
-          moved = true;
-        }
+        final b = (reach + at - top) * 4;
+        own[o] = _toward(own[o], _lineB[b], share);
+        own[o + 1] = _toward(own[o + 1], _lineB[b + 1], share);
+        own[o + 2] = _toward(own[o + 2], _lineB[b + 2], share);
+        own[o + 3] = _toward(own[o + 3], _lineB[b + 3], share);
       }
       y = spanEnd;
     }
-    return moved;
   }
 
   /// [from] moved toward [to] by [share] / 65535, rounded half away from
@@ -391,12 +347,7 @@ class BrushBlurPicture {
   /// The rewritten tile at [coord], made from the cel's the first time.
   Uint16List _tileFor(TileCoord coord) => _tiles.putIfAbsent(coord, () {
     final values = Uint16List(tileSize * tileSize * 4);
-    base
-        .tileAt(coord)
-        ?.readPixels(
-          (_, view) =>
-              _premultiplyInto(values, 0, view, 0, tileSize * tileSize),
-        );
+    base.tileAt(coord)?.readPixels((_, view) => _premultiplyInto(values, view));
     return values;
   });
 
@@ -420,6 +371,10 @@ class BrushBlurPicture {
     final pixelCount = tileSize * tileSize;
     final bytes = Uint8List(pixelCount * 4);
     base.tileAt(coord)?.copyPixelsInto(bytes);
+    // A pixel's four bytes as one word: red is its low byte on the
+    // little-endian machines the app runs on (as `cel_text_laying` reads
+    // them).
+    final pixels = bytes.buffer.asUint32List();
     var changed = false;
     for (var p = 0; p < pixelCount; p += 1) {
       final cover = mask == null ? 255 : mask[p];
@@ -440,17 +395,13 @@ class BrushBlurPicture {
         blue = _covered(bytes[i + 2], celAlpha, blue, cover);
       }
       final outAlpha = (alpha * 2 + 257) ~/ 514;
-      final outRed = _straight(red, alpha, outAlpha);
-      final outGreen = _straight(green, alpha, outAlpha);
-      final outBlue = _straight(blue, alpha, outAlpha);
-      if (outRed != bytes[i] ||
-          outGreen != bytes[i + 1] ||
-          outBlue != bytes[i + 2] ||
-          outAlpha != celAlpha) {
-        bytes[i] = outRed;
-        bytes[i + 1] = outGreen;
-        bytes[i + 2] = outBlue;
-        bytes[i + 3] = outAlpha;
+      final pixel =
+          outAlpha << 24 |
+          _straight(blue, alpha, outAlpha) << 16 |
+          _straight(green, alpha, outAlpha) << 8 |
+          _straight(red, alpha, outAlpha);
+      if (pixel != pixels[p]) {
+        pixels[p] = pixel;
         changed = true;
       }
     }
@@ -469,3 +420,8 @@ class BrushBlurPicture {
   static int _straight(int channel, int alpha, int outAlpha) =>
       outAlpha == 0 ? 0 : (channel * 510 + alpha) ~/ (alpha * 2);
 }
+
+/// A line of RGBA pixels inside a plane: its first pixel at `from`, each
+/// next one `step` values on — a line buffer's (step 4), or one column of
+/// the rows' blur (step: a row's values).
+typedef _Line = ({Uint16List values, int from, int step});

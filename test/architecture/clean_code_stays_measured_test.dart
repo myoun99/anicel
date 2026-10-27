@@ -1372,7 +1372,15 @@ void main() {
   /// lane's base (`e059586e1`) names this one and no other class. ⛔Not split
   /// to fit: it is the one bundle both grids take (`one_grid_hooks_test`),
   /// and a read their sweep needs is one more of its answers.
-  const longClasses = 75;
+  ///
+  /// ⚠️75 → 76 on 2026-10-27, ONE name: `BrushShape` crossed (587 → 609)
+  /// when mixing came to open onto two methods (I-75 — 유저 Q1 「섞기
+  /// 그룹에 「흐리기」」): the method beside the gate (`mixingMethod`), and
+  /// the two questions every reader asks of the pair (`picksUpGround` ·
+  /// `blurs`). 🔬`clean_code_diff` against the lane's base (`635015833`)
+  /// names this one and no other class. ⛔Not split to fit: a brush's
+  /// settings are one value, and the method is one more field of it.
+  const longClasses = 76;
 
   late CleanCodeScan scan;
   setUpAll(() {

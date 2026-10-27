@@ -283,25 +283,7 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
     return promoted.isEmpty ? null : data;
   }
   if (data.sourceDabs.firstOrNull?.blurs ?? false) {
-    // I-75: a blur has no stroke buffer to cut — it is laid again here,
-    // through the selection, as tiles of this very surface, which the
-    // commit then installs as it installs a promotion.
-    final tiles = blurStrokeLandedOn(
-      surface,
-      data.sourceDabs,
-      opacity: data.strokeOpacity,
-      selection: region,
-    );
-    return tiles.isEmpty
-        ? null
-        : BrushStrokeCommitData(
-            sourceDabs: data.sourceDabs,
-            blendMode: data.blendMode,
-            strokeOpacity: data.strokeOpacity,
-            promotedBase: surface,
-            promotedTiles: tiles,
-            end: data.end,
-          );
+    return _blurLandedThrough(region, data, surface);
   }
   final pixels = data.strokePixels;
   final bounds = data.strokeBounds;
@@ -342,4 +324,30 @@ BrushStrokeCommitData? clipStrokeCommitToSelection(
     strokeOpacity: data.strokeOpacity,
     end: data.end,
   );
+}
+
+/// I-75: a blur has no stroke buffer to cut — it is laid again here,
+/// through [region], as tiles of this very [surface], which the commit
+/// then installs as it installs a promotion.
+BrushStrokeCommitData? _blurLandedThrough(
+  CanvasSelectionRegion region,
+  BrushStrokeCommitData data,
+  BitmapSurface surface,
+) {
+  final tiles = blurStrokeLandedOn(
+    surface,
+    data.sourceDabs,
+    opacity: data.strokeOpacity,
+    selection: region,
+  );
+  return tiles.isEmpty
+      ? null
+      : BrushStrokeCommitData(
+          sourceDabs: data.sourceDabs,
+          blendMode: data.blendMode,
+          strokeOpacity: data.strokeOpacity,
+          promotedBase: surface,
+          promotedTiles: tiles,
+          end: data.end,
+        );
 }

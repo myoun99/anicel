@@ -1152,10 +1152,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // setting of mixing rather than a tool. How far it smears is its size and
   // how hard it rubs its flow and the pen's pressure (Q3) — so pressure
   // drives the flow here.
-  // ⚠️Its spacing is coarser than the group's 5% on purpose: a blur dab
-  // re-reads and rewrites the picture under it, so it costs far more than a
-  // paint dab, and the laid share is evened across spacings anyway
-  // (`stampShareOf`) — a coarser step blurs the same, in fewer dabs.
+  // At the finest step, as every general brush lays (the roster's law): a
+  // blur dab costs far more than a paint dab, and that is the kernel's to
+  // answer, not the step's (⛔해상도로 속도를 사지 않는다).
   BrushPreset(
     id: const BrushPresetId('builtin-blur'),
     name: 'Blur',
@@ -1164,7 +1163,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 40,
       hardness: 0.3,
       flow: 0.3,
-      spacing: 0.1,
+      spacing: BrushShape.minSpacing,
       mixesGroundColor: true,
       mixingMethod: BrushMixingMethod.blur,
       flowPressureCurve: BrushPressureCurve.identity(),
