@@ -70,10 +70,8 @@ class FramePictures implements PlaybackPictures {
   /// cels that could not be read.
   final LayerFrameImageCache layerImages;
 
-  /// The tree a screen stacks for [Cut]'s frame while a run shows it — the
-  /// canvas's own with no row standing live (`EditingCanvas.playedStackAt`)
-  /// — or, for its ghosts ([DemandedPicture.ghosts]), the ghosts a canvas
-  /// standing on it lays over it (`OnionSkin.ghostsAt`).
+  /// The tree a screen stacks for [Cut]'s frame — the canvas's own, no row
+  /// live (`EditingCanvas.playedStackAt`) — or its ghosts' (`ghostsAt`).
   final List<CompositeNode<CanvasStackRow>> Function(
     DemandedPicture picture,
   )

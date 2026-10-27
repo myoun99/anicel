@@ -1,4 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
@@ -16,7 +18,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/debug/device_grid_probe.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/session/editor_app_settings.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
 
@@ -173,5 +180,68 @@ void main() {
 
       expectEveryFramesGhostsMade(session);
     });
+  });
+
+  testWidgets('the canvas lays over its frame the very ghosts the warmer '
+      'makes — one picture, one key', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.createDrawingAtCurrentFrame();
+    session.selectFrameIndex(1);
+    session.createDrawingAtCurrentFrame();
+    session.onionSkin.toggleOnionSkin();
+    await tester.pumpAndSettle();
+
+    final [_, shown] = tester
+        .widgetList<FramePictureView>(
+          find.descendant(
+            of: find.byType(DeviceGridProbe),
+            matching: find.byType(FramePictureView),
+          ),
+        )
+        .toList();
+    final ghosts = ghostsAt(session, 1);
+    final planned = session.onionSkin.ghostsAt(session.requireActiveCut, 1);
+    expect(planned, isNotEmpty, reason: '⛔premise: frame 1 ghosts');
+    expect(shown.picture, ghosts);
+    expect(
+      asGhosts(shown.nodes),
+      [
+        for (final ghost in planned)
+          (ghost.frameKey.frameId.value, ghost.tint, ghost.opacity),
+      ],
+    );
+    final pictures = session.playbackRig.framePictures;
+    expect(
+      pictures.keyOfStack(shown.nodes, shown.picture),
+      pictures.keyOf(ghosts),
+      reason: 'the picture the warmer lays ahead is the one the canvas asks',
+    );
+  });
+
+  test('a session let go of hears the app\'s pegs no more — they are one '
+      'value for every open project', () {
+    final app = EditorAppSettings();
+    addTearDown(app.dispose);
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+      appSettings: app,
+    );
+    session.onionSkin.toggleOnionSkin();
+    session.dispose();
+
+    expect(
+      () => app.onionSkinSettings.value = app.onionSkinSettings.value
+          .copyWith(mode: OnionSkinMode.images),
+      returnsNormally,
+      reason: 'a pegs change asked the warmer of a session already gone',
+    );
   });
 }
