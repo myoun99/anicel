@@ -115,6 +115,20 @@ void main() {
     expect(checksWaiting(card), ['2026-10-27T04:00:00Z']);
   });
 
+  test('🧪the verdict left for 관제 first and then written on the card ends '
+      'it — the card\'s line is no repeat of the letter (10-27)', () {
+    const words = '🤖**AI 검증완료**(서피스): 봤다';
+    final first = jsonEncode({
+      'id': 'F-1',
+      'to': '관제',
+      'from': '검증/서피스',
+      'note': words,
+      'ts': '2026-10-27T02:45:00Z',
+    });
+    expect(asked([born, landed, first, note(words)]),
+        asked(userTicks([born, landed])));
+  });
+
   test('⛔a letter carrying the words moves nothing; nor do the words inside '
       'a line, or a line whose `at` names its own place', () {
     final letter = jsonEncode({

@@ -134,6 +134,29 @@ void main() {
       expect([for (final entry in letters) entry.ts], [t1, t2, t3]);
       expect([for (final entry in letters) entry.to], [theirs, '저장', theirs]);
     });
+
+    test('⛔the same words on the card itself are no repeat of the letter — '
+        'the card\'s own line is the one that moves it', () {
+      // ⚠️No `at` on it: a line with one still moves the card by its bare
+      // move entry when its words are eaten, which hid the loss.
+      const own = '{"kind":"item","id":"W","note":"레인이 착지했다",'
+          '"ts":"$t2"}';
+      final w = board([card, letter(t1), own]).single;
+      expect(
+        [
+          for (final entry in w.log)
+            if (entry.text == '레인이 착지했다') (entry.ts, entry.isLetter),
+        ],
+        [(t1, true), (t2, false)],
+      );
+    });
+
+    test('⛔but the same words on the card again are a repeat, as they '
+        'always were', () {
+      const again = '{"kind":"item","id":"W","note":"시작",'
+          '"ts":"$t2"}';
+      expect(board([card, again]).single.log, hasLength(1));
+    });
   });
 
   group('a 읽음 is a mark on the letter it names', () {

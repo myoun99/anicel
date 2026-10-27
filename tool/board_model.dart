@@ -807,7 +807,16 @@ class _Fold {
       // ⚠️A LETTER IS NEVER A REPEAT. The same words left for a second 담당,
       // or left twice, are two tellings — each has its own reader to reach,
       // and the dedupe would have delivered only the first.
-      if (!letter && e.log.any((l) => l.text == text && l.ref == ref)) return;
+      // ⚠️NOR IS A LINE A REPEAT OF A LETTER: a letter is delivered and moves
+      // nothing, the card's own line is what moves the card. 🧪2026-10-27
+      // (relayed by 관제): the verify session left its verdict for 관제
+      // first, then wrote the same words on the card, and board_say said
+      // 「2줄 추가」 while the card gained nothing — the 검증완료 that was to
+      // end it was taken for the letter again.
+      if (!letter &&
+          e.log.any((l) => !l.isLetter && l.text == text && l.ref == ref)) {
+        return;
+      }
       final label = at.isEmpty ? fallback : at;
       at = '';
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
