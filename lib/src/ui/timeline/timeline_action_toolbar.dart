@@ -16,7 +16,6 @@ import '../widgets/command_pill.dart';
 import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
-import '../widgets/static_raster.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
 import 'timeline_section_policy.dart';
 import 'timeline_bar_menus.dart';
@@ -314,6 +313,7 @@ class _StaticCommandGroup extends StatelessWidget {
     required this.news,
     required this.gates,
     required this.builder,
+    this.zoned = false,
   });
 
   final Listenable news;
@@ -322,6 +322,11 @@ class _StaticCommandGroup extends StatelessWidget {
   final Object? Function() gates;
   final WidgetBuilder builder;
 
+  /// Whether what [builder] makes lays its own zones
+  /// ([CommandGroupZone]) — the cut pill's, round its name — rather than
+  /// baking whole here.
+  final bool zoned;
+
   @override
   Widget build(BuildContext context) => SlicedListenableBuilder<Object?>(
     listenable: news,
@@ -329,16 +334,22 @@ class _StaticCommandGroup extends StatelessWidget {
     builder: (context, shown) => _BakedCommandGroup(
       shown: shown,
       builder: builder,
+      zoned: zoned,
     ),
   );
 }
 
 /// A group's widgets as last built, and the zone they bake in.
 class _BakedCommandGroup extends StatefulWidget {
-  const _BakedCommandGroup({required this.shown, required this.builder});
+  const _BakedCommandGroup({
+    required this.shown,
+    required this.builder,
+    required this.zoned,
+  });
 
   final Object? shown;
   final WidgetBuilder builder;
+  final bool zoned;
 
   @override
   State<_BakedCommandGroup> createState() => _BakedCommandGroupState();
@@ -367,15 +378,14 @@ class _BakedCommandGroupState extends State<_BakedCommandGroup> {
       _builtAt = scaler;
       _cached = null;
     }
-    return _cached ??= StaticRaster(
-      // Each group is its own ZONE. The bar used to be baked as one
-      // surface, which meant a single button's state changing re-baked
-      // every button on the row; now dirt from one group stops at that
-      // group's own boundary. Siblings, never nesting — a bake inside a
-      // bake is the one thing that freezes.
-      debugLabel: 'command-group',
-      child: widget.builder(context),
-    );
+    // Each group is its own ZONE. The bar used to be baked as one surface,
+    // which meant a single button's state changing re-baked every button
+    // on the row; now dirt from one group stops at that group's own
+    // boundary.
+    return _cached ??= switch (widget.zoned) {
+      true => widget.builder(context),
+      false => CommandGroupZone(child: widget.builder(context)),
+    };
   }
 }
 
@@ -992,7 +1002,7 @@ class TimelineActionToolbar extends StatelessWidget {
             //
             // ★It listens for ITSELF. This group is memoized on
             // [_StaticCommandGroup.gates] and baked into a
-            // [StaticRaster]; the toolbar does not rebuild when
+            // [CommandGroupZone]; the toolbar does not rebuild when
             // `AppInput.settings` moves, so a plain read here would show
             // yesterday's state for ever. A listener inside the bake is
             // safe — a rebuild ends in `markNeedsPaint`, which is exactly
@@ -1235,6 +1245,7 @@ class TimelineActionToolbar extends StatelessWidget {
               session.cutPlacement.canCreateCut,
             ),
             builder: (context) => CutCommandGroup(session: session),
+            zoned: true,
           ),
         ),
         const SizedBox(width: 6),

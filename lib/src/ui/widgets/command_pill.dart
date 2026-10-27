@@ -9,6 +9,7 @@ import 'grip_band.dart';
 import 'keyboard_press.dart';
 import 'panel_flyout.dart';
 import 'rail_glyph_button.dart';
+import 'static_raster.dart';
 
 /// THE grammar of the frame panels' command bar (유저 확정, 2026-08-10):
 ///
@@ -104,10 +105,12 @@ class CommandPill extends StatelessWidget {
   /// ★So the tail READS the head rather than guessing at it. 「The pill owes
   /// its contents the same margin on both ends」 is what the old note
   /// already said; the constant just could not say it.
-  static double _tailBreathFor(Widget? head) =>
-      head is PillNameCell && head.label != null
-      ? PillNameCell.textBreath
-      : PillNameCell.iconBreath;
+  static double _tailBreathFor(Widget? head) => switch (head) {
+    // A head baked in a zone of its own is still its cell.
+    CommandGroupZone(:final child) => _tailBreathFor(child),
+    PillNameCell(label: _?) => PillNameCell.textBreath,
+    _ => PillNameCell.iconBreath,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +163,23 @@ class CommandPill extends StatelessWidget {
     }
     return Opacity(opacity: 0.38, child: IgnorePointer(child: pill));
   }
+}
+
+/// One BAKE of the command bar ([StaticRaster]): a group's pill, or a piece
+/// of one, that changes only with what the group shows.
+///
+/// Siblings, never nesting — a bake inside a bake is the one thing that
+/// freezes, and a tick layer inside one keeps it from baking at all. So a
+/// pill with something that ticks in it (the cut's name, F-463 ④) is zoned
+/// round it, a zone on either side.
+class CommandGroupZone extends StatelessWidget {
+  const CommandGroupZone({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      StaticRaster(debugLabel: 'command-group', child: child);
 }
 
 /// The thin rule between two groups of verbs INSIDE one pill.

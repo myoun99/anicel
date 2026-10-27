@@ -48,6 +48,32 @@ void main() {
     );
   });
 
+  testWidgets('a TEXT head baked in a zone of its own breathes as its cell '
+      '(the cut pill\'s, round its name — F-463)', (tester) async {
+    const verb = SizedBox(
+      key: ValueKey<String>('verb'),
+      width: 24,
+      height: 24,
+    );
+    final rect = await pillRect(
+      tester,
+      CommandPill(
+        head: CommandGroupZone(
+          child: PillNameCell(
+            keyValue: 'head',
+            label: '프레임',
+            entriesBuilder: () => const [],
+          ),
+        ),
+        children: [verb],
+      ),
+    );
+    final head = tester.getRect(find.text('프레임'));
+    final tail = tester.getRect(find.byKey(const ValueKey<String>('verb')));
+
+    expect(rect.right - tail.right, head.left - rect.left);
+  });
+
   testWidgets('an ICON-headed pill too', (tester) async {
     const verb = SizedBox(
       key: ValueKey<String>('verb'),
