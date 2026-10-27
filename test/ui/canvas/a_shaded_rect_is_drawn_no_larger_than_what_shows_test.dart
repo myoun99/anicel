@@ -113,6 +113,14 @@ void main() {
     expect(shades, containsAll(<int>[0xFF, 0xCC]));
   });
 
+  // ⚠️The test runner's Impeller fills the uncut rect whole — the white is
+  // the Windows app's (ANGLE) — so what the rect IS is read off the draw.
+  test('the rect a shader fills ends a unit past the clip', () {
+    final canvas = _SpyCanvas(const Rect.fromLTRB(1100, 80, 1130, 100));
+    drawShadedRect(canvas, whole, Paint());
+    expect(canvas.drawn, [const Rect.fromLTRB(1099, 79, 1131, 101)]);
+  });
+
   // The cut lies a unit past the clip: a clip cutting pixels in part keeps
   // them as an uncut rect would, at a scale and a pan that put the image's
   // own edge inside the view too.
@@ -149,4 +157,21 @@ void main() {
       expect(cut, uncut, reason: 'at $scale×');
     }
   });
+}
+
+/// Records every rect drawn under a fixed clip; everything else is a no-op.
+class _SpyCanvas implements ui.Canvas {
+  _SpyCanvas(this.clip);
+
+  final Rect clip;
+  final List<Rect> drawn = [];
+
+  @override
+  Rect getLocalClipBounds() => clip;
+
+  @override
+  void drawRect(Rect rect, Paint paint) => drawn.add(rect);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
