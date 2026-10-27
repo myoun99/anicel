@@ -189,9 +189,11 @@ void main() {
   // The other drag that hangs a picture somewhere else: a block carried onto
   // another row ([BlockMoveDragPreview.rekeys]). The rows it leaves and lands
   // on are laid again; a FOLDER over the row it lands on is not, and its
-  // band is white wherever a member's block holds a picture.
+  // band is white wherever a member's block holds a picture. Let go of, the
+  // drag is gone and only what it hung says which rows to tell.
   test('a block carried into a folder turns the folder\'s band white while '
-      'the hand is down, and the folder is told so', () {
+      'the hand is down and back when it is let go — the folder told each '
+      'time', () {
     const canvas = CanvasSize(width: 16, height: 16);
     const out = LayerId('out');
     const into = LayerId('in');
@@ -265,6 +267,12 @@ void main() {
       isTrue,
       reason: 'the picture is on its way into the folder',
     );
+    expect(heard(), {folder});
+
+    s.rangeMove.cancelFrameRangeMoveDrag();
+
+    expect(s.dragPreview.value, isNull, reason: '⛔전제: the hand is off');
+    expect(drawn(s, folder), isFalse, reason: 'the picture went back out');
     expect(heard(), {folder});
   });
 }
