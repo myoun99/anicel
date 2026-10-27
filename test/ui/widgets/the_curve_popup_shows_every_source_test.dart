@@ -49,6 +49,44 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('a hand the graph lost when its source went off holds nothing '
+      'once the source is back', (tester) async {
+    // Ten points, the most a graph takes: a press away from all of them
+    // neither grabs one nor adds one.
+    await open(tester, {
+      BrushInputSource.pressure: BrushPressureCurve([
+        for (var i = 0; i < 10; i += 1) BrushCurvePoint(i / 9, 0),
+      ]),
+    });
+    final graph = tester.getRect(
+      find.byKey(const ValueKey<String>('pressure-curve-graph-pressure')),
+    );
+    final name = find.byKey(const ValueKey<String>('curve-source-pressure'));
+    final column = graph.left + graph.width * 5 / 9;
+
+    // A hand holds the sixth point while another turns the source off and
+    // on: the graph lets the first hand's drag go without its end.
+    final hand = await tester.startGesture(Offset(column, graph.bottom - 2));
+    await tester.pump();
+    await hand.moveBy(const Offset(0, -10));
+    await tester.pump();
+    await tester.tap(name);
+    await tester.pump();
+    await tester.tap(name);
+    await tester.pump();
+    await hand.up();
+    await tester.pumpAndSettle();
+
+    committed = null;
+    final next = await tester.startGesture(Offset(column, graph.top + 2));
+    await tester.pump();
+    await next.moveBy(const Offset(0, 20));
+    await tester.pump();
+    await next.up();
+    await tester.pumpAndSettle();
+    expect(committed, isNull, reason: 'the press found nothing to hold');
+  });
+
   testWidgets('🚨every source has its own row, always — none behind a tab', (
     tester,
   ) async {
