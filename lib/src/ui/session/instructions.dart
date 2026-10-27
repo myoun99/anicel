@@ -134,8 +134,9 @@ class Instructions {
       }
       spans = (row) => _sayingOnEveryBlockOf(row, drawing, event.writing);
     } else {
-      // A new block saying what a drawing of the row says shows that one:
-      // nothing is thrown away, so there is nothing to ask.
+      // A new block saying what a drawing of the row says shows that one,
+      // and says it with that one's blocks: nothing is thrown away, so
+      // there is nothing to ask.
       final held = _drawingSaying(layer, event.writing);
       final cel = held ?? _frameIds.mintFrameId(layerId);
       final wanted = (createLengthFrames ?? available).clamp(1, available);
@@ -145,7 +146,7 @@ class Instructions {
         final authored = SplayTreeMap.of(row.timeline)
           ..removeWhere((_, entry) => entry.ghost);
         final next = nextDrawingBlockAfter(authored, frameIndex)?.startIndex;
-        return row.copyWith(
+        final laid = row.copyWith(
           frames: [
             ...row.frames,
             if (held == null) Frame(id: cel, duration: 1, strokes: const []),
@@ -161,6 +162,9 @@ class Instructions {
             ),
           },
         );
+        return held == null
+            ? laid
+            : _sayingOnEveryBlockOf(laid, held, event.writing);
       };
     }
     // ⛔A direction writes nothing into the sheet's memo (I-72, 유저

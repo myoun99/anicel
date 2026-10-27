@@ -44,8 +44,8 @@ void main() {
           ),
         ],
         timeline: {
-          2: TimelineExposure.drawing(
-            const FrameId('d'),
+          2: const TimelineExposure.drawing(
+            FrameId('d'),
             length: 2,
             instruction: said,
           ),

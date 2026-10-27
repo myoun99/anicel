@@ -68,6 +68,9 @@ void main() {
   InstructionEvent? spanAt(int frame, [LayerId? id]) =>
       row(id).instructions[frame];
 
+  /// The words the PAN mark stands for.
+  String pan() => session.camera.cameraInstructionSet.defById('pan')!.name;
+
   group('the name a block writes', () {
     test('is its ends and what it says — and shows nowhere', () {
       block(2);
@@ -80,6 +83,9 @@ void main() {
         drawingHeadOf(name, kind: LayerKind.instruction),
         (word: '', mark: null),
       );
+      session.selectFrameIndex(2);
+      session.clipboard.copyFrameAtCurrentFrame();
+      expect(session.copiedFrameStatusText, isNot(contains(name)));
     });
 
     test('with neither end, a block names nothing, whatever it says', () {
@@ -113,12 +119,11 @@ void main() {
     });
 
     test('words or a mark — the same thing said is the same', () {
-      final pan = session.camera.cameraInstructionSet.defById('pan')!.name;
       block(2);
       say(2, from: 'A', to: 'B');
       block(6);
 
-      expect(say(6, id: 'fix', text: pan, from: 'A', to: 'B'), celAt(2));
+      expect(say(6, id: 'fix', text: pan(), from: 'A', to: 'B'), celAt(2));
     });
 
     test('names a drawing only with an end: two blocks saying PAN alone '
@@ -146,6 +151,18 @@ void main() {
 
       expect(say(2, text: 'again', from: 'A', to: 'B'), isNull);
       expect(spanAt(2)?.text, 'again');
+    });
+
+    test('on an empty cell, a new block shows that drawing and asks nothing '
+        '— no picture of its own is thrown away — and they say the same', () {
+      block(2);
+      say(2, from: 'A', to: 'B');
+      final drawings = row().frames.length;
+
+      expect(say(6, id: 'fix', text: pan(), from: 'A', to: 'B'), isNull);
+      expect(celAt(6), celAt(2));
+      expect(row().frames, hasLength(drawings));
+      expect(spanAt(2)?.instructionId, 'fix');
     });
 
     test('any of the three told otherwise is another drawing', () {
