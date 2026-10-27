@@ -271,6 +271,49 @@ void main() {
     expect(_keysOf(s, _b), {1: (7.0, 'N'), 11: (3.0, null), 20: (5.0, null)});
   });
 
+  test('a 잘라내기 lifts a track\'s own row\'s keys where the band stands on '
+      'its axis — the cut\'s start and all', () {
+    final s = _session();
+    s.selectCut(_cut2);
+    s.standOnRow(const LayerRowAddress(_c), frameIndex: 0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: _c,
+      anchorIndex: 0,
+      headIndex: 5,
+      spanRows: const [LayerRowAddress(_c), LaneRowAddress(_s1, _position)],
+    );
+    TimelineToolbarPanelContext(s).cutRun();
+
+    expect(s.clipboard.bankedRowLayerIds, [_c], reason: '⛔전제: it cut');
+    expect(_trackRowKeys(s), isEmpty, reason: 'global 25 — cut 2\'s frame 1');
+  });
+
+  test('a row whose cells the copy took keeps its keys with its cells — '
+      'pasted on another row, they go there, and the row they came off is '
+      'left be', () {
+    final s = _session();
+    s.standOnRow(const LayerRowAddress(_a), frameIndex: 0);
+    s.updateFrameRangeSelectionDrag(
+      layerId: _a,
+      anchorIndex: 0,
+      headIndex: 5,
+      spanRows: const [LayerRowAddress(_a), LaneRowAddress(_a, _position)],
+    );
+    final pill = TimelineToolbarPanelContext(s);
+    pill.copyFrame();
+
+    s.standOnRow(const LayerRowAddress(_b), frameIndex: 6);
+    pill.pasteIndependentFrame();
+
+    expect(_keysOf(s, _b), {
+      1: (7.0, 'N'),
+      6: (1.0, null),
+      17: (3.0, null),
+      26: (5.0, null),
+    }, reason: '⛔전제: A\'s key went in on B at 6, B\'s after it moved back');
+    expect(_keysOf(s, _a), {0: (1.0, 'K')});
+  });
+
   test('🚨a 링크 붙여넣기 keeps their names — and asks first where the row '
       'holds a name at another value; joined, the key takes what the name '
       'holds there', () {
