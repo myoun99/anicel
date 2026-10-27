@@ -131,6 +131,107 @@ void main() {
     }
   });
 
+  // 🗣️F-479-Q1 (유저 2026-10-27): 「「삭제」 — 창이 묻는 일을 하는 강조 버튼」.
+  testWidgets('the delete window opens on 삭제 — Enter deletes, no Tab '
+      'first', (tester) async {
+    final session = await pumpTimelineHost(
+      tester,
+      project(),
+      surface: timelineTabWithRoomForItsPills,
+    );
+    session.rowSelectionVerbs.beginRowSelection(
+      LayerRowAddress(session.activeLayerId!),
+    );
+    await tester.pumpAndSettle();
+    final layers = session.layers.length;
+    await tapCommandButton(
+      tester,
+      const ValueKey<String>('shared-delete-button'),
+    );
+    final delete = find.byKey(
+      const ValueKey<String>('delete-layer-confirm-button'),
+    );
+    expect(delete, findsOneWidget, reason: '⛔전제: the window');
+    expect(focusIsIn(tester, delete), isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(delete, findsNothing);
+    expect(session.layers, hasLength(layers - 1), reason: 'Enter deleted');
+  });
+
+  testWidgets('a window opens on its emphasized button wherever it stands — '
+      'and on none where none is: a choice among equals, or a yes that '
+      'throws work away', (tester) async {
+    AppWindowAction action(
+      String key, [
+      AppWindowActionEmphasis emphasis = AppWindowActionEmphasis.quiet,
+    ]) => AppWindowAction(
+      label: key,
+      actionKey: ValueKey<String>(key),
+      emphasis: emphasis,
+      onPressed: () {},
+    );
+    Future<void> open(List<AppWindowAction> actions) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: AppConfirmDialog(title: 'T', message: 'M', actions: actions),
+        ),
+      );
+      await tester.pump();
+    }
+
+    List<String> focusedOf(List<String> keys) => [
+      for (final key in keys)
+        if (focusIsIn(tester, find.byKey(ValueKey<String>(key)))) key,
+    ];
+
+    await open([
+      action('cancel'),
+      action('yes', AppWindowActionEmphasis.primary),
+      action('other'),
+    ]);
+    expect(focusedOf(['cancel', 'yes', 'other']), ['yes']);
+
+    await open([action('one'), action('two'), action('three')]);
+    expect(focusedOf(['one', 'two', 'three']), isEmpty);
+
+    await open([
+      action('cancel'),
+      action('replace', AppWindowActionEmphasis.danger),
+    ]);
+    expect(focusedOf(['cancel', 'replace']), isEmpty);
+  });
+
+  testWidgets('the window before unsaved work is thrown away opens on no '
+      'button — Enter leaves it standing', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pump();
+    // Any command marks the session dirty — a new drawing is the cheapest.
+    final newFrame = find.byKey(const ValueKey<String>('new-frame-button'));
+    await tester.ensureVisible(newFrame);
+    await tester.pumpAndSettle();
+    await tester.tap(newFrame);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    const gate = ValueKey<String>('system-exit-dialog');
+    expect(find.byKey(gate), findsOneWidget, reason: '⛔전제: the gate');
+    final buttons = [
+      for (final key in const ['cancel', 'save-as', 'save', 'close'])
+        find.byKey(ValueKey<String>('system-exit-$key')),
+    ];
+    expect(buttons.where((button) => focusIsIn(tester, button)), isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(gate), findsOneWidget, reason: 'nothing thrown away');
+  });
+
   testWidgets('Tab goes round the delete window\'s buttons alone — never '
       'onto the list of layers it names', (tester) async {
     final session = await pumpTimelineHost(

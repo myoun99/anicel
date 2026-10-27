@@ -1641,10 +1641,15 @@ Future<bool> ensureUnsavedWorkSettled(
           actionKey: const ValueKey<String>('system-exit-save'),
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.save),
         ),
+        // ⛔Danger, not the window's yes: it throws the work away, as every
+        // answer that does wears danger (`ConfirmChoice.emphasis`). Kept as
+        // the accent since the two-button gate of 07-19, it would have been
+        // the button this window opens on (F-479-Q1) — a stray Enter from
+        // losing what the window exists to keep.
         AppWindowAction(
           label: strings.commonClose,
           actionKey: const ValueKey<String>('system-exit-close'),
-          emphasis: AppWindowActionEmphasis.primary,
+          emphasis: AppWindowActionEmphasis.danger,
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.discard),
         ),
       ],

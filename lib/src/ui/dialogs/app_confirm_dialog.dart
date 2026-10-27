@@ -48,9 +48,10 @@ class AppConfirmDialog extends StatelessWidget {
   /// [AppWindowActionEmphasis.primary].
   ///
   /// 🗣️F-479 (유저 2026-10-26): 「탭 안눌러도 포커스 바로 닫기에 있어서
-  /// 엔터로 닫기 눌러지게」 — a window with ONE way out opens with the
-  /// keyboard on it. The keyboard stops at these alone: what the sentence
-  /// is about is there to read ([DetailsDisclosure]).
+  /// 엔터로 닫기 눌러지게」 — the window opens with the keyboard on the one
+  /// that does what it asks: its emphasized action, or its ONE way out
+  /// ([_openingOnItsYes]). The keyboard stops at these alone: what the
+  /// sentence is about is there to read ([DetailsDisclosure]).
   final List<AppWindowAction> actions;
 
   final Key? windowKey;
@@ -82,12 +83,34 @@ class AppConfirmDialog extends StatelessWidget {
                 ],
               ],
             ),
-      actions: switch (actions) {
-        [final only] => [only.focused],
-        _ => actions,
-      },
+      actions: _openingOnItsYes(actions),
     );
   }
+}
+
+/// [actions] with the window opening on the one that does what it asks —
+/// its emphasized action, or its only way out — so Enter presses it with
+/// no Tab first.
+///
+/// 🗣️F-479-Q1 (유저 2026-10-27): 「「삭제」 — 창이 묻는 일을 하는 강조
+/// 버튼」 (Clip Studio's confirm windows open the same way) — the cost
+/// they took: a stray Enter deletes. ⚠️A window with none emphasized opens
+/// on nothing: a choice among equals, or a question whose yes throws work
+/// away — that one wears [AppWindowActionEmphasis.danger]
+/// ([ConfirmChoice.emphasis]), and whether Enter does it too is F-479-Q2.
+List<AppWindowAction> _openingOnItsYes(List<AppWindowAction> actions) {
+  final emphasized = [
+    for (final action in actions)
+      if (action.emphasis == AppWindowActionEmphasis.primary) action,
+  ];
+  final yes = switch ((emphasized, actions)) {
+    ([final one], _) || (_, [final one]) => one,
+    _ => null,
+  };
+  return [
+    for (final action in actions)
+      if (identical(action, yes)) action.focused else action,
+  ];
 }
 
 /// One list a window's sentence is about ([AppConfirmDialog.details]): its
@@ -345,8 +368,10 @@ class ConfirmChoice {
   final String label;
 
   /// Null wears the ink the ROLE gives it: accent for the accept, quiet
-  /// for the decline. Spelled out only where the confirm is destructive
-  /// (the recovery gate's "open the saved one" throws work away).
+  /// for the decline. Spelled out where an answer throws work away — a
+  /// file replaced, a medium in use removed, an export thrown away: those
+  /// wear [AppWindowActionEmphasis.danger], so the window does not open on
+  /// them ([AppConfirmDialog.actions]).
   final AppWindowActionEmphasis? emphasis;
 
   /// The consequence the label cannot hold — see [AppWindowAction.tooltip]
@@ -389,11 +414,9 @@ class ConfirmQuestion {
 /// only in labels, keys, icon, emphasis and tooltip — all values.
 ///
 /// ⚠️The RAW `bool?` comes back on purpose. The three answers are not the
-/// same everywhere: most sites read `!= true`, the selection move reads
-/// `== false` (dismissing keeps the move rather than reverting it), and
-/// the autosave-recovery gate treats null as "close the whole flow". A
-/// helper that folded null into false would have quietly changed all
-/// three.
+/// same everywhere: most sites read `!= true`, and the export's hand-over
+/// reads `!= false` — a window taken down unanswered is not a discard. A
+/// helper that folded null into false would have quietly changed that.
 ///
 /// ⛔Not for a dialog that is its OWN widget — `delete_layer_dialog.dart`
 /// and `frame_name_conflict_dialog.dart` are built on [AppConfirmDialog]
