@@ -10,6 +10,8 @@ import 'package:anicel/src/services/layer_pose_matrix.dart'
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 
+import '../../helpers/dart_sources.dart';
+
 /// 🔬card paint-walk-redoes-the-same-work-each-step (2026-10-27): every
 /// paint of the SE name tags — each frame of a pan, a zoom or a run — laid
 /// each of a tag's blocks out twice, once to measure and once where it
@@ -87,10 +89,8 @@ void main() {
       reason: 'premise: the scan sees the keeper lay one out',
     );
     final own = [
-      for (final file in Directory('lib').listSync(recursive: true))
-        if (file is File &&
-            file.path.endsWith('.dart') &&
-            file.path.replaceAll(r'\', '/') != keeper &&
+      for (final file in dartFilesUnder('lib'))
+        if (file.path.replaceAll(r'\', '/') != keeper &&
             file.readAsStringSync().contains('layoutTextCel('))
           file.path,
     ];
