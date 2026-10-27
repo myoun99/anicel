@@ -1636,9 +1636,14 @@ Future<bool> ensureUnsavedWorkSettled(
           actionKey: const ValueKey<String>('system-exit-save-as'),
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.saveAs),
         ),
+        // 🗣️F-479-Q2 (유저 2026-10-27): 「닫기 창은 「저장」을 강조 버튼으로 —
+        // Enter = 저장하고 닫기」 — the accent is on the answer that keeps the
+        // work, so the window opens on it: a stray Enter saves once more and
+        // loses nothing.
         AppWindowAction(
           label: strings.commonSave,
           actionKey: const ValueKey<String>('system-exit-save'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(UnsavedWorkChoice.save),
         ),
         // ⛔Danger, not the window's yes: it throws the work away, as every

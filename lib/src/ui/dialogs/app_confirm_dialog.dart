@@ -97,7 +97,10 @@ class AppConfirmDialog extends StatelessWidget {
 /// they took: a stray Enter deletes. ⚠️A window with none emphasized opens
 /// on nothing: a choice among equals, or a question whose yes throws work
 /// away — that one wears [AppWindowActionEmphasis.danger]
-/// ([ConfirmChoice.emphasis]), and whether Enter does it too is F-479-Q2.
+/// ([ConfirmChoice.emphasis]) and is never opened on (F-479-Q2, 유저
+/// 2026-10-27: 「닫기 창은 「저장」을 강조 버튼으로 — Enter = 저장하고
+/// 닫기」 — the file-replace and media-remove windows open on none, and the
+/// exit gate opens on its Save, the answer that keeps the work).
 List<AppWindowAction> _openingOnItsYes(List<AppWindowAction> actions) {
   final emphasized = [
     for (final action in actions)

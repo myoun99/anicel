@@ -206,8 +206,11 @@ void main() {
     expect(focusedOf(['cancel', 'replace']), isEmpty);
   });
 
-  testWidgets('the window before unsaved work is thrown away opens on no '
-      'button — Enter leaves it standing', (tester) async {
+  // 🗣️F-479-Q2 (유저 2026-10-27): 「닫기 창은 「저장」을 강조 버튼으로 —
+  // Enter = 저장하고 닫기」. The Enter itself is driven through a real save
+  // in `unsaved_work_gate_test.dart`.
+  testWidgets('the window before unsaved work is thrown away opens on 저장 '
+      '— never on the 닫기 that throws it away', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pump();
     // Any command marks the session dirty — a new drawing is the cheapest.
@@ -220,16 +223,15 @@ void main() {
     await tester.pumpAndSettle();
     const gate = ValueKey<String>('system-exit-dialog');
     expect(find.byKey(gate), findsOneWidget, reason: '⛔전제: the gate');
-    final buttons = [
+    final focused = [
       for (final key in const ['cancel', 'save-as', 'save', 'close'])
-        find.byKey(ValueKey<String>('system-exit-$key')),
+        if (focusIsIn(
+          tester,
+          find.byKey(ValueKey<String>('system-exit-$key')),
+        ))
+          key,
     ];
-    expect(buttons.where((button) => focusIsIn(tester, button)), isEmpty);
-
-    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(gate), findsOneWidget, reason: 'nothing thrown away');
+    expect(focused, ['save']);
   });
 
   testWidgets('Tab goes round the delete window\'s buttons alone — never '
