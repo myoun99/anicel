@@ -42,8 +42,9 @@ import '../../helpers/timeline_host.dart';
 /// it was pressed on.
 ///
 /// ★Wherever it is pressed, the band moves what each of its rows holds — the
-/// layer row its block, the lane rows their keys — and both selections stand
-/// where they went.
+/// layer row its block, the lane rows their keys — and the band stands where
+/// they went (one band since 유저 2026-10-25; ↩️the lane selection beside it
+/// rode along).
 const _a = LayerId('a');
 const _b = LayerId('b');
 const _c = LayerId('c');
@@ -212,7 +213,6 @@ void main() {
         final g = await _sweptBand(tester, axis);
         final s = g.session;
         expect(s.frameRangeSelection.value?.coversRow(_position), isTrue);
-        expect(s.laneRangeSelection.value?.startIndex, 0);
 
         final row = onLane ? g.lane : g.cells;
         await _carry(
@@ -235,26 +235,22 @@ void main() {
         expect((band.startIndex, band.endIndexExclusive), (2, 5));
         expect(band.coversRow(const LayerRowAddress(_a)), isTrue);
         expect(band.coversRow(_position), isTrue);
-        final lanes = s.laneRangeSelection.value!;
-        expect((lanes.startIndex, lanes.endIndexExclusive), (2, 5));
 
         s.undo();
         expect(_blocksOf(s, _a), [0]);
         expect(_keysOf(s), [0, 2]);
       });
     }
-    // A sweep that runs on past A's lanes holds them with no lane
-    // selection beside the band (R27 #14 stands one only for a sweep that
-    // ends on a transform lane). A press on one is the band's still, and
-    // steps as the band's does: on the frame a move would land on (F-238
-    // 「1콤마만 바로바로」), not on leaving the cell it pressed.
+    // A sweep that runs on past A's lanes holds them too. A press on one is
+    // the band's still, and steps as the band's does: on the frame a move
+    // would land on (F-238 「1콤마만 바로바로」), not on leaving the cell it
+    // pressed.
     testWidgets('on the ${axis == Axis.horizontal ? 'rail' : 'sheet'}, a '
         'band swept past a row\'s lanes goes a frame on a short touch drag '
         'of one of them', (tester) async {
       final g = await _sweptBand(tester, axis, pastTheLanesTo: _d);
       final s = g.session;
       expect(s.frameRangeSelection.value?.coversRow(_position), isTrue);
-      expect(s.laneRangeSelection.value, isNull);
 
       final from = g.at(g.lane, 1) -
           offsetAlong(axis, along: _cell * 0.3, across: 0);

@@ -83,7 +83,6 @@ void main() {
                       anchorIndex,
                       headIndex, {
                       headLayerId,
-                      headLaneId,
                       spanRows = const [],
                     }) => fail('a press inside the selection is a move'),
                 onClear: () {},

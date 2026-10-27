@@ -52,19 +52,10 @@ TimelineRangeGestureCallbacks timelineGridRangeCallbacks({
       // R9 #25: raw pixels in, resolved where the grid paints its rows.
       final headRowDelta =
           timelineRowDeltaAt(rows, dragEdges(), row, headCrossOffset);
-      final head = headRowDelta == 0
-          ? null
-          : resolveSelectionSpanHead(
-              rows: rows,
-              source: row,
-              rowDelta: headRowDelta,
-            );
       rangeHooks.onSelectUpdate(
         layerId,
         anchorIndex,
         headIndex,
-        headLayerId: head?.layerId,
-        headLaneId: head?.laneId,
         // 🚨★ THE SPAN, sliced off what this grid actually drew.
         spanRows: resolveSelectionSpanRows(
           rows: rows,
@@ -163,7 +154,6 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
         anchorIndex,
         headIndex,
         headLayerId: escalation.headLayerId,
-        headLaneId: escalation.headLaneId,
         spanRows: escalation.spanRows,
       );
     },
@@ -185,7 +175,6 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
         anchorIndex,
         headIndex,
         headLayerId: rows.last.layerId,
-        headLaneId: rows.last.laneId,
         spanRows: rows,
       );
     },

@@ -641,7 +641,7 @@ _Hooks _hooksHeardBy(List<String> heard) {
     range: TimelineFrameRangeHooks(
       selection: selection,
       onSelectUpdate:
-          (layerId, _, _, {headLayerId, headLaneId, spanRows = const []}) =>
+          (layerId, _, _, {headLayerId, spanRows = const []}) =>
               heard.add('range ${layerId.value}'),
       // As the host's: a press that clears lets the selection go, so a
       // press read as off it cannot go on to move it.

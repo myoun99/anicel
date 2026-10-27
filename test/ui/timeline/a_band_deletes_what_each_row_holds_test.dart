@@ -323,10 +323,11 @@ void main() {
         layer.transformTrack.position.keys.keys.toList();
 
     // R27 #14: a cell drag that reaches its anchor's own transform lanes
-    // publishes them as a lane range too — the TAIL. Asked before the band,
-    // the tail took the keys and left the blocks.
+    // stops there, one band (유저 2026-10-25). ↩️It published them as a lane
+    // range beside the band too — the TAIL — and asked before the band, the
+    // tail took the keys and left the blocks.
     test('a band reaching its own transform lanes takes the blocks AND the '
-        'keys — the tail it publishes does not take the press', () {
+        'keys', () {
       final session = EditorSessionManager(
         initialProject: _project(aPositionKeys: [1]),
       );
@@ -335,18 +336,11 @@ void main() {
         layerId: _a,
         anchorIndex: 0,
         headIndex: 2,
-        headLayerId: _a,
-        headLaneId: 'position',
         spanRows: const [
           LayerRowAddress(_a),
           LaneRowAddress(_a, 'anchor-point'),
           LaneRowAddress(_a, 'position'),
         ],
-      );
-      expect(
-        session.laneRangeSelection.value,
-        isNotNull,
-        reason: 'fixture: the tail is published',
       );
 
       session.cells.deleteCellAtCurrentFrame();
@@ -356,11 +350,6 @@ void main() {
         positionKeysOf(row(session, _a)),
         isEmpty,
         reason: 'A\'s Position lane swept',
-      );
-      expect(
-        session.laneRangeSelection.value,
-        isNull,
-        reason: 'the tail went with the band it was half of',
       );
     });
 

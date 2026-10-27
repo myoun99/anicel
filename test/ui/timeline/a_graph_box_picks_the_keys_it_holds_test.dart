@@ -722,11 +722,10 @@ void main() {
                     anchor,
                     head, {
                     headLayerId,
-                    headLaneId,
                     spanRows = const [],
                   }) => heard.add(
                     'cells ${layer.value} $anchor-$head '
-                    '${headLayerId?.value}:$headLaneId $spanRows',
+                    '${headLayerId?.value} $spanRows',
                   ),
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
@@ -756,7 +755,7 @@ void main() {
         'its span — as a lane drag leaving its group does', () {
       final heard = <String>[];
       gridOf(heard).onSelectRows!([cOpacity, dRotation], 6, 9);
-      expect(heard, ['cells c 6-9 d:rotation ${[cOpacity, dRotation]}']);
+      expect(heard, ['cells c 6-9 d ${[cOpacity, dRotation]}']);
     });
 
     test('where the grid keeps no cells selection, the first layer\'s lanes '

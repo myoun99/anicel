@@ -43,7 +43,7 @@ void main() {
   }) => TimelineFrameRangeHooks(
     selection: selection ?? ValueNotifier<TimelineFrameRangeSelection?>(null),
     onSelectUpdate:
-        (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
+        (_, _, _, {headLayerId, spanRows = const []}) {},
     onClear: () {},
     move: TimelineRangeMoveCallbacks(
       holds: (_) => false,

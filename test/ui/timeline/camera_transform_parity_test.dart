@@ -632,7 +632,6 @@ void main() {
           rowDelta: -2, // up past the camera row onto the drawing row.
         )!;
         expect(escalation.headLayerId, _drawId);
-        expect(escalation.headLaneId, isNull);
         expect(escalation.spanRows, [
           const LayerRowAddress(_drawId),
           const LayerRowAddress(_camId),

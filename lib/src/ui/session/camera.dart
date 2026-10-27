@@ -9,11 +9,8 @@ import '../../models/transform_track.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/timeline_frame_range.dart';
 import '../../services/camera_path.dart';
 import '../../services/camera_pose_resolver.dart';
-import '../../services/command.dart';
-import '../../services/commands/update_cut_camera_command.dart';
 import '../../services/commands/update_project_camera_size_command.dart';
 import '../brush/brush_editor_selection.dart';
 import 'active_cut_controllers.dart';
@@ -36,7 +33,6 @@ class Camera {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required TimelineAccess timeline,
     required ActiveCutControllers controllers,
     required ValueNotifier<TimelineDragPreview?> dragPreview,
     required ActiveCutEdits activeCut,
@@ -44,7 +40,6 @@ class Camera {
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _timeline = timeline,
        _controllers = controllers,
        _dragPreview = dragPreview,
        _activeCut = activeCut,
@@ -56,7 +51,6 @@ class Camera {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
   final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
@@ -258,48 +252,6 @@ class Camera {
   void updateCameraInstructionSet(CameraInstructionSet instructionSet) {
     _project.cutCommandCoordinator.updateCameraInstructionSet(instructionSet);
     _changes.notifyChanged();
-  }
-
-  Command? cameraKeysCommandForRange(TimelineFrameRangeSelection selection) {
-    final cut = _project.activeCutOrNull;
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cut == null || cutId == null) {
-      return null;
-    }
-    var camera = cut.camera;
-    var changed = false;
-    // Keys only on the frames the cut is drawn for (I-73-camera-row-Q2).
-    final drawn = _project.activeCutDrawnFrameCount;
-    for (
-      var frame = selection.startIndex;
-      frame < selection.endIndexExclusive;
-      frame += 1
-    ) {
-      if (!cameraKeyFits(frame, drawnFrameCount: drawn) ||
-          camera.keyframeAt(frame) != null) {
-        continue;
-      }
-      // Freeze the RESOLVED pose (AE behavior): keys appear, the picture
-      // does not move.
-      camera = camera.withKeyframe(
-        frame,
-        resolveCameraPoseAt(
-          camera: cut.camera,
-          canvasSize: cut.canvasSize,
-          frameIndex: frame,
-        ),
-      );
-      changed = true;
-    }
-    if (!changed) {
-      return null;
-    }
-    return UpdateCutCameraCommand(
-      repository: _project.repository,
-      cutId: cutId,
-      camera: camera,
-      description: 'Create camera keys',
-    );
   }
 
   /// The camera frame's aspect — what the conte's PICTURE column is shaped

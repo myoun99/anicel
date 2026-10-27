@@ -12,60 +12,6 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 /// spans (Excel rule on lane rows), the group header as the whole-group
 /// anchor, and the rigid all-or-nothing multi-lane key move.
 void main() {
-  group('transformLaneSpan', () {
-    test('spans display-ordered lanes between anchor and head', () {
-      expect(transformLaneSpan('position', 'rotation'), [
-        'position',
-        'scale',
-        'rotation',
-      ]);
-      // Direction never matters — the span is the ordered interval.
-      expect(transformLaneSpan('rotation', 'position'), [
-        'position',
-        'scale',
-        'rotation',
-      ]);
-      expect(transformLaneSpan('scale', 'scale'), ['scale']);
-    });
-
-    test('R9 #20: the group header is a ROW in the span — dragging from it '
-        'covers exactly what the drag drew', () {
-      // Header → the SECOND lane used to select all five; it now selects
-      // what was dragged over.
-      expect(transformLaneSpan(transformGroupHeaderLane.laneId, 'position'), [
-        transformGroupHeaderLane.laneId,
-        'anchor-point',
-        'position',
-      ]);
-      expect(
-        transformLaneSpan('position', transformGroupHeaderLane.laneId),
-        [transformGroupHeaderLane.laneId, 'anchor-point', 'position'],
-        reason: 'direction does not matter — it is a range',
-      );
-      // Header → the LAST lane still covers the whole group, by the
-      // ordinary rule rather than a branch.
-      expect(
-        transformLaneSpan(transformGroupHeaderLane.laneId, 'opacity'),
-        transformLaneSelectionOrder,
-      );
-      expect(
-        transformLaneSpan(
-          transformGroupHeaderLane.laneId,
-          transformGroupHeaderLane.laneId,
-        ),
-        [transformGroupHeaderLane.laneId],
-        reason: 'a header alone is one row, like any other',
-      );
-    });
-
-    test('unknown lane ids fall back to the anchor alone', () {
-      expect(transformLaneSpan('se-audio', 'position'), ['se-audio']);
-      expect(transformLaneSpan('position', 'folder-fx:f1:position'), [
-        'position',
-      ]);
-    });
-  });
-
   group('TimelineLaneSelection span', () {
     const selection = TimelineLaneSelection(
       layerId: LayerId('layer-a'),
@@ -125,7 +71,10 @@ void main() {
         laneId: transformGroupHeaderLane.laneId,
         startIndex: wholeGroup.startIndex,
         endIndexExclusive: wholeGroup.endIndexExclusive,
-        laneIds: transformLaneSelectionOrder,
+        laneIds: [
+          transformGroupHeaderLane.laneId,
+          ...transformLaneDisplayOrder,
+        ],
       );
       expect(
         laneSelectionCoversBandRow(

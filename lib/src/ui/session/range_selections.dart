@@ -21,8 +21,6 @@ import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../timeline/timeline_row_span_resolver.dart'
     show resolveSelectionSpanRows;
 import '../timeline/timeline_section_policy.dart';
-import '../timeline/transform_lane_policy.dart'
-    show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 import 'playback_rig.dart';
 import 'project_settings.dart';
 import 'row_spans.dart';
@@ -654,13 +652,15 @@ class RangeSelections {
   /// display order, and the frame range grows until it covers whole
   /// blocks on every spanned layer.
   ///
-  /// [headLaneId] (R27 #14): the pointer is on one of the ANCHOR layer's
-  /// property-lane rows. The drag then reaches down that layer's own lane
-  /// group and stops at the hovered lane — "A셀부터 오파시티까지만" —
-  /// instead of stepping over the whole group to the next layer's cells.
-  /// Cells and lanes are still two selection objects (their edits differ:
-  /// blocks vs keys), but ONE drag now produces both, and the frame range
-  /// is shared so the highlight reads as one rectangle.
+  /// 🗣️ONE BAND (유저 2026-10-25, conte-sweep-leaves-the-lanes-out-Q1:
+  /// 「띠 하나로 — 레인 선택을 따로 세우지 않는다(타임라인도)」): a drag that
+  /// runs from a layer's cells down into its own lanes stops at the hovered
+  /// lane — R27 #14's 「A셀부터 오파시티까지만」 — as ONE band whose rows are
+  /// what it swept, and each verb answers its rows kind by kind (08-12).
+  /// ↩️It stood a lane selection beside the band, from the first transform
+  /// lane to the hovered one, and the verbs that read lanes first took that
+  /// and left the band's cells: ＋ keyed the lanes and filled no gap, copy
+  /// took the keys alone, and auto name had nothing to number.
   ///
   /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
   /// list ([resolveSelectionSpanRows]).
@@ -678,22 +678,13 @@ class RangeSelections {
     required int anchorIndex,
     required int headIndex,
     LayerId? headLayerId,
-    String? headLaneId,
     List<TimelineRowAddress> spanRows = const [],
   }) {
     if (!rangeSelectionEligible(layerId) ||
         _project.rangeLayerById(layerId) == null) {
       return;
     }
-    // A lane TAIL only exists on the anchor layer's own group: the lane
-    // domain is one layer's keys (R26 #3), and a span reaching a further
-    // layer's lanes is that layer's cells being selected, not its keys.
-    final laneTail = headLaneId != null && (headLayerId ?? layerId) == layerId
-        ? headLaneId
-        : null;
-    // THE ONE-SELECTION LAW — see [claimSelection]. The lane clear is not
-    // final for THIS drag: a mixed span below re-sets it, which is the one
-    // case where a cell drag ends up owning lane state too.
+    // THE ONE-SELECTION LAW — see [claimSelection].
     claimSelection(TimelineSelectionKind.cells);
     // The layer half of what was swept, in display order — derived from the
     // rows rather than rebuilt, so the two can never disagree.
@@ -736,50 +727,6 @@ class RangeSelections {
       endIndexExclusive: end,
       layerIds: blockIds.length > 1 ? blockIds : const [],
       rows: spanRows,
-    );
-    _applySelectionLaneTail(
-      layerId: layerId,
-      headLaneId: laneTail,
-      startIndex: start,
-      endIndexExclusive: end,
-    );
-  }
-
-  /// R27 #14: publishes the LANE half of a mixed cell→lane drag — the
-  /// layer's lane group from its FIRST lane down to the hovered one, over
-  /// the same frame range the cells settled on, so the two halves read as
-  /// one rectangle. No-op (and no clear — the caller already cleared) when
-  /// the drag never reached a lane row.
-  ///
-  /// The active layer does NOT move here: a cell drag has never changed
-  /// it, and reaching into that layer's own lanes is the same gesture.
-  void _applySelectionLaneTail({
-    required LayerId layerId,
-    required String? headLaneId,
-    required int startIndex,
-    required int endIndexExclusive,
-  }) {
-    if (headLaneId == null) {
-      return;
-    }
-    // The tail always anchors on the FIRST transform lane, so only a
-    // transform row can be its head. A drag ending on some other lane kind
-    // — an SE audio lane, or (R6) an effect parameter lane — has no
-    // representable span from that anchor: [transformLaneSpan] falls back
-    // to the anchor alone, and publishing that would put the selection on
-    // Anchor Point, where the next Add would write keys the user never
-    // asked for. Nothing published, cell selection kept.
-    if (headLaneId != transformGroupHeaderLane.laneId &&
-        !transformLaneDisplayOrder.contains(headLaneId)) {
-      return;
-    }
-    final span = transformLaneSpan(transformLaneDisplayOrder.first, headLaneId);
-    _selection.laneRangeSelection.value = TimelineLaneSelection(
-      layerId: layerId,
-      laneId: transformLaneDisplayOrder.first,
-      startIndex: startIndex,
-      endIndexExclusive: endIndexExclusive,
-      laneIds: span.length <= 1 ? const [] : span,
     );
   }
 

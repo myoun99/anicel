@@ -215,10 +215,8 @@ class CellVerbs {
       }
       _laneVerbs.deleteForBandLanes(laneTargets);
     });
-    // Whichever axis answered: the leftover span covers empty cells now —
-    // and the band's transform tail, keys it no longer has.
+    // Whichever axis answered: the leftover span covers empty cells now.
     _selection.clearFrameRangeSelection();
-    _rangeSelections.clearLaneRangeSelection();
     _selection.clearStoryboardCutSelection();
     _changes.notifyChanged();
     return true;

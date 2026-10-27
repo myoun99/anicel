@@ -1,4 +1,3 @@
-import 'lane_span_in_order.dart';
 import 'dart:ui' show Color, Offset;
 
 import '../../models/camera_instruction.dart'
@@ -334,27 +333,6 @@ Set<CanvasManipulator> canvasManipulatorsForLane(String? laneId) {
     _ => const {},
   };
 }
-
-/// The rows as SELECTION sees them: the header is the first of them.
-///
-/// R9 #20: the header used to be outside this list and handled by a
-/// branch, so dragging from it to the SECOND lane selected all five —
-/// selection did something other than what the drag drew. A row is a row
-/// (the rule the user set on #1: a derived display must not change what
-/// selecting does), and a header dragged to the last lane still covers the
-/// whole group — by the ordinary range rule now, not a special case.
-List<String> get transformLaneSelectionOrder => [
-  transformGroupHeaderLane.laneId,
-  ...transformLaneDisplayOrder,
-];
-
-/// The display-ordered lane span from [anchorLaneId] to [headLaneId]
-/// (R26 #3 — the cell selection's Excel span rule applied to lane rows,
-/// within one layer's lane group). Ids outside the canonical order fall
-/// back to the anchor lane alone.
-List<String> transformLaneSpan(String anchorLaneId, String headLaneId) =>
-    inclusiveRunBetween(transformLaneSelectionOrder, anchorLaneId, headLaneId) ??
-    [anchorLaneId];
 
 /// Whether the lane selection covers [laneId]'s BAND ROW on [layerId]
 /// (R26 #3): whether the row is IN the span — a group header as every

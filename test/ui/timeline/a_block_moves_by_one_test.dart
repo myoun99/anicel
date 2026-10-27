@@ -137,7 +137,6 @@ void main() {
                 anchorIndex,
                 headIndex, {
                 headLayerId,
-                headLaneId,
                 spanRows = const [],
               }) => heard.selects.add((anchorIndex, headIndex)),
           onClear: () => heard.clears += 1,

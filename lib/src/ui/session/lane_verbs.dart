@@ -2518,6 +2518,25 @@ class LaneVerbs {
   void deleteForLaneSelection(TimelineLaneSelection lane) =>
       _deleteForLaneSpan(lane, range: _laneRangeIsLive);
 
+  /// ＋ on the live band's LANE rows ([_bandLaneSpans]) — the camera row,
+  /// its transform header, among them — each keyed the way ＋ on a range
+  /// over it keys ([createLaneKeysForSelection]), inside the caller's one
+  /// step, beside the band's cells.
+  ///
+  /// 🗣️ONE BAND (유저 2026-10-25, conte-sweep-leaves-the-lanes-out-Q1): the
+  /// band holds the lanes it swept, and each verb answers its rows kind by
+  /// kind (08-12). ↩️A lane selection stood beside the band and ＋ keyed
+  /// that alone, leaving the band's cells unfilled.
+  void createKeysForBandLanes() {
+    for (final lane in _bandLaneSpans()) {
+      createLaneKeysForSelection(lane);
+    }
+  }
+
+  /// Whether a lane row of the live band has a frame ＋ keys
+  /// ([createKeysForBandLanes]).
+  bool get bandLanesTakeKeys => _bandLaneSpans().any(canCreateLaneKeysFor);
+
   /// The band's lanes ([bandLanesToDelete]), each deleted the way a RANGE
   /// over it is — inside the caller's one step, beside the band's blocks.
   void deleteForBandLanes(List<TimelineLaneSelection> lanes) {

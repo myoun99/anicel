@@ -495,9 +495,6 @@ class FrameRangeMoveDrag {
        _trackSe = roles.trackSe,
        _selectionBefore = selectionBefore,
        _trackSelectionBefore = trackSelectionBefore,
-       _laneTailBefore = trackSelectionBefore == null
-           ? roles.selection.laneRangeSelection.value
-           : null,
        _grabbedRow = grabLayerId,
        _singleRow = singleRow,
        _multiSources = multiSources,
@@ -910,11 +907,6 @@ class FrameRangeMoveDrag {
   /// resolved, previewed and landed by this drag's own camera code.
   final List<BandLane> _laneRiders;
 
-  /// The lane selection a mixed sweep stood beside the band (R27 #14) — the
-  /// same frames, the lanes of the band's own layer — as it was at begin;
-  /// null where none stood. It rides the band's frames ([_liveSpan]).
-  final TimelineLaneSelection? _laneTailBefore;
-
   /// The rows riding the move as BLOCKS, as they stood at begin
   /// ([KeySources]): along the frame axis by the move's delta, across no
   /// row.
@@ -989,7 +981,6 @@ class FrameRangeMoveDrag {
       _selection.frameRangeSelection.value = span == null
           ? null
           : _withSweptRows(span);
-      _rideLaneTail(span);
       return;
     }
     if (span == null) {
@@ -1052,26 +1043,6 @@ class FrameRangeMoveDrag {
       endIndexExclusive: span.endIndexExclusive,
       layerIds: span.layerIds,
       rows: _rowsLanded(span, swept),
-    );
-  }
-
-  /// The lane selection a mixed sweep stood beside the band
-  /// ([_laneTailBefore]), on the frames [span] went to: its lanes are the
-  /// band's own, and their keys go the band's frames on them (H20). ⛔Two
-  /// selections stand together only there ([RangeSelections.claimSelection]),
-  /// so a lane selection live at begin is that one.
-  void _rideLaneTail(TimelineFrameRangeSelection? span) {
-    final tail = _laneTailBefore;
-    if (tail == null || span == null) {
-      return;
-    }
-    final shift = span.startIndex - _selectionBefore.startIndex;
-    _selection.laneRangeSelection.value = TimelineLaneSelection(
-      layerId: tail.layerId,
-      laneId: tail.laneId,
-      startIndex: tail.startIndex + shift,
-      endIndexExclusive: tail.endIndexExclusive + shift,
-      laneIds: tail.laneIds,
     );
   }
 

@@ -117,21 +117,19 @@ class TimelineFrameRangeHooks {
 
   /// [headLayerId] is the row under the pointer (UI-R17 #8 — the grid
   /// resolves cross-row drags like it does for moves); null/anchor keeps
-  /// the single-layer selection. [headLaneId] is non-null when that row
-  /// is a property LANE row (R27 #14): the drag then reaches down the
-  /// layer's own lane group instead of skipping past it to the next
-  /// layer's cells.
+  /// the single-layer selection.
   ///
   /// [spanRows] is what the drag SWEPT, sliced off the mounting surface's own
-  /// display row list — the authoritative span since 2026-08-12. Empty from a
-  /// surface that has no row list in reach, which then keeps the older
-  /// layer-derived behaviour.
+  /// display row list — the authoritative span since 2026-08-12, lane rows
+  /// included: a drag reaching down into a layer's own lanes stops at the
+  /// hovered one in its rows (R27 #14, one band — 유저 2026-10-25). Empty
+  /// from a surface that has no row list in reach, which then keeps the
+  /// older layer-derived behaviour.
   final void Function(
     LayerId layerId,
     int anchorIndex,
     int headIndex, {
     LayerId? headLayerId,
-    String? headLaneId,
     List<TimelineRowAddress> spanRows,
   })
   onSelectUpdate;
@@ -894,7 +892,7 @@ class _TimelineLaneRangeGestureLayerState
   /// 🚨H20: a press inside a BAND that holds this lane row is that band's
   /// move, as a press on any of its cells is — the band carries what each
   /// of its rows holds, wherever it is grabbed. ↩️The press began the lane
-  /// selection beside the band (a mixed sweep stands both), so the keys
+  /// selection beside the band (a mixed sweep stood both), so the keys
   /// went alone and the block stayed.
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;

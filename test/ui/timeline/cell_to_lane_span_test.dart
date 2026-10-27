@@ -11,12 +11,15 @@ import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 /// R27 #14 잔여: a cell drag reaching DOWN into the layer's own property
 /// lanes selects cell → lane → lane and stops where the pointer is
 /// ("A셀부터 오파시티까지만"), instead of stepping over the whole lane
-/// group to the next layer's cells.
+/// group to the next layer's cells — as ONE band (유저 2026-10-25,
+/// conte-sweep-leaves-the-lanes-out-Q1: 「띠 하나로 — 레인 선택을 따로
+/// 세우지 않는다(타임라인도)」).
 void main() {
-  group('resolveSelectionSpanHead', () {
+  const a = LayerId('layer-a');
+
+  group('the span a cell drag sweeps into its own lanes', () {
     /// Layer A with its transform lanes expanded, then layer B.
     List<TimelineDisplayRow> rowsWithLanes() {
-      const a = LayerId('layer-a');
       final layerA = Layer(id: a, name: 'A', frames: const [], timeline: {});
       final layerB = Layer(
         id: const LayerId('layer-b'),
@@ -40,59 +43,55 @@ void main() {
       );
     }
 
-    test('row delta 0 stays on the anchor layer, with no lane', () {
-      final head = resolveSelectionSpanHead(
-        rows: rowsWithLanes(),
-        source: const LayerRowAddress(LayerId('layer-a')),
-        rowDelta: 0,
-      )!;
-      expect(head.layerId, const LayerId('layer-a'));
-      expect(head.laneId, isNull);
-    });
-
-    test('stepping into the layer\'s OWN lane rows reports the lane — this '
-        'is the row walk that used to skip straight past them', () {
+    test('stepping into the layer\'s OWN lane rows takes them, in order, '
+        'up to the hovered one — the walk that used to skip straight past '
+        'them', () {
       final rows = rowsWithLanes();
-      // The rows after A are A's lanes in display order.
       for (var step = 1; step <= transformLaneDisplayOrder.length; step += 1) {
-        final head = resolveSelectionSpanHead(
-          rows: rows,
-          source: const LayerRowAddress(LayerId('layer-a')),
-          rowDelta: step,
-        )!;
         expect(
-          head.layerId,
-          const LayerId('layer-a'),
-          reason: 'lane rows belong to their own layer',
-        );
-        expect(
-          head.laneId,
-          transformLaneDisplayOrder[step - 1],
-          reason: 'step $step lands on that lane',
+          resolveSelectionSpanRows(
+            rows: rows,
+            anchor: const LayerRowAddress(a),
+            rowDelta: step,
+          ),
+          [
+            const LayerRowAddress(a),
+            for (final laneId in transformLaneDisplayOrder.take(step))
+              LaneRowAddress(a, laneId),
+          ],
+          reason: 'step $step stops on that lane',
         );
       }
     });
 
-    test('past the lane group the next LAYER row reports no lane', () {
-      final head = resolveSelectionSpanHead(
+    test('past the lane group the span reaches the next LAYER row', () {
+      final span = resolveSelectionSpanRows(
         rows: rowsWithLanes(),
-        source: const LayerRowAddress(LayerId('layer-a')),
+        anchor: const LayerRowAddress(a),
         rowDelta: transformLaneDisplayOrder.length + 1,
-      )!;
-      expect(head.layerId, const LayerId('layer-b'));
-      expect(head.laneId, isNull);
+      );
+      expect(span.last, const LayerRowAddress(LayerId('layer-b')));
     });
   });
 
-  group('the session publishes both halves of a mixed drag', () {
+  group('the session stands ONE band', () {
     EditorSessionManager fixture() {
       final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
       s.createDrawingAtCurrentFrame();
       return s;
     }
 
-    test('a cell drag ending on a LANE row selects the cells AND the lane '
-        'group down to that lane, over the same frame range', () {
+    List<TimelineRowAddress> cellsToScale(LayerId layerId) => [
+      LayerRowAddress(layerId),
+      LaneRowAddress(layerId, 'anchor-point'),
+      LaneRowAddress(layerId, 'position'),
+      LaneRowAddress(layerId, 'scale'),
+    ];
+
+    test('a cell drag ending on a LANE row stands one band whose rows are '
+        'the cells row and the lanes it crossed — and no lane selection '
+        'beside it', () {
       final s = fixture();
       final layerId = s.activeLayer!.id;
 
@@ -100,66 +99,40 @@ void main() {
         layerId: layerId,
         anchorIndex: 0,
         headIndex: 0,
-        headLayerId: layerId,
-        headLaneId: 'scale',
+        spanRows: cellsToScale(layerId),
       );
 
-      final cells = s.frameRangeSelection.value!;
-      final lanes = s.laneRangeSelection.value!;
-      expect(cells.layerId, layerId);
-      expect(lanes.layerId, layerId);
-      // The lane rows the drag actually crossed: the group's FIRST lane
-      // (the row directly under the cells) down to the hovered one.
-      expect(lanes.spanLaneIds, ['anchor-point', 'position', 'scale']);
+      expect(s.frameRangeSelection.value!.rows, cellsToScale(layerId));
       expect(
-        lanes.coversLane(layerId, 'rotation'),
-        isFalse,
-        reason: 'the drag stopped at scale',
+        s.laneRangeSelection.value,
+        isNull,
+        reason:
+            'one band — ↩️a lane selection stood beside it, from the first '
+            'transform lane to the hovered one, and the lane verbs read '
+            'that and left the band\'s cells',
       );
-      // One rectangle: the lane half shares the cells' snapped range.
-      expect(lanes.startIndex, cells.startIndex);
-      expect(lanes.endIndexExclusive, cells.endIndexExclusive);
     });
 
-    test('a plain cell drag still clears the lane selection (the domains '
-        'stay exclusive unless ONE drag produced both)', () {
+    test('a lane selection standing before the sweep goes with it — one '
+        'selection at a time', () {
       final s = fixture();
       final layerId = s.activeLayer!.id;
+      s.updateLaneRangeSelectionDrag(
+        layerId: layerId,
+        laneId: 'position',
+        anchorIndex: 0,
+        headIndex: 2,
+        spanLaneIds: const ['position'],
+      );
+      expect(s.laneRangeSelection.value, isNotNull, reason: 'fixture');
 
       s.updateFrameRangeSelectionDrag(
         layerId: layerId,
         anchorIndex: 0,
         headIndex: 0,
-        headLayerId: layerId,
-        headLaneId: 'scale',
+        spanRows: cellsToScale(layerId),
       );
-      expect(s.laneRangeSelection.value, isNotNull);
 
-      // Dragging again without reaching a lane row drops the lane half.
-      s.updateFrameRangeSelectionDrag(
-        layerId: layerId,
-        anchorIndex: 0,
-        headIndex: 0,
-      );
-      expect(s.laneRangeSelection.value, isNull);
-      expect(s.frameRangeSelection.value, isNotNull);
-    });
-
-    test('a lane id from ANOTHER layer is not a tail — the lane domain is '
-        'one layer\'s keys', () {
-      final s = fixture();
-      final layerId = s.activeLayer!.id;
-      s.layerStack.addLayer();
-      final otherId = s.activeLayer!.id;
-      s.selectLayer(layerId);
-
-      s.updateFrameRangeSelectionDrag(
-        layerId: layerId,
-        anchorIndex: 0,
-        headIndex: 0,
-        headLayerId: otherId,
-        headLaneId: 'scale',
-      );
       expect(s.laneRangeSelection.value, isNull);
       expect(s.frameRangeSelection.value, isNotNull);
     });
@@ -208,7 +181,10 @@ void main() {
     });
 
     test('every lane the transform group shows is accounted for', () {
-      for (final laneId in transformLaneSelectionOrder) {
+      for (final laneId in [
+        transformGroupHeaderLane.laneId,
+        ...transformLaneDisplayOrder,
+      ]) {
         // No lane may fall through unconsidered: the set is the answer,
         // and "empty" is one of the answers.
         expect(canvasManipulatorsForLane(laneId), isNotNull);
