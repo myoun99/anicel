@@ -1160,6 +1160,37 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     committed: (value) => write(editOf(value)),
   );
 
+  /// The edits a box's grabs make of the track they drive — ONE key at the
+  /// playhead on the one lane the grab is about (R5 #10) — for every box
+  /// alike: a row's, a reference's, an effect's and the camera's.
+  static _TrackEdit _movedTo(CanvasPoint position) =>
+      (track, frameIndex) => transformTrackWithPositionDragged(
+        track,
+        frameIndex: frameIndex,
+        position: position,
+      );
+
+  static _TrackEdit _scaledTo(CanvasPoint scale) =>
+      (track, frameIndex) => transformTrackWithScaleDragged(
+        track,
+        frameIndex: frameIndex,
+        scale: scale,
+      );
+
+  static _TrackEdit _turnedTo(double degrees) =>
+      (track, frameIndex) => transformTrackWithRotationDragged(
+        track,
+        frameIndex: frameIndex,
+        rotationDegrees: degrees,
+      );
+
+  static _TrackEdit _anchoredAt(CanvasPoint anchorPoint) =>
+      (track, frameIndex) => transformTrackWithAnchorDragged(
+        track,
+        frameIndex: frameIndex,
+        anchorPoint: anchorPoint,
+      );
+
   /// The active row's transform fx box (F-222 ②): the inside moves its
   /// position, a corner scales it, outside on stage turns it, and the cross
   /// places its anchor point — as much of that as the standing lane
@@ -1239,12 +1270,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? _handleLandings<CanvasPoint>(
               session,
               activeLayer.id,
-              (dropped) =>
-                  (track, frameIndex) => transformTrackWithPositionDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    position: parent.fromCanvas(dropped),
-                  ),
+              (dropped) => _movedTo(parent.fromCanvas(dropped)),
               description: 'Move $name',
             )
           : null,
@@ -1253,12 +1279,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               _handleLandings<CanvasPoint>(
                 session,
                 activeLayer.id,
-                (scale) =>
-                    (track, frameIndex) => transformTrackWithScaleDragged(
-                      track,
-                      frameIndex: frameIndex,
-                      scale: scale,
-                    ),
+                _scaledTo,
                 description: 'Scale $name',
               ),
             )
@@ -1268,12 +1289,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ? _handleLandings<double>(
               session,
               activeLayer.id,
-              (degrees) =>
-                  (track, frameIndex) => transformTrackWithRotationDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    rotationDegrees: degrees,
-                  ),
+              _turnedTo,
               description: 'Rotate $name',
             )
           : null,
@@ -1294,12 +1310,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               landing: _handleLandings<CanvasPoint>(
                 session,
                 activeLayer.id,
-                (dropped) =>
-                    (track, frameIndex) => transformTrackWithAnchorDragged(
-                      track,
-                      frameIndex: frameIndex,
-                      anchorPoint: parent.fromCanvas(dropped),
-                    ),
+                (dropped) => _anchoredAt(parent.fromCanvas(dropped)),
                 description: 'Anchor $name',
               ),
             )
@@ -1326,14 +1337,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final row = _shownRow(session, frame.activeLayer!);
     final reference = row.mediaReference!;
     final pose = reference.poseAt(session.currentFrameIndex);
-    final parent = session.frameVerbs.layerReferenceSpace(row.id);
-    final back = parent == null ? null : canvasToArtwork(parent);
-    CanvasPoint toCanvas(CanvasPoint point) => parent?.apply(point) ?? point;
-    CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
+    final space = _shownThrough(
+      session.frameVerbs.layerReferenceSpace(row.id),
+    );
     final name = row.name;
     return RowTransformBox(
-      corners: _referenceBoxCorners(pose, reference.pictureSize, toCanvas),
-      pose: pose.copyWith(center: toCanvas(pose.center)),
+      corners: _referenceBoxCorners(
+        pose,
+        reference.pictureSize,
+        space.toCanvas,
+      ),
+      pose: pose.copyWith(center: space.toCanvas(pose.center)),
       pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
       presses: frame.boxPresses,
@@ -1341,11 +1355,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       move: _handleLandings<CanvasPoint>(
         session,
         row.id,
-        (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
-          track,
-          frameIndex: frameIndex,
-          position: fromCanvas(dropped),
-        ),
+        (dropped) => _movedTo(space.fromCanvas(dropped)),
         description: 'Move $name reference',
         reference: true,
       ),
@@ -1353,24 +1363,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         _handleLandings<CanvasPoint>(
           session,
           row.id,
-          (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
-            track,
-            frameIndex: frameIndex,
-            scale: scale,
-          ),
+          _scaledTo,
           description: 'Scale $name reference',
           reference: true,
         ),
       ),
-      turnSpace: fromCanvas,
+      turnSpace: space.fromCanvas,
       turn: _handleLandings<double>(
         session,
         row.id,
-        (degrees) => (track, frameIndex) => transformTrackWithRotationDragged(
-          track,
-          frameIndex: frameIndex,
-          rotationDegrees: degrees,
-        ),
+        _turnedTo,
         description: 'Rotate $name reference',
         reference: true,
       ),
@@ -1415,11 +1417,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       paper: canvasSize,
     );
     final stand = effectStandPose(number.stand!, canvasSize);
-    final placement = session.frameVerbs.layerCanvasPoseSample(row.id);
-    final back = placement == null ? null : canvasToArtwork(placement);
-    CanvasPoint toCanvas(CanvasPoint point) =>
-        placement?.apply(point) ?? point;
-    CanvasPoint fromCanvas(CanvasPoint point) => back?.apply(point) ?? point;
+    final space = _shownThrough(
+      session.frameVerbs.layerCanvasPoseSample(row.id),
+    );
     final box = celNumberBox(letters);
     final name = row.name;
     final verbs = session.laneVerbs;
@@ -1445,28 +1445,20 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           box.bottomRight,
           box.bottomLeft,
         ])
-          toCanvas(CanvasPoint(x: corner.dx, y: corner.dy)),
+          space.toCanvas(CanvasPoint(x: corner.dx, y: corner.dy)),
       ],
-      pose: stand.copyWith(center: toCanvas(stand.center)),
+      pose: stand.copyWith(center: space.toCanvas(stand.center)),
       pasteboard: session.pasteboardOf(canvasSize),
       viewport: viewport,
       presses: frame.boxPresses,
       onCancelled: session.laneVerbs.endLaneEditPreview,
       move: landing<CanvasPoint>(
-        (dropped) => (track, frameIndex) => transformTrackWithPositionDragged(
-          track,
-          frameIndex: frameIndex,
-          position: fromCanvas(dropped),
-        ),
+        (dropped) => _movedTo(space.fromCanvas(dropped)),
         description: 'Move $name ${effect.kind.label}',
       ),
       scale: RowBoxTwoScales(
         landing<CanvasPoint>(
-          (scale) => (track, frameIndex) => transformTrackWithScaleDragged(
-            track,
-            frameIndex: frameIndex,
-            scale: scale,
-          ),
+          _scaledTo,
           description: 'Scale $name ${effect.kind.label}',
         ),
       ),
@@ -1572,34 +1564,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final move = _handleLandings<CanvasPoint>(
       session,
       cameraRow.id,
-      (center) =>
-          (track, frameIndex) => transformTrackWithPositionDragged(
-            track,
-            frameIndex: frameIndex,
-            position: center,
-          ),
+      _movedTo,
       description: 'Move camera $at',
     );
     final zoom = _handleLandings<double>(
       session,
       cameraRow.id,
-      (zoom) =>
-          (track, frameIndex) => transformTrackWithScaleDragged(
-            track,
-            frameIndex: frameIndex,
-            scale: uniformScale(zoom),
-          ),
+      (zoom) => _scaledTo(uniformScale(zoom)),
       description: 'Zoom camera $at',
     );
     final turn = _handleLandings<double>(
       session,
       cameraRow.id,
-      (degrees) =>
-          (track, frameIndex) => transformTrackWithRotationDragged(
-            track,
-            frameIndex: frameIndex,
-            rotationDegrees: degrees,
-          ),
+      _turnedTo,
       description: 'Rotate camera $at',
     );
     // The box follows the frame along its animated pose, as the frame does.

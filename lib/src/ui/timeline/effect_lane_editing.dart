@@ -353,7 +353,7 @@ class _EffectLaneLens implements LaneLens<List<LayerEffect>> {
 /// What [read] answers of the effect a lane addresses, given the lane — a
 /// parameter's id or one where the effect stands — null when the lane is a
 /// header or its effect is not in the chain: the read twin of
-/// [_editEffect].
+/// [_editLane].
 R? _readLane<R>(
   List<LayerEffect> effects,
   String laneId,
@@ -372,6 +372,24 @@ R? _readLane<R>(
   return null;
 }
 
+/// Rebuilds the effect a lane addresses through [edit], given the lane — a
+/// parameter's id, its colour or one where the effect stands; null when the
+/// lane is a header, its effect is not in the chain, or [edit] declines the
+/// change — every lane's edit ([_editStand], [_editInk], [_editParameter])
+/// finds its effect here.
+List<LayerEffect>? _editLane(
+  List<LayerEffect> effects,
+  String laneId,
+  LayerEffect? Function(LayerEffect effect, String lane) edit,
+) {
+  final address = parseEffectLaneId(laneId);
+  final lane = address?.parameterId;
+  if (address == null || lane == null) {
+    return null;
+  }
+  return _editEffect(effects, address.effectId, (effect) => edit(effect, lane));
+}
+
 /// Whether [laneId] is one where its effect in [effects] stands its picture
 /// ([LayerEffect.standLaneOf]).
 bool _standsOn(List<LayerEffect> effects, String laneId) =>
@@ -386,20 +404,13 @@ List<LayerEffect>? _editStand(
   List<LayerEffect> effects,
   String laneId,
   TransformTrack? Function(TransformTrack stand, String lane) edit,
-) {
-  final address = parseEffectLaneId(laneId);
-  final lane = address?.parameterId;
-  if (address == null || lane == null) {
+) => _editLane(effects, laneId, (effect, lane) {
+  if (effect.standLaneOf(lane) == null) {
     return null;
   }
-  return _editEffect(effects, address.effectId, (effect) {
-    if (effect.standLaneOf(lane) == null) {
-      return null;
-    }
-    final next = edit(effect.stand, lane);
-    return next == null ? null : effect.copyWith(stand: next);
-  });
-}
+  final next = edit(effect.stand, lane);
+  return next == null ? null : effect.copyWith(stand: next);
+});
 
 /// [effects] with where [effectId] stands its picture rebuilt through
 /// [edit] — a canvas box's drag over that picture (F-477), as a lane of it
@@ -429,20 +440,13 @@ List<LayerEffect>? _editInk(
   List<LayerEffect> effects,
   String laneId,
   PropertyTrack<int>? Function(PropertyTrack<int> ink) edit,
-) {
-  final address = parseEffectLaneId(laneId);
-  final lane = address?.parameterId;
-  if (address == null || lane == null) {
+) => _editLane(effects, laneId, (effect, lane) {
+  if (!effect.inksOn(lane)) {
     return null;
   }
-  return _editEffect(effects, address.effectId, (effect) {
-    if (!effect.inksOn(lane)) {
-      return null;
-    }
-    final next = edit(effect.ink);
-    return next == null ? null : effect.copyWith(ink: next);
-  });
-}
+  final next = edit(effect.ink);
+  return next == null ? null : effect.copyWith(ink: next);
+});
 
 /// Whether the key at [frameIndex] of effect lane [laneId] may give its
 /// time up (I-89 ④): where the effect stands its picture, as a
@@ -558,20 +562,11 @@ List<LayerEffect>? _editParameter(
   String laneId,
   EffectParameter? Function(EffectParameter parameter, EffectParameterSpec spec)
   edit,
-) {
-  final address = parseEffectLaneId(laneId);
-  final parameterId = address?.parameterId;
-  if (address == null || parameterId == null) {
+) => _editLane(effects, laneId, (effect, parameterId) {
+  final spec = effectParameterSpecOf(effect.kind, parameterId);
+  if (spec == null) {
     return null;
   }
-  return _editEffect(effects, address.effectId, (effect) {
-    final spec = effectParameterSpecOf(effect.kind, parameterId);
-    if (spec == null) {
-      return null;
-    }
-    final edited = edit(effect.parameterOf(parameterId), spec);
-    return edited == null
-        ? null
-        : effect.withParameter(parameterId, edited);
-  });
-}
+  final edited = edit(effect.parameterOf(parameterId), spec);
+  return edited == null ? null : effect.withParameter(parameterId, edited);
+});

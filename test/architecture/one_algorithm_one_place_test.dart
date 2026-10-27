@@ -637,8 +637,52 @@ import '../../tool/refactor/clone_scan.dart';
 /// into the first step the two already share (`_RangeDragFirstStep`).
 /// 🔬Measured on the lane over master (`556586179`, at 90): none added,
 /// none gone.
+///
+/// 90 → 86 (2026-10-27, clone-pairs-1027 — four of the six, read by the
+/// lane that laid them). Two families merged:
+///
+/// - `_editStand` · `_editInk` · `_editParameter` (three pairs): each found
+///   the effect a lane addresses and rebuilt it — one walk, three bodies.
+///   They are `_editLane` now, the write twin of `_readLane`.
+/// - `_referenceBox` · `_effectBox`: each spelled a placement's way to the
+///   canvas and back, which `_shownThrough` already said for the row's box.
+///   Both call it, and every box's grabs — the row's, the reference's, the
+///   effect's and the camera's — make their edits through `_movedTo`,
+///   `_scaledTo`, `_turnedTo` and `_anchoredAt`, spelled four times before.
+///
+/// Two are named:
+///
+///     43 tokens
+///       lib/src/ui/envelope/cut_envelope_edit_layer.dart
+///         CutEnvelopeEditLayer.build
+///       lib/src/ui/timesheet/timesheet_header_edit_layer.dart
+///         TimesheetHeaderEditLayer.build
+///
+/// The reading finds NO copy: what the two share is already one — the
+/// sheets' one in-place editor ([SheetTextEditLayer]) and the face the
+/// paper prints in ([appFaceOf]) — and what each spells is its own sheet's
+/// targets and keys. The conte's page is the editor's third caller, with
+/// keys of another pattern and its own style, so no law of the call is
+/// left to share.
+///
+///     40 tokens
+///       lib/src/ui/brush/brush_canvas_panel.dart
+///         _BrushCanvasPanelState._landTraced
+///       lib/src/ui/brush/brush_canvas_panel.dart
+///         _BrushCanvasPanelState._showTraced
+///
+/// They ARE one algorithm — "a traced shape lays as one stroke of the
+/// brush or as every copy's area" ([ShapeShow]'s two pairs of verbs) — and
+/// came over the floor when F-483 handed both the stroke's pressure
+/// (`96661a9cc`). ⛔Not merged, by the rule of three (CLAUDE.md): merged,
+/// one body would take the show's two verbs as callbacks for a dispatch
+/// seen twice. 🔜A third verb of the show (or a shape kind beyond the
+/// stroke and the area) moves the dispatch into one value [ShapeShow]
+/// takes, and lowers this back.
+/// 🔬Measured on the lane over master (`556586179`, at 90): none added,
+/// these four gone.
 void main() {
-  const ceiling = 90;
+  const ceiling = 86;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',
