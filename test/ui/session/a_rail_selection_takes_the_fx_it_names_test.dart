@@ -49,16 +49,20 @@ const _both = [EffectKind.blur, EffectKind.hueSaturation];
 List<LayerEffect> _trackEffects(EditorSessionManager session) =>
     session.repository.requireProject().tracks.single.effects;
 
-Layer _row(String id) => Layer(
+Layer _row(String id, {LayerKind kind = LayerKind.animation}) => Layer(
   id: LayerId(id),
   name: id,
-  kind: LayerKind.animation,
+  kind: kind,
   frames: const [],
   timeline: const {},
 );
 
-/// A cut whose rows are x · y, bottom → top, [_both] on y.
-EditorSessionManager _session() {
+/// A cut whose rows are x · y, bottom → top, [_both] on y — and [over]
+/// above them, and the track's S rows [se].
+EditorSessionManager _session({
+  List<Layer> over = const [],
+  List<Layer> se = const [],
+}) {
   final session = EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('f476'),
@@ -74,9 +78,10 @@ EditorSessionManager _session() {
               name: 'c1',
               duration: 24,
               canvasSize: const CanvasSize(width: 320, height: 180),
-              layers: [_row('x'), _row('y')],
+              layers: [_row('x'), _row('y'), ...over],
             ),
           ],
+          seLayers: se,
         ),
       ],
     ),
@@ -425,6 +430,75 @@ void main() {
       expect(session.effectClipboard.holdsEffects, isFalse);
     });
 
+    test('a paste puts down what the row takes, as an add would: a cel '
+        'number fx stays off a folder, whose drawings carry none', () {
+      final session = _session(over: [_row('f', kind: LayerKind.folder)]);
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.celNumber);
+      final celNumber = LaneRowAddress(
+        const LayerId('y'),
+        effectGroupLaneId(_idOf(session, EffectKind.celNumber)),
+      );
+      final pill = TimelineToolbarPanelContext(session);
+
+      _select(session, [celNumber]);
+      pill.copyFrame();
+      session.selectLayer(const LayerId('f'));
+      expect(pill.canPasteIndependentFrame, isFalse, reason: 'it takes none');
+
+      _select(session, [_header(session, EffectKind.blur), celNumber]);
+      pill.copyFrame();
+      session.selectLayer(const LayerId('f'));
+      pill.pasteIndependentFrame();
+      expect(_effectsOf(session, 'f'), [EffectKind.blur]);
+    });
+
+    test('a cut over two rows\' headers is ONE undo', () {
+      final session = _session();
+      session.effectsAndFx.addEffectToTrack(_track, EffectKind.blur);
+      _select(session, [
+        _header(session, EffectKind.blur),
+        LaneRowAddress(
+          trackTransformLaneCarrierId(_track),
+          effectGroupLaneId(_trackEffects(session).single.id),
+        ),
+      ]);
+      final steps = session.historyManager.undoCount;
+
+      TimelineToolbarPanelContext(session).cutRun();
+
+      expect(_effectsOf(session, 'y'), [EffectKind.hueSaturation]);
+      expect(_trackEffects(session), isEmpty);
+      expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
+      session.undo();
+      expect(_effectsOf(session, 'y'), _both);
+      expect(_trackEffects(session), hasLength(1));
+    });
+
+    test('standing on an S row — a row the duplicate never copies — its fx '
+        'header is duplicated all the same', () {
+      final session = _session(se: [_row('s1', kind: LayerKind.se)]);
+      List<LayerEffect> seEffects() =>
+          session.repository.requireProject().tracks.single.seLayers.single
+              .effects;
+      session.selectLayer(const LayerId('s1'));
+      session.effectsAndFx.addEffectToActiveLayer(EffectKind.blur);
+      _select(session, [
+        LaneRowAddress(
+          const LayerId('s1'),
+          effectGroupLaneId(seEffects().single.id),
+        ),
+      ]);
+      final pill = TimelineToolbarPanelContext(session);
+
+      expect(pill.canDuplicate, isTrue);
+      pill.duplicate();
+
+      expect([for (final effect in seEffects()) effect.kind], [
+        EffectKind.blur,
+        EffectKind.blur,
+      ]);
+    });
+
     for (final (panel, contextOf) in <(String, ToolbarPanelContext Function(
       EditorSessionManager,
     ))>[
@@ -452,6 +526,14 @@ void main() {
         expect(chain.first.id, source);
         expect(chain[1].id, isNot(source));
         expect(chain[1].parameterOf('blurX').value, 7);
+        expect(
+          rowTwirlsOf(
+            session.repository.requireProject(),
+            const LayerId('y'),
+          )!.expandedLaneGroups,
+          contains(effectGroupLaneId(chain[1].id)),
+          reason: 'F-396: an effect that appears shows itself',
+        );
         expect(_stack(session), ['x', 'y'], reason: 'no row is duplicated');
         expect(session.historyManager.undoCount, steps + 1, reason: 'ONE step');
         session.undo();
