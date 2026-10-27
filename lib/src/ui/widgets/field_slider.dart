@@ -607,7 +607,7 @@ class FieldSlider extends StatefulWidget {
     return t.clamp(0.0, 1.0);
   }
 
-  /// The value at [t] along the track, snapped to [divisions].
+  /// The value at [t] along the track, snapped to [divisions] and [held].
   double _valueFor(double t) {
     final clamped = t.clamp(0.0, 1.0);
     double value;
@@ -622,15 +622,41 @@ class FieldSlider extends StatefulWidget {
       final step = (max - min) / divisions;
       value = min + ((value - min) / step).round() * step;
     }
-    return value.clamp(floor ?? min, max);
+    return held(value);
   }
+
+  /// [value] as this bar holds it: in its range, and on the numbers it
+  /// writes — [_decimals] digits after the point, in the units it writes
+  /// them in ([displayScale]). Every value the bar hands over is one, by
+  /// drag, tap, step or typing.
+  ///
+  /// 🗣️F-488 (유저 2026-10-27): 「브러시 크기 사이즈 슬라이더, 0.1대에서
+  /// 슬라이더 움직이는데 0.1인채로 유지되는데 설마 0.1 밑의 소수점자리도
+  /// 존재하는건가? … 소수점한자리까지만 존재하도록하고 아니면 조정가능한 값만
+  /// 조정되도록. 슬라이더를 전부 그렇게」 — a bar handed over values it did
+  /// not write, its fill sliding while its number stood still.
+  double held(double value) {
+    final written = _writtenPerUnit;
+    return ((value * written).round() / written)
+        .clamp(floor ?? min, max)
+        .toDouble();
+  }
+
+  /// How many of the last digit the bar writes one unit of its value holds.
+  double get _writtenPerUnit =>
+      math.pow(10, _decimals).toDouble() * displayScale;
 
   /// Where one step [direction] from [value] lands: the next of the
   /// [stops], or one notch along the track — a [fine] one when Shift is
   /// held. Null when the stops run out that way.
+  ///
+  /// A notch that would land on the number [value] writes moves it by the
+  /// last digit instead: an exponential sweep's notch is less than a tenth
+  /// under 0.2, and a step that writes the same number is no step (F-488).
   double? _stepFrom(double value, int direction, {required bool fine}) {
     if (stops != null) {
-      return _stopPast(value, direction)?.clamp(min, max).toDouble();
+      final stop = _stopPast(value, direction);
+      return stop == null ? null : held(stop);
     }
     final divisions = this.divisions;
     final double step;
@@ -639,15 +665,19 @@ class FieldSlider extends StatefulWidget {
     } else {
       step = fine ? 0.001 : 0.01;
     }
-    return _valueFor((_tFor(value) + direction * step).clamp(0.0, 1.0));
+    final next = _valueFor((_tFor(value) + direction * step).clamp(0.0, 1.0));
+    final now = held(value);
+    return next != now ? next : held(now + direction / _writtenPerUnit);
   }
 
   /// The stop next past [value] [direction] (+1 up, −1 down); null past
   /// the last.
   ///
-  /// ⚠️A stop the bar WRITES [value] as is not the next one: a drag that
-  /// left 10.03 reads 「10.0」, and a step from it to 10 would be a press
-  /// that shows nothing.
+  /// ⚠️A stop the bar WRITES [value] as is not the next one: a value set
+  /// where the bar does not hold it — a brush's own 10.03 — reads 「10.0」,
+  /// and a step from it to 10 would be a press that shows nothing.
+  /// (↩️A drag left such values too, until the bar [held] what it hands
+  /// over — F-488.)
   double? _stopPast(double value, int direction) {
     final shown = _textFor(value);
     double? next;

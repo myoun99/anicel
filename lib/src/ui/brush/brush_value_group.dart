@@ -204,7 +204,7 @@ class BrushValueBars extends StatelessWidget {
   );
 
   /// The two bars as [layout] writes them, at the ends of their ranges —
-  /// what the measures below read.
+  /// what the measures below read, and the hold ([heldSize]).
   static BrushBars _measured(BrushValuesLayout layout, double thickness) {
     final stand = (layout: layout, thickness: thickness, readout: null);
     return (
@@ -212,6 +212,13 @@ class BrushValueBars extends StatelessWidget {
       opacity: _opacityBar(stand, value: 1, onChanged: null),
     );
   }
+
+  /// [size] as the size bar holds it ([FieldSlider.held]) — for the hand
+  /// that sets the size with no bar under it, the canvas's size drag:
+  /// 「슬라이더를 전부 그렇게」 (F-488) — the size it sets is one the bar
+  /// writes.
+  static double heldSize(double size) =>
+      _measured(BrushValuesLayout.strip, barHeight).size.held(size);
 
   /// The narrowest each bar goes: where it still writes its name and its
   /// widest number whole ([FieldSlider.narrowestIn]).

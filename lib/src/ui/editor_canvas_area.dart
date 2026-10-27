@@ -35,6 +35,7 @@ import '../services/last_stroke_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
+import 'brush/brush_value_group.dart' show BrushValueBars;
 import 'brush/temporary_tool.dart';
 import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
@@ -926,7 +927,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       next = AppInput.snapToList(next, ToolSizePresetPanel.presets);
     }
     widget.onBrushToolStateChanged?.call(
-      widget.brushToolState.value.withActiveSize(next),
+      widget.brushToolState.value.withActiveSize(
+        // On the numbers the size bar writes, as the bar holds them (F-488).
+        BrushValueBars.heldSize(next),
+      ),
     );
   }
 

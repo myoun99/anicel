@@ -45,14 +45,32 @@ void main() {
     expect(ToolSizePresetPanel.presets, contains(0.7));
     expect(size, 0.7);
   });
+
+  // 🗣️F-488 (유저 2026-10-27): 「소수점한자리까지만 존재하도록 … 슬라이더를
+  // 전부 그렇게」 — the drag sets the size the size bar writes, and no finer.
+  testWidgets('a drag no finger holds lands on a size the size bar writes', (
+    tester,
+  ) async {
+    final size = await sizeAfterAHeldDrag(
+      tester,
+      from: 10,
+      upward: 30,
+      held: false,
+    );
+
+    // 10 × 2^(30/120) ≈ 11.892, which the bar writes 「11.9」.
+    expect(size, 11.9);
+  });
 }
 
 /// The brush size after the canvas's three-finger size drag moves [upward]
-/// pixels from [from] while a late finger holds it — the hold that snaps.
+/// pixels from [from] while a late finger holds it — the hold that snaps —
+/// or, not [held], with no finger holding it.
 Future<double> sizeAfterAHeldDrag(
   WidgetTester tester, {
   required double from,
   required double upward,
+  bool held = true,
 }) async {
   // The engine stands down while one finger draws — the corpus baseline.
   AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
@@ -94,12 +112,16 @@ Future<double> sizeAfterAHeldDrag(
   final way = Offset(0, -30 * upward.sign);
   await batch(tester, moveAll(fingers, way));
   final late = TestPointer(9, PointerDeviceKind.touch);
-  await tester.sendEventToBinding(late.down(const Offset(600, 450)));
-  await tester.pump();
+  if (held) {
+    await tester.sendEventToBinding(late.down(const Offset(600, 450)));
+    await tester.pump();
+  }
   await batch(tester, moveAll(fingers, Offset(0, -upward)));
   final size = brushTool.value.activeSize;
 
-  await tester.sendEventToBinding(late.up());
+  if (held) {
+    await tester.sendEventToBinding(late.up());
+  }
   await liftAll(tester, fingers);
   return size;
 }
