@@ -620,3 +620,16 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
   }
   return out;
 }
+
+/// Whether [node] holds a row [test] answers for — itself, or one anywhere
+/// inside it, as a walk over every row meets it ([preorderNodes]: a clip's
+/// base made opaque and the row a cel number is written on are not second
+/// places of a row).
+///
+/// ⛔ONE SPELLING of "the node a row is in": the live row a stroke's step
+/// is told by, the row a pen draws into, a row drawn afresh — each wrote
+/// the walk out for itself.
+bool holdsRow<L>(CompositeNode<L> node, bool Function(L row) test) =>
+    preorderNodes([node]).any(
+      (each) => each is CompositeLeaf<L> && test(each.payload),
+    );

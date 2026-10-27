@@ -97,25 +97,30 @@ class FramePictures implements PlaybackPictures {
   /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
   /// 실측 5): kept as the frame is laid for that screen ([makeShown]), or
   /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
-  /// stroke's steps are patched into it ([frameAsItStands]) — a
-  /// folder drawn whole is not drawn again for each step that does not
-  /// touch it.
+  /// stroke's steps are patched into it ([frameAsItStands]) — what lies
+  /// below the row a pen draws on, as one picture, and each folder over it
+  /// drawn whole are not drawn again for each step that does not touch
+  /// them.
   ///
-  /// ⚖️One page of them at the most — the page of the frame last drawn
-  /// with them ([estimatedImageBytes]): the screen is fed by the frame's
-  /// picture, and these only make its patches cheaper. Past it they are let
-  /// go of, and a patch draws the node as it did before.
+  /// ⚖️Three pages of them at the most — the page of the frame last drawn
+  /// with them ([estimatedImageBytes]): two below the pen (the frame's own
+  /// list and the folder the pen is in) and one of the nodes over it — the
+  /// option 유저 picked 2026-10-27 (Q2 = c): 「폴더가 몇 개든 2~3장」. The
+  /// screen is fed by the frame's picture, and these only make its patches
+  /// cheaper. Past it they are let go of, and a patch draws them as it did
+  /// before.
   late final HeldSubtreeRasters heldNodes = HeldSubtreeRasters(
-    bytes: () => _heldNodeBytes,
+    bytes: () => _heldPageBytes,
+    bytesBelow: () => 2 * _heldPageBytes,
   );
-  int _heldNodeBytes = 0;
+  int _heldPageBytes = 0;
 
   /// Where a frame drawn on [page] finds its nodes' pictures ([heldNodes]),
   /// its rows signed as its key signs them — and keeps the ones it draws
   /// whole where it [keeps].
   ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})
   _holding(FramePage page, {required bool keeps}) {
-    _heldNodeBytes = estimatedImageBytes(
+    _heldPageBytes = estimatedImageBytes(
       page.canvasSize.width,
       page.canvasSize.height,
     );

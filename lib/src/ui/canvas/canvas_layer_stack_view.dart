@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 
 import '../../core/collection_equality.dart';
-import '../../core/tree_nodes.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show CutFrameCompositeLayer;
 import '../../models/bitmap_surface.dart';
@@ -290,8 +289,11 @@ final class StackedFrame {
     ({LiveRows rows, LiftedRowPainters painters})? live,
     HeldNodePictures? held,
   }) {
-    _PaintRow? paintOf(StoredRow? row) => switch (row) {
-      final stored? => _PaintCelSurface(stored),
+    _PaintRow? paintOf(StoredRow? row, CanvasStackRow of) => switch (row) {
+      final stored? => _PaintCelSurface(
+        stored,
+        drawnOn: of is CanvasActiveLayerRow,
+      ),
       null => null,
     };
     final drawn = mapCompositeLeaves<CanvasStackRow, _PaintRow>(
@@ -302,9 +304,9 @@ final class StackedFrame {
             return row;
           }
         }
-        return paintOf(storedRowOf(row));
+        return paintOf(storedRowOf(row), row);
       },
-      bare: (row) => paintOf(bareRowOf(row)),
+      bare: (row) => paintOf(bareRowOf(row), row),
     );
     final liftedRows =
         live?.painters._drawn(live.rows.liftedRows) ??
@@ -617,7 +619,7 @@ final class _PaintLiftedSurface extends _SurfaceRow {
 /// frame's one picture ([StackedFrame]), by the body the live row is
 /// drawn with.
 final class _PaintCelSurface extends _SurfaceRow {
-  _PaintCelSurface(StoredRow row)
+  _PaintCelSurface(StoredRow row, {required this.drawnOn})
     : painter = BitmapSurfacePainter(
         surface: row.layer.surface,
         // The stack lays its own paper.
@@ -634,6 +636,12 @@ final class _PaintCelSurface extends _SurfaceRow {
 
   /// What it draws ([StoredRow.signature]).
   final CompositeLayerSignature? signature;
+
+  /// Whether it is the row a pen draws on — the active layer's
+  /// ([CanvasActiveLayerRow]), drawn from what is stored until a stroke
+  /// holds it live ([_PaintActiveSurface]): what lies below it is held as
+  /// one picture for the steps to come ([SubtreeHolding.drawnOn]).
+  final bool drawnOn;
   @override
   final double opacity;
   @override
@@ -984,25 +992,25 @@ final class _LayerStackPainter {
             : null;
       }
       if (node is CompositeGroup<_PaintRow> &&
-          node.children.any(_enclosesActiveSurface)) {
+          holdsRow(node, _isTheLiveRow)) {
         final inside = _whereTheLiveRowShows(node.children, rect);
         return inside == null ? null : _spreadBy(node.effects, inside);
       }
       if (node is CompositeAdjustment<_PaintRow> &&
-          node.children.any(_enclosesActiveSurface)) {
+          holdsRow(node, _isTheLiveRow)) {
         final inside = _whereTheLiveRowShows(node.children, rect);
         return inside == null ? null : _spreadBy(node.effects, inside);
       }
       // A blend composes pixel by pixel: a dab moves the composite where it
       // lands and nowhere else, so only what the row passes through decides.
       if (node is CompositeBackdropBlend<_PaintRow> &&
-          node.children.any(_enclosesActiveSurface)) {
+          holdsRow(node, _isTheLiveRow)) {
         return _whereTheLiveRowShows(node.children, rect);
       }
       // So does a clip: the base's alpha cuts pixel by pixel, and the base
       // made opaque is the base's own pixels.
       if (node is CompositeClip<_PaintRow> &&
-          node.children.any(_enclosesActiveSurface)) {
+          holdsRow(node, _isTheLiveRow)) {
         return _whereTheLiveRowShows(node.children, rect);
       }
     }
@@ -1016,25 +1024,9 @@ final class _LayerStackPainter {
         resolveCompositeEffectPlan(effects).outsetPixels,
       );
 
-  /// Whether the live surface is this node, or anywhere inside it.
-  static bool _enclosesActiveSurface(CompositeNode<_PaintRow> node) =>
-      switch (node) {
-        CompositeLeaf(payload: _PaintActiveSurface()) => true,
-        CompositeGroup(:final children) =>
-          children.any(_enclosesActiveSurface),
-        CompositeAdjustment(:final children) =>
-          children.any(_enclosesActiveSurface),
-        CompositeBackdropBlend(:final children) =>
-          children.any(_enclosesActiveSurface),
-        CompositeClip(:final children) => children.any(_enclosesActiveSurface),
-        // The base it paints again stands in the clip already, and the row
-        // a cel number is written on as its own leaf.
-        CompositeOpaque() || CompositeCelNumber() => false,
-        // A lifted row only shows; nothing draws into it.
-        CompositeLeaf(payload: _PaintLiftedSurface()) => false,
-        CompositeLeaf(payload: _PaintCelSurface()) => false,
-        CompositeLeaf(payload: _PaintPaper()) => false,
-      };
+  /// Whether [row] is the live surface ([holdsRow]) — not a lifted row:
+  /// that only shows, and nothing draws into it.
+  static bool _isTheLiveRow(_PaintRow row) => row is _PaintActiveSurface;
 }
 
 /// How many paints have fallen to the direct walk because the buffer would

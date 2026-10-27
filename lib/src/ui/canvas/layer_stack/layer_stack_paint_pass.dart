@@ -343,6 +343,7 @@ class _LayerStackPaintPass {
       (:final rasters, :final keeps) => (
         rasters: rasters,
         keyOf: _drawsOf,
+        drawnOn: _drawnOn,
         keeps: keeps,
       ),
       null => null,
@@ -951,12 +952,20 @@ class _LayerStackPaintPass {
   /// with no signature would drop out of the signing ([mapCompositeLeaves])
   /// and leave a key that misses it — the first stroke on an empty cel, in
   /// a folder held with nothing of it.
+  ///
+  /// The paper draws what it is laid with, where, on which edge
+  /// ([_paintPaperInto]) — at the buffer's own ratio, as a frame's picture
+  /// is drawn: what lies below a pen holds it ([SubtreeHolding.drawnOn]).
   Object? _drawsOf(CompositeNode<_PaintRow> node) {
-    for (final each in preorderNodes([node])) {
-      if (each case CompositeLeaf(:final payload)
-          when _signatureOf(payload) == null) {
-        return null;
-      }
+    if (node case CompositeLeaf(payload: _PaintPaper())) {
+      return (
+        paper: _painter.paperBackground,
+        on: _canvasRect,
+        antiAlias: _displayEdgeAntiAliased,
+      );
+    }
+    if (holdsRow(node, (row) => _signatureOf(row) == null)) {
+      return null;
     }
     return switch (CutFrameCompositeSignature.of(
       mapCompositeLeaves([node], _signatureOf),
@@ -970,6 +979,14 @@ class _LayerStackPaintPass {
   static CompositeLayerSignature? _signatureOf(_PaintRow row) => switch (row) {
     _PaintCelSurface(:final signature) => signature,
     _ => null,
+  };
+
+  /// Whether [row] is the one a pen draws on — live, or drawn from what is
+  /// stored as the frame is laid ([_PaintCelSurface.drawnOn]).
+  static bool _drawnOn(_PaintRow row) => switch (row) {
+    _PaintActiveSurface() => true,
+    _PaintCelSurface(:final drawnOn) => drawnOn,
+    _PaintLiftedSurface() || _PaintPaper() => false,
   };
 
   /// Everything this stack is, in CANVAS space: the paper and then the

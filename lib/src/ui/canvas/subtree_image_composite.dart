@@ -379,7 +379,12 @@ typedef HeldSubtreeRaster = ({
 /// Where [drawSubtreeAsImage] finds a node's raster drawn whole, by [key] —
 /// what the node draws — and, where [keeps], keeps the one it draws whole.
 final class SubtreeHold {
-  const SubtreeHold(this.rasters, {required this.key, required this.keeps});
+  const SubtreeHold(
+    this.rasters, {
+    required this.key,
+    required this.keeps,
+    this.below = false,
+  });
 
   final HeldSubtreeRasters rasters;
 
@@ -389,11 +394,17 @@ final class SubtreeHold {
   /// Whether the raster drawn here is the node's whole and may be kept.
   final bool keeps;
 
+  /// Whether it is what lies below the row a pen draws into, held on a
+  /// shelf of its own ([HeldSubtreeRasters]).
+  final bool below;
+
+  _HeldShelf get _shelf => below ? rasters._below : rasters._nodes;
+
   /// The raster held for [key] that [plan] can be cut from: drawn at the
   /// scale the walk is at — one held is never magnified ([_finishSubtreeRaster])
   /// — and covering it.
   HeldSubtreeRaster? covering(SubtreeRasterPlan plan) {
-    final whole = rasters._held.use(key);
+    final whole = _shelf._held.use(key);
     if (whole == null || whole.plan.rasterScale != plan.rasterScale) {
       return null;
     }
@@ -401,6 +412,21 @@ final class SubtreeHold {
     return destination.expandToInclude(plan.destination) == destination
         ? whole
         : null;
+  }
+
+  /// Whether a picture of [bounds] at [rasterScale] is held to be cut from,
+  /// or one drawn of it now — with no steps on it — would be kept: where
+  /// neither, a picture of what could be drawn in place is drawn for
+  /// nothing.
+  bool findsOrKeeps(Rect bounds, double rasterScale) {
+    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
+    return plan != null &&
+        (covering(plan) != null ||
+            keeps &&
+                !plan.magnifies &&
+                _shelf._fits(
+                  estimatedImageBytes(plan.pixelWidth, plan.pixelHeight),
+                ));
   }
 }
 
@@ -413,10 +439,41 @@ final class SubtreeHold {
 /// all ten again — a step on the screen p50 166ms against 85 with the
 /// folders at 100%, Windows, profile).
 ///
-/// [bytes] bounds what is held together, and one raster past it is not
-/// kept at all: it is drawn as it was before.
+/// Two shelves, each bounded on its own: what lies below the row a pen
+/// draws into ([SubtreeHold.below], [bytesBelow]) and the nodes held one by
+/// one ([bytes]) — 🗣️유저 2026-10-27 (Q2 = c) 「그리는 행 아래 · 위를 한 장씩
+/// 묶어 든다」. ⛔Not one: what lies below is drawn first as a frame is
+/// laid, and the nodes over it kept after would push it out first. One
+/// raster past its shelf is not kept at all: it is drawn as it was before.
 final class HeldSubtreeRasters {
-  HeldSubtreeRasters({required int Function() bytes})
+  HeldSubtreeRasters({
+    required int Function() bytes,
+    int Function() bytesBelow = _none,
+  }) : _nodes = _HeldShelf(bytes),
+       _below = _HeldShelf(bytesBelow);
+
+  final _HeldShelf _nodes;
+  final _HeldShelf _below;
+
+  static int _none() => 0;
+
+  /// How many rasters are held.
+  int get length => _nodes._held.length + _below._held.length;
+
+  /// What the rasters held weigh ([estimatedImageBytes]).
+  int get heldBytes => _nodes._held.held + _below._held.held;
+
+  /// Lets go of every raster held.
+  void clear() {
+    _nodes._clear();
+    _below._clear();
+  }
+}
+
+/// One shelf of [HeldSubtreeRasters]: the least recently used let go of
+/// first, past [_bytes].
+final class _HeldShelf {
+  _HeldShelf(int Function() bytes)
     : _bytes = bytes,
       _held = Lru(
         limit: bytes,
@@ -427,16 +484,12 @@ final class HeldSubtreeRasters {
   final int Function() _bytes;
   final Lru<Object, HeldSubtreeRaster> _held;
 
-  /// How many rasters are held.
-  int get length => _held.length;
-
-  /// What the rasters held weigh ([estimatedImageBytes]).
-  int get heldBytes => _held.held;
+  bool _fits(int bytes) => bytes <= _bytes();
 
   /// Keeps [drawn] for [key] in handles of its own — the caller lets go of
   /// its own — where it fits.
   void _keep(Object key, HeldSubtreeRaster drawn) {
-    if (_bytesOf(drawn) > _bytes()) {
+    if (!_fits(_bytesOf(drawn))) {
       return;
     }
     final raster = drawn.raster.clone();
@@ -452,8 +505,7 @@ final class HeldSubtreeRasters {
     }
   }
 
-  /// Lets go of every raster held.
-  void clear() {
+  void _clear() {
     for (final held in _held.values) {
       _letGo(held);
     }
@@ -936,7 +988,7 @@ void _finishSubtreeRaster({
     );
   } finally {
     if (held != null && held.keeps && !plan.magnifies) {
-      held.rasters._keep(held.key, (plan: plan, raster: raster, image: image));
+      held._shelf._keep(held.key, (plan: plan, raster: raster, image: image));
     }
     // ⚠️Safe HERE and nowhere earlier: the draws put the image into this
     // frame's display list and the engine holds its own claim from that

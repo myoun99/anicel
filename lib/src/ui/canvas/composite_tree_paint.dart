@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import '../../core/collection_equality.dart';
 import '../../models/composite_tree.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
@@ -24,11 +25,14 @@ typedef CompositeRoute<L> = ({
 });
 
 /// Where a route holds the pictures of its nodes ([HeldSubtreeRasters]):
-/// what a node draws ([keyOf] — null for one drawn afresh each time), and
-/// whether one drawn whole here is kept ([keeps]).
+/// what a node draws ([keyOf] — null for one drawn afresh each time), the
+/// row a pen draws on ([drawnOn]) — what lies below it is held as one
+/// picture ([_CompositeTreeWalk._belowThePen]) — and whether one drawn
+/// whole here is kept ([keeps]).
 typedef SubtreeHolding<L> = ({
   HeldSubtreeRasters rasters,
   Object? Function(CompositeNode<L> node) keyOf,
+  bool Function(L row) drawnOn,
   bool keeps,
 });
 
@@ -51,9 +55,14 @@ void paintCompositeTree<L>(
 }) => _CompositeTreeWalk(route).paint(canvas, nodes, rasterScale, within);
 
 class _CompositeTreeWalk<L> {
-  _CompositeTreeWalk(this.route);
+  _CompositeTreeWalk(this.route, {this.keeps = true});
 
   final CompositeRoute<L> route;
+
+  /// Whether a picture drawn whole here may be kept where the route keeps
+  /// them — not inside the one picture of what lies below a pen, which is
+  /// kept itself ([_belowThePen]).
+  final bool keeps;
 
   void paint(
     Canvas canvas,
@@ -61,36 +70,109 @@ class _CompositeTreeWalk<L> {
     double rasterScale,
     Rect within,
   ) {
-    for (final node in nodes) {
-      switch (node) {
-        case CompositeLeaf(:final payload):
-          route.paintRow(canvas, payload, rasterScale);
-        // A row's letters lie where the row does (I-65).
-        case CompositeCelNumber(
-          on: CompositeLeaf(:final payload),
-          :final letters,
-        ):
-          withLayerPlacement(
-            canvas,
-            placement: route.placementOf(payload),
-            body: () => paintCelNumber(canvas, letters),
-          );
-        case final CompositeGroup<L> group:
-          _group(canvas, group, rasterScale, within);
-        case final CompositeAdjustment<L> adjustment:
-          _adjustment(canvas, adjustment, rasterScale, within);
-        case final CompositeBackdropBlend<L> blend:
-          _backdropBlend(canvas, blend, rasterScale, within);
-        case final CompositeClip<L> clip:
-          _clip(canvas, clip, rasterScale, within);
-        case CompositeOpaque(:final of):
-          drawOpaque(
-            canvas: canvas,
-            bounds: _bufferBoundsOf(node, within),
-            paintOf: (into) => paint(into, [of], rasterScale, within),
-          );
-      }
+    final pen = nodes.indexWhere(_holdsThePen);
+    final below = pen < 0 ? 0 : pen;
+    _belowThePen(canvas, nodes.sublist(0, below), rasterScale, within);
+    for (final node in nodes.skip(below)) {
+      _paintNode(canvas, node, rasterScale, within);
     }
+  }
+
+  void _paintNode(
+    Canvas canvas,
+    CompositeNode<L> node,
+    double rasterScale,
+    Rect within,
+  ) {
+    switch (node) {
+      case CompositeLeaf(:final payload):
+        route.paintRow(canvas, payload, rasterScale);
+      // A row's letters lie where the row does (I-65).
+      case CompositeCelNumber(
+        on: CompositeLeaf(:final payload),
+        :final letters,
+      ):
+        withLayerPlacement(
+          canvas,
+          placement: route.placementOf(payload),
+          body: () => paintCelNumber(canvas, letters),
+        );
+      case final CompositeGroup<L> group:
+        _group(canvas, group, rasterScale, within);
+      case final CompositeAdjustment<L> adjustment:
+        _adjustment(canvas, adjustment, rasterScale, within);
+      case final CompositeBackdropBlend<L> blend:
+        _backdropBlend(canvas, blend, rasterScale, within);
+      case final CompositeClip<L> clip:
+        _clip(canvas, clip, rasterScale, within);
+      case CompositeOpaque(:final of):
+        drawOpaque(
+          canvas: canvas,
+          bounds: _bufferBoundsOf(node, within),
+          paintOf: (into) => paint(into, [of], rasterScale, within),
+        );
+    }
+  }
+
+  /// 🚨★WHAT LIES BELOW THE ROW A PEN DRAWS ON IS ONE PICTURE (card
+  /// paint-walk-redoes-the-same-work-each-step, 🗣️유저 2026-10-27, Q2 = c
+  /// 「그리는 행 아래 · 위를 한 장씩 묶어 든다」): [run], the nodes laid in
+  /// their list before the one the pen is in, drawn into one picture held
+  /// while the pen draws — a stroke's step patched into the frame is cut
+  /// from it however many folders, rows and letters lie there. A list is
+  /// laid onto nothing (the frame's picture, a patch of its own, a buffer),
+  /// so a picture of what it lays first is the same pixels as those nodes
+  /// drawn in place.
+  ///
+  /// Drawn in place, each node held as it was ([_holdOf]), where no picture
+  /// of them is held and none drawn here would be kept
+  /// ([SubtreeHold.findsOrKeeps]) — a picture of them for one draw is a
+  /// draw for nothing.
+  void _belowThePen(
+    Canvas canvas,
+    List<CompositeNode<L>> run,
+    double rasterScale,
+    Rect within,
+  ) {
+    final held = route.held;
+    final keys = [for (final node in run) held?.keyOf(node)];
+    final bounds = within.intersect(canvas.getLocalClipBounds());
+    final hold = held == null || run.isEmpty || keys.contains(null)
+        ? null
+        : SubtreeHold(
+            held.rasters,
+            key: _Below(keys),
+            keeps:
+                held.keeps &&
+                keeps &&
+                run.every((node) => _isWhole(node, within)),
+            below: true,
+          );
+    if (hold == null || !hold.findsOrKeeps(bounds, rasterScale)) {
+      for (final node in run) {
+        _paintNode(canvas, node, rasterScale, within);
+      }
+      return;
+    }
+    final inside = _CompositeTreeWalk(route, keeps: false);
+    drawSubtreeAsImage(
+      canvas: canvas,
+      bounds: bounds,
+      rasterScale: rasterScale,
+      paintSubtree: (into, scale) {
+        for (final node in run) {
+          inside._paintNode(into, node, scale, within);
+        }
+      },
+      compose: (blit) => blit(Paint()),
+      held: hold,
+    );
+  }
+
+  /// Whether [node] holds the row a pen draws on ([SubtreeHolding.drawnOn]).
+  bool _holdsThePen(CompositeNode<L> node) {
+    final held = route.held;
+    return held != null && holdsRow(node, held.drawnOn);
   }
 
   /// The rect a buffer for [node] covers ([subtreeBufferBounds]).
@@ -102,20 +184,26 @@ class _CompositeTreeWalk<L> {
         placementOf: route.placementOf,
       );
 
+  /// Whether [within] cuts none of [node].
+  bool _isWhole(CompositeNode<L> node, Rect within) =>
+      _bufferBoundsOf(node, within) == _bufferBoundsOf(node, Rect.largest);
+
   /// Where [node]'s picture is held, where the route holds them and knows
   /// what [node] draws — kept where [within] cuts none of it.
+  ///
+  /// ⛔Not a node the pen draws in: what it draws changes with each step,
+  /// and a picture of it kept as the frame is laid is cut from by none of
+  /// them.
   SubtreeHold? _holdOf(CompositeNode<L> node, Rect within) {
     final held = route.held;
     final key = held?.keyOf(node);
-    if (held == null || key == null) {
+    if (held == null || key == null || _holdsThePen(node)) {
       return null;
     }
     return SubtreeHold(
       held.rasters,
       key: key,
-      keeps:
-          held.keeps &&
-          _bufferBoundsOf(node, within) == _bufferBoundsOf(node, Rect.largest),
+      keeps: held.keeps && keeps && _isWhole(node, within),
     );
   }
 
@@ -237,11 +325,15 @@ class _CompositeTreeWalk<L> {
   ) {
     final CompositeBackdropBlend<L>(:backdrop, :source, :blendMode) = node;
     final bounds = _bufferBoundsOf(node, within);
+    // Under a row a pen draws on, its backdrop is all below the pen.
+    final drawnOn = _holdsThePen(source);
     drawBlendOverBackdrop(
       canvas: canvas,
       bounds: bounds,
       rasterScale: rasterScale,
-      paintBackdrop: (into, scale) => paint(into, backdrop, scale, bounds),
+      paintBackdrop: (into, scale) => drawnOn
+          ? _belowThePen(into, backdrop, scale, bounds)
+          : paint(into, backdrop, scale, bounds),
       paintSource: (into, scale) => paint(into, [source], scale, bounds),
       blendMode: blendMode,
       shownWithin: route.shownWithin,
@@ -272,4 +364,19 @@ class _CompositeTreeWalk<L> {
       held: _holdOf(node, within),
     );
   }
+}
+
+/// What the nodes below a pen draw, in their order ([SubtreeHolding.keyOf])
+/// — the key of their one picture.
+final class _Below {
+  _Below(this.keys);
+
+  final List<Object?> keys;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Below && listEquals(other.keys, keys);
+
+  @override
+  int get hashCode => Object.hashAll(keys);
 }
