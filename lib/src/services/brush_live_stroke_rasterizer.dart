@@ -16,6 +16,7 @@ import '../models/dirty_region.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
+import 'brush_blur_picture.dart';
 import 'brush_dab_dirty_region.dart';
 import 'brush_dab_kernel.dart';
 import 'canvas_selection_region.dart';
@@ -241,7 +242,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
         );
 
   /// Tile coordinate per linear key — the promotion pass walks the
-  /// touched tiles and needs their coordinates back.
+  /// touched tiles and needs their coordinates back. Its keys ARE the
+  /// touched set, a paint stroke's (a tile made) and a blur's ([_touch])
+  /// alike.
   final Map<int, TileCoord> _tileCoords = <int, TileCoord>{};
 
   /// R28 selection: strokes land only inside this region. Set before the
@@ -278,6 +281,25 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   /// never changes mid-stroke, which is what keeps the per-tile cache valid
   /// for the stroke's whole life.
   double strokeOpacity = 1;
+
+  /// I-75: the cel a BLUR stroke rewrites ([BrushBlurPicture]) — set by
+  /// [blurOver] before the first dab, as [selectionRegion] is; null for a
+  /// stroke that paints.
+  ///
+  /// A blur stroke keeps no stroke tiles: its result at a coordinate is the
+  /// picture's, capped by the same mask a paint stroke's is, and everything
+  /// downstream — the display's tiles, their revisions, the promotion at
+  /// pen-up — is this rasterizer's as it is for paint.
+  BrushBlurPicture? _blur;
+
+  /// Makes this stroke a blur over [base], the cel as the stroke finds it.
+  void blurOver(BitmapSurface base) {
+    assert(
+      base.tileSize == tileSize,
+      'a blur rewrites the cel on the cel grid, which is the stroke grid',
+    );
+    _blur = BrushBlurPicture(base: base, wall: pasteboard);
+  }
 
   /// Lazily built stroke coverage per tile (see [_maskTileFor]).
   final Map<int, _MaskTile> _maskTiles = <int, _MaskTile>{};
@@ -396,6 +418,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     _maskTiles.clear();
     _uniformMask = null;
     _results.clear();
+    _blur = null;
     _strokeBounds = null;
     _blendedDabCount = 0;
   }
@@ -485,7 +508,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     for (var slot = 0; slot < coords.length; slot += 1) {
       final coord = coords[slot];
       final key = _tileKey(coord.x, coord.y);
-      if (!_tiles.containsKey(key)) {
+      if (!_tileCoords.containsKey(key)) {
         continue;
       }
       final mask = _maskTileFor(key, coord);
@@ -505,6 +528,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // with its own overlay grid falls to the Dart route below, where
     // staging walks whatever base tiles overlap the rect.
     if (native != null &&
+        _blur == null &&
         _nativeBuffers.isNotEmpty &&
         base.tileSize == tileSize) {
       final byteLength = tileSize * tileSize * 4;
@@ -815,6 +839,21 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       _results.use(key);
       return existing;
     }
+    final blur = _blur;
+    if (blur != null) {
+      final made = blur.resultTile(
+        TileCoord(x: tileX, y: tileY),
+        mask: mask?.bytes,
+      );
+      final result = _ResultTile(
+        native: null,
+        bytes: made?.bytes ?? Uint8List(0),
+        revision: revision,
+        changed: made?.changed ?? false,
+      );
+      _results.keep(key, result);
+      return result;
+    }
     final tileLeft = tileX * tileSize;
     final tileTop = tileY * tileSize;
     final byteLength = tileSize * tileSize * 4;
@@ -922,7 +961,7 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       'promotion requires the stroke grid to be the surface grid',
     );
     final promoted = <PromotedStrokeTile>[];
-    for (final key in _tiles.keys.toList()) {
+    for (final key in _tileCoords.keys.toList()) {
       final coord = _tileCoords[key]!;
       final mask = _maskTileFor(key, coord);
       if (mask != null && mask.allOutside) {
@@ -956,6 +995,19 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       promoted.add(PromotedStrokeTile(coord, tile, result.revision));
     }
     return promoted;
+  }
+
+  /// A blur dab rewrote [region]: every tile it reaches is touched, and its
+  /// resident result stale — what [_tilePlanes] does for a paint dab.
+  void _touch(DirtyRegion region) {
+    final range = region.tileRange(tileSize: tileSize);
+    for (var tileY = range.firstY; tileY <= range.lastY; tileY += 1) {
+      for (var tileX = range.firstX; tileX <= range.lastX; tileX += 1) {
+        final key = _tileKey(tileX, tileY);
+        _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
+        _tileCoords[key] ??= TileCoord(x: tileX, y: tileY);
+      }
+    }
   }
 
   BrushDabTileBuffers _tilePlanes(int tileX, int tileY) {
@@ -1085,6 +1137,19 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     final reach = selection == null ? null : dirtyRegionForBrushDab(dab);
     if (selection != null && (reach == null || !selection.mayCover(reach))) {
       return null;
+    }
+
+    if (dab.blurs) {
+      final blur = _blur;
+      if (blur == null) {
+        assert(false, 'a blur dab needs the cel it blurs ([blurOver])');
+        return null;
+      }
+      final rewritten = blur.blurDab(dab);
+      if (rewritten != null) {
+        _touch(rewritten);
+      }
+      return rewritten;
     }
 
     // ONE dab kernel (see brush_dab_kernel.dart) — the same hoists,

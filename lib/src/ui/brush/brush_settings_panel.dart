@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/set_toggle.dart';
 import '../../models/brush_anti_alias.dart';
 import '../../models/brush_correction.dart';
+import '../../models/brush_mixing_method.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings_group.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot, BrushShape;
@@ -435,42 +436,50 @@ class _BrushSettingsPanelState extends State<BrushSettingsPanel> {
           onChanged(state.copyWith(mixesGroundColor: value)),
     ),
     // 🗣️F-478-Q2 (유저 2026-10-27): 「없앤다 — 패널 안 스위치도 같은 법」 —
-    // the three are there only while mixing is on, and the rows under the
-    // switch moving is the cost the answer took. ↩️They were mounted only
-    // while mixing was on, then went DEAD instead (유저, 반복: 「없다가
-    // 생기는 UI 금지. 자리는 항상 예약하고 내용만 바꾼다」 — the panel
-    // jumped under the finger), until this answer.
+    // the rows under the switch are there only while mixing is on, and the
+    // rows under the switch moving is the cost the answer took. ↩️They were
+    // mounted only while mixing was on, then went DEAD instead (유저, 반복:
+    // 「없다가 생기는 UI 금지. 자리는 항상 예약하고 내용만 바꾼다」 — the
+    // panel jumped under the finger), until this answer.
     if (state.mixesGroundColor) ...[
-      _PanelSlider(
-        label: AppText.strings.brPaintAmount,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampZeroToOne(state.paintAmount),
-        min: 0,
-        max: 1,
-        keyValue: 'brush-tool-paint-amount-slider',
-        onChanged: (value) => onChanged(state.copyWith(paintAmount: value)),
-      ),
-      _PanelSlider(
-        label: AppText.strings.brPaintDensity,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampZeroToOne(state.paintDensity),
-        min: 0,
-        max: 1,
-        keyValue: 'brush-tool-paint-density-slider',
-        onChanged: (value) => onChanged(state.copyWith(paintDensity: value)),
-      ),
-      _PanelSlider(
-        label: AppText.strings.brColorStretch,
-        unit: '%',
-        displayScale: 100,
-        value: BrushToolState.clampZeroToOne(state.colorStretch),
-        min: 0,
-        max: 1,
-        keyValue: 'brush-tool-color-stretch-slider',
-        onChanged: (value) => onChanged(state.copyWith(colorStretch: value)),
-      ),
+      _MixingMethodRow(state: state, onChanged: onChanged),
+      // The reservoir's three are the mix's alone: a blur picks no colour
+      // up (I-75), so by the same answer they are there only under a mix.
+      if (state.shape.picksUpGround) ...[
+        _PanelSlider(
+          label: AppText.strings.brPaintAmount,
+          unit: '%',
+          displayScale: 100,
+          value: BrushToolState.clampZeroToOne(state.paintAmount),
+          min: 0,
+          max: 1,
+          keyValue: 'brush-tool-paint-amount-slider',
+          onChanged: (value) =>
+              onChanged(state.copyWith(paintAmount: value)),
+        ),
+        _PanelSlider(
+          label: AppText.strings.brPaintDensity,
+          unit: '%',
+          displayScale: 100,
+          value: BrushToolState.clampZeroToOne(state.paintDensity),
+          min: 0,
+          max: 1,
+          keyValue: 'brush-tool-paint-density-slider',
+          onChanged: (value) =>
+              onChanged(state.copyWith(paintDensity: value)),
+        ),
+        _PanelSlider(
+          label: AppText.strings.brColorStretch,
+          unit: '%',
+          displayScale: 100,
+          value: BrushToolState.clampZeroToOne(state.colorStretch),
+          min: 0,
+          max: 1,
+          keyValue: 'brush-tool-color-stretch-slider',
+          onChanged: (value) =>
+              onChanged(state.copyWith(colorStretch: value)),
+        ),
+      ],
     ],
   ];
 
@@ -854,6 +863,35 @@ class _TextureModeRow extends StatelessWidget {
     ],
     onPick: (mode) => () => onChanged(state.copyWith(textureMode: mode)),
   );
+}
+
+/// 混色の方式 — the reservoir's 下地混色, or a blur (I-75,
+/// [BrushMixingMethod]) — there only while mixing is on (F-478-Q2).
+class _MixingMethodRow extends StatelessWidget {
+  const _MixingMethodRow({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  String _labelFor(BrushMixingMethod method) => switch (method) {
+    BrushMixingMethod.mix => AppText.strings.brMixingMix,
+    BrushMixingMethod.blur => AppText.strings.brMixingBlur,
+  };
+
+  @override
+  Widget build(BuildContext context) =>
+      ToolSettingChoiceRow<BrushMixingMethod>(
+        tool: 'brush-tool',
+        name: 'mixing-method',
+        label: AppText.strings.brMixingMethod,
+        current: state.mixingMethod,
+        answers: [
+          for (final method in BrushMixingMethod.values)
+            (value: method, key: method.name, label: _labelFor(method)),
+        ],
+        onPick: (method) =>
+            () => onChanged(state.copyWith(mixingMethod: method)),
+      );
 }
 
 /// 速度による手ブレ補正 — none, or which way the pen's speed bends the

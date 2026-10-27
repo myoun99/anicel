@@ -814,6 +814,7 @@ class _InteractiveBrushEditCanvasViewState
       // while the canvas ignored the setting entirely.
       antiAlias: settings.antiAlias,
       erase: settings.erase,
+      blurs: settings.blurs,
     );
   }
 
@@ -871,8 +872,13 @@ class _InteractiveBrushEditCanvasViewState
     // the same "captured once per stroke" rule — the dabs carry only their
     // own variation now, so this is the only place the tool's opacity
     // enters the live pixels.
-    _liveRasterizer!.strokeOpacity =
-        (_activeStrokeInputSettings ?? widget.inputSettings()).opacity;
+    final settings = _activeStrokeInputSettings ?? widget.inputSettings();
+    _liveRasterizer!.strokeOpacity = settings.opacity;
+    // I-75: a blur stroke rewrites the cel as the stroke finds it — the
+    // same cel the overlay pre-blends against ([_BrushEditStroke._openOverlay]).
+    if (settings.blurs) {
+      _liveRasterizer!.blurOver(surface);
+    }
   }
 
   /// A fill shown and not yet committed: its stamp pieces, the surface its

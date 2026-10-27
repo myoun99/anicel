@@ -568,6 +568,11 @@ Uint8List rasterizeBrushStrokeSample(
         // deliberately does not: it is random per dab on the canvas, and a
         // preview that moved under you every rebuild would be noise.
         antiAlias: settings.antiAlias,
+        // 🤔A blur brush's swatch shows its SHAPE, as an eraser's does: the
+        // swatch is one plane of coverage over nothing, and a blur over
+        // nothing moves nothing. Showing the blur itself needs something
+        // under it to smear — I-75 round ⓑ (설계 10-27).
+        blurs: false,
         pathStep: stretch.isFinite ? stretch : null,
       ),
       shape: settings.shape,

@@ -10,6 +10,7 @@ import '../models/brush_dab_sequence.dart';
 import '../models/frame_id.dart';
 import '../models/layer_id.dart';
 import 'bitmap_surface_brush_commit.dart';
+import 'brush_blur_stroke_landing.dart';
 import 'brush_commit_cache_invalidation.dart';
 import 'brush_stroke_blend.dart';
 import 'canvas_selection_paint_clip.dart';
@@ -36,25 +37,22 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
   if (promotedTiles != null &&
       promotedBase != null &&
       identical(promotedBase, surface)) {
-    if (promotedTiles.isEmpty) {
-      return BrushCommitResult.noOp(surface: surface);
-    }
-    // ONE set build, not one per tile: `DirtyTileSet` is immutable, so
-    // folding coordinates in with a per-coordinate add rebuilt the whole
-    // set n times for an n-tile commit. The single-coord form is gone
-    // now (see DirtyTileSet.addAll) — this is the shape that survives.
-    final dirtyTiles = DirtyTileSet(
-      promotedTiles.map((placed) => placed.coord),
+    return _installed(
+      promotedTiles,
+      on: surface,
+      layerId: layerId,
+      frameId: frameId,
     );
-    return BrushCommitResult.changed(
-      beforeSurface: surface,
-      afterSurface: surface.putMaterializedTiles(promotedTiles),
-      dirtyTiles: dirtyTiles,
-      cacheInvalidationPlan: cacheInvalidationPlanForDirtyTiles(
-        layerId: layerId,
-        frameId: frameId,
-        dirtyTiles: dirtyTiles,
-      ),
+  }
+  // I-75: a BLUR stroke re-derived from its dabs is laid again over this
+  // surface by the rasterizer that showed it (`blurStrokeLandedOn`) — it
+  // has no stroke buffer for the routes below to composite.
+  if (sequence.firstOrNull?.blurs ?? false) {
+    return _installed(
+      blurStrokeLandedOn(surface, sequence.dabs, opacity: sequence.opacity),
+      on: surface,
+      layerId: layerId,
+      frameId: frameId,
     );
   }
   // Pen-up fast path: when the interactive view already rasterized the
@@ -173,5 +171,33 @@ BrushCommitResult brushCommitResultForBrushDabSequenceOnBitmapSurface({
     afterSurface: materialization.surface,
     dirtyTiles: materialization.dirtyTiles,
     cacheInvalidationPlan: cacheInvalidationPlan,
+  );
+}
+
+/// [tiles], finished against [on], installed as they are — a promotion's,
+/// or a blur's laid again.
+BrushCommitResult _installed(
+  List<PlacedTile> tiles, {
+  required BitmapSurface on,
+  required LayerId layerId,
+  required FrameId frameId,
+}) {
+  if (tiles.isEmpty) {
+    return BrushCommitResult.noOp(surface: on);
+  }
+  // ONE set build, not one per tile: `DirtyTileSet` is immutable, so
+  // folding coordinates in with a per-coordinate add rebuilt the whole
+  // set n times for an n-tile commit. The single-coord form is gone
+  // now (see DirtyTileSet.addAll) — this is the shape that survives.
+  final dirtyTiles = DirtyTileSet(tiles.map((placed) => placed.coord));
+  return BrushCommitResult.changed(
+    beforeSurface: on,
+    afterSurface: on.putMaterializedTiles(tiles),
+    dirtyTiles: dirtyTiles,
+    cacheInvalidationPlan: cacheInvalidationPlanForDirtyTiles(
+      layerId: layerId,
+      frameId: frameId,
+      dirtyTiles: dirtyTiles,
+    ),
   );
 }

@@ -272,7 +272,7 @@ class _BrushEditStroke {
     );
     _state._lastDirectionDegrees = null;
     _state._previousBaseDab = null;
-    _state._groundMixer = strokeSettings.shape.mixesGroundColor
+    _state._groundMixer = strokeSettings.shape.picksUpGround
         ? BrushGroundColorMixer(shape: strokeSettings.shape)
         : null;
     _state._groundSampler = _state._groundMixer == null

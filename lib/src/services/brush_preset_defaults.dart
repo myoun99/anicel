@@ -4,6 +4,7 @@ import '../models/brush_group.dart';
 import '../models/brush_group_icon.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_input_source.dart';
+import '../models/brush_mixing_method.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
@@ -1145,6 +1146,28 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       paintAmount: 1.0,
       paintDensity: 0.6,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
+    ),
+  ),
+  // 🗣️I-75 (유저 2026-10-27, Q1 「섞기 그룹에 「흐리기」」): the blur, as a
+  // setting of mixing rather than a tool. How far it smears is its size and
+  // how hard it rubs its flow and the pen's pressure (Q3) — so pressure
+  // drives the flow here.
+  // ⚠️Its spacing is coarser than the group's 5% on purpose: a blur dab
+  // re-reads and rewrites the picture under it, so it costs far more than a
+  // paint dab, and the laid share is evened across spacings anyway
+  // (`stampShareOf`) — a coarser step blurs the same, in fewer dabs.
+  BrushPreset(
+    id: const BrushPresetId('builtin-blur'),
+    name: 'Blur',
+    groupId: _blendGroup,
+    settings: BrushSettings(
+      size: 40,
+      hardness: 0.3,
+      flow: 0.3,
+      spacing: 0.1,
+      mixesGroundColor: true,
+      mixingMethod: BrushMixingMethod.blur,
+      flowPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
 

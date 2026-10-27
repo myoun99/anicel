@@ -48,7 +48,7 @@ class BrushGroundColorMixer {
   /// seeds it from the brush colour.
   int? _reservoir;
 
-  bool get isActive => shape.mixesGroundColor;
+  bool get isActive => shape.picksUpGround;
 
   /// Returns [dabs] with their deposit colours resolved.
   ///

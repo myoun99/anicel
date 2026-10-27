@@ -3,6 +3,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/brush_correction.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../models/brush_input_source.dart';
+import '../../models/brush_mixing_method.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
@@ -509,6 +510,7 @@ class BrushToolState {
     double? textureDensity,
     BrushTextureMode? textureMode,
     bool? mixesGroundColor,
+    BrushMixingMethod? mixingMethod,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
@@ -565,6 +567,7 @@ class BrushToolState {
         textureDensity: textureDensity ?? 1.0,
         textureMode: textureMode ?? BrushTextureMode.multiply,
         mixesGroundColor: mixesGroundColor ?? false,
+        mixingMethod: mixingMethod ?? BrushMixingMethod.mix,
         paintAmount: paintAmount ?? 1.0,
         paintDensity: paintDensity ?? 1.0,
         colorStretch: colorStretch ?? 0.0,
@@ -747,6 +750,9 @@ class BrushToolState {
   /// See [BrushShape.textureMode].
   BrushTextureMode get textureMode => shape.textureMode;
   bool get mixesGroundColor => shape.mixesGroundColor;
+
+  /// See [BrushShape.mixingMethod].
+  BrushMixingMethod get mixingMethod => shape.mixingMethod;
   double get paintAmount => shape.paintAmount;
   double get paintDensity => shape.paintDensity;
   double get colorStretch => shape.colorStretch;
@@ -1189,6 +1195,7 @@ class BrushToolState {
     double? textureDensity,
     BrushTextureMode? textureMode,
     bool? mixesGroundColor,
+    BrushMixingMethod? mixingMethod,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
@@ -1258,6 +1265,7 @@ class BrushToolState {
           textureDensity: textureDensity,
           textureMode: textureMode,
           mixesGroundColor: mixesGroundColor,
+          mixingMethod: mixingMethod,
           paintAmount: paintAmount,
           paintDensity: paintDensity,
           colorStretch: colorStretch,
