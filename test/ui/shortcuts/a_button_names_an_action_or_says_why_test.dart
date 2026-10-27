@@ -120,6 +120,9 @@ const ledger = <String, Why>{
   'menu/editor_top_strip.dart | keyValue': Why.aSecondLevel,
   "timeline/timeline_action_toolbar.dart | 'timeline-effects-button'":
       Why.aSecondLevel,
+  // The cut pill's name cell, read alone since its ＋ is zoned apart from
+  // it round the cut's name (F-463) — the fx pill's door.
+  "cut_command_group.dart | 'cut-menu-button'": Why.aSecondLevel,
 
   // ── IN A WINDOW ─────────────────────────────────────────────────────
   "brush/brush_tip_picker.dart | 'brush-tip-delete'": Why.inAWindow,
