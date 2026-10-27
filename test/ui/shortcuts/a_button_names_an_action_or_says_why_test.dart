@@ -112,7 +112,7 @@ const ledger = <String, Why>{
       Why.aSetting,
 
   // ── THE DOOR TO A SECOND LEVEL ──────────────────────────────────────
-  // A value's pencil: it opens the value's typed field and runs nothing.
+  // A value's pencil: it opens the value's number pad and runs nothing.
   'widgets/value_hands.dart | keyValue': Why.aSecondLevel,
   "menu/editor_top_strip.dart | 'top-strip-brush-group-button'":
       Why.aSecondLevel,
@@ -152,6 +152,10 @@ const ledger = <String, Why>{
           "'shortcut-unassign-\${definition.id}'":
       Why.inAWindow,
   "widgets/app_window.dart | 'app-window-close'": Why.inAWindow,
+  // The number pad's keys (I-134): a window a value's pencil opens, whose
+  // keys the keyboard's digits, minus, point, Enter and Escape press.
+  "widgets/number_pad.dart | '\${widget.keyValue}-pad-\$name'":
+      Why.inAWindow,
 
   // ── DECLINED ────────────────────────────────────────────────────────
   // 🗣️I-40-Q3 (유저 2026-10-09, two media viewers — which one would a key

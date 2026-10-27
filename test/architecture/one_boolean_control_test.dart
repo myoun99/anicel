@@ -181,6 +181,9 @@ const _checkMarkVerbs = <String, String>{
       'the APPLY button of the pill a canvas verb wears — a move/transform '
       'session, a canvas or the camera frame adjusted on the canvas: it '
       'lands what the pill stands under',
+  'lib/src/ui/widgets/number_pad.dart':
+      'the APPLY key of the number pad a value\'s pencil opens (I-134): it '
+      'hands the typed number on and closes the pad, as Enter does',
 };
 
 /// Every line of [source] (named [path]) where [pattern] matches CODE — a
