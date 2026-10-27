@@ -189,9 +189,9 @@ SubtreeRasterPlan? debugLastSubtreeRaster;
 @visibleForTesting
 int debugSubtreeRasterCount = 0;
 
-/// 🚨★★★A SUB-TREE'S RASTER LIES ON THE CANVAS'S GRID OF THIS MANY RASTER
-/// PIXELS — its corner and its size — wherever the view cuts it (card
-/// nested-folder-buffers-read-past-the-view).
+/// 🚨★★★A SUB-TREE'S RASTER THAT A SPREADING CHAIN READS LIES ON THE
+/// CANVAS'S GRID OF THIS MANY RASTER PIXELS — its corner and its size —
+/// wherever the view cuts it (card nested-folder-buffers-read-past-the-view).
 ///
 /// A blur reduces what it reads before it spreads it — to 1/2 … 1/16 by its
 /// sigma, on a grid counted from that picture's own corner (Impeller's
@@ -207,14 +207,24 @@ int debugSubtreeRasterCount = 0;
 /// row drawn on or a cel, and 0 from the frame's picture.
 ///
 /// What it costs is at most a cell less one of transparent texels at each
-/// edge.
+/// edge — ⛔so only where a chain that spreads reads the raster
+/// ([rasterCellFor]). One blitted 1:1 or read by a blend's shader is read
+/// pixel for pixel, and on cells it only grew: an advanced blend's backdrop,
+/// rastered three times a stroke step, went 17×13 → 32×32 pixels
+/// (`a_blend_over_its_backdrop_rasterises_what_lands_test`).
 const int blurReductionCell = 16;
+
+/// The cells, in raster pixels, a raster lies on by what reads it: a chain
+/// that spreads ([outsetPixels] past what it reads) reduces it by
+/// [blurReductionCell]s, a blit or a shader reads it pixel for pixel.
+int rasterCellFor(double outsetPixels) =>
+    outsetPixels > 0 ? blurReductionCell : 1;
 
 /// The grid [bounds] rasterises on at [rasterScale], or null when there is
 /// nothing to draw.
 ///
 /// 📐The image grid is the LOCAL space at [rasterScale] snapped OUTWARD to
-/// whole cells of [blurReductionCell] pixels, and
+/// whole cells of [cell] pixels ([rasterCellFor]), and
 /// [SubtreeRasterPlan.destination] is exactly `pixels / scale`. A src/dst pair
 /// that disagreed by a fraction would resample the sub-tree a second time.
 ///
@@ -227,6 +237,7 @@ SubtreeRasterPlan? _planSubtreeRaster({
   required double rasterScale,
   int maxPixelSide = maxSubtreeRasterSide,
   Rect within = Rect.largest,
+  int cell = 1,
 }) {
   // 🚨THE SNAP IS PART OF THE CAP. Clamping the scale alone left the cap off
   // by one: `side * scale` landed exactly on the cap and then the OUTWARD
@@ -238,17 +249,17 @@ SubtreeRasterPlan? _planSubtreeRaster({
   // way the display buffer does one level up — the same [scaleFittingSide],
   // now literally.
   assert(
-    maxPixelSide > 2 * blurReductionCell,
+    maxPixelSide > 2 * cell,
     'a cap holds a cell of room past the snap at each edge',
   );
   final scale = scaleFittingSide(
     scale: rasterScale,
     bounds: bounds.size,
-    maxSide: (maxPixelSide - 2 * blurReductionCell).toDouble(),
+    maxSide: (maxPixelSide - 2 * cell).toDouble(),
   );
   final destination = rectOutwardOnGrid(
     bounds.intersect(within),
-    scale / blurReductionCell,
+    scale / cell,
   );
   final width = (destination.width * scale).round();
   final height = (destination.height * scale).round();
@@ -343,7 +354,8 @@ typedef BlitSubtree = void Function(Paint paint, {bool stepped});
 /// rasterise its scope ONCE where two `saveLayer`s painted the children twice.
 ///
 /// [held] is where the node's raster may already be, drawn whole, and where
-/// a whole one is kept ([HeldSubtreeRasters]).
+/// a whole one is kept ([HeldSubtreeRasters]). [cell] is the grid what
+/// [compose] blits with reads the raster by ([rasterCellFor]).
 void drawSubtreeAsImage({
   required Canvas canvas,
   required Rect bounds,
@@ -353,11 +365,13 @@ void drawSubtreeAsImage({
   required void Function(BlitSubtree blit) compose,
   List<CompositeEffectStep> steps = const [],
   SubtreeHold? held,
+  int cell = 1,
 }) {
   final plan = _planSubtreeRaster(
     bounds: bounds,
     rasterScale: rasterScale,
     maxPixelSide: maxPixelSide,
+    cell: cell,
   );
   if (plan == null) {
     return;

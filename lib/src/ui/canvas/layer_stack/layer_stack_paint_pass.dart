@@ -875,6 +875,7 @@ class _LayerStackPaintPass {
         paintSubtree: (into, _) => paintLiveBody(into),
         compose: (blit) => blit(activePaint),
         steps: activePlan.preSteps,
+        cell: rasterCellFor(activePlan.outsetPixels),
       );
     } else {
       if (needsBuffer) {

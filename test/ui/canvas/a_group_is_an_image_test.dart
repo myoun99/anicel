@@ -283,6 +283,7 @@ void main() {
       double scale = 1,
       int maxPixelSide = 8192,
       void Function(double childScale)? onChildScale,
+      int cell = 1,
     }) {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
@@ -292,6 +293,7 @@ void main() {
         bounds: bounds,
         rasterScale: scale,
         maxPixelSide: maxPixelSide,
+        cell: cell,
         paintSubtree: (into, childScale) {
           onChildScale?.call(childScale);
           drawChildren(into);
@@ -302,12 +304,11 @@ void main() {
     }
 
     test('whole bounds at 1:1 blit onto themselves', () {
-      // On the grid's cells already ([blurReductionCell]).
-      rasterise(bounds: const Rect.fromLTWH(16, 32, 48, 32));
+      rasterise(bounds: const Rect.fromLTWH(6, 4, 46, 42));
       final raster = debugLastSubtreeRaster!;
-      expect(raster.destination, const Rect.fromLTWH(16, 32, 48, 32));
-      expect(raster.pixelWidth, 48);
-      expect(raster.pixelHeight, 32);
+      expect(raster.destination, const Rect.fromLTWH(6, 4, 46, 42));
+      expect(raster.pixelWidth, 46);
+      expect(raster.pixelHeight, 42);
       expect(raster.scale, 1);
       // 1:1 by construction, and it says so instead of letting the default
       // decide.
@@ -316,24 +317,22 @@ void main() {
 
     test('fractional bounds snap OUTWARD, never to the nearest', () {
       // 🚨THE CASE ROUNDING SURVIVES. At scale 1.5 a left edge of 6.37 sits
-      // at device 9.555: the cell's floor keeps device 0 and rounding would
-      // take device 16 (canvas 10.667) — columns of the group thrown away.
-      // A bottom at device 70.38 rounds to 64 and loses rows the same way.
-      // ↩️On whole pixels (9 · 7 · 80 · 71) until the grid took cells of
-      // [blurReductionCell] (nested-folder-buffers-read-past-the-view).
+      // at device 9.555: floor keeps device 9 (canvas 6.0) and rounding
+      // would take device 10 (canvas 6.667) — a column of the group thrown
+      // away. Rounding a RIGHT edge loses one the same way.
       rasterise(
         bounds: const Rect.fromLTWH(6.37, 4.82, 46.4, 42.1),
         scale: 1.5,
       );
       final raster = debugLastSubtreeRaster!;
-      expect(raster.destination.left, closeTo(0, 1e-9));
-      expect(raster.destination.top, closeTo(0, 1e-9));
+      expect(raster.destination.left, closeTo(9 / 1.5, 1e-9));
+      expect(raster.destination.top, closeTo(7 / 1.5, 1e-9));
       expect(raster.destination.right, closeTo(80 / 1.5, 1e-9));
-      expect(raster.destination.bottom, closeTo(80 / 1.5, 1e-9));
+      expect(raster.destination.bottom, closeTo(71 / 1.5, 1e-9));
       // The destination is exactly `pixels / scale` — the property that
       // makes the blit 1:1 and stops the group resampling twice.
-      expect(raster.pixelWidth, 80);
-      expect(raster.pixelHeight, 80);
+      expect(raster.pixelWidth, 71);
+      expect(raster.pixelHeight, 64);
       expect(
         raster.destination.width * raster.scale,
         closeTo(raster.pixelWidth, 1e-9),
@@ -346,13 +345,44 @@ void main() {
       expect(raster.destination.right, greaterThanOrEqualTo(6.37 + 46.4));
     });
 
-    test('the cap clamps the scale, and the blit says it magnified', () {
-      // A cap of a few cells — the snap's room for a cell at each edge
-      // comes out of it ([blurReductionCell]).
-      rasterise(bounds: const Rect.fromLTWH(6, 4, 92, 84), maxPixelSide: 64);
-      final raster = debugLastSubtreeRaster!;
+    test('a raster a spreading chain reads lies on whole cells counted from '
+        'the origin, and the room for them comes out of the cap', () {
+      // The bounds above at scale 1.5 (device 9.555 · 7.23 · 79.155 ·
+      // 70.38) on cells of [blurReductionCell]: outward to whole cells —
+      // rounding would take device 16 on the left and 64 at the bottom.
+      expect(rasterCellFor(0), 1, reason: 'a blit reads pixel for pixel');
+      expect(rasterCellFor(12), blurReductionCell);
+      rasterise(
+        bounds: const Rect.fromLTWH(6.37, 4.82, 46.4, 42.1),
+        scale: 1.5,
+        cell: rasterCellFor(12),
+      );
+      var raster = debugLastSubtreeRaster!;
+      expect(raster.destination.left, closeTo(0, 1e-9));
+      expect(raster.destination.top, closeTo(0, 1e-9));
+      expect(raster.destination.right, closeTo(80 / 1.5, 1e-9));
+      expect(raster.destination.bottom, closeTo(80 / 1.5, 1e-9));
+      expect(raster.pixelWidth, 80);
+      expect(raster.pixelHeight, 80);
+
+      // A cap of 64 leaves 32 pixels of room: 92 canvas pixels at 32/92,
+      // snapped out to cells, still fit.
+      rasterise(
+        bounds: const Rect.fromLTWH(6, 4, 92, 84),
+        maxPixelSide: 64,
+        cell: rasterCellFor(12),
+      );
+      raster = debugLastSubtreeRaster!;
+      expect(raster.scale, closeTo(32 / 92, 1e-9));
       expect(raster.pixelWidth, lessThanOrEqualTo(64));
       expect(raster.pixelHeight, lessThanOrEqualTo(64));
+    });
+
+    test('the cap clamps the scale, and the blit says it magnified', () {
+      rasterise(bounds: const Rect.fromLTWH(6, 4, 46, 42), maxPixelSide: 16);
+      final raster = debugLastSubtreeRaster!;
+      expect(raster.pixelWidth, lessThanOrEqualTo(16));
+      expect(raster.pixelHeight, lessThanOrEqualTo(16));
       expect(raster.scale, lessThan(1));
       // ⛔`none` here would be nearest-neighbour on a ~3x magnification.
       expect(blitPaint.filterQuality, FilterQuality.low);
@@ -422,7 +452,7 @@ void main() {
       var childScale = double.nan;
       rasterise(
         bounds: const Rect.fromLTWH(6, 4, 46, 42),
-        maxPixelSide: 64,
+        maxPixelSide: 16,
         onChildScale: (scale) => childScale = scale,
       );
       expect(childScale, debugLastSubtreeRaster!.scale);
@@ -496,9 +526,8 @@ void main() {
       groupPaint: Paint()..color = const Color(0xFF000000),
       groupRect: rect,
       asImage: true,
-      // 46px of group through 16px of room — a 48px cap less a cell at each
-      // edge for the snap ([blurReductionCell]): the blit magnifies ~2.9×.
-      maxPixelSide: 48,
+      // 46px of group through a 16px cap: the blit magnifies ~2.9×.
+      maxPixelSide: 16,
     );
     var drewInside = 0;
     var escaped = 0;

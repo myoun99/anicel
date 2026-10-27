@@ -513,7 +513,12 @@ class AdjustmentScopePass {
     this.unfilteredPaint,
     this.blitEffects = CompositeEffectPaint.none,
     this.preSteps = const [],
+    this.outsetPixels = 0,
   });
+
+  /// How far the chain paints past the scope, summed over its steps — what
+  /// says the raster is read by a chain that spreads (`rasterCellFor`).
+  final double outsetPixels;
 
   /// The chain the filtered pass's BLIT carries: the whole of it where it
   /// spreads (a blur), else none — the chain then rides [filteredPaint].
@@ -643,6 +648,7 @@ AdjustmentScopePass resolveAdjustmentScopePass({
       filteredPaint: paint,
       blitEffects: blitEffects,
       preSteps: resolved.preSteps,
+      outsetPixels: resolved.outsetPixels,
     );
   }
   // A spatial chain below full strength: two passes ADDED inside one
@@ -660,5 +666,6 @@ AdjustmentScopePass resolveAdjustmentScopePass({
       ..color = alphaOnly(1 - strength),
     blitEffects: blitEffects,
     preSteps: resolved.preSteps,
+    outsetPixels: resolved.outsetPixels,
   );
 }

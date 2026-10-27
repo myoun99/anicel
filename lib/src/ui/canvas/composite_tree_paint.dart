@@ -292,6 +292,7 @@ class _CompositeTreeWalk<L> {
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
       held: _holdOf(node, within),
+      cell: rasterCellFor(groupPlan.outsetPixels),
     );
   }
 
@@ -328,6 +329,7 @@ class _CompositeTreeWalk<L> {
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
       held: _holdOf(node, within),
+      cell: rasterCellFor(pass.outsetPixels),
     );
   }
 

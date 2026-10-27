@@ -113,6 +113,7 @@ void _composite(
       ),
     ),
     steps: effects.preSteps,
+    cell: rasterCellFor(effects.outsetPixels),
   );
 }
 

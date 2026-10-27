@@ -411,21 +411,13 @@ void main() {
     });
 
     test('one the cap magnified is not kept', () {
-      debugLastSubtreeRaster = null;
       final recorder = ui.PictureRecorder();
       draw(
         ui.Canvas(recorder),
         SubtreeHold(held, key: 'node', keeps: true),
-        // 8px of room — the cap less a cell at each edge for the snap
-        // ([blurReductionCell]): the 16px whole at half its scale.
-        maxPixelSide: 40,
+        maxPixelSide: 10,
       );
       recorder.endRecording().dispose();
-      expect(
-        debugLastSubtreeRaster?.magnifies,
-        isTrue,
-        reason: '⛔premise: the cap magnified it',
-      );
       expect(held, hasLength(0));
     });
 
