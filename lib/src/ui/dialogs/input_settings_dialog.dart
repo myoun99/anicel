@@ -587,7 +587,7 @@ class _PercentListRowState extends State<_PercentListRow> {
   }
 }
 
-// One canvas mapping row (PEN-7a): the action picker plus the
+/// One canvas mapping row (PEN-7a): the action picker plus the
 /// release-behavior picker (release only matters for the tool-switching
 /// actions — disabled otherwise).
 class _CanvasMappingRow extends StatelessWidget {
