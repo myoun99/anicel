@@ -392,6 +392,44 @@ void main() {
     expect(thePadsLitKeys(tester), (minus: false, point: true));
   });
 
+  testWidgets('a bar resting on a word opens its pad on that word — the '
+      'mixed influence of keys that disagree — and the first key replaces '
+      'it', (tester) async {
+    final typed = <double>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 260,
+              child: FieldSlider(
+                label: 'Influence',
+                value: 0.5,
+                min: 0.1,
+                max: 1,
+                divisions: 90,
+                displayScale: 100,
+                unit: '%',
+                restingText: 'Mixed',
+                onChanged: typed.add,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('field-slider-type')));
+    await tester.pump();
+    expect(tester.widget<Text>(theNumberPadsNumber).data, 'Mixed');
+    for (final name in const ['4', '0', 'enter']) {
+      await tester.tap(
+        find.byKey(ValueKey<String>('field-slider-type-pad-$name')),
+      );
+      await tester.pump();
+    }
+    expect(typed.last, closeTo(0.4, 1e-9));
+  });
+
   testWidgets('the keys wear the app\'s one button, edged', (tester) async {
     await pumpBox(tester);
     await openPad(tester);
