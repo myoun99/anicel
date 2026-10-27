@@ -9,6 +9,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../core/bake_once_lru.dart';
 import '../../core/hashed_once.dart';
+import '../../core/lru.dart';
 import '../../models/rgba_image_bytes.dart';
 import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 import '../look_only_frames.dart';
@@ -364,6 +365,19 @@ _Cover _coverOf(double from, double length, int extent) {
   return (first: first, weights: weights, whole: whole);
 }
 
+/// The pixels a bake is cut for: the ROOT TRANSFORM's ratio — null with no
+/// view on screen (a painter called by itself), where no word is baked and
+/// each is painted as it always was.
+///
+/// The root transform's ratio carries the app's UI scale — the view's own
+/// ratio does not, and a bake cut for it would be shrunk by the GPU again
+/// (`EffectiveDevicePixelRatio` is this number where there is a context; a
+/// painter has none).
+double? wordBakePixelRatio() {
+  final views = RendererBinding.instance.renderViews;
+  return views.isEmpty ? null : views.first.configuration.devicePixelRatio;
+}
+
 /// Paints [painter] narrowed by [fit] with its top-left at [origin] from
 /// its BAKE ([bakeWordCoverage]) — true when it did, false when the caller
 /// is to paint the word itself (it asked for the bake, which lands later).
@@ -398,20 +412,10 @@ bool paintBakedWord(
 ) {
   final span = painter.text;
   final fontSize = span?.style?.fontSize;
-  // The ROOT TRANSFORM's pixels are what a bake is cut for — with no view on
-  // screen (a painter called by itself) there are none, and the word is
-  // painted as it always was.
-  final views = RendererBinding.instance.renderViews;
-  if (span == null ||
-      views.isEmpty ||
-      !wordIsBaked(fontSize, fit)) {
+  final dpr = wordBakePixelRatio();
+  if (span == null || dpr == null || !wordIsBaked(fontSize, fit)) {
     return false;
   }
-  // The root transform's ratio carries the app's UI scale — the view's own
-  // ratio does not, and a bake cut for it would be shrunk by the GPU again
-  // (`EffectiveDevicePixelRatio` is this number where there is a context; a
-  // painter has none).
-  final dpr = views.first.configuration.devicePixelRatio;
   final baked = BakedWords.instance._bakeFor(
     _Word((
       span: span,
@@ -487,9 +491,57 @@ mixin RepaintOnWordBakes on CustomPainter implements WordBakeWaiter {
     _listeners[this]?.remove(listener);
   }
 
+  /// Everything this painter's picture is drawn from, as one value — or
+  /// null for a painter whose picture is not kept, which paints its words
+  /// at every paint.
+  ///
+  /// A painter that answers draws the picture kept for an equal answer, by
+  /// any painter of its kind before it: a row built again — a tab opened
+  /// again, a panel unfolded — draws what the row it replaces set. The same
+  /// picture draws the same pixels, so the answer must hold every input the
+  /// words are drawn from; [paint] adds the size and the pixels a bake is
+  /// cut for.
+  Object? get pictureKey => null;
+
+  /// ⛔A paint that drew a word from a stand-in is NOT kept
+  /// ([BakedWords.paintAs]): the bake on its way wakes this painter to paint
+  /// again, and a kept stand-in would answer it.
   @override
-  void paint(Canvas canvas, Size size) =>
+  void paint(Canvas canvas, Size size) {
+    final drawnFrom = pictureKey;
+    if (drawnFrom == null) {
       BakedWords.instance.paintAs(this, () => paintWords(canvas, size));
+      return;
+    }
+    final key = (runtimeType, drawnFrom, size, wordBakePixelRatio());
+    if (_pictures.use(key) case final kept?) {
+      canvas.drawPicture(kept);
+      return;
+    }
+    final recorder = ui.PictureRecorder();
+    final settled = BakedWords.instance.paintAs(
+      this,
+      () => paintWords(Canvas(recorder), size),
+    );
+    final picture = recorder.endRecording();
+    canvas.drawPicture(picture);
+    if (settled) {
+      _pictures.keep(key, picture);
+    } else {
+      picture.dispose();
+    }
+  }
+
+  /// The pictures kept lately ([pictureKey]), by what each is drawn from.
+  ///
+  /// Thirty-two: the rows of both rails a screen shows, kept over a
+  /// reopening of either. A row scrolled across a span is a new window at
+  /// each paint, and letting an old one go costs its painter one paint of
+  /// its words — what every paint paid before.
+  static final Lru<Object, ui.Picture> _pictures = Lru(
+    entryCap: () => 32,
+    letGo: (_, picture) => picture.dispose(),
+  );
 
   /// What [paint] is to any other painter.
   void paintWords(Canvas canvas, Size size);
@@ -571,15 +623,30 @@ final class BakedWords {
   int get debugLandingFrames => _landingFrames;
   int _landingFrames = 0;
 
+  /// How many words the paint running now ([paintAs]) drew from a stand-in
+  /// while their own bake is on its way.
+  int _standIns = 0;
+
   /// Runs [paint] as [waiter]: a word it draws from a stand-in wakes it —
   /// and only it — when that word's bake lands.
-  void paintAs(WordBakeWaiter waiter, VoidCallback paint) {
-    final outer = _painting;
+  ///
+  /// True when it drew none so — every narrowed word from its own bake, or
+  /// from all it will ever have: what a painter that KEEPS its picture asks
+  /// before it keeps it. A kept stand-in is never woken, and would stand in
+  /// for the bake for as long as the picture is kept.
+  bool paintAs(WordBakeWaiter waiter, VoidCallback paint) {
+    final outerWaiter = _painting;
+    final outerStandIns = _standIns;
     _painting = waiter;
+    _standIns = 0;
     try {
       paint();
+      return _standIns == 0;
     } finally {
-      _painting = outer;
+      _painting = outerWaiter;
+      // A painter painted inside another drew into it: its stand-ins are
+      // the outer paint's too.
+      _standIns += outerStandIns;
     }
   }
 
@@ -598,6 +665,7 @@ final class BakedWords {
       return exact;
     }
     if (!_images.isDone(key)) {
+      _standIns += 1;
       final waiter = _painting;
       if (waiter != null) {
         (_waiting[word] ??= {}).add(waiter);

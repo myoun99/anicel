@@ -265,8 +265,28 @@ class TimelineRowRunLabelsPainter extends CustomPainter
     ink: labelStyle.color!,
   ).ink;
 
+  /// 🚨A ROW'S NUMBERS ARE SET ONCE FOR WHAT THEY ARE DRAWN FROM
+  /// (frame-panels-build-in-one-frame, 10-28, profile, the user's project):
+  /// a row built again — a tab opened again, a panel unfolded — is a new
+  /// painter over the same blocks, and the storyboard's seven conte rows
+  /// print every block of the film at once: 266 numbers, each inked, set
+  /// and drawn again (🔬2.3ms of a 26ms reopening on a quiet machine — the
+  /// largest paint of the storyboard tab — split evenly between the three,
+  /// so no one of them was the lever). So the row's picture is kept by
+  /// everything it is drawn from: its [props] and the axis as it stands,
+  /// which arrives through `repaint` and so is in no props.
+  @override
+  Object get pictureKey => (props, geometry.value);
+
+  /// How many times a row's numbers have been set — the work the kept
+  /// pictures save ([pictureKey]), read by the test that pins it.
+  @visibleForTesting
+  static int get debugRowsSet => _rowsSet;
+  static int _rowsSet = 0;
+
   @override
   void paintWords(Canvas canvas, Size size) {
+    _rowsSet += 1;
     final style = labelStyle;
     for (final label in runLabelsInWindow()) {
       // Clipped to its OWN block: a number wider than one cell spills back
@@ -324,7 +344,10 @@ class TimelineRowRunLabelsPainter extends CustomPainter
         countingBase,
         baseTextStyle,
         axis,
-        ByIdentity(windowBucket),
+        // The window as it stands, not the notifier that carries it: a row
+        // built again hands a new one over the same window, and the kept
+        // picture ([pictureKey]) is that row's to draw.
+        windowBucket?.value,
         viewportMainExtent,
         timelineBlockRowFacts(_blockRow),
       );

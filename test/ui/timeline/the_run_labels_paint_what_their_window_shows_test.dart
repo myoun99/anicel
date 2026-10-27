@@ -53,7 +53,7 @@ void main() {
     // Each label clips to its own block before it prints.
     List<Rect> printedBlocks() {
       final canvas = TestRecordingCanvas();
-      painter.paint(canvas, const Size(1200 * 24, 52));
+      painter.paintWords(canvas, const Size(1200 * 24, 52));
       return [
         for (final call in canvas.invocations)
           if (call.invocation.memberName == #clipRect)
