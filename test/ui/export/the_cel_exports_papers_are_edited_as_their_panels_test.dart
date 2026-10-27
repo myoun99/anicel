@@ -321,6 +321,19 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('on a paper too small to set a line in, a press on the staff '
+      'box opens nothing — the cut\'s 8px paper sets its words 0.12px tall', (
+    tester,
+  ) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, editing: paperEditingKit(session));
+    await standOn(tester, 'document-envelope');
+
+    expect(onPaper('cut-envelope-staff-name-genga-edit'), findsNothing);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('🗣️a box typed in writes its cut and the page prints it at '
       'once; the undo key pressed in the window takes it back', (
     tester,
