@@ -42,9 +42,10 @@
 //   bash tool/run.sh affected_tests --files-from parity.txt --outside-the-line
 //
 // A file green on this machine with byte-for-byte the inputs it has now is
-// not run again, and a red file is run once more: green the second time,
-// it is flaky — quarantined until it changes, and on the board
-// (`test_results.dart`, 유저 tests-crowd-the-machine-Q4).
+// not run again, and a red file is run once more: green the second time
+// with what it reads unchanged, it is flaky — quarantined until anything it
+// reads changes, and on the board (`test_results.dart`, 유저
+// tests-crowd-the-machine-Q4).
 //
 // Exit code is flutter test's own, or 0 when nothing needed running.
 
@@ -568,12 +569,30 @@ List<SuiteRun> _recordBatch(File report, ResultCache? cache) {
     if (file != null && measured.isNotEmpty) {
       updatePairs(file, (known) => merged(timesIn(known), measured));
     }
+  } on FileSystemException catch (e) {
+    _report('what this batch said was not kept: ${e.message}');
+  }
+  _keep(cache, runs);
+  return runs;
+}
+
+/// Lays [runs] over the green record of [cache] ([ResultCache.keep]).
+void _keep(ResultCache? cache, List<SuiteRun> runs) {
+  try {
     cache?.keep(runs);
   } on FileSystemException catch (e) {
     _report('what this batch said was not kept: ${e.message}');
   }
-  return runs;
 }
+
+/// The key of what each test reads in this checkout as it is NOW — the
+/// bytes and the imports measured again ([ResultCache.open]) — or null when
+/// no key can be made.
+String? Function(String file)? _keysNow() => ResultCache.open(
+  Directory.current.path,
+  Platform.environment,
+  buildImportGraph(roots: kGraphRoots),
+)?.keyFor;
 
 String? _flagValue(List<String> args, String name) {
   final i = args.indexOf(name);
@@ -908,6 +927,7 @@ Future<int> _runTests(
   final neverRan = <int>[];
   final runsOf = <int, List<SuiteRun>>{};
   final flaky = <String>{};
+  final moved = <String>{};
   final unrun = <String>[];
   final reports = Directory.systemTemp.createTempSync('affected-times');
   // ②THE MACHINE'S ONE LINE (`test_queue.dart`, 유저 tests-crowd-the-
@@ -983,11 +1003,28 @@ Future<int> _runTests(
     if (reds.isEmpty) return;
     _report('${reds.length} red file(s) — running them once more, to tell a '
         'flaky one from a real red.');
+    final again = <SuiteRun>[];
     await runAll(reds.toList()..sort(), (i, report, result) {
-      for (final run in _recordBatch(report, cache)) {
-        if (run.green == true && reds.contains(run.path)) flaky.add(run.path);
-      }
+      again.addAll(_recordBatch(report, null));
     });
+    // ⚠️「The same inputs」 is measured after the second run, not assumed
+    // from the keys taken when this run began ([splitGreenAgain]): a
+    // landing into this checkout can change them in between.
+    final greenAgain = [
+      for (final run in again)
+        if (run.green == true && reds.contains(run.path)) run.path,
+    ];
+    final split = splitGreenAgain(
+      greenAgain,
+      before: cache?.keyFor,
+      after: greenAgain.isEmpty ? null : _keysNow(),
+    );
+    flaky.addAll(split.flaky);
+    moved.addAll(split.moved);
+    _keep(cache, [
+      for (final run in again)
+        if (!split.moved.contains(run.path)) run,
+    ]);
   }
 
   // ⚠️No pin reaches this one line, and its mutant lives (10-21): a pin
@@ -1018,6 +1055,12 @@ Future<int> _runTests(
   }
 
   if (flaky.isNotEmpty) _quarantine(flaky.toList()..sort(), cache);
+  if (moved.isNotEmpty) {
+    _report('⚠️red, then green — but what they read changed while this run '
+        'went on (a landing into this checkout?), so they are no flake and '
+        'their red stands: ${(moved.toList()..sort()).join(', ')}. Run them '
+        'again.');
+  }
   final held = <String>{};
   final onMaster = MasterRecords.of(Platform.environment)?.reds ?? const {};
   final fromMaster = <String, Landing>{};
@@ -1118,8 +1161,8 @@ List<String>? _withoutStillGreen(List<String> files, ResultCache cache) {
 /// board — 🗣️Q4 b 「「불안정」으로 표시해 따로 모으고 보드에 올린다」.
 void _quarantine(List<String> flaky, ResultCache? cache) {
   _report('⚠️FLAKY — red, then green with the same inputs: '
-      '${flaky.join(', ')}. Quarantined on this machine until the file '
-      'changes: a red from it holds no verdict back.');
+      '${flaky.join(', ')}. Quarantined on this machine until anything it '
+      'reads changes: a red from it holds no verdict back.');
   try {
     cache?.quarantine(flaky);
   } on FileSystemException catch (e) {
@@ -1129,7 +1172,8 @@ void _quarantine(List<String> flaky, ResultCache? cache) {
     'id': kFlakyCard,
     'note': '⚠️**불안정 — 같은 입력으로 빨강 → 초록**(affected_tests, 기계 '
         '`${Platform.localHostname}`): '
-        '${flaky.map((file) => '`$file`').join(' · ')}. 그 파일이 바뀔 '
+        '${flaky.map((file) => '`$file`').join(' · ')}. 그 파일이 읽는 것'
+        '(시험 · import · 도우미 · 읽는 파일 · Flutter · 엔진)이 바뀔 '
         '때까지 이 기계에서 격리 — 빨강이 판정을 안 막는다.',
   });
   final board = Platform.environment['ANICEL_BOARD'];
