@@ -922,7 +922,8 @@ metrics: const TimelineGridMetrics(
     await gesture.up();
     await tester.pump();
 
-    // F-316: no band before the step off the pressed cell — the first
+    // F-316: no band before the first step (off the pressed cell, or
+    // farther than a tap, F-468) — the first
     // update IS that step.
     expect(selectUpdates.first, (const LayerId('layer-a'), 0, 2));
     expect(selectUpdates.last, (const LayerId('layer-a'), 0, 2));

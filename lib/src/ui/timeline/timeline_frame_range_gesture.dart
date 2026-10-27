@@ -387,6 +387,7 @@ class _TimelineFrameRangeGestureLayerState
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
+    _beginSelectSteps(localPosition);
     // A SELECT holds its row too: the cross-axis auto-pan can slide the
     // window past the anchor, and an unpinned anchor's recognizer would
     // dispose and freeze the drag mid-sweep. Its band waits for its first
@@ -437,7 +438,12 @@ class _TimelineFrameRangeGestureLayerState
             );
         final head = _frameAt(local);
         final cross = _crossOffsetAt(local);
-        if (!_selectHeadStepped(_anchorIndex, head, cross)) {
+        if (!_selectHeadStepped(
+          _anchorIndex,
+          head,
+          cross,
+          details.localPosition,
+        )) {
           return;
         }
         widget.callbacks.onSelectUpdate(_dragRow, _anchorIndex, head, cross);
@@ -909,6 +915,7 @@ class _TimelineLaneRangeGestureLayerState
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
+    _beginSelectSteps(localPosition);
     widget.callbacks.onGripTaken?.call(_rowAddress);
   }
 
@@ -949,7 +956,12 @@ class _TimelineLaneRangeGestureLayerState
             );
         final head = _frameAt(local);
         final cross = _crossOffsetAt(local);
-        if (!_selectHeadStepped(_anchorIndex, head, cross)) {
+        if (!_selectHeadStepped(
+          _anchorIndex,
+          head,
+          cross,
+          details.localPosition,
+        )) {
           return;
         }
         widget.callbacks.onSelectUpdate(
@@ -1134,9 +1146,18 @@ mixin _RangeDragFirstStep {
   /// short). Let go with the drag.
   bool _dragStepped = false;
 
-  /// A SELECT whose head stands on [head], [cross] across its row: stepped
-  /// once that is not the cell it was pressed on ([anchor], this row) — and
-  /// shown from that step on, never before it.
+  /// Where a SELECT was pressed: what its travel is measured from.
+  Offset _selectPressedAt = Offset.zero;
+
+  /// A SELECT starts from where it was pressed.
+  void _beginSelectSteps(Offset pressedAt) => _selectPressedAt = pressedAt;
+
+  /// A SELECT whose head stands on [head], [cross] across its row, with the
+  /// pointer at [at]: stepped once that is not the cell it was pressed on
+  /// ([anchor], this row), or once the pointer has travelled farther than a
+  /// tap may ([InstantTapRegion.travelSlop]) — and shown from that step on,
+  /// never before it. [at] is where the hand is, as a tap measures it: what
+  /// the edge auto-pan scrolls under a still pointer is no travel of it.
   ///
   /// 🗣️F-316 (유저 2026-10-08): 「어느정도 움직여서 선택범위 ui
   /// 작동했는데 취소될때가 많음 … 작동하면 작동하도록」. ↩️The band was
@@ -1145,8 +1166,18 @@ mixin _RangeDragFirstStep {
   /// been a tap, and a tap clears (T10, H24): what had been shown went. One
   /// question answers both now — a press that has not stepped shows
   /// nothing, and one that has is no tap.
-  bool _selectHeadStepped(int anchor, int head, double cross) {
-    if (head != anchor || cross < 0 || cross >= _dragRowExtent) {
+  ///
+  /// 🗣️F-468 (유저 2026-10-25): 「레이어행이 커서가 위치 이동한 기준으로 한
+  /// 행만 선택범위로 선택가능하듯이 프레임블록도 1코마만 선택 가능하게」. A
+  /// hand that has travelled as far as no tap does has swept the pressed
+  /// cell, which is a band of one koma; a wobble short of that is still the
+  /// click it was (H24). ↩️Only the step off the pressed cell counted, so
+  /// one koma took two steps: out to the next cell and back.
+  bool _selectHeadStepped(int anchor, int head, double cross, Offset at) {
+    if (head != anchor ||
+        cross < 0 ||
+        cross >= _dragRowExtent ||
+        (at - _selectPressedAt).distance > InstantTapRegion.travelSlop) {
       _dragStepped = true;
     }
     return _dragStepped;

@@ -455,7 +455,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(began, isEmpty);
-      // F-316: no band before the step off the pressed cell — the first
+      // F-316: no band before the first step (off the pressed cell, or
+      // farther than a tap, F-468) — the first
       // update IS that step.
       expect(dragSteps, isNotEmpty);
       expect(dragSteps.first, (const TrackId('track-a'), 12, 32));
@@ -585,7 +586,8 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      // F-316: no band before the step off the pressed cell.
+      // F-316: no band before the first step (off the pressed cell, or
+      // farther than a tap, F-468).
       expect(dragSteps.first, (28, 38));
       expect(dragSteps.last, (28, 38));
     });
