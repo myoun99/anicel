@@ -159,13 +159,16 @@ void main() {
   });
 
   test('a box names the stage its binding prints the worker of', () {
-    expect(envelopeStaffMarkOf('{staff.${key.keySlug}.name}'), key);
-    expect(
-      envelopeStaffMarkOf(' {staff.${inbetween.keySlug}.name} '),
-      inbetween,
-    );
-    expect(envelopeStaffMarkOf('{staff.nobody.name}'), isNull);
-    expect(envelopeStaffMarkOf('{title}'), isNull);
-    expect(envelopeStaffMarkOf('{cel[0].name}'), isNull);
+    LayerMark? stageOf(String binding) =>
+        switch (envelopeTypedValueOf(binding, const CutEnvelopeSource())) {
+          EnvelopeTypedStaffName(:final stage) => stage,
+          _ => null,
+        };
+
+    expect(stageOf('{staff.${key.keySlug}.name}'), key);
+    expect(stageOf(' {staff.${inbetween.keySlug}.name} '), inbetween);
+    expect(stageOf('{staff.nobody.name}'), isNull);
+    expect(stageOf('{title}'), isNull);
+    expect(stageOf('{cel[0].name}'), isNull);
   });
 }

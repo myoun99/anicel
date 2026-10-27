@@ -183,23 +183,36 @@ void main() {
   Finder onPaper(String key) =>
       find.descendant(of: find.byType(ExportPaperPanel), matching: keyed(key));
 
+  /// Types [text] into the box keyed [box] on the paper shown — through its
+  /// editor, keyed [editor] — and lands it.
+  Future<void> typeOnPaper(
+    WidgetTester tester, {
+    required String box,
+    required String editor,
+    required String text,
+  }) async {
+    final target = onPaper(box);
+    await tester.ensureVisible(target);
+    await tester.pump();
+    await tester.tap(target, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    await tester.enterText(onPaper(editor), text);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+  }
+
   /// Types [text] into the header box of [field] on the page shown, and
   /// lands it.
   Future<void> typeInto(
     WidgetTester tester,
     TimesheetHeaderField field,
     String text,
-  ) async {
-    final box = onPaper('timesheet-${field.name}-edit-p0');
-    await tester.ensureVisible(box);
-    await tester.pump();
-    await tester.tap(box, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    final editor = onPaper('timesheet-header-edit-field');
-    await tester.enterText(editor, text);
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
-  }
+  ) => typeOnPaper(
+    tester,
+    box: 'timesheet-${field.name}-edit-p0',
+    editor: 'timesheet-header-edit-field',
+    text: text,
+  );
 
   BrushStrokeCommitData oneDab() => BrushStrokeCommitData(
     sourceDabs: [
@@ -303,20 +316,50 @@ void main() {
     );
     await standOn(tester, 'document-envelope');
 
-    final box = onPaper('cut-envelope-staff-name-genga-edit');
-    await tester.ensureVisible(box);
-    await tester.pump();
-    await tester.tap(box, warnIfMissed: false);
-    await tester.pumpAndSettle();
-    await tester.enterText(onPaper('cut-envelope-edit-field'), 'ユキ');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    await typeOnPaper(
+      tester,
+      box: 'cut-envelope-staff-name-genga-edit',
+      editor: 'cut-envelope-edit-field',
+      text: 'ユキ',
+    );
 
     const key = LayerMark(process: LayerProcess.key);
     expect(session.cutById(cutId)!.metadata.staffNameFor(key), 'ユキ');
     expect(
       (paperShown(tester) as ExportEnvelopePage).source.staff[key.keySlug],
       'ユキ',
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  // 🗣️I-127-Q2 (유저 2026-10-27): 「같은 값을 찍는 칸은 전부 — 타임시트
+  // 머리와 같은 길」.
+  testWidgets('the envelope\'s CUT box is typed into as its panel\'s — the '
+      'cut\'s name, printed at once', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpCels(
+      tester,
+      session,
+      editing: paperEditingKit(session),
+      spec: CelsExportSpec(
+        kinds: everything.kinds,
+        envelopePaper: CutEnvelopePaperMode.sheet,
+      ),
+    );
+    await standOn(tester, 'document-envelope');
+
+    await typeOnPaper(
+      tester,
+      box: 'cut-envelope-cut-0-number-edit',
+      editor: 'cut-envelope-edit-field',
+      text: '302',
+    );
+
+    expect(session.cutById(cutId)!.name, '302');
+    expect(
+      (paperShown(tester) as ExportEnvelopePage).source.cuts.single.name,
+      '302',
     );
     session.playbackRig.prerenderScheduler.cancel();
   });

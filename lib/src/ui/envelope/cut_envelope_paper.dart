@@ -10,6 +10,7 @@ import '../brush/brush_tool_state.dart';
 import '../brush/sheet_canvas_panel.dart' show SheetStrokeHold;
 import '../editor_session_manager.dart';
 import '../effective_device_pixel_ratio.dart';
+import '../sheet/paper_writes.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart';
 import '../sheet/sheet_photo_drop.dart';
@@ -144,7 +145,7 @@ class CutEnvelopePaper extends StatelessWidget {
             ),
             // Under the ink windows: reachable exactly when the brush is off
             // (the switch doubles as the edit-mode switch), as on the
-            // timesheet. A bare form has no cut to name a worker on.
+            // timesheet. A bare form prints nothing of a cut's to type into.
             if (owner != null)
               Positioned.fill(
                 child: CutEnvelopeEditLayer(
@@ -152,8 +153,7 @@ class CutEnvelopePaper extends StatelessWidget {
                   layout: layout,
                   source: source,
                   viewport: viewport,
-                  onStaffNamed: (stage, name) =>
-                      session.cutVerbs.setCutStaffName(owner, stage, name),
+                  commitOf: (value) => _commitOf(value, owner),
                 ),
               ),
             if (inking)
@@ -191,5 +191,19 @@ class CutEnvelopePaper extends StatelessWidget {
         );
       },
     );
+  }
+
+  /// Where the words typed into a box printing [value] land — by the roads
+  /// the timesheet's header writes by ([PaperWrites]): a worker on the
+  /// envelope's cut ([owner]), a CUT line's name on that line's own cut.
+  ValueChanged<String> _commitOf(EnvelopeTypedValue value, CutId owner) {
+    final writes = PaperWrites(session);
+    return switch (value) {
+      EnvelopeTypedEpisode() => writes.episode,
+      EnvelopeTypedTitle() => writes.title,
+      EnvelopeTypedCutName(:final cut) => (name) => writes.cutName(cut, name),
+      EnvelopeTypedStaffName(:final stage) => (name) =>
+          writes.staffName(owner, stage, name),
+    };
   }
 }

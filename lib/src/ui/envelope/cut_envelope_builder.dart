@@ -30,6 +30,7 @@ CutEnvelopeSource buildCutEnvelopeSource({
     cuts: [
       for (final line in _cutLines(project, cut))
         CutEnvelopeCutLine(
+          cut: line.id,
           name: line.name,
           durationFrames: line.duration,
           fps: project.fps,
@@ -50,17 +51,11 @@ CutEnvelopeSource buildCutEnvelopeSource({
 /// Track order rather than "active first": the envelope is a document
 /// about a set of cuts, and reading it should not depend on which one
 /// happens to be open.
-List<({String name, int duration})> _cutLines(Project project, Cut cut) {
-  final lines = [
-    for (final sibling in linkedCutGroupInTrackOrder(project, cutId: cut.id))
-      (name: sibling.name, duration: sibling.duration),
-  ];
+List<Cut> _cutLines(Project project, Cut cut) {
+  final lines = linkedCutGroupInTrackOrder(project, cutId: cut.id);
   // A cut that somehow escaped the walk (an id with no cut) still prints
   // its own line rather than an empty envelope.
-  if (lines.isEmpty) {
-    lines.add((name: cut.name, duration: cut.duration));
-  }
-  return lines;
+  return lines.isEmpty ? [cut] : lines;
 }
 
 /// The cut whose id OWNS this envelope's ink.

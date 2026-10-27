@@ -9,6 +9,7 @@ import '../../services/cache_invalidation_executor.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/sheet_canvas_panel.dart' show SheetStrokeHold;
 import '../editor_session_manager.dart';
+import '../sheet/paper_writes.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_photo_drop.dart';
 import 'timesheet_document_painter.dart';
@@ -155,25 +156,15 @@ class TimesheetPaper extends StatelessWidget {
   /// Where each header box edited in place lands (I-112): the work's
   /// episode and title — the values its settings show — the cut's name,
   /// and its sheet worker ([TimesheetHeaderEditLayer]) — on the cut the
-  /// sheet prints (I-127).
+  /// sheet prints (I-127), by the roads every paper writes by.
   Map<TimesheetHeaderField, ValueChanged<String>> _headerCommits() {
-    void work(TimesheetInfo Function(TimesheetInfo info) edit) =>
-        session.updateTimesheetInfo(edit(session.timesheetInfo));
+    final writes = PaperWrites(session);
     return {
-      TimesheetHeaderField.episode: (episode) =>
-          work((info) => info.copyWith(episode: episode)),
-      TimesheetHeaderField.title: (title) =>
-          work((info) => info.copyWith(title: title)),
-      // ⛔An empty name is no cut's name — the rename window refuses one
-      // inline ([RenameCutDialog]); a box has no line to say so, so it
-      // keeps the name it prints.
-      TimesheetHeaderField.cut: (name) {
-        if (name.isNotEmpty) {
-          session.cutVerbs.renameCuts({cutId: name});
-        }
-      },
+      TimesheetHeaderField.episode: writes.episode,
+      TimesheetHeaderField.title: writes.title,
+      TimesheetHeaderField.cut: (name) => writes.cutName(cutId, name),
       TimesheetHeaderField.name: (name) =>
-          session.cutVerbs.setCutStaffName(cutId, sheetArtistMark, name),
+          writes.staffName(cutId, sheetArtistMark, name),
     };
   }
 }
