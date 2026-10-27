@@ -226,6 +226,11 @@ const _notCensused = <String, String>{
   'lib/src/services/last_stroke_slot.dart → strokeBytes':
       'via:allStrokeBytes — the app\'s one slot, read once, for the cut '
       'piece\'s reason',
+  'lib/src/native/qa_blur_kernel.dart → debugScratchBytes':
+      'via:liveBytes — the blur\'s scratch is a NativeScratch, which '
+      'NativeScratch.liveBytes already sums with every other (the census\'s '
+      'engineScratch row); this one is the test\'s pin that a stroke\'s end '
+      'lets it go',
 };
 
 /// What a field KEEPS `ui.Image`s in — a map, list, set or queue of them,
