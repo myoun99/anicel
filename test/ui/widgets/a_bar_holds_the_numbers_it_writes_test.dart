@@ -217,6 +217,19 @@ void main() {
     expect(handed.last, 0.4, reason: 'not its 0.32, which it writes 「0.3」');
   });
 
+  testWidgets('a range that holds one number the bar writes holds that one, '
+      'and a range that holds none is held as it stands', (tester) async {
+    Future<double> pressedInTheMiddle(double min, double max) async {
+      final handed = await pumpBar(tester, value: min, min: min, max: max);
+      await tester.tapAt(tester.getCenter(track));
+      await tester.pump();
+      return handed.last;
+    }
+
+    expect(await pressedInTheMiddle(0.25, 0.34), 0.3);
+    expect(await pressedInTheMiddle(0.21, 0.29), inInclusiveRange(0.21, 0.29));
+  });
+
   testWidgets('a typed number lands on the numbers the bar writes', (
     tester,
   ) async {
