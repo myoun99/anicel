@@ -57,6 +57,22 @@ void main() {
       expect(parameter.resolveAt(9), 4);
       expect(parameter.resolveAt(10), 20);
     });
+
+    test('a menu is made with its words, or not at all', () {
+      // A menu with no words has nothing to show for its value — the lane
+      // reads `choices[value]` (I-132-Q6).
+      expect(
+        () => EffectParameterSpec(
+          id: 'p',
+          label: 'P',
+          defaultValue: 0,
+          minimum: 0,
+          maximum: 1,
+          unit: EffectParameterUnit.choice,
+        ),
+        throwsAssertionError,
+      );
+    });
   });
 
   group('LayerEffect.defaults', () {

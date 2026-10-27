@@ -145,11 +145,21 @@ void main() {
     expect(plan.preSteps.last.keys, hasLength(1));
   });
 
-  test('a keep gives back what its run took — on the GPU as the in-order '
-      'reading has it (I-132-Q2)', () async {
-    // Everything away, then half of white back: white stands at half, red
-    // stays away — the eyedropper's reading ([pixelThroughChain]) and the
-    // composite's run of shaders, pixel for pixel.
+  final eraseAll = ResolvedLayerEffect(
+    kind: EffectKind.colorKey,
+    values: const [0, 0, 0, 0, 255, 100],
+  );
+  final keepHalfOfWhite = ResolvedLayerEffect(
+    kind: EffectKind.colorKey,
+    values: const [1, 255, 255, 255, 0, 50],
+  );
+
+  /// White on the left half, red on the right, through [chain] — the
+  /// alphas the eyedropper's reading ([pixelThroughChain]) gives, and how
+  /// many pixels the composite's run of shaders draws otherwise.
+  Future<({Set<int> alphas, int mismatches})> keptOnTheGpu(
+    List<ResolvedLayerEffect> chain,
+  ) async {
     const side = 32;
     final straight = Uint8List(side * side * 4);
     for (var i = 0; i < side * side; i++) {
@@ -159,16 +169,6 @@ void main() {
       straight[i * 4 + 2] = white ? 255 : 0;
       straight[i * 4 + 3] = 255;
     }
-    final chain = [
-      ResolvedLayerEffect(
-        kind: EffectKind.colorKey,
-        values: const [0, 0, 0, 0, 255, 100],
-      ),
-      ResolvedLayerEffect(
-        kind: EffectKind.colorKey,
-        values: const [1, 255, 255, 255, 0, 50],
-      ),
-    ];
     final source = await _imageFrom(straight, side, side);
     final stepped = applyEffectSteps(
       source: source,
@@ -197,7 +197,35 @@ void main() {
         mismatches += 1;
       }
     }
+    return (alphas: alphas, mismatches: mismatches);
+  }
+
+  test('a keep gives back what its run took — on the GPU as the in-order '
+      'reading has it (I-132-Q2)', () async {
+    // Everything away, then half of white back: white stands at half, red
+    // stays away.
+    final (:alphas, :mismatches) = await keptOnTheGpu([
+      eraseAll,
+      keepHalfOfWhite,
+    ]);
     expect(alphas, {0, 127}, reason: '⛔liveness: red away, white half back');
+    expect(mismatches, 0);
+  });
+
+  test('a keep past a painted effect gives back to its own run — the '
+      'eyedropper reads it as the GPU draws it', () async {
+    // The brightening stands between, so the keep is a run of its own over
+    // what the erase left: nothing to give back. White stays white under
+    // it, so only the run decides.
+    final (:alphas, :mismatches) = await keptOnTheGpu([
+      eraseAll,
+      ResolvedLayerEffect(
+        kind: EffectKind.brightnessContrast,
+        values: const [20, 0],
+      ),
+      keepHalfOfWhite,
+    ]);
+    expect(alphas, {0});
     expect(mismatches, 0);
   });
 
