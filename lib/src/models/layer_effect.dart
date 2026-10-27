@@ -11,6 +11,7 @@ import 'transform_track.dart'
         argbKeySpace,
         doubleKeySpace,
         layerIdentityPose,
+        menuKeySpace,
         transformLaneOf,
         transformNamedKeyChanges,
         transformPropertyOfLaneId,
@@ -147,24 +148,18 @@ enum EffectKind {
     staysOnItsRow: false,
   ),
 
-  /// Erase every pixel whose color is within [tolerance] of the key color.
-  deleteColor(
-    'deleteColor',
-    label: 'Delete Color',
-    parameters: colorKeyParameterSpecs,
-    spreadsPixels: false,
-    runsOnSourcePixels: true,
-    drawsItsOwnPicture: false,
-    isBasic: false,
-    staysOnItsRow: false,
-  ),
-
-  /// Erase every pixel whose color is NOT within [tolerance] of the key
-  /// color — the same comparison with the answer inverted, which is why
-  /// the two share [colorKeyParameterSpecs] rather than repeating it.
-  keepColor(
-    'keepColor',
-    label: 'Keep Color',
+  /// THE colour key: its Key Operation erases every pixel within the
+  /// tolerance of the key colour (Key Colors), or gives back what the keys
+  /// before it erased of those (Keep Colors) — AE's Linear Color Key
+  /// (`CelColorKey`).
+  ///
+  /// 🗣️I-132-Q2 (유저 2026-10-27): 「하나로 + AE 뜻」. ↩️Two kinds, Delete
+  /// Color and Keep Color, the second erasing every pixel the key did NOT
+  /// name — AE keeps a colour by keying it twice, all out and then the
+  /// colour back.
+  colorKey(
+    'colorKey',
+    label: 'Color Key',
     parameters: colorKeyParameterSpecs,
     spreadsPixels: false,
     runsOnSourcePixels: true,
@@ -316,6 +311,24 @@ enum EffectParameterUnit {
   /// playback cache renders at a reduced raster and must scale these, or a
   /// half-size preview would show a double-strength blur.
   pixels,
+
+  /// One of the parameter's [EffectParameterSpec.choices] — the value is
+  /// the number of the word, the lane a menu, its keys steps
+  /// ([menuKeySpace]). 🗣️I-132-Q6 (유저 2026-10-27): 「레인 하나 — 값이
+  /// 메뉴, 키프레임은 계단」 — AE's pop-up properties, a colour key's Key
+  /// Operation the first.
+  choice,
+}
+
+/// One word of a menu parameter ([EffectParameterUnit.choice]).
+class EffectChoice {
+  const EffectChoice({required this.id, required this.label});
+
+  /// What the word's strings are keyed by (`effectChoice.<id>`).
+  final String id;
+
+  /// The English word, the one a table without it reads.
+  final String label;
 }
 
 /// One parameter of one effect kind: its id, label, default and range.
@@ -328,29 +341,66 @@ class EffectParameterSpec {
     required this.label,
     required this.defaultValue,
     required this.minimum,
-    required this.maximum,
+    required double maximum,
     this.unit = EffectParameterUnit.number,
-  });
+  }) : _maximum = maximum,
+       choices = const [];
+
+  /// A menu of [choices], the first chosen until a key or a value says
+  /// otherwise.
+  const EffectParameterSpec.choice({
+    required this.id,
+    required this.label,
+    required this.choices,
+  }) : defaultValue = 0,
+       minimum = 0,
+       _maximum = null,
+       unit = EffectParameterUnit.choice;
 
   final String id;
   final String label;
   final double defaultValue;
   final double minimum;
-  final double maximum;
+  final double? _maximum;
   final EffectParameterUnit unit;
+
+  /// The words a menu parameter holds one of; empty for a number.
+  final List<EffectChoice> choices;
+
+  /// The largest value — a menu's last word.
+  double get maximum => _maximum ?? (choices.length - 1).toDouble();
+
+  /// How the value walks between two keys: a menu steps, a number lerps.
+  KeyValueSpace<double> get keySpace =>
+      unit == EffectParameterUnit.choice ? menuKeySpace : doubleKeySpace;
+
+  /// How a key made on this lane leaves — a menu's holds, so its mark says
+  /// the step [keySpace] takes; null where a key leaves as it always has.
+  KeyExit? get keyExit =>
+      unit == EffectParameterUnit.choice ? KeyExit.hold : null;
 
   double clamp(double value) => value.clamp(minimum, maximum).toDouble();
 }
 
-/// The color keys' parameters — ONE list for both kinds, because erase and
-/// keep are the same comparison with the answer inverted. Two copies would
-/// be two places to add the next knob to.
+/// The colour key's parameters ([EffectKind.colorKey]).
 ///
 /// 유저 2026-08-27 named the shape: *「블러 3개 있는것처럼 새로운 fx를
 /// 만들잔거야」* — a color is three of the `double` parameters the lane
 /// substrate already animates, not a new parameter TYPE. Keying the color
 /// itself therefore comes out keyframable for free.
 const List<EffectParameterSpec> colorKeyParameterSpecs = [
+  // AE's Key Operation — a menu lane (I-132-Q6 a): what the key does to the
+  // pixels it names. First, as AE's help sets it first (keying-effects,
+  // read 2026-10-27: Key Operation, then Match Colors, then the colour);
+  // the panel's own order the help does not give.
+  EffectParameterSpec.choice(
+    id: 'keyOperation',
+    label: 'Key Operation',
+    choices: [
+      EffectChoice(id: 'keyColors', label: 'Key Colors'),
+      EffectChoice(id: 'keepColors', label: 'Keep Colors'),
+    ],
+  ),
   // 0…255, the byte range the eyedropper and the surface both speak. ⛔NOT
   // 0…100: a key color typed from a picked pixel has to round-trip exactly,
   // and a percentage cannot say 137.
@@ -424,15 +474,22 @@ class EffectParameter {
   bool get isAnimated => track.isNotEmpty;
 
   /// The value at [frameIndex] — the key track when it has keys, the
-  /// static value otherwise.
-  double resolveAt(int frameIndex) => resolveAtTime(frameIndex.toDouble());
+  /// static value otherwise, walking between keys as [space] does — a
+  /// spec's own ([EffectParameterSpec.keySpace]): a menu steps.
+  double resolveAt(
+    int frameIndex, {
+    KeyValueSpace<double> space = doubleKeySpace,
+  }) => resolveAtTime(frameIndex.toDouble(), space: space);
 
   /// [resolveAt] at a [time] between frames as well — a header graph's
   /// curve (I-89 ③).
-  double resolveAtTime(double time) => track.resolveAtTime(
+  double resolveAtTime(
+    double time, {
+    KeyValueSpace<double> space = doubleKeySpace,
+  }) => track.resolveAtTime(
     time: time,
     orElse: () => value,
-    space: doubleKeySpace,
+    space: space,
   );
 
   EffectParameter copyWith({double? value, PropertyTrack<double>? track}) =>
@@ -826,7 +883,11 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
       kind: effect.kind,
       values: [
         for (final spec in specs)
-          spec.clamp(effect.parameterOf(spec.id).resolveAt(frameIndex)),
+          spec.clamp(
+            effect
+                .parameterOf(spec.id)
+                .resolveAt(frameIndex, space: spec.keySpace),
+          ),
       ],
       stand: effect.kind.drawsItsOwnPicture
           ? effectStandAt(effect.stand, frameIndex.toDouble())
@@ -975,7 +1036,14 @@ double effectParameterValueAtTime(
 ) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameterOf(parameterId).resolveAtTime(time);
+      return effect
+          .parameterOf(parameterId)
+          .resolveAtTime(
+            time,
+            space:
+                effect.kind.parameterSpec(parameterId)?.keySpace ??
+                doubleKeySpace,
+          );
     }
   }
   return 0;

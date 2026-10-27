@@ -245,8 +245,8 @@ void main() {
       placement: null,
       effects: [
         ResolvedLayerEffect(
-          kind: EffectKind.deleteColor,
-          values: [0, 0, 0, 255, 100],
+          kind: EffectKind.colorKey,
+          values: [0, 0, 0, 0, 255, 100],
         ),
         ResolvedLayerEffect(
           kind: EffectKind.brightnessContrast,

@@ -126,6 +126,11 @@ enum AppStrings {
   String effectParameterName(String id, String fallback) =>
       _values['effectParameter.$id'] ?? fallback;
 
+  /// A word of a menu parameter, by its id (I-132-Q6) — the contract
+  /// [effectKindName] follows.
+  String effectChoiceName(String id, String fallback) =>
+      _values['effectChoice.$id'] ?? fallback;
+
   /// A key side's kind, by the enum value's `name` (I-89 ②) — the contract
   /// [layerProcessName] keeps: the English is the model's, the rest are
   /// here. ↩️Rows of their own (`keyInterpolationLinear` · `…Hold`) while the
@@ -3939,8 +3944,7 @@ enum AppStrings {
     'effectKind.brightnessContrast': '輝度＆コントラスト',
     'effectKind.hueSaturation': '色相/彩度',
     'effectKind.blur': 'ぼかし',
-    'effectKind.deleteColor': '色削除',
-    'effectKind.keepColor': '色残し',
+    'effectKind.colorKey': 'カラーキー',
     'effectKind.celNumber': 'セル番号',
     'effectParameter.brightness': '輝度',
     'effectParameter.contrast': 'コントラスト',
@@ -3955,6 +3959,9 @@ enum AppStrings {
     'effectParameter.ink': '色',
     'effectParameter.tolerance': '許容値',
     'effectParameter.amount': '適用量',
+    'effectParameter.keyOperation': 'キー操作',
+    'effectChoice.keyColors': 'キーカラー',
+    'effectChoice.keepColors': 'カラー維持',
     'selectionMode.replace': '新規選択',
     'selectionMode.add': '追加選択',
     'selectionMode.subtract': '部分解除',
@@ -5626,8 +5633,7 @@ enum AppStrings {
     'effectKind.brightnessContrast': '명도 및 대비',
     'effectKind.hueSaturation': '색조/채도',
     'effectKind.blur': '흐림 효과',
-    'effectKind.deleteColor': '색 삭제',
-    'effectKind.keepColor': '색 남기기',
+    'effectKind.colorKey': '색상 키',
     'effectKind.celNumber': '셀 번호',
     'effectParameter.brightness': '명도',
     'effectParameter.contrast': '대비',
@@ -5642,6 +5648,9 @@ enum AppStrings {
     'effectParameter.ink': '잉크',
     'effectParameter.tolerance': '허용차',
     'effectParameter.amount': '적용량',
+    'effectParameter.keyOperation': '키 작업',
+    'effectChoice.keyColors': '키 색상',
+    'effectChoice.keepColors': '색상 유지',
     // R26 #16 — the user's own words for the four selection modes
     // (「갱신/추가/삭제/선택중」), moved here from the enum.
     'selectionMode.replace': '갱신',
@@ -7352,8 +7361,7 @@ enum AppStrings {
     'effectKind.brightnessContrast': 'Luminosité/Contraste',
     'effectKind.hueSaturation': 'Teinte/Saturation',
     'effectKind.blur': 'Flou',
-    'effectKind.deleteColor': 'Supprimer la couleur',
-    'effectKind.keepColor': 'Conserver la couleur',
+    'effectKind.colorKey': 'Masquage par couleur',
     'effectKind.celNumber': 'Numéro de cellulo',
     'effectParameter.brightness': 'Luminosité',
     'effectParameter.contrast': 'Contraste',
@@ -7368,6 +7376,9 @@ enum AppStrings {
     'effectParameter.ink': 'Encre',
     'effectParameter.tolerance': 'Tolérance',
     'effectParameter.amount': 'Quantité',
+    'effectParameter.keyOperation': 'Opération',
+    'effectChoice.keyColors': 'Masquer',
+    'effectChoice.keepColors': 'Conserver',
     'selectionMode.replace': 'Nouvelle sélection',
     'selectionMode.add': 'Ajouter à la sélection',
     'selectionMode.subtract': 'Soustraire de la sélection',
@@ -9073,8 +9084,7 @@ enum AppStrings {
     'effectKind.brightnessContrast': '亮度和对比度',
     'effectKind.hueSaturation': '色相/饱和度',
     'effectKind.blur': '模糊',
-    'effectKind.deleteColor': '删除颜色',
-    'effectKind.keepColor': '保留颜色',
+    'effectKind.colorKey': '颜色键',
     'effectKind.celNumber': '赛璐珞编号',
     'effectParameter.brightness': '亮度',
     'effectParameter.contrast': '对比度',
@@ -9089,6 +9099,9 @@ enum AppStrings {
     'effectParameter.ink': '颜色',
     'effectParameter.tolerance': '容差',
     'effectParameter.amount': '数量',
+    'effectParameter.keyOperation': '主要操作',
+    'effectChoice.keyColors': '主色',
+    'effectChoice.keepColors': '保持颜色',
     'selectionMode.replace': '新选区',
     'selectionMode.add': '添加到选区',
     'selectionMode.subtract': '从选区减去',

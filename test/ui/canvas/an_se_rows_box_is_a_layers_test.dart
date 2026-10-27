@@ -445,8 +445,8 @@ void main() {
       final keyed = tag(
         effects: [
           ResolvedLayerEffect(
-            kind: EffectKind.deleteColor,
-            values: const [0xC9, 0x5C, 0x5C, 8, 100],
+            kind: EffectKind.colorKey,
+            values: const [0, 0xC9, 0x5C, 0x5C, 8, 100],
           ),
         ],
       );

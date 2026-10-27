@@ -162,21 +162,32 @@ List<PropertyLaneRow> effectPropertyLanes(
     }
     for (final (index, spec) in effect.kind.parameters.indexed) {
       final parameter = effect.parameterOf(spec.id);
+      // A menu has nothing between its words to scrub through, nor a line
+      // to lay on a header graph — a flag's lane, with words for a ring.
+      final menu = spec.unit == EffectParameterUnit.choice;
       rows.add(
         PropertyLaneRow(
           laneId: effectLaneId(effect.id, spec.id),
           label: spec.labelFor(AppText.language),
           keyMarks: keyMarksOf(parameter.track),
           keyNames: parameter.track.namedKeysByFrame,
+          valueKind: menu
+              ? PropertyLaneValueKind.choice
+              : PropertyLaneValueKind.number,
+          choices: [
+            for (final choice in spec.choices)
+              choice.labelFor(AppText.language),
+          ],
           valueLabel: valueAt == null
               ? null
               : (frameIndex) => formatEffectLaneValue(
                   spec,
                   valueAt(effect.id, spec.id, frameIndex.toDouble()),
                 ),
-          scrubValue: (label, delta) =>
-              scrubEffectLaneValue(spec, label, delta),
-          curve: valueAt == null
+          scrubValue: menu
+              ? null
+              : (label, delta) => scrubEffectLaneValue(spec, label, delta),
+          curve: valueAt == null || menu
               ? null
               : (
                   parts: [LaneCurvePalette.effectParameter(index)],
@@ -258,14 +269,25 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
     EffectParameterUnit.number => columnValueText(value),
     EffectParameterUnit.degrees => '${columnValueText(value)}°',
     EffectParameterUnit.pixels => '${columnValueText(value)} px',
+    EffectParameterUnit.choice =>
+      spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
   };
 }
 
 /// Parses what the value editor accepts for [spec]: the bare number, with
-/// or without its unit suffix, clamped to the parameter's range. Null on a
-/// parse failure (the editor then ignores the input, like the transform
-/// lanes).
+/// or without its unit suffix, clamped to the parameter's range — or, on a
+/// menu, one of its words, in the program's language or the model's
+/// English. Null on a parse failure (the editor then ignores the input,
+/// like the transform lanes).
 double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
+  if (spec.unit == EffectParameterUnit.choice) {
+    final word = input.trim();
+    final index = spec.choices.indexWhere(
+      (choice) =>
+          choice.labelFor(AppText.language) == word || choice.label == word,
+    );
+    return index < 0 ? null : index.toDouble();
+  }
   final value = columnValueOf(input);
   if (value == null) {
     return null;

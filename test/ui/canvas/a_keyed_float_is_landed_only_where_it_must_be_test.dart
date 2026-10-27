@@ -32,8 +32,8 @@ void main() {
   const tile = 32;
   final keys = [
     ResolvedLayerEffect(
-      kind: EffectKind.deleteColor,
-      values: [64, 192, 96, 10, 100],
+      kind: EffectKind.colorKey,
+      values: [0, 64, 192, 96, 10, 100],
     ),
   ];
 
@@ -146,8 +146,8 @@ void main() {
     final (:float, cel: _) = floatOver(empty);
     final another = [
       ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: [200, 20, 20, 10, 100],
+        kind: EffectKind.colorKey,
+        values: [0, 200, 20, 20, 10, 100],
       ),
     ];
 
@@ -198,8 +198,8 @@ void main() {
     final (:float, :cel) = floatOver(tileOf(255), alpha: 128);
     final idle = [
       ResolvedLayerEffect(
-        kind: EffectKind.deleteColor,
-        values: [64, 192, 96, 10, 0],
+        kind: EffectKind.colorKey,
+        values: [0, 64, 192, 96, 10, 0],
       ),
     ];
 

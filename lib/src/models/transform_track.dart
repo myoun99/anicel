@@ -527,10 +527,19 @@ const KeyValueSpace<int> argbKeySpace = KeyValueSpace(
   inverseLerp: _inverseLerpArgb,
 );
 
-/// A boolean's [KeyValueSpace]: it never tweens ([lerpBoolHold]), so no
+/// A boolean's [KeyValueSpace]: it never tweens ([lerpHold]), so no
 /// value falls between two keys.
 const KeyValueSpace<bool> boolHoldKeySpace = KeyValueSpace(
-  lerp: lerpBoolHold,
+  lerp: lerpHold,
+  inverseLerp: _nothingBetween,
+);
+
+/// A menu's [KeyValueSpace]: the number of the word it holds, which never
+/// tweens either ([lerpHold]) — 🗣️I-132-Q6 (유저 2026-10-27): 「값이 메뉴,
+/// 키프레임은 계단」. In the space, not in the keys' sides, so keys pasted
+/// in from a number lane step all the same.
+const KeyValueSpace<double> menuKeySpace = KeyValueSpace(
+  lerp: lerpHold,
   inverseLerp: _nothingBetween,
 );
 
@@ -553,12 +562,14 @@ int lerpArgb(int a, int b, double t) {
       channel(0);
 }
 
-/// Booleans never tween: half a shown line is not a state (R5 #7).
+/// A value that never tweens: half a shown line is not a state (R5 #7),
+/// and half of a menu's two words is neither (I-132-Q6).
 ///
-/// Written as a lerp rather than special-cased at each call so a boolean
-/// lane rides the ordinary [PropertyTrack.resolveAt] path — the value HOLDS
-/// until the next key, which is what AE's checkbox properties do.
-bool lerpBoolHold(bool a, bool b, double t) => a;
+/// Written as a lerp rather than special-cased at each call so a flag or a
+/// menu lane rides the ordinary [PropertyTrack.resolveAt] path — the value
+/// HOLDS until the next key, which is what AE's checkbox and pop-up
+/// properties do.
+T lerpHold<T>(T a, T b, double t) => a;
 
 /// [lerpArgb] undone: [value]'s channels projected onto the line from [a]
 /// to [b].
@@ -574,7 +585,7 @@ double _inverseLerpArgb(int a, int b, int value) {
   return length == 0 ? 0 : along / length;
 }
 
-double _nothingBetween(bool a, bool b, bool value) => 0;
+double _nothingBetween<T>(T a, T b, T value) => 0;
 
 Map<int, PropertyKey<T>> _poseComponentKeys<T>(
   Map<int, TransformPose>? keyframes,

@@ -6,10 +6,12 @@ import '../../core/draw_space.dart';
 import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'display_resample.dart';
 import 'layer_blend_shader.dart';
+import '../../services/cel_source_effect_pass.dart' show CelColorKey;
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
@@ -1005,9 +1007,10 @@ void _composeInTheFrame({
 /// by itself, 1:1 into a rect at the origin, is what makes the shader's own
 /// coordinates mean what it thinks they mean.
 ///
-/// A step's key and its painted effects share ONE raster: a `ui.Paint`
+/// A step's last key and its painted effects share ONE raster: a `ui.Paint`
 /// applies its shader, then its colour filter, then its image filter, so
-/// "key, then blur" needs no second pass.
+/// "key, then blur" needs no second pass. Each key before it in its run is a
+/// raster of its own, read beside the run's input by the next.
 ui.Image applyEffectSteps({
   required ui.Image source,
   required List<CompositeEffectStep> steps,
@@ -1017,62 +1020,93 @@ ui.Image applyEffectSteps({
 }) {
   var image = source;
   for (final step in steps) {
-    final stepRecorder = ui.PictureRecorder();
-    final into = Canvas(stepRecorder);
-    final paint = Paint();
-    final key = step.key;
-    ui.FragmentShader? shader;
-    if (key != null) {
-      shader = ColourKeyShader.shaderFor(
-        source: image,
-        key: key,
-        width: pixelWidth.toDouble(),
-        height: pixelHeight.toDouble(),
+    // What every key of the run reads its colours from and a restore gives
+    // back to ([CompositeEffectStep.keys]) — alive until the run is done.
+    final runInput = image;
+    final keys = step.keys;
+    final draws = keys.isEmpty ? 1 : keys.length;
+    for (var index = 0; index < draws; index += 1) {
+      final next = _effectStepDraw(
+        image: image,
+        original: runInput,
+        key: keys.isEmpty ? null : keys[index],
+        then: index == draws - 1 ? step.then : const [],
+        pixelWidth: pixelWidth,
+        pixelHeight: pixelHeight,
+        imageScale: imageScale,
       );
-      paint.shader = shader;
+      if (!identical(image, source) && !identical(image, runInput)) {
+        image.dispose();
+      }
+      image = next;
     }
-    // ⛔Resolved HERE, in the IMAGE's own space. A step rasters at the
-    // identity — there is no CTM to map a sigma through — so the chain
-    // arrives pre-multiplied by however many image pixels a canvas pixel is.
-    resolveCompositeEffectPaint(
-      step.then,
-      space: imageScale == 1
-          ? DrawSpace.canvas
-          : DrawSpace.preScaled(imageScale),
-    ).applyTo(paint);
-    final rect = Rect.fromLTWH(
-      0,
-      0,
-      pixelWidth.toDouble(),
-      pixelHeight.toDouble(),
-    );
-    if (shader == null) {
-      // 1:1 by construction — src and dst are the same rect, at the
-      // identity. A filter here would resample a blit that is already
-      // aligned.
-      paint.filterQuality = FilterQuality.none;
-      into.drawImageRect(image, rect, rect, paint);
-    } else {
-      // With a shader the image IS the shader's source, so the draw is a
-      // plain rect over it.
-      into.drawRect(rect, paint);
+    if (!identical(runInput, source)) {
+      runInput.dispose();
     }
-    // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
-    // and the shader — this loop runs once per effect step, so a failure part
-    // way along a chain leaked every step it had already built. The picture's
-    // release is [rasterPicture]'s; the shader's is this frame's own.
-    final ui.Image next;
-    try {
-      next = rasterPicture(stepRecorder, pixelWidth, pixelHeight);
-    } finally {
-      shader?.dispose();
-    }
-    if (!identical(image, source)) {
-      image.dispose();
-    }
-    image = next;
   }
   return image;
+}
+
+/// One raster of a step: [key] over [image] ([original] its run's input),
+/// then [then], 1:1 at the identity ([applyEffectSteps]).
+ui.Image _effectStepDraw({
+  required ui.Image image,
+  required ui.Image original,
+  required CelColorKey? key,
+  required List<ResolvedLayerEffect> then,
+  required int pixelWidth,
+  required int pixelHeight,
+  required double imageScale,
+}) {
+  final stepRecorder = ui.PictureRecorder();
+  final into = Canvas(stepRecorder);
+  final paint = Paint();
+  ui.FragmentShader? shader;
+  if (key != null) {
+    shader = ColourKeyShader.shaderFor(
+      source: image,
+      original: original,
+      key: key,
+      width: pixelWidth.toDouble(),
+      height: pixelHeight.toDouble(),
+    );
+    paint.shader = shader;
+  }
+  // ⛔Resolved HERE, in the IMAGE's own space. A step rasters at the
+  // identity — there is no CTM to map a sigma through — so the chain
+  // arrives pre-multiplied by however many image pixels a canvas pixel is.
+  resolveCompositeEffectPaint(
+    then,
+    space: imageScale == 1
+        ? DrawSpace.canvas
+        : DrawSpace.preScaled(imageScale),
+  ).applyTo(paint);
+  final rect = Rect.fromLTWH(
+    0,
+    0,
+    pixelWidth.toDouble(),
+    pixelHeight.toDouble(),
+  );
+  if (shader == null) {
+    // 1:1 by construction — src and dst are the same rect, at the
+    // identity. A filter here would resample a blit that is already
+    // aligned.
+    paint.filterQuality = FilterQuality.none;
+    into.drawImageRect(image, rect, rect, paint);
+  } else {
+    // With a shader the image IS the shader's source, so the draw is a
+    // plain rect over it.
+    into.drawRect(rect, paint);
+  }
+  // ⚠️`toImageSync` throws, and a throw here used to keep BOTH the picture
+  // and the shader — this runs once per draw of a chain, so a failure part
+  // way along it leaked every step it had already built. The picture's
+  // release is [rasterPicture]'s; the shader's is this frame's own.
+  try {
+    return rasterPicture(stepRecorder, pixelWidth, pixelHeight);
+  } finally {
+    shader?.dispose();
+  }
 }
 
 void _finishSubtreeRaster({

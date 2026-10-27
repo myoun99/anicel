@@ -10,10 +10,9 @@ import '../models/layer_id.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
 import 'composite_effect_paint.dart'
-    show resolveColorMatrixIgnoringSpatial;
+    show pixelThroughChain, resolveColorMatrixIgnoringSpatial;
 import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_read_source.dart';
-import 'cel_source_effect_pass.dart';
 import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
 
@@ -124,13 +123,9 @@ CanvasPoint? _artworkPointFor(
 
 /// [entry]'s pixel under [point] as it SHOWS — through its pose, with its
 /// cel's letters laid (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」) and
-/// its colour keys run: the pixel, and its alpha byte once keyed. Null
-/// where it has none.
-///
-/// The keys go first, for the same reason they do in the composite — they
-/// are a source-pixel pass, and a pixel they erased contributes nothing at
-/// all rather than contributing a filtered colour.
-({int rgba, int alphaByte})? _shownPixelAt(
+/// its own chain run over it in the chain's order ([pixelThroughChain]):
+/// its straight colour, and its alpha byte. Null where it has none.
+({double red, double green, double blue, int alpha})? _shownPixelAt(
   CutFrameCompositeEntry entry,
   CanvasPoint point,
   LayerFrameSurfaceResolver surfaceResolver,
@@ -148,15 +143,12 @@ CanvasPoint? _artworkPointFor(
   if (rgba == null || rgba == 0) {
     return null;
   }
-  return (
-    rgba: rgba,
-    alphaByte: celSourceEffectAlphaFor(
-      entry.effects,
-      red: (rgba >> 24) & 0xFF,
-      green: (rgba >> 16) & 0xFF,
-      blue: (rgba >> 8) & 0xFF,
-      alpha: rgba & 0xFF,
-    ),
+  return pixelThroughChain(
+    entry.effects,
+    red: (rgba >> 24) & 0xFF,
+    green: (rgba >> 16) & 0xFF,
+    blue: (rgba >> 8) & 0xFF,
+    alpha: rgba & 0xFF,
   );
 }
 
@@ -169,7 +161,7 @@ double _coverageAt(
 ) {
   var covered = 0.0;
   for (final entry in cutBy) {
-    final alphaByte = _shownPixelAt(entry, point, surfaceResolver)?.alphaByte;
+    final alphaByte = _shownPixelAt(entry, point, surfaceResolver)?.alpha;
     if (alphaByte != null) {
       final alpha = alphaByte / 255.0;
       covered = alpha + covered * (1 - alpha);
@@ -284,14 +276,15 @@ int sampleCompositeColor({
     // screen. What separates the two modes is WHOSE pixels are read, not
     // whether they are finished: an ADJUSTMENT row is a different row and
     // still stays out of the layer mode (above).
+    //
+    // The row's own chain filters its pixel BEFORE its opacity meets the
+    // stack — the same order the paint routes use.
     final shown = _shownPixelAt(entry, point, surfaceResolver);
     if (shown == null) {
       continue;
     }
-    final (:rgba, :alphaByte) = shown;
-    var sourceR = ((rgba >> 24) & 0xFF).toDouble();
-    var sourceG = ((rgba >> 16) & 0xFF).toDouble();
-    var sourceB = ((rgba >> 8) & 0xFF).toDouble();
+    final (red: sourceR, green: sourceG, blue: sourceB, alpha: alphaByte) =
+        shown;
     // A row that clips to the layer below shows where its base is, at the
     // base's strength (I-92) — in the whole picture. The base is another
     // row, so a read of one row reads it as drawn, as with an adjustment.
@@ -309,25 +302,6 @@ int sampleCompositeColor({
     final alpha = alphaByte / 255.0 * entry.opacity * cutTo;
     if (alpha <= 0) {
       continue;
-    }
-    // The row's own chain filters its pixel BEFORE its opacity meets the
-    // stack — the same order the paint routes use.
-    //
-    // The LENIENT resolver: a chain of [brightness, blur] still reports
-    // the brightness. The strict one exists so a PAINT route can never
-    // mistake a colour matrix for the whole chain.
-    final matrix = resolveColorMatrixIgnoringSpatial(entry.effects);
-    if (matrix != null) {
-      final filtered = applyColorMatrixToStraightColor(
-        matrix,
-        sourceR,
-        sourceG,
-        sourceB,
-        alphaByte.toDouble(),
-      );
-      sourceR = filtered.r;
-      sourceG = filtered.g;
-      sourceB = filtered.b;
     }
     // Premultiplied src-over, coverage tracked alongside.
     r = sourceR * alpha + r * (1 - alpha);

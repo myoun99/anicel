@@ -166,6 +166,29 @@ void main() {
       );
     });
 
+    test('a MENU lane reads its word, takes a word back, and is no number '
+        '(I-132-Q6)', () {
+      final key = LayerEffect.defaults(
+        id: const EffectId('k'),
+        kind: EffectKind.colorKey,
+      );
+      final rows = effectPropertyLanes(
+        [key],
+        isExpanded: (_) => true,
+        valueAt: (effectId, parameterId, frameIndex) =>
+            parameterId == 'keyOperation' ? 1 : 0,
+      );
+      final lane = rows.firstWhere((row) => row.label == 'Key Operation');
+      expect(lane.valueKind, PropertyLaneValueKind.choice);
+      expect(lane.choices, ['Key Colors', 'Keep Colors']);
+      expect(lane.valueLabel!(0), 'Keep Colors');
+      expect(lane.scrubValue, isNull, reason: 'nothing between two words');
+      final spec = EffectKind.colorKey.parameterSpec('keyOperation')!;
+      expect(parseEffectLaneValue(spec, 'Keep Colors'), 1);
+      expect(parseEffectLaneValue(spec, 'Key Colors'), 0);
+      expect(parseEffectLaneValue(spec, '1'), isNull);
+    });
+
     test('scrubbing moves the value in the form the editor parses', () {
       final spec = EffectKind.hueSaturation.parameters.first;
       expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
@@ -313,6 +336,54 @@ void main() {
         scaleLinked: false,
       )!;
       expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
+    });
+
+    test('a MENU lane\'s keys are steps — by its space, whatever sides a key '
+        'wears (I-132-Q6 「키프레임은 계단」)', () {
+      // Plain linear keys, as a paste from a number lane would bring them.
+      LayerEffect keyed(String parameterId) => LayerEffect(
+        id: const EffectId('k'),
+        kind: EffectKind.colorKey,
+        parameters: {
+          'amount': EffectParameter(value: 100),
+          parameterId: EffectParameter(
+            track: PropertyTrack<double>(
+              keys: {
+                0: const PropertyKey<double>(0),
+                10: const PropertyKey<double>(1),
+              },
+            ),
+          ),
+        },
+      );
+      double at(String parameterId, int frame) => resolveLayerEffectsAt(
+        effects: [keyed(parameterId)],
+        frameIndex: frame,
+      ).single.parameter(parameterId);
+
+      expect(at('keyOperation', 9), 0);
+      expect(at('keyOperation', 10), 1);
+      // ⛔The control: the same keys on a number lane pass between.
+      expect(at('tolerance', 5), closeTo(0.5, 1e-9));
+    });
+
+    test('a pick on a MENU lane keys its word, leaving the key a hold', () {
+      final laneId = effectLaneId(const EffectId('k'), 'keyOperation');
+      final edited = effectsWithLaneValueEdited(
+        [
+          LayerEffect.defaults(
+            id: const EffectId('k'),
+            kind: EffectKind.colorKey,
+          ),
+        ],
+        laneId: laneId,
+        frameIndex: 4,
+        input: 'Keep Colors',
+        scaleLinked: false,
+      )!;
+      final key = edited.single.parameterOf('keyOperation').track.keyAt(4)!;
+      expect(key.value, 1);
+      expect(key.outgoing, KeyExit.hold);
     });
 
     test('the toggle keys and unkeys like the transform lanes', () {

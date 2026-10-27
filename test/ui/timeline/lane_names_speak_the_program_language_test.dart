@@ -59,7 +59,7 @@ void main() {
     LayerEffect.defaults(id: const EffectId('blur'), kind: EffectKind.blur),
     LayerEffect.defaults(
       id: const EffectId('key'),
-      kind: EffectKind.deleteColor,
+      kind: EffectKind.colorKey,
     ),
   ];
 

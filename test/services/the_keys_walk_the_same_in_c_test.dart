@@ -9,8 +9,9 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
-import 'package:anicel/src/services/cel_source_effect_pass.dart';
 import 'package:anicel/src/services/cel_surface_as_shown.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart'
+    show pixelThroughChain;
 
 import '../helpers/native_engine_path.dart';
 
@@ -83,46 +84,50 @@ void main() {
     },
   );
 
-  ResolvedLayerEffect key(EffectKind kind, List<double> values) =>
-      ResolvedLayerEffect(kind: kind, values: values);
+  // The Color Key's values after its Key Operation: Key Colors, or Keep
+  // Colors (I-132-Q2 — it gives back what the keys before it took).
+  ResolvedLayerEffect keyOut(List<double> values) =>
+      ResolvedLayerEffect(kind: EffectKind.colorKey, values: [0, ...values]);
+  ResolvedLayerEffect keep(List<double> values) =>
+      ResolvedLayerEffect(kind: EffectKind.colorKey, values: [1, ...values]);
 
   final chains = <String, List<ResolvedLayerEffect>>{
     'the paper away, exactly': [
-      key(EffectKind.deleteColor, const [64, 192, 96, 0, 100]),
+      keyOut(const [64, 192, 96, 0, 100]),
     ],
     'the paper away within 10, at 37%': [
-      key(EffectKind.deleteColor, const [64, 192, 96, 10, 37]),
+      keyOut(const [64, 192, 96, 10, 37]),
     ],
-    'all but black, at 5%': [
-      key(EffectKind.keepColor, const [0, 0, 0, 0, 5]),
+    'the paper away, and 5% of it back': [
+      keyOut(const [64, 192, 96, 10, 100]),
+      keep(const [64, 192, 96, 10, 5]),
     ],
     'white within 40, at half': [
-      key(EffectKind.deleteColor, const [255, 255, 255, 40, 50]),
+      keyOut(const [255, 255, 255, 40, 50]),
     ],
-    'a chain: the paper, then all but near black': [
-      key(EffectKind.deleteColor, const [64, 192, 96, 10, 37]),
-      key(EffectKind.keepColor, const [0, 0, 0, 30, 60]),
-      key(EffectKind.deleteColor, const [200, 40, 10, 20, 100]),
+    'a chain: the paper, the closest of it back, then red away': [
+      keyOut(const [64, 192, 96, 10, 37]),
+      keep(const [64, 192, 96, 4, 60]),
+      keyOut(const [200, 40, 10, 20, 100]),
     ],
-    'longer than one table holds, the last keeping every pixel': [
+    'longer than one table holds, the last giving back half of all': [
       for (var k = 0; k < 32; k += 1)
-        key(EffectKind.deleteColor, [
+        keyOut([
           (k * 41 % 256).toDouble(),
           (k * 89 % 256).toDouble(),
           (k * 23 % 256).toDouble(),
           (k % 5 * 12).toDouble(),
           (30 + k * 3 % 71).toDouble(),
         ]),
-      key(EffectKind.keepColor, const [128, 128, 128, 255, 100]),
+      keep(const [128, 128, 128, 255, 50]),
     ],
     'longer than one table holds': [
       for (var k = 0; k < 40; k += 1)
-        key(k % 5 == 0 ? EffectKind.keepColor : EffectKind.deleteColor, [
+        (k % 5 == 0 ? keep : keyOut)([
           (k * 53 % 256).toDouble(),
           (k * 97 % 256).toDouble(),
           (k * 31 % 256).toDouble(),
-          // Keeps wide enough to share some colours: narrow keeps in a row
-          // each take what the others keep, and leave no ink at all.
+          // Keeps wide enough to reach what the keys before them took.
           (k % 7 * 9 + (k % 5 == 0 ? 128 : 0)).toDouble(),
           (20 + k * 2 % 81).toDouble(),
         ]),
@@ -167,13 +172,13 @@ void main() {
         final dart = bytesOf(inDart.tileAt(coord)!);
         expect(bytesOf(inC.tileAt(coord)!), dart, reason: '$coord');
         for (var o = 0; o < pixels.length; o += 4 * sampled) {
-          final alpha = celSourceEffectAlphaFor(
+          final alpha = pixelThroughChain(
             chain,
             red: pixels[o],
             green: pixels[o + 1],
             blue: pixels[o + 2],
             alpha: pixels[o + 3],
-          );
+          ).alpha;
           expect(dart[o + 3], alpha, reason: '$coord, byte $o');
           expect(dart.sublist(o, o + 3), pixels.sublist(o, o + 3));
           // The tile with no ink keeps every pixel whatever the keys say.

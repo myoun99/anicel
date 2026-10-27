@@ -74,7 +74,7 @@ void main() {
   /// [ground] taken away.
   LayerEffect groundKey() => LayerEffect(
     id: const EffectId('sheet-ground-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
     parameters: {
       'keyRed': EffectParameter(value: (ground >> 16 & 0xFF).toDouble()),
       'keyGreen': EffectParameter(value: (ground >> 8 & 0xFF).toDouble()),

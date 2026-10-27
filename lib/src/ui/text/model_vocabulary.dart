@@ -114,6 +114,12 @@ extension EffectParameterSpecWords on EffectParameterSpec {
       AppStrings.of(language).effectParameterName(id, label);
 }
 
+/// A word of a menu parameter (I-132-Q6).
+extension EffectChoiceWords on EffectChoice {
+  String labelFor(AppLanguage language) =>
+      AppStrings.of(language).effectChoiceName(id, label);
+}
+
 extension SelectionCombineModeWords on SelectionCombineMode {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).selectionModeName(name, label);

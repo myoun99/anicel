@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_editing.dart'
     show parseArgbInput;
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart' show PanelFlyoutButton;
 import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
@@ -254,7 +255,72 @@ void main() {
     );
     expect(commits, isEmpty, reason: 'drawing a swatch commits nothing');
   });
+
+  testWidgets('🚨a menu lane draws the shared list, and a pick keys its word '
+      '(I-132-Q6 「값이 메뉴」)', (tester) async {
+    final commits = <({String laneId, String input})>[];
+    final layer = Layer(
+      id: const LayerId('cel'),
+      name: 'A',
+      kind: LayerKind.animation,
+      frames: const [],
+    );
+    const lane = PropertyLaneRow(
+      laneId: 'fx:k:keyOperation',
+      label: 'Key Operation',
+      keyMarks: {},
+      valueKind: PropertyLaneValueKind.choice,
+      choices: ['Key Colors', 'Keep Colors'],
+      valueLabel: _keyColors,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 40,
+            child: TimelineLaneControlsRow(
+              layer: layer,
+              lane: lane,
+              metrics: TimelineGridMetrics.defaults,
+              laneEdit: PropertyLaneEditCallbacks(
+                onToggleKeyAt: (_, _, _) {},
+                onSetValue: (_, row, _, input) =>
+                    commits.add((laneId: row.laneId, input: input)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(
+      const ValueKey<String>('timeline-lane-choice-cel-fx:k:keyOperation'),
+    );
+    expect(button, findsOneWidget, reason: 'the value cell IS the list');
+    expect(tester.widget<PanelFlyoutButton>(button).label, 'Key Colors');
+    expect(
+      find.byKey(
+        const ValueKey<String>('timeline-lane-value-cel-fx:k:keyOperation'),
+      ),
+      findsNothing,
+      reason: 'not ALSO a number box — one cell, one control',
+    );
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(
+        const ValueKey<String>('timeline-lane-choice-cel-fx:k:keyOperation-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(commits, [(laneId: 'fx:k:keyOperation', input: 'Keep Colors')]);
+  });
 }
+
+String _keyColors(int frameIndex) => 'Key Colors';
 
 String _off(int frameIndex) => 'off';
 

@@ -76,7 +76,8 @@ List<LayerEffect>? effectsWithLaneKeyToggled(
     return parameter.copyWith(
       track: parameter.track.withKey(
         frameIndex,
-        spec.clamp(parameter.resolveAt(frameIndex)),
+        spec.clamp(parameter.resolveAt(frameIndex, space: spec.keySpace)),
+        outgoing: spec.keyExit,
       ),
     );
   });
@@ -181,7 +182,11 @@ List<LayerEffect>? effectsWithLaneValueEdited(
       return null;
     }
     return parameter.copyWith(
-      track: parameter.track.withKey(frameIndex, value),
+      track: parameter.track.withKey(
+        frameIndex,
+        value,
+        outgoing: spec.keyExit,
+      ),
     );
   });
 }
@@ -239,7 +244,11 @@ List<LayerEffect>? effectsWithGroupReset(
         if (keyedFramesOnly && parameter.track.keyAt(frame) == null) {
           continue;
         }
-        track = track.withKey(frame, spec.defaultValue);
+        track = track.withKey(
+          frame,
+          spec.defaultValue,
+          outgoing: spec.keyExit,
+        );
       }
       if (track == parameter.track) {
         continue;

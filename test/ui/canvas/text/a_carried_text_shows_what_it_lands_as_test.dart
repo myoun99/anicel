@@ -86,7 +86,7 @@ void main() {
   /// [patterned] ink mix into it, and nowhere else much.
   LayerEffect inkKey() => LayerEffect(
     id: const EffectId('text-tool-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
     parameters: {
       'keyRed': EffectParameter(value: 160),
       'keyGreen': EffectParameter(value: 100),
@@ -281,7 +281,7 @@ void main() {
           effects: [
             LayerEffect(
               id: const EffectId('text-tool-key'),
-              kind: EffectKind.deleteColor,
+              kind: EffectKind.colorKey,
               parameters: {
                 'keyRed': EffectParameter(value: 255),
                 'amount': EffectParameter(value: 100),
@@ -342,7 +342,7 @@ void main() {
         'the row\'s new keys — and so do the texts above it', (tester) async {
       LayerEffect keyOf({double red = 0, double green = 0}) => LayerEffect(
         id: const EffectId('text-tool-key'),
-        kind: EffectKind.deleteColor,
+        kind: EffectKind.colorKey,
         parameters: {
           'keyRed': EffectParameter(value: red),
           'keyGreen': EffectParameter(value: green),
@@ -573,8 +573,8 @@ void main() {
         'in their place (F-344-Q3)', () async {
       final keys = [
         ResolvedLayerEffect(
-          kind: EffectKind.deleteColor,
-          values: const [128, 128, 128, 100, 100],
+          kind: EffectKind.colorKey,
+          values: const [0, 128, 128, 128, 100, 100],
         ),
       ];
       // Ink everywhere but (2, 2), where the text lands over nothing.

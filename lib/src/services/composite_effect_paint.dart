@@ -178,6 +178,50 @@ List<double>? resolveColorMatrixIgnoringSpatial(
   return matrix;
 }
 
+/// ONE straight pixel through [effects] IN THEIR ORDER — what the composite
+/// draws there, as the eyedropper reads it: a colour effect's matrix, a key
+/// over its run's input ([resolveCompositeEffectPlan]'s runs — the keys
+/// standing together), and the spatial ones skipped, since one pixel cannot
+/// reach its neighbours ([resolveColorMatrixIgnoringSpatial]'s reason).
+///
+/// ↩️The eyedropper ran every key first and every matrix after, which read
+/// a key under a colour effect as if it stood above it — and every key of
+/// the chain as one run.
+({double red, double green, double blue, int alpha}) pixelThroughChain(
+  List<ResolvedLayerEffect> effects, {
+  required int red,
+  required int green,
+  required int blue,
+  required int alpha,
+}) {
+  var (r, g, b) = (red.toDouble(), green.toDouble(), blue.toDouble());
+  var a = alpha;
+  int? runInput;
+  for (final effect in effects) {
+    final key = CelColorKey.fromResolved(effect);
+    if (key == null) {
+      runInput = null;
+      final part = _paintPartOf(effect, DrawSpace.canvas);
+      if (part is _ColourPart) {
+        final filtered = applyColorMatrixToStraightColor(
+          part.next,
+          r,
+          g,
+          b,
+          a.toDouble(),
+        );
+        (r, g, b) = (filtered.r, filtered.g, filtered.b);
+      }
+    } else if (!key.isNoOp) {
+      runInput ??= a;
+      a = key.alphaFor(_byte(r), _byte(g), _byte(b), a, original: runInput);
+    }
+  }
+  return (red: r, green: g, blue: b, alpha: a);
+}
+
+int _byte(double channel) => channel.round().clamp(0, 255);
+
 /// What ONE sampled effect is to a paint — the one place each kind's paint
 /// is written (I-132 「fx 하나 = 한 곳」): a colour matrix, a spatial filter, or
 /// nothing a paint can carry. Both readers of a chain — the painter
@@ -232,7 +276,7 @@ _PaintPart _paintPartOf(ResolvedLayerEffect effect, DrawSpace space) =>
       // color key changes ALPHA by a threshold test — there is no color
       // matrix for it, the same way there is none for a blur; the eyedropper
       // applies the keys itself (`CelColorKey.alphaFor`).
-      EffectKind.deleteColor || EffectKind.keepColor => const _SplitPart(
+      EffectKind.colorKey => const _SplitPart(
         'Source-pixel effects must be split off before a paint is '
         'resolved — see splitSourceEffects.',
       ),
@@ -373,20 +417,23 @@ CompositeEffectPaint resolveCompositeEffectPaint(
 /// buffer edge it was meant to bleed past.
 /// One raster a chain takes before the draw that composites it.
 ///
-/// A step is a colour KEY and then the painted effects that follow it, in one
-/// draw: a `ui.Paint` applies its shader, then its colour filter, then its
-/// image filter, so "key, then blur" is one raster and needs no second.
-/// "Blur, then key" is two, and the first of them has no key.
+/// A step is a RUN of colour keys — the keys standing together in the chain —
+/// and then the painted effects that follow it, with the last key's draw: a
+/// `ui.Paint` applies its shader, then its colour filter, then its image
+/// filter, so "key, then blur" is one raster and needs no second. "Blur, then
+/// key" is two, and the first of them has no key.
 @immutable
 class CompositeEffectStep {
-  const CompositeEffectStep({this.key, required this.then});
+  const CompositeEffectStep({this.keys = const [], required this.then});
 
-  /// Applied first, by a fragment shader over the image handed in.
-  final CelColorKey? key;
+  /// Applied first, in order, each by a fragment shader over the image the
+  /// key before it made and the image handed in — what a restore gives back
+  /// to ([CelColorKey.alphaFor]).
+  final List<CelColorKey> keys;
 
-  /// Applied after [key], in the same draw. ⛔UNRESOLVED, because a blur's
-  /// radii belong to the RASTER this step runs in, and only the renderer
-  /// knows that scale.
+  /// Applied after [keys], in the last one's draw. ⛔UNRESOLVED, because a
+  /// blur's radii belong to the RASTER this step runs in, and only the
+  /// renderer knows that scale.
   final List<ResolvedLayerEffect> then;
 }
 
@@ -443,9 +490,9 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   DrawSpace space = DrawSpace.canvas,
   int? tint,
 }) {
-  // Each run is "the key that opens it, then the painted effects until the
+  // Each run is "the keys that open it, then the painted effects until the
   // next key". The first run has no key.
-  final keys = <CelColorKey?>[null];
+  final keys = <List<CelColorKey>>[const []];
   final runs = <List<ResolvedLayerEffect>>[<ResolvedLayerEffect>[]];
   for (final effect in effects) {
     final key = CelColorKey.fromResolved(effect);
@@ -459,7 +506,13 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     if (key.isNoOp) {
       continue;
     }
-    keys.add(key);
+    // A key right after a key joins its run: a restore gives back what the
+    // keys before it took, so they share the picture they started from.
+    if (keys.length > 1 && runs.last.isEmpty) {
+      keys.last.add(key);
+      continue;
+    }
+    keys.add([key]);
     runs.add(<ResolvedLayerEffect>[]);
   }
   final last = runs.length - 1;
@@ -481,7 +534,7 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   var outset = finalPaint.outsetPixels;
   final steps = <CompositeEffectStep>[];
   for (var i = 0; i < last; i += 1) {
-    if (keys[i] == null && runs[i].isEmpty) {
+    if (keys[i].isEmpty && runs[i].isEmpty) {
       // The leading run is empty whenever the chain opens with a key, which
       // is the ordinary shape.
       continue;
@@ -490,10 +543,10 @@ CompositeEffectPlan resolveCompositeEffectPlan(
       runs[i],
       space: space,
     ).outsetPixels;
-    steps.add(CompositeEffectStep(key: keys[i], then: runs[i]));
+    steps.add(CompositeEffectStep(keys: keys[i], then: runs[i]));
   }
   // The last key has to happen before the final draw carries what follows it.
-  steps.add(CompositeEffectStep(key: keys[last], then: const []));
+  steps.add(CompositeEffectStep(keys: keys[last], then: const []));
   return CompositeEffectPlan._(
     preSteps: steps,
     finalPaint: finalPaint,

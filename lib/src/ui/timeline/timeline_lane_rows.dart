@@ -3,6 +3,8 @@ import '../widgets/boolean_dot.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart' show FieldSlider;
 import '../widgets/instant_tap_region.dart';
+import '../widgets/panel_flyout.dart'
+    show PanelFlyoutButton, PanelFlyoutChoice, PanelFlyoutValueChoices;
 import '../widgets/rail_glyph_button.dart';
 import '../widgets/scale_chain_button.dart';
 import '../widgets/tick_layer.dart';
@@ -494,6 +496,39 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           color: parseArgbInput(valueLabel),
           onChanged: (argb) => set(formatLaneColorValue(argb)),
           onNone: lane.colorCanBeNone ? () => set('none') : null,
+        ),
+      );
+    }
+    // 🗣️I-132-Q6 (유저 2026-10-27): 「레인 하나 — 값이 메뉴, 키프레임은
+    // 계단」. A menu value has no digits to scrub or type, so the cell is
+    // the app's one list picker, and a pick keys the word there.
+    if (lane.valueKind == PropertyLaneValueKind.choice &&
+        laneEdit?.onSetValue != null) {
+      final words = lane.choices;
+      return Padding(
+        padding: const EdgeInsets.only(right: FieldSlider.handsReach),
+        child: PanelFlyoutButton(
+          key: ValueKey<String>(
+            '$_keyPrefix-lane-choice-${layer.id}-${lane.laneId}',
+          ),
+          label: valueLabel,
+          expand: true,
+          axis: widget.axis,
+          entriesBuilder: () => [
+            for (var index = 0; index < words.length; index++) index,
+          ].asFlyoutValueChoices(
+            current: words.indexOf(valueLabel),
+            choiceOf: (index) => PanelFlyoutChoice(
+              key: '$_keyPrefix-lane-choice-${layer.id}-${lane.laneId}-$index',
+              label: words[index],
+            ),
+            onPicked: (index) => laneEdit!.onSetValue!.call(
+              layer,
+              lane,
+              _frame,
+              words[index],
+            ),
+          ),
         ),
       );
     }

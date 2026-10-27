@@ -69,15 +69,18 @@ void main() {
     return done.future;
   }
 
-  /// Runs the shader over [source] and returns the raw (premultiplied) bytes.
+  /// Runs the shader over [source] and returns the raw (premultiplied) bytes
+  /// — [original] the run's input, [source] itself unless it is given.
   Future<Uint8List> keyed(
     ui.Image source,
     CelColorKey key,
     int width,
-    int height,
-  ) async {
+    int height, {
+    ui.Image? original,
+  }) async {
     final shader = ColourKeyShader.shaderFor(
       source: source,
+      original: original ?? source,
       key: key,
       width: width.toDouble(),
       height: height.toDouble(),
@@ -103,23 +106,34 @@ void main() {
     int blue = 0,
     required int tolerance,
     required double amount,
-    bool keepsMatches = false,
+    CelKeyOperation operation = CelKeyOperation.eraseMatches,
   }) => CelColorKey(
     red: red,
     green: green,
     blue: blue,
     tolerance: tolerance,
     amount: amount,
-    keepsMatches: keepsMatches,
+    operation: operation,
   );
+
+  /// [straight]'s colours with every alpha [alpha] — what a run's earlier
+  /// keys left of a picture, for a restore to give back to.
+  Future<ui.Image> withAlpha(Uint8List straight, int alpha, int w, int h) {
+    final faded = Uint8List.fromList(straight);
+    for (var i = 3; i < faded.length; i += 4) {
+      faded[i] = alpha;
+    }
+    return imageFromStraight(faded, w, h);
+  }
 
   group('the colour decision, swept', () {
     /// x = the pixel's value in the channel, y = the key's value. One image
-    /// covers every (value, key) pair for a tolerance.
+    /// covers every (value, key) pair for a tolerance. A restore runs over
+    /// the picture all taken, giving back to it whole.
     Future<void> sweepChannel({
       required int channel,
       required int tolerance,
-      required bool keepsMatches,
+      CelKeyOperation operation = CelKeyOperation.eraseMatches,
     }) async {
       const side = 256;
       final straight = Uint8List(side * side * 4);
@@ -132,7 +146,12 @@ void main() {
           straight[at + 3] = 255;
         }
       }
-      final source = await imageFromStraight(straight, side, side);
+      final original = await imageFromStraight(straight, side, side);
+      final restores = operation == CelKeyOperation.restoreMatches;
+      final source = restores
+          ? await withAlpha(straight, 0, side, side)
+          : original;
+      final sourceAlpha = restores ? 0 : 255;
       var mismatches = 0;
       var erasedSeen = 0;
       var keptSeen = 0;
@@ -144,15 +163,27 @@ void main() {
           tolerance: tolerance,
           // Full strength: the decision, not the mix.
           amount: 1,
-          keepsMatches: keepsMatches,
+          operation: operation,
         );
-        final bytes = await keyed(source, key, side, side);
+        final bytes = await keyed(
+          source,
+          key,
+          side,
+          side,
+          original: original,
+        );
         for (var value = 0; value < side; value++) {
           final at = (keyValue * side + value) * 4;
           final red = channel == 0 ? value : 0;
           final green = channel == 1 ? value : 0;
           final blue = channel == 2 ? value : 0;
-          final expected = key.alphaFor(red, green, blue, 255);
+          final expected = key.alphaFor(
+            red,
+            green,
+            blue,
+            sourceAlpha,
+            original: 255,
+          );
           if (bytes[at + 3] != expected) {
             mismatches += 1;
           }
@@ -163,7 +194,10 @@ void main() {
           }
         }
       }
-      source.dispose();
+      if (restores) {
+        source.dispose();
+      }
+      original.dispose();
       // ⛔Prove the sweep saw BOTH answers. A tolerance that erased
       // everything (or nothing) would agree with a shader that always said
       // the same thing.
@@ -172,30 +206,29 @@ void main() {
       expect(
         mismatches,
         0,
-        reason: 'channel $channel at tolerance $tolerance '
-            '(keepsMatches: $keepsMatches): the GPU key must answer exactly '
-            'what CelColorKey.alphaFor answers, for every value against '
-            'every key',
+        reason: 'channel $channel at tolerance $tolerance ($operation): the '
+            'GPU key must answer exactly what CelColorKey.alphaFor answers, '
+            'for every value against every key',
       );
     }
 
     for (final tolerance in const [0, 1, 17, 128, 254]) {
       test('red, every value against every key, tolerance $tolerance', () async {
-        await sweepChannel(
-          channel: 0,
-          tolerance: tolerance,
-          keepsMatches: false,
-        );
+        await sweepChannel(channel: 0, tolerance: tolerance);
       });
     }
 
-    test('KEEP is the same comparison with the opposite answer', () async {
-      await sweepChannel(channel: 0, tolerance: 17, keepsMatches: true);
+    test('KEEP gives back by the same comparison (I-132-Q2)', () async {
+      await sweepChannel(
+        channel: 0,
+        tolerance: 17,
+        operation: CelKeyOperation.restoreMatches,
+      );
     });
 
     test('green and blue answer the same as red does', () async {
-      await sweepChannel(channel: 1, tolerance: 17, keepsMatches: false);
-      await sweepChannel(channel: 2, tolerance: 17, keepsMatches: false);
+      await sweepChannel(channel: 1, tolerance: 17);
+      await sweepChannel(channel: 2, tolerance: 17);
     });
 
     test('the widest gap decides, not the sum and not the first', () async {
@@ -235,6 +268,7 @@ void main() {
             straight[at + 1],
             straight[at + 2],
             255,
+            original: 255,
           );
           if (bytes[at + 3] != expected) {
             mismatches += 1;
@@ -344,7 +378,13 @@ void main() {
         // ⚠️The straight RGB the shader sees is what SURVIVED premultiply,
         // not what went in — but tolerance 255 matches whatever it is, so
         // the colour cannot change the answer and the alpha is the subject.
-        final expected = key.alphaFor(200, 120, 40, alpha);
+        final expected = key.alphaFor(
+          200,
+          120,
+          40,
+          alpha,
+          original: alpha,
+        );
         if (bytes[at + 3] != expected) {
           mismatches += 1;
           if (worst.length < 5) {
@@ -361,6 +401,70 @@ void main() {
       mismatches,
       0,
       reason: 'the GPU alpha must be the CPU alpha exactly. First '
+          'disagreements: ${worst.join('; ')}',
+    );
+  });
+
+  test('the restore\'s arithmetic, every alpha taken against every amount',
+      () async {
+    // 🚨KEEP COLORS (I-132-Q2) is the erase's arithmetic over what is
+    // MISSING — `original - erased(original - alpha)` — so the same float
+    // can go wrong the same way. The run's input stands whole at 255 and
+    // the picture keyed so far at every alpha under it, one column each.
+    const width = 256;
+    const height = 101;
+    final straight = Uint8List(width * height * 4);
+    for (var amount = 0; amount < height; amount++) {
+      for (var alpha = 0; alpha < width; alpha++) {
+        final at = (amount * width + alpha) * 4;
+        straight[at] = 200;
+        straight[at + 1] = 120;
+        straight[at + 2] = 40;
+        straight[at + 3] = alpha;
+      }
+    }
+    final source = await imageFromStraight(straight, width, height);
+    final original = await withAlpha(straight, 255, width, height);
+    var mismatches = 0;
+    var givenBack = 0;
+    final worst = <String>[];
+    for (var amount = 0; amount < height; amount++) {
+      final key = keyOf(
+        tolerance: 255,
+        amount: amount / 100,
+        operation: CelKeyOperation.restoreMatches,
+      );
+      final bytes = await keyed(
+        source,
+        key,
+        width,
+        height,
+        original: original,
+      );
+      for (var alpha = 0; alpha < width; alpha++) {
+        final at = (amount * width + alpha) * 4;
+        final expected = key.alphaFor(200, 120, 40, alpha, original: 255);
+        if (expected != alpha) {
+          givenBack += 1;
+        }
+        if (bytes[at + 3] != expected) {
+          mismatches += 1;
+          if (worst.length < 5) {
+            worst.add(
+              'alpha $alpha amount ${amount / 100}: '
+              'gpu ${bytes[at + 3]} cpu $expected',
+            );
+          }
+        }
+      }
+    }
+    source.dispose();
+    original.dispose();
+    expect(givenBack, greaterThan(0), reason: '⛔liveness: a keep gives back');
+    expect(
+      mismatches,
+      0,
+      reason: 'the GPU restore must be the CPU restore exactly. First '
           'disagreements: ${worst.join('; ')}',
     );
   });
@@ -397,6 +501,7 @@ void main() {
     expect(
       () => ColourKeyShader.shaderFor(
         source: _throwawayImage(),
+        original: _throwawayImage(),
         key: keyOf(tolerance: 0, amount: 1),
         width: 1,
         height: 1,

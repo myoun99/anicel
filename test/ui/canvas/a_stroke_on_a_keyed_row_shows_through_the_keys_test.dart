@@ -44,8 +44,8 @@ void main() {
   /// The ground keyed away — a sheet's paper, the everyday case.
   final keyed = [
     ResolvedLayerEffect(
-      kind: EffectKind.deleteColor,
-      values: const [64, 192, 96, 10, 100],
+      kind: EffectKind.colorKey,
+      values: const [0, 64, 192, 96, 10, 100],
     ),
   ];
 
@@ -317,8 +317,8 @@ void main() {
       const <ResolvedLayerEffect>[],
       [
         ResolvedLayerEffect(
-          kind: EffectKind.deleteColor,
-          values: const [64, 192, 96, 10, 0],
+          kind: EffectKind.colorKey,
+          values: const [0, 64, 192, 96, 10, 0],
         ),
       ],
     ]) {

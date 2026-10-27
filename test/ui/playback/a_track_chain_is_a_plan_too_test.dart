@@ -45,7 +45,7 @@ void main() {
 
   LayerEffect deleteWhite() => LayerEffect(
     id: const EffectId('fx-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
     parameters: {
       'keyRed': EffectParameter(value: 255),
       'keyGreen': EffectParameter(value: 255),

@@ -45,16 +45,21 @@ class ColourKeyShader {
   }
 
   /// A shader that reads [source] and answers [key] for every pixel of a
-  /// [width] x [height] draw.
+  /// [width] x [height] draw, [original] being its run's input — [source]
+  /// itself for the run's first key ([CelColorKey.alphaFor]).
   ///
   /// ⚠️The caller owns the returned shader and must `dispose()` it after the
   /// draw that used it is recorded.
   static ui.FragmentShader shaderFor({
     required ui.Image source,
+    required ui.Image original,
     required CelColorKey key,
     required double width,
     required double height,
   }) {
+    // The button's 색 유지 edits bytes through its own kernel; no chain
+    // holds a key that erases what its colour does not name.
+    assert(key.operation != CelKeyOperation.eraseOthers);
     final program = _program;
     if (program == null) {
       throw StateError(
@@ -75,8 +80,12 @@ class ColourKeyShader {
     shader.setFloat(4, key.blue.toDouble());
     shader.setFloat(5, key.tolerance.toDouble());
     shader.setFloat(6, key.amount);
-    shader.setFloat(7, key.keepsMatches ? 1 : 0);
+    shader.setFloat(
+      7,
+      key.operation == CelKeyOperation.restoreMatches ? 1 : 0,
+    );
     shader.setImageSampler(0, source);
+    shader.setImageSampler(1, original);
     return shader;
   }
 }

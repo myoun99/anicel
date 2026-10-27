@@ -44,6 +44,12 @@ enum PropertyLaneValueKind {
   /// show and to reach a state no colour wheel has. That is the picker's
   /// 「없음」 row (`Q-f22-none`, 유저 답 1번), not a second kind here.
   color,
+
+  /// One of [PropertyLaneRow.choices]: the value cell is the shared list's
+  /// button (`PanelFlyoutButton`), reading the word held and opening the
+  /// rest — 🗣️I-132-Q6 (유저 2026-10-27): 「값이 메뉴」. A flag's ring for a
+  /// list: nothing between two words to scrub or type through.
+  choice,
 }
 
 /// A [PropertyLaneValueKind.boolean] lane's word for [on] — what its row
@@ -84,6 +90,7 @@ class PropertyLaneRow {
     this.valueLabel,
     this.valueKind = PropertyLaneValueKind.number,
     this.colorCanBeNone = false,
+    this.choices = const [],
     this.scrubValue,
     this.linkable = false,
     this.showsKeyNavigator = true,
@@ -124,6 +131,11 @@ class PropertyLaneRow {
   /// find out: the value cell asks the row it was handed, exactly as it
   /// asks it what kind of value it holds.
   final bool colorCanBeNone;
+
+  /// The words a [PropertyLaneValueKind.choice] lane holds one of, in its
+  /// list's order — what its value cell reads ([valueLabel]) and writes
+  /// back. Empty on every other lane.
+  final List<String> choices;
 
   /// R5 #7: a group header may show a live PREVIEW of what it draws, in the
   /// region right of the fx column. Two fixed runs — the name and the

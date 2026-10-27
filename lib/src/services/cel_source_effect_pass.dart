@@ -33,6 +33,25 @@ import '../models/layer_effect.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 
+/// What a [CelColorKey] does to the pixels its colour names.
+///
+/// 🚨THREE ANSWERS, NOT A FLAG. `keepsMatches` answered two questions: for
+/// the BUTTON 색 유지 it erased every pixel the colour did NOT name, and the
+/// fx Keep Color meant the same. I-132-Q2 (유저 2026-10-27: 「하나로 + AE
+/// 뜻」) made the fx's keep AE's — it gives back what the keys before it
+/// erased — and the button's stays what it was.
+enum CelKeyOperation {
+  /// Erases what the colour names: the fx's Key Colors, the button 색 삭제.
+  eraseMatches,
+
+  /// Erases what the colour does NOT name: the button 색 유지 alone.
+  eraseOthers,
+
+  /// Gives back, of what the colour names, what the keys before it in its
+  /// run erased: the fx's Keep Colors.
+  restoreMatches,
+}
+
 /// One color key sampled at one frame — the parameters as the pixel loop
 /// wants them (bytes, not the spec's doubles).
 ///
@@ -47,7 +66,7 @@ class CelColorKey {
     required this.blue,
     required this.tolerance,
     required this.amount,
-    required this.keepsMatches,
+    required this.operation,
   }) : _keptFraction = _asFloat32(1 - _asFloat32(amount));
 
   /// `1 - amount`, ROUNDED TO 32-BIT FLOAT at every step.
@@ -88,7 +107,9 @@ class CelColorKey {
       blue: _byte(effect.parameter('keyBlue')),
       tolerance: _byte(effect.parameter('tolerance')),
       amount: (effect.parameter('amount') / 100).clamp(0.0, 1.0),
-      keepsMatches: effect.kind == EffectKind.keepColor,
+      operation: effect.parameter('keyOperation').round() == 0
+          ? CelKeyOperation.eraseMatches
+          : CelKeyOperation.restoreMatches,
     );
   }
 
@@ -111,9 +132,7 @@ class CelColorKey {
   /// effect do nothing.
   final double amount;
 
-  /// True for [EffectKind.keepColor] — the same comparison, opposite
-  /// answer.
-  final bool keepsMatches;
+  final CelKeyOperation operation;
 
   bool get isNoOp => amount <= 0;
 
@@ -141,7 +160,24 @@ class CelColorKey {
   /// ⛔The full-strength case is NOT a branch. `_keptFraction` is 0 there and
   /// the arithmetic ([_erased]) lands on 0 by itself — a second path would be
   /// a second place for the shader to fail to match.
-  int alphaFor(int red, int green, int blue, int alpha) {
+  ///
+  /// [original] is the alpha the pixel had before its RUN of keys — the keys
+  /// standing together in the chain. A restore gives back, by Amount, what
+  /// the run took of it: `original - erased(original - alpha)`, the erase's
+  /// own arithmetic over what is missing, so a restore with nothing taken
+  /// before it changes nothing.
+  int alphaFor(
+    int red,
+    int green,
+    int blue,
+    int alpha, {
+    required int original,
+  }) {
+    if (operation == CelKeyOperation.restoreMatches) {
+      return matches(red, green, blue)
+          ? original - _erased(original - alpha)
+          : alpha;
+    }
     if (alpha == 0 || !erases(red, green, blue)) {
       return alpha;
     }
@@ -161,8 +197,11 @@ class CelColorKey {
   /// their alpha. Reading alpha here (even as an "already empty, skip it"
   /// shortcut) makes the undo walk shorter than the forward one and the
   /// recipe lands on the wrong pixels. A test caught exactly that.
-  bool erases(int red, int green, int blue) =>
-      matches(red, green, blue) != keepsMatches;
+  bool erases(int red, int green, int blue) => switch (operation) {
+    CelKeyOperation.eraseMatches => matches(red, green, blue),
+    CelKeyOperation.eraseOthers => !matches(red, green, blue),
+    CelKeyOperation.restoreMatches => false,
+  };
 
   /// The value identity a cache key needs. ⛔Values, not a hash: a hash
   /// collision here does not read stale, it MERGES two different pictures
@@ -173,7 +212,7 @@ class CelColorKey {
     blue.toDouble(),
     tolerance.toDouble(),
     amount,
-    if (keepsMatches) 1 else 0,
+    operation.index.toDouble(),
   ];
 
   static int _byte(double value) => value.round().clamp(0, 255);
@@ -242,38 +281,6 @@ List<double> celSourceEffectSignature(List<ResolvedLayerEffect> effects) {
 /// Whether two [celSourceEffectSignature] results say the same thing.
 bool sameCelSourceEffectSignature(List<double> a, List<double> b) =>
     listEquals(a, b);
-
-/// The alpha ONE pixel keeps after every color key in [effects].
-///
-/// ★The one-pixel door into the same kernel the tile pass walks. The
-/// eyedropper reads a single byte quad and must see the row's FINISHED
-/// pixels (유저 2026-08-27: *「레이어의 완성본 픽셀을 스포이드 찍도록 하고싶어.
-/// 그러니 fx가 싫으면 fx끄고 스포이드 찍도록」*) — routing it through
-/// [CelColorKey.alphaFor] rather than a second implementation is what keeps
-/// "is this pixel keyed out" from having two answers.
-int celSourceEffectAlphaFor(
-  List<ResolvedLayerEffect> effects, {
-  required int red,
-  required int green,
-  required int blue,
-  required int alpha,
-}) {
-  if (effects.isEmpty || alpha == 0) {
-    return alpha;
-  }
-  var next = alpha;
-  for (final effect in effects) {
-    final key = CelColorKey.fromResolved(effect);
-    if (key == null || key.isNoOp) {
-      continue;
-    }
-    next = key.alphaFor(red, green, blue, next);
-    if (next == 0) {
-      return 0;
-    }
-  }
-  return next;
-}
 
 /// [surface] with every color key in [effects] applied, or [surface] itself
 /// when there is nothing to do.
@@ -417,9 +424,11 @@ Uint8List? _keyedPixels(
       keys.sublist(from, math.min(from + keyRgbaKeysAtOnce, keys.length)),
     );
     final source = out;
+    // A restore past the first thirty-two still gives back to [view]'s
+    // alphas — the run's, whichever call it falls in.
     out = source == null
-        ? _walk(view, tables, into)
-        : _walk(source, tables, () => source) ?? source;
+        ? _walk(view, view, tables, into)
+        : _walk(source, view, tables, () => source) ?? source;
   }
   return out;
 }
@@ -434,33 +443,41 @@ Uint8List? _keyedPixels(
 /// (AOT, 10-16), and these tables walked in C take 0.13 ms, the copy into
 /// the engine's buffer and all — the C pool pre-blends a whole 1800 px
 /// brush's tiles in ~21 ms (`ActiveStrokeOverlayModel`).
+///
+/// [originals] is the run's input, whose alphas a restore gives back to
+/// ([CelColorKey.alphaFor]) — [view] itself in the first call.
 Uint8List? _walk(
   Uint8List view,
+  Uint8List originals,
   KeyRgbaTables tables,
   Uint8List Function() into,
 ) {
   final engine = QaNativeEngine.instance;
   if (engine != null) {
-    final keyed = engine.keyRgba(view, tables);
+    final keyed = engine.keyRgba(view, originals, tables);
     return keyed == null ? null : (into()..setAll(0, keyed));
   }
-  final (:red, :green, :blue, :keeps, alphaMaps: maps) = tables;
+  final (:red, :green, :blue, :restores, alphaMaps: maps) = tables;
   Uint8List? out;
   final length = view.length;
   for (var offset = 0; offset < length; offset += 4) {
-    final alpha = view[offset + 3];
-    if (alpha == 0) {
+    final original = originals[offset + 3];
+    if (original == 0) {
       continue;
     }
-    var erasing =
-        (red[view[offset]] & green[view[offset + 1]] & blue[view[offset + 2]]) ^
-        keeps;
+    final alpha = view[offset + 3];
+    var naming =
+        red[view[offset]] & green[view[offset + 1]] & blue[view[offset + 2]];
+    var restoring = restores;
     var next = alpha;
-    for (var map = 0; erasing != 0 && next != 0; map += 256) {
-      if (erasing & 1 == 1) {
-        next = maps[map + next];
+    for (var map = 0; naming != 0; map += 256) {
+      if (naming & 1 == 1) {
+        next = restoring & 1 == 1
+            ? original - maps[map + original - next]
+            : maps[map + next];
       }
-      erasing >>= 1;
+      naming >>= 1;
+      restoring >>= 1;
     }
     if (next == alpha) {
       continue;
@@ -479,8 +496,13 @@ Uint8List? _walk(
 /// at the key's own values, and an alpha's is [CelColorKey._erased] — so the
 /// walk, in either language, cannot drift from the definition the
 /// destructive verb and the shader are held to.
+///
+/// ⛔No key here erases what its colour does not name: that is the button
+/// 색 유지's alone ([CelKeyOperation.eraseOthers]), which edits bytes
+/// through its own kernel and never walks a chain.
 KeyRgbaTables _keyTables(List<CelColorKey> keys) {
   assert(keys.length <= keyRgbaKeysAtOnce);
+  assert(keys.every((key) => key.operation != CelKeyOperation.eraseOthers));
   final red = Uint32List(256);
   final green = Uint32List(256);
   final blue = Uint32List(256);
@@ -504,9 +526,11 @@ KeyRgbaTables _keyTables(List<CelColorKey> keys) {
     red: red,
     green: green,
     blue: blue,
-    keeps: keys.indexed.fold(
+    restores: keys.indexed.fold(
       0,
-      (bits, entry) => entry.$2.keepsMatches ? bits | 1 << entry.$1 : bits,
+      (bits, entry) => entry.$2.operation == CelKeyOperation.restoreMatches
+          ? bits | 1 << entry.$1
+          : bits,
     ),
     alphaMaps: alphaMaps,
   );

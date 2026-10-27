@@ -61,7 +61,7 @@ LayerEffect _blur({double radius = 9}) => LayerEffect(
 /// A colour key on the V row — the shape that used to make the policy throw.
 LayerEffect _deleteWhite() => LayerEffect(
   id: const EffectId('fx-key'),
-  kind: EffectKind.deleteColor,
+  kind: EffectKind.colorKey,
   parameters: {
     'keyRed': EffectParameter(value: 255),
     'keyGreen': EffectParameter(value: 255),
@@ -192,7 +192,7 @@ void main() {
         plan.preSteps, hasLength(1),
         reason: 'the key rides its own raster, like a group or a layer image',
       );
-      expect(plan.preSteps.single.key, isNotNull);
+      expect(plan.preSteps.single.keys, hasLength(1));
       expect(
         plan.finalPaint.isEmpty,
         isTrue,
@@ -206,14 +206,14 @@ void main() {
       );
       expect(plan.preSteps, hasLength(2));
       expect(
-        plan.preSteps.first.key,
-        isNull,
+        plan.preSteps.first.keys,
+        isEmpty,
         reason: 'the darken runs first, with no key of its own',
       );
       expect(plan.preSteps.first.then, hasLength(1));
       expect(
-        plan.preSteps.last.key,
-        isNotNull,
+        plan.preSteps.last.keys,
+        hasLength(1),
         reason: 'and the key sees what the darken made — order is free here '
             'too, the same law the layer rows got in #1312',
       );

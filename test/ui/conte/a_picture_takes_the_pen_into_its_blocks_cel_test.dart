@@ -626,7 +626,7 @@ void main() {
         effects: [
           LayerEffect(
             id: const EffectId('paper-key'),
-            kind: EffectKind.deleteColor,
+            kind: EffectKind.colorKey,
             parameters: {
               'keyRed': EffectParameter(value: 64),
               'keyGreen': EffectParameter(value: 192),
@@ -643,7 +643,7 @@ void main() {
 
     final keys = penOverThePicture(tester).overlay.sourceEffects;
 
-    expect(keys.map((key) => key.kind), [EffectKind.deleteColor]);
+    expect(keys.map((key) => key.kind), [EffectKind.colorKey]);
     expect(keys.single.values, [64, 192, 96, 10, 100]);
   });
 

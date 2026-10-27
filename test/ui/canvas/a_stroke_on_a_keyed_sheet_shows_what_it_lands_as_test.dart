@@ -27,7 +27,7 @@ void main() {
   /// [paper] taken away.
   LayerEffect paperKey() => LayerEffect(
     id: const EffectId('paper-key'),
-    kind: EffectKind.deleteColor,
+    kind: EffectKind.colorKey,
     parameters: {
       'keyRed': EffectParameter(value: paper[0].toDouble()),
       'keyGreen': EffectParameter(value: paper[1].toDouble()),

@@ -251,8 +251,8 @@ class _Walk {
   /// What the drawing canvas's row is painted through: the white specks
   /// every stroke leaves go, so every tile it paints is a keyed copy.
   static final _deleteWhite = ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    values: const [255, 255, 255, 0, 100],
+    kind: EffectKind.colorKey,
+    values: const [0, 255, 255, 255, 0, 100],
   );
 
   final WidgetTester tester;

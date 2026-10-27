@@ -303,7 +303,11 @@ import '../core/on_a_worker.dart';
 ///   유저 Q1 「섞기 그룹에 「흐리기」」): a dab rewrites the picture under it,
 ///   read through a `qa_blur_tile` table (`qa_blur_tile_sizeof`), at the C
 ///   speed its finest step needs.
-const int kQaEngineAbiVersion = 58;
+/// - v59: `qa_key_rgba` gains `originals`, and its `keeps` bitmask is
+///   `restores` — a key gives back what its run erased of what it names,
+///   AE's Keep Colors (`CelKeyOperation.restoreMatches`, I-132-Q2 유저
+///   2026-10-27 「하나로 + AE 뜻」), where it erased what it did not name.
+const int kQaEngineAbiVersion = 59;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

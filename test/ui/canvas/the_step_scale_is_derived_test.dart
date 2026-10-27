@@ -35,8 +35,8 @@ void main() {
   setUpAll(ColourKeyShader.load);
 
   ResolvedLayerEffect key() => ResolvedLayerEffect(
-    kind: EffectKind.deleteColor,
-    values: const [0, 0, 0, 0, 100],
+    kind: EffectKind.colorKey,
+    values: const [0, 0, 0, 0, 0, 100],
   );
 
   ResolvedLayerEffect blur({double radius = 4}) =>

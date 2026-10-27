@@ -800,8 +800,8 @@ void main() {
             values: const [10, 0],
           ),
           ResolvedLayerEffect(
-            kind: EffectKind.keepColor,
-            values: const [240, 192, 32, 60, 100],
+            kind: EffectKind.colorKey,
+            values: const [0, 240, 192, 32, 60, 100],
           ),
         ],
         opacity: 1,

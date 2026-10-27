@@ -209,7 +209,7 @@ void main() {
         composed.map((definition) => definition.id),
         containsAll([
           addLayerKindActionId(LayerKind.se),
-          addEffectActionId(EffectKind.keepColor),
+          addEffectActionId(EffectKind.colorKey),
           'tool-select-lasso',
         ]),
         reason: '⛔premise: the families are composed',
