@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import '../../core/lru.dart';
 import '../../models/bitmap_surface.dart';
@@ -74,6 +75,9 @@ class FramePictures implements PlaybackPictures {
   /// late.
   final QuietSpan _frameSpan = QuietSpan();
 
+  /// How long holding a frame's nodes has taken ([holdNodesOf]), likewise.
+  final QuietSpan _holdSpan = QuietSpan();
+
   /// Cels with pixels recorded at ANOTHER canvas size: the picture is made
   /// without them. Noted as well at the store's whole-content generation,
   /// as a resize heals such a cel with no revision of its own — a picture
@@ -91,8 +95,9 @@ class FramePictures implements PlaybackPictures {
 
   /// 🚨★THE PICTURES THE NODES OF A FRAME A SCREEN STANDS ON WERE DRAWN INTO
   /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
-  /// 실측 5): kept as the frame is laid for that screen ([makeShown]), and
-  /// found as a stroke's steps are patched into it ([frameAsItStands]) — a
+  /// 실측 5): kept as the frame is laid for that screen ([makeShown]), or
+  /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
+  /// stroke's steps are patched into it ([frameAsItStands]) — a
   /// folder drawn whole is not drawn again for each step that does not
   /// touch it.
   ///
@@ -344,6 +349,44 @@ class FramePictures implements PlaybackPictures {
     due: () => true,
     shownNow: true,
   );
+
+  /// 🚨Holds the nodes of the frame [nodes] stack for [picture] — one a
+  /// screen stands on to draw on, its picture laid ahead of it ([make]),
+  /// which keeps none ([heldNodes]): the frame drawn as it is laid, in its
+  /// turn ([QuietTurns]), into nothing but them. A node held already is cut
+  /// from and costs no raster; one that is not is drawn whole once, as the
+  /// lay would have drawn it.
+  ///
+  /// ⛔Not on a step's way: a stroke begun before its turn draws each node
+  /// as it did before, until the turn comes. And not the frame's picture
+  /// again — that is there, and stays as it is.
+  ///
+  /// The frame laid for the screen keeps them as it is laid ([makeShown]);
+  /// one laid ahead keeps none — the warmer lays every frame but the one a
+  /// cut opens on, and asks for the one a screen stands on as the screen
+  /// does, so either may lay it.
+  Future<void> holdNodesOf(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture, {
+    required bool Function() shouldAbort,
+  }) async {
+    await readInStack(nodes, picture);
+    if (shouldAbort()) {
+      return;
+    }
+    final turn = await quietTurns.inAQuiet(_holdSpan, gone: shouldAbort);
+    if (turn == null) {
+      return;
+    }
+    final made = drawingNow(nodes, picture, keepsNodes: true);
+    final recorder = ui.PictureRecorder();
+    made.frame.drawing.draw(ui.Canvas(recorder));
+    recorder.endRecording().dispose();
+    await turn.landed();
+    if (made.thrown case (final error, final stack)) {
+      Error.throwWithStackTrace(error, stack);
+    }
+  }
 
   Future<bool> _make(
     List<CompositeNode<CanvasStackRow>> Function() nodesOf,

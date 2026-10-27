@@ -406,6 +406,25 @@ class _FramePictureViewState extends State<FramePictureView> {
     _drawnOn = _celNow();
     _standing.whole = false;
     _tell();
+    if (widget.live != null) {
+      _holdNodes();
+    }
+  }
+
+  /// Holds the nodes of the frame this canvas stands on for the steps its
+  /// strokes patch in ([FramePictures.holdNodesOf]).
+  void _holdNodes() {
+    unawaited(
+      _pictures
+          .holdNodesOf(widget.nodes, widget.picture, shouldAbort: () => !mounted)
+          .then<void>(
+            (_) {},
+            onError: (Object error, StackTrace stack) => _report(
+              (error, stack),
+              'holding the nodes of the frame a canvas stands on',
+            ),
+          ),
+    );
   }
 
   /// The cel the pen is on as the key of the picture shown reads it.
