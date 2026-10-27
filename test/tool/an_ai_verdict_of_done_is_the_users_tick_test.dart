@@ -91,11 +91,11 @@ void main() {
     );
   });
 
-  test('⛔실패 and 유저 확인 필요 leave it waiting in 검증 for the user', () {
-    for (final words in ['🤖**AI 검증 실패**: 그대로다', '👤**유저 확인 필요**: 펜']) {
-      expect(asked([born, landed, note(words)]), asked([born, landed]),
-          reason: words);
-    }
+  // ↩️실패 waited here too until Q1 = a sent it back to its owner — pinned in
+  // an_ai_failure_goes_back_to_its_owner_test.
+  test('⛔유저 확인 필요 leaves it waiting in 검증 for the user', () {
+    expect(asked([born, landed, note('👤**유저 확인 필요**: 펜')]),
+        asked([born, landed]));
   });
 
   test('⛔on a card taken back into work it finishes nothing — nor does the '
