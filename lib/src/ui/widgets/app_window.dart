@@ -36,6 +36,7 @@ class AppWindowAction {
     this.actionKey,
     this.emphasis = AppWindowActionEmphasis.quiet,
     this.tooltip,
+    this.autofocus = false,
   });
 
   final String label;
@@ -53,6 +54,20 @@ class AppWindowAction {
   /// this carries the detail that would not fit, for the pointer that
   /// happens to be there.
   final String? tooltip;
+
+  /// Whether the window opens with the keyboard on this action, so Enter
+  /// presses it with no Tab first (F-479).
+  final bool autofocus;
+
+  /// This action, opening its window with the keyboard on it.
+  AppWindowAction get focused => AppWindowAction(
+    label: label,
+    onPressed: onPressed,
+    actionKey: actionKey,
+    emphasis: emphasis,
+    tooltip: tooltip,
+    autofocus: true,
+  );
 }
 
 enum AppWindowActionEmphasis {
@@ -415,6 +430,7 @@ class AppWindowActionButton extends StatelessWidget {
       AppWindowActionEmphasis.primary => FilledButton(
         key: action.actionKey,
         onPressed: action.onPressed,
+        autofocus: action.autofocus,
         child: label,
       ),
       // These two carry no border, so with one chrome fill they would be
@@ -424,6 +440,7 @@ class AppWindowActionButton extends StatelessWidget {
       AppWindowActionEmphasis.quiet => ControlPressClaim(onPressed: action.onPressed, child: TextButton(
         key: action.actionKey,
         onPressed: silentPress(action.onPressed),
+        autofocus: action.autofocus,
         style: TextButton.styleFrom(
           backgroundColor: colorScheme.surfaceContainerLowest,
         ),
@@ -432,6 +449,7 @@ class AppWindowActionButton extends StatelessWidget {
       AppWindowActionEmphasis.danger => ControlPressClaim(onPressed: action.onPressed, child: TextButton(
         key: action.actionKey,
         onPressed: silentPress(action.onPressed),
+        autofocus: action.autofocus,
         style: TextButton.styleFrom(
           backgroundColor: colorScheme.surfaceContainerLowest,
           foregroundColor: colorScheme.error,

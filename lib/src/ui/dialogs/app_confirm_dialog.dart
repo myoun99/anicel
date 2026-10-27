@@ -46,6 +46,11 @@ class AppConfirmDialog extends StatelessWidget {
 
   /// Left to right; the one that answers 'yes' goes last and carries
   /// [AppWindowActionEmphasis.primary].
+  ///
+  /// 🗣️F-479 (유저 2026-10-26): 「탭 안눌러도 포커스 바로 닫기에 있어서
+  /// 엔터로 닫기 눌러지게」 — a window with ONE way out opens with the
+  /// keyboard on it. The keyboard stops at these alone: what the sentence
+  /// is about is there to read ([DetailsDisclosure]).
   final List<AppWindowAction> actions;
 
   final Key? windowKey;
@@ -77,7 +82,10 @@ class AppConfirmDialog extends StatelessWidget {
                 ],
               ],
             ),
-      actions: actions,
+      actions: switch (actions) {
+        [final only] => [only.focused],
+        _ => actions,
+      },
     );
   }
 }
@@ -168,6 +176,11 @@ class _DetailsDisclosureState extends State<DetailsDisclosure> {
         ControlPressClaim(onPressed: () => setState(() => _open = !_open), child: InkWell(
           mouseCursor: AppCursors.press,
           key: const ValueKey<String>('app-notice-details-toggle'),
+          // 🗣️F-479 (유저 2026-10-26): 「처음 탭하면 삭제할 레이어 리스트에
+          // 포커스있는데, 굳이 이거에 포커스 가능하게 할 이유없을듯」 — the
+          // list is there to read, so the keyboard passes it by; a press
+          // still folds it.
+          canRequestFocus: false,
           onTap: silentPress(() => setState(() => _open = !_open)),
           child: Row(
             mainAxisSize: MainAxisSize.min,
