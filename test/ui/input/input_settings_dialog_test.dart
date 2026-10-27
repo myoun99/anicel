@@ -221,6 +221,23 @@ void main() {
     expect(tester.widget<FieldSlider>(bar).value, 16);
   });
 
+  // 🗣️F-480 (유저 2026-10-26): 「왼쪽 UI크기 텍스트, 오른쪽에 고르는거. 이렇게
+  // 다른탭도 통일」 · 「세로가 서로 어긋나있음」 — a bar's control stands in the
+  // pickers' column, at their width.
+  testWidgets('a bar stands in the pickers\' column, at their width', (
+    tester,
+  ) async {
+    await pumpDialog(tester);
+    final picker = tester.getRect(
+      find.byKey(const ValueKey<String>('settings-snap-zoom')),
+    );
+    final bar = tester.getRect(
+      find.byKey(const ValueKey<String>('settings-snap-rotation')),
+    );
+    expect(bar.left, picker.left);
+    expect(bar.width, picker.width);
+  });
+
   // The window's bars are one code (`_SettingsBar`): what one does while
   // held, they all do. Its let-go is `a_setting_survives_a_restart_test`'s.
   testWidgets('a bar moves its setting while it is held, before it is let '

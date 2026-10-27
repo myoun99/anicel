@@ -278,7 +278,13 @@ void main() {
         ..remove('zoomCeilingPercent');
       expect(AppInputSettings.fromJson(before).zoomCeilingPercent, isNull);
 
-      for (final nonsense in <Object?>[0, -50, 'big', double.nan]) {
+      for (final nonsense in <Object?>[
+        0,
+        -50,
+        'big',
+        double.nan,
+        double.infinity,
+      ]) {
         final edited = const AppInputSettings().toJson()
           ..['zoomCeilingPercent'] = nonsense;
         expect(
