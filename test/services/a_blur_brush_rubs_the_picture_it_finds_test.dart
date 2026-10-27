@@ -336,7 +336,7 @@ void main() {
   /// plane blurred — three box passes along the rows, then three along the
   /// columns, each a sixth of the dab's size, means rounded half up; each
   /// pixel moved toward its blur by that share, rounded half away from
-  /// zero, no channel above its alpha. Straight ARGB per canvas pixel.
+  /// zero. Straight ARGB per canvas pixel.
   Uint32List byTheLaw(BitmapSurface base, List<BrushDab> dabs) {
     const pad = 40;
     const width = 192 + pad * 2;
@@ -422,9 +422,12 @@ void main() {
               plane[o + 3] + scaled(blurred[o + 3] - plane[o + 3], share, 65535);
           next[o + 3] = alpha;
           for (var c = 0; c < 3; c += 1) {
-            final moved =
+            next[o + c] =
                 plane[o + c] + scaled(blurred[o + c] - plane[o + c], share, 65535);
-            next[o + c] = moved < alpha ? moved : alpha;
+            // Held by nothing in the law: the order the blur and the move
+            // keep (M9).
+            expect(next[o + c], lessThanOrEqualTo(alpha), reason: 'a channel '
+                'passed its alpha at ($x, $y)');
           }
         }
       }
@@ -437,9 +440,8 @@ void main() {
         final o = ((y + pad) * width + x + pad) * 4;
         final alpha = plane[o + 3];
         final outAlpha = (alpha * 2 + 257) ~/ 514;
-        int straight(int channel) => outAlpha == 0
-            ? 0
-            : ((channel * 510 + alpha) ~/ (alpha * 2)).clamp(0, 255);
+        int straight(int channel) =>
+            outAlpha == 0 ? 0 : (channel * 510 + alpha) ~/ (alpha * 2);
         argb[y * 192 + x] =
             (outAlpha << 24) |
             (straight(plane[o]) << 16) |

@@ -38,6 +38,11 @@ import 'brush_dab_kernel.dart';
 /// - Integers throughout (16-bit planes, means rounded half up, moves
 ///   rounded half away from zero), so a C transcription can match it byte
 ///   for byte (I-75 round ⓑ).
+/// - No channel ever passes its alpha, with nothing holding it there: a
+///   rounded mean of premultiplied pixels keeps every channel at or under
+///   its alpha, and a channel and its alpha moved by one share toward a
+///   blur that keeps that order land — each rounded to nearest — in that
+///   order still. A cap would be code that cannot run (I-75 뮤턴트 M9).
 ///
 /// The tool's OPACITY and the SELECTION are not here: they cap how far the
 /// finished picture may move from the cel ([resultTile]'s mask), exactly as
@@ -353,17 +358,9 @@ class BrushBlurPicture {
         final o = ((at - tileY * tileSize) * tileSize + localX) * 4;
         final b = (blurredStart + row) * 4;
         final alpha = _toward(own[o + 3], blurred[b + 3], share);
-        // Rounding apart, a mean of premultiplied pixels keeps every
-        // channel under its alpha; this keeps the rounding from breaking it.
-        final red = math.min(alpha, _toward(own[o], blurred[b], share));
-        final green = math.min(
-          alpha,
-          _toward(own[o + 1], blurred[b + 1], share),
-        );
-        final blue = math.min(
-          alpha,
-          _toward(own[o + 2], blurred[b + 2], share),
-        );
+        final red = _toward(own[o], blurred[b], share);
+        final green = _toward(own[o + 1], blurred[b + 1], share);
+        final blue = _toward(own[o + 2], blurred[b + 2], share);
         if (red != own[o] ||
             green != own[o + 1] ||
             blue != own[o + 2] ||
@@ -438,9 +435,9 @@ class BrushBlurPicture {
       if (cover != 255) {
         final cel = celAlpha * 257;
         alpha = cel + _scaled(alpha - cel, cover, 255);
-        red = _covered(bytes[i], celAlpha, red, cover, alpha);
-        green = _covered(bytes[i + 1], celAlpha, green, cover, alpha);
-        blue = _covered(bytes[i + 2], celAlpha, blue, cover, alpha);
+        red = _covered(bytes[i], celAlpha, red, cover);
+        green = _covered(bytes[i + 1], celAlpha, green, cover);
+        blue = _covered(bytes[i + 2], celAlpha, blue, cover);
       }
       final outAlpha = (alpha * 2 + 257) ~/ 514;
       final outRed = _straight(red, alpha, outAlpha);
@@ -461,15 +458,14 @@ class BrushBlurPicture {
   }
 
   /// The cel's [channel] (straight, under [celAlpha]) moved toward the
-  /// rewritten premultiplied [own] by [cover] / 255, kept under [alpha].
-  static int _covered(int channel, int celAlpha, int own, int cover, int alpha) {
+  /// rewritten premultiplied [own] by [cover] / 255.
+  static int _covered(int channel, int celAlpha, int own, int cover) {
     final cel = _premultiplied(channel, celAlpha);
-    return math.min(alpha, cel + _scaled(own - cel, cover, 255));
+    return cel + _scaled(own - cel, cover, 255);
   }
 
   /// A premultiplied 16-bit [channel] over [alpha], as a straight byte —
   /// none at all under an alpha that rounds to nothing ([outAlpha]).
-  static int _straight(int channel, int alpha, int outAlpha) => outAlpha == 0
-      ? 0
-      : math.min(255, (channel * 510 + alpha) ~/ (alpha * 2));
+  static int _straight(int channel, int alpha, int outAlpha) =>
+      outAlpha == 0 ? 0 : (channel * 510 + alpha) ~/ (alpha * 2);
 }
