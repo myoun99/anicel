@@ -15,6 +15,8 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_window.dart';
 
 import '../flyout_test_helpers.dart';
 import '../../helpers/room_for_the_pills.dart';
@@ -95,6 +97,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(close), findsNothing, reason: 'Enter pressed 닫기');
+  });
+
+  testWidgets('whatever its one button wears, the window opens on it', (
+    tester,
+  ) async {
+    for (final emphasis in AppWindowActionEmphasis.values) {
+      final only = ValueKey<String>('only-way-out-${emphasis.name}');
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: AppConfirmDialog(
+            title: 'One way out',
+            message: emphasis.name,
+            actions: [
+              AppWindowAction(
+                label: 'Go',
+                actionKey: only,
+                emphasis: emphasis,
+                onPressed: () {},
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        focusIsIn(tester, find.byKey(only)),
+        isTrue,
+        reason: emphasis.name,
+      );
+    }
   });
 
   testWidgets('Tab goes round the delete window\'s buttons alone — never '
