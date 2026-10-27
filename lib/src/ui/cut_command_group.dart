@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import 'theme/app_theme.dart' show AppColors;
 import 'widgets/app_tooltip.dart';
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
+import 'widgets/tick_layer.dart';
 import 'timeline/layer_label_controls.dart'
     show layerMarkColor, layerMarkFlyoutEntries;
 
@@ -345,10 +347,14 @@ class _CutName extends StatelessWidget {
       ? '${name.characters.take(_wholeCharacters)}$_ellipsis'
       : name;
 
+  /// A line of each script a name is written in, for the place's height.
+  static const List<String> _scripts = ['0', 'あ', '가'];
+
   @override
   Widget build(BuildContext context) {
     final style = DefaultTextStyle.of(context).style.merge(_style);
-    final width = TextMeasure(context, style)
+    final measure = TextMeasure(context, style);
+    final width = measure
         .widest(
           everyDigitIn(
             (character) => '${character * _wholeCharacters}$_ellipsis',
@@ -356,21 +362,33 @@ class _CutName extends StatelessWidget {
           ),
         )
         .ceilToDouble();
+    final height = _scripts
+        .map((line) => measure.size(line).height)
+        .reduce(math.max)
+        .ceilToDouble();
     return Padding(
       padding: const EdgeInsets.only(right: _breath),
-      child: ValueListenableBuilder<String>(
-        valueListenable: name,
-        builder: (context, name, _) => AppTooltip(
-          message: name,
-          child: SizedBox(
-            width: width,
-            child: Text(
-              _shown(name),
-              key: const ValueKey<String>('timeline-cut-name'),
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.ellipsis,
-              style: style,
+      child: SizedBox(
+        width: width,
+        height: height,
+        // 🚨ON A TICK LAYER (I-22 ③): a scrub crosses into another cut on a
+        // move, and the name turns over with it — inside the pill's bake it
+        // took the bake again and repainted the bar's strip at every
+        // crossing (`a_scrub_repaints_only_its_tick_layers_test`). Here it
+        // is drawn live, in a place of its own size.
+        child: TickLayer(
+          child: ValueListenableBuilder<String>(
+            valueListenable: name,
+            builder: (context, name, _) => AppTooltip(
+              message: name,
+              child: Text(
+                _shown(name),
+                key: const ValueKey<String>('timeline-cut-name'),
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              ),
             ),
           ),
         ),

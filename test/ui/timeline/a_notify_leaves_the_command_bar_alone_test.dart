@@ -12,9 +12,12 @@ import '../../helpers/frame_census.dart';
 /// I-57 (10-14): a notify that changed nothing on a frame panel's command
 /// bar laid it out and painted it again — the host hands the bar a toolbar
 /// made anew on every notify, and the bar built its seat in a build scope
-/// of its own. Its counter hears its ticks, so the bar has none: the seat
-/// is built in the host's, and the toolbar's gate hands back the buttons
-/// it had.
+/// of its own. The bar has none: the seat is built in the host's, and the
+/// toolbar's gate hands back the buttons it had.
+///
+/// 🔬F-463 (10-27) took the bar's counter, whose layer this was, and the
+/// layer with it — and the timeline's bar was painted with its host's layer
+/// on a notify. The bar keeps a layer of its own for that.
 void main() {
   EditorSessionManager sessionOf(WidgetTester tester) =>
       tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;

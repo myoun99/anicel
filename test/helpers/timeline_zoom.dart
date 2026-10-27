@@ -37,8 +37,6 @@ Future<void> typeTimelineZoom(
           matching: find.byType(DragValueLabel),
         ),
       )
-      .onEditSubmit(
-        '${pixelsPerFrame * 100 / TimelineZoomLimits.referencePixelsPerFrame}',
-      );
+      .onEditSubmit('${TimelineZoomLimits.percentOf(pixelsPerFrame)}');
   await tester.pumpAndSettle();
 }

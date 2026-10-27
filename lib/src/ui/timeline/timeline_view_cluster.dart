@@ -134,7 +134,7 @@ class TimelineViewCluster extends StatelessWidget {
     var sent = pixelsPerFrame;
     void zoomTo(double percent) {
       final zoom = TimelineZoomLimits.clamped(
-        percent * TimelineZoomLimits.referencePixelsPerFrame / 100,
+        TimelineZoomLimits.atPercent(percent),
         framesPerSecond: projectFrameRate.countingBase,
       );
       if (zoom != sent) {
@@ -143,13 +143,10 @@ class TimelineViewCluster extends StatelessWidget {
       }
     }
 
-    double percentOf(double zoom) =>
-        zoom * 100 / TimelineZoomLimits.referencePixelsPerFrame;
-
     return DragValueLabel(
       keyValue: 'timeline-zoom-readout',
       text: readoutText(
-        percentOf(pixelsPerFrame),
+        TimelineZoomLimits.percentOf(pixelsPerFrame),
         decimals: _zoomDecimals,
         unit: '%',
       ),
@@ -160,7 +157,8 @@ class TimelineViewCluster extends StatelessWidget {
           .ceilToDouble(),
       enabled: onChanged != null,
       textStyle: _zoomStyle,
-      onDragDelta: (units) => zoomTo(percentOf(sent) + units),
+      onDragDelta: (units) =>
+          zoomTo(TimelineZoomLimits.percentOf(sent) + units),
       onEditSubmit: (text) {
         final parsed = columnValueOf(text);
         if (parsed != null) {

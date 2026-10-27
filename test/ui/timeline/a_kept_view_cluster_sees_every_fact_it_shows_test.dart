@@ -19,7 +19,6 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
-import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/home_page_probes.dart' show showStoryboardPanel;
 import '../../helpers/timeline_zoom.dart';
@@ -92,7 +91,7 @@ void main() {
     cluster.pixelsPerFrame,
     cluster.onPixelsPerFrameChanged,
     cluster.trailing
-        .map((control) => (control as AppIconButton).tooltip)
+        .map((control) => (control as TimelineOrientationToggle).orientation)
         .join(' | '),
   );
 

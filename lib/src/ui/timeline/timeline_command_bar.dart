@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets/command_pill.dart';
 import '../widgets/kept_tail_row.dart';
+import '../widgets/tick_layer.dart';
 import 'timeline_view_cluster.dart';
 
 /// The ONE command-bar row both frame panels wear, in TWO groups (F-463):
@@ -115,8 +116,8 @@ class TimelineCommandBar extends StatelessWidget {
   );
 }
 
-/// The bar's FRAME — its padding, row and overflow scroller — one per
-/// shape, made once (a const one), so every build hands the same frame
+/// The bar's FRAME — its layer, padding, row and overflow scroller — one
+/// per shape, made once (a const one), so every build hands the same frame
 /// back; the pieces reach their seats in it through [_BarPieces].
 ///
 /// 🚨I-57 (10-13): the frame was made anew on every build, round a
@@ -126,10 +127,16 @@ class TimelineCommandBar extends StatelessWidget {
 /// buttons. Now a new piece is its seat's rebuild, built in the host's
 /// scope.
 ///
-/// ↩️The bar was a TICK LAYER (I-22 ③) for the frame counter, which read
-/// the cursor and moved the row with its width; F-463 took the counter
-/// off. What ticks on it now ticks on a layer of its own, in a box of its
-/// own size — the play button's words and the level meter.
+/// 🚨The bar stands on a layer of its own ([TickLayer.heard]) — laid out,
+/// painted and described alone, with no build scope: its host's layer is
+/// painted again for the panel's own changes, and the bar with it (🔬F-463,
+/// 10-27: a notify that changed nothing on the timeline's bar painted it
+/// with its host's layer — `a_notify_leaves_the_command_bar_alone_test`).
+/// What ticks on it ticks on a layer of its own, in a box of its own size:
+/// the play button's words, the level meter and the cut's name.
+///
+/// ↩️The layer was the frame counter's, which read the cursor and moved
+/// the row with its width (I-22 ③), until F-463 took the counter off.
 ///
 /// The two groups give way as [FloorFoldRow] lays them: the pills first,
 /// down to the cut pill ([FoldFloor], 「컷알약까지 최소폭」), and below
@@ -145,40 +152,42 @@ class _BarFrame extends StatelessWidget {
   final bool leading;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: TimelineCommandBar.padding,
-    child: FloorFoldRow(
-      gap: TimelineCommandBar._gap,
-      headPadding: leading ? 2 * TimelineCommandBar.leadingInset : 0,
-      head: leading
-          ? const Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: TimelineCommandBar.leadingInset,
-              ),
-              // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
-              // 스크롤바」): the app's bar exists only while the row
-              // overflows and costs no layout when it does not.
-              // ↩️The host's controls stood on a layer of their own here
-              // (I-57, 10-14): the counter and the cut name beside the zoom
-              // changed their widths, moved the row, and the scroller laid
-              // out at its new width painted the controls again — 🔬86
-              // render objects of the storyboard's toolbar the frame after
-              // every crossing. Nothing on the bar changes its width with
-              // playback since F-463: the counter is gone, and the cut's
-              // name is the cut pill's, in a place of its own width.
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: _Seat(_Piece.leading),
-              ),
-            )
-          : const SizedBox.shrink(),
-      tail: transport
-          ? const Row(
-              mainAxisSize: MainAxisSize.min,
-              spacing: TimelineCommandBar._gap,
-              children: [_Seat(_Piece.transport), _Seat(_Piece.cluster)],
-            )
-          : const _Seat(_Piece.cluster),
+  Widget build(BuildContext context) => TickLayer.heard(
+    child: Padding(
+      padding: TimelineCommandBar.padding,
+      child: FloorFoldRow(
+        gap: TimelineCommandBar._gap,
+        headPadding: leading ? 2 * TimelineCommandBar.leadingInset : 0,
+        head: leading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: TimelineCommandBar.leadingInset,
+                ),
+                // BARRED (유저, 2026-08-10: 「버튼 사라지기 시작하면 생기는
+                // 스크롤바」): the app's bar exists only while the row
+                // overflows and costs no layout when it does not.
+                // ↩️The host's controls stood on a layer of their own here
+                // (I-57, 10-14): the counter and the cut name beside the zoom
+                // changed their widths, moved the row, and the scroller laid
+                // out at its new width painted the controls again — 🔬86
+                // render objects of the storyboard's toolbar the frame after
+                // every crossing. Nothing on the bar changes its width with
+                // playback since F-463: the counter is gone, and the cut's
+                // name is the cut pill's, in a place of its own width.
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: _Seat(_Piece.leading),
+                ),
+              )
+            : null,
+        tail: transport
+            ? const Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: TimelineCommandBar._gap,
+                children: [_Seat(_Piece.transport), _Seat(_Piece.cluster)],
+              )
+            : const _Seat(_Piece.cluster),
+      ),
     ),
   );
 }

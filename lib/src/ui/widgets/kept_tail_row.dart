@@ -80,14 +80,15 @@ class KeptTailRow extends StatelessWidget {
 class FloorFoldRow extends StatefulWidget {
   const FloorFoldRow({
     super.key,
-    required this.head,
+    this.head,
     required this.tail,
     this.gap = 0,
     this.headPadding = 0,
   });
 
-  /// The group that gives way first, down to its [FoldFloor].
-  final Widget head;
+  /// The group that gives way first, down to its [FoldFloor]. Null leaves
+  /// the whole row the tail's: no gap is kept before it, and no floor.
+  final Widget? head;
 
   /// The group kept at its own width at the row's end.
   final Widget tail;
@@ -110,7 +111,10 @@ class _FloorFoldRowState extends State<FloorFoldRow> {
   @override
   Widget build(BuildContext context) => _FloorEnds(
     reading: _reading,
-    head: _FloorScope(reading: _reading, child: widget.head),
+    head: switch (widget.head) {
+      final head? => _FloorScope(reading: _reading, child: head),
+      null => null,
+    },
     tail: widget.tail,
     gap: widget.gap,
     headPadding: widget.headPadding,
@@ -211,7 +215,7 @@ class _FloorEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
   });
 
   final _FloorReading reading;
-  final Widget head;
+  final Widget? head;
   final Widget tail;
   final double gap;
   final double headPadding;
@@ -413,29 +417,35 @@ class _RenderFloorEnds extends _RenderScaledParts {
     parentUsesSize: true,
   );
 
+  /// The least [head] is shown at: laid out first where the tail leaves it
+  /// ([room]), which is where its [FoldFloor] is measured.
+  double _floorOf(RenderBox head, double room) {
+    _layHead(head, math.max(0, room), size.height);
+    return _reading.width + _headPadding;
+  }
+
   @override
   void performLayout() {
     size = constraints.biggest;
-    final head = _head!;
+    final head = _head;
     final tail = _tail;
     tail.layout(const BoxConstraints(), parentUsesSize: true);
     final own = tail.size;
     final byHeight = own.height > size.height ? size.height / own.height : 1.0;
     final shownTail = own.width * byHeight;
-    final room = size.width - shownTail - _gap;
-    // Laid out first where the tail leaves it, which is where its floor is
-    // measured ([FoldFloor]).
-    _layHead(head, math.max(0, room), size.height);
-    final floor = _reading.width + _headPadding;
-    if (room >= floor) {
-      _put(_Part.head, head, 0, 1);
-      _put(_Part.tail, tail, size.width - shownTail, byHeight);
-      return;
+    final gap = head == null ? 0.0 : _gap;
+    final room = size.width - shownTail - gap;
+    final floor = head == null ? 0.0 : _floorOf(head, room);
+    // Below the floor, both groups at their floors, smaller by one factor.
+    final scale = room >= floor
+        ? 1.0
+        : size.width / (floor + gap + shownTail);
+    if (head != null) {
+      if (scale < 1) {
+        _layHead(head, floor, size.height / scale);
+      }
+      _put(_Part.head, head, 0, scale);
     }
-    // Both groups at their floors, smaller by one factor.
-    final scale = size.width / (floor + _gap + shownTail);
-    _layHead(head, floor, size.height / scale);
-    _put(_Part.head, head, 0, scale);
     _put(_Part.tail, tail, size.width - shownTail * scale, byHeight * scale);
   }
 }

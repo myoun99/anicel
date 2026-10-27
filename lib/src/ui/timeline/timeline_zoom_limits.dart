@@ -31,6 +31,16 @@ abstract final class TimelineZoomLimits {
   /// ([referencePixelsPerFrame]).
   static const double defaultPixelsPerFrame = 24;
 
+  /// [pixelsPerFrame] as the bar writes it: percent of
+  /// [referencePixelsPerFrame] (F-403) — what its readout shows and is
+  /// dragged in (F-463).
+  static double percentOf(double pixelsPerFrame) =>
+      pixelsPerFrame * 100 / referencePixelsPerFrame;
+
+  /// The zoom the bar writes as [percent] — [percentOf] the other way.
+  static double atPercent(double percent) =>
+      percent * referencePixelsPerFrame / 100;
+
   /// How many steps a zoom takes per [referencePixelsPerFrame]: a step is
   /// 0.1% — the last digit the bar writes.
   ///
@@ -90,7 +100,8 @@ abstract final class TimelineZoomLimits {
   /// The zoom a control may emit: [pixelsPerFrame] on its nearest step
   /// inside the range ([_stepsPerReference]).
   ///
-  /// 🚨ONE bound, asked by the slider and by the −/+ buttons. The slider
+  /// 🚨ONE bound, asked by the readout and by the zoom keys (↩️the slider
+  /// and the −/+ buttons until F-463). The slider
   /// once wrote 2px under a 2.4px floor and nothing brought it back (I-22
   /// ②-1); nothing can reach a zero cell either — what trips the grid's
   /// `frameCellWidth > 0` assert, the x-sheet's virtualization and the zoom
@@ -134,10 +145,11 @@ abstract final class TimelineZoomLimits {
     );
   }
 
-  /// One −/+ step (UI-R11 #11): ×1.25 like every editor zoom in the app, so
-  /// a step feels equal at the widest zoom and the closest — and at least
-  /// one step ([_stepsPerReference]), so a press moves the zoom wherever
-  /// ×1.25 rounds back onto the step it left.
+  /// One zoom key's step (UI-R11 #11, the −/+ buttons' until F-463): ×1.25
+  /// like every editor zoom in the app, so a step feels equal at the widest
+  /// zoom and the closest — and at least one step ([_stepsPerReference]),
+  /// so a press moves the zoom wherever ×1.25 rounds back onto the step it
+  /// left.
   ///
   /// ↩️It fell back to the next grid value where ×1.25 rounded back onto
   /// the zoom it left (2026-09-16); with no grid, ×1.25 always moved, until
