@@ -500,20 +500,23 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    // 🗣️I-65-Q5 (유저 2026-10-25): 「출력은 머리를 안 본다」 — 「셀도 똑같이
-    // 머리 비지블 꺼도 출력리스트에 뜸으로 통일」.
-    testWidgets('a link whose own switch is off is written as one that is on', (
-      tester,
-    ) async {
+    // 🗣️I-65-Q12 (유저 2026-10-27): 「레이어 행의 fx 머리도 같은 법 — 셀
+    // 번호도」. ↩️Q5 「출력은 머리를 안 본다」 wrote a link switched off as
+    // one switched on.
+    testWidgets('a link whose own switch is off is not written — the cel '
+        'number\'s neither', (tester) async {
       await tester.runAsync(() async {
         final heads = [
           number.copyWith(enabled: false),
           blur.copyWith(enabled: false),
         ];
-        expect(await celOf(heads), await celOf([number, blur]));
+        final bare = await celOf(const []);
+        expect(await celOf(heads), bare);
+        expect(await celOf(heads, fx: ExportLayerFx.basic), bare);
         expect(
-          await celOf(heads, fx: ExportLayerFx.basic),
+          await celOf([number, blur.copyWith(enabled: false)]),
           await celOf([number]),
+          reason: 'the one switched on is written',
         );
       });
       await tester.pumpAndSettle();

@@ -16,8 +16,8 @@ import 'package:anicel/src/services/layer_as_output.dart';
 ///
 /// 🗣️I-65-Q3 (유저 2026-10-25): 「켬이랑 끔은 지금처럼 전부 켜고 끄는거고,
 /// 기본만 켬은 지금까지 말햇던 셀번호나 참조fx같은것만 키고 트랜스폼 포함해서
-/// 나머지 끄는것」 · Q5 「출력은 머리를 안 본다」 · Q6 「참조 fx 도 끈다(정말
-/// 날 것)」.
+/// 나머지 끄는것」 · Q6 「참조 fx 도 끈다(정말 날 것)」 · Q12 「레이어 행의 fx
+/// 머리도 같은 법 — 셀 번호도」(↩️Q5 「출력은 머리를 안 본다」).
 void main() {
   LayerEffect link(String id, EffectKind kind, {bool enabled = true}) =>
       LayerEffect(id: EffectId(id), kind: kind, enabled: enabled);
@@ -54,11 +54,35 @@ void main() {
     for (final effect in layer.effects) effect.id.value: effect.enabled,
   };
 
-  test('켬 keeps every fx, whatever its own head says', () {
-    final output = layerAsOutput(row, ExportLayerFx.on);
+  test('켬 keeps every fx the screen shows', () {
+    final output = layerAsOutput(
+      row.copyWith(
+        transformEnabled: true,
+        effects: [
+          link('number', EffectKind.celNumber),
+          link('blur', EffectKind.blur),
+        ],
+      ),
+      ExportLayerFx.on,
+    );
     expect(output.transformEnabled, isTrue);
     expect(linksOf(output), {'number': true, 'blur': true});
     expect(output.mediaReference, reference);
+  });
+
+  // 🗣️I-65-Q12 (유저 2026-10-27): 「레이어 행의 fx 머리도 같은 법 — 셀
+  // 번호도」. ↩️Q5 kept every fx whatever its own head said.
+  test('🚨a head switched off on the timeline is off in the output — the '
+      'transform\'s and each link\'s, the cel number\'s too', () {
+    for (final fx in ExportLayerFx.values) {
+      final output = layerAsOutput(row, fx);
+      expect(output.transformEnabled, isFalse, reason: '$fx');
+      expect(
+        linksOf(output),
+        {'number': false, 'blur': false},
+        reason: '$fx',
+      );
+    }
   });
 
   test('기본만 켬 keeps the cel number and the reference fx — the transform '
@@ -67,7 +91,7 @@ void main() {
       row.copyWith(
         transformEnabled: true,
         effects: [
-          link('number', EffectKind.celNumber, enabled: false),
+          link('number', EffectKind.celNumber),
           link('blur', EffectKind.blur),
         ],
       ),
