@@ -348,7 +348,6 @@ class _LayerStackPaintPass {
       null => null,
     };
     _paintCutWhereItEnds(into, extent, shownWithin: extent);
-    _held = null;
   }
 
   /// The frame composed into [into] and cut where it ends — at [edge], the

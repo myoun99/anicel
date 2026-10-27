@@ -11,12 +11,14 @@ import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
@@ -161,23 +163,56 @@ void main() {
   // of anything else.
   const step = Rect.fromLTWH(5, 3, 9, 7);
 
-  test('a folder drawn whole as its frame is laid is not drawn again for a '
-      'step — and the step is the pixels it would have drawn', () async {
-    await lay(stack());
-    expect(held.length, 1, reason: '⛔premise: the folder was kept');
+  CompositeLeaf<CanvasStackRow> rowOf(String id, {double opacity = 1}) =>
+      CompositeLeaf(
+        CanvasLayerImageRequest(frameKey: cel(id), opacity: opacity),
+      );
 
-    debugSubtreeRasterCount = 0;
-    final patched = await drawn(frame(stack(), keeps: false), step);
-    expect(debugSubtreeRasterCount, 0, reason: 'the folder was cut from');
+  // Every node drawn as one picture of its own ([drawSubtreeAsImage]).
+  final nodes = <String, List<CompositeNode<CanvasStackRow>> Function()>{
+    'a folder': stack,
+    'an adjustment\'s scope': () => [
+      rowOf('below'),
+      CompositeAdjustment(
+        children: [rowOf('ramp'), rowOf('other', opacity: 0.7)],
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.brightnessContrast,
+            values: [20, 0],
+          ),
+        ],
+        mix: 0.6,
+      ),
+    ],
+    'a clipping group': () => [
+      rowOf('below'),
+      CompositeClip(
+        base: rowOf('ramp'),
+        scope: [rowOf('other', opacity: 0.7)],
+        opacity: 0.5,
+        blendMode: LayerBlendMode.normal,
+      ),
+    ],
+  };
+  for (final MapEntry(key: name, value: nodesOf) in nodes.entries) {
+    test('$name drawn whole as its frame is laid is not drawn again for a '
+        'step — and the step is the pixels it would have drawn', () async {
+      await lay(nodesOf());
+      expect(held.length, 1, reason: '⛔premise: the node was kept');
 
-    final fresh = await drawn(frame(stack()), step);
-    expect(
-      debugSubtreeRasterCount,
-      1,
-      reason: '⛔premise: with nothing held the folder is drawn',
-    );
-    expect(patched, fresh);
-  });
+      debugSubtreeRasterCount = 0;
+      final patched = await drawn(frame(nodesOf(), keeps: false), step);
+      expect(debugSubtreeRasterCount, 0, reason: 'the node was cut from');
+
+      final fresh = await drawn(frame(nodesOf()), step);
+      expect(
+        debugSubtreeRasterCount,
+        1,
+        reason: '⛔premise: with nothing held the node is drawn',
+      );
+      expect(patched, fresh);
+    });
+  }
 
   test('a folder whose row was drawn on since is drawn again — and so is '
       'one whose own strength changed', () async {
@@ -249,12 +284,27 @@ void main() {
   group('the hold itself', () {
     // The node's picture at the scale and over the bounds asked, a red
     // square — counted as it is drawn.
+    const whole = Rect.fromLTWH(0, 0, 16, 16);
+    // A step of a chain: the picture taken again before it is laid, a
+    // second image beside the raster.
+    final stepped = [
+      CompositeEffectStep(
+        then: [
+          ResolvedLayerEffect(
+            kind: EffectKind.brightnessContrast,
+            values: [20, 0],
+          ),
+        ],
+      ),
+    ];
+
     void draw(
       ui.Canvas canvas,
       SubtreeHold hold, {
-      Rect bounds = const Rect.fromLTWH(0, 0, 16, 16),
+      Rect bounds = whole,
       double rasterScale = 1,
       int maxPixelSide = maxSubtreeRasterSide,
+      List<CompositeEffectStep> steps = const [],
     }) => drawSubtreeAsImage(
       canvas: canvas,
       bounds: bounds,
@@ -265,19 +315,39 @@ void main() {
         Paint()..color = const Color(0xFFFF0000),
       ),
       compose: (blit) => blit(Paint()),
+      steps: steps,
       held: hold,
     );
 
-    void drawOnce(SubtreeHold hold, {Rect? bounds, double rasterScale = 1}) {
+    void drawOnce(
+      SubtreeHold hold, {
+      Rect bounds = whole,
+      double rasterScale = 1,
+      List<CompositeEffectStep> steps = const [],
+    }) {
       final recorder = ui.PictureRecorder();
       draw(
         ui.Canvas(recorder),
         hold,
-        bounds: bounds ?? const Rect.fromLTWH(0, 0, 16, 16),
+        bounds: bounds,
         rasterScale: rasterScale,
+        steps: steps,
       );
       recorder.endRecording().dispose();
     }
+
+    /// What [rasters] hold for [key], as a draw over the whole finds it.
+    HeldSubtreeRaster? heldFor(HeldSubtreeRasters rasters, Object key) =>
+        SubtreeHold(rasters, key: key, keeps: false).covering(
+          const SubtreeRasterPlan(
+            bounds: whole,
+            destination: whole,
+            pixelWidth: 16,
+            pixelHeight: 16,
+            scale: 1,
+            rasterScale: 1,
+          ),
+        );
 
     test('one drawn whole is found by what it draws, at its scale, where it '
         'covers what is asked', () {
@@ -328,6 +398,54 @@ void main() {
       addTearDown(none.clear);
       drawOnce(SubtreeHold(none, key: 'first', keeps: true));
       expect(none, hasLength(0));
+
+      // A stepped picture is two images, and weighs two.
+      final two = HeldSubtreeRasters(bytes: () => 2 * 16 * 16 * 4);
+      addTearDown(two.clear);
+      drawOnce(SubtreeHold(two, key: 'first', keeps: true), steps: stepped);
+      expect(two, hasLength(1), reason: '⛔premise');
+      expect(two.heldBytes, 2 * 16 * 16 * 4);
+      final short = HeldSubtreeRasters(bytes: () => 2 * 16 * 16 * 4 - 1);
+      addTearDown(short.clear);
+      drawOnce(SubtreeHold(short, key: 'first', keeps: true), steps: stepped);
+      expect(short, hasLength(0));
+    });
+
+    test('🚨what is held is let go of — replaced, or all at once — both of '
+        'its images', () {
+      drawOnce(SubtreeHold(held, key: 'node', keeps: true), steps: stepped);
+      final first = heldFor(held, 'node')!;
+      expect(
+        identical(first.image, first.raster),
+        isFalse,
+        reason: '⛔premise: a stepped picture beside its raster',
+      );
+      // Drawn whole again where the one held does not serve — at another
+      // scale — the new one takes its place.
+      drawOnce(
+        SubtreeHold(held, key: 'node', keeps: true),
+        rasterScale: 2,
+        steps: stepped,
+      );
+      expect(held, hasLength(1), reason: '⛔premise: in its place');
+      expect(first.raster.debugDisposed, isTrue);
+      expect(first.image.debugDisposed, isTrue);
+
+      final second = SubtreeHold(held, key: 'node', keeps: false).covering(
+        const SubtreeRasterPlan(
+          bounds: whole,
+          destination: whole,
+          pixelWidth: 32,
+          pixelHeight: 32,
+          scale: 2,
+          rasterScale: 2,
+        ),
+      )!;
+      expect(second.raster.debugDisposed, isFalse, reason: '⛔premise');
+      held.clear();
+      expect(second.raster.debugDisposed, isTrue);
+      expect(second.image.debugDisposed, isTrue);
+      expect(held, hasLength(0));
     });
   });
 }

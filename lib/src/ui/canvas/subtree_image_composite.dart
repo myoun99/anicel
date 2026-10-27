@@ -433,11 +433,20 @@ final class HeldSubtreeRasters {
   /// What the rasters held weigh ([estimatedImageBytes]).
   int get heldBytes => _held.held;
 
-  void _keep(Object key, HeldSubtreeRaster whole) {
-    if (_bytesOf(whole) > _bytes()) {
-      _letGo(whole);
+  /// Keeps [drawn] for [key] in handles of its own — the caller lets go of
+  /// its own — where it fits.
+  void _keep(Object key, HeldSubtreeRaster drawn) {
+    if (_bytesOf(drawn) > _bytes()) {
       return;
     }
+    final raster = drawn.raster.clone();
+    final whole = (
+      plan: drawn.plan,
+      raster: raster,
+      image: identical(drawn.image, drawn.raster)
+          ? raster
+          : drawn.image.clone(),
+    );
     if (_held.keep(key, whole) case final replaced?) {
       _letGo(replaced);
     }
@@ -927,13 +936,7 @@ void _finishSubtreeRaster({
     );
   } finally {
     if (held != null && held.keeps && !plan.magnifies) {
-      // Handles of their own: the ones below are let go of here.
-      final kept = raster.clone();
-      held.rasters._keep(held.key, (
-        plan: plan,
-        raster: kept,
-        image: identical(image, raster) ? kept : image.clone(),
-      ));
+      held.rasters._keep(held.key, (plan: plan, raster: raster, image: image));
     }
     // ⚠️Safe HERE and nowhere earlier: the draws put the image into this
     // frame's display list and the engine holds its own claim from that

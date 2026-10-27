@@ -180,6 +180,47 @@ void main() {
     });
   });
 
+  testWidgets('⚖️the frames\' pictures give way to what is held as the line '
+      'is kept, and a run may hold none of what they cannot give', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      // One frame's picture and its folder's, measured on a line they fit.
+      final measured = session();
+      addTearDown(measured.dispose);
+      final ruler = measured.playbackRig.framePictures;
+      final at = drawn(measured);
+      await ruler.makeShown(ruler.stackOf(at), at, shouldAbort: () => false);
+      final picture = measured.renderCaches.framePictureStore.estimatedBytes;
+      final node = ruler.heldNodes.heldBytes;
+      expect(node, greaterThan(0), reason: '⛔premise');
+
+      Future<EditorSessionManager> shownOn({required int line}) async {
+        final s = session();
+        addTearDown(s.dispose);
+        s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
+        final pictures = s.playbackRig.framePictures;
+        final stood = drawn(s);
+        await pictures.makeShown(
+          pictures.stackOf(stood),
+          stood,
+          shouldAbort: () => false,
+        );
+        expect(pictures.heldNodes.heldBytes, node, reason: '⛔premise');
+        return s;
+      }
+
+      final tight = await shownOn(line: picture + node - 1);
+      final store = tight.renderCaches.framePictureStore;
+      expect(store.estimatedBytes, picture, reason: '⛔premise: laid');
+      tight.playbackRig.playbackCache.enforcePlaybackCacheBudget();
+      expect(store.estimatedBytes, 0);
+
+      final under = await shownOn(line: node - 1);
+      expect(under.playbackRig.playbackCache.lendableBytes, 0);
+    });
+  });
+
   testWidgets('🚨what is held comes off the playback line, is counted with '
       'the frames\' pictures, and goes at a memory warning and with the '
       'session', (tester) async {
