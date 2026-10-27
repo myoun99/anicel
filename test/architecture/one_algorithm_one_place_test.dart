@@ -611,6 +611,7 @@ import '../../tool/refactor/clone_scan.dart';
 ///       cut_envelope_edit_layer.dart  CutEnvelopeEditLayer.build
 ///         · timesheet_header_edit_layer.dart  TimesheetHeaderEditLayer.build
 ///       timeline_frame_range_gesture.dart  the two layers' _startDrag
+///         — named below
 ///       effect_lane_editing.dart  _editInk · _editParameter, and
 ///         _editStand · _editInk — three bodies of one family
 ///       editor_canvas_area.dart  _referenceBox · _effectBox
@@ -618,6 +619,24 @@ import '../../tool/refactor/clone_scan.dart';
 /// 🔜Each lane that laid one names it here, or merges it.
 /// 🔬Measured on the lane over master (`dd6e1a1b4`, at 91): none added,
 /// this one gone.
+/// Named at 90 (2026-10-27, clone-pairs-1027-timeline), the count kept:
+///
+///     43 tokens
+///       lib/src/ui/timeline/timeline_frame_range_gesture.dart
+///         _TimelineFrameRangeGestureLayerState._startDrag
+///       lib/src/ui/timeline/timeline_frame_range_gesture.dart
+///         _TimelineLaneRangeGestureLayerState._startDrag
+///
+/// I-57's pair (87 → 88 above), back. F-468 (`d6ae9d0e8` — one koma
+/// selected by the hand's travel) told each select where it was pressed,
+/// and that line took the tail both layers begin a select by — the mode,
+/// the anchor, the press point, the grip taken — past the scan's floor
+/// again. The reading is I-57's: one algorithm twice, each on callbacks of
+/// its own, and ⛔not merged — two of them, and the third is what earns a
+/// merge (CLAUDE.md 절대명령 1). 🔜A third range layer merges the three,
+/// into the first step the two already share (`_RangeDragFirstStep`).
+/// 🔬Measured on the lane over master (`556586179`, at 90): none added,
+/// none gone.
 void main() {
   const ceiling = 90;
 
