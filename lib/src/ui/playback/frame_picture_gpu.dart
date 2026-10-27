@@ -111,7 +111,7 @@ class FlutterGpuFramePictures implements FramePictureGpu {
       );
     }
     if (writes.spans.isNotEmpty) {
-      _writeLevels(context, commands, source, target, writes.spans);
+      _writeLevels(commands, source, target, writes.spans);
     }
     return _submitted(commands);
   }
@@ -119,12 +119,12 @@ class FlutterGpuFramePictures implements FramePictureGpu {
   /// [spans] out of [source] through one buffer: the rows from the first
   /// one a span reads to the end, copied out once.
   static void _writeLevels(
-    gpu.GpuContext context,
     gpu.CommandBuffer commands,
     gpu.Texture source,
     gpu.Texture target,
     List<RunSpan> spans,
   ) {
+    final context = gpu.gpuContext;
     final from = spans.map((span) => span.start).reduce(math.min) ~/
         source.width;
     final rows = source.height - from;

@@ -569,18 +569,17 @@ class FramePictureStore<K extends Object> {
     var at = rows * runWidth;
     for (final (:image, :level, :x, :y, :count) in halved) {
       for (var j = 1; j <= count; j += 1) {
-        final width = math.max(1, image.width >> j);
-        final height = math.max(1, image.height >> j);
-        spans.add((
+        final span = (
           start: at,
-          width: width,
-          height: height,
+          width: math.max(1, image.width >> j),
+          height: math.max(1, image.height >> j),
           x: x >> j,
           y: y >> j,
           level: level + j,
-        ));
-        reads.addAll(_rowsOf(image, width, height, at, runWidth));
-        at += width * height;
+        );
+        spans.add(span);
+        reads.addAll(_rowsOf(image, span, runWidth));
+        at += span.width * span.height;
       }
     }
     final runRows = (at + runWidth - 1) ~/ runWidth;
@@ -754,30 +753,30 @@ int _xOf(FramePicture picture, ui.Rect rect) =>
 int _yOf(FramePicture picture, ui.Rect rect) =>
     (rect.top - picture.extent.top).toInt();
 
-/// The reads that lay [image] halved to [width] x [height] into a run
-/// [runWidth] wide from texel [at] on: one a row, and one more each time a
+/// The reads that lay [image] halved to [span]'s width x height into a run
+/// [runWidth] wide from its start on: one a row, and one more each time a
 /// row wraps.
 Iterable<_PictureRead> _rowsOf(
   ui.Image image,
-  int width,
-  int height,
-  int at,
+  RunSpan span,
   int runWidth,
 ) sync* {
+  final width = span.width;
+  final height = span.height;
   final across = image.width / width;
   final down = image.height / height;
   for (var row = 0; row < height; row += 1) {
     var done = 0;
     while (done < width) {
-      final start = at + row * width + done;
-      final x = start % runWidth;
+      final texel = span.start + row * width + done;
+      final x = texel % runWidth;
       final piece = math.min(width - done, runWidth - x);
       yield (
         image: image,
         from: ui.Rect.fromLTWH(done * across, row * down, piece * across, down),
         to: ui.Rect.fromLTWH(
           x.toDouble(),
-          (start ~/ runWidth).toDouble(),
+          (texel ~/ runWidth).toDouble(),
           piece.toDouble(),
           1,
         ),
