@@ -135,17 +135,16 @@ class TimelineViewCluster extends StatelessWidget {
   Widget _zoomReadout(BuildContext context) {
     final style = _zoomStyleIn(context);
     final onChanged = onPixelsPerFrameChanged;
-    // ⚠️The zoom this readout last sent, not the one it was built with: two
-    // moves of the hand can land before the host builds it again, and the
-    // second, counted from the zoom built, would undo the first.
-    var sent = pixelsPerFrame;
+    // ↩️It counted from the zoom it last sent, not the one it was built
+    // with: two moves of the hand landed before the host built it again.
+    // The readout hands them on once a frame now ([DragValueLabel
+    // .onDragDelta]), each to a host built with the last.
     void zoomTo(double percent) {
       final zoom = TimelineZoomLimits.clamped(
         TimelineZoomLimits.atPercent(percent),
         framesPerSecond: projectFrameRate.countingBase,
       );
-      if (zoom != sent) {
-        sent = zoom;
+      if (zoom != pixelsPerFrame) {
         onChanged!(zoom);
       }
     }
@@ -165,7 +164,7 @@ class TimelineViewCluster extends StatelessWidget {
       enabled: onChanged != null,
       textStyle: _zoomStyle,
       onDragDelta: (units) =>
-          zoomTo(TimelineZoomLimits.percentOf(sent) + units),
+          zoomTo(TimelineZoomLimits.percentOf(pixelsPerFrame) + units),
     );
   }
 }

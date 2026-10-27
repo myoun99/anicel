@@ -1,6 +1,7 @@
 import 'app_tooltip.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
@@ -182,6 +183,14 @@ class DragValueLabel extends StatefulWidget {
 
   /// Whole-unit drag steps (sign follows the drag direction). A step and a
   /// notch of the wheel are one unit each.
+  ///
+  /// 🚨ONCE A FRAME, the hand's whole moves since the last (🔬
+  /// a-drag-readout-drops-a-move, 10-27): two moves of the hand can land
+  /// before the host builds the readout again, and a host counting each
+  /// from the value it built with lost the first — a −30px drag of the
+  /// timeline's zoom stood at 100%, not 80%. Handed on at the top of the
+  /// next frame, a move always finds the host built with the last one, so
+  /// `built + units` is right in every host.
   final ValueChanged<double> onDragDelta;
 
   /// Receives the raw typed text on commit; the owner parses/clamps. Null
@@ -260,19 +269,43 @@ class _DragValueLabelState extends State<DragValueLabel> {
     final whole = _pendingUnits.truncateToDouble();
     if (whole != 0) {
       _pendingUnits -= whole;
-      // ⚠️On the FIRST whole unit, not on the press: a press that never
-      // moves the value is not an operation.
-      if (!_scrubbedThisPress) {
-        widget.onOperationStart?.call();
-      }
-      _scrubbedThisPress = true;
-      widget.onDragDelta(whole);
+      _unheardUnits += whole;
+      _unheardCall ??= SchedulerBinding.instance.scheduleFrameCallback(
+        (_) => _handOn(),
+      );
     }
   }
 
-  /// The press is over: a scrub it made is done ([DragValueLabel
-  /// .onOperationEnd]).
+  /// The whole units the hand moved that the host has not been handed —
+  /// handed on once a frame ([DragValueLabel.onDragDelta]).
+  double _unheardUnits = 0;
+
+  /// The frame callback that hands them on, while one waits.
+  int? _unheardCall;
+
+  void _handOn() {
+    _unheardCall = null;
+    final units = _unheardUnits;
+    _unheardUnits = 0;
+    if (units == 0 || !mounted) {
+      return;
+    }
+    // ⚠️On the FIRST whole unit, not on the press: a press that never
+    // moves the value is not an operation.
+    if (!_scrubbedThisPress) {
+      widget.onOperationStart?.call();
+    }
+    _scrubbedThisPress = true;
+    widget.onDragDelta(units);
+  }
+
+  /// The press is over — what it moved handed on first: a scrub it made is
+  /// done ([DragValueLabel.onOperationEnd]).
   void _scrubOver() {
+    if (_unheardCall case final call?) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(call);
+      _handOn();
+    }
     if (_scrubbedThisPress) {
       _scrubbedThisPress = false;
       widget.onOperationEnd?.call();
@@ -295,6 +328,14 @@ class _DragValueLabelState extends State<DragValueLabel> {
       return;
     }
     _step(event.scrollDelta.dy < 0 ? 1 : -1);
+  }
+
+  @override
+  void dispose() {
+    if (_unheardCall case final call?) {
+      SchedulerBinding.instance.cancelFrameCallbackWithId(call);
+    }
+    super.dispose();
   }
 
   /// How tall the bare readout's hands stand.

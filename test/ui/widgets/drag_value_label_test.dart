@@ -106,6 +106,77 @@ void main() {
     });
   }
 
+  group('🚨the hand is handed on ONCE A FRAME (a-drag-readout-drops-a-move, '
+      '10-27: a −30px drag of the timeline\'s zoom stood at 100%)', () {
+    /// A host that counts each move from the value it built the readout
+    /// with — the canvas zoom's, the transport's and the page band's way —
+    /// writing what it hears to [heard].
+    Future<int Function()> pumpHost(
+      WidgetTester tester, {
+      List<String>? heard,
+    }) async {
+      var value = 100;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  final built = value;
+                  return DragValueLabel(
+                    keyValue: 'zoom',
+                    text: '$built%',
+                    width: 64,
+                    onDragDelta: (units) {
+                      heard?.add('move $units');
+                      setState(() => value = built + units.round());
+                    },
+                    onOperationEnd: () => heard?.add('end'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      return () => value;
+    }
+
+    testWidgets('two moves before a frame both count', (tester) async {
+      final value = await pumpHost(tester);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(face)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(-10, 0));
+      await gesture.moveBy(const Offset(-20, 0));
+      await tester.pump();
+      expect(value(), 70);
+
+      await gesture.moveBy(const Offset(5, 0));
+      await tester.pump();
+      expect(value(), 75, reason: 'from the value the last frame built');
+      await gesture.up();
+    });
+
+    testWidgets('a release before the frame hands on what is left, and then '
+        'says it is over', (tester) async {
+      final heard = <String>[];
+      final value = await pumpHost(tester, heard: heard);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(face)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(-5, 0));
+      await gesture.up();
+
+      expect(heard, ['move -5.0', 'end']);
+      await tester.pump();
+      expect(value(), 95);
+      expect(heard, ['move -5.0', 'end'], reason: 'nothing left for a frame');
+    });
+  });
+
   testWidgets('a press on the face that does not move does NOTHING — no '
       'field, no step, no operation', (tester) async {
     final seen = await pump(tester);
