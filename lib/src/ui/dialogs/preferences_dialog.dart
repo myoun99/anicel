@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
-import 'accent_settings_dialog.dart' show AccentSettingsSection;
 import 'audio_settings_section.dart';
 import 'autosave_settings_section.dart';
 import 'display_settings_section.dart';
@@ -14,20 +13,22 @@ import 'system_status_section.dart';
 import '../text/app_strings.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
-/// Language, Accent Colors, Display and System (the runtime-path report)
+/// Language, Display and System (the runtime-path report)
 /// as sections of ONE window (the old per-domain Edit menu entries
 /// collapsed here; their dialogs remain as thin wrappers around the same
 /// section widgets for tests and deep links).
 ///
-/// Display is R11's: the interface scale. It is its own section rather
-/// than a row under Accent Colors, which is about colour and nothing else
-/// — a scale filed there would be a setting nobody could find.
+/// Display is R11's: the interface scale — and the accent colour, a row of
+/// it since F-480 (유저 2026-10-26: 「강조색상 탭, 이게 화면이랑 같이
+/// 안있고 독립적으로 있는게 의문임. 화면탭에 넣도록」). ↩️Accent Colors was
+/// a tab of its own, and Display a section beside it rather than a row
+/// under it, since a scale filed under colour would be a setting nobody
+/// could find.
 enum PreferencesSection {
   input,
   autosave,
   audio,
   language,
-  accent,
   display,
   system,
   memory,
@@ -76,7 +77,6 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
       PreferencesSection.autosave => strings.prefsAutosave,
       PreferencesSection.audio => strings.prefsAudio,
       PreferencesSection.language => strings.prefsLanguage,
-      PreferencesSection.accent => strings.prefsAccent,
       PreferencesSection.display => strings.prefsDisplay,
       PreferencesSection.system => strings.prefsSystem,
       PreferencesSection.memory => strings.prefsMemory,
@@ -92,7 +92,6 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     PreferencesSection.language => LanguageSettingsSection(
       session: widget.session,
     ),
-    PreferencesSection.accent => AccentSettingsSection(session: widget.session),
     PreferencesSection.display => DisplaySettingsSection(
       session: widget.session,
     ),

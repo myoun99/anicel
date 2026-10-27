@@ -250,44 +250,40 @@ void main() {
   });
 
   // 🗣️I-27 (유저 2026-09-13): 「최대 줌 제한기능 … 100%이면 100% 넘어서
-  // 확대하지 못하게 락」; the row keeps its number while the switch is off
-  // (I-27-Q1: 「끄면 칸은 회색으로 자리만」).
+  // 확대하지 못하게 락」 — one number or none (F-480: 「리스트 팝오버로
+  // 없음이랑 항목하나 100」).
   group('the lock on zooming in', () {
-    test('is off, at the request\'s own example, until the user sets it', () {
-      const settings = AppInputSettings();
-      expect(settings.zoomCeilingOn, isFalse);
-      expect(settings.zoomCeilingPercent, 100);
-      expect(settings.zoomCeiling, isNull);
+    test('is none until the user sets it', () {
+      expect(const AppInputSettings().zoomCeilingPercent, isNull);
     });
 
-    test('🚨says its number only while it is on — and keeps the number '
-        'while it is off', () {
-      final on = const AppInputSettings().copyWith(
-        zoomCeilingOn: true,
-        zoomCeilingPercent: 150,
+    test('🚨is set, kept through the round trip, and let go again', () {
+      final on = const AppInputSettings().copyWith(zoomCeilingPercent: 150);
+      expect(on.zoomCeilingPercent, 150);
+      expect(AppInputSettings.fromJson(on.toJson()).zoomCeilingPercent, 150);
+      expect(
+        on.copyWith(touchIgnored: true).zoomCeilingPercent,
+        150,
+        reason: 'a copy that does not name the lock keeps it',
       );
-      expect(on.zoomCeiling, 150);
 
-      final off = on.copyWith(zoomCeilingOn: false);
-      expect(off.zoomCeiling, isNull);
-      expect(off.zoomCeilingPercent, 150);
-      expect(AppInputSettings.fromJson(off.toJson()).zoomCeilingPercent, 150);
+      final off = on.copyWith(zoomCeilingPercent: null);
+      expect(off.zoomCeilingPercent, isNull);
+      expect(AppInputSettings.fromJson(off.toJson()).zoomCeilingPercent, isNull);
     });
 
-    test('a file from before the lock reads it off, and a number nobody '
-        'could have typed reads the default', () {
+    test('a file from before the lock reads none, and so does a number '
+        'nobody could have typed', () {
       final before = const AppInputSettings().toJson()
-        ..remove('zoomCeilingOn')
         ..remove('zoomCeilingPercent');
-      expect(AppInputSettings.fromJson(before).zoomCeilingOn, isFalse);
-      expect(AppInputSettings.fromJson(before).zoomCeilingPercent, 100);
+      expect(AppInputSettings.fromJson(before).zoomCeilingPercent, isNull);
 
       for (final nonsense in <Object?>[0, -50, 'big', double.nan]) {
         final edited = const AppInputSettings().toJson()
           ..['zoomCeilingPercent'] = nonsense;
         expect(
           AppInputSettings.fromJson(edited).zoomCeilingPercent,
-          100,
+          isNull,
           reason: '$nonsense',
         );
       }
@@ -327,13 +323,10 @@ void main() {
       'navigationModifierRotationLock': base.copyWith(
         navigationModifierRotationLock: !base.navigationModifierRotationLock,
       ),
-      'zoomCeilingOn': base.copyWith(zoomCeilingOn: !base.zoomCeilingOn),
       'touchIgnored': base.copyWith(touchIgnored: !base.touchIgnored),
       // Not a bool, and held to the same rule: a lock whose NUMBER was not
-      // in `==` could be typed and never stored.
-      'zoomCeilingPercent': base.copyWith(
-        zoomCeilingPercent: base.zoomCeilingPercent + 50,
-      ),
+      // in `==` could be picked and never stored.
+      'zoomCeilingPercent': base.copyWith(zoomCeilingPercent: 150),
       // I-54: every choice, each one a field value of its own.
       for (final cursor in DrawingCursor.values)
         if (cursor != base.drawingCursor)

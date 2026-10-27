@@ -100,16 +100,15 @@ void main() {
       findsOneWidget,
     );
 
-    await openSection('accent');
-    expect(
-      find.byKey(const ValueKey<String>('settings-accent1-swatch')),
-      findsOneWidget,
-    );
-
     await openSection('display');
     expect(
-      find.byKey(const ValueKey<String>('ui-scale-stop-100')),
+      find.byKey(const ValueKey<String>('settings-ui-scale')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('settings-accent1-preset-ff5b9bd5')),
+      findsOneWidget,
+      reason: 'the accent is a row of the display tab (F-480)',
     );
 
     await openSection('system');

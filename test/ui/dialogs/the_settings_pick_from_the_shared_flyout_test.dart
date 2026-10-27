@@ -13,7 +13,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/timeline/instruction_icon_palette.dart';
-import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/native_engine_path.dart';
 
@@ -220,11 +219,8 @@ void main() {
 
     await pick(
       tester,
-      find.descendant(
-        of: byKey('settings-notation-language'),
-        matching: find.byType(PanelFlyoutButton),
-      ),
-      'language-option-${other.name}',
+      byKey('settings-notation-language'),
+      'settings-notation-language-${other.name}',
     );
     expect(session.languageSettings.value.notationLanguage, other);
   });

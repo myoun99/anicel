@@ -1,8 +1,10 @@
 // THE ACCENT PALETTE: A PRESET TAP APPLIES THAT ACCENT AT ONCE, AND THE
-// SWATCH SHOWS IT.
+// PALETTE MARKS IT.
 //
 // No test named this section (audit 2026-09-03). This pin drives it as a
-// user does — one tap on a preset — and reads the swatch back.
+// user does — one tap on a preset — and reads the palette back. Since
+// F-480 it is a row of the display tab (유저 2026-10-26: 「강조색상 탭 …
+// 화면탭에 넣도록」).
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -12,7 +14,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 void main() {
-  testWidgets('a preset tap applies the accent and the swatch shows it', (
+  testWidgets('a preset tap applies the accent and the palette marks it', (
     tester,
   ) async {
     final session = EditorSessionManager(
@@ -24,23 +26,35 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: AccentSettingsSection(session: session)),
+        home: Scaffold(body: AccentSettingsRow(session: session)),
       ),
     );
-    Color swatchColor() {
+    Finder presetOf(Color color) => find.byKey(
+      ValueKey<String>(
+        'settings-accent1-preset-${color.toARGB32().toRadixString(16)}',
+      ),
+    );
+    BorderSide edgeOf(Color color) {
       final box = tester.widget<Container>(
-        find.byKey(const ValueKey<String>('settings-accent1-swatch')),
+        find.descendant(of: presetOf(color), matching: find.byType(Container)),
       );
-      return (box.decoration! as ShapeDecoration).color!;
+      final shape = (box.decoration! as ShapeDecoration).shape;
+      return (shape as OutlinedBorder).side;
     }
 
     const preset = Color(0xFF5B9BD5);
-    expect(swatchColor(), before.accent);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('settings-accent1-preset-ff5b9bd5')),
-    );
+    expect(edgeOf(preset), isNot(edgeOf(before.accent)), reason: '⛔전제');
+    await tester.tap(presetOf(preset));
     await tester.pumpAndSettle();
     expect(AppColors.accentSettings.value.accent, preset);
-    expect(swatchColor(), preset);
+    expect(
+      edgeOf(preset),
+      isNot(edgeOf(before.accent)),
+      reason: 'the one picked wears the mark, the one before lets it go',
+    );
+    final marked = edgeOf(preset);
+    await tester.tap(presetOf(before.accent));
+    await tester.pumpAndSettle();
+    expect(edgeOf(before.accent), marked);
   });
 }

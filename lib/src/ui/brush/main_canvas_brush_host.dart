@@ -519,8 +519,10 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
     // same panel and say nothing.
     return ValueListenableBuilder<AppInputSettings>(
       valueListenable: AppInput.settings,
-      builder: (context, settings, panel) =>
-          CanvasZoomCeiling(percent: settings.zoomCeiling, child: panel!),
+      builder: (context, settings, panel) => CanvasZoomCeiling(
+        percent: settings.zoomCeilingPercent,
+        child: panel!,
+      ),
       child: _buildPanel(coordinator, hasCelUnderPlayhead, contentOverride),
     );
   }

@@ -237,7 +237,7 @@ void main() {
         // A row with a tooltip and a row without one.
         for (final key in const [
           'settings-extra-finger',
-          'settings-zoom-ceiling',
+          'settings-ignore-touch',
         ]) {
           final tile = find.byKey(ValueKey<String>(key));
           await tester.ensureVisible(tile);

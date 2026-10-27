@@ -19,122 +19,71 @@ const List<Color> _presetAccents = [
   Color(0xFF4EBF7E),
 ];
 
-/// The two-accent settings (UI-R22 #5): accent 1 (selection, playhead,
-/// active toggles) and accent 2 (the secondary highlight — repeat pattern
-/// spans, selected union diamonds). Accent 2 follows accent 1's COMPLEMENT
-/// automatically unless overridden; both apply and persist immediately.
-/// Dialog-free: SAVE-1 made the Preferences dialog its one home (the
-/// standalone dialog that wrapped it went with its caller).
-class AccentSettingsSection extends StatelessWidget {
-  const AccentSettingsSection({super.key, required this.session});
+/// The accent (UI-R22 #5): accent 1 — selection, playhead, active toggles —
+/// picked from the palette, and accent 2 — the secondary highlight, repeat
+/// pattern spans and selected union diamonds — following its COMPLEMENT.
+/// Applies and persists at once.
+///
+/// 🗣️F-480 (유저 2026-10-26): 「강조색상 탭, 이게 화면이랑 같이 안있고
+/// 독립적으로 있는게 의문임. 화면탭에 넣도록」 — a row of the display tab
+/// ([SettingsRow]), the palette where its control stands. ↩️A tab of its
+/// own: the colour and its name over the palette.
+class AccentSettingsRow extends StatelessWidget {
+  const AccentSettingsRow({super.key, required this.session});
 
   final EditorSessionManager session;
 
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<AppAccentSettings>(
-      valueListenable: AppColors.accentSettings,
-      builder: (context, settings, _) {
-        final strings = AppText.strings;
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _AccentRow(
-              keyPrefix: 'settings-accent1',
-              label: strings.accent1Label,
-              help: strings.accent1Help,
-              value: settings.accent,
-              onChanged: (color) =>
-                  session.setAccentSettings(settings.copyWith(accent: color)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _AccentRow extends StatelessWidget {
-  const _AccentRow({
-    required this.keyPrefix,
-    required this.label,
-    required this.help,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String keyPrefix;
-  final String label;
-  final String help;
-  final Color value;
-  final ValueChanged<Color> onChanged;
+  static const String _keyPrefix = 'settings-accent1';
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Container(
-              key: ValueKey<String>('$keyPrefix-swatch'),
-              width: 22,
-              height: 22,
-              decoration: ShapeDecoration(
-                color: value,
-                shape: AppShapes.container(
-                  AppShapes.wellRadius,
-                  side: BorderSide(color: colorScheme.outline),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // F-2: what this accent colours is a TOOLTIP on its name now,
-            // not a caption under it.
-            settingsHelpTooltip(
-              help,
-              Text(label, style: Theme.of(context).textTheme.titleSmall),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final preset in _presetAccents)
-              ControlPressClaim(
-                onPressed: () => onChanged(preset),
-                child: InkWell(
-                  mouseCursor: AppCursors.press,
-                  key: ValueKey<String>(
-                    '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
-                  ),
-                  onTap: silentPress(() => onChanged(preset)),
-                  customBorder: AppShapes.container(AppShapes.wellRadius),
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    decoration: ShapeDecoration(
-                      color: preset,
-                      shape: AppShapes.container(
-                        AppShapes.wellRadius,
-                        side: BorderSide(
-                          color: preset == value
-                              ? colorScheme.onSurface
-                              : colorScheme.outlineVariant,
-                          width: preset == value ? 2 : 1,
+    final strings = AppText.strings;
+    return ValueListenableBuilder<AppAccentSettings>(
+      valueListenable: AppColors.accentSettings,
+      builder: (context, settings, _) {
+        void pick(Color preset) =>
+            session.setAccentSettings(settings.copyWith(accent: preset));
+        return SettingsRow(
+          label: strings.prefsAccent,
+          help: strings.accent1Help,
+          control: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 6,
+            children: [
+              for (final preset in _presetAccents)
+                ControlPressClaim(
+                  onPressed: () => pick(preset),
+                  child: InkWell(
+                    mouseCursor: AppCursors.press,
+                    key: ValueKey<String>(
+                      '$_keyPrefix-preset-'
+                      '${preset.toARGB32().toRadixString(16)}',
+                    ),
+                    onTap: silentPress(() => pick(preset)),
+                    customBorder: AppShapes.container(AppShapes.wellRadius),
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: ShapeDecoration(
+                        color: preset,
+                        shape: AppShapes.container(
+                          AppShapes.wellRadius,
+                          side: BorderSide(
+                            color: preset == settings.accent
+                                ? colorScheme.onSurface
+                                : colorScheme.outlineVariant,
+                            width: preset == settings.accent ? 2 : 1,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

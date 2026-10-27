@@ -320,6 +320,7 @@ enum AppStrings {
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
   String get commonDelete => _s('commonDelete');
+  String get commonAdd => _s('commonAdd');
   String get commonRename => _s('commonRename');
   String get commonLink => _s('commonLink');
   String get commonPreview => _s('commonPreview');
@@ -622,7 +623,6 @@ enum AppStrings {
   String get inputRotationLockHelp => _s('inputRotationLockHelp');
   String get inputRotationSnap => _s('inputRotationSnap');
   String get inputZoomSnaps => _s('inputZoomSnaps');
-  String get inputZoomSnapAdd => _s('inputZoomSnapAdd');
   String get inputZoomCeiling => _s('inputZoomCeiling');
   String get inputTabletHeading => _s('inputTabletHeading');
   String get inputTabletStandard => _s('inputTabletStandard');
@@ -735,7 +735,6 @@ enum AppStrings {
   String get drawingCursorCrosshair => _s('drawingCursorCrosshair');
 
   // --- Accent colours ---
-  String get accent1Label => _s('accent1Label');
   String get accent1Help => _s('accent1Help');
 
   // --- Sheet format ---
@@ -2047,6 +2046,7 @@ enum AppStrings {
     'toolSelectionMode': 'Mode',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
+    'commonAdd': 'Add',
     'commonRename': 'Rename',
     'commonLink': 'Link',
     'commonPreview': 'Preview',
@@ -2258,7 +2258,6 @@ enum AppStrings {
         'OFF (default): it snaps the angle.',
     'inputRotationSnap': 'Rotation snap',
     'inputZoomSnaps': 'Zoom snaps (%)',
-    'inputZoomSnapAdd': 'Add zoom snap',
     'inputZoomCeiling': 'Max zoom lock (%)',
     'inputTabletHeading': 'Tablet service',
     'inputTabletStandard': 'Standard (default)',
@@ -2389,7 +2388,6 @@ enum AppStrings {
     'drawingCursorBrush': 'Brush',
     'drawingCursorPen': 'Pen',
     'drawingCursorCrosshair': 'Crosshair',
-    'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
     'sheetFormatTitle': 'Sheet format',
     'sheetFieldTitle': 'Title',
@@ -3299,6 +3297,7 @@ enum AppStrings {
     'toolSelectionMode': 'モード',
     'commonSave': '保存',
     'commonDelete': '削除',
+    'commonAdd': '追加',
     'commonRename': '名前を変更',
     'commonLink': 'リンク',
     'commonPreview': 'プレビュー',
@@ -3582,7 +3581,6 @@ enum AppStrings {
         'OFF（既定）：角度をスナップします。',
     'inputRotationSnap': '回転スナップ',
     'inputZoomSnaps': 'ズームスナップ（%）',
-    'inputZoomSnapAdd': 'ズームスナップを追加',
     'inputZoomCeiling': '最大ズームをロック（%）',
     'inputTabletHeading': 'タブレットサービス',
     'inputTabletStandard': '標準（既定）',
@@ -3681,7 +3679,6 @@ enum AppStrings {
     'drawingCursorBrush': 'ブラシ',
     'drawingCursorPen': 'ペン',
     'drawingCursorCrosshair': '十字',
-    'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
     'sheetFormatTitle': 'シート書式',
     'sheetFieldTitle': 'タイトル',
@@ -4980,6 +4977,7 @@ enum AppStrings {
     'toolSelectionMode': '모드',
     'commonSave': '저장',
     'commonDelete': '삭제',
+    'commonAdd': '추가',
     'commonRename': '이름 변경',
     'commonLink': '링크',
     'commonPreview': '미리보기',
@@ -5256,7 +5254,6 @@ enum AppStrings {
         'OFF(기본): 각도를 스냅합니다.',
     'inputRotationSnap': '회전 스냅',
     'inputZoomSnaps': '줌 스냅 (%)',
-    'inputZoomSnapAdd': '줌 스냅 추가',
     'inputZoomCeiling': '최대 줌 잠금 (%)',
     'inputTabletHeading': '태블릿 서비스',
     'inputTabletStandard': '표준 (기본)',
@@ -5355,7 +5352,6 @@ enum AppStrings {
     'drawingCursorBrush': '브러시',
     'drawingCursorPen': '펜',
     'drawingCursorCrosshair': '십자',
-    'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
     'sheetFormatTitle': '타임시트 서식',
     'sheetFieldTitle': '제목',
@@ -6653,6 +6649,7 @@ enum AppStrings {
     'toolSelectionMode': 'Mode',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
+    'commonAdd': 'Ajouter',
     'commonRename': 'Renommer',
     'commonLink': 'Lier',
     'commonPreview': 'Aperçu',
@@ -6944,7 +6941,6 @@ enum AppStrings {
         "zoom par crans). DÉSACTIVÉ (par défaut) : il aligne l'angle.",
     'inputRotationSnap': 'Cran de rotation',
     'inputZoomSnaps': 'Crans de zoom (%)',
-    'inputZoomSnapAdd': 'Ajouter un cran de zoom',
     'inputZoomCeiling': 'Verrou de zoom max (%)',
     'inputTabletHeading': 'Service tablette',
     'inputTabletStandard': 'Standard (par défaut)',
@@ -7062,7 +7058,6 @@ enum AppStrings {
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
         'dessins déjà enregistrés ne vivent que dans ce fichier.',
-    'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
     'sheetFieldTitle': 'Titre',
@@ -8441,6 +8436,7 @@ enum AppStrings {
     'toolSelectionMode': '模式',
     'commonSave': '保存',
     'commonDelete': '删除',
+    'commonAdd': '添加',
     'commonRename': '重命名',
     'commonLink': '链接',
     'commonPreview': '预览',
@@ -8693,7 +8689,6 @@ enum AppStrings {
     'inputRotationLockHelp': '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
     'inputRotationSnap': '旋转吸附',
     'inputZoomSnaps': '缩放吸附（%）',
-    'inputZoomSnapAdd': '添加缩放吸附',
     'inputZoomCeiling': '锁定最大缩放（%）',
     'inputTabletHeading': '数位板服务',
     'inputTabletStandard': '标准（默认）',
@@ -8778,7 +8773,6 @@ enum AppStrings {
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
-    'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
     'sheetFieldTitle': '标题',

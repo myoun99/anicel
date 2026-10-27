@@ -5,6 +5,7 @@ import '../../helpers/boolean_dot_probe.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/dialogs/input_settings_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
@@ -91,84 +92,109 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
   });
 
-  // 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능」;
-  // I-27-Q1: one line under the zoom snaps — a switch and a number, and
-  // 「끄면 칸은 회색으로 자리만」.
-  group('the lock on zooming in', () {
-    final lockSwitch = find.byKey(
-      const ValueKey<String>('settings-zoom-ceiling'),
-    );
-    final lockNumber = find.byKey(
-      const ValueKey<String>('settings-zoom-ceiling-percent'),
+  // 🗣️I-27 (유저 2026-09-13): 「설정 줌 스냅 근처에 최대 줌 제한기능」, one
+  // line under the zoom snaps (I-27-Q1). 🗣️F-480 (유저 2026-10-26):
+  // 「리스트 팝오버로 없음이랑 항목하나 100 이렇게 두고 고르게하도록. 줌 스냅
+  // 추가하듯이 똑같은 공용ui로. 다만 줌 잠금은 1개값만 허용」.
+  group('the lock on zooming in is the snaps\' list, of at most one', () {
+    final button = find.byKey(const ValueKey<String>('settings-zoom-ceiling'));
+    Finder row(String percent) =>
+        find.byKey(ValueKey<String>('settings-zoom-ceiling-$percent'));
+    Finder remove(String percent) =>
+        find.byKey(ValueKey<String>('settings-zoom-ceiling-$percent-remove'));
+    final add = find.byKey(
+      const ValueKey<String>('settings-zoom-ceiling-add'),
     );
 
-    Future<void> type(WidgetTester tester, String text) async {
-      await tester.ensureVisible(lockNumber);
+    Future<void> open(WidgetTester tester) async {
+      await tester.ensureVisible(button);
       await tester.pumpAndSettle();
-      await tester.enterText(lockNumber, text);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> typeToPutIn(WidgetTester tester, String text) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('settings-zoom-ceiling-new-edit')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('settings-zoom-ceiling-new-input')),
+        text,
+      );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
     }
 
-    testWidgets('stands right under the zoom snaps', (tester) async {
+    bool canPress(WidgetTester tester, Finder command) =>
+        tester.widget<AppIconButtonFace>(command).onPressed != null;
+
+    String said(WidgetTester tester) =>
+        tester.widget<PanelFlyoutButton>(button).label;
+
+    testWidgets('stands right under the zoom snaps, in their column', (
+      tester,
+    ) async {
       await pumpDialog(tester);
       final snaps = tester.getRect(
         find.byKey(const ValueKey<String>('settings-snap-zoom')),
       );
-      final number = tester.getRect(lockNumber);
-      expect(number.top, greaterThan(snaps.bottom - 1));
-      expect(number.left, snaps.left, reason: 'in the column of the fields');
+      final lock = tester.getRect(button);
+      expect(lock.top, greaterThan(snaps.bottom - 1));
+      expect(lock.left, snaps.left);
+      expect(lock.width, snaps.width);
     });
 
-    testWidgets('⛔its number does not come and go with the switch: off, the '
-        'field is there, dimmed, holding its value', (tester) async {
+    testWidgets('🚨empty, it reads 「없음」; the ＋ locks at the number at the '
+        'foot, and then takes no more', (tester) async {
       await pumpDialog(tester);
+      expect(said(tester), AppText.strings.commonNone);
+      expect(AppInput.settings.value.zoomCeilingPercent, isNull);
 
-      expect(tester.booleanDotIn(lockSwitch).value, isFalse);
-      expect(lockNumber, findsOneWidget);
-      expect(tester.widget<TextField>(lockNumber).enabled, isFalse);
-      expect(tester.widget<TextField>(lockNumber).controller!.text, '100');
+      await open(tester);
+      expect(canPress(tester, add), isTrue, reason: 'empty, it takes one');
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+
+      expect(AppInput.settings.value.zoomCeilingPercent, 100);
+      expect(row('100'), findsOneWidget, reason: 'the list stays open');
+      expect(said(tester), '100');
+      expect(canPress(tester, add), isFalse, reason: 'one is all it holds');
+
+      await typeToPutIn(tester, '250');
+      expect(
+        canPress(tester, add),
+        isFalse,
+        reason: 'a number it does not have yet still finds it full',
+      );
     });
 
-    testWidgets('🚨the switch locks at the number the row holds, and a typed '
-        'number is the lock', (tester) async {
-      await pumpDialog(tester);
-      await tester.ensureVisible(lockSwitch);
-      await tester.pumpAndSettle();
-
-      await tester.pressRingIn(lockSwitch);
-      await tester.pumpAndSettle();
-      expect(AppInput.settings.value.zoomCeiling, 100);
-      expect(tester.widget<TextField>(lockNumber).enabled, isTrue);
-
-      await type(tester, '250');
-      expect(AppInput.settings.value.zoomCeiling, 250);
-
-      await tester.pressRingIn(lockSwitch);
-      await tester.pumpAndSettle();
-      expect(AppInput.settings.value.zoomCeiling, isNull);
-      expect(tester.widget<TextField>(lockNumber).controller!.text, '250');
-    });
-
-    testWidgets('a number a view cannot stand on becomes the nearest it '
-        'can, and words are not a number', (tester) async {
+    testWidgets('🚨its − lets the lock go, and the next ＋ locks at the '
+        'number at the foot', (tester) async {
       AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
-        zoomCeilingOn: true,
+        zoomCeilingPercent: 100,
       );
       await pumpDialog(tester);
-
-      await type(tester, '5');
-      expect(AppInput.settings.value.zoomCeilingPercent, 10);
-      await type(tester, '9000');
-      expect(AppInput.settings.value.zoomCeilingPercent, 1600);
-      await type(tester, 'a lot');
-      expect(AppInput.settings.value.zoomCeilingPercent, 1600);
-      await type(tester, '33.3');
-      expect(AppInput.settings.value.zoomCeilingPercent, 33.3);
+      await open(tester);
       expect(
-        tester.widget<TextField>(lockNumber).controller!.text,
-        '33.3',
-        reason: 'the field shows every digit it holds',
+        tester.widget<AppIconButtonFace>(remove('100')).onPressed,
+        isNotNull,
+        reason: 'unlike the snaps, it may stand empty',
+      );
+
+      await tester.tap(remove('100'));
+      await tester.pumpAndSettle();
+      expect(AppInput.settings.value.zoomCeilingPercent, isNull);
+      expect(row('100'), findsNothing);
+      expect(said(tester), AppText.strings.commonNone);
+
+      await typeToPutIn(tester, '9000');
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(
+        AppInput.settings.value.zoomCeilingPercent,
+        1600,
+        reason: 'a number no view can stand on becomes the nearest one can',
       );
     });
   });

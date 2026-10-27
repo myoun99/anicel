@@ -386,7 +386,7 @@ void main() {
     });
 
     testWidgets('the drawing canvas says the settings\' lock to the view '
-        'under it — while the switch is on, and at the number it holds', (
+        'under it — the number it holds, and none once it is let go', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -399,22 +399,16 @@ void main() {
       expect(said(), isNull, reason: 'off until the user locks one');
 
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        zoomCeilingOn: true,
         zoomCeilingPercent: 150,
       );
       await tester.pumpAndSettle();
       expect(said(), 150);
 
       AppInput.settings.value = AppInput.settings.value.copyWith(
-        zoomCeilingOn: false,
+        zoomCeilingPercent: null,
       );
       await tester.pumpAndSettle();
       expect(said(), isNull);
-      expect(
-        AppInput.settings.value.zoomCeilingPercent,
-        150,
-        reason: 'switched off, the number is kept',
-      );
     });
   });
 }

@@ -58,8 +58,7 @@ class AppInputSettings {
     this.navigationModifierRotationLock = false,
     this.rotationSnapDegrees = 15,
     this.zoomSnapPercents = defaultZoomSnapPercents,
-    this.zoomCeilingOn = false,
-    this.zoomCeilingPercent = defaultZoomCeilingPercent,
+    this.zoomCeilingPercent,
     // 🗣️I-54 (유저 2026-10-16): 「기본값은 십자가로 하잿나」.
     this.drawingCursor = DrawingCursor.crosshair,
     this.touchIgnored = false,
@@ -143,25 +142,18 @@ class AppInputSettings {
   /// 자유」. The lock on zooming IN, and the display percent it holds a view
   /// under.
   ///
-  /// ⚠️Two fields on purpose. Switched off, the number is KEPT: the row in
-  /// the settings window keeps its place and its value, dimmed (I-27-Q1:
-  /// 「끄면 칸은 회색으로 자리만」) — one nullable number would forget what
-  /// the user typed each time the switch went off.
+  /// Null while there is no lock. ↩️Two fields until F-480 — a switch, and
+  /// the number KEPT while it was off, for the row in the settings window
+  /// to hold dimmed (I-27-Q1: 「끄면 칸은 회색으로 자리만」). The row is a
+  /// list of at most one now (유저 2026-10-26: 「리스트 팝오버로 없음이랑
+  /// 항목하나 100 이렇게 두고 고르게하도록」), and nothing stands dimmed in
+  /// it to keep a number for.
   ///
   /// WHERE it holds is not this object's to say. The answers were 「그리기
   /// 캔버스만」 (I-27-Q1) and, there, 「화면에 맞추기도 최대 줌에서 멈춘다」
-  /// (I-27-Q2): the drawing canvas reads [zoomCeiling] for the view under
-  /// it, and no other document view does.
-  final bool zoomCeilingOn;
-  final double zoomCeilingPercent;
-
-  /// The example the request gave — 「100%이면」 — which is also where the
-  /// number stands until the user types one.
-  static const double defaultZoomCeilingPercent = 100;
-
-  /// The percent a locked view may not be zoomed past, or null while the
-  /// lock is off.
-  double? get zoomCeiling => zoomCeilingOn ? zoomCeilingPercent : null;
+  /// (I-27-Q2): the drawing canvas reads this for the view under it, and
+  /// no other document view does.
+  final double? zoomCeilingPercent;
 
   /// PEN-15: 10/25 joined so a sub-50% view has nearby snaps (the
   /// modifier constraint glues the CURRENT zoom to the nearest entry —
@@ -277,6 +269,8 @@ class AppInputSettings {
   /// pointer's kind has to ask this again. OFF by default.
   final bool touchIgnored;
 
+  static const Object _unset = Object();
+
   AppInputSettings copyWith({
     TabletService? tabletService,
     double? pressureCurveGamma,
@@ -295,8 +289,7 @@ class AppInputSettings {
     bool? navigationModifierRotationLock,
     double? rotationSnapDegrees,
     List<double>? zoomSnapPercents,
-    bool? zoomCeilingOn,
-    double? zoomCeilingPercent,
+    Object? zoomCeilingPercent = _unset,
     DrawingCursor? drawingCursor,
     bool? touchIgnored,
   }) => AppInputSettings(
@@ -320,8 +313,12 @@ class AppInputSettings {
         navigationModifierRotationLock ?? this.navigationModifierRotationLock,
     rotationSnapDegrees: rotationSnapDegrees ?? this.rotationSnapDegrees,
     zoomSnapPercents: zoomSnapPercents ?? this.zoomSnapPercents,
-    zoomCeilingOn: zoomCeilingOn ?? this.zoomCeilingOn,
-    zoomCeilingPercent: zoomCeilingPercent ?? this.zoomCeilingPercent,
+    // ⚠️Through `num`: the parameter is untyped so that null can mean
+    // 「take the lock off」, and a whole number written `150` arrives as an
+    // int.
+    zoomCeilingPercent: identical(zoomCeilingPercent, _unset)
+        ? this.zoomCeilingPercent
+        : (zoomCeilingPercent as num?)?.toDouble(),
     drawingCursor: drawingCursor ?? this.drawingCursor,
     touchIgnored: touchIgnored ?? this.touchIgnored,
   );
@@ -344,18 +341,10 @@ class AppInputSettings {
     'navigationModifierRotationLock': navigationModifierRotationLock,
     'rotationSnapDegrees': rotationSnapDegrees,
     'zoomSnapPercents': zoomSnapPercents,
-    'zoomCeilingOn': zoomCeilingOn,
     'zoomCeilingPercent': zoomCeilingPercent,
     'drawingCursor': drawingCursor.name,
     'touchIgnored': touchIgnored,
   };
-
-  /// [json] as a number above zero, or [fallback] — a lock at nothing, or
-  /// below it, is a file somebody edited by hand.
-  static double _positiveOr(Object? json, double fallback) {
-    final value = json is num ? json.toDouble() : fallback;
-    return value > 0 && value.isFinite ? value : fallback;
-  }
 
   static List<double> _doubleList(Object? json, List<double> fallback) {
     if (json is! List) {
@@ -433,11 +422,12 @@ class AppInputSettings {
       legacyDefaults: legacyZoomSnapDefaults,
       current: defaultZoomSnapPercents,
     ),
-    zoomCeilingOn: json['zoomCeilingOn'] as bool? ?? false,
-    zoomCeilingPercent: _positiveOr(
-      json['zoomCeilingPercent'],
-      defaultZoomCeilingPercent,
-    ),
+    // A lock at nothing, or below it, is a file somebody edited by hand.
+    zoomCeilingPercent: switch (json['zoomCeilingPercent']) {
+      final num percent when percent > 0 && percent.isFinite =>
+        percent.toDouble(),
+      _ => null,
+    },
     drawingCursor:
         DrawingCursor.values.asNameMap()[json['drawingCursor']] ??
         DrawingCursor.crosshair,
@@ -464,7 +454,6 @@ class AppInputSettings {
       other.navigationModifierRotationLock == navigationModifierRotationLock &&
       other.rotationSnapDegrees == rotationSnapDegrees &&
       listEquals(other.zoomSnapPercents, zoomSnapPercents) &&
-      other.zoomCeilingOn == zoomCeilingOn &&
       other.zoomCeilingPercent == zoomCeilingPercent &&
       other.drawingCursor == drawingCursor &&
       other.touchIgnored == touchIgnored;
@@ -488,7 +477,6 @@ class AppInputSettings {
     navigationModifierRotationLock,
     rotationSnapDegrees,
     Object.hashAll(zoomSnapPercents),
-    zoomCeilingOn,
     zoomCeilingPercent,
     drawingCursor,
     touchIgnored,
