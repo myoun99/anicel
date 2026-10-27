@@ -193,6 +193,12 @@ const _notCensused = <String, String>{
       'a CEILING — how much an export run may hold on playback\'s line; '
       'what it holds is lentBytes, which the census reads',
 
+  // — A PART of a holding the census reads whole.
+  'lib/src/ui/canvas/subtree_image_composite.dart → heldBelowBytes':
+      'the rasters held below a pen — a part of heldBytes, which the '
+      'census reads (`framePictures`); the line weighs the nodes over the '
+      'pen by it',
+
   // — On DISK, not in RAM. The census is a RAM readout.
   'lib/src/services/brush_frame_store.dart → coldBakedBytes':
       'bytes on DISK: cooling writes a cel to the 이사대기 room of the run '
