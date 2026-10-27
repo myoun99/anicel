@@ -115,18 +115,34 @@ void main() {
     matching: find.byType(OwningAxisGrip),
   );
 
-  testWidgets('the pressure curve dragged in Preferences is the one the next '
+  testWidgets('the pressure curve bent in Preferences is the one the next '
       'run opens with', (tester) async {
     final store = _RecordingInputStore();
     await openInputPreferences(tester, run(store));
-    final before = AppInput.settings.value.pressureCurveGamma;
+    final before = AppInput.settings.value.pressureCurve;
 
-    await tester.drag(barOf('settings-pressure-curve'), const Offset(60, 0));
+    // F-480: the row opens the graph; a press in its middle adds a point
+    // there, and the hand pulls it up a step at a time.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings-pressure-curve')),
+    );
     await tester.pumpAndSettle();
-    final dragged = AppInput.settings.value.pressureCurveGamma;
+    final graph = tester.getRect(
+      find.byKey(const ValueKey<String>('pen-response-graph')),
+    );
+    final hand = await tester.startGesture(graph.center);
+    await tester.pump();
+    for (var step = 0; step < 4; step += 1) {
+      await hand.moveBy(Offset(0, -graph.height * 0.08));
+      await tester.pump();
+    }
+    expect(store.saves, 0, reason: 'the steps preview');
+    await hand.up();
+    await tester.pumpAndSettle();
+    final dragged = AppInput.settings.value.pressureCurve;
     expect(dragged, isNot(before), reason: 'premise: the drag moved it');
     expect(
-      store.saved?.pressureCurveGamma,
+      store.saved?.pressureCurve,
       dragged,
       reason: 'the release writes it down — the drag had already previewed '
           'the same value, and the guard used to take that for "saved"',
@@ -140,7 +156,7 @@ void main() {
     );
 
     await restart(tester, store);
-    expect(AppInput.settings.value.pressureCurveGamma, dragged);
+    expect(AppInput.settings.value.pressureCurve, dragged);
 
     // What the next run read back is what the file holds: setting it again
     // writes nothing. (The restore reads the store asynchronously — asked

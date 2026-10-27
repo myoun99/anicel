@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import '../helpers/project_scratch_folder.dart';
 import '../helpers/temp_dir.dart';
 
@@ -246,6 +247,32 @@ void main() {
         AppInput.stepThroughList(100, const [300, 50, 150, 75], up: true),
         150,
       );
+    });
+  });
+
+  // 🗣️F-480 (유저 2026-10-26): 「필압곡선은 클튜처럼 그래프창으로」.
+  group('the pen response', () {
+    final bent = BrushPressureCurve(const [
+      BrushCurvePoint(0, 0),
+      BrushCurvePoint(0.4, 0.7),
+      BrushCurvePoint(1, 1),
+    ]);
+
+    test('is the straight line until the user bends it', () {
+      expect(const AppInputSettings().pressureCurve, BrushPressureCurve.linear);
+    });
+
+    test('is a setting of its own, kept through a copy and the file', () {
+      final set = const AppInputSettings().copyWith(pressureCurve: bent);
+      expect(set.pressureCurve, bent);
+      expect(set, isNot(const AppInputSettings()));
+      expect(
+        set.copyWith(touchIgnored: true).pressureCurve,
+        bent,
+        reason: 'a copy that does not name it keeps it',
+      );
+      final file = jsonDecode(jsonEncode(set.toJson())) as Map<String, dynamic>;
+      expect(AppInputSettings.fromJson(file).pressureCurve, bent);
     });
   });
 

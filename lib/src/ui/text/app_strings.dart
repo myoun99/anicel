@@ -601,9 +601,7 @@ enum AppStrings {
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
-  String get inputPressureHeading => _s('inputPressureHeading');
-  String get inputPressureSoftHard => _s('inputPressureSoftHard');
-  String get inputPressureLinear => _s('inputPressureLinear');
+  String get inputPressureCurve => _s('inputPressureCurve');
   String get inputSpeedHeading => _s('inputSpeedHeading');
   String get inputSpeedReference => _s('inputSpeedReference');
   String get inputCanvasHeading => _s('inputCanvasHeading');
@@ -2229,9 +2227,7 @@ enum AppStrings {
     'cameraRatioFree': 'Free',
     'cameraRatioCurrent': 'Current',
     'commonResize': 'Resize',
-    'inputPressureHeading': 'Pen pressure response',
-    'inputPressureSoftHard': 'Soft ↔ Hard',
-    'inputPressureLinear': 'Linear',
+    'inputPressureCurve': 'Pen pressure response',
     'inputSpeedHeading': 'Pen speed response',
     'inputSpeedReference': 'Full speed at',
     'inputCanvasHeading': 'Canvas',
@@ -3554,9 +3550,7 @@ enum AppStrings {
     'cameraRatioFree': '自由',
     'cameraRatioCurrent': '今の比率',
     'commonResize': 'サイズ変更',
-    'inputPressureHeading': '筆圧カーブ',
-    'inputPressureSoftHard': '柔らかい ↔ 硬い',
-    'inputPressureLinear': 'リニア',
+    'inputPressureCurve': '筆圧カーブ',
     'inputSpeedHeading': '速度カーブ',
     'inputSpeedReference': '最高速度',
     'inputCanvasHeading': 'カンバス',
@@ -5231,9 +5225,7 @@ enum AppStrings {
     'cameraRatioFree': '자유',
     'cameraRatioCurrent': '지금 비율',
     'commonResize': '크기 변경',
-    'inputPressureHeading': '필압 곡선',
-    'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
-    'inputPressureLinear': '리니어',
+    'inputPressureCurve': '필압 곡선',
     'inputSpeedHeading': '속도 곡선',
     'inputSpeedReference': '최고 속도',
     'inputCanvasHeading': '캔버스',
@@ -6919,9 +6911,7 @@ enum AppStrings {
     'cameraRatioFree': 'Libre',
     'cameraRatioCurrent': 'Actuel',
     'commonResize': 'Redimensionner',
-    'inputPressureHeading': 'Réponse à la pression',
-    'inputPressureSoftHard': 'Doux ↔ Dur',
-    'inputPressureLinear': 'Linéaire',
+    'inputPressureCurve': 'Réponse à la pression',
     'inputSpeedHeading': 'Réponse à la vitesse',
     'inputSpeedReference': 'Vitesse maximale',
     'inputCanvasHeading': 'Canevas',
@@ -8679,9 +8669,7 @@ enum AppStrings {
     'cameraRatioFree': '自由',
     'cameraRatioCurrent': '当前比例',
     'commonResize': '调整尺寸',
-    'inputPressureHeading': '压感曲线',
-    'inputPressureSoftHard': '软 ↔ 硬',
-    'inputPressureLinear': '线性',
+    'inputPressureCurve': '压感曲线',
     'inputSpeedHeading': '速度曲线',
     'inputSpeedReference': '最高速度',
     'inputCanvasHeading': '画布',

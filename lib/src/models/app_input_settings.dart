@@ -1,7 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+
+import 'brush_pressure_curve.dart';
 
 /// Pointer-input policy (UI-R22 #6, default flipped in UI-R22F #1).
 ///
@@ -33,7 +33,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 class AppInputSettings {
   const AppInputSettings({
     this.tabletService = TabletService.standard,
-    this.pressureCurveGamma = 1.0,
+    this.pressureCurve = BrushPressureCurve.linear,
     this.speedReferencePixelsPerSecond = defaultSpeedReferencePixelsPerSecond,
     this.canvasRightClick = const CanvasPointerMapping(
       action: CanvasPointerAction.eyedropper,
@@ -219,13 +219,17 @@ class AppInputSettings {
   /// through the Raw Input HID observer ([PenSidecars.freshInverted]).
   final CanvasPointerMapping canvasPenTail;
 
-  /// The pen pressure RESPONSE curve (PEN-3, cross-platform): output =
-  /// input^gamma. 1.0 = linear (the default, byte-identical to before);
-  /// below 1 = SOFTER feel (a light touch already reads strong), above
-  /// 1 = HARDER (full pressure takes a firm press). Applied wherever
-  /// normalized pressure enters the brush pipeline — OS pointer and
-  /// Wintab sidecar alike.
-  final double pressureCurveGamma;
+  /// The pen pressure RESPONSE (PEN-3, cross-platform): what a reading of
+  /// the pen becomes before any brush sees it — input across, output up,
+  /// a graph edited as a brush's own curves are. The straight line (the
+  /// default) passes every reading through untouched; a point pulled up
+  /// is a softer pen (a light touch already reads strong), one pulled down
+  /// a harder one. Applied wherever normalized pressure enters the brush
+  /// pipeline — OS pointer and Wintab sidecar alike.
+  ///
+  /// 🗣️F-480 (유저 2026-10-26): 「필압곡선은 클튜처럼 그래프창으로」.
+  /// ↩️It was one exponent — output = input^gamma — on a soft↔hard bar.
+  final BrushPressureCurve pressureCurve;
 
   /// The pen SPEED that reads as 100% input, in canvas pixels per second.
   ///
@@ -273,7 +277,7 @@ class AppInputSettings {
 
   AppInputSettings copyWith({
     TabletService? tabletService,
-    double? pressureCurveGamma,
+    BrushPressureCurve? pressureCurve,
     double? speedReferencePixelsPerSecond,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
@@ -294,7 +298,7 @@ class AppInputSettings {
     bool? touchIgnored,
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
-    pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
+    pressureCurve: pressureCurve ?? this.pressureCurve,
     speedReferencePixelsPerSecond:
         speedReferencePixelsPerSecond ?? this.speedReferencePixelsPerSecond,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
@@ -325,7 +329,7 @@ class AppInputSettings {
 
   Map<String, dynamic> toJson() => {
     'tabletService': tabletService.name,
-    'pressureCurveGamma': pressureCurveGamma,
+    'pressureCurve': pressureCurve.toJson(),
     'speedReferencePixelsPerSecond': speedReferencePixelsPerSecond,
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
@@ -379,7 +383,9 @@ class AppInputSettings {
     tabletService:
         TabletService.values.asNameMap()[json['tabletService']] ??
         TabletService.standard,
-    pressureCurveGamma: (json['pressureCurveGamma'] as num?)?.toDouble() ?? 1.0,
+    pressureCurve: json['pressureCurve'] == null
+        ? BrushPressureCurve.linear
+        : BrushPressureCurve.fromJson(json['pressureCurve']),
     speedReferencePixelsPerSecond:
         (json['speedReferencePixelsPerSecond'] as num?)?.toDouble() ??
         defaultSpeedReferencePixelsPerSecond,
@@ -438,7 +444,7 @@ class AppInputSettings {
   bool operator ==(Object other) =>
       other is AppInputSettings &&
       other.tabletService == tabletService &&
-      other.pressureCurveGamma == pressureCurveGamma &&
+      other.pressureCurve == pressureCurve &&
       other.speedReferencePixelsPerSecond == speedReferencePixelsPerSecond &&
       other.canvasRightClick == canvasRightClick &&
       other.canvasWheelClick == canvasWheelClick &&
@@ -461,7 +467,7 @@ class AppInputSettings {
   @override
   int get hashCode => Object.hashAll([
     tabletService,
-    pressureCurveGamma,
+    pressureCurve,
     speedReferencePixelsPerSecond,
     canvasRightClick,
     canvasWheelClick,
@@ -792,14 +798,15 @@ abstract final class AppInput {
     return next * step;
   }
 
-  /// The pen pressure response curve (PEN-3): output = input^gamma.
-  /// Gamma 1 short-circuits so the default path costs nothing.
+  /// The pen pressure response (PEN-3): [pressure] through
+  /// [AppInputSettings.pressureCurve]. The straight line short-circuits, so
+  /// the default path costs nothing and hands a reading on as it came.
   static double applyPressureCurve(double pressure) {
-    final gamma = settings.value.pressureCurveGamma;
-    if (gamma == 1.0) {
+    final curve = settings.value.pressureCurve;
+    if (curve.isIdentity) {
       return pressure;
     }
-    return math.pow(pressure.clamp(0.0, 1.0), gamma).toDouble();
+    return curve.evaluate(pressure);
   }
 
   /// How fast the pen is travelling, as the 0..1 input a 速度 curve reads:

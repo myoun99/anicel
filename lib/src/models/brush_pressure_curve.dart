@@ -150,6 +150,15 @@ class BrushPressureCurve {
     maximum: maximum,
   );
 
+  /// [BrushPressureCurve.identity] as a constant, for a default that has to
+  /// be one — the pen's own response in `AppInputSettings` (F-480).
+  static const BrushPressureCurve linear = BrushPressureCurve._linear();
+
+  const BrushPressureCurve._linear()
+    : points = const [BrushCurvePoint(0.0, 0.0), BrushCurvePoint(1.0, 1.0)],
+      minimum = 0.0,
+      maximum = 1.0;
+
   /// Ascending-x control points; first at x=0, last at x=1.
   final List<BrushCurvePoint> points;
 

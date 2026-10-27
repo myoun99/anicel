@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 
 /// PEN-2: the Wintab pressure sidecar — settings model + the polling
 /// service against a fake driver stream.
@@ -11,24 +12,41 @@ void main() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
   });
 
-  test('the pressure curve: gamma 1 is identity, soft lifts, hard lowers, '
-      'and it round-trips (PEN-3)', () {
-    expect(const AppInputSettings().pressureCurveGamma, 1.0);
+  test('the pressure response: the straight line hands a reading on as it '
+      'came, a point pulled up lifts it, one pulled down lowers it, and it '
+      'round-trips (PEN-3, F-480)', () {
+    expect(const AppInputSettings().pressureCurve, BrushPressureCurve.linear);
     expect(AppInput.applyPressureCurve(0.5), 0.5, reason: 'linear default');
+    expect(AppInput.applyPressureCurve(1.2), 1.2, reason: 'not even clamped');
 
-    AppInput.settings.value = const AppInputSettings(pressureCurveGamma: 0.5);
-    expect(AppInput.applyPressureCurve(0.25), closeTo(0.5, 1e-9));
+    // One point pulled to the top: the shape over (0,0)-(0.5,1)-(1,1) runs
+    // 2x - x², 0.75 at the middle.
+    AppInput.settings.value = AppInputSettings(
+      pressureCurve: BrushPressureCurve(const [
+        BrushCurvePoint(0, 0),
+        BrushCurvePoint(0.5, 1),
+        BrushCurvePoint(1, 1),
+      ]),
+    );
+    expect(AppInput.applyPressureCurve(0.5), closeTo(0.75, 1e-9));
 
-    AppInput.settings.value = const AppInputSettings(pressureCurveGamma: 2.0);
+    // Pulled to the floor: x², 0.25 at the middle.
+    final harder = AppInputSettings(
+      pressureCurve: BrushPressureCurve(const [
+        BrushCurvePoint(0, 0),
+        BrushCurvePoint(0.5, 0),
+        BrushCurvePoint(1, 1),
+      ]),
+    );
+    AppInput.settings.value = harder;
     expect(AppInput.applyPressureCurve(0.5), closeTo(0.25, 1e-9));
     expect(AppInput.applyPressureCurve(1.2), 1.0, reason: 'clamped input');
 
-    const curved = AppInputSettings(pressureCurveGamma: 1.75);
-    expect(AppInputSettings.fromJson(curved.toJson()), curved);
+    expect(AppInputSettings.fromJson(harder.toJson()), harder);
     expect(
-      AppInputSettings.fromJson(const {}).pressureCurveGamma,
-      1.0,
-      reason: 'old settings files stay linear',
+      AppInputSettings.fromJson(const {}).pressureCurve,
+      BrushPressureCurve.linear,
+      reason: 'a file without one is the straight line',
     );
   });
 

@@ -8,6 +8,7 @@ import '../../models/app_input_settings.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/pressure_curve_popup.dart' show PenResponseButton;
 import '../widgets/settings_rows.dart';
 import '../text/app_strings.dart';
 
@@ -31,31 +32,23 @@ class InputSettingsSection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // The pen pressure response curve (PEN-3) — every
-            // platform: output = input^gamma; drag live, persist on
-            // release.
+            // The pen pressure response (PEN-3) — every platform: a graph
+            // in a window (F-480), followed live while a hand moves it and
+            // kept when it lets go.
             const Divider(height: 16),
-            Text(
-              strings.inputPressureHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            _SettingsBar(
-              keyValue: 'settings-pressure-curve',
-              session: session,
-              settings: settings,
-              value: settings.pressureCurveGamma,
-              withValue: (settings, gamma) =>
-                  settings.copyWith(pressureCurveGamma: gamma),
-              min: 0.25,
-              max: 4.0,
-              scale: FieldSliderScale.exponential,
-              label: strings.inputPressureSoftHard,
-              // ⚠️An exception to the bar's own number, twice over: the
-              // neutral gamma is a WORD, and a curve exponent is read to
-              // the hundredth (×1.05 and ×1.1 are different pens).
-              valueTextBuilder: (gamma, _) => gamma == 1.0
-                  ? strings.inputPressureLinear
-                  : '×${gamma.toStringAsFixed(2)}',
+            SettingsRow(
+              label: strings.inputPressureCurve,
+              control: PenResponseButton(
+                keyValue: 'settings-pressure-curve',
+                curve: settings.pressureCurve,
+                onChanged: (curve) => AppInput.settings.value = AppInput
+                    .settings
+                    .value
+                    .copyWith(pressureCurve: curve),
+                onChangeEnd: (curve) => session.setInputSettings(
+                  AppInput.settings.value.copyWith(pressureCurve: curve),
+                ),
+              ),
             ),
             // 速度 needs a ceiling and no file format supplies one, so the
             // user owns it (유저 확정 2026-09-08). Same block as the
@@ -63,10 +56,7 @@ class InputSettingsSection extends StatelessWidget {
             // read」, and a brush's speed curve is worthless until this
             // number matches the hand that drew it.
             const Divider(height: 16),
-            Text(
-              strings.inputSpeedHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            SettingsSectionHeading(label: strings.inputSpeedHeading),
             _SettingsBar(
               keyValue: 'settings-speed-reference',
               session: session,
@@ -89,10 +79,7 @@ class InputSettingsSection extends StatelessWidget {
             // 'wheel click'. Hold switches the tool temporarily;
             // release springs back or keeps it.
             const Divider(height: 16),
-            Text(
-              strings.inputCanvasHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            SettingsSectionHeading(label: strings.inputCanvasHeading),
             _CanvasMappingRow(
               keyPrefix: 'settings-canvas-right',
               label: strings.inputRightClick,
@@ -126,10 +113,7 @@ class InputSettingsSection extends StatelessWidget {
             // control/draw mode into the ONE-FINGER slot's Drawing
             // action), the +1-finger modifier and the snap tables.
             const Divider(height: 16),
-            Text(
-              strings.inputCanvasTouchHeading,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+            SettingsSectionHeading(label: strings.inputCanvasTouchHeading),
             // 🗣️I-124 (유저 2026-10-22): 「모든 터치입력 무시하는 옵션」 —
             // above the rows it would leave with nothing to answer.
             SettingsSwitchRow(
@@ -223,8 +207,8 @@ class InputSettingsSection extends StatelessWidget {
             ),
             // 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재가능할거같은데
             // 그런부분도 하나만 존재하도록 알아서. 쓰기쉽게」 — ONE number, so
-            // the bar every single number in this window is (the pressure and
-            // speed rows'), not the box the lists were typed into. Whole
+            // the bar every single number in this window is (the speed
+            // row's), not the box the lists were typed into. Whole
             // degrees from 1 to 90: finer than a degree is the free turn, and
             // past a right angle a turn has one line to land on.
             _SettingsBar(
@@ -265,10 +249,7 @@ class InputSettingsSection extends StatelessWidget {
             // only: other platforms have a single native pen path.
             if (defaultTargetPlatform == TargetPlatform.windows) ...[
               const Divider(height: 16),
-              Text(
-                strings.inputTabletHeading,
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
+              SettingsSectionHeading(label: strings.inputTabletHeading),
               // 🚨THE PICK-ONE GROUP 유저 named twice (guide-sym ⑥⑧): as the
               // model the app's boolean copies (「구체적으론
               // 환경설정-입력-태블릭서비스의 버튼처럼」) and among the buttons
@@ -352,8 +333,8 @@ String _dragActionLabel(CanvasTouchDragAction action) {
 
 /// One number of these settings on a bar (PEN-3): the setting follows the
 /// bar while it moves, and is kept when the bar is let go — one write for
-/// the whole drag (F-191). The pressure curve's, the speed reference's and
-/// the rotation snap's (F-391) are each one.
+/// the whole drag (F-191). The speed reference's and the rotation snap's
+/// (F-391) are each one.
 class _SettingsBar extends StatelessWidget {
   const _SettingsBar({
     required this.keyValue,
@@ -367,7 +348,6 @@ class _SettingsBar extends StatelessWidget {
     this.scale = FieldSliderScale.linear,
     this.divisions,
     this.unit = '',
-    this.valueTextBuilder,
   });
 
   final String keyValue;
@@ -388,7 +368,6 @@ class _SettingsBar extends StatelessWidget {
   final FieldSliderScale scale;
   final int? divisions;
   final String unit;
-  final String Function(double value, String derived)? valueTextBuilder;
 
   @override
   Widget build(BuildContext context) => SettingsBarRow(
@@ -400,7 +379,6 @@ class _SettingsBar extends StatelessWidget {
     scale: scale,
     divisions: divisions,
     unit: unit,
-    valueTextBuilder: valueTextBuilder,
     onChanged: (value) =>
         AppInput.settings.value = withValue(AppInput.settings.value, value),
     onChangeEnd: (value) =>

@@ -1149,11 +1149,15 @@ void main() {
     );
 
     testWidgets(
-      'the pressure response curve shapes stylus pressure (PEN-3: gamma 2 '
-      'squares the input)',
+      'the pressure response curve shapes stylus pressure (PEN-3: a curve '
+      'pulled to the floor squares the input)',
       (tester) async {
-        AppInput.settings.value = const AppInputSettings(
-          pressureCurveGamma: 2.0,
+        AppInput.settings.value = AppInputSettings(
+          pressureCurve: BrushPressureCurve(const [
+            BrushCurvePoint(0, 0),
+            BrushCurvePoint(0.5, 0),
+            BrushCurvePoint(1, 1),
+          ]),
         );
         addTearDown(() {
           AppInput.settings.value = AppInputSettings.testCorpusBaseline;

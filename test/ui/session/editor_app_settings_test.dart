@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/models/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
@@ -137,11 +138,12 @@ void main() {
     );
     first.setAccentSettings(const AppAccentSettings(accent: Color(0xFF123456)));
     first.projectSettings.setPasteboardColor(0xFF204060);
-    first.setInputSettings(
-      const AppInputSettings(
-        pressureCurveGamma: 1.5,
-      ),
-    );
+    final penResponse = BrushPressureCurve(const [
+      BrushCurvePoint(0, 0),
+      BrushCurvePoint(0.5, 0.8),
+      BrushCurvePoint(1, 1),
+    ]);
+    first.setInputSettings(AppInputSettings(pressureCurve: penResponse));
     first.setSaveSettings(
       const AppSaveSettings(periodicSnapshotMinutes: 7),
     );
@@ -249,7 +251,7 @@ void main() {
           AppText.settings.value.programLanguage == AppLanguage.ko &&
           AppColors.accentSettings.value.accent == const Color(0xFF123456) &&
           AppWorkspaceColors.settings.value.pasteboardArgb == 0xFF204060 &&
-          AppInput.settings.value.pressureCurveGamma == 1.5 &&
+          AppInput.settings.value.pressureCurve == penResponse &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
           AppFrameGridSettings.settings.value.blockFrameLines &&
@@ -265,7 +267,7 @@ void main() {
     expect(second.uiStrings, AppStrings.of(AppLanguage.ko));
     expect(AppColors.accentSettings.value.accent, const Color(0xFF123456));
     expect(AppWorkspaceColors.settings.value.pasteboardArgb, 0xFF204060);
-    expect(AppInput.settings.value.pressureCurveGamma, 1.5);
+    expect(AppInput.settings.value.pressureCurve, penResponse);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
     expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);

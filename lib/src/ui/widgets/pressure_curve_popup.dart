@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../input/control_press_claim.dart';
@@ -248,19 +249,9 @@ class _SourceDraft {
 }
 
 class _PressureCurveEditorState extends State<_PressureCurveEditor> {
-  static const int _maxPoints = 10;
-  static const double _minXGap = 0.02;
-
   /// One working draft per source; the shape survives a toggle OFF so ON
   /// restores it within this popup session.
   final Map<BrushInputSource, _SourceDraft> _drafts = {};
-
-  /// The grabbed point during a drag, and WHICH GRAPH it belongs to. A
-  /// grabbed middle point dragged far outside is REMOVED but stays "in hand"
-  /// ([_dragRemoved]) so dragging back in re-adds it.
-  BrushInputSource? _dragSource;
-  int? _dragIndex;
-  bool _dragRemoved = false;
 
   @override
   void initState() {
@@ -292,10 +283,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   }
 
   void _setEnabled(BrushInputSource source, bool value) {
-    setState(() {
-      _drafts[source]!.enabled = value;
-      _endDragState();
-    });
+    setState(() => _drafts[source]!.enabled = value);
     _commit();
   }
 
@@ -312,16 +300,9 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     setState(() {
       // ⛔The floor and the ceiling are NOT reset with the shape: the model
       // keeps them apart deliberately, and they have sliders of their own.
-      _drafts[source]!.points = BrushPressureCurve.identity().points.toList();
-      _endDragState();
+      _drafts[source]!.points = BrushPressureCurve.identity().points;
     });
     _commit();
-  }
-
-  void _endDragState() {
-    _dragSource = null;
-    _dragIndex = null;
-    _dragRemoved = false;
   }
 
   @override
@@ -469,7 +450,15 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   /// its pointer together, and nothing it writes changes.
   Widget _buildGraph(BrushInputSource source) {
     final draft = _drafts[source]!;
-    final strip = _buildStrip(source, draft);
+    final strip = PressureCurveGraph(
+      key: ValueKey<String>('pressure-curve-graph-${source.name}'),
+      points: draft.points,
+      enabled: draft.enabled,
+      onChanged: (points) {
+        draft.points = points;
+        _commit();
+      },
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -485,25 +474,9 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
                   style: AnchoredPopupText.caption,
                 ),
               ),
-              ControlPressClaim(
-                onPressed: draft.enabled ? () => _reset(source) : null,
-                child: InkWell(
-                  mouseCursor: AppCursors.press,
-                  key: ValueKey<String>('curve-reset-${source.name}'),
-                  onTap: silentPress(
-                    draft.enabled ? () => _reset(source) : null,
-                  ),
-                  customBorder: AppShapes.container(3),
-                  child: Text(
-                    AppText.strings.commonReset,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: draft.enabled
-                          ? AppColors.text
-                          : AppColors.textDim.withValues(alpha: 0.5),
-                    ),
-                  ),
-                ),
+              _CurveReset(
+                keyValue: 'curve-reset-${source.name}',
+                onReset: draft.enabled ? () => _reset(source) : null,
               ),
             ],
           ),
@@ -541,6 +514,112 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
       ],
     );
   }
+}
+
+/// The reset at a graph's head: the shape back to the straight line. A null
+/// [onReset] dims it and takes no press — the graph of a source that is off.
+class _CurveReset extends StatelessWidget {
+  const _CurveReset({required this.keyValue, required this.onReset});
+
+  final String keyValue;
+  final VoidCallback? onReset;
+
+  @override
+  Widget build(BuildContext context) => ControlPressClaim(
+    onPressed: onReset,
+    child: InkWell(
+      mouseCursor: AppCursors.press,
+      key: ValueKey<String>(keyValue),
+      onTap: silentPress(onReset),
+      customBorder: AppShapes.container(3),
+      child: Text(
+        AppText.strings.commonReset,
+        style: TextStyle(
+          fontSize: 10,
+          color: onReset != null
+              ? AppColors.text
+              : AppColors.textDim.withValues(alpha: 0.5),
+        ),
+      ),
+    ),
+  );
+}
+
+/// ONE curve's graph, edited the way Clip Studio's are (BB-3) — and every
+/// pressure graph in the app is this one: a brush's 影響元設定 lays two side
+/// by side, Preferences' pen response one (F-480).
+///
+///  - drag a control point to move it (endpoints keep their x),
+///  - press an empty spot on the curve area to ADD a point and drag on,
+///  - drag a middle point well outside the graph to REMOVE it; dragged back
+///    in, it is added again.
+///
+/// The points are the caller's. The graph edits a copy of its own and hands
+/// every edit out as it happens, so readings that land before the caller
+/// builds again never edit a list a step behind; points the caller changes
+/// itself (a reset) replace the copy.
+class PressureCurveGraph extends StatefulWidget {
+  const PressureCurveGraph({
+    super.key,
+    required this.points,
+    required this.onChanged,
+    this.enabled = true,
+    this.onChangeEnd,
+  });
+
+  final List<BrushCurvePoint> points;
+
+  /// False draws the input doing nothing and takes no hand.
+  final bool enabled;
+
+  /// Every edit, as it happens.
+  final ValueChanged<List<BrushCurvePoint>> onChanged;
+
+  /// The hand that held a point let go.
+  final VoidCallback? onChangeEnd;
+
+  @override
+  State<PressureCurveGraph> createState() => _PressureCurveGraphState();
+}
+
+class _PressureCurveGraphState extends State<PressureCurveGraph> {
+  static const int _maxPoints = 10;
+  static const double _minXGap = 0.02;
+
+  late List<BrushCurvePoint> _points = List.of(widget.points);
+
+  /// The grabbed point during a drag. A grabbed middle point dragged far
+  /// outside is REMOVED but stays "in hand" ([_dragRemoved]) so dragging
+  /// back in re-adds it.
+  int? _dragIndex;
+  bool _dragRemoved = false;
+
+  @override
+  void didUpdateWidget(PressureCurveGraph oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!listEquals(widget.points, _points)) {
+      _points = List.of(widget.points);
+      _endDrag();
+    }
+    if (!widget.enabled) {
+      _endDrag();
+    }
+  }
+
+  void _endDrag() {
+    _dragIndex = null;
+    _dragRemoved = false;
+  }
+
+  void _publish() => widget.onChanged(List.unmodifiable(_points));
+
+  void _letGo() {
+    final held = _dragIndex != null;
+    setState(_endDrag);
+    if (held) {
+      widget.onChangeEnd?.call();
+    }
+  }
 
   /// 🚨THE PAINTED BOX AND THE HIT BOX ARE ONE MEASUREMENT. They used to be
   /// two: `_graphSize` was `Size(196, 150)` — the popup's old width minus its
@@ -549,7 +628,8 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   /// the width. Widening to 248 with that arrangement would have left the
   /// remove-slack boundary INSIDE the drawn graph, so dragging a middle point
   /// to the right edge would delete it.
-  Widget _buildStrip(BrushInputSource source, _SourceDraft draft) {
+  @override
+  Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final box = constraints.biggest;
@@ -562,21 +642,20 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
         // takes the arena on its first movement (`axis_bar_gesture.dart`).
         // Both halves are [OwningAxisGrip]'s, a handle dragged both ways.
         return OwningAxisGrip(
-          key: ValueKey<String>('pressure-curve-graph-${source.name}'),
           axis: null,
-          configure: draft.enabled
+          configure: widget.enabled
               ? (recognizer) {
                   recognizer.onStart = (details) =>
-                      _handlePanStart(source, box, details);
+                      _handlePanStart(box, details);
                   recognizer.onUpdate = (details) =>
-                      _handlePanUpdate(source, box, details);
-                  recognizer.onEnd = (_) => setState(_endDragState);
+                      _handlePanUpdate(box, details);
+                  recognizer.onEnd = (_) => _letGo();
                 }
               : null,
           child: CustomPaint(
             painter: _CurveGraphPainter(
-              points: draft.points,
-              enabled: draft.enabled,
+              points: _points,
+              enabled: widget.enabled,
               accent: AppColors.accent,
             ),
           ),
@@ -590,12 +669,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     (1.0 - local.dy / box.height).clamp(0.0, 1.0),
   );
 
-  void _handlePanStart(
-    BrushInputSource source,
-    Size box,
-    DragStartDetails details,
-  ) {
-    final points = _drafts[source]!.points;
+  void _handlePanStart(Size box, DragStartDetails details) {
     final local = details.localPosition;
     // Grab the nearest point within reach, else add one at the press.
     //
@@ -605,8 +679,8 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     const grabRadius = 14.0;
     int? nearest;
     var nearestDistance = double.infinity;
-    for (var i = 0; i < points.length; i += 1) {
-      final point = points[i];
+    for (var i = 0; i < _points.length; i += 1) {
+      final point = _points[i];
       final position = Offset(
         point.x * box.width,
         (1.0 - point.y) * box.height,
@@ -619,16 +693,15 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     }
     if (nearest != null && nearestDistance <= grabRadius) {
       setState(() {
-        _dragSource = source;
         _dragIndex = nearest;
         _dragRemoved = false;
       });
       return;
     }
-    if (points.length >= _maxPoints) {
+    if (_points.length >= _maxPoints) {
       return;
     }
-    _insertPointAt(source, box, local);
+    _insertPointAt(box, local);
   }
 
   /// Inserts a point at [local]'s x between its neighbours and starts
@@ -637,47 +710,39 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   ///
   /// ONE law for the press that adds a point and the drag that brings a
   /// removed point back in (the audit's clone scan, 2026-09-03).
-  void _insertPointAt(BrushInputSource source, Size box, Offset local) {
-    final points = _drafts[source]!.points;
+  void _insertPointAt(Size box, Offset local) {
     final unit = _toUnit(box, local);
-    var insertAt = points.length;
-    for (var i = 0; i < points.length; i += 1) {
-      if (unit.dx < points[i].x) {
+    var insertAt = _points.length;
+    for (var i = 0; i < _points.length; i += 1) {
+      if (unit.dx < _points[i].x) {
         insertAt = i;
         break;
       }
     }
-    if (insertAt == 0 || insertAt == points.length) {
+    if (insertAt == 0 || insertAt == _points.length) {
       return; // Outside the endpoints' x range (they sit at 0 and 1).
     }
     final clampedX = unit.dx.clamp(
-      points[insertAt - 1].x + _minXGap,
-      points[insertAt].x - _minXGap,
+      _points[insertAt - 1].x + _minXGap,
+      _points[insertAt].x - _minXGap,
     );
-    if (clampedX <= points[insertAt - 1].x || clampedX >= points[insertAt].x) {
+    if (clampedX <= _points[insertAt - 1].x ||
+        clampedX >= _points[insertAt].x) {
       return; // Neighbors too close to fit another point.
     }
     setState(() {
-      points.insert(insertAt, BrushCurvePoint(clampedX, unit.dy));
-      _dragSource = source;
+      _points.insert(insertAt, BrushCurvePoint(clampedX, unit.dy));
       _dragIndex = insertAt;
       _dragRemoved = false;
     });
-    _commit();
+    _publish();
   }
 
-  void _handlePanUpdate(
-    BrushInputSource source,
-    Size box,
-    DragUpdateDetails details,
-  ) {
+  void _handlePanUpdate(Size box, DragUpdateDetails details) {
     final index = _dragIndex;
-    // A drag belongs to the row it started in; a pointer that wandered over
-    // a neighbouring strip does not hand it over.
-    if (index == null || _dragSource != source) {
+    if (index == null) {
       return;
     }
-    final points = _drafts[source]!.points;
     final local = details.localPosition;
     // Middle points dragged far outside the graph are removed (CSP's
     // delete gesture); dragging back inside re-adds them.
@@ -687,38 +752,38 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
         local.dx > box.width + removeSlack ||
         local.dy < -removeSlack ||
         local.dy > box.height + removeSlack;
-    final isMiddle = !_dragRemoved && index > 0 && index < points.length - 1;
+    final isMiddle = !_dragRemoved && index > 0 && index < _points.length - 1;
     if (outside && isMiddle) {
       setState(() {
-        points.removeAt(index);
+        _points.removeAt(index);
         _dragRemoved = true;
       });
-      _commit();
+      _publish();
       return;
     }
     if (_dragRemoved) {
       if (outside) {
         return;
       }
-      _insertPointAt(source, box, local);
+      _insertPointAt(box, local);
       return;
     }
     final unit = _toUnit(box, local);
     final double x;
     if (index == 0) {
       x = 0.0;
-    } else if (index == points.length - 1) {
+    } else if (index == _points.length - 1) {
       x = 1.0;
     } else {
       x = unit.dx.clamp(
-        points[index - 1].x + _minXGap,
-        points[index + 1].x - _minXGap,
+        _points[index - 1].x + _minXGap,
+        _points[index + 1].x - _minXGap,
       );
     }
     setState(() {
-      points[index] = BrushCurvePoint(x, unit.dy);
+      _points[index] = BrushCurvePoint(x, unit.dy);
     });
-    _commit();
+    _publish();
   }
 }
 
@@ -803,4 +868,130 @@ class _CurveGraphPainter extends CustomPainter {
   // can't detect changes — the graph is tiny, always repaint.
   @override
   bool shouldRepaint(_CurveGraphPainter oldDelegate) => true;
+}
+
+/// Preferences ▸ Input's pen response (F-480): the button at its row's end
+/// wears the curve and opens the window that edits it — the button a
+/// brush's curves are opened by.
+///
+/// 🗣️F-480 (유저 2026-10-26): 「필압곡선은 클튜처럼 그래프창으로」. ↩️It was a
+/// soft↔hard bar over one exponent.
+class PenResponseButton extends StatelessWidget {
+  const PenResponseButton({
+    super.key,
+    required this.keyValue,
+    required this.curve,
+    required this.onChanged,
+    required this.onChangeEnd,
+  });
+
+  final String keyValue;
+  final BrushPressureCurve curve;
+
+  /// See [showPenResponsePopup].
+  final ValueChanged<BrushPressureCurve> onChanged;
+  final ValueChanged<BrushPressureCurve> onChangeEnd;
+
+  @override
+  Widget build(BuildContext context) => SettingSourceButton(
+    keyValue: keyValue,
+    tooltip: AppText.strings.inputPressureCurve,
+    // The straight line moves no reading, so it is the button's "off".
+    active: !curve.isIdentity,
+    onPressed: (anchor) => showPenResponsePopup(
+      anchor,
+      initialCurve: curve,
+      onChanged: onChanged,
+      onChangeEnd: onChangeEnd,
+    ),
+    glyph: (ink) => _MiniCurvePainter(curve: curve, color: ink),
+  );
+}
+
+/// The pen response window: the window's name with its reset, and the graph
+/// as wide as the window — the brush window's shell and width.
+///
+/// [onChanged] hears every step of a hand on the graph, [onChangeEnd] the
+/// let-go and the reset: the setting follows the hand and is written down
+/// once an edit is done (F-191), as the bars of the same tab are.
+Future<void> showPenResponsePopup(
+  BuildContext anchorContext, {
+  required BrushPressureCurve initialCurve,
+  required ValueChanged<BrushPressureCurve> onChanged,
+  required ValueChanged<BrushPressureCurve> onChangeEnd,
+}) {
+  return showAnchoredPopup<void>(
+    anchorContext,
+    label: 'pen-response-popup',
+    width: _popupWidth,
+    height:
+        AnchoredPopupText.bodyPadding.vertical +
+        _headerHeight +
+        AnchoredPopupText.titleGap +
+        _innerWidth,
+    builder: (context, _) => _PenResponseEditor(
+      initialCurve: initialCurve,
+      onChanged: onChanged,
+      onChangeEnd: onChangeEnd,
+    ),
+  );
+}
+
+class _PenResponseEditor extends StatefulWidget {
+  const _PenResponseEditor({
+    required this.initialCurve,
+    required this.onChanged,
+    required this.onChangeEnd,
+  });
+
+  final BrushPressureCurve initialCurve;
+  final ValueChanged<BrushPressureCurve> onChanged;
+  final ValueChanged<BrushPressureCurve> onChangeEnd;
+
+  @override
+  State<_PenResponseEditor> createState() => _PenResponseEditorState();
+}
+
+class _PenResponseEditorState extends State<_PenResponseEditor> {
+  late List<BrushCurvePoint> _points = widget.initialCurve.points;
+
+  void _reset() {
+    setState(() => _points = BrushPressureCurve.linear.points);
+    widget.onChangeEnd(BrushPressureCurve.linear);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    key: const ValueKey<String>('pen-response-popup'),
+    padding: AnchoredPopupText.bodyPadding,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: _headerHeight,
+          child: AnchoredPopupHeader(
+            title: AppText.strings.inputPressureCurve,
+            trailing: _CurveReset(
+              keyValue: 'pen-response-reset',
+              onReset: _reset,
+            ),
+          ),
+        ),
+        const SizedBox(height: AnchoredPopupText.titleGap),
+        SizedBox(
+          height: _innerWidth,
+          child: PressureCurveGraph(
+            key: const ValueKey<String>('pen-response-graph'),
+            points: _points,
+            onChanged: (points) {
+              _points = points;
+              widget.onChanged(BrushPressureCurve(points));
+            },
+            onChangeEnd: () => widget.onChangeEnd(BrushPressureCurve(_points)),
+          ),
+        ),
+      ],
+    ),
+  );
 }
