@@ -374,10 +374,10 @@ void main() {
         layerId: 's1',
         widthBudget: canvasSize.width.toDouble(),
         shot: const LayerPlacement.identity(),
-        content: TextCelContent(
+        content: const TextCelContent(
           text: 'SE',
           style: SeNameTag.defaultStyle,
-          position: const Offset(edge + 20, top + 32),
+          position: Offset(edge + 20, top + 32),
         ),
         effects: blur,
       ),
