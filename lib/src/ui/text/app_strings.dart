@@ -1662,7 +1662,7 @@ enum AppStrings {
   /// ja takes Clip Studio's names where a brush is modelled on one (Gペン ·
   /// 丸ペン · カブラペン · ミリペン), and Photoshop's for the two rounds it
   /// ships (ハード円ブラシ · ソフト円ブラシ). Names with no settled art-supply
-  /// term in a language (Grit Spray, Rough Edge, Water Blend) are rendered
+  /// term in a language (Grit Spray, Water Blend) are rendered
   /// from the English, and are the first a translator may refine.
   String builtinBrushName(String id, String fallback) =>
       _values['builtinBrush.$id'] ?? fallback;
@@ -4538,6 +4538,7 @@ enum AppStrings {
     'builtinBrush.builtin-colored-pencil': '色鉛筆',
     'builtinBrush.builtin-coloring-pencil': '塗り色鉛筆',
     'builtinBrush.builtin-shading-pencil': '寝かせ鉛筆',
+    'builtinBrush.builtin-rough-edge': 'ラフ鉛筆',
     'builtinBrush.builtin-ink-pen': 'ハード円ブラシ',
     'builtinBrush.builtin-g-pen': 'Gペン',
     'builtinBrush.builtin-maru-pen': '丸ペン',
@@ -4572,8 +4573,6 @@ enum AppStrings {
     'builtinBrush.builtin-stipple': '点描',
     'builtinBrush.builtin-sponge': 'スポンジ',
     'builtinBrush.builtin-cloud': '雲',
-    'builtinBrush.builtin-hatching': 'ハッチング',
-    'builtinBrush.builtin-rough-edge': '粗いエッジ',
     'builtinBrush.builtin-concrete': 'コンクリート',
     'builtinBrush.builtin-grass': '草',
     'builtinBrush.builtin-sparkle': 'キラキラ',
@@ -6202,6 +6201,7 @@ enum AppStrings {
     'builtinBrush.builtin-coloring-pencil': '칠하는 색연필',
     // 유저 F-433 (2026-10-21): 「눕혀쓰는연필은 이름 기니 눕힌 연필로」.
     'builtinBrush.builtin-shading-pencil': '눕힌 연필',
+    'builtinBrush.builtin-rough-edge': '거친 연필',
     'builtinBrush.builtin-ink-pen': '하드 라운드',
     'builtinBrush.builtin-g-pen': 'G펜',
     'builtinBrush.builtin-maru-pen': '둥근 펜',
@@ -6236,8 +6236,6 @@ enum AppStrings {
     'builtinBrush.builtin-stipple': '점묘',
     'builtinBrush.builtin-sponge': '스펀지',
     'builtinBrush.builtin-cloud': '구름',
-    'builtinBrush.builtin-hatching': '해칭',
-    'builtinBrush.builtin-rough-edge': '거친 가장자리',
     'builtinBrush.builtin-concrete': '콘크리트',
     'builtinBrush.builtin-grass': '풀',
     'builtinBrush.builtin-sparkle': '반짝이',
@@ -8011,6 +8009,7 @@ enum AppStrings {
     'builtinBrush.builtin-colored-pencil': 'Crayon de couleur',
     'builtinBrush.builtin-coloring-pencil': 'Crayon à colorier',
     'builtinBrush.builtin-shading-pencil': 'Crayon couché',
+    'builtinBrush.builtin-rough-edge': 'Crayon rugueux',
     'builtinBrush.builtin-ink-pen': 'Rond dur',
     'builtinBrush.builtin-g-pen': 'Plume G',
     'builtinBrush.builtin-maru-pen': 'Plume ronde',
@@ -8045,8 +8044,6 @@ enum AppStrings {
     'builtinBrush.builtin-stipple': 'Pointillé',
     'builtinBrush.builtin-sponge': 'Éponge',
     'builtinBrush.builtin-cloud': 'Nuage',
-    'builtinBrush.builtin-hatching': 'Hachures',
-    'builtinBrush.builtin-rough-edge': 'Bord rugueux',
     'builtinBrush.builtin-concrete': 'Béton',
     'builtinBrush.builtin-grass': 'Herbe',
     'builtinBrush.builtin-sparkle': 'Scintillement',
@@ -9594,6 +9591,7 @@ enum AppStrings {
     'builtinBrush.builtin-colored-pencil': '彩色铅笔',
     'builtinBrush.builtin-coloring-pencil': '涂色彩铅',
     'builtinBrush.builtin-shading-pencil': '侧锋铅笔',
+    'builtinBrush.builtin-rough-edge': '粗糙铅笔',
     'builtinBrush.builtin-ink-pen': '硬边圆',
     'builtinBrush.builtin-g-pen': 'G笔',
     'builtinBrush.builtin-maru-pen': '圆笔',
@@ -9628,8 +9626,6 @@ enum AppStrings {
     'builtinBrush.builtin-stipple': '点画',
     'builtinBrush.builtin-sponge': '海绵',
     'builtinBrush.builtin-cloud': '云',
-    'builtinBrush.builtin-hatching': '排线',
-    'builtinBrush.builtin-rough-edge': '粗糙边缘',
     'builtinBrush.builtin-concrete': '混凝土',
     'builtinBrush.builtin-grass': '草',
     'builtinBrush.builtin-sparkle': '闪光',

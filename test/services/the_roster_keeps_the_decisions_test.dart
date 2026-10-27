@@ -452,7 +452,6 @@ void main() {
       'builtin-palette-knife': grain,
       'builtin-grit-spray': grain,
       'builtin-blending-stump': grain,
-      'builtin-hatching': grain,
       'builtin-rough-edge': grain,
       'builtin-concrete': grain,
       'builtin-blender': 'a blender picks colour up once per dab',
@@ -526,17 +525,23 @@ void main() {
     expect(tall, greaterThan(wide * 1.5), reason: '$wide wide, $tall tall');
   });
 
-  // the-gouache-is-a-round-with-a-weave Q4–Q6 (유저 2026-10-24), each the
-  // option the user picked off its comparison picture.
-  test('🗣️the hatching keeps its bristles and parts them at half its size '
-      '(Q4)', () {
-    final hatching = settingsOf('builtin-hatching');
-    expect(hatching.spacing, 0.5);
-    expect(hatching.tips.single.id, bristleBrushTipMask.id);
-    expect(hatching.rotationMode, BrushTipRotationMode.fixed);
-    expect(hatching.angleDegrees, 45);
+  // F-462 (유저 2026-10-25): 「우선 텍스처의 해칭 삭제. 거친 가장자리는
+  // 연필로서 연필그룹에 등록」.
+  test('🗣️the hatching is gone, and the rough edge draws as a pencil', () {
+    expect(
+      defaultBrushPresets.map((preset) => preset.id.value),
+      isNot(contains('builtin-hatching')),
+    );
+    final rough = defaultBrushPresets.singleWhere(
+      (preset) => preset.id.value == 'builtin-rough-edge',
+    );
+    expect(rough.groupId?.value, 'builtin-pencil-group');
+    expect(rough.name, 'Rough Pencil');
   });
 
+  // the-gouache-is-a-round-with-a-weave Q5–Q6 (유저 2026-10-24), each the
+  // option the user picked off its comparison picture. ↩️Q4's brush, the
+  // hatching, went with F-462.
   test('🗣️the marker multiplies, through a chisel nib at 45° (Q5)', () {
     final marker = settingsOf('builtin-marker');
     expect(marker.blendMode, BrushBlendMode.multiply);
