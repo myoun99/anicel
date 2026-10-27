@@ -125,10 +125,11 @@ void main() {
     required ExportScopeKind scope,
   }) async {
     AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
-    // Its share (F-337) a little wider than the window's least (1018): in
-    // the TEST font the band's 「C1-C2」 runs 5 px past its room there — in
-    // the app's own faces it holds (the last test here).
-    await tester.binding.setSurfaceSize(const Size(1280, 860));
+    // Its share (F-337) a little wider than the window's least: in the TEST
+    // font the band's 「C1-C2」 runs 5 px past its room there — in the app's
+    // own faces it holds (the last test here). ↩️1280, while the Cels list's
+    // rules stood 168 wide whatever their words (F-486).
+    await tester.binding.setSurfaceSize(const Size(1600, 860));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -243,7 +244,12 @@ void main() {
       );
       final session = linkedPair();
       addTearDown(session.dispose);
-      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      // A screen whose share is narrower than the least and whose room is
+      // not — so the window stands at its least in every language.
+      // ↩️1200, while the least was one width in every language: since
+      // F-486 the rules stand as wide as their words, and a 1200 screen
+      // leaves no room for the least of the longer ones.
+      await tester.binding.setSurfaceSize(const Size(1300, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
       await tester.pumpWidget(
@@ -261,13 +267,21 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
       await tester.pump();
 
+      final rules = ExportCelsBoard.rulesWidthFor(
+        tester.widget<ExportCelsBoard>(find.byType(ExportCelsBoard)).rulesNeed,
+      );
       expect(
         tester.widget<AppWindow>(find.byType(AppWindow)).width,
         // ↩️1018 while the cel list stood 184 wide (F-395 widened it), and
         // while its lane stood 16 (F-440 halved the thin one).
-        1018 - 184 + ExportCelsBoard.stackWidth - 16 + AppScrollbarLane.thin,
+        1018 -
+            184 +
+            ExportCelsBoard.stackWidth -
+            16 +
+            AppScrollbarLane.thin +
+            (rules - ExportCelsBoard.leastRulesWidth),
         reason: 'the four columns with both drawers folded — two thirds of '
-            '1200 by area is narrower',
+            '1300 by area is narrower',
       );
       expect(picker(tester).label, 'C1-C2');
       expect(tester.takeException(), isNull);

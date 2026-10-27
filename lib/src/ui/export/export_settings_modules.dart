@@ -165,10 +165,29 @@ class ExportResetChip extends StatelessWidget {
 }
 
 class ExportModuleRow extends StatelessWidget {
-  const ExportModuleRow({super.key, required this.label, required this.child});
+  const ExportModuleRow({super.key, required this.label, required this.child})
+    : _strip = false;
+
+  /// A row whose control is a strip of pills: beside its caption where the
+  /// strip's words fit there, under it where they do not — every pill as
+  /// wide as its word either way.
+  ///
+  /// 🗣️F-486 (유저 2026-10-27): 「출력창 버튼들 자동맞춤해서 글자에 맞게
+  /// 되도록」 — beside 「Papier」 the cut envelope's 「Taille du plan · Feuille
+  /// réelle」 both gave their words up.
+  const ExportModuleRow.strip({
+    super.key,
+    required this.label,
+    required PillStrip strip,
+  }) : child = strip,
+       _strip = true;
 
   final String label;
   final Widget child;
+
+  /// Whether [child] is a strip that goes under the caption when it does
+  /// not fit beside it ([ExportModuleRow.strip]).
+  final bool _strip;
 
   /// Wide enough for the longest row name the export tab uses (「폴더 생성」,
   /// 「이름 지정」) so every pill strip starts at one x.
@@ -177,25 +196,29 @@ class ExportModuleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final caption = SizedBox(
+      width: labelWidth,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: labelWidth,
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+      child: _strip
+          ? Wrap(
+              runSpacing: 3,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [caption, child],
+            )
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [caption, Expanded(child: child)],
             ),
-          ),
-          Expanded(child: child),
-        ],
-      ),
     );
   }
 }
@@ -264,23 +287,20 @@ class ExportChoiceRow<T> extends StatelessWidget {
   final bool Function(T value)? enabledFor;
 
   @override
-  Widget build(BuildContext context) => ExportModuleRow(
+  Widget build(BuildContext context) => ExportModuleRow.strip(
     label: label,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          for (final value in values)
-            PillItem(
-              keyValue: '$keyPrefix-${keyOf(value)}',
-              label: labelOf(value),
-              selected: value == selected,
-              onTap: enabledFor?.call(value) == false
-                  ? null
-                  : () => onSelect(value),
-            ),
-        ],
-      ),
+    strip: PillStrip(
+      items: [
+        for (final value in values)
+          PillItem(
+            keyValue: '$keyPrefix-${keyOf(value)}',
+            label: labelOf(value),
+            selected: value == selected,
+            onTap: enabledFor?.call(value) == false
+                ? null
+                : () => onSelect(value),
+          ),
+      ],
     ),
   );
 }
@@ -600,30 +620,27 @@ class ExportFormatModule extends StatelessWidget {
     enabledFor: (_) => enabled,
   );
 
-  Widget _backgroundRow() => ExportModuleRow(
+  Widget _backgroundRow() => ExportModuleRow.strip(
     label: AppText.strings.exBackground,
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: PillStrip(
-        items: [
-          PillItem(
-            keyValue: 'export-format-bg-white',
-            label: AppText.strings.exWhite,
-            selected: selection.backgroundArgb == 0xFFFFFFFF,
-            onTap: enabled
-                ? () => _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
-                : null,
-          ),
-          PillItem(
-            keyValue: 'export-format-bg-black',
-            label: AppText.strings.exBlack,
-            selected: selection.backgroundArgb == 0xFF000000,
-            onTap: enabled
-                ? () => _change(selection.copyWith(backgroundArgb: 0xFF000000))
-                : null,
-          ),
-        ],
-      ),
+    strip: PillStrip(
+      items: [
+        PillItem(
+          keyValue: 'export-format-bg-white',
+          label: AppText.strings.exWhite,
+          selected: selection.backgroundArgb == 0xFFFFFFFF,
+          onTap: enabled
+              ? () => _change(selection.copyWith(backgroundArgb: 0xFFFFFFFF))
+              : null,
+        ),
+        PillItem(
+          keyValue: 'export-format-bg-black',
+          label: AppText.strings.exBlack,
+          selected: selection.backgroundArgb == 0xFF000000,
+          onTap: enabled
+              ? () => _change(selection.copyWith(backgroundArgb: 0xFF000000))
+              : null,
+        ),
+      ],
     ),
   );
 

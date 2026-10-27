@@ -579,6 +579,7 @@ class ExportDialogState extends State<ExportDialog> {
     final (cut: _, :pages, :at) = _celPages();
     return ExportCelsBoard(
       rules: _celRules(cut),
+      rulesNeed: _celRulesNeed,
       stack: _celStack(cut, row),
       band: ExportCelsBand(
         cutPicker: _celCutPicker(plan, cut),
@@ -3180,9 +3181,13 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// The least the preview column is given before a drawer folds for it:
   /// what the Cels list under the preview lays out at — its rules, its rail
-  /// and five blocks ([ExportCelsBoard.minimumWidth]) — inside the column's
-  /// padding. ↩️330, while the list stood beside the preview at 132.
-  static const double _previewColumnWidth = ExportCelsBoard.minimumWidth + 16;
+  /// and five blocks ([ExportCelsBoard.minimumWidthFor]) — inside the
+  /// column's padding. ↩️330, while the list stood beside the preview at 132.
+  ///
+  /// The same on every tab: the window does not change its width as the
+  /// tab it shows does.
+  double get _previewColumnWidth =>
+      ExportCelsBoard.minimumWidthFor(_celRulesNeed) + 16;
   static const double _settingsColumnWidth = 272;
 
   /// The window's size and whether each drawer still fits: its share of the
@@ -3230,7 +3235,7 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// The four columns side by side, each drawer open or folded.
-  static double _columnsWidth({
+  double _columnsWidth({
     required bool presetsOpen,
     required bool queueOpen,
   }) =>
@@ -3926,7 +3931,7 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.cels;
     final strings = AppText.strings;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      padding: _celRulesPadding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3974,19 +3979,40 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// One strip of 「내보낼 종류」: the kinds that are the cut's documents, or
-  /// the ones that are its rows'.
+  static const EdgeInsets _celRulesPadding = EdgeInsets.fromLTRB(8, 5, 8, 5);
+
+  /// How wide the rules need to stand: as wide as their widest strip of
+  /// kinds with every word whole (F-486, 유저 2026-10-27: 「출력창 버튼들
+  /// 자동맞춤해서 글자에 맞게 되도록」).
+  double get _celRulesNeed =>
+      _celRulesPadding.horizontal +
+      math.max(
+        _celKindStripWidth(documents: false),
+        _celKindStripWidth(documents: true),
+      );
+
+  double _celKindStripWidth({required bool documents}) =>
+      PillStrip.naturalWidthIn(context, [
+        for (final kind in _celKinds(documents: documents))
+          exportCelKindLabel(kind),
+      ]);
+
+  /// The kinds of one strip of 「내보낼 종류」: the cut's documents, or its
+  /// rows'.
+  static Iterable<ExportCelKind> _celKinds({required bool documents}) =>
+      ExportCelKind.values.where((kind) => kind.isDocument == documents);
+
+  /// One strip of 「내보낼 종류」 ([_celKinds]).
   Widget _celKindStrip(CelsExportSpec spec, {required bool documents}) =>
       PillStrip(
         items: [
-          for (final kind in ExportCelKind.values)
-            if (kind.isDocument == documents)
-              _specSwitch(
-                'export-cels-kind-${kind.jsonValue}',
-                exportCelKindLabel(kind),
-                spec.kinds.contains(kind),
-                () => spec.withKind(kind, !spec.kinds.contains(kind)),
-              ),
+          for (final kind in _celKinds(documents: documents))
+            _specSwitch(
+              'export-cels-kind-${kind.jsonValue}',
+              exportCelKindLabel(kind),
+              spec.kinds.contains(kind),
+              () => spec.withKind(kind, !spec.kinds.contains(kind)),
+            ),
         ],
       );
 
@@ -4279,30 +4305,27 @@ class ExportDialogState extends State<ExportDialog> {
                 ? null
                 : (image) => _updateSpec(spec.copyWith(envelopeImage: image)),
           ),
-          ExportModuleRow(
+          ExportModuleRow.strip(
             label: strings.exPaperLabel,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: PillStrip(
-                items: [
-                  _pill(
-                    keyValue: 'export-envelope-paper-cut',
-                    label: strings.exCutSize,
-                    selected: cutPaper,
-                    onPick: () => _updateSpec(
-                      spec.copyWith(envelopePaper: CutEnvelopePaperMode.cut),
-                    ),
+            strip: PillStrip(
+              items: [
+                _pill(
+                  keyValue: 'export-envelope-paper-cut',
+                  label: strings.exCutSize,
+                  selected: cutPaper,
+                  onPick: () => _updateSpec(
+                    spec.copyWith(envelopePaper: CutEnvelopePaperMode.cut),
                   ),
-                  _pill(
-                    keyValue: 'export-envelope-paper-sheet',
-                    label: strings.exRealSheet,
-                    selected: !cutPaper,
-                    onPick: () => _updateSpec(
-                      spec.copyWith(envelopePaper: CutEnvelopePaperMode.sheet),
-                    ),
+                ),
+                _pill(
+                  keyValue: 'export-envelope-paper-sheet',
+                  label: strings.exRealSheet,
+                  selected: !cutPaper,
+                  onPick: () => _updateSpec(
+                    spec.copyWith(envelopePaper: CutEnvelopePaperMode.sheet),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],

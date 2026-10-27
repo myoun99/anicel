@@ -503,7 +503,7 @@ void main() {
       down.left,
       board.left +
           1 +
-          ExportCelsBoard.rulesWidth +
+          ExportCelsBoard.leastRulesWidth +
           ExportCelsBoard.stackWidth,
       reason: 'left of the rail, right of the rules and the attach column',
     );
@@ -521,12 +521,10 @@ void main() {
   testWidgets('it lays out at its minimum width without running over', (
     tester,
   ) async {
-    await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
+    final least = ExportCelsBoard.minimumWidthFor(0);
+    await pumpBoard(tester, width: least);
     expect(tester.takeException(), isNull);
-    expect(
-      tester.getSize(keyed('export-cels-board')).width,
-      ExportCelsBoard.minimumWidth,
-    );
+    expect(tester.getSize(keyed('export-cels-board')).width, least);
   });
 
   group('the band', () {
@@ -758,7 +756,10 @@ void main() {
       expect(caption(), strings.exLayDirection);
       expect(find.tooltipSaying(strings.exLayDirection), findsOneWidget);
 
-      await pumpBoard(tester, width: ExportCelsBoard.minimumWidth);
+      await pumpBoard(
+        tester,
+        width: ExportCelsBoard.minimumWidthFor(0),
+      );
       expect(tester.takeException(), isNull);
       expect(caption(), strings.tlKindInstruction);
       // ↩️The word was pinned READ at the narrowest. With 「가이드」 beside

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../input/control_press_claim.dart';
+import '../text/text_measure.dart';
 import '../theme/app_theme.dart';
 import 'app_tooltip.dart';
 import 'field_slider.dart' show FieldSlider;
@@ -107,6 +108,44 @@ class PillStrip extends StatelessWidget {
   /// Whether the pills share the strip's width evenly ([PillStrip.even]).
   final bool _even;
 
+  /// The width a strip of [labels] laid across takes with every word whole
+  /// — what a box that sizes itself to its pills must give it. (An even
+  /// strip's pills share what they are given: [PillStrip.even] has no
+  /// width of its own to ask.)
+  ///
+  /// 🗣️F-486 (유저 2026-10-27): 「출력창 셀 탭, 콘티같은거 일본어에서 빈
+  /// 버튼되는데 아마 길어서 문제생기는듯. 일단 출력창 버튼들 자동맞춤해서
+  /// 글자에 맞게 되도록」 — the Cels list's rules stood 168 wide in every
+  /// language, and its strip of four kinds gave 「絵コンテ」 22 of its 43 px.
+  ///
+  /// ⚠️It reads what [build] lays out — the outline, each pill's padding and
+  /// hairline, the word in the pill's style — and
+  /// `test/ui/widgets/a_strip_measures_as_it_lays_out_test.dart` holds the
+  /// two together to the pixel in every language.
+  static double naturalWidthIn(BuildContext context, List<String> labels) {
+    final theme = Theme.of(context);
+    final words = TextMeasure(
+      context,
+      DefaultTextStyle.of(context).style.merge(Pill._wordStyleOf(theme)),
+    );
+    var width = _outlineOf(theme).padding.horizontal;
+    for (final (index, label) in labels.indexed) {
+      width +=
+          _pillPadding.horizontal +
+          (index == 0 ? 0 : Pill._hairlineOf(theme).width) +
+          words.size(label).width;
+    }
+    return width;
+  }
+
+  /// The outline an across or down strip stands in.
+  static ShapeDecoration _outlineOf(ThemeData theme) => ShapeDecoration(
+    shape: AppShapes.container(
+      AppShapes.wellRadius,
+      side: BorderSide(color: theme.dividerColor),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -124,12 +163,7 @@ class PillStrip extends StatelessWidget {
               FieldSlider.defaultHeight,
               enabled: items.any((item) => item.onTap != null),
             )
-          : ShapeDecoration(
-              shape: AppShapes.container(
-                AppShapes.wellRadius,
-                side: BorderSide(color: theme.dividerColor),
-              ),
-            ),
+          : _outlineOf(theme),
       // Down, each pill is one line tall at the strip's full width.
       child: _even
           ? Row(
@@ -398,11 +432,18 @@ class Pill extends StatelessWidget {
   /// lands where this one did (「자리는 항상 예약하고 내용만 바꾼다」).
   final String? otherLabel;
 
+  /// The line between a pill and the one before it.
+  static BorderSide _hairlineOf(ThemeData theme) =>
+      BorderSide(color: theme.dividerColor);
+
+  /// The style a pill sets its word in.
+  static TextStyle? _wordStyleOf(ThemeData theme) => theme.textTheme.labelSmall;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final accent = tone ?? theme.colorScheme.primary;
-    final hairline = BorderSide(color: theme.dividerColor);
+    final hairline = _hairlineOf(theme);
     return ControlPressClaim(
       onPressed: onTap,
       child: InkWell(
@@ -445,7 +486,7 @@ class Pill extends StatelessWidget {
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: theme.textTheme.labelSmall?.copyWith(color: inkFor(shown: shown)),
+      style: _wordStyleOf(theme)?.copyWith(color: inkFor(shown: shown)),
     );
     final other = otherLabel;
     final glyph = icon;

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/export_cel_kind.dart';
@@ -143,10 +145,21 @@ class ExportCelsBoard extends StatefulWidget {
     required this.onRowSwitched,
     required this.onStoodOn,
     required this.onSheetPressed,
+    this.rulesNeed = 0,
   });
 
-  /// The rules column ([ExportCelsRules]).
+  /// The rules column — the window's, which knows what its words need
+  /// ([rulesNeed]).
   final Widget rules;
+
+  /// How wide [rules] needs to stand for every word of it to be whole, its
+  /// padding included — the column stands [rulesWidthFor] that.
+  final double rulesNeed;
+
+  /// How wide the rules column stands for rules that need [need]: its
+  /// least, or what they need and the hairline that closes the column.
+  static double rulesWidthFor(double need) =>
+      math.max(leastRulesWidth, need + const BorderSide().width);
 
   /// The attach column of the row stood on ([ExportCelsStack]).
   final Widget stack;
@@ -169,8 +182,12 @@ class ExportCelsBoard extends StatefulWidget {
   final ValueChanged<ExportCelsBoardRow> onStoodOn;
   final ValueChanged<ExportListSheet> onSheetPressed;
 
-  /// The rules column's width.
-  static const double rulesWidth = 168;
+  /// The rules column's least width — what it stands at in a language
+  /// whose words fit it.
+  ///
+  /// ↩️It was the column's width in every language (F-486: 「絵コンテ」 got 22
+  /// of its 43 px).
+  static const double leastRulesWidth = 168;
 
   /// The rail's width: the timeline rail's leading cells and a name.
   static const double railWidth = 192;
@@ -200,10 +217,11 @@ class ExportCelsBoard extends StatefulWidget {
   /// by the base's word or an attach row's arrow alone.
   static const double stackWidth = 248;
 
-  /// The narrowest the board lays out at: the rules, the attach column, the
-  /// vertical bar's lane, the rail and five blocks.
-  static const double minimumWidth =
-      rulesWidth +
+  /// The narrowest a board whose rules need [rulesNeed] lays out at: the
+  /// rules, the attach column, the vertical bar's lane, the rail and five
+  /// blocks.
+  static double minimumWidthFor(double rulesNeed) =>
+      rulesWidthFor(rulesNeed) +
       stackWidth +
       AppScrollbarLane.thin +
       railWidth +
@@ -239,7 +257,8 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            width: ExportCelsBoard.rulesWidth,
+            key: const ValueKey<String>('export-cels-rules'),
+            width: ExportCelsBoard.rulesWidthFor(widget.rulesNeed),
             decoration: BoxDecoration(border: Border(right: line)),
             child: widget.rules,
           ),
