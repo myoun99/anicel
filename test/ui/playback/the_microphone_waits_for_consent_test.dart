@@ -158,6 +158,25 @@ void main() {
       await session.voiceRecording.stopVoiceRecordingAndPlace();
       await tester.pumpAndSettle();
     });
+
+    testWidgets('consent taken back while the OS is asked still says where '
+        'to allow it', (tester) async {
+      final session = await pumpTransport(tester);
+      session.appSettings.setAudioSyncSettings(allowed);
+      AppStorage.debugMicrophoneAccess = () async {
+        // The OS's yes lands after the switch went off: the take's own gate
+        // refuses, and its refusal is said like the press's.
+        session.appSettings.setAudioSyncSettings(AudioSyncSettings.defaults);
+        return true;
+      };
+      final microphone = _Microphone();
+      session.voiceRecording.debugVoiceRecorderFactory = microphone.lend;
+
+      await press(tester);
+      expect(microphone.opened, 0);
+      expect(find.text(session.uiStrings.recordMicNotAllowed), findsOneWidget);
+      await closeTheNotice(tester);
+    });
   });
 
   group('the switch in Preferences ▸ Audio', () {
