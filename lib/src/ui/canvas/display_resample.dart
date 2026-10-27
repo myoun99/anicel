@@ -366,7 +366,8 @@ void drawImageRectOnThePixelGrid(
     filterQuality: filterQuality,
   );
   try {
-    canvas.drawRect(
+    drawShadedRect(
+      canvas,
       cutOnThePixelGrid(canvas, dst, pixelRatio),
       ui.Paint()
         ..shader = shader
@@ -377,3 +378,22 @@ void drawImageRectOnThePixelGrid(
     shader.dispose();
   }
 }
+
+/// [paint] — an image's shader — over [rect] where [canvas] can show it:
+/// [rect] cut to the canvas's clip, a unit past it on every side, so the
+/// cut lies outside every pixel the clip keeps and moves none of them.
+///
+/// 🚨A SHADED RECT IS DRAWN NO LARGER THAN WHAT SHOWS
+/// (deep-zoom-blanks-the-canvas). 🔬On the Windows app (Impeller, profile,
+/// 10-27) a rect an image's shader fills cost the GPU by its whole extent
+/// on the device, not by what of it shows — a 2432×1654 picture on a
+/// 1600×1000 view took 9 · 16 · 34 ms at 1 · 3 · 6×, cut to the view 7–8 ms
+/// at each — and past 16384 device pixels a side it filled WHITE: the
+/// canvas showed its picture at 670% on a 2340 page and went white at 675%
+/// (2432 × 6.75, the Surface's verify). `drawImageRect` and `drawPaint` of
+/// the same shader stayed whole at 13×.
+void drawShadedRect(ui.Canvas canvas, ui.Rect rect, ui.Paint paint) =>
+    canvas.drawRect(
+      rect.intersect(canvas.getLocalClipBounds().inflate(1)),
+      paint,
+    );

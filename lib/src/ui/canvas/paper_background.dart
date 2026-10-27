@@ -73,9 +73,8 @@ void paintProjectPaper(
 /// replaced, nearest gave the same pixels at 1× and 2× and the same grain
 /// zoomed out to 0.2×, where smoothing (low · medium) blurred the cells
 /// and washed the grain out.
-void paintAlphaCheckerboard(Canvas canvas, Rect rect) {
-  canvas.drawRect(rect, Paint()..shader = _checkerShader);
-}
+void paintAlphaCheckerboard(Canvas canvas, Rect rect) =>
+    drawShadedRect(canvas, rect, Paint()..shader = _checkerShader);
 
 /// An ABSENT plane on screen (F-114): the checkerboard over [region] — a
 /// rect in whatever space the canvas is in now, its edge cut by
