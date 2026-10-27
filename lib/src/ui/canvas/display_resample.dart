@@ -339,9 +339,9 @@ void drawOnTheDisplay(
 /// [image]'s [src] laid over [dst] as `drawImageRect` lays it — each pixel
 /// shows what its centre falls on — with the edge cut on the grid
 /// ([cutOnThePixelGrid]): the texels ride a shader mapped [src] → [dst],
-/// and only the rect it fills is cut, so moving the edge moves no texel.
-/// Every pixel inside the cut rect has its centre inside [dst], so nothing
-/// past the image is ever shown.
+/// and only what it fills is cut ([drawShadedRect]), so moving the edge
+/// moves no texel. Every pixel inside the cut rect has its centre inside
+/// [dst], so nothing past the image is ever shown.
 void drawImageRectOnThePixelGrid(
   ui.Canvas canvas,
   ui.Image image,
@@ -379,21 +379,35 @@ void drawImageRectOnThePixelGrid(
   }
 }
 
-/// [paint] — an image's shader — over [rect] where [canvas] can show it:
-/// [rect] cut to the canvas's clip, a unit past it on every side, so the
-/// cut lies outside every pixel the clip keeps and moves none of them.
+/// [paint] — an image's shader — over [rect], where [canvas] can show it:
+/// [rect] is the clip, and the paint fills the clip. Its edge is [paint]'s
+/// anti-aliasing, as a rect's would be.
 ///
 /// 🚨A SHADED RECT IS DRAWN NO LARGER THAN WHAT SHOWS
 /// (deep-zoom-blanks-the-canvas). 🔬On the Windows app (Impeller, profile,
 /// 10-27) a rect an image's shader fills cost the GPU by its whole extent
 /// on the device, not by what of it shows — a 2432×1654 picture on a
-/// 1600×1000 view took 9 · 16 · 34 ms at 1 · 3 · 6×, cut to the view 7–8 ms
-/// at each — and past 16384 device pixels a side it filled WHITE: the
-/// canvas showed its picture at 670% on a 2340 page and went white at 675%
-/// (2432 × 6.75, the Surface's verify). `drawImageRect` and `drawPaint` of
-/// the same shader stayed whole at 13×.
-void drawShadedRect(ui.Canvas canvas, ui.Rect rect, ui.Paint paint) =>
-    canvas.drawRect(
-      rect.intersect(canvas.getLocalClipBounds().inflate(1)),
-      paint,
-    );
+/// 1600×1000 view took 9 · 16 · 34 ms at 1 · 3 · 6× — and past 16384 device
+/// pixels a side it filled WHITE: the canvas showed its picture at 670% on
+/// a 2340 page and went white at 675% (2432 × 6.75, the Surface's verify).
+///
+/// ⛔NOT THE RECT CUT TO THE VIEW. There (`6d3aa1172`) the Windows app laid
+/// no texel where its shader maps it: a patterned 2432×1654 picture on a
+/// 400×300 view showed the same texel at the same pixel at every scale and
+/// pan, all 120,000 pixels apart from `drawImageRect` at 1 · 1.54 · 3 · 7×
+/// (a rect at the shader's origin was right, so a whole image's rect was) —
+/// and the Surface's canvas stopped following the zoom past 154% (10-27,
+/// verify). The test runner's Vulkan maps it right, so no pixel test there
+/// sees it. Clipped and painted, the same picture was 0 pixels apart at
+/// each scale with the pan on whole pixels, in 7–12 ms; with it a fraction
+/// off, laid through [drawImageRectOnThePixelGrid], 0 apart from that rect
+/// uncut — the canvas before `6d3aa1172` — where the page's middle showed
+/// at 1 · 1.52 · 1.54 · 3×, and where its corner showed 0 · 322 · 324 · 0
+/// of the 120,000.
+void drawShadedRect(ui.Canvas canvas, ui.Rect rect, ui.Paint paint) {
+  canvas
+    ..save()
+    ..clipRect(rect, doAntiAlias: paint.isAntiAlias)
+    ..drawPaint(paint)
+    ..restore();
+}

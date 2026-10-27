@@ -10,7 +10,7 @@ import '../helpers/source_ledger.dart';
 /// A rect an `ImageShader` fills cost the GPU by its whole extent on the
 /// device and, past 16384 device pixels a side, filled white — the canvas
 /// went blank past 670% on a 2340 page. `drawShadedRect`
-/// (`display_resample.dart`) cuts such a rect to the clip. A shader drawn
+/// (`display_resample.dart`) clips such a rect and paints it. A shader drawn
 /// any other way may pass the cap at some zoom nobody tried, and the pixel
 /// tests only see the routes they drive — so every `ImageShader` in `lib/`
 /// is one somebody routed, written down here with how.
