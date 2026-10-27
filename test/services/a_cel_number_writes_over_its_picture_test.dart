@@ -212,6 +212,16 @@ void main() {
       numbered.copyWith(clipsToBelow: true),
     ]).single as CompositeClip<CutFrameCompositeLayer>;
     expect(asClipping.scope.last, isA<_Group>(), reason: 'clipping');
+
+    // Two numbers with nothing between them that changes how they land are
+    // still the one picture — not a picture of the first inside it.
+    final twice = planOfRows([
+      drawing(effects: [number('one'), number('two')]),
+      other.copyWith(clipsToBelow: true),
+    ]).single as CompositeClip<CutFrameCompositeLayer>;
+    final [row as _Leaf, first as _Number, second as _Number] =
+        (twice.base as _Group).children;
+    expect(identical(first.on, row) && identical(second.on, row), isTrue);
   });
 
   test('a second number is a group around the first, which keeps the row\'s '
