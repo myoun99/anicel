@@ -56,10 +56,10 @@ import 'static_raster.dart';
 /// rest. A region that is re-added has changed (or was moved, which the
 /// grid fit judges); a region that is retained has not. The image is taken
 /// after [stillFrames] frames of being retained — in the frame it changed
-/// in while a clock looks ([_StillLayer._waitNow]), and again in the very
-/// frame only its ticks moved in — and dropped the moment the region is
-/// re-added with a different layer tree ([_StillLayer._signatureOf] says
-/// what "different" covers).
+/// in while a clock looks ([_StillLayer._waitNow]) — for the next frame, or
+/// for the frame itself where only its ticks moved in it; and dropped the
+/// moment the region is re-added with a different layer tree
+/// ([_StillLayer._signatureOf] says what "different" covers).
 ///
 /// Content that changes without the layer tree knowing — an external
 /// texture, a platform view, a follower pinned to a leader elsewhere, a
@@ -471,17 +471,18 @@ class _StillLayer extends OffsetLayer {
         ? StillStandDown.changing
         : gate;
     if (gate == StillStandDown.none) {
-      // 🚨STRATA THAT WENT WHILE THE REGION STOOD STILL ARE TAKEN AGAIN IN
-      // THEIR OWN FRAME, BEFORE IT IS DRAWN (F-244-drag-start, 10-27). A
-      // tick that stood still when they were taken moving — the rows a block
-      // drag carries, at its first step — or a live one gone still leaves
-      // the rest of the region as it was, and the frame's own check took
-      // the strata again right AFTER this frame, which was drawn live in
-      // between. 🔬On the Surface (profile, Impeller GLES, 3567×2166) that
-      // live frame was 26–46 ms of raster and the image after it 18–31, at
-      // the start of every block, row, comma and [+] drag. Taken here, the
-      // frame is drawn from the new strata, the moving ticks live in them.
-      if (dropped && _mayTake && _capture()) {
+      // 🚨A REGION RE-ADDED ONCE IT STOOD STILL PAST ITS WAIT IS TAKEN IN
+      // THAT FRAME, BEFORE IT IS DRAWN (F-244-drag-start, 10-27). Only its
+      // ticks moved: one that stood still when the strata were taken —
+      // the rows a block drag carries, at its first step — or a live one
+      // gone still drops them, the rest of the region as it was, and the
+      // frame's own check took the strata again right AFTER this frame, which
+      // was drawn live in between. 🔬On the Surface (profile, Impeller GLES,
+      // 3567×2166) that live frame was 26–46 ms of raster and the image after
+      // it 18–31, at the start of every block, row, comma and [+] drag. Taken
+      // here, the frame is drawn from the new strata, the moving ticks live
+      // in them.
+      if (_mayTake && _capture()) {
         _drawFrom(_strata!, builder);
         return;
       }
