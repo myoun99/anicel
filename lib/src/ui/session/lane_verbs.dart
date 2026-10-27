@@ -282,7 +282,14 @@ class LaneVerbs {
     if (span != null) {
       return span;
     }
-    final cells = _selection.frameRangeSelection.value;
+    // 🚨A band that holds more than the camera claims the press as CELLS,
+    // so no row stood on answers for it — every lane verb at once, in the
+    // order the one Delete asks (F-87). ↩️Only the camera rows asked: a band
+    // swept up from a lane into its layer's row left the press on that lane,
+    // and ＋ keyed one frame of it and filled none of the band.
+    if (_selection.frameRangeSelection.value != null) {
+      return null;
+    }
     return switch (_currentRow()) {
       final LaneRowAddress lane when projectionRowUnder(lane) != null =>
         _projectedLaneSpan(lane),
@@ -294,21 +301,18 @@ class LaneVerbs {
       // on the camera layer it has in hand — the timeline's camera row, and
       // so its header (I-73 ④, 「타임라인의 자리 = 카메라 행」) — or on
       // nothing.
-      final row when cells == null && isTrackCameraRow(row) => switch (
-        projectedLayerInHand(
-          row: row,
-          cut: _project.activeCutOrNull,
-          activeLayerId: _selection.activeLayerId,
-        )) {
+      final row when isTrackCameraRow(row) => switch (projectedLayerInHand(
+        row: row,
+        cut: _project.activeCutOrNull,
+        activeLayerId: _selection.activeLayerId,
+      )) {
         final camera? => _standingSpan(
           camera.id,
           transformGroupHeaderLane.laneId,
         ),
         null => null,
       },
-      // A band that also holds other rows claims the press as CELLS.
-      LayerRowAddress(:final layerId)
-          when cells == null && _isCameraRow(layerId) =>
+      LayerRowAddress(:final layerId) when _isCameraRow(layerId) =>
         _standingSpan(layerId, transformGroupHeaderLane.laneId),
       _ => null,
     };

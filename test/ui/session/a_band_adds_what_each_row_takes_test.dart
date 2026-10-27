@@ -132,6 +132,34 @@ void main() {
     expect(_positionKeys(_cutRow(session)), [0]);
   });
 
+  // 🧪Measured with a real mouse (2026-10-27, a-lane-anchored-band-loses-to-
+  // the-lane-stood-on): a sweep pressed on the Position lane and carried up
+  // into the row stands the band with the press still on the lane.
+  test('a band swept up from a lane into its row answers the ＋ as the band '
+      '— the lane stood on does not', () {
+    final session = _session();
+    session.standOnRow(const LaneRowAddress(_a, 'position'), frameIndex: 0);
+    session.updateFrameRangeSelectionDrag(
+      layerId: _a,
+      anchorIndex: 0,
+      headIndex: 5,
+      spanRows: const [
+        LayerRowAddress(_a),
+        LaneRowAddress(_a, 'anchor-point'),
+        LaneRowAddress(_a, 'position'),
+      ],
+    );
+
+    session.cellInstances.createInstancesForSelection();
+
+    expect(_starts(_cutRow(session)), [0, 3], reason: 'the band\'s gap');
+    expect(
+      _positionKeys(_cutRow(session)),
+      [0, 1, 2, 3, 4, 5],
+      reason: 'the band\'s frames, not the one under the playhead',
+    );
+  });
+
   test('the storyboard\'s band: an S row and its Position lane — its gap '
       'gets an entry and the lane its keys, in one undo', () {
     final session = _session();
