@@ -230,4 +230,42 @@ void main() {
     expect(moveOf(env.commands.transformValues), (30.0, 0.0));
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('⛔a FINGER\'s own move takes no Shift from a second finger: '
+      'the pair is a screen gesture still, and the move is let go', (
+    tester,
+  ) async {
+    final env = await pumpLayer(tester);
+    final hand = await tester.startGesture(
+      const Offset(100, 60),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await hand.moveBy(const Offset(30, 8));
+    await tester.pump();
+    expect(
+      moveOf(env.commands.transformValues),
+      (30.0, 8.0),
+      reason: '⛔premise: a finger moves it',
+    );
+
+    final second = await tester.startGesture(
+      const Offset(300, 250),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await hand.moveBy(const Offset(10, 20));
+    await tester.pump();
+    await second.up();
+    await hand.up();
+    await tester.pump();
+
+    expect(
+      moveOf(env.commands.transformValues),
+      (30.0, 8.0),
+      reason: 'neither kept to one way (40, 0) nor carried on (40, 28): the '
+          'second finger let the move go where it found it',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
 }
