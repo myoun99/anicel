@@ -10,6 +10,7 @@ import 'package:flutter/gestures.dart'
     show PointerDeviceKind, PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RendererBinding;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/input/control_press_claim.dart';
@@ -174,6 +175,56 @@ void main() {
       await tester.pump();
       expect(value(), 95);
       expect(heard, ['move -5.0', 'end'], reason: 'nothing left for a frame');
+    });
+
+    testWidgets('a readout taken away before its frame hands nothing on', (
+      tester,
+    ) async {
+      // A move dispatched INSIDE a frame (pointer resampling) waits for the
+      // next one — and the host may take the readout away in between.
+      final heard = <String>[];
+      var shown = true;
+      late StateSetter setHost;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: StatefulBuilder(
+                builder: (context, setState) {
+                  setHost = setState;
+                  return shown
+                      ? DragValueLabel(
+                          keyValue: 'zoom',
+                          text: '100%',
+                          width: 64,
+                          onDragDelta: (units) => heard.add('move $units'),
+                        )
+                      : const SizedBox();
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      final at = tester.getCenter(find.byKey(face));
+      final pointer = TestPointer(9, PointerDeviceKind.mouse);
+      tester.binding
+        ..handlePointerEvent(pointer.addPointer(location: at))
+        ..handlePointerEvent(pointer.down(at))
+        ..handlePointerEvent(pointer.move(at + const Offset(-10, 0)));
+      await tester.pump();
+      expect(heard, ['move -10.0'], reason: 'fixture: the drag is live');
+
+      SchedulerBinding.instance.scheduleFrameCallback((_) {
+        tester.binding.handlePointerEvent(
+          pointer.move(at + const Offset(-30, 0)),
+        );
+        setHost(() => shown = false);
+      });
+      await tester.pump();
+      await tester.pump();
+      expect(heard, ['move -10.0'], reason: 'nobody is left to hand it to');
+      tester.binding.handlePointerEvent(pointer.up());
     });
   });
 

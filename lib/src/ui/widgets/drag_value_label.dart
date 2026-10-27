@@ -287,7 +287,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
     _unheardCall = null;
     final units = _unheardUnits;
     _unheardUnits = 0;
-    if (units == 0 || !mounted) {
+    if (units == 0) {
       return;
     }
     // ⚠️On the FIRST whole unit, not on the press: a press that never
