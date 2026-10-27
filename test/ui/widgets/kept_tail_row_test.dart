@@ -438,4 +438,91 @@ void main() {
       );
     });
   });
+
+  // The bar's head holds two: the transport's own floor and the cut
+  // pill's past it (F-491).
+  group('a group with more than one floor is kept to the farthest', () {
+    const near = ValueKey<String>('near');
+    const far = ValueKey<String>('far');
+    const gap = 8.0;
+
+    /// A head of 10, 30 and 70 — the first two floors where [withNear] and
+    /// [withFar] say so — and a tail of 100.
+    Future<void> pumpRow(
+      WidgetTester tester,
+      double width, {
+      bool withNear = true,
+      bool withFar = true,
+    }) => tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: width,
+            height: rowHeight,
+            child: FloorFoldRow(
+              gap: gap,
+              head: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (withNear)
+                      const FoldFloor(
+                        child: SizedBox(key: near, width: 10, height: 10),
+                      )
+                    else
+                      const SizedBox(key: near, width: 10, height: 10),
+                    if (withFar)
+                      const FoldFloor(
+                        child: SizedBox(key: far, width: 30, height: 10),
+                      )
+                    else
+                      const SizedBox(key: far, width: 30, height: 10),
+                    const SizedBox(width: 70, height: 10),
+                  ],
+                ),
+              ),
+              tail: const SizedBox(key: tail, width: 100, height: 10),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    /// What the head shows of itself — its scroller's width.
+    double headShown(WidgetTester tester) =>
+        tester.getSize(find.byType(SingleChildScrollView)).width;
+
+    testWidgets('🚨the farther one holds, whichever came first', (
+      tester,
+    ) async {
+      await pumpRow(tester, 120, withNear: false);
+      expect(headShown(tester), 40, reason: '⛔전제: the far one alone');
+
+      // The near one comes after it, keeping less.
+      await pumpRow(tester, 120);
+
+      expect(tester.takeException(), isNull);
+      expect(headShown(tester), 40, reason: 'still the far one\'s');
+    });
+
+    testWidgets('🚨one taken away keeps nothing, in the frame it goes', (
+      tester,
+    ) async {
+      await pumpRow(tester, 120);
+      expect(
+        headShown(tester),
+        40,
+        reason: 'the far one, laid out after the near one',
+      );
+
+      await pumpRow(tester, 120, withFar: false);
+
+      expect(tester.takeException(), isNull);
+      expect(headShown(tester), 120 - gap - 100);
+      expect(tester.getSize(find.byKey(tail)).width, 100);
+    });
+  });
 }
