@@ -349,7 +349,11 @@ void main() {
       'corners-round',
     ];
 
-    testWidgets('🚨every row is there whatever is chosen', (tester) async {
+    // Whatever is chosen IN this panel (F-478-Q2 asks whether that holds);
+    // 「그리기」 under a tile with an inside alone (F-478-Q1).
+    testWidgets('🚨every row is there whatever is chosen in the panel', (
+      tester,
+    ) async {
       for (final state in [
         shapeTool(),
         shapeTool(options: plain),
@@ -357,10 +361,13 @@ void main() {
         shapeTool(shape: CanvasShapeKind.line),
       ]) {
         await pump(tester, state);
+        final hasInside = canvasShapeEncloses(state.drawShape);
         for (final key in pills) {
           expect(
             find.byKey(ValueKey<String>('shape-tool-$key')),
-            findsOneWidget,
+            hasInside || !key.startsWith('part-')
+                ? findsOneWidget
+                : findsNothing,
             reason: '$key under ${state.shapeOptions.toJson()}',
           );
         }
@@ -436,8 +443,10 @@ void main() {
       expect(pill(tester, 'type-plain').onTap, isNotNull);
     });
 
-    testWidgets('🚨under the line tile 「채움」 takes no press, and the line is '
-        'what is lit — whatever was chosen for the other shapes', (
+    // 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+    // 있다」. ↩️「그리기」 kept its place there with 「채움」 refused.
+    testWidgets('🚨under the line tile there is no 「그리기」 to ask, and the '
+        'line is what is laid — whatever was chosen for the other shapes', (
       tester,
     ) async {
       final tools = await pump(
@@ -445,17 +454,20 @@ void main() {
         shapeTool(shape: CanvasShapeKind.line, options: fill),
       );
 
-      expect(pill(tester, 'part-fill').onTap, isNull);
-      expect(pill(tester, 'part-fill').selected, isFalse);
-      expect(pill(tester, 'part-line').selected, isTrue);
+      expect(find.byKey(const ValueKey('shape-tool-part')), findsNothing);
       expect(pill(tester, 'type-plain').onTap, isNotNull, reason: 'a line');
-
-      await tester.tap(
-        find.byKey(const ValueKey('shape-tool-part-fill')),
-        warnIfMissed: false,
+      expect(
+        tools.value.shapeOptions.part,
+        ShapePart.fill,
+        reason: 'kept for the shapes with an inside',
       );
-      await tester.pump();
-      expect(tools.value.shapeOptions.part, ShapePart.fill, reason: 'kept');
+
+      await pump(tester, shapeTool(options: fill));
+      expect(
+        find.byKey(const ValueKey('shape-tool-part')),
+        findsOneWidget,
+        reason: 'premise: a tile with an inside asks',
+      );
     });
 
     testWidgets('the ratio lock is a switch, whatever is chosen', (

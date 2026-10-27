@@ -300,28 +300,34 @@ class ToolSettingActions extends StatelessWidget {
   /// What stands between the settings and the actions.
   static const double _above = 6;
 
+  /// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+  /// 있다」 — an action the tool's mode does not need is not handed in, and
+  /// a block left with no line takes no room.
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: _above),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final line in lines)
-          ToolSettingRow(
-            label: '',
-            child: Row(
-              children: [
-                for (final (i, action) in line.indexed) ...[
-                  if (i > 0) const SizedBox(width: ToolSettingColumns.gap),
-                  Expanded(child: action),
-                ],
-              ],
-            ),
+  Widget build(BuildContext context) => lines.isEmpty
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: _above),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final line in lines)
+                ToolSettingRow(
+                  label: '',
+                  child: Row(
+                    children: [
+                      for (final (i, action) in line.indexed) ...[
+                        if (i > 0)
+                          const SizedBox(width: ToolSettingColumns.gap),
+                        Expanded(child: action),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
           ),
-      ],
-    ),
-  );
+        );
 }
 
 /// One button of [ToolSettingActions], in the BOX's face: a settings bar's

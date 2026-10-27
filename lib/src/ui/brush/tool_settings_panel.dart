@@ -358,13 +358,7 @@ class _ShapeFillSettings extends StatelessWidget {
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
-        ToolSettingActions(
-          lines: [
-            [
-              _ClosePolygonButton(shapeKind: shapeKind, traces: traces),
-            ],
-          ],
-        ),
+        ToolSettingActions(lines: _closePolygonLine(shapeKind, traces)),
       ],
     );
   }
@@ -373,15 +367,20 @@ class _ShapeFillSettings extends StatelessWidget {
 /// The SHAPE tool's settings (I-69, 유저 답 Q1 · Q5 · Q7 · Q8 · Q9 —
 /// 2026-10-08).
 ///
-/// Five rows, always there (「없다가 생기는 UI 금지」). A row that means
-/// nothing for what is chosen keeps its place and loses its tap:
+/// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+/// 있다」 — 「그리기」 stands only under a tile with an inside to fill. Under
+/// the line tile there is nothing to choose: the line is what is laid,
+/// whatever was chosen for the other shapes. ↩️It kept its place there with
+/// 「채움」 refused (「없다가 생기는 UI 금지」).
+///
+/// The rest keep their place and lose their tap where what is chosen IN
+/// this panel leaves them nothing to say — whether they go too is
+/// F-478-Q2's question, not this law's:
 ///
 /// - 「채움」 has no line, so the type and the corners are off (Q9: 「채움은
 ///   타입과 무관하다」);
 /// - the corners are the PLAIN line's (Q8), and so is the edge switch —
-///   with the fill's. A line of the brush type has the brush's own edge;
-/// - under the line tile there is no inside to fill: that answer is off,
-///   and the line is what is lit, whatever was chosen for the other shapes.
+///   with the fill's. A line of the brush type has the brush's own edge.
 ///
 /// ⛔No size and no opacity here: those are the strip's for every tool
 /// (`BrushToolState.activeSize`, `activeOpacity`).
@@ -408,7 +407,7 @@ class _ShapeToolSettings extends StatelessWidget {
       tool: 'shape',
       title: strings.toolShape,
       children: [
-        _partRow(strings),
+        if (canvasShapeEncloses(state.drawShape)) _partRow(strings),
         _typeRow(strings),
         _cornersRow(strings),
         SettingsSwitchRow(
@@ -429,24 +428,19 @@ class _ShapeToolSettings extends StatelessWidget {
     );
   }
 
-  /// 「그리기」: the line, or the inside. Under the line tile there is no
-  /// inside to fill, and that answer takes no press.
-  Widget _partRow(AppStrings strings) {
-    final hasInside = canvasShapeEncloses(state.drawShape);
-    return ToolSettingChoiceRow<ShapePart>(
-      tool: 'shape-tool',
-      name: 'part',
-      label: strings.shapeToolDraws,
-      current: state.shapePart,
-      answers: [
-        (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
-        (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
-      ],
-      onPick: (part) => part == ShapePart.fill && !hasInside
-          ? null
-          : () => _set(_options.copyWith(part: part)),
-    );
-  }
+  /// 「그리기」: the line, or the inside — asked only under a tile with an
+  /// inside (see the class).
+  Widget _partRow(AppStrings strings) => ToolSettingChoiceRow<ShapePart>(
+    tool: 'shape-tool',
+    name: 'part',
+    label: strings.shapeToolDraws,
+    current: state.shapePart,
+    answers: [
+      (value: ShapePart.line, key: 'line', label: strings.shapeToolStroke),
+      (value: ShapePart.fill, key: 'fill', label: strings.shapeToolFill),
+    ],
+    onPick: (part) => () => _set(_options.copyWith(part: part)),
+  );
 
   /// 「타입」: what lays the line — it takes a press only where a line is
   /// laid.
@@ -528,40 +522,44 @@ class _CutGrabSettings extends StatelessWidget {
               onChanged(state.copyWith(cutDeletesSource: value)),
         ),
         ToolSettingActions(
-          lines: [
-            [
-              _ClosePolygonButton(
-                shapeKind: state.activeShapeKind,
-                traces: traces,
-              ),
-            ],
-          ],
+          lines: _closePolygonLine(state.activeShapeKind, traces),
         ),
       ],
     );
   }
 }
 
+/// The line of [ToolSettingActions] the polygon's confirm stands on — none
+/// while another shape is in hand ([_ClosePolygonButton]).
+List<List<Widget>> _closePolygonLine(
+  CanvasShapeKind? shapeKind,
+  CanvasTraces? traces,
+) => [
+  if (shapeKind == CanvasShapeKind.polygon)
+    [_ClosePolygonButton(traces: traces)],
+];
+
 /// The polygon's confirm, for hands with no Enter key — an ACTION of the
 /// tools that trace one ([ToolSettingActions]).
 ///
-/// It bites only while the polygon shape is armed and three vertices are
-/// down — a button offering to close nothing would be lying about what a
-/// tap does.
+/// It bites only once three vertices are down — a button offering to close
+/// nothing would be lying about what a tap does.
 ///
-/// ↩️It rendered nothing for the other shapes, 「so the panel does not grow
-/// a permanent dead row」 — which is 「없다가 생기는 UI」: tool-settings-
-/// panel-tidy (유저 2026-10-10, 「다 추천대로」 — 「자리를 늘 두고 아닐 때는
-/// 흐리게」). It keeps its place and dims.
+/// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+/// 있다」 — it stands only while the polygon is the shape in hand
+/// ([_closePolygonLine]): 「도형닫기가 필요없는 사각형 타원 올가미 전체등은
+/// 해당 버튼 삭제」 · 「선택 도구의 도형 닫기도 다각형 선택만 쓸것임」 ·
+/// 「채우기 도구도 도형 닫기 버튼 마찬가지」. ↩️It kept its place and dimmed
+/// under the other shapes (tool-settings-panel-tidy, 유저 2026-10-10 「자리를
+/// 늘 두고 아닐 때는 흐리게」), and before that rendered nothing for them.
 ///
 /// It is 확정's polygon half (`ConfirmVerb` closes an open outline before
 /// anything else it might confirm — 유저 확정 「폴리곤 확정은 확정 버튼으로」),
 /// so it names 확정 rather than an action of its own (I-40): Enter is its
 /// key.
 class _ClosePolygonButton extends StatelessWidget {
-  const _ClosePolygonButton({required this.shapeKind, required this.traces});
+  const _ClosePolygonButton({required this.traces});
 
-  final CanvasShapeKind? shapeKind;
   final CanvasTraces? traces;
 
   Widget _button(VoidCallback? close) => ToolSettingAction(
@@ -574,7 +572,7 @@ class _ClosePolygonButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final traces = this.traces;
-    if (shapeKind != CanvasShapeKind.polygon || traces == null) {
+    if (traces == null) {
       return _button(null);
     }
     return ListenableBuilder(
@@ -848,12 +846,7 @@ class _SelectionSettings extends StatelessWidget {
         ],
         ToolSettingActions(
           lines: [
-            [
-              _ClosePolygonButton(
-                shapeKind: state.activeShapeKind,
-                traces: traces,
-              ),
-            ],
+            ..._closePolygonLine(state.activeShapeKind, traces),
             // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
             // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
             // (with nothing selected it selects the whole wall), and greyed
@@ -1163,12 +1156,18 @@ class _MoveSettingsState extends State<_MoveSettings> {
     final commands = widget.selectionCommands;
     final strings = AppText.strings;
     // The mesh's density, shown as numbers because that is what it is
-    // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). It takes a hand in
-    // 메쉬 alone — a grid size means nothing to the other two modes.
-    // ↩️It was only THERE in 메쉬, which is 「없다가 생기는 UI」: the row
-    // keeps its place and dims.
+    // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). 🗣️F-478-Q1 (유저
+    // 2026-10-27): 「변형도구의 툴설정의 메시도 마찬가지」 — its rows stand
+    // in 메쉬 alone; a grid size means nothing to the other two modes.
+    // ↩️They kept their place and dimmed there (tool-settings-panel-tidy,
+    // 10-10 — 「없다가 생기는 UI」), and before that were only there in 메쉬.
+    //
+    // ⚠️「메시워프에서도 일반변형등에서만 쓰는거 있으면 삭제하고」: nothing
+    // else here is 일반's alone. 위치 · 배율 · 회전 · 반전 · 기준점 move the
+    // box, and the box carries the mesh and the quad with it — each of
+    // their points is laid through its affine (`FloatWarp._placedPoints`).
     final meshHandler = widget.onOptionsChanged;
-    final meshLive = options.mode == TransformMode.mesh && meshHandler != null;
+    final inMesh = options.mode == TransformMode.mesh;
     final flipHorizontal = canEdit
         ? () => commands?.flipTransform(horizontal: true)
         : null;
@@ -1325,28 +1324,30 @@ class _MoveSettingsState extends State<_MoveSettings> {
               ),
             ),
           ),
-          ToolSettingRow.bar(
-            label: strings.trMesh,
-            bar: _meshBox(
-              keyValue: 'move-mesh-columns-field',
-              name: strings.trMeshColumns,
-              value: options.meshColumns,
-              live: meshLive,
-              onChanged: (cells) =>
-                  meshHandler?.call(options.copyWith(meshColumns: cells)),
+          if (inMesh) ...[
+            ToolSettingRow.bar(
+              label: strings.trMesh,
+              bar: _meshBox(
+                keyValue: 'move-mesh-columns-field',
+                name: strings.trMeshColumns,
+                value: options.meshColumns,
+                live: meshHandler != null,
+                onChanged: (cells) =>
+                    meshHandler?.call(options.copyWith(meshColumns: cells)),
+              ),
             ),
-          ),
-          ToolSettingRow.bar(
-            label: '',
-            bar: _meshBox(
-              keyValue: 'move-mesh-rows-field',
-              name: strings.trMeshRows,
-              value: options.meshRows,
-              live: meshLive,
-              onChanged: (cells) =>
-                  meshHandler?.call(options.copyWith(meshRows: cells)),
+            ToolSettingRow.bar(
+              label: '',
+              bar: _meshBox(
+                keyValue: 'move-mesh-rows-field',
+                name: strings.trMeshRows,
+                value: options.meshRows,
+                live: meshHandler != null,
+                onChanged: (cells) =>
+                    meshHandler?.call(options.copyWith(meshRows: cells)),
+              ),
             ),
-          ),
+          ],
           ...toolSettingsGroup(
             strings.trFinish,
             fold: foldOf('finish'),

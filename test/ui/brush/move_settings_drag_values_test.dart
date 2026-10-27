@@ -688,10 +688,12 @@ void main() {
   testWidgets('a value a line, X over Y in one column, each with its hands '
       'at the end; the flips a line under 회전; 초기화 · 적용 end the '
       'settings', (tester) async {
+    // In 메쉬, where every row stands (F-478-Q1).
     await pumpMoveSettings(
       tester,
       applied: [],
       onResampleModeChanged: (_) {},
+      mode: TransformMode.mesh,
     );
     Rect at(String key) => tester.getRect(find.byKey(ValueKey<String>(key)));
 
@@ -750,7 +752,10 @@ void main() {
     );
   });
 
-  testWidgets('the mesh row keeps its place, and takes a hand in 메쉬 alone', (
+  /// 🗣️F-478-Q1 (유저 2026-10-27): 「없앤다 — 그 모양 · 모드에 필요할 때만
+  /// 있다」 · 「변형도구의 툴설정의 메시도 마찬가지」. ↩️The rows kept their
+  /// place and dimmed outside 메쉬.
+  testWidgets('the mesh rows stand in 메쉬 alone, and take a hand there', (
     tester,
   ) async {
     DragValueLabel box(String key) => tester.widget<DragValueLabel>(
@@ -759,23 +764,23 @@ void main() {
         matching: find.byType(DragValueLabel),
       ),
     );
-    await pumpMoveSettings(
-      tester,
-      applied: [],
-      onResampleModeChanged: (_) {},
-    );
-    for (final key in const [
-      'move-mesh-columns-field',
-      'move-mesh-rows-field',
-    ]) {
-      expect(find.byKey(ValueKey<String>(key)), findsOneWidget, reason: key);
-      expect(
-        box(key).enabled,
-        isFalse,
-        reason: '$key: a grid size means nothing outside 메쉬',
+    const rows = ['move-mesh-columns-field', 'move-mesh-rows-field'];
+    for (final mode in TransformMode.values) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await pumpMoveSettings(
+        tester,
+        applied: [],
+        onResampleModeChanged: (_) {},
+        mode: mode,
       );
+      for (final key in rows) {
+        expect(
+          find.byKey(ValueKey<String>(key)),
+          mode == TransformMode.mesh ? findsOneWidget : findsNothing,
+          reason: '$key in $mode: a grid size means nothing outside 메쉬',
+        );
+      }
     }
-
     await tester.pumpWidget(const SizedBox.shrink());
     await pumpMoveSettings(
       tester,
@@ -783,8 +788,9 @@ void main() {
       onResampleModeChanged: (_) {},
       mode: TransformMode.mesh,
     );
-    expect(box('move-mesh-columns-field').enabled, isTrue);
-    expect(box('move-mesh-rows-field').enabled, isTrue);
+    for (final key in rows) {
+      expect(box(key).enabled, isTrue, reason: key);
+    }
   });
 
   /// 🚨★★★**F-164 ③④ — 유저 2026-09-18**: 「변형중에 툴도구의 X,Y값같은거
