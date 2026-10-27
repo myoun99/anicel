@@ -13,6 +13,7 @@ import '../widgets/app_icon_button.dart';
 import 'comma_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
+import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/static_raster.dart';
@@ -1224,13 +1225,17 @@ class TimelineActionToolbar extends StatelessWidget {
         // …and on the ＋'s gate: a band over the cut that is there leaves
         // nowhere to make one, and a bake keyed on the language alone kept
         // the ＋ lit through it.
-        _StaticCommandGroup(
-          news: _news,
-          gates: () => (
-            AppText.settings.value.programLanguage,
-            session.cutPlacement.canCreateCut,
+        // 🗣️F-463 ⑥: 「컷쪽은 컷알약까지 최소폭」 — the least of the pills
+        // the bar shows ([FoldFloor]).
+        FoldFloor(
+          child: _StaticCommandGroup(
+            news: _news,
+            gates: () => (
+              AppText.settings.value.programLanguage,
+              session.cutPlacement.canCreateCut,
+            ),
+            builder: (context) => CutCommandGroup(session: session),
           ),
-          builder: (context) => CutCommandGroup(session: session),
         ),
         const SizedBox(width: 6),
         _layerPill(),

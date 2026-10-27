@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/scrollable_of.dart';
+import '../../helpers/timeline_zoom.dart';
 
 /// 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가. 해당
 /// 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 · 「위치는 줌 확대버튼
@@ -100,9 +101,12 @@ void main() {
     );
   }
 
-  testWidgets('it stands right of the zoom +', (tester) async {
+  // ↩️「위치는 줌 확대버튼 오른쪽」 (I-111) — F-463 took the + off, and the
+  // fit stayed where it was: 「그 옆의 줌 fit버튼은 그대로」.
+  testWidgets('it stands right of the zoom\'s readout, the first button past '
+      'the readout\'s own pencil', (tester) async {
     await open(tester);
-    final order = [
+    final buttons = [
       for (final button in tester.widgetList<AppIconButton>(
         find.descendant(
           of: find.byType(TimelineViewCluster),
@@ -112,9 +116,13 @@ void main() {
         button.keyValue,
     ];
     expect(
-      order.indexOf('timeline-zoom-fit-button'),
-      order.indexOf('timeline-zoom-in-button') + 1,
-      reason: '「위치는 줌 확대버튼 오른쪽」: $order',
+      buttons.indexOf('timeline-zoom-fit-button'),
+      buttons.indexOf('timeline-zoom-readout-edit') + 1,
+      reason: '$buttons',
+    );
+    expect(
+      tester.getRect(fit).left,
+      greaterThanOrEqualTo(tester.getRect(timelineZoomReadout).right),
     );
   });
 
@@ -123,10 +131,7 @@ void main() {
     tester,
   ) async {
     final session = await open(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-    );
-    await tester.pumpAndSettle();
+    await dragTimelineZoom(tester, 25);
     frameAxisOf(tester).jumpTo(300);
     await tester.pumpAndSettle();
     expect(frameAxisOf(tester).pixels, greaterThan(0), reason: '⛔전제');
@@ -146,12 +151,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
-    for (var i = 0; i < 4; i++) {
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
-      );
-      await tester.pumpAndSettle();
-    }
+    await typeTimelineZoom(tester, TimelineZoomLimits.maxPixelsPerFrame);
     final kept = session.panelViews.frameAxisOffsets[LayerRailId.storyboard]!;
     kept.value = 200;
     await tester.pumpAndSettle();

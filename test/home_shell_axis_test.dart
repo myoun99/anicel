@@ -6,14 +6,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import 'ui/timeline/timeline_ruler_probe.dart';
 
 import 'helpers/app_icon_button_probe.dart';
 import 'helpers/home_page_probes.dart';
 import 'helpers/the_classic_rail.dart';
+import 'helpers/timeline_zoom.dart';
 
 void main() {
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
@@ -149,36 +148,19 @@ void main() {
     // Wide cells label every frame in-cell.
     expect(timelineHeaderModel(tester, 0).label, '1');
 
-    Future<void> zoomTo(double pixelsPerFrame) async {
-      tester
-          .widget<FieldSlider>(
-            find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-          )
-          .onChanged!(pixelsPerFrame);
-      await tester.pumpAndSettle();
-    }
+    Future<void> zoomTo(double pixelsPerFrame) =>
+        typeTimelineZoom(tester, pixelsPerFrame);
 
     // Under the bar's 200% (38.4, F-403-Q1). ↩️40, under 250%.
     await zoomTo(36);
     expect(headerWidth(), 36);
 
-    // UI-R11 #11: the −/+ STEP buttons flanking the slider zoom without
-    // dragging — multiplicative ×1.25 steps on the bar's 0.1% steps.
+    // A drag along the zoom readout, a percent a pixel (F-463): 125% to
+    // 156%. ↩️The −/+ step buttons flanking the slider stood here (UI-R11
+    // #11), ×1.25 a press.
     await zoomTo(24);
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-in-button'),
-    );
-    expect(headerWidth(), 30, reason: '24 × 1.25');
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-out-button'),
-    );
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-zoom-out-button'),
-    );
-    expect(headerWidth(), 19, reason: '30 ÷ 1.25 ÷ 1.25');
+    await dragTimelineZoom(tester, 31);
+    expect(headerWidth(), 30, reason: '156.0% of 19.2 = 29.952');
 
     await zoomTo(12);
     expect(headerWidth(), 12);
@@ -213,28 +195,16 @@ void main() {
     // 19.2 at 100%, laid on whole pixels, as the timeline's header (F-403).
     expect(xsheetFrameRowGlobalRect(tester, 0).height, 19);
 
-    tester
-        .widget<FieldSlider>(
-          find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-        )
-        .onChanged!(36);
-    await tester.pumpAndSettle();
+    await typeTimelineZoom(tester, 36);
     // 36 is a step of the bar (187.5%), under its 200% (F-403-Q1).
     // ↩️40: the bar's tenth nearest it, 39.9936, laid on the pixel 40.
     expect(xsheetFrameRowGlobalRect(tester, 0).height, moreOrLessEquals(36));
   });
 
-  testWidgets('the time display toggle switches the counter to seconds', (
-    WidgetTester tester,
-  ) async {
+  // ↩️The bar's frame counter read seconds too, until F-463 took it off.
+  testWidgets('the time display toggle switches the frame places to '
+      'seconds', (WidgetTester tester) async {
     await tester.pumpWidget(const AnicelApp());
-
-    String counterText() => tester
-        .renderObject<RenderTickText>(
-          find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
-        )
-        .data;
-    expect(counterText(), '1');
 
     // F-284 (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에
     // 대응하도록 법 통일」): the lists that name a frame are written by the
@@ -250,16 +220,14 @@ void main() {
       tester,
       const ValueKey<String>('timeline-time-display-toggle-button'),
     );
-    // Frame 1 at 24fps in conte notation — bare digits, the sheet's own
-    // (feedback #12); this used to read `0+01`.
-    expect(counterText(), '0+1');
+    // Frame 15 at 24fps in conte notation — bare digits, the sheet's own
+    // (feedback #12).
     expect(placeInALine(), '0+15');
 
     await tapToolbarButton(
       tester,
       const ValueKey<String>('timeline-time-display-toggle-button'),
     );
-    expect(counterText(), '1');
     expect(placeInALine(), '15');
   });
 

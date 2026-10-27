@@ -1,92 +1,66 @@
-import 'dart:math' as math;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
+import '../text/app_strings.dart';
+import '../text/readout_text.dart' show columnValueOf, readoutText;
 import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
-import '../widgets/field_slider.dart';
-import '../widgets/tick_text.dart';
+import '../widgets/drag_value_label.dart';
 import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
 
 /// What a [TimelineViewCluster] shows — the key both frame panels keep
-/// theirs by across their host's rebuilds (F-244 ⑧, `keptWhileSame`):
-/// the channels its counter hears, by identity, its words and numbers, and
-/// [trailing] — what the host's own controls beside it show.
+/// theirs by across their host's rebuilds (F-244 ⑧, `keptWhileSame`): its
+/// zoom, and [trailing] — what the host's own controls beside it show.
 ///
 /// 🔬Measured (10-01, a comma drag released on 24 rows): the timeline's
 /// cluster was built anew at every commit — 47 elements, every one of them
 /// the same — because the panel made it afresh in its build.
 ///
 /// The zoom's callback is a fact, by equality, as the cells rows' content
-/// callbacks are: whether there is one is what the − and + show, and a
+/// callbacks are: whether there is one is whether the readout turns, and a
 /// host's tear-off compares equal across its rebuilds.
 typedef TimelineViewClusterFacts = ({
-  ValueListenable<int> frameCursor,
-  ValueListenable<int?>? globalFrame,
   ProjectFrameRate projectFrameRate,
-  bool showSeconds,
   double pixelsPerFrame,
   ValueChanged<double>? onPixelsPerFrameChanged,
   VoidCallback? onZoomFit,
-  ValueListenable<String> cutName,
   Object? trailing,
 });
 
-/// The right-side view cluster shared VERBATIM by the timeline and
-/// storyboard tabs: frame counter + zoom slider, plus host-specific
-/// trailing controls (the timeline's orientation toggle).
+/// The view cluster shared VERBATIM by the timeline and storyboard tabs:
+/// the zoom and its fit, plus host-specific trailing controls (the
+/// timeline's orientation toggle).
 ///
 /// The seconds TOGGLE left this bar in the rail-window round — it lives
 /// in each grid's top-left corner now, over the layer-axis scrollbar,
-/// beside the axis whose labels it rewrites. [showSeconds] stays because
-/// the counter beside it still reads in that notation.
+/// beside the axis whose labels it rewrites.
+///
+/// 🗣️F-463 ④ (유저 2026-10-25): 「기존 줌 왼쪽의 로컬인덱스/글로벌인덱스
+/// 텍스트 표시, 필요없으니 일단 삭제. 컷 번호 보여주는거만 컷 알약안에」.
+/// ↩️The frame counter stood at the cluster's head from 2026-08-10 — the
+/// track-global frame over the cut-local one, both panels — and I-57 (유저
+/// 2026-10-01) put the cut's name between it and the zoom; the name is the
+/// cut pill's now (`CutCommandGroup`). The counter was the one thing on the
+/// bar that ticked with playback, which is what stood the zoom on a layer
+/// and a semantics boundary of its own (10-11 · 10-12) — gone with it.
 ///
 /// One widget instead of two hand-copied Rows — the key strings
-/// ('timeline-current-frame-counter', 'timeline-zoom-slider') stay unique
-/// on screen because only one tab is ever mounted.
+/// ('timeline-zoom-readout', 'timeline-zoom-fit-button') stay unique on
+/// screen because only one tab is ever mounted.
 class TimelineViewCluster extends StatelessWidget {
   const TimelineViewCluster({
     super.key,
-    required this.frameCursor,
     required this.projectFrameRate,
-    required this.showSeconds,
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
     this.onZoomFit,
-    this.globalFrame,
-    this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.trailing = const <Widget>[],
   });
 
-  /// The editing/playback cursor — the counter subscribes to this alone so
-  /// a tick rebuilds its lines, nothing else (playback-perf architecture).
-  final ValueListenable<int> frameCursor;
-
-  /// Track-global playhead frame (UI-R9 #6, storyboard only): when set,
-  /// the counter reads `<global> · <cut-local>` — the global number LEFT
-  /// of the local one. The counter subscribes to both, so gap parking
-  /// (which moves the global without touching the cut-local cursor)
-  /// refreshes the label too. Null (the timeline tab) keeps the plain
-  /// cut-local counter.
-  final ValueListenable<int?>? globalFrame;
-
-  /// The name of the cut whose frames the counter counts (I-57, 유저
-  /// 2026-10-01: 「현재 컷의 이름을 표기하고싶음. 위치는 타임라인/콘티패널
-  /// 동일하게. 타임라인 줌의 마이너스버튼 왼쪽. 즉 로컬/글로벌 인덱스를
-  /// 왼쪽에 두고, 그 사이에 컷이름」) — between the counter and the zoom's −
-  /// button, on both panels, because both mount this one bar.
-  final ValueListenable<String> cutName;
-
-  /// How wide the cut's name may grow before it is cut short, at 1×.
-  static const double _cutNameMaxWidth = 160;
-
   final ProjectFrameRate projectFrameRate;
-  final bool showSeconds;
   final double pixelsPerFrame;
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
@@ -94,68 +68,27 @@ class TimelineViewCluster extends StatelessWidget {
   /// draws and the window it shows it in. Null keeps the button dark.
   final VoidCallback? onZoomFit;
 
-  /// Host-specific controls after the zoom slider (orientation toggle).
+  /// Host-specific controls after the zoom (orientation toggle).
   final List<Widget> trailing;
 
-  /// The counter's type, colour aside — what its two lines are measured in.
-  static const TextStyle _counterMetrics = TextStyle(
-    fontFamily: 'monospace',
-    fontSize: 10.5,
-    height: 1.24,
-    fontWeight: FontWeight.w600,
-  );
+  /// The zoom readout's words — the canvas zoom readout's.
+  static const TextStyle _zoomStyle = TextStyle(fontSize: 12);
 
-  /// The zoom bar's height as drawn, at 1×.
-  static const double _zoomBarHeight = 18;
+  /// The digits the zoom readout writes after the point — every digit the
+  /// zoom has (F-403: a step is 0.1%).
+  static const int _zoomDecimals = 1;
 
   /// What the cluster adds to the height it was drawn at where it is shown:
-  /// the counter's TWO lines grown under the OS text size, or the zoom bar's
-  /// one line, whichever grows more.
+  /// the zoom readout's one line grown under the OS text size.
   ///
   /// 🚨text-scale-fixed-height-bars (유저 2026-09-18, 「막대가 글자 크기를
-  /// 따라 자란다」). 🔬At 1.5× in the app's face the counter overflowed the
-  /// bar by 11px — the one place this family did not clip silently.
-  static double growthIn(BuildContext context) => math.max(
-    2 * TextMeasure(context, _counterMetrics).lineGrowthOf('0'),
-    FieldSlider.growthIn(context),
-  );
+  /// 따라 자란다」).
+  static double growthIn(BuildContext context) =>
+      TextMeasure(context, _zoomStyleIn(context))
+          .lineGrowthOf(TextMeasure.everyScript);
 
-  String _frameLabel(int oneBasedFrame) => showSeconds
-      ? secondsPlusFramesLabel(oneBasedFrame, projectFrameRate.countingBase)
-      : '$oneBasedFrame';
-
-  /// The widest zoom this project's rate allows.
-  double get _minPixelsPerFrame =>
-      TimelineZoomLimits.minPixelsPerFrameAt(projectFrameRate.countingBase);
-
-  /// R26 #42: the app's standard icon button — the disabled look is
-  /// IconButton's own (no hand-mixed alpha), same as the canvas bar.
-  Widget _zoomStepButton({required bool zoomIn}) {
-    final atBound = zoomIn
-        ? pixelsPerFrame >= TimelineZoomLimits.maxPixelsPerFrame
-        : pixelsPerFrame <= _minPixelsPerFrame;
-    final enabled = onPixelsPerFrameChanged != null && !atBound;
-    final action = zoomIn
-        ? EditorActionIds.timelineZoomIn
-        : EditorActionIds.timelineZoomOut;
-    return AppIconButton(
-      keyValue: zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
-      // The registry's name, in the program's language. ↩️「Zoom In」 and
-      // 「Zoom Out」 stood here in English everywhere until I-40 (10-09).
-      tooltip: editorActionLabel(action),
-      shortcuts: [action],
-      icon: Icon(zoomIn ? Icons.zoom_in : Icons.zoom_out),
-      onPressed: enabled
-          ? () => onPixelsPerFrameChanged!(
-              TimelineZoomLimits.stepped(
-                pixelsPerFrame,
-                zoomIn: zoomIn,
-                framesPerSecond: projectFrameRate.countingBase,
-              ),
-            )
-          : null,
-    );
-  }
+  static TextStyle _zoomStyleIn(BuildContext context) =>
+      DefaultTextStyle.of(context).style.merge(_zoomStyle);
 
   /// 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가.
   /// 해당 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 — the zoom at which
@@ -169,156 +102,71 @@ class TimelineViewCluster extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final globalFrame = this.globalFrame;
-    final counterStyle = _counterMetrics.copyWith(color: colorScheme.primary);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // TWO LINES, one number each: the TRACK-global frame on top, the
-        // cut-local one under it (유저 확정, 2026-08-10). Stacking costs no
-        // width, absorbs a digit's growth into the line that grew, and — the
-        // reason it is stated for BOTH panels rather than for the storyboard
-        // alone — puts the local number at the SAME height whichever panel
-        // is open. The timeline leaves the top line EMPTY (it is one cut's
-        // window; there is no global frame to print) and keeps the line
-        // rather than dropping it, which is what makes the heights agree.
-        //
-        // 🚫No `G`/`L` labels (유저 확정): above and below IS the label.
-        // 🚫No width reserved for the widest number either — it grows into
-        // the free space on its left, and the bar's own scroller takes the
-        // squeeze exactly as every other overflow on this row does.
-        //
-        // 🚨EACH LINE HEARS ITS OWN CHANNEL, AND NOTHING IS BUILT FOR A
-        // TICK ([TickText], I-57 10-14): a listener round two `Text`s laid
-        // out and painted the whole bar at every frame played. A line that
-        // keeps its width paints itself alone.
-        Column(
-          key: const ValueKey<String>('timeline-current-frame-counter'),
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Dimmer, never smaller: the two numbers have to line up digit
-            // for digit, and a second size would break that at the one
-            // moment it matters — reading them together.
-            //
-            // 🪦The dimming was an `Opacity(0.62)` around this one `Text`,
-            // and an `Opacity` is a repaint boundary at any alpha above
-            // zero — a permanent one, in the bar that bakes itself in
-            // zones. ⛔For a single run of opaque glyphs the two are the
-            // same pixels: a layer at 62% over the ground and a glyph
-            // colour at 62% alpha are one expression
-            // (`test/architecture/an_opacity_is_a_boundary_test.dart`
-            // carries the law).
-            TickText(
-              key: const ValueKey<String>('timeline-global-frame-counter'),
-              ticks: globalFrame,
-              words: () => switch (globalFrame?.value) {
-                final global? => _frameLabel(global + 1),
-                null => '',
-              },
-              style: counterStyle.copyWith(
-                color: counterStyle.color!.withValues(alpha: 0.62),
-              ),
-            ),
-            TickText(
-              key: const ValueKey<String>('timeline-local-frame-counter'),
-              ticks: frameCursor,
-              words: () => _frameLabel(frameCursor.value + 1),
-              style: counterStyle,
-            ),
-          ],
-        ),
-        const SizedBox(width: 4),
-        // I-57: the cut the counter counts, named between the counter and
-        // the zoom it stands beside — the slot is always laid, the name is
-        // what changes.
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: _cutNameMaxWidth),
-          child: ValueListenableBuilder<String>(
-            valueListenable: cutName,
-            builder: (context, name, _) => Text(
-              name,
-              key: const ValueKey<String>('timeline-cut-name'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 4),
-        // 🚨THE ZOOM STANDS BESIDE A TICK, ON A LAYER OF ITS OWN
-        // (playback-making-pictures-shakes-the-frames, 10-11). The counter
-        // ticks with every frame played and its width moves the row, so the
-        // bar this sits in is one tick layer ([TimelineCommandBar]) — and
-        // everything on it was painted again with the counter: 🔬72–78 render
-        // objects a frame, the slider most of them. Standing on its own
-        // boundary the zoom is moved, not painted, when the row moves.
-        // 🚨AND NOT DESCRIBED (10-12): the row's layout marks the bar's
-        // semantics too, and the bar's walk went through the zoom, its
-        // buttons and the orientation toggle — 🔬50 render objects re-walked
-        // for every frame played. A semantics boundary of its own stops the
-        // walk at the zoom; it reads as one group to a screen reader.
-        Semantics(
-          container: true,
-          child: RepaintBoundary(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // UI-R11 #11: the flanking glyphs are real STEP buttons
-                // now, not decorations — click-to-zoom without the
-                // slider's drag precision.
-                _zoomStepButton(zoomIn: false),
-                _zoomSlider(context),
-                _zoomStepButton(zoomIn: true),
-                // 🗣️I-111: 「위치는 줌 확대버튼 오른쪽」.
-                _zoomFitButton(),
-                ...trailing,
-              ],
-            ),
-          ),
-        ),
-      ],
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      _zoomReadout(context),
+      // 🗣️F-463: 「그 옆의 줌 fit버튼은 그대로」 — I-111's 「위치는 줌
+      // 확대버튼 오른쪽」, the + gone from beside it.
+      _zoomFitButton(),
+      ...trailing,
+    ],
+  );
+
+  /// The zoom as a number to drag — 🗣️F-463 (유저 2026-10-25): 「축소,확대
+  /// 버튼 없애고, 슬라이더는 캔버스패널의 줌 위젯마냥 숫자로 이루어진 위젯에
+  /// 드래그로 조절. 공용화된거 그대로 사용. 이유는 이렇게 하면 더 공간
+  /// 간략화 가능하니」 — the canvas zoom's readout ([DragValueLabel]): a
+  /// percent a pixel of drag, a step a notch of the wheel, its pencil to
+  /// type one, each landed on the zoom's steps inside its range
+  /// ([TimelineZoomLimits.clamped]). The keys still press the zoom in and
+  /// out (`EditorActionIds.timelineZoomIn`).
+  ///
+  /// ↩️A 140px `FieldSlider` stood here between a − and a + (UI-R11 #11),
+  /// on a MULTIPLICATIVE track (I-22 ②-1: a linear one spent 97% of its
+  /// length on 24→96px). A drag has no length to spend.
+  Widget _zoomReadout(BuildContext context) {
+    final style = _zoomStyleIn(context);
+    final onChanged = onPixelsPerFrameChanged;
+    // ⚠️The zoom this readout last sent, not the one it was built with: two
+    // moves of the hand can land before the host builds it again, and the
+    // second, counted from the zoom built, would undo the first.
+    var sent = pixelsPerFrame;
+    void zoomTo(double percent) {
+      final zoom = TimelineZoomLimits.clamped(
+        percent * TimelineZoomLimits.referencePixelsPerFrame / 100,
+        framesPerSecond: projectFrameRate.countingBase,
+      );
+      if (zoom != sent) {
+        sent = zoom;
+        onChanged!(zoom);
+      }
+    }
+
+    double percentOf(double zoom) =>
+        zoom * 100 / TimelineZoomLimits.referencePixelsPerFrame;
+
+    return DragValueLabel(
+      keyValue: 'timeline-zoom-readout',
+      text: readoutText(
+        percentOf(pixelsPerFrame),
+        decimals: _zoomDecimals,
+        unit: '%',
+      ),
+      tooltip: AppText.strings.viewZoomDrag,
+      // As wide as the widest zoom it writes, so no digit moves the row.
+      width: TextMeasure(context, style)
+          .widest(everyDigitIn((d) => '$d$d$d.$d%'))
+          .ceilToDouble(),
+      enabled: onChanged != null,
+      textStyle: _zoomStyle,
+      onDragDelta: (units) => zoomTo(percentOf(sent) + units),
+      onEditSubmit: (text) {
+        final parsed = columnValueOf(text);
+        if (parsed != null) {
+          zoomTo(parsed);
+        }
+      },
     );
   }
-
-  Widget _zoomSlider(BuildContext context) => SizedBox(
-    width: 140,
-    child: FieldSlider(
-      key: const ValueKey<String>('timeline-zoom-slider'),
-      min: _minPixelsPerFrame,
-      max: TimelineZoomLimits.maxPixelsPerFrame,
-      value: pixelsPerFrame.clamp(
-        _minPixelsPerFrame,
-        TimelineZoomLimits.maxPixelsPerFrame,
-      ),
-      // Zoom reads as percent of the frame to work at (F-403).
-      unit: '%',
-      displayScale: 100 / TimelineZoomLimits.referencePixelsPerFrame,
-      height: _zoomBarHeight + FieldSlider.growthIn(context),
-      // 🚨MULTIPLICATIVE track (I-22 ②-1): a linear one spent 97% of its
-      // length on 24→96px and left the whole narrow half — the half the
-      // user zooms out into — inside its first few pixels. Equal travel is
-      // equal RATIO here, as it is on every editor zoom in the app.
-      scale: FieldSliderScale.exponential,
-      // F-220: every value the bar reaches is the zoom — held inside the
-      // range, and nothing else ([TimelineZoomLimits.clamped]).
-      onChanged: onPixelsPerFrameChanged == null
-          ? null
-          : (value) {
-              final zoom = TimelineZoomLimits.clamped(
-                value,
-                framesPerSecond: projectFrameRate.countingBase,
-              );
-              if (zoom != pixelsPerFrame) {
-                onPixelsPerFrameChanged!(zoom);
-              }
-            },
-    ),
-  );
 }

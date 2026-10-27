@@ -46,7 +46,6 @@ import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
@@ -1584,7 +1583,7 @@ void main() {
     testWidgets('prev/next navigator jumps the playhead between keys', (
       tester,
     ) async {
-      await _pump(
+      final session = await _pump(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
       );
@@ -1599,16 +1598,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .renderObject<RenderTickText>(
-              find.byKey(
-                const ValueKey<String>('timeline-local-frame-counter'),
-              ),
-            )
-            .data,
-        '9',
-      );
+      expect(session.currentFrameIndex, 8);
     });
   });
 
@@ -1626,14 +1616,18 @@ void main() {
     // rows put late frames below the bottom dock's fold — a wide surface,
     // near keys (frames 0/4) AND a tall panel keep every gesture target on
     // screen.
-    Future<void> pumpXSheet(WidgetTester tester, Project project) async {
-      await _pump(tester, project);
+    Future<EditorSessionManager> pumpXSheet(
+      WidgetTester tester,
+      Project project,
+    ) async {
+      final session = await _pump(tester, project);
       await tester.tap(
         find.byKey(
           const ValueKey<String>('timeline-orientation-toggle-button'),
         ),
       );
       await tester.pumpAndSettle();
+      return session;
     }
 
     Future<void> expand(WidgetTester tester) async {
@@ -1912,7 +1906,7 @@ void main() {
     testWidgets('prev/next navigator jumps the playhead between keys', (
       tester,
     ) async {
-      await pumpXSheet(
+      final session = await pumpXSheet(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
       );
@@ -1927,16 +1921,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .renderObject<RenderTickText>(
-              find.byKey(
-                const ValueKey<String>('timeline-local-frame-counter'),
-              ),
-            )
-            .data,
-        '5',
-      );
+      expect(session.currentFrameIndex, 4);
     });
   });
 }

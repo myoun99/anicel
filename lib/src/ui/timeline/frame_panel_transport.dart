@@ -36,7 +36,7 @@ PanelTransport panelTransportFor(
   ),
 };
 
-/// A frame panel's transport, at the head of its command bar
+/// A frame panel's transport, in its command bar's right group
 /// ([TimelineCommandBar.transport]): its playback buttons and the camera
 /// view toggle — what [panel]'s transport drives is [panelTransportFor]'s
 /// answer.
@@ -48,12 +48,13 @@ PanelTransport panelTransportFor(
 /// 2026-10-08, F-111-Q1 「버튼행 맨 왼쪽에 고정 — 알약 칸 밖」). The sill's
 /// right edge does not move — its tabs grow from the left — whereas a
 /// transport leading the command bar's scrolling row slid sideways every
-/// time the row changed shape: 「존재할 거면 늘 그 자리에」. Pinned at the
-/// bar's head, outside its scroller, it keeps that.
+/// time the row changed shape: 「존재할 거면 늘 그 자리에」. Outside the
+/// bar's scroller — at its head, then in its right group (F-463) — it keeps
+/// that.
 ///
 /// ★And the ZOOM and the x-sheet toggle are not part of it: those reach into
-/// the panel's own contents and stand at the bar's other end, in the view
-/// cluster. What is here means the same thing whichever panel is open.
+/// the panel's own contents and stand after it, in the view cluster. What
+/// is here means the same thing whichever panel is open.
 class FramePanelTransport extends StatelessWidget {
   const FramePanelTransport({
     super.key,
@@ -78,28 +79,23 @@ class FramePanelTransport extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final transport = panelTransportFor(panel, session);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        PlaybackTransportControls(
-          controller: session.playbackRig.playback,
-          scope: transport.scope,
-          playbackStartFrame: transport.startFrame,
-          onSkipToStart: transport.skipToStart,
-          resolveMeterPeaks: () =>
-              session.playbackRig.audioDeviceTransport.meterPeaks,
-          isVoiceRecording: session.voiceRecording.isVoiceRecording,
-          onToggleVoiceRecording: () =>
-              toggleVoiceRecordingWithFeedback(context, session),
-          voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
-          resolveStrings: () => session.uiStrings,
-          playsWithout: session.playbackRig.audioDeviceTransport.playsWithout,
-        ),
-        CameraViewToggleButton(
-          view: session.cameraViewMode,
-          keyValue: _cameraViewKeyValue,
-        ),
-      ],
+    return PlaybackTransportControls(
+      controller: session.playbackRig.playback,
+      scope: transport.scope,
+      playbackStartFrame: transport.startFrame,
+      onSkipToStart: transport.skipToStart,
+      resolveMeterPeaks: () =>
+          session.playbackRig.audioDeviceTransport.meterPeaks,
+      isVoiceRecording: session.voiceRecording.isVoiceRecording,
+      onToggleVoiceRecording: () =>
+          toggleVoiceRecordingWithFeedback(context, session),
+      voiceRecordClipLit: session.voiceRecording.voiceRecordClipLit,
+      resolveStrings: () => session.uiStrings,
+      playsWithout: session.playbackRig.audioDeviceTransport.playsWithout,
+      afterLoop: CameraViewToggleButton(
+        view: session.cameraViewMode,
+        keyValue: _cameraViewKeyValue,
+      ),
     );
   }
 }

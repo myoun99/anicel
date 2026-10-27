@@ -2,7 +2,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../text/vertical_writing_text.dart';
-import '../widgets/tick_text.dart';
+import '../text/text_line.dart';
 import 'axis_turn.dart';
 
 /// A word a label plate writes, set the way its rail reads it — stood up

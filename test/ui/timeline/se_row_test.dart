@@ -16,7 +16,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
-import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
 
 import '../../helpers/the_classic_rail.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/timeline_zoom.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 
@@ -363,15 +364,11 @@ void main() {
       onRepositoryCreated: (repo) => repository = repo,
     );
     await _ensureRowVisible(tester, _seLayerId);
-    // Zoom to classic 48px cells: a ONE-frame span at the slim 24px default
+    // Zoom to the widest cells: a ONE-frame span at the slim 24px default
     // is narrower than the 32px name-box drop threshold (the overflow
-    // invariant), and this test reads the name box.
-    tester
-        .widget<FieldSlider>(
-          find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-        )
-        .onChanged!(48);
-    await tester.pumpAndSettle();
+    // invariant), and this test reads the name box. ↩️It handed the slider
+    // 48px, past the zoom's top, which a typed zoom does not reach.
+    await typeTimelineZoom(tester, TimelineZoomLimits.maxPixelsPerFrame);
 
     // Double-tap on the EMPTY cell creates the default entry DIRECTLY —
     // no dialog (UI-R25 #2, 조작 통일화).

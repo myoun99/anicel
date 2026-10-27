@@ -279,7 +279,7 @@ void commitStoryboardScrub(EditorSessionManager session) {
 /// Switching into the storyboard clamps an over-end playhead back onto the
 /// CUT's last frame (UI-R9 #4 — the runway is a clipped view of the cut,
 /// so tab-switching never lands the playhead in the trailing gap); the
-/// track's last cut keeps its endless runway — so the frame counter and
+/// track's last cut keeps its endless runway — so the cut's frame and
 /// the playhead line agree. Gap parkings (no active cut) need no clamp.
 void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (session.playbackRig.playback.isActive) {

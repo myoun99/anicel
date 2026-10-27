@@ -46,6 +46,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart' show Pill;
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/timeline_zoom.dart';
 
 /// **I-89 ③ — an open header graph draws its lines.**
 ///
@@ -183,9 +184,9 @@ void main() {
 
     // Zoomed in, a frame's cell is wider than a lane's row is tall and the
     // row is the tighter of the two; zoomed out, the cell is.
-    await _tap(tester, 'timeline-zoom-in-button');
     final seen = <Size>{};
-    for (var step = 0; step < 3; step += 1) {
+    for (final (step, zoom) in [32.0, 24.0, 16.0].indexed) {
+      await typeTimelineZoom(tester, zoom);
       final member = memberMark();
       seen.add(member);
       final marks = graphMarks();
@@ -197,7 +198,6 @@ void main() {
           reason: 'zoom step $step',
         );
       }
-      await _tap(tester, 'timeline-zoom-out-button');
     }
     expect(seen, hasLength(3), reason: '⛔전제: the zoom moved the marks');
   });

@@ -11,7 +11,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 import '../helpers/named_finders.dart';
 import '../helpers/storyboard_host.dart';
@@ -100,19 +100,19 @@ Offset _seRowPoint(WidgetTester tester, int globalFrame) {
   );
 }
 
-/// The counter's two lines, both 1-based, joined the way this file has
-/// always read them.
+/// The track-global frame and the cut-local one, both 1-based, joined the
+/// way this file has always read them — which frame a press lands on.
 ///
-/// It used to BE one string, `global · local`. Since 2026-08-10 the two
-/// numbers are STACKED — global above, local below — so the join happens
-/// here instead of on screen. What these tests are about (which frame a
-/// press lands on) is unchanged.
+/// ↩️They were the bar's frame counter's two lines (one string,
+/// `global · local`, until 2026-08-10; stacked after), until F-463 took the
+/// counter off. The channels it heard are read here.
 String _frameCounter(WidgetTester tester) {
-  String line(String keyValue) => tester
-      .renderObject<RenderTickText>(find.byKey(ValueKey<String>(keyValue)))
-      .data;
-  return '${line('timeline-global-frame-counter')} · '
-      '${line('timeline-local-frame-counter')}';
+  final session = tester
+      .widget<StoryboardTabHost>(find.byType(StoryboardTabHost))
+      .session;
+  final global = session.playheadCursors.trackFrame.value;
+  return '${global == null ? '' : global + 1} · '
+      '${session.editingFrameCursor.value + 1}';
 }
 
 void main() {

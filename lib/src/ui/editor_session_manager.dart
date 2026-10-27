@@ -3709,8 +3709,8 @@ class EditorSessionManager extends ChangeNotifier
 
   /// The editing playhead as a VALUE stream: every seek — scrub moves
   /// included — lands here, so cursor-driven widgets (timeline cursor
-  /// layer, frame counter, the canvas scrub preview) follow pointer-fast
-  /// without a session notify rebuilding the tree.
+  /// layer, the canvas scrub preview) follow pointer-fast without a session
+  /// notify rebuilding the tree.
   final ValueNotifier<int> editingFrameCursor = ValueNotifier<int>(0);
 
   /// Bumped once per committed seek ([selectFrameIndex]) — a serial, not a

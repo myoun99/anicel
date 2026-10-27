@@ -31,7 +31,7 @@ import 'berth_row.dart';
 import 'memo_token.dart' show KeptPiece;
 import '../widgets/named.dart';
 import '../widgets/rail_glyph_button.dart';
-import '../widgets/tick_text.dart' show textLineTypeIn;
+import '../text/text_line.dart' show textLineTypeIn;
 import 'layer_plate_words.dart';
 
 /// Layer-label chip controls shared by both timeline orientations

@@ -885,7 +885,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     TimelineOrientation.horizontal,
   );
 
-  // One shared zoom slider drives whichever view is shown; the values are
+  // One shared zoom readout drives whichever view is shown; the values are
   // kept per view so each keeps a sensible default scale.
   final ValueNotifier<double> _timelinePixelsPerFrame = ValueNotifier(
     TimelineZoomLimits.referencePixelsPerFrame,
@@ -917,22 +917,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         TimelineZoomLimits.referencePixelsPerFrame;
   }
 
-  /// The zoom slider's one writer: the timeline shows [value], and the
+  /// The zoom readout's one writer: the timeline shows [value], and the
   /// active cut remembers it.
   void _setTimelineZoom(double value) {
     _timelinePixelsPerFrame.value = value;
     widget.session.timelineZoom.remember(widget.session.activeCutId, value);
   }
 
-  /// The storyboard's zoom slider's one writer — a method like the
+  /// The storyboard's zoom readout's one writer — a method like the
   /// timeline's, so the callback its view cluster is kept by is the same
   /// across the workspace's rebuilds (a closure here was a new one each).
   void _setStoryboardZoom(double value) {
     _storyboardPixelsPerFrame.value = value;
   }
 
-  /// One press of [panel]'s zoom − or + — the step its view cluster's
-  /// button takes, through the same writer (I-40's key).
+  /// One step of [panel]'s zoom in or out — a zoom key's, through the same
+  /// writer (I-40). ↩️It was a press of the view cluster's − or +, until
+  /// F-463 took the buttons off.
   void _stepZoom(WorkingPanel panel, {required bool zoomIn}) {
     final framesPerSecond =
         widget.session.projectSettings.projectFrameRate.countingBase;

@@ -1,11 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/ui/widgets/owning_axis_grip.dart';
 import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
@@ -19,8 +16,8 @@ import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 /// 발견. 내가 분명 이런 슬라이더에서 조절되는 숫자까지 다 슬라이더에
 /// 보여주라고 하지않았나? … 소수점 두번째부터는 작동안하도록」.
 ///
-/// The slider and the −/+ buttons ask ONE bound, and the zooms inside it are
-/// the numbers the bar writes — a step of 0.1%: every number the bar
+/// The zoom readout and the zoom keys ask ONE bound, and the zooms inside
+/// it are the numbers the bar writes — a step of 0.1%: every number the bar
 /// reaches is a zoom, and no zoom lies between two numbers. ↩️They landed
 /// on a grid — whole pixels a frame, whole frames a pixel under one — which
 /// had no zoom between 1/2 and 1 pixel a frame (2.1% to 4.2%), and the bar
@@ -120,8 +117,8 @@ void main() {
     expect(shown(TimelineZoomLimits.minPixelsPerFrameAt(60)), '0.2');
   });
 
-  test('a −/+ step is ×1.25 to the nearest step, moves at least one, and '
-      'stops only at a bound', () {
+  test('a zoom key\'s step is ×1.25 to the nearest step, moves at least one, '
+      'and stops only at a bound', () {
     const ceiling = TimelineZoomLimits.maxPixelsPerFrame;
     for (final zoom in [floor, 0.3, 0.5, 0.8, 1.0, 2.0, 3.0, 24.0, 36.0]) {
       double near(double target) =>
@@ -212,25 +209,35 @@ void main() {
     });
   });
 
-  group('the controls emit every zoom they reach', () {
+  group('the readout emits every zoom it reaches', () {
+    final readout = find.byKey(
+      const ValueKey<String>('timeline-zoom-readout'),
+    );
+
+    /// The cluster at [pixelsPerFrame], fed back what it emits, as a host
+    /// does — and every zoom it emitted.
     Future<List<double>> pump(
       WidgetTester tester, {
       required double pixelsPerFrame,
     }) async {
       final zooms = <double>[];
-      final cursor = ValueNotifier<int>(0);
-      addTearDown(cursor.dispose);
+      final zoom = ValueNotifier<double>(pixelsPerFrame);
+      addTearDown(zoom.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: Row(
               children: [
-                TimelineViewCluster(
-                  frameCursor: cursor,
-                  projectFrameRate: ProjectFrameRate.fps24,
-                  showSeconds: false,
-                  pixelsPerFrame: pixelsPerFrame,
-                  onPixelsPerFrameChanged: zooms.add,
+                ValueListenableBuilder<double>(
+                  valueListenable: zoom,
+                  builder: (context, pixelsPerFrame, _) => TimelineViewCluster(
+                    projectFrameRate: ProjectFrameRate.fps24,
+                    pixelsPerFrame: pixelsPerFrame,
+                    onPixelsPerFrameChanged: (value) {
+                      zooms.add(value);
+                      zoom.value = value;
+                    },
+                  ),
                 ),
               ],
             ),
@@ -240,103 +247,63 @@ void main() {
       return zooms;
     }
 
-    Future<double> press(
-      WidgetTester tester, {
-      required double from,
-      required bool zoomIn,
-    }) async {
-      final zooms = await pump(tester, pixelsPerFrame: from);
-      await tester.tap(
-        find.byKey(
-          ValueKey<String>(
-            zoomIn ? 'timeline-zoom-in-button' : 'timeline-zoom-out-button',
-          ),
-        ),
+    /// A mouse along the readout, a pixel a move.
+    Future<void> sweep(WidgetTester tester, int pixels) async {
+      final at = tester.getCenter(readout);
+      final gesture = await tester.startGesture(
+        at,
+        kind: PointerDeviceKind.mouse,
       );
-      return zooms.last;
+      await tester.pump();
+      for (var x = 1; x <= pixels.abs(); x += 1) {
+        await gesture.moveTo(at + Offset(x * pixels.sign.toDouble(), 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
     }
 
-    testWidgets('the bar writes the zoom to work at as 100%', (tester) async {
+    testWidgets('the readout writes the zoom to work at as 100%', (
+      tester,
+    ) async {
       await pump(tester, pixelsPerFrame: reference);
       expect(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-          matching: find.text('100.0%'),
-        ),
+        find.descendant(of: readout, matching: find.text('100.0%')),
         findsOneWidget,
       );
     });
 
-    testWidgets('the + and − buttons step ×1.25 onto the bar\'s numbers', (
-      tester,
-    ) async {
-      Future<String> pressed(double from, {required bool zoomIn}) async =>
-          shown(await press(tester, from: from, zoomIn: zoomIn));
-      expect(await pressed(reference, zoomIn: true), '125.0');
-      expect(await pressed(reference, zoomIn: false), '80.0');
-      expect(await pressed(3.84, zoomIn: true), '25.0');
-    });
-
-    testWidgets('🚨a drag across the old grid\'s gap — 2.1% to 3.5% — zooms '
-        'at every number it writes, and writes every zoom', (tester) async {
-      final zooms = await pump(tester, pixelsPerFrame: reference);
-      final track = tester.getRect(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('timeline-zoom-slider')),
-          matching: find.byType(OwningAxisGrip),
-        ),
-      );
-      // The track is multiplicative: where a zoom sits along it.
-      double xFor(double zoom) =>
-          track.left +
-          track.width *
-              math.log(zoom / floor) /
-              math.log(TimelineZoomLimits.maxPixelsPerFrame / floor);
-      // The user's own stretch of F-220, 1.7% to 2.8% of the 24-pixel frame
-      // then.
-      final from = xFor(0.41);
-      final to = xFor(0.67);
-      final gesture = await tester.startGesture(
-        Offset(from, track.center.dy),
-        kind: PointerDeviceKind.mouse,
-      );
-      await tester.pump();
-      var moves = 0;
-      for (var x = from + 1; x <= to; x += 1) {
-        await gesture.moveTo(Offset(x, track.center.dy));
-        await tester.pump();
-        moves += 1;
-      }
-      await gesture.up();
-      await tester.pump();
-
-      expect(moves, greaterThanOrEqualTo(8), reason: 'fixture: the stretch');
-      final inside = {
-        for (final zoom in zooms)
-          if (zoom > 0.3 && zoom < 0.9) zoom,
-      };
+    testWidgets('🚨a drag out of the widest zoom zooms at every pixel, and '
+        'each zoom is a number of its own', (tester) async {
+      final zooms = await pump(tester, pixelsPerFrame: floor);
+      await sweep(tester, 9);
+      expect(zooms, hasLength(9), reason: 'a zoom at every pixel: $zooms');
       expect(
-        inside.length,
-        greaterThan(5),
-        reason: '↩️the grid gave every move the same 1/2 pixel a frame',
-      );
-      expect(
-        {for (final zoom in inside) shown(zoom)}.length,
-        inside.length,
+        {for (final zoom in zooms) shown(zoom)}.length,
+        zooms.length,
         reason: '「숫자 안바뀌는데 줌이 바뀌는」 — each zoom a number of its own',
       );
+      for (final zoom in zooms) {
+        expect(
+          zoom,
+          TimelineZoomLimits.clamped(zoom, framesPerSecond: fps),
+          reason: 'on a step: $zoom',
+        );
+      }
     });
 
-    testWidgets('at the floor the − button stands down', (tester) async {
+    testWidgets('at the widest zoom a drag wider moves nothing', (
+      tester,
+    ) async {
       final zooms = await pump(tester, pixelsPerFrame: floor);
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-zoom-out-button')),
-      );
+      await sweep(tester, -5);
       expect(zooms, isEmpty, reason: 'nothing wider to go to');
     });
 
-    testWidgets('a step never leaves the range', (tester) async {
-      expect(await press(tester, from: floor + step, zoomIn: false), floor);
+    testWidgets('a drag never leaves the range', (tester) async {
+      final zooms = await pump(tester, pixelsPerFrame: floor + step);
+      await sweep(tester, -1);
+      expect(zooms, [floor]);
     });
   });
 }

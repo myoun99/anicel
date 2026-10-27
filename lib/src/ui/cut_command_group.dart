@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../models/cut.dart';
@@ -15,6 +16,9 @@ import 'session/canvas_adjust.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'text/app_strings.dart';
+import 'text/text_measure.dart';
+import 'theme/app_theme.dart' show AppColors;
+import 'widgets/app_tooltip.dart';
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
 import 'timeline/layer_label_controls.dart'
@@ -254,6 +258,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         entriesBuilder: () => cutMenuEntries(context, session),
       ),
       children: [
+        _CutName(name: session.cutUnderPlayhead.cutName),
         const PillDivider(),
         // #18 — the button reads the SAME sentence the verb runs on
         // ([CutPlacement.cutCreationPlan], the T25 law). The bare
@@ -297,6 +302,79 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         // 통일성으로」. A capability the timeline is not supposed to have is
         // not a capability the timeline loses.
       ],
+    );
+  }
+}
+
+/// The name of the cut the panel's playhead stands in, inside the cut pill
+/// right of its 「컷」 — 🗣️F-463 ④ (유저 2026-10-25): 「컷 번호 보여주는거만
+/// 컷 알약안에, 컷 버튼 오른쪽에 표시하도록 변경. 글자는 숫자+영어기준
+/// 5글자까지만 정상적으로 표시하도록. 그 이상은 생략. 호버하면 풀네임
+/// 뜨도록 툴팁표시」. ↩️It stood between the frame counter and the zoom's −
+/// (I-57, 유저 2026-10-01), up to 160px wide.
+///
+/// Its place is always laid, as wide as five of the widest digit or Latin
+/// letter and the `…` after them, and the name is what changes — a gap's
+/// empty name keeps it. A name past five characters keeps its first five;
+/// one in a wider script ends where the place does.
+class _CutName extends StatelessWidget {
+  const _CutName({required this.name});
+
+  final ValueListenable<String> name;
+
+  /// How many characters stand whole — 「숫자+영어기준 5글자」.
+  static const int _wholeCharacters = 5;
+
+  static const String _digitsAndLatin =
+      '${decimalDigits}ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+
+  /// The name cell's words ([PillNameCell]), the name's weight.
+  static const TextStyle _style = TextStyle(
+    fontSize: 11.5,
+    fontWeight: FontWeight.w600,
+    color: AppColors.text,
+  );
+
+  /// Between the name and the divider after it.
+  static const double _breath = 2;
+
+  static const String _ellipsis = '…';
+
+  static String _shown(String name) =>
+      name.characters.length > _wholeCharacters
+      ? '${name.characters.take(_wholeCharacters)}$_ellipsis'
+      : name;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = DefaultTextStyle.of(context).style.merge(_style);
+    final width = TextMeasure(context, style)
+        .widest(
+          everyDigitIn(
+            (character) => '${character * _wholeCharacters}$_ellipsis',
+            digits: _digitsAndLatin,
+          ),
+        )
+        .ceilToDouble();
+    return Padding(
+      padding: const EdgeInsets.only(right: _breath),
+      child: ValueListenableBuilder<String>(
+        valueListenable: name,
+        builder: (context, name, _) => AppTooltip(
+          message: name,
+          child: SizedBox(
+            width: width,
+            child: Text(
+              _shown(name),
+              key: const ValueKey<String>('timeline-cut-name'),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

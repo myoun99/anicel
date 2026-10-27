@@ -105,7 +105,8 @@ void main() {
   });
 
   // A frame is dropped when the device misses it — exactly when there is no
-  // time to spare. The count is its slot's to show, not the buttons'.
+  // time to spare. The count is its own box's to show (F-463 ②: over the play
+  // button), not the buttons'.
   testWidgets('a dropped frame rebuilds the drop count and none of the row '
       'around it', (tester) async {
     final controller = await pumpTransport(tester);
@@ -119,7 +120,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(controller.droppedFrames, 2, reason: 'premise: two dropped');
 
-    expect(find.text('2 dropped'), findsOneWidget, reason: 'the slot shows it');
+    expect(find.text('2 dropped'), findsOneWidget, reason: 'its box shows it');
     expect(
       identical(transportRow(tester), playing),
       isTrue,
@@ -168,7 +169,8 @@ void main() {
       reason: '↩️the count laid the row out again, and up to the strip',
     );
 
-    // A layout marks its semantics up to the nearest boundary: the slot's.
+    // A layout marks its semantics up to the nearest boundary: the count's
+    // box's.
     RenderObject boundaryOf(RenderObject node) {
       var at = node;
       while (at.parent != null) {

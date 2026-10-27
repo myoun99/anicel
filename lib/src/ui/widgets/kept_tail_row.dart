@@ -14,76 +14,169 @@ import 'package:flutter/widgets.dart';
 /// control cut away. The head is the fold, and the tail is what it keeps.
 /// ⚠️Where it fits, nothing is scaled.
 ///
-/// A row may keep its [lead] too, pinned to its start: the frame panels'
-/// bar keeps the transport there (유저 2026-10-08, F-111-Q1 「버튼행 맨
-/// 왼쪽에 고정 — 알약 칸 밖」). Both ends are what the fold keeps, so where
-/// the row cannot hold them both, both are shown whole and smaller BY ONE
-/// FACTOR — neither gives way for the other.
-///
 /// The head keeps [headKeeps] for itself — the place of what ITS OWN fold
 /// keeps: a tab strip's list button, the one way to the tabs it folded. The
-/// kept ends give way before that place does; below it, nothing is
-/// promised.
+/// kept end gives way before that place does; below it, nothing is
+/// promised. ([FloorFoldRow] is the row whose head's place is shown smaller
+/// with the rest.)
 ///
 /// ↩️Each of these rows was a `Row`, which lays a child that does not flex
 /// out with all the width there is: a tail wider than the row was laid out
 /// wider, and ran off it (the timeline's bar in a 360px window, a panel's
 /// tab strip at 340, the top strip at 320 — measured 2026-10-14 · 15).
+/// ↩️It kept a LEAD too, at the row's start — the frame panels' transport
+/// (F-111-Q1), until the transport joined the zoom at the bar's end (F-463,
+/// [FloorFoldRow]).
 ///
 /// ⚠️Laid out by a render object, not a [LayoutBuilder], for the transport's
 /// play row's reason (`_PlayRowLayout`): the row is sized while it is laid
-/// out, so nothing is built again to learn a width. ↩️A layout delegate did
-/// it while there was one end to keep; two ends shown by one factor need
-/// both their widths before either is placed, and a delegate lays a child
-/// out once.
+/// out, so nothing is built again to learn a width.
 class KeptTailRow extends StatelessWidget {
   const KeptTailRow({
     super.key,
-    this.lead,
     this.head,
     required this.tail,
     this.gap = 0,
     this.headKeeps = 0,
   });
 
-  /// Kept at the row's start as the [tail] is at its end. Null leaves the
-  /// head the row's start.
-  final Widget? lead;
-
-  /// What takes the room the kept ends leave — exactly that room. Null
-  /// leaves the row's middle empty and still pins the tail to its end.
+  /// What takes the room the kept end leaves — exactly that room. Null
+  /// leaves the row's start empty and still pins the tail to its end.
   final Widget? head;
 
   final Widget tail;
 
-  /// Between each piece and the next.
+  /// Between the head and the tail.
   final double gap;
 
   /// The least the [head] is left, where there is a head.
   final double headKeeps;
 
   @override
-  Widget build(BuildContext context) => _KeptEnds(
-    lead: lead,
-    head: head,
-    tail: tail,
-    gap: gap,
-    headKeeps: headKeeps,
+  Widget build(BuildContext context) =>
+      _KeptEnds(head: head, tail: tail, gap: gap, headKeeps: headKeeps);
+}
+
+/// A ROW OF TWO GROUPS THAT EACH GIVE WAY DOWN TO A FLOOR — and below their
+/// floors, BOTH, smaller by one factor: the frame panels' command bar.
+///
+/// 🗣️F-463 ⑥ (유저 2026-10-25 16:46): 「각 묶음마다 최소길이가 있어서 그
+/// 길이만큼까지만 줄고, 그 이상으로 줄때 전체적으로 작아짐. 우선 컷쪽은
+/// 컷알약까지 최소폭 … 먼저 컷/레이어/프레임쪽 줄어들고」 · (17:15)
+/// 「왼쪽묶음에 전처럼 컷/레이어/프레임/fx 등을 한 묶음, 재생버튼쪽은
+/// 오른쪽에 줌쪽 버튼이랑 같은묶음」. The [head] is the pills: it takes the
+/// room the [tail] leaves, down to its floor — the [FoldFloor] inside it,
+/// and [headPadding] round that. The [tail] is the transport and the zoom,
+/// at its own width at the row's end. Where the row cannot hold the head's
+/// floor and the tail, both are shown smaller by ONE factor.
+///
+/// ❓The tail gives way as a whole (F-463-Q1 asks whether the transport and
+/// the zoom give way inside it, each to a button of its own, first).
+///
+/// ↩️The bar was a [KeptTailRow] with the transport kept at its start: the
+/// pills took whatever the two ends left, down to nothing (F-111-Q2, 유저
+/// 2026-10-25 「그대로 — 알약은 남는 만큼」), and only the ends were shown
+/// smaller.
+class FloorFoldRow extends StatefulWidget {
+  const FloorFoldRow({
+    super.key,
+    required this.head,
+    required this.tail,
+    this.gap = 0,
+    this.headPadding = 0,
+  });
+
+  /// The group that gives way first, down to its [FoldFloor].
+  final Widget head;
+
+  /// The group kept at its own width at the row's end.
+  final Widget tail;
+
+  /// Between the head and the tail.
+  final double gap;
+
+  /// What the head holds round its floor — the padding its scroller stands
+  /// in.
+  final double headPadding;
+
+  @override
+  State<FloorFoldRow> createState() => _FloorFoldRowState();
+}
+
+class _FloorFoldRowState extends State<FloorFoldRow> {
+  /// What the head's [FoldFloor] measured when it was last laid out.
+  final _FloorReading _reading = _FloorReading();
+
+  @override
+  Widget build(BuildContext context) => _FloorEnds(
+    reading: _reading,
+    head: _FloorScope(reading: _reading, child: widget.head),
+    tail: widget.tail,
+    gap: widget.gap,
+    headPadding: widget.headPadding,
   );
 }
 
-enum _Part { lead, head, tail }
+/// What a [FloorFoldRow]'s head keeps when it gives way: the least of it
+/// that is shown — the cut pill, of the frame panels' pills (「컷알약까지
+/// 최소폭」). It stands first in what the head scrolls; outside a
+/// [FloorFoldRow] it is its child alone.
+class FoldFloor extends SingleChildRenderObjectWidget {
+  const FoldFloor({super.key, required Widget super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderFoldFloor(_FloorScope.readingOf(context));
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) =>
+      (renderObject as _RenderFoldFloor).reading = _FloorScope.readingOf(
+        context,
+      );
+}
+
+/// The width a [FoldFloor] was laid out at, for the row round it to read
+/// once it has laid its head out.
+class _FloorReading {
+  double width = 0;
+}
+
+class _FloorScope extends InheritedWidget {
+  const _FloorScope({required this.reading, required super.child});
+
+  final _FloorReading reading;
+
+  static _FloorReading? readingOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<_FloorScope>()
+      ?.reading;
+
+  @override
+  bool updateShouldNotify(_FloorScope oldWidget) =>
+      !identical(oldWidget.reading, reading);
+}
+
+class _RenderFoldFloor extends RenderProxyBox {
+  _RenderFoldFloor(this.reading);
+
+  _FloorReading? reading;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    reading?.width = size.width;
+  }
+}
+
+enum _Part { head, tail }
 
 class _KeptEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
   const _KeptEnds({
-    required this.lead,
     required this.head,
     required this.tail,
     required this.gap,
     required this.headKeeps,
   });
 
-  final Widget? lead;
   final Widget? head;
   final Widget tail;
   final double gap;
@@ -94,7 +187,6 @@ class _KeptEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
 
   @override
   Widget? childForSlot(_Part slot) => switch (slot) {
-    _Part.lead => lead,
     _Part.head => head,
     _Part.tail => tail,
   };
@@ -109,11 +201,45 @@ class _KeptEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
     ..headKeeps = headKeeps;
 }
 
-class _RenderKeptEnds extends RenderBox
+class _FloorEnds extends SlottedMultiChildRenderObjectWidget<_Part, RenderBox> {
+  const _FloorEnds({
+    required this.reading,
+    required this.head,
+    required this.tail,
+    required this.gap,
+    required this.headPadding,
+  });
+
+  final _FloorReading reading;
+  final Widget head;
+  final Widget tail;
+  final double gap;
+  final double headPadding;
+
+  @override
+  Iterable<_Part> get slots => _Part.values;
+
+  @override
+  Widget? childForSlot(_Part slot) => switch (slot) {
+    _Part.head => head,
+    _Part.tail => tail,
+  };
+
+  @override
+  _RenderFloorEnds createRenderObject(BuildContext context) =>
+      _RenderFloorEnds(reading, gap: gap, headPadding: headPadding);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderFloorEnds row) => row
+    ..gap = gap
+    ..headPadding = headPadding;
+}
+
+/// A row of parts, each painted and hit at its offset and, shown smaller,
+/// at its scale — what both rows here share.
+abstract class _RenderScaledParts extends RenderBox
     with SlottedContainerRenderObjectMixin<_Part, RenderBox> {
-  _RenderKeptEnds({required double gap, required double headKeeps})
-    : _gap = gap,
-      _headKeeps = headKeeps;
+  _RenderScaledParts({required double gap}) : _gap = gap;
 
   double _gap;
   double get gap => _gap;
@@ -124,24 +250,14 @@ class _RenderKeptEnds extends RenderBox
     }
   }
 
-  double _headKeeps;
-  double get headKeeps => _headKeeps;
-  set headKeeps(double value) {
-    if (value != _headKeeps) {
-      _headKeeps = value;
-      markNeedsLayout();
-    }
-  }
-
-  /// What each kept end is shown at — 1 where the row holds it.
+  /// What each part is shown at — 1 where the row holds it.
   final Map<_Part, double> _scales = {};
 
   final Map<_Part, LayerHandle<TransformLayer>> _layers = {
-    _Part.lead: LayerHandle<TransformLayer>(),
+    _Part.head: LayerHandle<TransformLayer>(),
     _Part.tail: LayerHandle<TransformLayer>(),
   };
 
-  RenderBox? get _lead => childForSlot(_Part.lead);
   RenderBox? get _head => childForSlot(_Part.head);
   RenderBox get _tail => childForSlot(_Part.tail)!;
 
@@ -149,69 +265,21 @@ class _RenderKeptEnds extends RenderBox
   Size computeDryLayout(covariant BoxConstraints constraints) =>
       constraints.biggest;
 
-  @override
-  void performLayout() {
-    size = constraints.biggest;
-    final lead = _lead;
-    final head = _head;
-    final tail = _tail;
-    // A kept end is laid out at its own size, as a scaling box lays its
-    // child, and shown smaller where the row cannot hold it.
-    lead?.layout(const BoxConstraints(), parentUsesSize: true);
-    tail.layout(const BoxConstraints(), parentUsesSize: true);
-    final pieces = [lead, head, tail].nonNulls.length;
-    final gaps = _gap * (pieces - 1);
-    final room = math.max(
-      0.0,
-      size.width - gaps - (head == null ? 0 : _headKeeps),
-    );
-    final kept = (lead?.size.width ?? 0) + tail.size.width;
-    final byWidth = kept > room ? room / kept : 1.0;
-    var shownLead = 0.0;
-    if (lead != null) {
-      shownLead = _place(_Part.lead, lead, byWidth, atStart: true);
-    }
-    final shownTail = _place(_Part.tail, tail, byWidth, atStart: false);
-    if (head == null) {
-      return;
-    }
-    final before = lead == null ? 0.0 : shownLead + _gap;
-    final width = math.max(0.0, size.width - before - shownTail - _gap);
-    head.layout(
-      BoxConstraints(minWidth: width, maxWidth: width, maxHeight: size.height),
-      parentUsesSize: true,
-    );
-    _offsetOf(head).offset = Offset(
-      before,
-      (size.height - head.size.height) / 2,
-    );
-  }
-
-  /// Puts a kept end at its edge of the row, shown at [byWidth] or less —
-  /// what the row's height lets it be — and answers the width it is shown.
-  double _place(
-    _Part part,
-    RenderBox child,
-    double byWidth, {
-    required bool atStart,
-  }) {
-    final own = child.size;
-    final byHeight = own.height > size.height ? size.height / own.height : 1.0;
-    final scale = math.min(byWidth, byHeight);
+  /// Puts [child] at [dx], in the middle of the row's height, shown at
+  /// [scale].
+  void _put(_Part part, RenderBox child, double dx, double scale) {
     _scales[part] = scale;
-    final shown = own * scale;
     _offsetOf(child).offset = Offset(
-      atStart ? 0 : size.width - shown.width,
-      (size.height - shown.height) / 2,
+      dx,
+      (size.height - child.size.height * scale) / 2,
     );
-    return shown.width;
   }
 
   BoxParentData _offsetOf(RenderBox child) =>
       child.parentData! as BoxParentData;
 
-  /// Where [child] is painted from — its offset, and its scale if it is a
-  /// kept end shown smaller.
+  /// Where [child] is painted from — its offset, and its scale if it is
+  /// shown smaller.
   Matrix4 _transformOf(_Part part, RenderBox child) {
     final at = _offsetOf(child).offset;
     final scale = _scales[part] ?? 1;
@@ -232,9 +300,9 @@ class _RenderKeptEnds extends RenderBox
     for (final (part, child) in _parts) {
       final at = offset + _offsetOf(child).offset;
       final scale = _scales[part] ?? 1;
-      final layer = _layers[part];
-      if (scale == 1 || layer == null) {
-        layer?.layer = null;
+      final layer = _layers[part]!;
+      if (scale == 1) {
+        layer.layer = null;
         context.paintChild(child, at);
         continue;
       }
@@ -276,5 +344,98 @@ class _RenderKeptEnds extends RenderBox
       layer.layer = null;
     }
     super.dispose();
+  }
+}
+
+class _RenderKeptEnds extends _RenderScaledParts {
+  _RenderKeptEnds({required super.gap, required double headKeeps})
+    : _headKeeps = headKeeps;
+
+  double _headKeeps;
+  double get headKeeps => _headKeeps;
+  set headKeeps(double value) {
+    if (value != _headKeeps) {
+      _headKeeps = value;
+      markNeedsLayout();
+    }
+  }
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    final head = _head;
+    final tail = _tail;
+    // The kept end is laid out at its own size, as a scaling box lays its
+    // child, and shown smaller where the row cannot hold it.
+    tail.layout(const BoxConstraints(), parentUsesSize: true);
+    final room = math.max(
+      0.0,
+      size.width - (head == null ? 0 : _gap + _headKeeps),
+    );
+    final own = tail.size;
+    final byWidth = own.width > room ? room / own.width : 1.0;
+    final byHeight = own.height > size.height ? size.height / own.height : 1.0;
+    final scale = math.min(byWidth, byHeight);
+    final shownTail = own.width * scale;
+    _put(_Part.tail, tail, size.width - shownTail, scale);
+    if (head == null) {
+      return;
+    }
+    final width = math.max(0.0, size.width - shownTail - _gap);
+    head.layout(
+      BoxConstraints(minWidth: width, maxWidth: width, maxHeight: size.height),
+      parentUsesSize: true,
+    );
+    _put(_Part.head, head, 0, 1);
+  }
+}
+
+class _RenderFloorEnds extends _RenderScaledParts {
+  _RenderFloorEnds(
+    this._reading, {
+    required super.gap,
+    required double headPadding,
+  }) : _headPadding = headPadding;
+
+  final _FloorReading _reading;
+
+  double _headPadding;
+  double get headPadding => _headPadding;
+  set headPadding(double value) {
+    if (value != _headPadding) {
+      _headPadding = value;
+      markNeedsLayout();
+    }
+  }
+
+  void _layHead(RenderBox head, double width, double height) => head.layout(
+    BoxConstraints(minWidth: width, maxWidth: width, maxHeight: height),
+    parentUsesSize: true,
+  );
+
+  @override
+  void performLayout() {
+    size = constraints.biggest;
+    final head = _head!;
+    final tail = _tail;
+    tail.layout(const BoxConstraints(), parentUsesSize: true);
+    final own = tail.size;
+    final byHeight = own.height > size.height ? size.height / own.height : 1.0;
+    final shownTail = own.width * byHeight;
+    final room = size.width - shownTail - _gap;
+    // Laid out first where the tail leaves it, which is where its floor is
+    // measured ([FoldFloor]).
+    _layHead(head, math.max(0, room), size.height);
+    final floor = _reading.width + _headPadding;
+    if (room >= floor) {
+      _put(_Part.head, head, 0, 1);
+      _put(_Part.tail, tail, size.width - shownTail, byHeight);
+      return;
+    }
+    // Both groups at their floors, smaller by one factor.
+    final scale = size.width / (floor + _gap + shownTail);
+    _layHead(head, floor, size.height / scale);
+    _put(_Part.head, head, 0, scale);
+    _put(_Part.tail, tail, size.width - shownTail * scale, byHeight * scale);
   }
 }

@@ -31,7 +31,6 @@ import 'app_icon_button_probe.dart';
 import 'named_finders.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
-import 'package:anicel/src/ui/widgets/tick_text.dart';
 
 Future<void> tapToolbarButton(WidgetTester tester, ValueKey<String> key) async {
   final owner = flyoutOwnerByItemKey[key.value];
@@ -422,17 +421,16 @@ void expectActiveLayerName(String name) {
   );
 }
 
+/// The cut-local frame the session stands on, one-based. ↩️It read the
+/// bar's frame counter's cut-local line, until F-463 took the counter off.
 void expectCurrentFrame(WidgetTester tester, int frameNumber) {
-  // The counter is two stacked lines (2026-08-10) — track-global above,
-  // cut-local below. This is the timeline, where the top line is blank, so
-  // the number under assertion is the LOCAL one.
   expect(
     tester
-        .renderObject<RenderTickText>(
-          find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
-        )
-        .data,
-    '$frameNumber',
+            .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+            .session
+            .currentFrameIndex +
+        1,
+    frameNumber,
   );
 }
 

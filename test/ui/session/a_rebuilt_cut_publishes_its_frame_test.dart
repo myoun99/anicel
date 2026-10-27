@@ -4,9 +4,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// The active cut's controllers are replaced in ONE place
 /// (`ActiveCutControllers.rebuild`), and that place is also where the
-/// editing frame cursor learns the frame they landed on — the cursor layer,
-/// the frame counter and the canvas scrub preview all follow that notifier
-/// rather than the session.
+/// editing frame cursor learns the frame they landed on — the cursor layer
+/// and the canvas scrub preview both follow that notifier rather than the
+/// session.
 ///
 /// 🧪Pinned because a mutant that handed the controllers a cursor of their
 /// own survived every suite: nothing checked that a rebuild's landing

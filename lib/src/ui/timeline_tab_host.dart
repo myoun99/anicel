@@ -50,6 +50,7 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_section_policy.dart';
+import 'timeline/timeline_view_cluster.dart';
 import 'timeline/memo_token.dart'
     show ByIdentity, BySet, Kept, keptWhileSame;
 
@@ -146,7 +147,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   PanelViewMemory get _axes => _session.panelViews;
 
   // ⛔The frame cursor the panel's cursor-driven widgets subscribe to
-  // (playhead, rulers, lane values, frame counter) is the SESSION's now
+  // (playhead, rulers, lane values) is the SESSION's now
   // ([PlayheadCursors.cutFrame]): the row this panel folds into follows the
   // same one, and that row is built by the workspace, which could not reach
   // a cursor kept here (유저 2026-09-27,
@@ -484,7 +485,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
-            cutName: _session.cutUnderPlayhead.cutName,
             // #29: the (project, cut) world the rows' resolvers answer
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build
@@ -923,19 +923,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 🚨The SAME bar the panel wears ([TimelineCommandBar]), with
-                // nothing at its end: the transport stands where it stands
-                // with a cut, and the toolbar scrolls in the bar's overflow
-                // scroller (유저 2026-08-10: 「버튼 사라지기 시작하면 생기는
-                // 스크롤바」). ↩️This state mounted the toolbar WITHOUT that
-                // bar, so it was the one place a bar too wide for the window
-                // overflowed instead of scrolling — it only showed once ㉕ put
-                // three more buttons on it — and then the one place with a
+                // 🚨The SAME bar the panel wears ([TimelineCommandBar]): the
+                // transport stands where it stands with a cut, and the
+                // toolbar scrolls in the bar's overflow scroller (유저
+                // 2026-08-10: 「버튼 사라지기 시작하면 생기는 스크롤바」).
+                // ↩️This state mounted the toolbar WITHOUT that bar, so it
+                // was the one place a bar too wide for the window overflowed
+                // instead of scrolling — it only showed once ㉕ put three
+                // more buttons on it — and then the one place with a
                 // scroller of its own.
                 TimelineCommandBar(
                   transport: timelineTransport,
                   leading: timelineToolbar,
-                  cluster: const SizedBox.shrink(),
+                  cluster: _gapCluster(),
                 ),
                 Expanded(
                   child: ValueListenableBuilder(
@@ -985,7 +985,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     TimelineActionToolbar,
     (ByIdentity(_session), BySet(widget.rail.hiddenSections)),
     // ⛔The TRANSPORT and the camera-view toggle are not on this toolbar:
-    // the bar pins them at its head, outside the toolbar's scroller
+    // the bar seats them in its right group, outside the toolbar's scroller
     // ([_buildTimelineTransport]). What is here is what reaches into THIS
     // panel's own contents.
     () => TimelineActionToolbar(
@@ -1010,7 +1010,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     ),
   );
 
-  /// The transport at the head of the bar (F-111-Q1), kept while it is
+  /// The transport in the bar's right group (F-463), kept while it is
   /// built for this session — what its buttons show, they hear themselves.
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
 
@@ -1020,6 +1020,33 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     ByIdentity(_session),
     () => FramePanelTransport(session: _session, panel: WorkingPanel.timeline),
   );
+
+  /// The view cluster the bar wears with no cut to show: the panel's, with
+  /// nothing to zoom or fit. Its place is kept, so the transport beside it
+  /// in the bar's right group (F-463) stands where it stands with a cut —
+  /// ⛔없다가 생기는 UI. ↩️The gap's bar ended in nothing while the transport
+  /// led it (F-111-Q1).
+  Widget _gapCluster() {
+    Widget cluster(double pixelsPerFrame) => TimelineViewCluster(
+      projectFrameRate: _session.projectSettings.projectFrameRate,
+      pixelsPerFrame: pixelsPerFrame,
+      onPixelsPerFrameChanged: null,
+      trailing: [
+        TimelineOrientationToggle(
+          orientation: widget.orientation,
+          onChanged: widget.onOrientationChanged,
+        ),
+      ],
+    );
+    final zoom = widget.pixelsPerFrameListenable;
+    if (zoom == null) {
+      return cluster(widget.pixelsPerFrame);
+    }
+    return ValueListenableBuilder<double>(
+      valueListenable: zoom,
+      builder: (context, pixelsPerFrame, _) => cluster(pixelsPerFrame),
+    );
+  }
 }
 
 /// What the timeline's bar is built for ([_TimelineTabHostState._keptToolbar]).

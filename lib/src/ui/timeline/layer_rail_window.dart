@@ -52,7 +52,7 @@ const double layerRailScrollbarLaneExtent = AppScrollbarLane.thin;
 ///
 /// Stated in DEFAULT cell units, not live zoomed ones: measuring the
 /// reserve in zoomed cells would move the rail's ceiling every time the
-/// user touched the zoom slider.
+/// user zoomed.
 const double layerRailFrameReserveExtent = 2 * timelineFrameCellWidth;
 
 /// What the panel can spare for the rail: everything but its own chrome

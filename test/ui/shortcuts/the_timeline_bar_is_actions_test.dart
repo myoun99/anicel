@@ -1,8 +1,8 @@
-// 🗣️I-40 — the timeline bar's view buttons are actions: the zoom − and +
-// of the panel being worked in, the timeline's ⇄ X-sheet, and the sill's
-// camera view. A key presses what the button presses, on the panel the
-// button is on — and the buttons speak the program language (they were
-// English everywhere until this round).
+// 🗣️I-40 — the timeline bar's view buttons are actions: the zoom in and out
+// of the panel being worked in (keys alone since F-463 took the − and + off),
+// the timeline's ⇄ X-sheet, and the camera view. A key presses what the
+// button presses, on the panel the button is on — and the buttons speak the
+// program language (they were English everywhere until this round).
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -145,8 +145,8 @@ void main() {
     final ko = AppStrings.of(AppLanguage.ko);
 
     expect(
-      button(tester, 'timeline-zoom-in-button').tooltip,
-      ko.shortcutLabel(EditorActionIds.timelineZoomIn, 'Timeline Zoom In'),
+      button(tester, 'timeline-zoom-fit-button').tooltip,
+      ko.shortcutLabel(EditorActionIds.timelineZoomFit, 'Timeline Zoom to Fit'),
     );
     expect(
       button(tester, 'timeline-orientation-toggle-button').tooltip,

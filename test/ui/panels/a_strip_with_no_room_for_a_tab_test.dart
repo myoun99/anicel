@@ -12,8 +12,8 @@ import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 /// rail button as a door); then it was cut at the room's edge, and the sill
 /// itself still ran over — 10px at 340 (2026-10-15). The case in the app
 /// was the storyboard alone in a narrowed rail, while the frame panels'
-/// transport stood on the sill; it is the head of their bar now (F-111),
-/// and that case is the bar's (`the_transport_leads_the_bar_test`).
+/// transport stood on the sill; it is on their bar now (F-111, F-463), and
+/// that case is the bar's (`the_bar_is_two_groups_test`).
 void main() {
   testWidgets('🚨a strip narrower than its sill and one tab keeps the '
       'overflow button whole, clear of the sill, and shows the sill all of '

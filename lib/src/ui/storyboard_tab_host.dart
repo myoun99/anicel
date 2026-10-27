@@ -48,10 +48,10 @@ import 'timeline/timeline_command_bar.dart';
 import 'timeline/memo_token.dart' show ByIdentity, Kept, keptWhileSame;
 import 'timeline/timeline_view_cluster.dart';
 
-/// The Storyboard tab's content: its own toolbar row (frame counter,
-/// seconds toggle, zoom slider — the same keys as the timeline tab's, only
-/// one is ever on screen), the all-cuts transport, the storyboard panel and
-/// the cut dialogs it triggers. All wiring lives HERE (not in HomePage).
+/// The Storyboard tab's content: its own toolbar row (the zoom — the same
+/// keys as the timeline tab's, only one is ever on screen), the all-cuts
+/// transport, the storyboard panel and the cut dialogs it triggers. All
+/// wiring lives HERE (not in HomePage).
 class StoryboardTabHost extends StatefulWidget {
   const StoryboardTabHost({
     super.key,
@@ -173,7 +173,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// on it hears its own gates ([toolbarGateNews]).
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptToolbar = {};
 
-  /// The transport at the head of the bar (F-111-Q1), kept as the timeline
+  /// The transport in the bar's right group (F-463), kept as the timeline
   /// host keeps its own — what its buttons show, they hear themselves.
   final Map<Type, Kept<ByIdentity<EditorSessionManager>>> _keptTransport = {};
 
@@ -508,7 +508,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       unawaited(editOnPanel(context, _session, panel: _toolbarPanel));
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
-  /// copy of it: transport + cut group left, the shared view cluster right.
+  /// copy of it: the cut group left, the transport and the view cluster right.
   Widget _commandBar(BuildContext context) {
     return TimelineCommandBar(
       // The same transport the timeline's bar leads with — a different
@@ -529,9 +529,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // ⛔The TRANSPORT and the camera-view toggle are not in this row:
-          // the bar pins them at its head, outside this row's scroller
-          // (F-111-Q1). ↩️They stood on the 문턱 from 2026-08-10. What stays
-          // here is what reaches into THIS panel's own contents.
+          // the bar seats them in its right group, outside this row's scroller
+          // (F-463; F-111-Q1 pinned them at its head). ↩️They stood on the 문턱
+          // from 2026-08-10. What stays here is what reaches into THIS panel's
+          // own contents.
           //
           // ★THE SAME FOUR PILLS the timeline mounts — literally the same
           // widget (유저: 스토리보드 레이어의 프레임을 조절해야 하고 레이어도
@@ -590,24 +591,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         _kept,
         TimelineViewCluster,
         (
-          frameCursor: _session.editingFrameCursor,
-          globalFrame: _session.playheadCursors.trackFrame,
           projectFrameRate: _session.projectSettings.projectFrameRate,
-          showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           onZoomFit: widget.onZoomFit,
-          cutName: _session.cutUnderPlayhead.cutName,
           trailing: null,
         ),
         () => TimelineViewCluster(
-          frameCursor: _session.editingFrameCursor,
-          // Global · cut-local pair (UI-R9 #6) — the channel already
-          // follows scrubs, gap parking and playback ticks.
-          globalFrame: _session.playheadCursors.trackFrame,
-          cutName: _session.cutUnderPlayhead.cutName,
           projectFrameRate: _session.projectSettings.projectFrameRate,
-          showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           onZoomFit: widget.onZoomFit,

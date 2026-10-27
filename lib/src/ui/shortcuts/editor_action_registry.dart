@@ -837,12 +837,13 @@ abstract final class EditorActionIds {
   static const timelinePushBlocks = 'timeline-push-blocks';
   static const timelinePullBlocks = 'timeline-pull-blocks';
 
-  /// The timeline bar's view buttons (I-40): the zoom − and + of the panel
-  /// being worked in, and the timeline's ⇄ X-sheet.
+  /// The timeline bar's view actions (I-40): the zoom in and out of the panel
+  /// being worked in — keys with no button since F-463 took the − and + off
+  /// — and the timeline's ⇄ X-sheet.
   static const timelineZoomIn = 'timeline-zoom-in';
   static const timelineZoomOut = 'timeline-zoom-out';
 
-  /// The zoom fit beside them (I-111).
+  /// The zoom fit, right of the zoom's readout (I-111).
   static const timelineZoomFit = 'timeline-zoom-fit';
   static const timelineOrientationToggle = 'timeline-orientation-toggle';
 
@@ -1909,7 +1910,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   ),
   // 🗣️I-111 (유저 2026-10-19): 「타임라인/콘티패널등 줌 fit 버튼 추가.
   // 해당 패널의 엔드라인에 맞춰서 스크롤바 fit하는것」 · 「위치는 줌
-  // 확대버튼 오른쪽」. No key was said for it.
+  // 확대버튼 오른쪽」. No key was said for it. ↩️Its place is right of the
+  // zoom's readout since F-463 took the − and + buttons off (「그 옆의 줌
+  // fit버튼은 그대로」); the two actions above stayed, with no button.
   const EditorActionDefinition(
     id: EditorActionIds.timelineZoomFit,
     label: 'Timeline Zoom to Fit',

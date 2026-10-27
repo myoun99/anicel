@@ -896,8 +896,8 @@ class _WorkspaceTabs {
           sparesSplitters: false,
           // ↩️유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로 — the
           // settings went to the top strip, and the transport to the head of
-          // the panel's own bar (F-111-Q1, 10-08), which its host seats
-          // (`FramePanelTransport`).
+          // the panel's own bar (F-111-Q1, 10-08) — its right group since
+          // F-463 — which its host seats (`FramePanelTransport`).
           // 접으면 버튼행만 (유저 확정): the panel keeps its command bar and
           // offstages the grid, so the fold is 문턱 30 + this 36 = 66 — and
           // every verb a rough pass needs is still on screen while folded.

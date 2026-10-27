@@ -44,7 +44,8 @@ class WorkspaceBarCommands {
     _toggleOrientation = null;
   }
 
-  /// One press of [panel]'s zoom − or +.
+  /// One step of [panel]'s zoom in or out — a zoom key's (F-463 took the
+  /// − and + buttons off).
   void zoomStep(WorkingPanel panel, {required bool zoomIn}) =>
       _zoomStep?.call(panel, zoomIn: zoomIn);
 

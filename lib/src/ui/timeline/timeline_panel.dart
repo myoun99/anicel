@@ -138,7 +138,6 @@ class TimelinePanel extends StatefulWidget {
     this.timelineLayerAxisOffset,
     this.xsheetLayerAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
-    this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.expandedLaneLayerIds = const {},
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
@@ -199,9 +198,6 @@ class TimelinePanel extends StatefulWidget {
   /// #29: the (project, cut) world the rows' resolvers answer from — see
   /// [TimelineRowCellsPainter.substrateGeneration].
   final String substrateGeneration;
-
-  /// The name of the cut the panel shows, for the bar's counter (I-57).
-  final ValueListenable<String> cutName;
 
   /// Track-owned rows whose display clone starts with a block spilling in
   /// from an earlier cut, each with how far into it the cut starts — see
@@ -419,11 +415,11 @@ class TimelinePanel extends StatefulWidget {
 
   final Widget? timelineActionToolbar;
 
-  /// Frame-axis zoom, DaVinci/AE-style continuous slider value in pixels
-  /// per frame; the shared range ([TimelineZoomLimits]) covers the
-  /// storyboard's overview zooms and the timeline's classic cell width
-  /// alike. The X-sheet's frame row height scales proportionally so its
-  /// classic geometry sits at the same default.
+  /// Frame-axis zoom, a continuous value in pixels per frame; the shared
+  /// range ([TimelineZoomLimits]) covers the storyboard's overview zooms and
+  /// the timeline's classic cell width alike. The X-sheet's frame row
+  /// height scales proportionally so its classic geometry sits at the same
+  /// default.
   // 48 → 24 (R-toolbar slim round): the zoom slider's 100% now reads the
   // CSP/TVPaint-density default. ↩️The 100% moved to 19.2 with F-403
   // ([TimelineZoomLimits.referencePixelsPerFrame]), which is where a cut
@@ -497,11 +493,11 @@ class TimelinePanel extends StatefulWidget {
   final double pixelsPerFrame;
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
-  /// The zoom fit beside the + (I-111) — the host's
+  /// The zoom fit beside the zoom (I-111) — the host's
   /// ([TimelineViewCluster.onZoomFit]).
   final VoidCallback? onZoomFit;
 
-  /// Frames↔seconds display toggle, shared by the timeline counter and the
+  /// Frames↔seconds display toggle, shared by the timeline's axes and the
   /// storyboard cut totals (conte-sheet `s+ff` notation).
   final bool showSeconds;
   final ValueChanged<bool>? onShowSecondsChanged;
@@ -659,7 +655,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
         attachArrows[layer.id] = placement;
       }
     }
-    final nextOrientation = widget.orientation.toggled;
     final showToolbar = widget.timelineActionToolbar != null;
 
     // text-scale-rail-rows: the row is as tall as its words need where it
@@ -800,9 +795,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ONE command-bar row (R-toolbar round), and now literally the
-          // same widget the storyboard mounts: the host's transport pinned
-          // left, its action toolbar beside it, the shared view cluster
-          // pinned right.
+          // same widget the storyboard mounts: the host's action toolbar
+          // from its start, and the host's transport and the shared view
+          // cluster at its end (F-463).
           TimelineCommandBar(
             transport: widget.transport,
             leading: showToolbar ? widget.timelineActionToolbar : null,
@@ -812,46 +807,23 @@ class _TimelinePanelState extends State<TimelinePanel> {
               _kept,
               TimelineViewCluster,
               (
-                frameCursor: widget.frameCursor,
-                globalFrame: null,
                 projectFrameRate: widget.projectFrameRate,
-                showSeconds: widget.showSeconds,
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
-                cutName: widget.cutName,
                 // The orientation toggle below: what it shows, and where its
                 // press goes.
                 trailing: widget.orientation,
               ),
               () => TimelineViewCluster(
-                frameCursor: widget.frameCursor,
                 projectFrameRate: widget.projectFrameRate,
-                showSeconds: widget.showSeconds,
                 pixelsPerFrame: widget.pixelsPerFrame,
                 onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                 onZoomFit: widget.onZoomFit,
-                cutName: widget.cutName,
                 trailing: [
-                  // R26 #42's standard button, like every other control on
-                  // this bar. It was the last plain Material `IconButton`
-                  // here — a 24px glyph in 8px of padding, which made the
-                  // timeline's bar 18px taller than the storyboard's and
-                  // then got written down as the bar's measured height.
-                  AppIconButton(
-                    keyValue: 'timeline-orientation-toggle-button',
-                    // ↩️「Show X-sheet」 and 「Show timeline」 stood here in
-                    // English in every language until I-40 (10-09).
-                    tooltip:
-                        widget.orientation == TimelineOrientation.horizontal
-                        ? AppText.strings.tlShowXSheet
-                        : AppText.strings.tlShowTimeline,
-                    shortcuts: const [
-                      EditorActionIds.timelineOrientationToggle,
-                    ],
-                    onPressed: () =>
-                        widget.onOrientationChanged(nextOrientation),
-                    icon: const Icon(Icons.swap_horiz),
+                  TimelineOrientationToggle(
+                    orientation: widget.orientation,
+                    onChanged: widget.onOrientationChanged,
                   ),
                 ],
               ),
@@ -921,4 +893,35 @@ class _TimelinePanelState extends State<TimelinePanel> {
       builder: (context, _) => grid(),
     );
   }
+}
+
+/// The timeline's ⇄ X-sheet: the view cluster's last button, on the
+/// panel's bar and on the bar a gap shows with no panel (`TimelineTabHost`).
+///
+/// R26 #42's standard button, like every other control on this bar. It was
+/// the last plain Material `IconButton` here — a 24px glyph in 8px of
+/// padding, which made the timeline's bar 18px taller than the storyboard's
+/// and then got written down as the bar's measured height.
+class TimelineOrientationToggle extends StatelessWidget {
+  const TimelineOrientationToggle({
+    super.key,
+    required this.orientation,
+    required this.onChanged,
+  });
+
+  final TimelineOrientation orientation;
+  final ValueChanged<TimelineOrientation> onChanged;
+
+  @override
+  Widget build(BuildContext context) => AppIconButton(
+    keyValue: 'timeline-orientation-toggle-button',
+    // ↩️「Show X-sheet」 and 「Show timeline」 stood here in English in every
+    // language until I-40 (10-09).
+    tooltip: orientation == TimelineOrientation.horizontal
+        ? AppText.strings.tlShowXSheet
+        : AppText.strings.tlShowTimeline,
+    shortcuts: const [EditorActionIds.timelineOrientationToggle],
+    onPressed: () => onChanged(orientation.toggled),
+    icon: const Icon(Icons.swap_horiz),
+  );
 }
