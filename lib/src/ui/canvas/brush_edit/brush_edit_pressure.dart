@@ -345,13 +345,13 @@ class _BrushEditPressure {
   /// is the one input this object has to remember anything for.
   ///
   /// ⚠️Canvas space, not screen space: the viewport transform is applied
-  /// before the distance is taken, which is what makes the setting mean
+  /// before the distance is taken, which is what makes the ceiling mean
   /// canvas px/s at every zoom.
   ///
   /// ⛔Raw, unsmoothed. Pro tools do smooth this, and nobody asked us to —
-  /// a filter here would be a second tuning knob invented beside the one the
-  /// user actually chose. If the reference speed turns out to feel noisy on
-  /// device, that is the evidence a smoothing round would start from.
+  /// a filter here would be a tuning knob invented where the user took even
+  /// the ceiling's knob away (🗣️F-480-Q1). If speed turns out to feel noisy
+  /// on device, that is the evidence a smoothing round would start from.
   ///
   /// Answers whether this sample MEASURED a speed.
   bool _noteSpeed(PointerEvent event) {

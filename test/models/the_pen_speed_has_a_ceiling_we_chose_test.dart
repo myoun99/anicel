@@ -2,29 +2,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
 /// 速度 is the one input with no hardware ceiling, so the ratio's denominator
-/// is a SETTING (유저 확정 2026-09-08). These pin the division and the two
-/// ways it can decline to answer.
+/// is one the app fixes: 🗣️F-480-Q1 (유저 2026-10-27) 「없앤다 — 기준은 앱이
+/// 고정(2000 px/s)」. ↩️It was a setting (유저 확정 2026-09-08). These pin the
+/// division and the two ways it can decline to answer.
 void main() {
   group('AppInput.normalizedSpeed', () {
-    late AppInputSettings saved;
-
-    setUp(() {
-      saved = AppInput.settings.value;
+    test('the ceiling is 2000 canvas px/s', () {
+      expect(AppInputSettings.speedReferencePixelsPerSecond, 2000.0);
     });
 
-    tearDown(() {
-      AppInput.settings.value = saved;
-    });
-
-    test('the default reference is 2000 canvas px/s', () {
-      expect(
-        const AppInputSettings().speedReferencePixelsPerSecond,
-        AppInputSettings.defaultSpeedReferencePixelsPerSecond,
-      );
-      expect(AppInputSettings.defaultSpeedReferencePixelsPerSecond, 2000.0);
-    });
-
-    test('half the reference speed reads as half input', () {
+    test('half the ceiling reads as half input', () {
       expect(
         AppInput.normalizedSpeed(
           canvasPixels: 1000,
@@ -34,7 +21,7 @@ void main() {
       );
     });
 
-    test('the reference speed itself reads as 1.0, and faster still 1.0', () {
+    test('the ceiling itself reads as 1.0, and faster still 1.0', () {
       expect(
         AppInput.normalizedSpeed(
           canvasPixels: 2000,
@@ -51,24 +38,8 @@ void main() {
       );
     });
 
-    test('the divisor is the LIVE setting, not the default', () {
-      // The whole point of making it a setting: moving the slider has to
-      // change what a brush measures, or the control is decoration.
-      AppInput.settings.value = const AppInputSettings(
-        speedReferencePixelsPerSecond: 500,
-      );
-
-      expect(
-        AppInput.normalizedSpeed(
-          canvasPixels: 250,
-          elapsed: const Duration(seconds: 1),
-        ),
-        closeTo(0.5, 1e-9),
-      );
-    });
-
     test('milliseconds are seconds, not ticks', () {
-      // 20 px in 10 ms is 2000 px/s — the reference exactly.
+      // 20 px in 10 ms is 2000 px/s — the ceiling exactly.
       expect(
         AppInput.normalizedSpeed(
           canvasPixels: 20,
@@ -95,23 +66,9 @@ void main() {
       );
     });
 
-    test('a zero reference from a corrupt file answers null, not NaN', () {
-      AppInput.settings.value = const AppInputSettings(
-        speedReferencePixelsPerSecond: 0,
-      );
-
-      // 0 px over 0 px/s is NaN, and NaN survives `clamp` — it would reach
-      // `BrushDab`'s 0..1 validator and throw mid-stroke.
-      expect(
-        AppInput.normalizedSpeed(
-          canvasPixels: 0,
-          elapsed: const Duration(seconds: 1),
-        ),
-        isNull,
-      );
-    });
-
     test('a non-finite distance answers null', () {
+      // NaN survives `clamp` — it would reach `BrushDab`'s 0..1 validator
+      // and throw mid-stroke.
       expect(
         AppInput.normalizedSpeed(
           canvasPixels: double.nan,
@@ -120,31 +77,14 @@ void main() {
         isNull,
       );
     });
+  });
 
-    test('the reference survives a settings round-trip', () {
-      const settings = AppInputSettings(speedReferencePixelsPerSecond: 3500);
+  test('a settings file that still names a speed reads as the settings', () {
+    final written = {
+      ...const AppInputSettings().toJson(),
+      'speedReferencePixelsPerSecond': 500,
+    };
 
-      final restored = AppInputSettings.fromJson(settings.toJson());
-      expect(restored.speedReferencePixelsPerSecond, 3500);
-      expect(restored, settings);
-    });
-
-    test('a settings file written before speed existed reads the default', () {
-      final old = const AppInputSettings().toJson()
-        ..remove('speedReferencePixelsPerSecond');
-
-      expect(
-        AppInputSettings.fromJson(old).speedReferencePixelsPerSecond,
-        AppInputSettings.defaultSpeedReferencePixelsPerSecond,
-      );
-    });
-
-    test('the reference takes part in equality', () {
-      expect(
-        const AppInputSettings() ==
-            const AppInputSettings(speedReferencePixelsPerSecond: 1000),
-        isFalse,
-      );
-    });
+    expect(AppInputSettings.fromJson(written), const AppInputSettings());
   });
 }

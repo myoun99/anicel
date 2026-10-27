@@ -247,8 +247,6 @@ void main() {
     'cameraRatioCurrent': (s) => s.cameraRatioCurrent,
     'commonResize': (s) => s.commonResize,
     'inputPressureCurve': (s) => s.inputPressureCurve,
-    'inputSpeedHeading': (s) => s.inputSpeedHeading,
-    'inputSpeedReference': (s) => s.inputSpeedReference,
     'inputCanvasHeading': (s) => s.inputCanvasHeading,
     'inputRightClick': (s) => s.inputRightClick,
     'inputWheelClick': (s) => s.inputWheelClick,

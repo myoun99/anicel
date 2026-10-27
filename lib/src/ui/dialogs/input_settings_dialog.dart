@@ -5,7 +5,6 @@ import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_zoom_scale.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_input_settings.dart';
-import '../widgets/field_slider.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart' show PenResponseButton;
@@ -48,29 +47,10 @@ class InputSettingsSection extends StatelessWidget {
                 ),
               ),
             ),
-            // 速度 needs a ceiling and no file format supplies one, so the
-            // user owns it (유저 확정 2026-09-08). Same block as the
-            // pressure curve: both answer 「how is this device's input
-            // read」, and a brush's speed curve is worthless until this
-            // number matches the hand that drew it.
-            const Divider(height: 16),
-            SettingsSectionHeading(label: strings.inputSpeedHeading),
-            _SettingsBar(
-              keyValue: 'settings-speed-reference',
-              session: session,
-              settings: settings,
-              value: settings.speedReferencePixelsPerSecond,
-              withValue: (settings, reference) =>
-                  settings.copyWith(speedReferencePixelsPerSecond: reference),
-              min: 200,
-              max: 8000,
-              scale: FieldSliderScale.exponential,
-              label: strings.inputSpeedReference,
-              // F-9/F-34: the bar writes its own number — a local
-              // `.round()` here is a display decision the call site does
-              // not get to make.
-              unit: ' px/s',
-            ),
+            // ↩️No 速度 row: the speed a 速度 curve reads as full is the
+            // app's, `AppInputSettings.speedReferencePixelsPerSecond`
+            // (🗣️F-480-Q1, 유저 2026-10-27: 「없앤다 — 기준은 앱이 고정(2000
+            // px/s)」).
             // PEN-7a: the CANVAS mappings for standard secondary
             // inputs — pen side/barrel + S-Pen button + mouse right
             // all arrive as 'right-click'; pen upper + wheel click as
@@ -205,10 +185,9 @@ class InputSettingsSection extends StatelessWidget {
             ),
             // 🗣️F-391 (유저 2026-10-17): 「회전 스냅은 하나만 존재가능할거같은데
             // 그런부분도 하나만 존재하도록 알아서. 쓰기쉽게」 — ONE number, so
-            // the bar every single number in this window is (the speed
-            // row's), not the box the lists were typed into. Whole
-            // degrees from 1 to 90: finer than a degree is the free turn, and
-            // past a right angle a turn has one line to land on.
+            // a bar, not the box the lists were typed into. Whole degrees
+            // from 1 to 90: finer than a degree is the free turn, and past a
+            // right angle a turn has one line to land on.
             _SettingsBar(
               keyValue: 'settings-snap-rotation',
               session: session,
@@ -331,8 +310,7 @@ String _dragActionLabel(CanvasTouchDragAction action) {
 
 /// One number of these settings on a bar (PEN-3): the setting follows the
 /// bar while it moves, and is kept when the bar is let go — one write for
-/// the whole drag (F-191). The speed reference's and the rotation snap's
-/// (F-391) are each one.
+/// the whole drag (F-191). The rotation snap's (F-391) is one.
 class _SettingsBar extends StatelessWidget {
   const _SettingsBar({
     required this.keyValue,
@@ -343,7 +321,6 @@ class _SettingsBar extends StatelessWidget {
     required this.min,
     required this.max,
     required this.label,
-    this.scale = FieldSliderScale.linear,
     this.divisions,
     this.unit = '',
   });
@@ -363,7 +340,6 @@ class _SettingsBar extends StatelessWidget {
   final double min;
   final double max;
   final String label;
-  final FieldSliderScale scale;
   final int? divisions;
   final String unit;
 
@@ -374,7 +350,6 @@ class _SettingsBar extends StatelessWidget {
     value: value,
     min: min,
     max: max,
-    scale: scale,
     divisions: divisions,
     unit: unit,
     onChanged: (value) =>

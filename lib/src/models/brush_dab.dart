@@ -88,11 +88,11 @@ class BrushDab {
   /// 0..1 against `AppInputSettings.speedReferencePixelsPerSecond`.
   ///
   /// 🚨**NORMALIZED AT THE DOOR, like pressure and tilt.** The raw px/s never
-  /// reaches a dab, because the ratio's ceiling is a user setting and a
-  /// reader holding raw pixels would have to fetch that setting to mean
-  /// anything — sixteen readers, sixteen chances to fetch a different one.
-  /// The pen door divides once (`AppInput.normalizedSpeed`) and everything
-  /// downstream reads a plain 0..1, exactly as it does for the other two.
+  /// reaches a dab, because a reader holding raw pixels would have to divide
+  /// by the ceiling itself to mean anything — sixteen readers, sixteen
+  /// chances to divide by a different one. The pen door divides once
+  /// (`AppInput.normalizedSpeed`) and everything downstream reads a plain
+  /// 0..1, exactly as it does for the other two.
   ///
   /// ⚠️Speed is a property of the MOVE, not of the point: every dab placed
   /// along one segment carries that segment's speed. 0.0 is a pen that has

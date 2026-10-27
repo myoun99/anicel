@@ -1717,9 +1717,7 @@ void _penSpeedGroup() {
 
     setUp(() {
       savedInput = AppInput.settings.value;
-      AppInput.settings.value = const AppInputSettings(
-        speedReferencePixelsPerSecond: 1000,
-      );
+      AppInput.settings.value = const AppInputSettings();
     });
 
     tearDown(() {
@@ -1752,10 +1750,10 @@ void _penSpeedGroup() {
 
       await _timedStroke(
         tester,
-        // 250 canvas px in 500 ms is 500 px/s, half the 1000 px/s reference.
+        // 250 canvas px in 250 ms is 1000 px/s, half the 2000 px/s ceiling.
         moves: const [
           (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
+          (Offset(252, 1), Duration(milliseconds: 250)),
         ],
       );
 
@@ -1777,9 +1775,9 @@ void _penSpeedGroup() {
         tester,
         moves: const [
           (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
+          (Offset(252, 1), Duration(milliseconds: 250)),
           // Same stamp as the reading before it: no elapsed time to divide by.
-          (Offset(300, 1), Duration(milliseconds: 500)),
+          (Offset(300, 1), Duration(milliseconds: 250)),
         ],
       );
 
@@ -1814,32 +1812,6 @@ void _penSpeedGroup() {
       expect(results.last.first.speed, 0.0);
     });
 
-    testWidgets('the reference speed the user set is the one that divides', (
-      tester,
-    ) async {
-      // The setting has to reach the dab, or the slider is decoration — the
-      // hop a mutation found unpinned once already (the antiAlias round).
-      final results = <List<BrushDab>>[];
-      await tester.pumpWidget(
-        _app(_view(_sessionState(width: 400, height: 16), results.add)),
-      );
-      AppInput.settings.value = const AppInputSettings(
-        speedReferencePixelsPerSecond: 4000,
-      );
-
-      await _timedStroke(
-        tester,
-        // The same 500 px/s move, now against a 4000 px/s reference.
-        moves: const [
-          (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
-        ],
-      );
-
-      expect(results, hasLength(1));
-      expect(results.single.last.speed, closeTo(0.125, 1e-6));
-    });
-
     testWidgets('🚨CANVAS px/s, not screen px/s — zoom halves the reading', (
       tester,
     ) async {
@@ -1861,12 +1833,12 @@ void _penSpeedGroup() {
         tester,
         moves: const [
           (Offset(2, 2), Duration.zero),
-          (Offset(252, 2), Duration(milliseconds: 500)),
+          (Offset(252, 2), Duration(milliseconds: 250)),
         ],
       );
 
       expect(results, hasLength(1));
-      // 250 SCREEN px is 125 canvas px, so 250 canvas px/s against 1000.
+      // 250 SCREEN px is 125 canvas px, so 500 canvas px/s against 2000.
       expect(results.single.last.speed, closeTo(0.25, 1e-6));
     });
 
@@ -1894,7 +1866,7 @@ void _penSpeedGroup() {
         tester,
         moves: const [
           (Offset(2, 1), Duration.zero),
-          (Offset(252, 1), Duration(milliseconds: 500)),
+          (Offset(252, 1), Duration(milliseconds: 250)),
         ],
       );
 

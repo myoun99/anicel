@@ -168,19 +168,24 @@ void main() {
     expect(store.saves, 1, reason: 'the restored value is already held');
   });
 
-  testWidgets('so is the speed reference', (tester) async {
+  // The window's bars are one code (`_SettingsBar`) — the rotation snap is
+  // the one left (↩️the speed reference's bar went with F-480-Q1).
+  testWidgets('so is a bar\'s number — the rotation snap', (tester) async {
     final store = _RecordingInputStore();
     await openInputPreferences(tester, run(store));
-    final before = AppInput.settings.value.speedReferencePixelsPerSecond;
-
-    await tester.drag(barOf('settings-speed-reference'), const Offset(60, 0));
+    final before = AppInput.settings.value.rotationSnapDegrees;
+    final bar = barOf('settings-snap-rotation');
+    await tester.ensureVisible(bar);
     await tester.pumpAndSettle();
-    final dragged = AppInput.settings.value.speedReferencePixelsPerSecond;
+
+    await tester.drag(bar, const Offset(60, 0));
+    await tester.pumpAndSettle();
+    final dragged = AppInput.settings.value.rotationSnapDegrees;
     expect(dragged, isNot(before), reason: 'premise: the drag moved it');
-    expect(store.saved?.speedReferencePixelsPerSecond, dragged);
+    expect(store.saved?.rotationSnapDegrees, dragged);
 
     await restart(tester, store);
-    expect(AppInput.settings.value.speedReferencePixelsPerSecond, dragged);
+    expect(AppInput.settings.value.rotationSnapDegrees, dragged);
   });
 
   testWidgets('the toolbar\'s 「프레임 자동 생성」 is written down too', (

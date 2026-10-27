@@ -70,14 +70,16 @@ enum BrushInputSource {
   /// [BrushPressureCurve] has one.
   tilt,
 
-  /// 速度 — how fast the stroke is moving, as canvas px/s over the user's
-  /// reference speed (`AppInputSettings.speedReferencePixelsPerSecond`).
+  /// 速度 — how fast the stroke is moving, as canvas px/s over the ceiling
+  /// the app fixes (`AppInputSettings.speedReferencePixelsPerSecond`).
   ///
   /// 🚨THE ONLY SOURCE WITH A CEILING WE CHOSE. 筆圧 and 傾き arrive already
   /// bounded by the hardware, so their 0..1 is the device's own; speed has no
   /// natural maximum, and no file format supplies one — Clip Studio's 速度
-  /// effector stores a curve and a minimum and stops there. So the ceiling is
-  /// a SETTING, deliberately visible, rather than a constant hidden in here.
+  /// effector stores a curve and a minimum and stops there. So the app picks
+  /// one, 2000 px/s (🗣️F-480-Q1, 유저 2026-10-27). ↩️It was a SETTING,
+  /// deliberately visible, rather than a constant hidden in here — until the
+  /// user took its row out of Preferences.
   ///
   /// ⚠️Measured per SEGMENT, not per dab: every dab interpolated between two
   /// pointer readings carries the speed of the move that produced them.

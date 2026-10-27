@@ -1068,9 +1068,7 @@ void main() {
 
   group('speed waits like pressure (opening-dab-speed-Q1)', () {
     setUp(() {
-      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
-        speedReferencePixelsPerSecond: 1000,
-      );
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
 
     testWidgets(
@@ -1079,8 +1077,8 @@ void main() {
         final results = await _strokes(tester, _speedAndPressureBrush, [
           _pen(pressureMax: 1, [
             _s(const Offset(4, 8), 0.4, 0),
-            // 100 canvas px in 200 ms: 500 px/s, half the reference.
-            _s(const Offset(104, 8), 0.6, 200),
+            // 100 canvas px in 100 ms: 1000 px/s, half the ceiling.
+            _s(const Offset(104, 8), 0.6, 100),
           ]),
         ]);
 
@@ -1098,7 +1096,7 @@ void main() {
         final results = await _strokes(tester, _speedAndPressureBrush, [
           _pencil([
             _s(const Offset(4, 8), _stand, 0),
-            // 20 px in 8 ms: past the reference, so 1.
+            // 20 px in 8 ms: past the ceiling, so 1.
             _s(const Offset(24, 8), _stand, 8),
             // 5 px in 8 ms: 625 px/s.
             _s(const Offset(29, 8), 0.8, 16),
@@ -1122,8 +1120,8 @@ void main() {
           _pen(pressureMax: 1, [
             _s(const Offset(4, 8), 0.5, 0),
             _s(const Offset(20, 8), 0.5, 0),
-            // 50 px in 100 ms: 500 px/s.
-            _s(const Offset(70, 8), 0.5, 100),
+            // 50 px in 50 ms: 1000 px/s.
+            _s(const Offset(70, 8), 0.5, 50),
           ]),
         ]);
 
@@ -1140,9 +1138,7 @@ void main() {
 
     setUp(() {
       debugStrokeDabsLaid = laid = <BrushDab>[];
-      AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
-        speedReferencePixelsPerSecond: 1000,
-      );
+      AppInput.settings.value = AppInputSettings.testCorpusBaseline;
     });
     tearDown(() {
       debugStrokeDabsLaid = null;

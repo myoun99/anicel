@@ -602,8 +602,6 @@ enum AppStrings {
 
   // --- Input settings ---
   String get inputPressureCurve => _s('inputPressureCurve');
-  String get inputSpeedHeading => _s('inputSpeedHeading');
-  String get inputSpeedReference => _s('inputSpeedReference');
   String get inputCanvasHeading => _s('inputCanvasHeading');
   String get inputRightClick => _s('inputRightClick');
   String get inputWheelClick => _s('inputWheelClick');
@@ -2228,8 +2226,6 @@ enum AppStrings {
     'cameraRatioCurrent': 'Current',
     'commonResize': 'Resize',
     'inputPressureCurve': 'Pen pressure response',
-    'inputSpeedHeading': 'Pen speed response',
-    'inputSpeedReference': 'Full speed at',
     'inputCanvasHeading': 'Canvas',
     'inputRightClick': 'Right click / pen side button',
     'inputWheelClick': 'Wheel click / pen upper button',
@@ -3551,8 +3547,6 @@ enum AppStrings {
     'cameraRatioCurrent': '今の比率',
     'commonResize': 'サイズ変更',
     'inputPressureCurve': '筆圧カーブ',
-    'inputSpeedHeading': '速度カーブ',
-    'inputSpeedReference': '最高速度',
     'inputCanvasHeading': 'カンバス',
     'inputRightClick': '右クリック / ペンのサイドボタン',
     'inputWheelClick': 'ホイールクリック / ペンの上ボタン',
@@ -5226,8 +5220,6 @@ enum AppStrings {
     'cameraRatioCurrent': '지금 비율',
     'commonResize': '크기 변경',
     'inputPressureCurve': '필압 곡선',
-    'inputSpeedHeading': '속도 곡선',
-    'inputSpeedReference': '최고 속도',
     'inputCanvasHeading': '캔버스',
     'inputRightClick': '우클릭 / 펜 사이드 버튼',
     'inputWheelClick': '휠 클릭 / 펜 위쪽 버튼',
@@ -6912,8 +6904,6 @@ enum AppStrings {
     'cameraRatioCurrent': 'Actuel',
     'commonResize': 'Redimensionner',
     'inputPressureCurve': 'Réponse à la pression',
-    'inputSpeedHeading': 'Réponse à la vitesse',
-    'inputSpeedReference': 'Vitesse maximale',
     'inputCanvasHeading': 'Canevas',
     'inputRightClick': 'Clic droit / bouton latéral du stylet',
     'inputWheelClick': 'Clic molette / bouton supérieur du stylet',
@@ -8670,8 +8660,6 @@ enum AppStrings {
     'cameraRatioCurrent': '当前比例',
     'commonResize': '调整尺寸',
     'inputPressureCurve': '压感曲线',
-    'inputSpeedHeading': '速度曲线',
-    'inputSpeedReference': '最高速度',
     'inputCanvasHeading': '画布',
     'inputRightClick': '右键 / 笔侧键',
     'inputWheelClick': '滚轮点击 / 笔上键',

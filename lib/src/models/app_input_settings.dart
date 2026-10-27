@@ -34,7 +34,6 @@ class AppInputSettings {
   const AppInputSettings({
     this.tabletService = TabletService.standard,
     this.pressureCurve = BrushPressureCurve.linear,
-    this.speedReferencePixelsPerSecond = defaultSpeedReferencePixelsPerSecond,
     this.canvasRightClick = const CanvasPointerMapping(
       action: CanvasPointerAction.eyedropper,
     ),
@@ -235,21 +234,18 @@ class AppInputSettings {
   ///
   /// A brush with a 速度 curve asks "how fast is the pen moving, as 0..1",
   /// and that ratio needs a ceiling. This is it: at this many px/s the input
-  /// is 1.0, and anything faster is 1.0 as well.
+  /// is 1.0, and anything faster is 1.0 as well. No file format stores a
+  /// maximum speed — Clip Studio's 速度 effector carries a curve and a
+  /// minimum, never a ceiling.
   ///
-  /// ⛔**THE DEFAULT IS A GUESS AND WE KNOW IT** (유저 확정 2026-09-08). No
-  /// file format stores a maximum speed — Clip Studio's 速度 effector carries
-  /// a curve and a minimum, never a ceiling — and this repo had no line that
-  /// measured pointer speed at all before this setting existed. That is
-  /// exactly why it is a SETTING and not a private constant: the number is
-  /// meant to be drawn against on a tablet and moved, not defended.
+  /// 🗣️F-480-Q1 (유저 2026-10-27): 「없앤다 — 기준은 앱이 고정(2000 px/s)」 —
+  /// Clip Studio has no app-wide speed setting either, only each brush's
+  /// curve. ↩️It was a SETTING in Preferences ▸ Input (유저 확정 2026-09-08:
+  /// no file format gives the ceiling, so the user owns it).
   ///
   /// ⚠️CANVAS pixels, not screen pixels, so the same hand movement reads as
   /// the same speed at any zoom and a replayed stroke draws what it drew.
-  final double speedReferencePixelsPerSecond;
-
-  /// The starting value of [speedReferencePixelsPerSecond].
-  static const double defaultSpeedReferencePixelsPerSecond = 2000.0;
+  static const double speedReferencePixelsPerSecond = 2000.0;
 
   /// Which tablet backend feeds pen data (PEN-2, the CSP-style dual
   /// service — Windows only; other platforms ignore it):
@@ -278,7 +274,6 @@ class AppInputSettings {
   AppInputSettings copyWith({
     TabletService? tabletService,
     BrushPressureCurve? pressureCurve,
-    double? speedReferencePixelsPerSecond,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
     CanvasPointerMapping? canvasPenTail,
@@ -299,8 +294,6 @@ class AppInputSettings {
   }) => AppInputSettings(
     tabletService: tabletService ?? this.tabletService,
     pressureCurve: pressureCurve ?? this.pressureCurve,
-    speedReferencePixelsPerSecond:
-        speedReferencePixelsPerSecond ?? this.speedReferencePixelsPerSecond,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
     canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
     canvasPenTail: canvasPenTail ?? this.canvasPenTail,
@@ -330,7 +323,6 @@ class AppInputSettings {
   Map<String, dynamic> toJson() => {
     'tabletService': tabletService.name,
     'pressureCurve': pressureCurve.toJson(),
-    'speedReferencePixelsPerSecond': speedReferencePixelsPerSecond,
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
     'canvasPenTail': canvasPenTail.toJson(),
@@ -386,9 +378,6 @@ class AppInputSettings {
     pressureCurve: json['pressureCurve'] == null
         ? BrushPressureCurve.linear
         : BrushPressureCurve.fromJson(json['pressureCurve']),
-    speedReferencePixelsPerSecond:
-        (json['speedReferencePixelsPerSecond'] as num?)?.toDouble() ??
-        defaultSpeedReferencePixelsPerSecond,
     canvasRightClick: CanvasPointerMapping.fromJson(
       json['canvasRightClick'],
       fallback: const CanvasPointerMapping(
@@ -445,7 +434,6 @@ class AppInputSettings {
       other is AppInputSettings &&
       other.tabletService == tabletService &&
       other.pressureCurve == pressureCurve &&
-      other.speedReferencePixelsPerSecond == speedReferencePixelsPerSecond &&
       other.canvasRightClick == canvasRightClick &&
       other.canvasWheelClick == canvasWheelClick &&
       other.canvasPenTail == canvasPenTail &&
@@ -468,7 +456,6 @@ class AppInputSettings {
   int get hashCode => Object.hashAll([
     tabletService,
     pressureCurve,
-    speedReferencePixelsPerSecond,
     canvasRightClick,
     canvasWheelClick,
     canvasPenTail,
@@ -823,11 +810,14 @@ abstract final class AppInput {
     required Duration elapsed,
   }) {
     final seconds = elapsed.inMicroseconds / Duration.microsecondsPerSecond;
-    final reference = settings.value.speedReferencePixelsPerSecond;
-    if (seconds <= 0.0 || !canvasPixels.isFinite || !(reference > 0.0)) {
+    if (seconds <= 0.0 || !canvasPixels.isFinite) {
       return null;
     }
-    return (canvasPixels / seconds / reference).clamp(0.0, 1.0).toDouble();
+    return (canvasPixels /
+            seconds /
+            AppInputSettings.speedReferencePixelsPerSecond)
+        .clamp(0.0, 1.0)
+        .toDouble();
   }
 
   /// The device set every timeline EDIT pan uses (range select/move,

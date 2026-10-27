@@ -443,7 +443,7 @@ class _InteractiveBrushEditCanvasViewState
   ///   clockwise — null when nothing measured one, which is NOT a pen
   ///   turned to 0° (F-176-Q9).
   /// * speed: how fast the pen travelled into the sample, 0..1 against the
-  ///   user's reference speed. A pen that has just landed — and every
+  ///   ceiling the app fixes. A pen that has just landed — and every
   ///   stroke's first dab — rests at 0.0.
   PenReadings _readings = (
     pressure: 1.0,
