@@ -1623,6 +1623,38 @@ class LaneVerbs {
     return null;
   }
 
+  /// What a copy of the live band takes of the lane rows of layers whose
+  /// cells it does not take ([cellRows] — those it takes with their cells,
+  /// [bandKeysOf]): a layer it swept only the lanes of, and the camera row.
+  ///
+  /// 🗣️one-band-no-lane-tail-Q3 (유저 2026-10-27) chose 「그 레이어 자신에게」,
+  /// the option that reads 「레인만 든 레이어의 키도 싣고, 붙여넣으면 같은 레이어
+  /// · 같은 레인에, 띠 첫 칸에서의 간격 그대로 놓는다(카메라 행이면 서 있는 컷의
+  /// 카메라)」. ↩️The copy took the keys beside the cells it took, and left
+  /// these.
+  List<LanesAlone> bandKeysBesides(Set<LayerId> cellRows) => [
+    for (final lane in _bandLaneSpans())
+      if (!cellRows.contains(lane.layerId))
+        if (keyCopyOf(lane) case final keys?)
+          (
+            layerId: lane.layerId,
+            camera: _isCameraRow(lane.layerId),
+            keys: keys,
+          ),
+  ];
+
+  /// The row [lanes] lands on in the cut stood in: its own layer, or the
+  /// cut's camera for a camera's (Q3's option: 「서 있는 컷의 카메라」) — null
+  /// where the row is another cut's (its cost: 「다른 컷에 붙여넣으면 그
+  /// 레이어가 없어 그 키는 놓이지 않는다」), though a lane verb would write it
+  /// there ([ActiveCutEdits.cutOfRow], I-89-Q23). A track's own row is every
+  /// cut's.
+  LayerId? rowOfLanesAlone(LanesAlone lanes) {
+    final cut = _project.activeCutOrNull;
+    final id = lanes.camera ? cut?.layers.cameraLayer?.id : lanes.layerId;
+    return id != null && _activeCut.cutOfRow(id) == cut?.id ? id : null;
+  }
+
   /// [copy]'s lanes on [layerId] from [start]: the lanes it was copied off,
   /// by their ids, over the frames it spans.
   static TimelineLaneSelection _lanesOfCopyOn(

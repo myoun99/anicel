@@ -22,7 +22,7 @@ import 'active_cut_controllers.dart';
 import 'drags/exposure_edge_drag.dart' show commitSpliceKeepingTheCutOnItsRow;
 import 'frame_verbs.dart' show rowTakesNewCels;
 import 'independent_clip_mint.dart';
-import 'lane_homes.dart' show KeyCopy;
+import 'lane_homes.dart' show KeyCopy, LanesAlone;
 import 'lane_verbs.dart';
 import 'session_roles.dart';
 import 'what_a_copy_brings.dart';
@@ -588,6 +588,15 @@ class FrameClipboard implements BringsMedia {
             );
           }
         }
+        // And what it held on lanes alone, from the layers it was taken
+        // off (Q3).
+        for (final lanes in _copiedFrame?.lanesAlone ?? const <LanesAlone>[]) {
+          _laneVerbs.liftKeysOnRow(
+            lanes.layerId,
+            lanes.keys,
+            start: band.startOn(lanes.layerId),
+          );
+        }
       }
     });
     band?.clear();
@@ -695,6 +704,9 @@ class FrameClipboard implements BringsMedia {
       cels: cels,
       sounds: _soundsCarriedBy(layer, cels),
       rows: rows,
+      lanesAlone: _laneVerbs.bandKeysBesides({
+        for (final row in rows) row.layerId,
+      }),
       names: namesOfACopy(
         project: _project.repository.requireProject(),
         media: {
@@ -819,7 +831,7 @@ class FrameClipboard implements BringsMedia {
       return null;
     }
     if (!joinTakenNames) {
-      final joins = _joinsOf(_landingsOn(place, copiedFrame));
+      final joins = _joinsOf(place, copiedFrame);
       if (joins.isNotEmpty) {
         return joins;
       }
@@ -923,40 +935,82 @@ class FrameClipboard implements BringsMedia {
       ? ClipLanding.sameNames
       : ClipLanding.ownDrawings;
 
-  /// The drawings a 링크 붙여넣기 of [landings] would JOIN, by row: the row's
-  /// own that already answer to a name being pasted
-  /// ([drawingsHeldUnderTheNamesOf]) — and the names of the keys it puts
-  /// beside them that its lanes hold at another value
+  /// What a 링크 붙여넣기 of [copied] on [place] would JOIN, by row: the
+  /// row's own drawings that already answer to a name being pasted
+  /// ([drawingsHeldUnderTheNamesOf]) — and the names of the keys it puts on
+  /// the row's lanes ([_keysLaidBy]) that they hold at another value
   /// ([LaneVerbs.keyNamesJoinedOnRow]). Empty when it links nothing by name.
-  LinkedPasteJoins _joinsOf(List<_PasteLanding> landings) => [
-    for (final landing in landings) ?_joinOn(landing),
-  ];
+  LinkedPasteJoins _joinsOf(
+    ClipboardPlace place,
+    _CopiedFrameReference copied,
+  ) {
+    final landings = _landingsOn(place, copied);
+    final held = {
+      for (final landing in landings) landing.target.id: _heldOn(landing),
+    };
+    final keyNames = <LayerId, Set<String>>{};
+    for (final (:row, :keys, :at) in _keysLaidBy(place, copied, landings)) {
+      (keyNames[row] ??= {}).addAll(
+        _laneVerbs.keyNamesJoinedOnRow(row, keys, at: at),
+      );
+    }
+    return [
+      for (final row in {...held.keys, ...keyNames.keys})
+        if ((held[row] ?? const []).isNotEmpty ||
+            (keyNames[row] ?? const {}).isNotEmpty)
+          (
+            layerId: row,
+            held: held[row] ?? const [],
+            keyNames: keyNames[row] ?? const {},
+          ),
+    ];
+  }
 
-  /// What a 링크 붙여넣기 would join on [landing]'s row — null where it
-  /// joins nothing there.
-  LinkedPasteJoin? _joinOn(_PasteLanding landing) {
-    final held = _linkLandingOf(landing) == ClipLanding.sameNames
-        ? drawingsHeldUnderTheNamesOf(landing.target, (
+  /// The drawings of [landing]'s row a 링크 붙여넣기 would show under the
+  /// names it pastes ([_joinsOf]).
+  List<FrameId> _heldOn(_PasteLanding landing) =>
+      _linkLandingOf(landing) == ClipLanding.sameNames
+      ? {
+          ...drawingsHeldUnderTheNamesOf(landing.target, (
             clip: landing.clip,
             cels: landing.cels,
-          ))
-        : const <FrameId, FrameId>{};
-    final keyNames = switch (landing.keys) {
-      final keys? => _laneVerbs.keyNamesJoinedOnRow(
-        landing.target.id,
-        keys,
-        at: landing.at,
-      ),
-      null => const <String>{},
-    };
-    return held.isEmpty && keyNames.isEmpty
-        ? null
-        : (
-            layerId: landing.target.id,
-            held: {...held.values}.toList(),
-            keyNames: keyNames,
-          );
-  }
+          )).values,
+        }.toList()
+      : const [];
+
+  /// Every row's keys a paste of [copied] on [place] lays: each landing's
+  /// beside its cells ([landings]), and what the copy held on lanes alone
+  /// on the row of the cut stood in that is theirs
+  /// ([LaneVerbs.rowOfLanesAlone]) — from where the paste starts there, as
+  /// far from it as they were from the band's first cell (🗣️
+  /// one-band-no-lane-tail-Q3's option: 「띠 첫 칸에서의 간격 그대로」), the
+  /// frames they span replaced: no cell of that row moves, so none of its
+  /// keys past them does (타임라인/콘티's call, 2026-10-28 — a paste that
+  /// put them in would push its keys off the cells they key).
+  List<_KeysLanding> _keysLaidBy(
+    ClipboardPlace place,
+    _CopiedFrameReference copied,
+    List<_PasteLanding> landings,
+  ) => [
+    for (final landing in landings)
+      if (landing.keys case final keys?)
+        (row: landing.target.id, keys: keys, at: landing.at),
+    for (final lanes in copied.lanesAlone)
+      if (_laneVerbs.rowOfLanesAlone(lanes) case final row?)
+        (
+          row: row,
+          keys: lanes.keys,
+          at: (index: _startOn(place, row), liftCount: lanes.keys.length),
+        ),
+  ];
+
+  /// Where a paste on [place] starts on [row]'s own axis: the band's start
+  /// there, or the cursor.
+  int _startOn(ClipboardPlace place, LayerId row) =>
+      place._band?.startOn(row) ??
+      place._index -
+          _project.rowAxisOffset(place._row.id) +
+          _project.rowAxisOffset(row);
 
   /// 🚨★★★ BOTH pastes, because they differ in ONE thing.
   ///
@@ -1094,21 +1148,19 @@ class FrameClipboard implements BringsMedia {
     final description = independent ? 'Paste frames' : 'Paste linked frames';
     // ONE undo for the paste and what it brought — the keys a band's copy
     // carries among it, each row's on its own lanes beside its cells
-    // (one-band-no-lane-tail-Q1).
+    // (one-band-no-lane-tail-Q1), and those it held on lanes alone (Q3).
     var cutMoved = false;
     _project.historyManager.runAsOneStep(description, () {
       landArrival(_project, arrival);
       cutMoved = _splice(runs: runs, description: description);
-      for (final landing in landings) {
-        if (landing.keys case final keys?) {
-          _laneVerbs.pasteKeysOnRow(
-            landing.target.id,
-            keys,
-            at: landing.at,
-            keepNames: !independent,
-            description: description,
-          );
-        }
+      for (final (:row, :keys, :at) in _keysLaidBy(place, copied, landings)) {
+        _laneVerbs.pasteKeysOnRow(
+          row,
+          keys,
+          at: at,
+          keepNames: !independent,
+          description: description,
+        );
       }
     });
     final cut = _project.activeCutOrNull;
@@ -1475,6 +1527,14 @@ typedef _PasteLanding = ({
   Map<String, BitmapSurface> handwriting,
 });
 
+/// Keys a paste lays on [row]'s lanes ([FrameClipboard._keysLaidBy]): from
+/// [at]'s frame, the frames there it replaces.
+typedef _KeysLanding = ({
+  LayerId row,
+  KeyCopy keys,
+  ({int index, int liftCount}) at,
+});
+
 /// Whether [layer] is a row a LINK can live on — the linked paste's gate and
 /// 링크 독립's, stated once.
 ///
@@ -1687,7 +1747,14 @@ class _CopiedFrameReference implements BoardCopy {
     this.cels = const [],
     this.sounds = const [],
     this.rows = const [],
+    this.lanesAlone = const [],
   });
+
+  /// The keys the band held on lane rows of layers whose cells [rows] does
+  /// not hold — a layer swept only by its lanes, the camera row — each put
+  /// back on its own layer (one-band-no-lane-tail-Q3,
+  /// `LaneVerbs.bandKeysBesides`).
+  final List<LanesAlone> lanesAlone;
 
   /// 🚨결정 14 ②ⓐ — EVERY swept row, in display order, the anchor first.
   ///

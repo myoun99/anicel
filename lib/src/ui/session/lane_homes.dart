@@ -1,4 +1,5 @@
 import '../../models/layer_effect.dart';
+import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/se_name_tag.dart';
 import '../../models/timeline_frame_range.dart';
@@ -158,6 +159,12 @@ typedef LaneKeys = ({String laneId, Map<int, PropertyKey<Object?>> keys});
 /// the copy's first, and the frames the copy spans — the run a paste puts
 /// in, its gaps and all, as a frame copy's run is.
 typedef KeyCopy = ({List<LaneKeys> lanes, int length});
+
+/// A band's copy of the keys on one layer's lane rows, taken without that
+/// layer's cells (`LaneVerbs.bandKeysBesides`) — [camera] where the layer
+/// is its cut's camera, whose keys go to the camera of the cut they are
+/// pasted in.
+typedef LanesAlone = ({LayerId layerId, bool camera, KeyCopy keys});
 
 /// The four homes of a row's keys ([LaneHome]).
 typedef RowLaneHomes = ({
