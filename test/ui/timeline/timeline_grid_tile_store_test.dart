@@ -881,6 +881,11 @@ void main() {
       unnamedMark: InbetweenMark.one,
     );
     expect(otherMark.unnamedMark, isNot(otherFps.unnamedMark));
-    await landed(otherMark, third);
+    final fourth = await landed(otherMark, third);
+    expect(
+      identical(tile(otherMark), fourth),
+      isTrue,
+      reason: 'kept for the mark it was baked with, not baked again',
+    );
   });
 }
