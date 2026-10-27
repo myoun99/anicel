@@ -22,6 +22,7 @@ import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/brush_blur_stroke_landing.dart';
 import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_dab_dirty_region.dart';
+import 'package:anicel/src/services/brush_dab_kernel.dart';
 import 'package:anicel/src/services/brush_ground_color_mixing.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
@@ -329,27 +330,14 @@ void main() {
     );
   });
 
-  onEachEngine('one hard dab leaves exactly the picture blurred under it — '
-      'three box passes along the rows, then three along the columns, each '
-      'a sixth of its size, means rounded half up, premultiplied', () {
-    final base = edgeCel();
-    const centerX = 96.0;
-    const centerY = 64.0;
-    final dab = BrushDab(
-      center: CanvasPoint(x: centerX, y: centerY),
-      color: 0xFF000000,
-      size: 24,
-      opacity: 1,
-      flow: 1,
-      hardness: 1,
-      tipShape: BrushTipShape.round,
-      pressure: 1,
-      sequence: 0,
-      blurs: true,
-    );
-    final blurred = live([dab], base);
-
-    // The plain reading of the law, on a plane padded with nothing.
+  /// The plain reading of the law (`BrushBlurPicture`), dab by dab, on a
+  /// premultiplied 16-bit plane padded with nothing: what each dab lays
+  /// onto an empty plane, measured afresh by the dab kernel; the whole
+  /// plane blurred — three box passes along the rows, then three along the
+  /// columns, each a sixth of the dab's size, means rounded half up; each
+  /// pixel moved toward its blur by that share, rounded half away from
+  /// zero, no channel above its alpha. Straight ARGB per canvas pixel.
+  Uint32List byTheLaw(BitmapSurface base, List<BrushDab> dabs) {
     const pad = 40;
     const width = 192 + pad * 2;
     const height = 128 + pad * 2;
@@ -366,9 +354,9 @@ void main() {
         plane[o + 3] = alpha * 257;
       }
     }
-    const radius = 4; // 24 / 6
-    const count = radius * 2 + 1;
-    List<int> pass(List<int> from, {required bool alongRows}) {
+
+    List<int> pass(List<int> from, int radius, {required bool alongRows}) {
+      final count = radius * 2 + 1;
       final to = List<int>.filled(from.length, 0);
       for (var y = 0; y < height; y += 1) {
         for (var x = 0; x < width; x += 1) {
@@ -388,42 +376,167 @@ void main() {
       return to;
     }
 
-    for (var i = 0; i < 3; i += 1) {
-      plane = pass(plane, alongRows: true);
-    }
-    for (var i = 0; i < 3; i += 1) {
-      plane = pass(plane, alongRows: false);
+    int scaled(int difference, int factor, int whole) => difference >= 0
+        ? (difference * factor * 2 + whole) ~/ (whole * 2)
+        : -((-difference * factor * 2 + whole) ~/ (whole * 2));
+
+    for (final dab in dabs) {
+      const scratch = 64;
+      final planes = <(int, int), BrushDabTileBuffers>{};
+      blendDabTilesDart(
+        BrushDabPlan.of(
+          dab.copyWith(color: 0xFFFFFFFF),
+          wall: wall,
+          tileSize: scratch,
+          erase: false,
+        )!,
+        tileSize: scratch,
+        bufferFor: (tileX, tileY) => planes.putIfAbsent(
+          (tileX, tileY),
+          () => (
+            bytes: Uint8List(scratch * scratch * 4),
+            wide: Uint16List(scratch * scratch * 4),
+          ),
+        ),
+      );
+      final radius = (dab.size / 6).round().clamp(1, 1 << 30);
+      var blurred = plane;
+      for (var i = 0; i < 3; i += 1) {
+        blurred = pass(blurred, radius, alongRows: true);
+      }
+      for (var i = 0; i < 3; i += 1) {
+        blurred = pass(blurred, radius, alongRows: false);
+      }
+      final next = List<int>.of(plane);
+      for (final MapEntry(key: (tileX, tileY), value: planesOfTile)
+          in planes.entries) {
+        for (var i = 0; i < scratch * scratch; i += 1) {
+          final share = planesOfTile.wide[i * 4 + 3];
+          if (share == 0) {
+            continue;
+          }
+          final x = tileX * scratch + i % scratch + pad;
+          final y = tileY * scratch + i ~/ scratch + pad;
+          final o = (y * width + x) * 4;
+          final alpha =
+              plane[o + 3] + scaled(blurred[o + 3] - plane[o + 3], share, 65535);
+          next[o + 3] = alpha;
+          for (var c = 0; c < 3; c += 1) {
+            final moved =
+                plane[o + c] + scaled(blurred[o + c] - plane[o + c], share, 65535);
+            next[o + c] = moved < alpha ? moved : alpha;
+          }
+        }
+      }
+      plane = next;
     }
 
-    var checked = 0;
+    final argb = Uint32List(192 * 128);
     for (var y = 0; y < 128; y += 1) {
       for (var x = 0; x < 192; x += 1) {
-        final dx = x + 0.5 - centerX;
-        final dy = y + 0.5 - centerY;
-        if (dx * dx + dy * dy > 9 * 9) {
-          continue; // Well inside the tip, where it lays whole.
-        }
         final o = ((y + pad) * width + x + pad) * 4;
         final alpha = plane[o + 3];
         final outAlpha = (alpha * 2 + 257) ~/ 514;
         int straight(int channel) => outAlpha == 0
             ? 0
             : ((channel * 510 + alpha) ~/ (alpha * 2)).clamp(0, 255);
-        final expected =
+        argb[y * 192 + x] =
             (outAlpha << 24) |
             (straight(plane[o]) << 16) |
             (straight(plane[o + 1]) << 8) |
             straight(plane[o + 2]);
-        expect(
-          pixelAt(blurred, x, y),
-          expected,
-          reason: '($x, $y)',
-        );
-        checked += 1;
       }
     }
-    expect(checked, greaterThan(200));
+    return argb;
+  }
+
+  void expectByTheLaw(List<BrushDab> dabs) {
+    final base = edgeCel();
+    final landed = live(dabs, base);
+    final expected = byTheLaw(base, dabs);
+    var moved = 0;
+    for (var y = 0; y < 128; y += 1) {
+      for (var x = 0; x < 192; x += 1) {
+        final got = pixelAt(landed, x, y);
+        expect(
+          got,
+          expected[y * 192 + x],
+          reason: '($x, $y)',
+        );
+        if (got != pixelAt(base, x, y)) {
+          moved += 1;
+        }
+      }
+    }
+    expect(moved, greaterThan(100), reason: 'premise: the edge was smeared');
+  }
+
+  BrushDab dabAt(
+    double x, {
+    required double flow,
+    required double hardness,
+    int sequence = 0,
+    double? pathStep,
+  }) => BrushDab(
+    center: CanvasPoint(x: x, y: 64),
+    color: 0xFF000000,
+    size: 24,
+    opacity: 1,
+    flow: flow,
+    hardness: hardness,
+    tipShape: BrushTipShape.round,
+    pressure: 1,
+    sequence: sequence,
+    blurs: true,
+    pathStep: pathStep,
+  );
+
+  onEachEngine('one hard dab leaves exactly the picture blurred under it, '
+      'by the law written beside it', () {
+    expectByTheLaw([dabAt(96, flow: 1, hardness: 1)]);
   });
+
+  onEachEngine('soft dabs rubbed over each other each read what the ones '
+      'before them left, by the law written beside it', () {
+    expectByTheLaw([
+      for (var i = 0; i < 4; i += 1)
+        dabAt(
+          90.0 + i * 3,
+          flow: 0.35,
+          hardness: 0.4,
+          sequence: i,
+          pathStep: i == 0 ? null : 3,
+        ),
+    ]);
+  });
+
+  onEachEngine('a rasterizer let go after a blur paints the next stroke', () {
+    final base = edgeCel();
+    final rasterizer =
+        BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
+          ..blurOver(base);
+    rasterizer.blendFrom(rub(), from: 0);
+    rasterizer.clear();
+
+    final paint = [
+      for (final dab in rub()) dab.copyWith(blurs: false, color: 0xFFFF0000),
+    ];
+    rasterizer.blendFrom(paint, from: 0);
+    final promoted = rasterizer.promoteStrokeTiles(
+      base: base,
+      mode: BrushBlendMode.color,
+      erase: false,
+    );
+    rasterizer.clear();
+    expectSameArtwork(
+      base.putTiles([
+        for (final entry in promoted) (coord: entry.coord, tile: entry.tile),
+      ]),
+      rederived(paint, base),
+      'paint after a blur',
+    );
+  });
+
 
   onEachEngine('rubbing again blurs further (Q4)', () {
     final base = edgeCel();
