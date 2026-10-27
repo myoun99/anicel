@@ -24,6 +24,7 @@ import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_dab_dirty_region.dart';
 import 'package:anicel/src/services/brush_ground_color_mixing.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/canvas_selection_paint_clip.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -293,6 +294,137 @@ void main() {
     );
   });
 
+  onEachEngine('the screen shows, tile for tile, what pen-up lands', () {
+    final base = edgeCel();
+    final rasterizer =
+        BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
+          ..blurOver(base);
+    rasterizer.blendFrom(rub(), from: 0);
+    final coords = [
+      for (var y = 0; y < canvasSize.height ~/ tileSize; y += 1)
+        for (var x = 0; x < canvasSize.width ~/ tileSize; x += 1)
+          TileCoord(x: x, y: y),
+    ];
+    final shown = rasterizer.preBlendedOverlayTiles(
+      coords: coords,
+      base: base,
+      mode: BrushBlendMode.color,
+      erase: false,
+    );
+    final screen = {
+      for (var i = 0; i < coords.length; i += 1)
+        if (shown[i] case final tile?)
+          coords[i]: tile.readStraight(Uint8List.fromList),
+    };
+    final landed = rasterizer.promoteStrokeTiles(
+      base: base,
+      mode: BrushBlendMode.color,
+      erase: false,
+    );
+    rasterizer.clear();
+    expect(screen, isNotEmpty, reason: 'the screen showed the stroke');
+    expect(
+      {for (final entry in landed) entry.coord: entry.tile.pixels},
+      screen,
+    );
+  });
+
+  onEachEngine('one hard dab leaves exactly the picture blurred under it — '
+      'three box passes along the rows, then three along the columns, each '
+      'a sixth of its size, means rounded half up, premultiplied', () {
+    final base = edgeCel();
+    const centerX = 96.0;
+    const centerY = 64.0;
+    final dab = BrushDab(
+      center: CanvasPoint(x: centerX, y: centerY),
+      color: 0xFF000000,
+      size: 24,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.round,
+      pressure: 1,
+      sequence: 0,
+      blurs: true,
+    );
+    final blurred = live([dab], base);
+
+    // The plain reading of the law, on a plane padded with nothing.
+    const pad = 40;
+    const width = 192 + pad * 2;
+    const height = 128 + pad * 2;
+    var plane = List<int>.filled(width * height * 4, 0);
+    for (var y = 0; y < 128; y += 1) {
+      for (var x = 0; x < 192; x += 1) {
+        final argb = pixelAt(base, x, y);
+        final alpha = argb >> 24;
+        final o = ((y + pad) * width + x + pad) * 4;
+        for (final (c, shift) in [(0, 16), (1, 8), (2, 0)]) {
+          final channel = (argb >> shift) & 0xFF;
+          plane[o + c] = (channel * alpha * 514 + 255) ~/ 510;
+        }
+        plane[o + 3] = alpha * 257;
+      }
+    }
+    const radius = 4; // 24 / 6
+    const count = radius * 2 + 1;
+    List<int> pass(List<int> from, {required bool alongRows}) {
+      final to = List<int>.filled(from.length, 0);
+      for (var y = 0; y < height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          for (var c = 0; c < 4; c += 1) {
+            var sum = 0;
+            for (var k = -radius; k <= radius; k += 1) {
+              final sx = alongRows ? x + k : x;
+              final sy = alongRows ? y : y + k;
+              if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
+                sum += from[(sy * width + sx) * 4 + c];
+              }
+            }
+            to[(y * width + x) * 4 + c] = (sum * 2 + count) ~/ (count * 2);
+          }
+        }
+      }
+      return to;
+    }
+
+    for (var i = 0; i < 3; i += 1) {
+      plane = pass(plane, alongRows: true);
+    }
+    for (var i = 0; i < 3; i += 1) {
+      plane = pass(plane, alongRows: false);
+    }
+
+    var checked = 0;
+    for (var y = 0; y < 128; y += 1) {
+      for (var x = 0; x < 192; x += 1) {
+        final dx = x + 0.5 - centerX;
+        final dy = y + 0.5 - centerY;
+        if (dx * dx + dy * dy > 9 * 9) {
+          continue; // Well inside the tip, where it lays whole.
+        }
+        final o = ((y + pad) * width + x + pad) * 4;
+        final alpha = plane[o + 3];
+        final outAlpha = (alpha * 2 + 257) ~/ 514;
+        int straight(int channel) => outAlpha == 0
+            ? 0
+            : ((channel * 510 + alpha) ~/ (alpha * 2)).clamp(0, 255);
+        final expected =
+            (outAlpha << 24) |
+            (straight(plane[o]) << 16) |
+            (straight(plane[o + 1]) << 8) |
+            straight(plane[o + 2]);
+        expect(
+          pixelAt(blurred, x, y),
+          expected,
+          reason: '($x, $y)',
+        );
+        checked += 1;
+      }
+    }
+    expect(checked, greaterThan(200));
+  });
+
   onEachEngine('rubbing again blurs further (Q4)', () {
     final base = edgeCel();
     final once = live(rub(), base);
@@ -429,6 +561,7 @@ void main() {
     test('blurs only with mixing on, and the eraser\'s law wins', () {
       expect(blur.blurs, isTrue);
       expect(blur.picksUpGround, isFalse);
+      expect(blur, isNot(blur.copyWith(mixingMethod: BrushMixingMethod.mix)));
       expect(blur.copyWith(mixesGroundColor: false).blurs, isFalse);
       expect(
         BrushEditCanvasInputSettings.fromShape(blur).blurs,
@@ -462,6 +595,15 @@ void main() {
       expect(dab.toJson()['blurs'], isTrue);
       expect(BrushDab.fromJson(dab.toJson()), dab);
       expect(BrushDab.fromJson(dab.copyWith(blurs: false).toJson()).blurs, isFalse);
+      expect(dab, isNot(dab.copyWith(blurs: false)));
+    });
+
+    test('the mixing group carries a blur (Q1)', () {
+      final preset = defaultBrushPresets.singleWhere(
+        (preset) => preset.id.value == 'builtin-blur',
+      );
+      expect(preset.groupId?.value, 'builtin-blend-group');
+      expect(preset.settings.shape.blurs, isTrue);
     });
   });
 

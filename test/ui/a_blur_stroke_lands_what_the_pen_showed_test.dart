@@ -83,6 +83,9 @@ void main() {
 
   const blur = BrushShape(
     size: 10,
+    // Red over black: a ground mixer, were one running, would lift the
+    // black into the dabs.
+    color: 0xFFFF0000,
     flow: 0.6,
     hardness: 0.5,
     mixesGroundColor: true,
@@ -98,6 +101,11 @@ void main() {
 
     expect(landed.sourceDabs, isNotEmpty);
     expect(landed.sourceDabs.every((dab) => dab.blurs), isTrue);
+    expect(
+      landed.sourceDabs.map((dab) => dab.color).toSet(),
+      {0xFFFF0000},
+      reason: 'a blur picks no colour up — no ground mixer runs under it',
+    );
     expect(landed.promotedBase, same(cel));
     final shown = landed.promotedTiles!;
     expect(shown, isNotEmpty, reason: 'premise: the edge was smeared');

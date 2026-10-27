@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_correction.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
+import 'package:anicel/src/models/brush_mixing_method.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -704,6 +705,43 @@ void main() {
         stretched,
         reason: 'back with what it held',
       );
+    });
+
+    testWidgets('the mixing method is picked by its row and reaches the '
+        'canvas — DEAD with mixing off, and a blur deadens the reservoir\'s '
+        'knobs (I-75)', (tester) async {
+      final blur = find.byKey(
+        const ValueKey<String>('brush-tool-mixing-method-blur'),
+      );
+      final bare = await _pumpPanel(tester);
+      expect(bare().mixesGroundColor, isFalse, reason: 'fixture premise');
+      expect(blur, findsOneWidget, reason: 'the row must keep its place');
+      await tester.ensureVisible(blur);
+      await tester.tap(blur);
+      await tester.pumpAndSettle();
+      expect(
+        bare().mixingMethod,
+        BrushMixingMethod.mix,
+        reason: 'mixing off, nothing to pick',
+      );
+
+      final read = await _pumpPanel(
+        tester,
+        initial: BrushToolState.defaults.copyWith(mixesGroundColor: true),
+      );
+      const amount = ValueKey<String>('brush-tool-paint-amount-slider');
+      expect(tester.widget<FieldSlider>(find.byKey(amount)).onChanged, isNotNull);
+      await tester.ensureVisible(blur);
+      await tester.tap(blur);
+      await tester.pumpAndSettle();
+
+      expect(read().toInputSettings().blurs, isTrue);
+      expect(
+        tester.widget<FieldSlider>(find.byKey(amount)).onChanged,
+        isNull,
+        reason: 'a blur picks no colour up',
+      );
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('scatter carries a radius, a count and an axis choice', (

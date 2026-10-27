@@ -528,7 +528,6 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     // with its own overlay grid falls to the Dart route below, where
     // staging walks whatever base tiles overlap the rect.
     if (native != null &&
-        _blur == null &&
         _nativeBuffers.isNotEmpty &&
         base.tileSize == tileSize) {
       final byteLength = tileSize * tileSize * 4;
