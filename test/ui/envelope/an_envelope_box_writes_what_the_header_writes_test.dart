@@ -139,7 +139,14 @@ void main() {
 
     expect(session.cutById(cuts[1])!.name, '40');
     expect(session.cutById(cuts[0])!.name, '39', reason: 'the other line\'s');
-    expect(printed(tester).cuts.map((line) => line.name), ['39', '40']);
+
+    // Both lines, whichever cut the envelope is shown for: a line that
+    // named the envelope's own cut would pass one of the two.
+    await typeInto(tester, box('cut-0-number'), '38');
+
+    expect(session.cutById(cuts[0])!.name, '38');
+    expect(session.cutById(cuts[1])!.name, '40', reason: 'the other line\'s');
+    expect(printed(tester).cuts.map((line) => line.name), ['38', '40']);
     expect(
       box('cut-2-number'),
       findsNothing,
