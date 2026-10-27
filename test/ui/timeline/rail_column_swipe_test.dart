@@ -166,13 +166,15 @@ void main() {
     return subject;
   }
 
-  /// A drag from [from] to [to] along the rail, 10px a move, either way.
+  /// A drag from [from] to [to] along the rail, 10px a move, either way —
+  /// by [pointer] when one is named.
   Future<void> swipe(
     WidgetTester tester, {
     required Offset from,
     required double to,
+    int? pointer,
   }) async {
-    final gesture = await tester.startGesture(from);
+    final gesture = await tester.startGesture(from, pointer: pointer);
     final step = to >= from.dy ? 10.0 : -10.0;
     var y = from.dy;
     while ((to - y) * step > 0) {
@@ -260,9 +262,9 @@ void main() {
 
   // The strong claim says a drag from here is a verb — a slider's is; WHICH
   // column it sweeps is the button's to say, and a claim that names none
-  // is no column's. ⛔Nor is it the column an EARLIER press named: the
-  // answer is this press's own, or a press would sweep from a button it
-  // never touched.
+  // is no column's. ⛔Nor is it the column an EARLIER press named — even by
+  // the same pointer id, as a test's come round again: the answer is this
+  // press's own, or a press would sweep from a button it never touched.
   testWidgets(
     'a strong claim that names no column sweeps nothing, even right after '
     'a column\'s button was pressed',
@@ -287,11 +289,11 @@ void main() {
           rail.buttonOn(3),
         ],
       );
-      await tester.tapAt(const Offset(30, 20));
+      await tester.tapAt(const Offset(30, 20), pointer: 7);
       await tester.pump();
       expect(rail.toggled, [0], reason: '⛔전제: the eye took the tap');
 
-      await swipe(tester, from: const Offset(30, 60), to: 150);
+      await swipe(tester, from: const Offset(30, 60), to: 150, pointer: 7);
       expect(pressed, 1, reason: '⛔전제: the claim took the press');
       expect(rail.toggled, [0]);
       expect(tester.takeException(), isNull);

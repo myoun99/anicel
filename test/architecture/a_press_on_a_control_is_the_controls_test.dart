@@ -31,9 +31,10 @@ void main() {
   ///
   /// A surface stands DOWN for a control's press and asks
   /// `controlOwnsTap(`. The swipe column is the one that stands UP: its
-  /// drag is the verb of the button it was pressed on, so it asks whether
-  /// that button took the STRONG claim — `valueControlOwnsPointer(` — and
-  /// runs on nothing else (F-475).
+  /// drag is the verb of the button it was pressed on, so it asks which
+  /// column's button took the press — `railSwipeColumnPressedBy(` — and
+  /// runs on nothing else (F-475). ↩️It asked whether a button had taken
+  /// the strong claim, and found the column by where the press stood.
   const mustAsk = <String, ({String what, String asks})>{
     'lib/src/ui/canvas/canvas_selection_layer.dart': (
       what:
@@ -61,7 +62,7 @@ void main() {
     ),
     'lib/src/ui/timeline/rail_column_swipe.dart': (
       what: 'the swipe column, the drag of the button it was pressed on',
-      asks: 'valueControlOwnsPointer(',
+      asks: 'railSwipeColumnPressedBy(',
     ),
     'lib/src/ui/widgets/instant_tap_region.dart': (
       what: 'dismiss-on-outside-press: a press on a control is not "outside"',

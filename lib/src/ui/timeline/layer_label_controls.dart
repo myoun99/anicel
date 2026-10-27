@@ -1695,9 +1695,11 @@ class RenderRailSwipeColumnPointer extends RenderDragVerbClaim {
 /// The column whose button took [down], or null when none did.
 ///
 /// Asked by a rail of the same press on its own way up: hit-test dispatch
-/// runs deepest-first, so the button has spoken by then. ⛔By the press,
-/// not its pointer id: an id comes round again, and a column read off an
-/// earlier press would sweep from a button this press never touched.
+/// runs deepest-first, so the button has spoken by then. ⛔By the press
+/// itself, not its pointer id: the record outlives its press, and an id is
+/// only as unique as whoever numbered the events — a test's come round
+/// again — so a column read off an earlier press would sweep from a button
+/// this press never touched.
 RailSwipeColumn? railSwipeColumnPressedBy(PointerDownEvent down) =>
     switch (_columnPressed) {
       (down: final pressed, :final column)
