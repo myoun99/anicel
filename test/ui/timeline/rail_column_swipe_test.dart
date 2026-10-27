@@ -185,6 +185,49 @@ void main() {
     expect(rail.toggled, isEmpty);
   });
 
+  // The strong claim says a value control took the press; the band says
+  // which column it is. A claimed press in no band — a button its column
+  // does not lay where it stands — is no column's to sweep.
+  testWidgets('a claimed press outside every band sweeps nothing', (
+    tester,
+  ) async {
+    final rail = _Rail({0: false, 1: true, 2: true});
+    var pressed = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: RailColumnSwipe<int>(
+              axis: Axis.vertical,
+              columns: [rail.column],
+              rowsIn: rail.rowsIn,
+              child: SizedBox(
+                width: 200,
+                height: _rowHeight * 3,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 100),
+                    child: SizedBox(
+                      width: 40,
+                      height: _rowHeight,
+                      child: _button(() => pressed += 1),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await swipe(tester, from: const Offset(120, 20), to: 110);
+    expect(pressed, 1, reason: '⛔전제: the control took the press');
+    expect(rail.toggled, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   // 🚨★★★F-66. The whole point is the row the pointer never reported.
   testWidgets('a pointer that JUMPS still paints every row it flew over', (
     tester,
