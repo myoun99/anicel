@@ -15,25 +15,27 @@ import '../../helpers/number_pad_keyboard.dart';
 /// readout ([FieldSliderReadout]) as any host holds it; the pill's own pins
 /// are in `the_brush_pill_writes_its_numbers_above_its_bars_test`.
 void main() {
-  FieldSlider barWith(FieldSliderReadout readout) => FieldSlider(
-    key: const ValueKey<String>('bar'),
-    label: 'Size',
-    nameInside: false,
-    value: 10,
-    min: 1,
-    max: 100,
-    axis: Axis.vertical,
-    height: 20,
-    readout: readout,
-    onChanged: (_) {},
-  );
+  FieldSlider barWith(FieldSliderReadout readout, {String key = 'bar'}) =>
+      FieldSlider(
+        key: ValueKey<String>(key),
+        label: 'Size',
+        nameInside: false,
+        value: 10,
+        min: 1,
+        max: 100,
+        axis: Axis.vertical,
+        height: 20,
+        readout: readout,
+        onChanged: (_) {},
+      );
 
   /// A readout that presses [readoutHolds] over a bar that holds
-  /// [barHolds] — no bar where it is null.
+  /// [barHolds] — no bar where it is null — keyed [barKey].
   Future<void> pumpReadoutAndBar(
     WidgetTester tester, {
     required FieldSliderReadout? barHolds,
     required FieldSliderReadout readoutHolds,
+    String barKey = 'bar',
   }) => tester.pumpWidget(
     MaterialApp(
       theme: buildAppTheme(),
@@ -51,7 +53,9 @@ void main() {
               SizedBox(
                 width: 20,
                 height: 160,
-                child: barHolds == null ? null : barWith(barHolds),
+                child: barHolds == null
+                    ? null
+                    : barWith(barHolds, key: barKey),
               ),
             ],
           ),
@@ -94,6 +98,28 @@ void main() {
     expect(typing, findsNothing, reason: '⛔premise: the pad closed');
 
     await pumpReadoutAndBar(tester, barHolds: second, readoutHolds: second);
+    await tester.tap(readout);
+    await tester.pumpAndSettle();
+    expect(typing, findsOneWidget);
+  });
+
+  testWidgets('a bar that takes a readout as another bar leaves it keeps '
+      'it: the one leaving lets go of its own press only', (tester) async {
+    final link = FieldSliderReadout();
+    await pumpReadoutAndBar(tester, barHolds: link, readoutHolds: link);
+    // In one frame: the new bar takes the link, then the old one leaves.
+    await pumpReadoutAndBar(
+      tester,
+      barHolds: link,
+      readoutHolds: link,
+      barKey: 'another bar',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('bar')),
+      findsNothing,
+      reason: '⛔premise: the first bar left',
+    );
+
     await tester.tap(readout);
     await tester.pumpAndSettle();
     expect(typing, findsOneWidget);

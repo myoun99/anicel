@@ -10,9 +10,11 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/brush_value_group.dart';
+import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/readout_text.dart';
 import 'package:anicel/src/ui/text/text_measure.dart';
@@ -21,6 +23,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/theme/disabled_ink.dart';
 import 'package:anicel/src/ui/theme/text_on_ground.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
@@ -208,7 +211,9 @@ void main() {
 
   testWidgets('the two readouts are one fixed size — 「2000.0」 whole at 8 and '
       'a pixel either side, as I-135-Q1 took it — and write their number at '
-      '8 in their middle, whatever the number', (tester) async {
+      '8, on a line 8 tall, in their middle, whatever the number', (
+    tester,
+  ) async {
     final brushTool = await pumpPill(tester);
     final context = tester.element(readout('size'));
     final atEight = FieldSlider.valueStyleIn(
@@ -231,6 +236,9 @@ void main() {
       for (final side in sides) {
         expect(tester.getSize(readout(side)), fixed, reason: '$side, $size');
         expect(tester.widget<Text>(wordsOf(side)).style?.fontSize, 8);
+        // The line as tall as its letters — not the theme's 1.45, which
+        // sinks the digits a pixel and more under the box's middle.
+        expect(tester.getSize(wordsOf(side)).height, 8, reason: side);
         final words = tester.getCenter(wordsOf(side));
         final box = tester.getCenter(readout(side));
         expect(words.dx, closeTo(box.dx, 0.5), reason: '$side: centred');
@@ -273,9 +281,8 @@ void main() {
   });
 
   testWidgets('a tool that reads no size dims the size\'s readout, and a '
-      'press there types nothing — the opacity\'s still answers', (
-    tester,
-  ) async {
+      'press there types nothing — the keyboard passes it over — the '
+      'opacity\'s still answers', (tester) async {
     final brushTool = await pumpPill(tester);
     brushTool.value = brushTool.value.copyWith(tool: CanvasTool.fill);
     await tester.pump();
@@ -294,6 +301,15 @@ void main() {
     await tester.tap(readout('size'));
     await tester.pumpAndSettle();
     expect(theNumberPadsNumber, findsNothing);
+    final plate = find.descendant(
+      of: readout('size'),
+      matching: find.byType(RailPlateButton),
+    );
+    Focus.of(tester.element(plate)).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(theNumberPadsNumber, findsNothing, reason: 'nor the keyboard\'s');
     await tester.tap(readout('opacity'));
     await tester.pumpAndSettle();
     expect(padShows(tester), numberOf(tester, 'opacity'));
@@ -311,6 +327,21 @@ void main() {
     final past = Offset(pill.right + 2, tester.getCenter(readout('size')).dy);
     await tester.tapAt(past);
     expect(floor, [past]);
+  });
+
+  testWidgets('the pill keeps the view pill\'s room inside both its ends', (
+    tester,
+  ) async {
+    await pumpPill(tester);
+    final pill = tester.getRect(capsule);
+    expect(
+      tester.getRect(find.byType(BrushBlendModeControl)).top - pill.top,
+      CanvasCapsule.barPillEnd,
+    );
+    expect(
+      pill.bottom - tester.getRect(find.byType(BrushValueBars)).bottom,
+      CanvasCapsule.barPillEnd,
+    );
   });
 
   testWidgets('the pill\'s tracks keep the length the numbers gave them '
