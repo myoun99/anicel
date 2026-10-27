@@ -56,8 +56,8 @@ void main() {
                 height: 4,
                 child: TheFrameAsItStands(
                   nodes: [
-                    CompositeBackdropBlend<CanvasStackRow>(
-                      backdrop: const [],
+                    const CompositeBackdropBlend<CanvasStackRow>(
+                      backdrop: [],
                       source: CompositeLeaf<CanvasStackRow>(
                         CanvasActiveLayerRow(
                           opacity: 1,
