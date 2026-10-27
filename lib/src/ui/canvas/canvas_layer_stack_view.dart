@@ -817,9 +817,8 @@ final class _LayerStackPainter {
   }
 
   /// What the live surface looks like NOW, per coordinate — or null when
-  /// that cannot be said: no live row, a live row whose change does not
-  /// land where its tiles are ([_liveSurfaceIsSpatiallyStable]), or one
-  /// drawn from state it does not publish
+  /// that cannot be said: no live row, or one drawn from state it does not
+  /// publish
   /// ([BitmapSurfacePainter.drawsOnlyFromPublishedState]) — then no
   /// comparison here can be right. That is the answer that makes a patch
   /// honest: ask the thing you are patching where it changed, and do not
@@ -850,9 +849,6 @@ final class _LayerStackPainter {
       return null;
     }
     final overlay = surfacePainter.overlayModel;
-    if (!_liveSurfaceIsSpatiallyStable(nodes)) {
-      return null;
-    }
     // F-344: the text in hand floated over its hole is part of what the
     // live surface looks like, so it is part of the tokens — by value, with
     // the rect it covers, so a drag can be patched. ↩️F-130 put the stamp's
@@ -873,8 +869,9 @@ final class _LayerStackPainter {
   }
 
   /// Where the LIVE surface changed since [since] — what it looked like
-  /// when the picture it is patched into last took it in — in canvas space,
-  /// plus what it looks like now, for the next measure.
+  /// when the picture it is patched into last took it in — in canvas space
+  /// ([_whereTheLiveRowShows]), plus what it looks like now, for the next
+  /// measure.
   ///
   /// 🎯[since] IS WHAT THE PICTURE HOLDS, not what the last paint drew.
   /// ↩️The display buffer's real base was a paint or three older than its
@@ -918,7 +915,11 @@ final class _LayerStackPainter {
         dirty = dirty?.expandToInclude(preview.rect) ?? preview.rect;
       }
     }
-    return (located: true, dirty: dirty?.inflate(1), now: now);
+    if (dirty == null) {
+      return (located: true, dirty: null, now: now);
+    }
+    final shows = _whereTheLiveRowShows(nodes, dirty);
+    return (located: shows != null, dirty: shows?.inflate(1), now: now);
   }
 
   /// Whether what the live rows draw can change only where their tokens
@@ -945,47 +946,75 @@ final class _LayerStackPainter {
   /// question had two answers and a mutant of either survived.
   bool get _liveCanBeTold => floatOverlay?.value == null && liftedRows.isEmpty;
 
-  /// Whether a change to the live surface lands where that surface is.
+  /// Where a change at [rect] of the live surface's own pixels shows in the
+  /// composite of [list] — or null where that cannot be told, or the live
+  /// surface is not in it.
   ///
-  /// ⛔False means no dirty rect drawn from the surface's own coordinates is
-  /// correct. A POSE puts its pixels somewhere else entirely, and an effect
-  /// that SPREADS — on the surface itself or on any folder enclosing it,
-  /// because the stroke's pixels pass through those buffers — smears a dab
-  /// past its own tile. Both are answered by drawing the frame as it stands,
-  /// whole.
-  static bool _liveSurfaceIsSpatiallyStable(
+  /// An effect that SPREADS on a folder or an adjustment enclosing the
+  /// surface — the stroke's pixels pass through its buffer — smears a dab
+  /// past its own tile by as far as its chain reads past a pixel: the
+  /// plan's `outsetPixels`, the number every buffer of the walk is grown by
+  /// ([effectBufferBounds]). ↩️It drew the frame as it stands, whole, at
+  /// every step, until the cost of a frame drawn as it stands was cut on
+  /// the canvas's own resolution (one-picture-per-frame, 유저 2026-10-25
+  /// 「원본 기준 위에서 푼다」).
+  static Rect? _whereTheLiveRowShows(
     List<CompositeNode<_PaintRow>> list,
+    Rect rect,
   ) {
     for (final node in list) {
       if (node case CompositeLeaf(payload: final _PaintActiveSurface active)) {
+        // ⛔A POSE, or a chain of the row's own that spreads, is not told.
+        // 🔬Told through the pose and grown by the spread, the step's patch
+        // came apart from the frame drawn as it stands (Impeller tester,
+        // 2026-10-27): the row turned by 30° and enlarged 2.5×, a few
+        // pixels on the seam of the stroke's tile up to 4/255 at every
+        // view, patched there or over the whole picture alike; the row
+        // blurred, at 200% alone, a band 2.5 canvas pixels wide along that
+        // tile's edges. Why is not read through — the frame laid before
+        // the step and the frame drawn as it stands agreed to the pixel,
+        // and the patch draws the same body. A folder or an adjustment over
+        // the row, drawn as one image, agreed at every view.
+        // ↩️The pose was refused as putting the row's pixels somewhere else
+        // entirely, which its placement can tell: it is the patch that does
+        // not agree.
         return active.placement == null &&
-            !resolvedEffectsSpreadPixels(active.effects);
+                resolveCompositeEffectPlan(active.effects).outsetPixels == 0
+            ? rect
+            : null;
       }
       if (node is CompositeGroup<_PaintRow> &&
           node.children.any(_enclosesActiveSurface)) {
-        return !resolvedEffectsSpreadPixels(node.effects) &&
-            _liveSurfaceIsSpatiallyStable(node.children);
+        final inside = _whereTheLiveRowShows(node.children, rect);
+        return inside == null ? null : _spreadBy(node.effects, inside);
       }
       if (node is CompositeAdjustment<_PaintRow> &&
           node.children.any(_enclosesActiveSurface)) {
-        return !resolvedEffectsSpreadPixels(node.effects) &&
-            _liveSurfaceIsSpatiallyStable(node.children);
+        final inside = _whereTheLiveRowShows(node.children, rect);
+        return inside == null ? null : _spreadBy(node.effects, inside);
       }
       // A blend composes pixel by pixel: a dab moves the composite where it
       // lands and nowhere else, so only what the row passes through decides.
       if (node is CompositeBackdropBlend<_PaintRow> &&
           node.children.any(_enclosesActiveSurface)) {
-        return _liveSurfaceIsSpatiallyStable(node.children);
+        return _whereTheLiveRowShows(node.children, rect);
       }
       // So does a clip: the base's alpha cuts pixel by pixel, and the base
       // made opaque is the base's own pixels.
       if (node is CompositeClip<_PaintRow> &&
           node.children.any(_enclosesActiveSurface)) {
-        return _liveSurfaceIsSpatiallyStable(node.children);
+        return _whereTheLiveRowShows(node.children, rect);
       }
     }
-    return false;
+    return null;
   }
+
+  /// [rect] grown by as far as [effects] read past a pixel.
+  static Rect _spreadBy(List<ResolvedLayerEffect> effects, Rect rect) =>
+      effectBufferBounds(
+        rect,
+        resolveCompositeEffectPlan(effects).outsetPixels,
+      );
 
   /// Whether the live surface is this node, or anywhere inside it.
   static bool _enclosesActiveSurface(CompositeNode<_PaintRow> node) =>

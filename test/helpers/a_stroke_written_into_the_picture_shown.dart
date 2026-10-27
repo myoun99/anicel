@@ -56,7 +56,8 @@ import 'settle_async.dart';
 /// The step is seen at each of [views] on a screen of each of [ratios]: a
 /// cel of [inkAt] (one ink where it is null) under a stroke at [strokeAt],
 /// each pixel shown as it stands to within [apartBy] of a channel, on a page
-/// of [page]. The pins of no view come [withThePinsOfNoView].
+/// of [page], its row standing in the tree [stack] lays it in (alone where
+/// none is named). The pins of no view come [withThePinsOfNoView].
 ///
 /// The writes are Flutter GPU's ([WritesLand]): the files that call this
 /// carry the `gpu` tag, and on a runner with none every pin skips.
@@ -67,6 +68,7 @@ void aStrokeIsWrittenIntoThePictureShown({
   Rect strokeAt = const Rect.fromLTRB(4, 4, 12, 12),
   CanvasSize page = const CanvasSize(width: 32, height: 32),
   int apartBy = 0,
+  List<CompositeNode<CanvasStackRow>> Function(BrushFrameKey cel)? stack,
   bool withThePinsOfNoView = true,
   bool skip = false,
 }) {
@@ -101,11 +103,13 @@ void aStrokeIsWrittenIntoThePictureShown({
       ),
     ],
   );
-  final nodes = [
-    const CompositeLeaf<CanvasStackRow>(
-      CanvasActiveLayerRow(opacity: 1, frameKey: key),
-    ),
-  ];
+  final nodes =
+      stack?.call(key) ??
+      [
+        const CompositeLeaf<CanvasStackRow>(
+          CanvasActiveLayerRow(opacity: 1, frameKey: key),
+        ),
+      ];
   // No paper: what lies under the ink is the screen's own.
   final frame = (cut: cut, frameIndex: 0, paintPaper: false);
   final screen = GlobalKey();
