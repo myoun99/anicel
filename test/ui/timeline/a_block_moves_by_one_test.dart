@@ -701,6 +701,26 @@ void main() {
       expect(heard.selects.toSet(), {(1, 1)});
       expect(heard.clears, 0, reason: 'a sweep is no tap: it stays');
     });
+
+    testWidgets('🗣️F-468: on the band too, what the edge auto-pan scrolls '
+        'under the hand is no travel of it', (tester) async {
+      const wide = 48.0;
+      final (heard, middle) = await mountBand(tester, cellWidth: wide);
+
+      // Two pixels into cell 6, where the auto-pan scrolls.
+      final gesture = await tester.startGesture(
+        middle + const Offset(wide * 4.5 + 2, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await creep(tester, gesture, 7);
+      expect(
+        heard.selects,
+        isEmpty,
+        reason: 'seven pixels of hand, more of scrolled sheet',
+      );
+      await gesture.up();
+      await tester.pump();
+    });
   });
 
   testWidgets('🚨F-238: a pen that drags the run\'s end [+] one cell adds '
