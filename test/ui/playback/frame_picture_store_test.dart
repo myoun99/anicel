@@ -328,6 +328,12 @@ void main() {
         32 * 2048,
         reason: 'the levels under both shelves',
       );
+      final wide = (await gpu.runs.first)!;
+      expect(
+        wide.getUint32(gpu.levelWrites.first.spans.first.start * 4),
+        0xFF0000FF,
+        reason: 'red, as RGBA: its halvings wrap at the run\'s own width',
+      );
       store.dispose();
     });
 
