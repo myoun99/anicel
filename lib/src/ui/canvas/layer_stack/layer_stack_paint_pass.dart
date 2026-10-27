@@ -333,7 +333,19 @@ class _LayerStackPaintPass {
   /// buffer is composed at 100% ([_composeDisplayBuffer]) — the same body
   /// with no screen around it, and only where [into] is not clipped away
   /// ([_reachOf]).
+  ///
+  /// Drawn to keep its nodes' pictures, it is all that is held after
+  /// ([HeldSubtreeRasters.holdOnly]).
   void paintFrame(Canvas into) {
+    switch (_painter.held) {
+      case (:final rasters, keeps: true):
+        rasters.holdOnly(() => _paintFrame(into));
+      case _:
+        _paintFrame(into);
+    }
+  }
+
+  void _paintFrame(Canvas into) {
     _standInTheWorld(within: _reachOf(into, Rect.largest));
     final extent = wholeLevelPixelsOutward(_contentExtent, 0);
     if (extent.isEmpty) {

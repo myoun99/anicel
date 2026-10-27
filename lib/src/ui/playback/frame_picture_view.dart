@@ -470,6 +470,7 @@ class _FramePictureViewState extends State<FramePictureView> {
             widget.nodes,
             widget.picture,
             shouldAbort: () => !mounted || _making != key,
+            keepsNodes: widget.live != null,
           )
           .then<void>(
             (_) {},

@@ -14,6 +14,7 @@ import '../canvas/subtree_image_composite.dart' show HeldSubtreeRasters;
 import '../quiet_turns.dart';
 import 'frame_picture_store.dart';
 import 'layer_frame_image_cache.dart';
+import 'playback_cache_budget.dart' show playbackCacheBudgetBytes;
 import 'playback_pictures.dart';
 import 'stacked_frame_picture.dart';
 
@@ -28,6 +29,18 @@ typedef FrameDrawingNow = ({
 /// ([FramePictures.celNow]): whether the picture is made of it, and at
 /// which revision.
 typedef CelAsOf = ({BrushFrameKey cel, bool drawn, int revision});
+
+/// The line the nodes of a frame a canvas stands on are held on
+/// ([FramePictures.heldNodes]) — the playback line (`PlaybackCacheBudget`),
+/// declared here as `PictureRoom` is: the line knows the pictures, they do
+/// not know it.
+abstract interface class HeldNodesLine {
+  /// How much of the line the nodes held one by one may hold now.
+  int get bytesForNodes;
+
+  /// The frames' pictures give way to what the nodes hold now.
+  void giveWayToNodes();
+}
 
 /// 🚨★★★A FRAME IS MADE ONCE, AS ONE PICTURE (one-picture-per-frame ②-2,
 /// D7-2-Q3=a — 「쓸데없는 소재를 만들고 싶지 않은 것」): what the warmer makes
@@ -45,6 +58,7 @@ class FramePictures implements PlaybackPictures {
     required this.layerImages,
     required this.stackOf,
     required this.pageOf,
+    this.line,
     QuietTurns? quietTurns,
   }) : quietTurns = quietTurns ?? QuietTurns.instance;
 
@@ -93,27 +107,41 @@ class FramePictures implements PlaybackPictures {
   /// content is a new key.
   final Lru<FramePictureKey, bool> _gaveNothing = Lru(entryCap: () => 256);
 
-  /// 🚨★THE PICTURES THE NODES OF A FRAME A SCREEN STANDS ON WERE DRAWN INTO
+  /// 🚨★THE PICTURES THE NODES OF A FRAME A CANVAS STANDS ON WERE DRAWN INTO
   /// ([HeldNodePictures]; card paint-walk-redoes-the-same-work-each-step,
-  /// 실측 5): kept as the frame is laid for that screen ([makeShown]), or
+  /// 실측 5): kept as the frame is laid for that canvas ([makeShown]), or
   /// once a canvas stands on one laid ahead ([holdNodesOf]), and found as a
   /// stroke's steps are patched into it ([frameAsItStands]) — what lies
   /// below the row a pen draws on, as one picture, and each folder over it
   /// drawn whole are not drawn again for each step that does not touch
   /// them.
   ///
-  /// ⚖️Three pages of them at the most — the page of the frame last drawn
-  /// with them ([estimatedImageBytes]): two below the pen (the frame's own
-  /// list and the folder the pen is in) and one of the nodes over it — the
-  /// option 유저 picked 2026-10-27 (Q2 = c): 「폴더가 몇 개든 2~3장」. The
-  /// screen is fed by the frame's picture, and these only make its patches
-  /// cheaper. Past it they are let go of, and a patch draws them as it did
-  /// before.
+  /// ⚖️Below the pen, two pages at the most — the page of the frame last
+  /// drawn with them ([estimatedImageBytes]): the frame's own list and the
+  /// folder the pen is in — the option 유저 picked 2026-10-27 (Q2 = c):
+  /// 「폴더가 몇 개든 2~3장」. Over it, each node a page at the most, and as
+  /// many as the playback [line] has room for — the frames' pictures made
+  /// ahead give way to them (🗣️유저 2026-10-27, Q3 = c: 「위 폴더는 하나씩,
+  /// 재생 메모리 몫 안에서 전부」). The screen is fed by the frame's picture,
+  /// and these only make its patches cheaper. Past it they are let go of,
+  /// and a patch draws them as it did before; and they are only ever the
+  /// nodes of the frame last drawn to hold them
+  /// ([HeldSubtreeRasters.holdOnly]).
+  ///
+  /// ↩️One page held the nodes over the pen together until Q3: 🔬nine
+  /// folders at 50% over the row drawn on, one of them fitted and a step
+  /// drew the rest — a step on the screen p50 14.8–27.5ms against
+  /// 6.5–12.6ms at 100% (10-27, the whole app, Windows, profile).
   late final HeldSubtreeRasters heldNodes = HeldSubtreeRasters(
-    bytes: () => _heldPageBytes,
+    bytes: () => line?.bytesForNodes ?? playbackCacheBudgetBytes,
+    eachAtMost: () => _heldPageBytes,
     bytesBelow: () => 2 * _heldPageBytes,
   );
   int _heldPageBytes = 0;
+
+  /// The line [heldNodes] stand on — null where none is told: the line's
+  /// own size, which nothing else holds then.
+  final HeldNodesLine? line;
 
   /// Where a frame drawn on [page] finds its nodes' pictures ([heldNodes]),
   /// its rows signed as its key signs them — and keeps the ones it draws
@@ -337,22 +365,31 @@ class FramePictures implements PlaybackPictures {
     shouldAbort: shouldAbort,
     due: due,
     shownNow: false,
+    keepsNodes: false,
   );
 
   /// Makes the frame a screen stands on — stacked as that screen stacks it
   /// ([nodes]: a drag in flight, the row a pen is on) — at once, at the
   /// front of the store's line: the frame on screen before any made ahead
-  /// of it ([make] has the rest).
+  /// of it ([make] has the rest). Where it [keepsNodes] — a canvas that
+  /// stands on it to draw — the pictures its nodes are drawn into are what
+  /// is held ([heldNodes]).
+  ///
+  /// ⛔Not every screen's: a screen that draws nothing live patches no step
+  /// in, and a frame it laid let go of the nodes of the frame a pen is on
+  /// (🗣️Q3 = c: 「편집 중인 프레임의 위 폴더만」).
   Future<bool> makeShown(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
     required bool Function() shouldAbort,
+    required bool keepsNodes,
   }) => _make(
     () => nodes,
     picture,
     shouldAbort: shouldAbort,
     due: () => true,
     shownNow: true,
+    keepsNodes: keepsNodes,
   );
 
   /// 🚨Holds the nodes of the frame [nodes] stack for [picture] — one a
@@ -370,6 +407,10 @@ class FramePictures implements PlaybackPictures {
   /// one laid ahead keeps none — the warmer lays every frame but the one a
   /// cut opens on, and asks for the one a screen stands on as the screen
   /// does, so either may lay it.
+  ///
+  /// Held, the frames' pictures made ahead give way to them on the [line]
+  /// — here, where the screen holds the frame's own picture already: a
+  /// picture laid for it and not yet held would be let go of first.
   Future<void> holdNodesOf(
     List<CompositeNode<CanvasStackRow>> nodes,
     DemandedPicture picture, {
@@ -389,6 +430,7 @@ class FramePictures implements PlaybackPictures {
       keepsNodes: true,
     ).frame.drawing.draw(ui.Canvas(recorder));
     recorder.endRecording().dispose();
+    line?.giveWayToNodes();
     await turn.landed();
   }
 
@@ -398,6 +440,7 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
     required bool Function() due,
     required bool shownNow,
+    required bool keepsNodes,
   }) async {
     if (shouldAbort()) {
       return false;
@@ -407,7 +450,7 @@ class FramePictures implements PlaybackPictures {
       return false;
     }
     final nodes = nodesOf();
-    final made = drawingNow(nodes, picture, keepsNodes: shownNow);
+    final made = drawingNow(nodes, picture, keepsNodes: keepsNodes);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
     if (!drawsOnlyItsPage(key) &&

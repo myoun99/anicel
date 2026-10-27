@@ -129,6 +129,7 @@ class PlaybackRig implements PlaybackRun {
       paintPaper: picture.paintPaper,
       paperBackground: _settings.projectBackground,
     ),
+    line: playbackCache,
   );
 
   @override

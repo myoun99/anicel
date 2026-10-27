@@ -37,7 +37,7 @@ abstract interface class PlaybackRun {
 /// refused: the session read it from twenty-two places (its lifecycle —
 /// selectCut, dispose, the frame-rate setters — IS the following). This
 /// is the part that stands on its own.
-class PlaybackCacheBudget implements PictureRoom {
+class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
   PlaybackCacheBudget({
     required ProjectAccess project,
     required RenderCaches renderCaches,
@@ -86,9 +86,10 @@ class PlaybackCacheBudget implements PictureRoom {
   }
 
   /// The playback cache's trim, run when the line moves under what is held —
-  /// the allowance, a run that borrows it, a memory warning. ⛔Not after a
-  /// picture lands: the warmer asks the room again then ([makeRoomFor]),
-  /// which never lets go of what it just made (F-365).
+  /// the allowance, a run that borrows it, a memory warning, the nodes over
+  /// a pen held ([giveWayToNodes]). ⛔Not after a picture lands: the warmer
+  /// asks the room again then ([makeRoomFor]), which never lets go of what
+  /// it just made (F-365).
   ///
   /// 🚨WHAT IS LET GO IS WHAT IS WANTED LATEST ([FrameDemand] — the one
   /// order the warmer makes pictures in). ↩️B1 had to DERIVE a kept range
@@ -96,10 +97,16 @@ class PlaybackCacheBudget implements PictureRoom {
   /// hypothetical: warming baked the runway past the end line while the
   /// range stopped AT the line, so every runway composite was evictable the
   /// moment it landed. They are one object now, and nothing is kept whole.
-  void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
-    wantedAt: _run.pictures.wantedAt(_run.demand),
-    lentBytes: _besideThePictures,
-  );
+  ///
+  /// The nodes held go first only past their own room ([bytesForNodes]):
+  /// the line moved under them.
+  void enforcePlaybackCacheBudget() {
+    _run.pictures.heldNodes.fit();
+    _playbackCacheBudgetEnforcer.enforce(
+      wantedAt: _run.pictures.wantedAt(_run.demand),
+      lentBytes: _besideThePictures,
+    );
+  }
 
   @override
   int get bytes =>
@@ -107,9 +114,26 @@ class PlaybackCacheBudget implements PictureRoom {
 
   /// What the line holds beside the frames' pictures, which give way to it:
   /// what is [lent], and the pictures the nodes of the frame a screen
-  /// stands on are held in (`FramePictures.heldNodes`) — a page at the
-  /// most, taken off the pictures made ahead, never laid past the line.
+  /// stands on are held in (`FramePictures.heldNodes`) — taken off the
+  /// pictures made ahead ([bytesForNodes]), never laid past the line.
   int get _besideThePictures => _lentBytes + _run.pictures.heldNodes.heldBytes;
+
+  /// How much of the line the nodes over a pen may hold, one by one
+  /// (`FramePictures.heldNodes`): all of it but what a screen shows, what
+  /// is [lent] and what lies below the pen held — the frames' pictures made
+  /// ahead give way to them ([giveWayToNodes]). 🗣️유저 2026-10-27 (Q3 = c):
+  /// 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」.
+  @override
+  int get bytesForNodes {
+    final room =
+        _playbackCacheBudgetEnforcer.lendableBytes() -
+        _lentBytes -
+        _run.pictures.heldNodes.heldBelowBytes;
+    return room < 0 ? 0 : room;
+  }
+
+  @override
+  void giveWayToNodes() => enforcePlaybackCacheBudget();
 
   @override
   bool makeRoomFor({required int bytes, required int step}) =>

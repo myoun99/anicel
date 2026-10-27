@@ -30,15 +30,22 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 🚨★THE FRAME A SCREEN STANDS ON HOLDS ITS FOLDERS' PICTURES
 /// (`FramePictures.heldNodes`; card paint-walk-redoes-the-same-work-each-
-/// step): laid for the screen, a folder drawn whole is kept, and a stroke's
-/// step patched into the frame as it stands is cut from it — one page of
-/// them at the most, on the playback line beside the frames' pictures, and
-/// let go of at a memory warning.
+/// step): laid for the canvas that stands on it, a folder drawn whole is
+/// kept, and a stroke's step patched into the frame as it stands is cut
+/// from it — on the playback line beside the frames' pictures, each a page
+/// at the most and as many as the line has room for (🗣️유저 2026-10-27,
+/// Q3 = c: 「위 폴더는 하나씩, 재생 메모리 몫 안에서 전부」), only those of the
+/// frame last drawn to hold them, and let go of at a memory warning.
 void main() {
   const canvasSize = CanvasSize(width: 32, height: 24);
-  const folder = LayerId('folder');
+  const folders = [LayerId('folder'), LayerId('folder2')];
+  const rowsOf = [
+    ['a', 'b'],
+    ['c', 'd'],
+  ];
+  final page = estimatedImageBytes(32, 24);
 
-  Layer row(String id) => Layer(
+  Layer row(String id, LayerId folder) => Layer(
     id: LayerId(id),
     name: id,
     folderId: folder,
@@ -46,8 +53,9 @@ void main() {
     timeline: {0: TimelineExposure.drawing(FrameId('$id-0'), length: 1)},
   );
 
-  /// Two drawn rows in a folder at half strength — one picture of its own.
-  EditorSessionManager session() => EditorSessionManager(
+  /// [count] folders at half strength, two drawn rows in each — each one
+  /// picture of its own.
+  EditorSessionManager session({int count = 1}) => EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('held'),
       name: 'Held',
@@ -63,9 +71,13 @@ void main() {
               duration: 1,
               canvasSize: canvasSize,
               layers: [
-                row('a'),
-                row('b'),
-                createFolderLayer(id: folder, name: 'F').copyWith(opacity: 0.5),
+                for (var at = 0; at < count; at += 1) ...[
+                  for (final id in rowsOf[at]) row(id, folders[at]),
+                  createFolderLayer(
+                    id: folders[at],
+                    name: 'F$at',
+                  ).copyWith(opacity: 0.5),
+                ],
               ],
             ),
           ],
@@ -105,16 +117,31 @@ void main() {
     );
   }
 
-  /// [s] with both rows drawn, and the frame the screen stands on.
-  DemandedPicture drawn(EditorSessionManager s) {
-    draw(s, 'a', 10);
-    draw(s, 'b', 20);
+  /// [s] with every row of its [count] folders drawn, and the frame the
+  /// screen stands on.
+  DemandedPicture drawn(EditorSessionManager s, {int count = 1}) {
+    for (var at = 0; at < count; at += 1) {
+      draw(s, rowsOf[at][0], 10);
+      draw(s, rowsOf[at][1], 20);
+    }
     return (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true);
   }
 
-  testWidgets('laid for the screen that stands on it the frame keeps its '
+  /// Laid for a canvas that stands on it to draw.
+  Future<void> shown(EditorSessionManager s, DemandedPicture picture) {
+    final pictures = s.playbackRig.framePictures;
+    return pictures.makeShown(
+      pictures.stackOf(picture),
+      picture,
+      shouldAbort: () => false,
+      keepsNodes: true,
+    );
+  }
+
+  testWidgets('laid for the canvas that stands on it the frame keeps its '
       'folder, and a step patched in as it stands is cut from it — laid '
-      'ahead of a screen, it keeps none', (tester) async {
+      'ahead of a screen, or for one that draws nothing live, it keeps '
+      'none', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
@@ -124,21 +151,29 @@ void main() {
       await pictures.make(picture, shouldAbort: () => false);
       expect(pictures.heldNodes, hasLength(0), reason: 'made ahead');
 
-      final shown = session();
-      addTearDown(shown.dispose);
-      final standing = shown.playbackRig.framePictures;
-      final stood = drawn(shown);
-      await standing.makeShown(
-        standing.stackOf(stood),
-        stood,
+      final still = session();
+      addTearDown(still.dispose);
+      final stillPictures = still.playbackRig.framePictures;
+      final shownStill = drawn(still);
+      await stillPictures.makeShown(
+        stillPictures.stackOf(shownStill),
+        shownStill,
         shouldAbort: () => false,
+        keepsNodes: false,
       );
-      expect(standing.heldNodes, hasLength(1), reason: 'the folder');
+      expect(stillPictures.heldNodes, hasLength(0), reason: 'nothing live');
+
+      final standing = session();
+      addTearDown(standing.dispose);
+      final standingPictures = standing.playbackRig.framePictures;
+      final stood = drawn(standing);
+      await shown(standing, stood);
+      expect(standingPictures.heldNodes, hasLength(1), reason: 'the folder');
 
       debugSubtreeRasterCount = 0;
       final recorder = ui.PictureRecorder();
-      standing
-          .frameAsItStands(standing.stackOf(stood), stood)
+      standingPictures
+          .frameAsItStands(standingPictures.stackOf(stood), stood)
           .drawing
           .draw(ui.Canvas(recorder)..clipRect(const Rect.fromLTWH(6, 8, 9, 7)));
       recorder.endRecording().dispose();
@@ -146,21 +181,50 @@ void main() {
     });
   });
 
-  testWidgets('⚖️what is held is one page at the most — the page of the frame '
-      'last drawn with them', (tester) async {
+  testWidgets('🗣️every folder over the pen is held, and a step patched in '
+      'draws none of them', (tester) async {
+    await tester.runAsync(() async {
+      final s = session(count: 2);
+      addTearDown(s.dispose);
+      final pictures = s.playbackRig.framePictures;
+      final stood = drawn(s, count: 2);
+      await shown(s, stood);
+      expect(pictures.heldNodes, hasLength(2));
+
+      debugSubtreeRasterCount = 0;
+      final recorder = ui.PictureRecorder();
+      pictures
+          .frameAsItStands(pictures.stackOf(stood), stood)
+          .drawing
+          .draw(ui.Canvas(recorder)..clipRect(const Rect.fromLTWH(6, 8, 9, 7)));
+      recorder.endRecording().dispose();
+      expect(debugSubtreeRasterCount, 0, reason: 'both cut from what is held');
+    });
+  });
+
+  testWidgets('🗣️what is held is the frame last drawn to hold them — what it '
+      'held before it changed is let go of', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
       final pictures = s.playbackRig.framePictures;
-      final picture = drawn(s);
-      await pictures.makeShown(
-        pictures.stackOf(picture),
-        picture,
-        shouldAbort: () => false,
-      );
-      pictures.heldNodes.clear();
+      final stood = drawn(s);
+      await shown(s, stood);
+      final node = pictures.heldNodes.heldBytes;
+      expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
 
-      void keep(String key, Rect bounds) {
+      // The folder draws something else now: a picture of its own anew.
+      draw(s, 'a', 26);
+      await shown(s, stood);
+      expect(pictures.heldNodes, hasLength(1));
+      expect(pictures.heldNodes.heldBytes, node);
+    });
+  });
+
+  testWidgets('⚖️each node held is a page at the most, and as many are held '
+      'as the playback line has room for', (tester) async {
+    await tester.runAsync(() async {
+      void keep(HeldSubtreeRasters held, String key, Rect bounds) {
         final recorder = ui.PictureRecorder();
         drawSubtreeAsImage(
           canvas: ui.Canvas(recorder),
@@ -168,56 +232,87 @@ void main() {
           rasterScale: 1,
           paintSubtree: (into, _) => into.drawPaint(Paint()),
           compose: (blit) => blit(Paint()),
-          held: SubtreeHold(pictures.heldNodes, key: key, keeps: true),
+          held: SubtreeHold(held, key: key, keeps: true),
         );
         recorder.endRecording().dispose();
       }
 
-      keep('past the page', const Rect.fromLTWH(0, 0, 33, 24));
-      expect(pictures.heldNodes, hasLength(0));
-      keep('the page', const Rect.fromLTWH(0, 0, 32, 24));
-      expect(pictures.heldNodes, hasLength(1));
+      /// The nodes held in a session on a line of [line] bytes, the page
+      /// told by a frame laid on it.
+      Future<HeldSubtreeRasters> heldOn({int? line}) async {
+        final s = session();
+        addTearDown(s.dispose);
+        if (line != null) {
+          s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
+        }
+        final held = s.playbackRig.framePictures.heldNodes;
+        await shown(s, drawn(s));
+        held.clear();
+        return held;
+      }
+
+      const whole = Rect.fromLTWH(0, 0, 32, 24);
+      final wide = await heldOn();
+      keep(wide, 'past the page', const Rect.fromLTWH(0, 0, 33, 24));
+      expect(wide, hasLength(0));
+      keep(wide, 'the page', whole);
+      keep(wide, 'another page', whole);
+      expect(wide, hasLength(2), reason: 'a page each, not one together');
+
+      final narrow = await heldOn(line: 2 * page - 1);
+      keep(narrow, 'the page', whole);
+      keep(narrow, 'another page', whole);
+      expect(narrow, hasLength(1), reason: 'the line has room for one');
     });
   });
 
-  testWidgets('⚖️the frames\' pictures give way to what is held as the line '
-      'is kept, and a run may hold none of what they cannot give', (
-    tester,
-  ) async {
+  testWidgets('⚖️once a canvas holds them, the frames\' pictures made ahead '
+      'give way to them — never the one it shows — and they take no more '
+      'than the line has room for', (tester) async {
     await tester.runAsync(() async {
-      // One frame's picture and its folder's, measured on a line they fit.
+      // A frame's picture and its folder's, measured on a line they fit.
       final measured = session();
       addTearDown(measured.dispose);
-      final ruler = measured.playbackRig.framePictures;
       final at = drawn(measured);
-      await ruler.makeShown(ruler.stackOf(at), at, shouldAbort: () => false);
+      await shown(measured, at);
       final picture = measured.renderCaches.framePictureStore.estimatedBytes;
-      final node = ruler.heldNodes.heldBytes;
+      final node = measured.playbackRig.framePictures.heldNodes.heldBytes;
       expect(node, greaterThan(0), reason: '⛔premise');
 
-      Future<EditorSessionManager> shownOn({required int line}) async {
-        final s = session();
-        addTearDown(s.dispose);
-        s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
-        final pictures = s.playbackRig.framePictures;
-        final stood = drawn(s);
-        await pictures.makeShown(
-          pictures.stackOf(stood),
-          stood,
-          shouldAbort: () => false,
-        );
-        expect(pictures.heldNodes.heldBytes, node, reason: '⛔premise');
-        return s;
-      }
+      final s = session();
+      addTearDown(s.dispose);
+      s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(
+        2 * picture + node - 1,
+      );
+      final pictures = s.playbackRig.framePictures;
+      final store = s.renderCaches.framePictureStore;
+      final stood = drawn(s);
+      final ahead = (cut: stood.cut, frameIndex: 0, paintPaper: false);
+      await pictures.make(ahead, shouldAbort: () => false);
+      await shown(s, stood);
+      expect(store.estimatedBytes, 2 * picture, reason: '⛔premise: laid');
+      expect(pictures.heldNodes.heldBytes, node, reason: '⛔premise: held');
 
-      final tight = await shownOn(line: picture + node - 1);
-      final store = tight.renderCaches.framePictureStore;
-      expect(store.estimatedBytes, picture, reason: '⛔premise: laid');
-      tight.playbackRig.playbackCache.enforcePlaybackCacheBudget();
-      expect(store.estimatedBytes, 0);
+      // As the screen holds the picture it shows.
+      final key = pictures.keyOf(stood);
+      store.retainPin(key);
+      addTearDown(() => store.releasePin(key));
+      await pictures.holdNodesOf(
+        pictures.stackOf(stood),
+        stood,
+        shouldAbort: () => false,
+      );
+      expect(pictures.heldNodes.heldBytes, node);
+      expect(store.estimatedBytes, picture, reason: 'the one ahead gave way');
+      expect(store.holds(key), isTrue);
 
-      final under = await shownOn(line: node - 1);
-      expect(under.playbackRig.playbackCache.lendableBytes, 0);
+      final under = session();
+      addTearDown(under.dispose);
+      under.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(
+        node - 1,
+      );
+      await shown(under, drawn(under));
+      expect(under.playbackRig.framePictures.heldNodes, hasLength(0));
     });
   });
 
@@ -238,18 +333,10 @@ void main() {
       final before = censused();
       debugDefaultTargetPlatformOverride = null;
 
-      await pictures.makeShown(
-        pictures.stackOf(picture),
-        picture,
-        shouldAbort: () => false,
-      );
+      await shown(s, picture);
       final held = pictures.heldNodes.heldBytes;
       expect(held, greaterThan(0), reason: '⛔premise: the folder is held');
-      expect(
-        held,
-        lessThanOrEqualTo(estimatedImageBytes(32, 24)),
-        reason: '⛔premise',
-      );
+      expect(held, lessThanOrEqualTo(page), reason: '⛔premise');
 
       expect(line.bytes, budget - held);
       expect(line.lendableBytes, lendable - held);
@@ -263,11 +350,7 @@ void main() {
       line.respondToMemoryPressure();
       expect(pictures.heldNodes, hasLength(0));
 
-      await pictures.makeShown(
-        pictures.stackOf(picture),
-        (cut: picture.cut, frameIndex: 0, paintPaper: false),
-        shouldAbort: () => false,
-      );
+      await shown(s, (cut: picture.cut, frameIndex: 0, paintPaper: false));
       expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
       s.dispose();
       expect(pictures.heldNodes, hasLength(0));

@@ -110,9 +110,8 @@ void main() {
     view: view,
   );
 
-  /// The run over the frame, its picture made ahead of any screen — its
-  /// background work taking its turns in [turns] where a test names them.
-  Future<StackRun> madeAhead(WidgetTester tester, {QuietTurns? turns}) async {
+  /// The run over the frame, nothing of it made yet.
+  StackRun runOverTheFrame({QuietTurns? turns}) {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
       a: filled(const [0x30, 0x60, 0x90, 0xFF]),
@@ -122,13 +121,20 @@ void main() {
     addTearDown(images.dispose);
     final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
     addTearDown(store.dispose);
-    final run = runOver(
+    return runOver(
       images,
       store,
       canvasSize: canvasSize,
       stackOf: (_) => treeOf(),
       quietTurns: turns,
     );
+  }
+
+  /// The run over the frame, its picture made ahead of any screen — its
+  /// background work taking its turns in [turns] where a test names them.
+  Future<StackRun> madeAhead(WidgetTester tester, {QuietTurns? turns}) async {
+    final run = runOverTheFrame(turns: turns);
+    final store = run.pictures.store;
     await tester.runAsync(
       () => run.pictures.make(frame, shouldAbort: () => false),
     );
@@ -224,6 +230,33 @@ void main() {
       await settleAsync(tester, () => run.pictures.store.pinnedBytes > 0),
       isTrue,
       reason: '⛔premise: the run shows the frame',
+    );
+    await lendBothClocks(tester, rounds: 10);
+    expect(run.pictures.heldNodes, hasLength(0));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🗣️Q3 = c 「편집 중인 프레임의 위 폴더만」: a frame such a screen lays
+  // would let go of the nodes of the one a pen is on.
+  testWidgets('a screen that draws nothing live holds none of a frame it '
+      'lays itself', (tester) async {
+    final run = runOverTheFrame();
+    await tester.pumpWidget(
+      onScreen(
+        FramePictureView(
+          run: run,
+          picture: frame,
+          nodes: treeOf(),
+          viewport: view,
+          laysWhatItMisses: true,
+          wholeFrames: true,
+        ),
+      ),
+    );
+    expect(
+      await settleAsync(tester, () => run.pictures.store.pinnedBytes > 0),
+      isTrue,
+      reason: '⛔premise: it laid the frame and shows it',
     );
     await lendBothClocks(tester, rounds: 10);
     expect(run.pictures.heldNodes, hasLength(0));
