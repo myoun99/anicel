@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -11,7 +10,6 @@ import '../widgets/field_slider.dart';
 import '../widgets/app_icon_button.dart';
 import '../session/cache_budgets.dart';
 import '../../services/persistence/app_memory_settings.dart';
-import '../session/cache_budgets.dart' show CacheBudgetLine, CacheBudgets;
 
 /// Preferences ▸ Memory: what this app is holding in RAM, live.
 ///
@@ -59,10 +57,6 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
   /// bottom. A high-water mark is the only scale on which the thing the
   /// user asked to watch — growing and shrinking — is visible.
   int _peakBytes = 1;
-
-  /// The allowance under the thumb while the slider is dragged — the tier
-  /// bar previews it; the setting only changes on release.
-  int? _draggedBytes;
 
   @override
   void initState() {
@@ -154,17 +148,12 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
       valueListenable: AppMemory.settings,
       builder: (context, memory, _) {
         final chosen = memory.allowanceBytes;
-        final allowance = _draggedBytes ?? chosen ?? automatic;
         return SingleChildScrollView(
           key: const ValueKey<String>('memory-settings-section'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 🗣️THREE TIERS (유저 2026-09-11): 「디바이스의 메모리를 제일
-              // 큰 기준으로 보여주고, 그 안에 앱이 사용하기로 허가된
-              // 메모리 … 그러고 실제 사용하는 메모리」 — the device, the
-              // allowance inside it, what is used inside that.
               _TotalRow(
                 label: strings.memoryDeviceTotal,
                 value: device == null ? '—' : _mb(device),
@@ -173,27 +162,20 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
               _AllowanceRow(
                 label: strings.memoryAllowance,
                 automaticTooltip: strings.memoryAllowanceAutomatic,
-                allowanceBytes: allowance,
-                minBytes: CacheBudgets.floors.total,
-                maxBytes: device ?? automatic * 2,
+                allowanceBytes: chosen ?? automatic,
+                floorBytes: CacheBudgets.floors.total,
+                // An unknown device (no engine: tests, host runs) scales to
+                // twice the automatic allowance.
+                scaleBytes: device ?? automatic * 2,
+                totalBytes: footprint,
+                trackedBytes: tracked,
                 chosen: chosen != null,
-                onDragged: (bytes) => setState(() => _draggedBytes = bytes),
-                onChosen: (bytes) {
-                  setState(() => _draggedBytes = null);
-                  widget.session.setMemorySettings(
-                    AppMemorySettings(allowanceBytes: bytes),
-                  );
-                },
+                onChosen: (bytes) => widget.session.setMemorySettings(
+                  AppMemorySettings(allowanceBytes: bytes),
+                ),
                 onAutomatic: () => widget.session.setMemorySettings(
                   const AppMemorySettings(),
                 ),
-              ),
-              const SizedBox(height: 4),
-              _TierBar(
-                deviceBytes: device,
-                allowanceBytes: allowance,
-                totalBytes: footprint,
-                trackedBytes: tracked,
               ),
               const SizedBox(height: 10),
               _TotalRow(
@@ -253,8 +235,18 @@ class _MemorySettingsSectionState extends State<MemorySettingsSection> {
   }
 }
 
-/// Which colour a legend mark takes — the same two the bars fill with.
-enum _MarkColor { accent, grey, allowance }
+/// Which colour a legend mark takes — the same ones the bars draw with.
+enum _MarkColor {
+  accent,
+  grey,
+  allowance;
+
+  Color get resolved => switch (this) {
+    _MarkColor.accent => AppColors.accent,
+    _MarkColor.grey => AppColors.hairline,
+    _MarkColor.allowance => AppColors.textDim,
+  };
+}
 
 /// A legend mark before a row's label: a filled dot for a fill in the
 /// bars, a ring for the allowance's outline.
@@ -265,11 +257,7 @@ class _Mark {
   final _MarkColor color;
   final bool ring;
 
-  Color get resolved => switch (color) {
-    _MarkColor.accent => AppColors.accent,
-    _MarkColor.grey => AppColors.hairline,
-    _MarkColor.allowance => AppColors.textDim,
-  };
+  Color get resolved => color.resolved;
 }
 
 /// One total line: a label, its figure, and — for the rows the bars fill —
@@ -341,12 +329,31 @@ class _MarkDot extends StatelessWidget {
   }
 }
 
-/// The allowance: what the app's caches may hold between them, set on a
-/// slider and moved back to automatic with the button beside it.
+/// The allowance — what the app's caches may hold between them — on the
+/// device's own scale: the bar is the device's memory, what the process
+/// uses fills it (grey the whole process, accent the part we can name),
+/// and the allowance is the outline over that, set by dragging it
+/// ([FieldSlider.ceiling]). The button beside it moves it back to
+/// automatic.
+///
+/// 🗣️THREE TIERS (유저 2026-09-11): 「디바이스의 메모리를 제일 큰 기준으로
+/// 보여주고, 그 안에 앱이 사용하기로 허가된 메모리 … 그러고 실제 사용하는
+/// 메모리」 — the device, the allowance inside it, what is used inside that.
+///
+/// 🗣️F-480 (유저 2026-10-27): 「비율이 고정슬라이더가 아니라 변동슬라이더 …
+/// 고정값으로. 그렇게 하고 밑, 두번째 슬라이더랑 내용적으로 같아지니 내용
+/// 서로 합쳐서 통합」. ↩️The allowance had a slider of its own, on a scale
+/// whose middle was about a quarter of the device (exponential), with the
+/// three tiers on a bar under it.
+///
+/// ⚠️On a desktop the fill is a sliver of the bar — which is the answer to
+/// "where does this app stand on this machine", and the reason the live
+/// bar below keeps its own high-water scale: this one could never show a
+/// cache filling.
 ///
 /// ⛔The value lands on RELEASE, not on every tick of the drag: a new
 /// allowance re-budgets every cache, and dragging down would cool cels to
-/// disk once per frame. While the thumb moves, the tier bar previews it.
+/// disk once per frame. The bar follows the hand on its own until then.
 ///
 /// ⛔The button is always there and goes inert at the automatic allowance
 /// rather than appearing when a value is chosen — no UI that pops into
@@ -356,10 +363,11 @@ class _AllowanceRow extends StatelessWidget {
     required this.label,
     required this.automaticTooltip,
     required this.allowanceBytes,
-    required this.minBytes,
-    required this.maxBytes,
+    required this.floorBytes,
+    required this.scaleBytes,
+    required this.totalBytes,
+    required this.trackedBytes,
     required this.chosen,
-    required this.onDragged,
     required this.onChosen,
     required this.onAutomatic,
   });
@@ -367,10 +375,18 @@ class _AllowanceRow extends StatelessWidget {
   final String label;
   final String automaticTooltip;
   final int allowanceBytes;
-  final int minBytes;
-  final int maxBytes;
+
+  /// The least the allowance can be set to — every budget line's floor.
+  final int floorBytes;
+
+  /// The whole bar: the device's memory.
+  final int scaleBytes;
+
+  /// What the whole process uses, and the part of it we can name.
+  final int totalBytes;
+  final int trackedBytes;
+
   final bool chosen;
-  final ValueChanged<int> onDragged;
   final ValueChanged<int> onChosen;
   final VoidCallback onAutomatic;
 
@@ -378,9 +394,9 @@ class _AllowanceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final min = minBytes / _mb;
-    final max = maxBytes > minBytes ? maxBytes / _mb : min * 2;
-    final value = (allowanceBytes / _mb).clamp(min, max).toDouble();
+    final floor = floorBytes / _mb;
+    final max = scaleBytes > floorBytes ? scaleBytes / _mb : floor * 2;
+    final value = (allowanceBytes / _mb).clamp(floor, max).toDouble();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
@@ -396,16 +412,21 @@ class _AllowanceRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: FieldSlider(
+            child: FieldSlider.ceiling(
               key: const ValueKey<String>('memory-allowance-slider'),
-              min: min,
               max: max,
+              floor: floor,
               value: value,
-              scale: FieldSliderScale.exponential,
+              levels: [
+                (value: totalBytes / _mb, color: _MarkColor.grey.resolved),
+                (value: trackedBytes / _mb, color: _MarkColor.accent.resolved),
+              ],
+              color: _MarkColor.allowance.resolved,
               // The bar writes its own digits (F-34); in megabytes they
               // read the way the rows beside it do.
               unit: 'MB',
-              onChanged: (mb) => onDragged((mb * _mb).round()),
+              // Nothing previews the drag but the bar itself (see above).
+              onChanged: (_) {},
               onChangeEnd: (mb) => onChosen((mb * _mb).round()),
             ),
           ),
@@ -417,85 +438,6 @@ class _AllowanceRow extends StatelessWidget {
             onPressed: chosen ? onAutomatic : null,
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// The three tiers on one scale — the DEVICE's memory is the bar, the
-/// allowance an outline inside it, and what the process uses the fill
-/// inside that (grey the whole process, accent the part we can name).
-///
-/// ⚠️On a desktop the fill is a sliver of the bar — which is the answer to
-/// "where does this app stand on this machine", and the reason the live
-/// bar below keeps its own high-water scale: this one could never show a
-/// cache filling.
-class _TierBar extends StatelessWidget {
-  const _TierBar({
-    required this.deviceBytes,
-    required this.allowanceBytes,
-    required this.totalBytes,
-    required this.trackedBytes,
-  });
-
-  final int? deviceBytes;
-  final int allowanceBytes;
-  final int totalBytes;
-  final int trackedBytes;
-
-  @override
-  Widget build(BuildContext context) {
-    // An unknown device (no engine: tests, host runs) scales to the
-    // largest thing drawn, so nothing runs off the end.
-    final scale = math.max(
-      deviceBytes ?? math.max(allowanceBytes, totalBytes),
-      1,
-    );
-    double fraction(int bytes) => (bytes / scale).clamp(0.0, 1.0);
-    return SizedBox(
-      key: const ValueKey<String>('memory-tier-bar'),
-      height: 12,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.hairline),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: width * fraction(totalBytes),
-                child: const ColoredBox(color: AppColors.hairline),
-              ),
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: width * fraction(trackedBytes),
-                child: ColoredBox(color: AppColors.accent),
-              ),
-              Positioned(
-                key: const ValueKey<String>('memory-tier-allowance'),
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: width * fraction(allowanceBytes),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.textDim, width: 1.5),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
       ),
     );
   }

@@ -9,7 +9,10 @@ import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/dialogs/memory_settings_section.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/cache_budgets.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/services/persistence/app_memory_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -229,8 +232,6 @@ void main() {
         ),
       );
       for (final key in [
-        'memory-tier-bar',
-        'memory-tier-allowance',
         'memory-allowance-slider',
         'memory-live-bar',
         'memory-legend-allowance',
@@ -241,6 +242,61 @@ void main() {
       }
       expect(find.text(AppText.strings.memoryDeviceTotal), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 600));
+    });
+
+    testWidgets('🗣️F-480: ONE bar — the allowance is set on the device\'s '
+        'own scale, outlined over what the process uses', (tester) async {
+      // 「비율이 고정슬라이더가 아니라 변동슬라이더 … 고정값으로. 그렇게 하고
+      // 밑, 두번째 슬라이더랑 내용적으로 같아지니 내용 서로 합쳐서 통합」.
+      final session = newSession();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MemorySettingsSection(
+              session: session,
+              openSessions: [session],
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      final bar = tester.widget<FieldSlider>(
+        find.byKey(const ValueKey<String>('memory-allowance-slider')),
+      );
+      const mb = 1024 * 1024;
+      // The figure a total row writes beside its label — the same sample the
+      // bar was handed.
+      String figureOf(String label) => tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find
+                  .ancestor(of: find.text(label), matching: find.byType(Row))
+                  .first,
+              matching: find.byType(Text),
+            ),
+          )
+          .last
+          .data!;
+
+      expect(bar.min, 0, reason: 'the bar is the device, from nothing');
+      expect(bar.scale, FieldSliderScale.linear);
+      expect(bar.floor, CacheBudgets.floors.total / mb);
+      expect(
+        [for (final level in bar.levels!) level.color],
+        [AppColors.hairline, AppColors.accent],
+        reason: 'the whole process, then the part we can name over it — the '
+            'legend\'s marks',
+      );
+      expect(
+        '${bar.levels!.first.value.toStringAsFixed(1)}MB',
+        figureOf(AppText.strings.memoryProcessTotal),
+      );
+      expect(
+        '${bar.levels!.last.value.toStringAsFixed(1)}MB',
+        figureOf(AppText.strings.memoryTracked),
+      );
+      expect(bar.color, AppColors.textDim, reason: 'the legend\'s ring');
     });
 
     testWidgets('what sits outside the allowance is named from the census — '

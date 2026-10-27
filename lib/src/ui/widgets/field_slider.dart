@@ -13,7 +13,7 @@ import '../theme/app_theme.dart';
 import '../theme/disabled_ink.dart';
 import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
-import '../timeline/memo_token.dart' show Kept, keptWhileSame;
+import '../timeline/memo_token.dart' show ByList, Kept, keptWhileSame;
 import 'ground_ink_writing.dart';
 import 'inline_numeric_field.dart';
 import 'owning_axis_grip.dart';
@@ -31,6 +31,10 @@ enum FieldSliderScale {
   /// where precision matters (brush size, spacing). Requires `min > 0`.
   exponential,
 }
+
+/// One thing a [FieldSlider.ceiling] shows under its value: a fill from 0
+/// to [value], in [color].
+typedef FieldSliderLevel = ({double value, Color color});
 
 /// The app's shared settings slider: a filled-bar *field* where the whole bar
 /// is the control (no thumb — friendlier to touch/stylus) and the label and
@@ -87,7 +91,9 @@ class FieldSlider extends StatefulWidget {
     this.axis = Axis.horizontal,
     this.nameInside = true,
     this.upright = false,
-  }) : assert(max > min, 'max must exceed min'),
+  }) : levels = null,
+       floor = null,
+       assert(max > min, 'max must exceed min'),
        assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
@@ -133,6 +139,8 @@ class FieldSlider extends StatefulWidget {
        color = null,
        restingAccent = null,
        stops = null,
+       levels = null,
+       floor = null,
        height = defaultHeight,
        axis = Axis.horizontal,
        upright = false,
@@ -188,6 +196,8 @@ class FieldSlider extends StatefulWidget {
        max = 1,
        divisions = 100,
        stops = null,
+       levels = null,
+       floor = null,
        scale = FieldSliderScale.linear,
        // 🚨THE MICRO OPACITY BAR WRITES THE NUMBER ALONE (유저 2026-09-10:
        // 「타임라인 레이어영역에 있는 슬라이더 미니버전. **미니버전은 텍스트에
@@ -206,6 +216,44 @@ class FieldSlider extends StatefulWidget {
        // and saying the scale here is what lets the digit rule see that.
        displayScale = 100,
        valueTextBuilder = null;
+
+  /// **A CEILING bar**: its value is a LIMIT, set over the [levels] it
+  /// shows beneath it. The track is the whole scale, 0 to [max]; every level
+  /// fills from 0 in its own colour, and the value is drawn as an OUTLINE
+  /// over them, so what it limits stays in sight. It cannot be set under
+  /// [floor]: a drag stops there rather than showing a value the setting
+  /// would not take.
+  ///
+  /// 🗣️F-480 (유저 2026-10-27): the memory allowance's slider and the device
+  /// bar under it — 「두번째 슬라이더랑 내용적으로 같아지니 내용 서로
+  /// 합쳐서 통합」 — are one bar, the allowance outlined over the use
+  /// (F-480-Q2 a: 「사용량 채움 위에 허용치 손잡이」).
+  const FieldSlider.ceiling({
+    super.key,
+    required this.value,
+    required this.max,
+    required double this.floor,
+    required List<FieldSliderLevel> this.levels,
+    required this.onChanged,
+    this.onChangeEnd,
+    this.unit = '',
+    this.color,
+  }) : min = 0,
+       displayScale = 1,
+       valueTextBuilder = null,
+       restingText = null,
+       restingAccent = null,
+       label = null,
+       scale = FieldSliderScale.linear,
+       divisions = null,
+       stops = null,
+       fillOrigin = null,
+       height = defaultHeight,
+       axis = Axis.horizontal,
+       nameInside = true,
+       upright = false,
+       assert(max > 0, 'max must exceed min'),
+       assert(floor <= max, 'the floor stands on the scale');
 
   /// Current value in model units (e.g. 0..1 for opacity).
   final double value;
@@ -286,6 +334,14 @@ class FieldSlider extends StatefulWidget {
   /// offset — passes its neutral value instead, so the fill leaves centre
   /// in the direction of the setting and hard-left stops reading as empty.
   final double? fillOrigin;
+
+  /// What a [FieldSlider.ceiling] shows under its value, painted in order —
+  /// a later level over an earlier one. Null on every other bar.
+  final List<FieldSliderLevel>? levels;
+
+  /// The least a [FieldSlider.ceiling] can be set to; its scale still starts
+  /// at [min]. Null on every other bar.
+  final double? floor;
 
   /// The bar's extent ACROSS its axis — thickness, not length. The length
   /// always comes from the host.
@@ -511,7 +567,7 @@ class FieldSlider extends StatefulWidget {
       final step = (max - min) / divisions;
       value = min + ((value - min) / step).round() * step;
     }
-    return value.clamp(min, max);
+    return value.clamp(floor ?? min, max);
   }
 
   /// Where one step [direction] from [value] lands: the next of the
@@ -603,6 +659,9 @@ class _FieldSliderState extends State<FieldSlider> {
   /// Label and value stay ONE ink per ground: 09-10 flattened their dim and
   /// bright pair by decision, and that is not what was reversed.
   List<GroundInkRun> _inkRuns(double t, Color accent) {
+    if (widget.levels != null) {
+      return _inkRunsOverLevels();
+    }
     final near = math.min(_originFraction, t);
     final far = math.max(_originFraction, t);
     // A stood-up bar's writing is the row turned a quarter clockwise, so its
@@ -619,6 +678,53 @@ class _FieldSliderState extends State<FieldSlider> {
       onTrack: _asDrawn(textOnColor(AppColors.surface)),
     );
   }
+
+  /// A ceiling bar's levels, as where each ends along the track
+  /// ([FieldSlider.ceiling]) — none on every other bar.
+  List<({double t, Color color})> get _laidLevels => [
+    for (final level in widget.levels ?? const <FieldSliderLevel>[])
+      (t: widget._tFor(level.value), color: level.color),
+  ];
+
+  /// A ceiling bar's ink: the ground under each stretch of the writing is
+  /// the level on top there, or the empty track past them all — the value's
+  /// outline is an edge, not a ground.
+  List<GroundInkRun> _inkRunsOverLevels() {
+    final laid = _laidLevels;
+    final ends = {
+      for (final level in laid)
+        if (level.t > 0) level.t,
+      1.0,
+    }.toList()..sort();
+    Color groundUpTo(double end) => laid
+        .lastWhere(
+          (level) => level.t >= end,
+          orElse: () => (t: 1.0, color: AppColors.surface),
+        )
+        .color;
+    return [
+      for (final end in ends)
+        (end: end, ink: _asDrawn(textOnColor(groundUpTo(end)))),
+    ];
+  }
+
+  /// What the track fills: the value, from its origin — or on a ceiling
+  /// bar, its levels with the value's outline over them.
+  CustomPainter _trackFill(double t, Color accent) => widget.levels == null
+      ? _FieldSliderTrackPainter(
+          axis: widget.axis,
+          t: t,
+          originT: _originFraction,
+          accent: _asDrawn(accent),
+        )
+      : _FieldSliderCeilingPainter(
+          levels: [
+            for (final level in _laidLevels)
+              (t: level.t, color: _asDrawn(level.color)),
+          ],
+          t: t,
+          edge: _asDrawn(accent),
+        );
 
   /// [color] the way this bar draws it — dimmed when the bar is disabled.
   ///
@@ -980,12 +1086,7 @@ class _FieldSliderState extends State<FieldSlider> {
       onExtent: _takeTrackExtent,
       frame: FieldSlider.frameOf(widget.height, enabled: _enabled),
       shape: AppShapes.container(_radius),
-      fill: _FieldSliderTrackPainter(
-        axis: widget.axis,
-        t: t,
-        originT: _originFraction,
-        accent: _asDrawn(accent),
-      ),
+      fill: _trackFill(t, accent),
       child: acrossBox(
         widget.axis,
         widget.height,
@@ -1226,6 +1327,52 @@ class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {
 
   @override
   Object get props => (t, originT, axis, accent);
+}
+
+/// A [FieldSlider.ceiling]'s track: its levels filled from the left, a
+/// later one over an earlier one, and the value as an outline over them.
+class _FieldSliderCeilingPainter extends CustomPainter with RepaintOnProps {
+  const _FieldSliderCeilingPainter({
+    required this.levels,
+    required this.t,
+    required this.edge,
+  });
+
+  /// Where each level ends along the track, 0..1, and its colour.
+  final List<({double t, Color color})> levels;
+
+  /// Where the value — the outline's far edge — sits along the track.
+  final double t;
+
+  final Color edge;
+
+  /// The outline's stroke: the one the device bar drew the allowance in
+  /// before the two bars were one (F-480).
+  static const double edgeWidth = 1.5;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final level in levels) {
+      if (level.t > 0) {
+        canvas.drawRect(
+          Rect.fromLTWH(0, 0, size.width * level.t, size.height),
+          Paint()..color = level.color,
+        );
+      }
+    }
+    final reach = math.max(size.width * t, edgeWidth);
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, reach, size.height).deflate(edgeWidth / 2),
+      Paint()
+        ..color = edge
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = edgeWidth,
+    );
+  }
+
+  // A list compares by identity; its levels are records, so by value.
+  @override
+  Object get props => (ByList(levels), t, edge);
 }
 
 /// The bar's TRACK, as one box: its [frame] under everything, its [fill]
