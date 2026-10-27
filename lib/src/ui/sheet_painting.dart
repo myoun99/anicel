@@ -413,7 +413,10 @@ class SheetDeviceGrid {
 }
 
 /// A picture the paper's ink yields to: the picture, [canvas] — the corners
-/// of the cut's canvas on the paper, as its camera lays them — and
+/// of the cut's canvas on the paper, as its camera lays them: what its
+/// outline is cut by (`pictureOutline`), and the pen takes exactly that, so
+/// a stroke's piece in a corner the picture cuts away stays on the paper
+/// that shows it — and
 /// [canvasToPaper], the map that lays them there (`conteCanvasToPaper`):
 /// the one its live composite is drawn through, and so the one its print
 /// is laid by (F-215).

@@ -540,6 +540,9 @@ import '../../tool/refactor/clone_scan.dart';
 /// viewer's pages take the order with no pins. 🔜The third pinned cache
 /// moves the filter into the order (its entries less the pinned keys) and
 /// lowers this back.
+/// ↩️The pair left with `07bed0139` (one-picture-per-frame ②-5b — the
+/// row cache keeps no pictures, so it has no budget), and the ceiling did
+/// not follow it (91 → 90 below).
 /// 🔬Measured on the lane over master (`a1317441e`, at 89): this one
 /// added, none gone.
 /// 90 → 91 (2026-10-24, D7-2 — the patches waiting at the cap laid as
@@ -584,8 +587,39 @@ import '../../tool/refactor/clone_scan.dart';
 /// the cap's lay nor the levels' landing is left to take one.
 /// 🔬Measured on the lane over master (`12f2dbcfd`, at 86): none added,
 /// that one gone.
+/// 91 → 90 (2026-10-27, one-picture-per-frame's ceiling). The pair gone:
+///
+///     46 tokens
+///       lib/src/ui/conte/conte_picture_ink.dart
+///         _canvasOnPaper
+///       lib/src/ui/playback/camera_shot.dart
+///         outlineThrough
+///
+/// A canvas's corners through a map — and a third spelling stood inline in
+/// the live conte picture's clip — so the three are one: both conte sites
+/// call [outlineThrough]. The pair came unnamed with `0633fca64` (②-5b-3,
+/// the outline put back from a level's rect to the canvas's corners), in
+/// slack the transition left: the ceiling stayed at 92 when `07bed0139`
+/// took three pairs away (the cache budgets above, the row cache's two
+/// halvings, the selection's stroke clip beside the stack view's row
+/// paint), and came only to 91 when the store's turn pair left, the scan
+/// then at 85 (`59469bbe0`).
+/// ⚠️Six more came unnamed in that slack on 2026-10-27 (85 → 91 at
+/// `dd6e1a1b4`), none of them read here:
+///
+///       brush_canvas_panel.dart  _landTraced · _showTraced
+///       cut_envelope_edit_layer.dart  CutEnvelopeEditLayer.build
+///         · timesheet_header_edit_layer.dart  TimesheetHeaderEditLayer.build
+///       timeline_frame_range_gesture.dart  the two layers' _startDrag
+///       effect_lane_editing.dart  _editInk · _editParameter, and
+///         _editStand · _editInk — three bodies of one family
+///       editor_canvas_area.dart  _referenceBox · _effectBox
+///
+/// 🔜Each lane that laid one names it here, or merges it.
+/// 🔬Measured on the lane over master (`dd6e1a1b4`, at 91): none added,
+/// this one gone.
 void main() {
-  const ceiling = 91;
+  const ceiling = 90;
 
   test(
     'clone candidates across bodies do not grow past the round\'s count',

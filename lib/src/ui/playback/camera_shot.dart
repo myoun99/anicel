@@ -249,7 +249,9 @@ List<Offset> outlineOnScreen(
 );
 
 /// The corners of [size]'s canvas through [toScreen] — on whole canvas
-/// pixels, where a picture of it ends.
+/// pixels, where a picture of it ends. ⛔ONE spelling of them: a conte
+/// picture's canvas on its paper and in its box are the same corners
+/// through its own map.
 ///
 /// ↩️A rect, out to the grid of the level the display drew at first
 /// (`wholeLevelPixelsOutward`), where a picture reduced to that level

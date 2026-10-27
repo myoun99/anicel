@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/sheet_marks.dart';
 import '../../services/cel_surface_as_shown.dart';
 import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
+import '../playback/camera_shot.dart' show outlineThrough;
 import '../playback/frame_picture_view.dart';
 import '../canvas/outline_clipper.dart';
 import '../editor_session_manager.dart';
@@ -151,22 +151,14 @@ class ContePictureLive extends StatelessWidget {
     // The overlay shows its pictures in place of the painter's tiles below,
     // so through the chain they are shown through.
     window.overlay.sourceEffects = drawn.activeSourceEffects;
-    final canvas = picture.cut.canvasSize;
-    final corners = canvas.canvasRect;
     return Stack(
       children: [
         const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
         Positioned.fill(
           child: ClipPath(
-            clipper: OutlineClipper([
-              for (final corner in [
-                corners.topLeft,
-                corners.topRight,
-                corners.bottomRight,
-                corners.bottomLeft,
-              ])
-                MatrixUtils.transformPoint(canvasToBox, corner),
-            ]),
+            clipper: OutlineClipper(
+              outlineThrough(picture.cut.canvasSize, canvasToBox),
+            ),
             child: FramePictureView(
               key: ValueKey<String>('conte-picture-live-${window.id}'),
               run: (
