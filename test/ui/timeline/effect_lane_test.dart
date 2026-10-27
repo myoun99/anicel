@@ -114,9 +114,9 @@ void main() {
       final rows = effectPropertyLanes([hue()], isExpanded: (_) => true);
       expect(rows.map((row) => row.label), [
         'Hue/Saturation',
-        'Hue',
-        'Saturation',
-        'Lightness',
+        'Master Hue',
+        'Master Saturation',
+        'Master Lightness',
       ]);
       expect(rows.skip(1).every((row) => row.showsKeyNavigator), isTrue);
     });

@@ -81,13 +81,18 @@ enum EffectKind {
     isBasic: false,
     staysOnItsRow: false,
   ),
+  // 🗣️I-132-Q4 (유저 2026-10-27): 「이름 · 범위만 AE 에 맞추고 식은 지금대로」
+  // — the names and ranges are AE's Hue/Saturation (Adobe's help, read
+  // 2026-10-27: Master Hue −180…180, Master Saturation and Lightness
+  // −100…100), the matrix is ours. The ids stay: they address lanes and
+  // strings, and no one sees them.
   hueSaturation(
     'hueSaturation',
     label: 'Hue/Saturation',
     parameters: [
       EffectParameterSpec(
         id: 'hue',
-        label: 'Hue',
+        label: 'Master Hue',
         defaultValue: 0,
         minimum: -180,
         maximum: 180,
@@ -95,14 +100,14 @@ enum EffectKind {
       ),
       EffectParameterSpec(
         id: 'saturation',
-        label: 'Saturation',
+        label: 'Master Saturation',
         defaultValue: 0,
         minimum: -100,
         maximum: 100,
       ),
       EffectParameterSpec(
         id: 'lightness',
-        label: 'Lightness',
+        label: 'Master Lightness',
         defaultValue: 0,
         minimum: -100,
         maximum: 100,
