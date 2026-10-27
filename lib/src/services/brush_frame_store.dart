@@ -130,6 +130,16 @@ class BrushFrameStore {
     return surfaceBehindReach(surface, _pasteboardReach);
   }
 
+  /// [surface] cut behind this store's wall here, on this isolate, when the
+  /// wall takes anything of it ([cutBehindReach]) — counted as [_behind]
+  /// counts.
+  BitmapSurface? _cutHere(BitmapSurface surface) {
+    if (surface.pasteboardReach != _pasteboardReach) {
+      celsWalledHere += 1;
+    }
+    return cutBehindReach(surface, _pasteboardReach);
+  }
+
   /// How many pictures [_behind] has put behind this store's wall here, on
   /// this isolate — none that a worker laid behind it already
   /// ([_adoptedBehind]).
@@ -176,13 +186,15 @@ class BrushFrameStore {
     for (final key in _bakedSurfaces.keys.toList()) {
       final surface = _bakedSurfaces[key]!;
       final worked = hotAhead?[key];
-      // Taken only for the very picture it was worked out from.
-      final behind =
-          (identical(worked?.from, surface) ? worked?.made : null) ??
-          _behind(surface);
-      if (keepsEveryPixel(surface, behind)) {
-        // The wall moved and not a byte: the cel stays as clean as it was.
-        _storeHot(key, behind);
+      // Taken only for the very picture it was worked out from: what the
+      // worker cut of it, or null where it took nothing.
+      final behind = identical(worked?.from, surface)
+          ? worked!.made
+          : _cutHere(surface);
+      if (behind == null) {
+        // The wall moved and not a pixel with it: the cel stays as clean as
+        // it was, its very tiles.
+        _storeHot(key, surface.copyWith(pasteboardReach: reach));
       } else {
         cut[key] = surface;
         storeBakedSurface(key, behind);
