@@ -61,6 +61,7 @@ void main() {
       ShortcutShelf.timesheet,
       ShortcutShelf.conteSheet,
       ShortcutShelf.envelope,
+      ShortcutShelf.palette,
     ]);
     expect(ShortcutShelf.pills.path, [
       ShortcutShelf.timeline,
@@ -97,6 +98,7 @@ void main() {
       (EditorActionIds.timesheetFormat, ShortcutShelf.timesheet),
       (EditorActionIds.conteFormat, ShortcutShelf.conteSheet),
       (EditorActionIds.envelopeFormat, ShortcutShelf.envelope),
+      (EditorActionIds.paletteNew, ShortcutShelf.palette),
     ]) {
       expect(shelfOf(id), shelf, reason: id);
     }

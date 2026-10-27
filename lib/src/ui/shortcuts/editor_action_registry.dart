@@ -801,6 +801,7 @@ abstract final class EditorActionIds {
   static const timesheetDataMode = 'timesheet-data-mode';
   static const conteFormat = 'conte-format';
   static const envelopeFormat = 'envelope-format';
+  static const paletteNew = 'palette-new';
 
   /// The tool settings' own buttons (I-40), pressed the same way, as the
   /// settings of the tool in hand.
@@ -2115,6 +2116,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.envelopeFormat,
     name: (language) => AppStrings.of(language).envelopeFormatTitle,
     shelf: ShortcutShelf.envelope,
+    defaultActivators: const [],
+    panelButton: true,
+  ),
+  // The palette panel's ＋ (I-131): a new palette, the default from then.
+  EditorActionDefinition.composed(
+    id: EditorActionIds.paletteNew,
+    name: (language) => AppStrings.of(language).paletteNew,
+    shelf: ShortcutShelf.palette,
     defaultActivators: const [],
     panelButton: true,
   ),

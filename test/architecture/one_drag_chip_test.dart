@@ -21,6 +21,11 @@ void main() {
     'lib/src/ui/brush/brush_preset_reorder_grid.dart':
         'the preset CELL itself, lifted — the grid shows what moves by '
         'moving it',
+    // I-131: a place has no name for a chip to say — what moves is the
+    // colour, and the circle under the finger is it.
+    'lib/src/ui/color/color_palettes.dart':
+        'the place\'s COLOUR itself, lifted — a palette\'s place is a '
+        'circle of its colour and nothing else',
   };
 
   test('every drag feedback in lib is the one chip, or a live subject in '

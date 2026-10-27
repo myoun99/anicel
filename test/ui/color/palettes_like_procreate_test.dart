@@ -11,8 +11,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/color_palette_file_service.dart';
+import 'package:anicel/src/ui/color/color_palettes.dart';
 import 'package:anicel/src/ui/color/color_panels.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/theme/disabled_ink.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/overflow_scrollers.dart';
 
@@ -183,6 +185,38 @@ void main() {
 
       expect(identical(desk.palettes, before), isTrue);
       expect(desk.picks, isEmpty);
+    });
+
+    testWidgets('the place a colour is carried out of shows it dimmed — its '
+        'own colours, with no layer over them', (tester) async {
+      await _open(tester);
+      final gesture = await tester.startGesture(
+        tester.getCenter(_place('p1', 0)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(1, 1));
+      await tester.pump();
+      await gesture.moveTo(tester.getCenter(_place('p1', 5)));
+      await tester.pump();
+
+      final left = find.descendant(
+        of: _place('p1', 0),
+        matching: find.byType(DecoratedBox),
+      );
+      expect(
+        [
+          for (final box in tester.widgetList<DecoratedBox>(left))
+            ?(box.decoration as BoxDecoration).color,
+        ],
+        [dimmedIfDisabled(const Color(_red), enabled: false)],
+      );
+      expect(
+        find.descendant(of: _place('p1', 0), matching: find.byType(Opacity)),
+        findsNothing,
+        reason: 'a layer is a repaint boundary inside the panel\'s bake',
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a place takes no colour carried from another palette', (
@@ -475,6 +509,11 @@ void main() {
         size: const Size(500, 700),
       );
       expect(tester.getSize(_place('p1', 0)), const Size(24, 24));
+      expect(
+        tester.getSize(_key('palette-under-picker')).height,
+        PaletteUnderPicker.maxExtent,
+        reason: 'the floor counts what the places stand, their gaps and all',
+      );
     });
   });
 

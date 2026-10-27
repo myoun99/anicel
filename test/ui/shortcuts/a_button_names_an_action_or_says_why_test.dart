@@ -46,6 +46,9 @@ const ledger = <String, Why>{
   "brush/guide_panels.dart | 'guide-delete-\${guide.id.value}'": Why.aRow,
   "brush/guide_panels.dart | 'guide-remove'": Why.aRow,
   "brush/guide_panels.dart | 'guide-rename-\${guide.id.value}'": Why.aRow,
+  // A palette's − (I-131): it takes the current colour out of the palette
+  // whose name row it stands on.
+  "color/color_palettes.dart | 'palette-\${palette.id}-remove'": Why.aRow,
   "media/media_pool_panel.dart | 'media-asset-in-use-\${asset.path}'":
       Why.aRow,
   "menu/editor_top_strip.dart | 'project-tab-close-\$index'": Why.aRow,
@@ -119,6 +122,9 @@ const ledger = <String, Why>{
   // The strip's popover buttons, made by one widget.
   'menu/editor_top_strip.dart | keyValue': Why.aSecondLevel,
   "timeline/timeline_action_toolbar.dart | 'timeline-effects-button'":
+      Why.aSecondLevel,
+  // A palette's ⋯ (I-131): it opens that palette's menu.
+  "color/color_palettes.dart | 'palette-\${palette.id}-more'":
       Why.aSecondLevel,
   // The cut pill's name cell, read alone since its ＋ is zoned apart from
   // it round the cut's name (F-463) — the fx pill's door.

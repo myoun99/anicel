@@ -64,6 +64,12 @@ const ledger = <String, Why>{
   "media/media_pool_panel.dart | 'media-asset-menu-relink'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-remove'": Why.declined,
   "media/media_pool_panel.dart | 'media-asset-menu-rename'": Why.declined,
+  // ⚠️MY READING of I-40-Q2's answer, not a question of its own: a
+  // palette's ⋯ is a row's menu as a file's ⋮ is — which palette would a
+  // key take? (I-131)
+  "color/color_palettes.dart | 'palette-delete'": Why.declined,
+  "color/color_palettes.dart | 'palette-duplicate'": Why.declined,
+  "color/color_palettes.dart | 'palette-make-default'": Why.declined,
   // 🗣️I-40-Q3 (유저 2026-10-09, two viewers — which one would a key take?):
   // 「안만들기로했음」.
   "media/media_viewer_tab_host.dart | _key('register-asset-button')":

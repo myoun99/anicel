@@ -25,8 +25,12 @@ import '../../services/color_palette_file_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/dialog_verb.dart';
 import '../input/control_press_claim.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
+import '../shortcuts/panel_keys.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
+import '../theme/disabled_ink.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/inline_edit_field.dart';
 import '../widgets/owning_draggable.dart';
@@ -87,6 +91,37 @@ const double _cardColumnGap = 8;
 const double _cardHexGap = 4;
 const double _cardHexHeight = 12;
 
+/// [count] cells, [columns] to a row, each as [cell] sizes it — the
+/// compact places and the cards are this one walk.
+Widget _rowsOf({
+  required int count,
+  required int columns,
+  required double rowGap,
+  required double columnGap,
+  required Widget Function(int index) cell,
+}) {
+  final rows = (count / columns).ceil();
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    spacing: rowGap,
+    children: [
+      for (var row = 0; row < rows; row += 1)
+        Row(
+          spacing: columnGap,
+          children: [
+            for (
+              var index = row * columns;
+              index < math.min(count, (row + 1) * columns);
+              index += 1
+            )
+              cell(index),
+          ],
+        ),
+    ],
+  );
+}
+
 /// [count] places, ten to a row, sharing the width they are given.
 class _CompactPlaces extends StatelessWidget {
   const _CompactPlaces({required this.count, required this.place});
@@ -110,27 +145,15 @@ class _CompactPlaces extends StatelessWidget {
           0.0,
           math.min(_compactMaxExtent, room / _compactColumns),
         );
-        final rows = (count / _compactColumns).ceil();
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (var row = 0; row < rows; row += 1) ...[
-              if (row > 0) const SizedBox(height: _compactGap),
-              Row(
-                children: [
-                  for (var column = 0; column < _compactColumns; column += 1)
-                    if (row * _compactColumns + column < count) ...[
-                      if (column > 0) const SizedBox(width: _compactGap),
-                      SizedBox.square(
-                        dimension: extent,
-                        child: place(row * _compactColumns + column, extent),
-                      ),
-                    ],
-                ],
-              ),
-            ],
-          ],
+        return _rowsOf(
+          count: count,
+          columns: _compactColumns,
+          rowGap: _compactGap,
+          columnGap: _compactGap,
+          cell: (index) => SizedBox.square(
+            dimension: extent,
+            child: place(index, extent),
+          ),
         );
       },
     );
@@ -147,48 +170,44 @@ class _CardPlaces extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hexStyle = ColorStatusBar.readout.copyWith(color: AppColors.textDim);
-    final rows = (slots.length / _cardColumns).ceil();
-    Widget card(int index) {
-      final color = slots[index];
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox.square(
-            dimension: _cardExtent,
-            child: place(index, _cardExtent),
-          ),
-          const SizedBox(height: _cardHexGap),
-          SizedBox(
-            height: _cardHexHeight,
-            child: Text(
-              color == null ? '' : colorHexOf(color),
-              style: hexStyle,
-              maxLines: 1,
-            ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var row = 0; row < rows; row += 1) ...[
-          if (row > 0) const SizedBox(height: _cardRowGap),
-          Row(
-            children: [
-              for (var column = 0; column < _cardColumns; column += 1) ...[
-                if (column > 0) const SizedBox(width: _cardColumnGap),
-                Expanded(
-                  child: row * _cardColumns + column < slots.length
-                      ? card(row * _cardColumns + column)
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = math.max(
+          0.0,
+          (constraints.maxWidth - _cardColumnGap * (_cardColumns - 1)) /
+              _cardColumns,
+        );
+        return _rowsOf(
+          count: slots.length,
+          columns: _cardColumns,
+          rowGap: _cardRowGap,
+          columnGap: _cardColumnGap,
+          cell: (index) {
+            final color = slots[index];
+            return SizedBox(
+              width: width,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: _cardExtent,
+                    child: place(index, _cardExtent),
+                  ),
+                  const SizedBox(height: _cardHexGap),
+                  SizedBox(
+                    height: _cardHexHeight,
+                    child: Text(
+                      color == null ? '' : colorHexOf(color),
+                      style: hexStyle,
+                      maxLines: 1,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -303,17 +322,25 @@ class _PlaceState extends State<_Place> {
     }
   }
 
-  BoxDecoration _circle(int? color) => BoxDecoration(
-    color: color == null ? null : Color(color),
+  /// [color]'s circle — dimmed, as the place its colour was carried out
+  /// of: the colours themselves, never a layer over them
+  /// (`disabled_ink.dart`).
+  BoxDecoration _circle(int? color, {bool left = false}) => BoxDecoration(
+    color: color == null
+        ? null
+        : dimmedIfDisabled(Color(color), enabled: !left),
     // F-23 (유저 2026-08-24): 「색 보여주는건 싹 다 일반 동그라미로」 —
     // the palette's places were the last rounded squares (I-131).
     shape: BoxShape.circle,
     // An empty palette place wears the stronger ring: it is a place a
     // press fills. An empty recent one only holds the row's room.
     border: Border.all(
-      color: color == null && widget.at != null
-          ? AppColors.hairlineStrong
-          : AppColors.hairline,
+      color: dimmedIfDisabled(
+        color == null && widget.at != null
+            ? AppColors.hairlineStrong
+            : AppColors.hairline,
+        enabled: !left,
+      ),
     ),
   );
 
@@ -324,12 +351,6 @@ class _PlaceState extends State<_Place> {
     if (onPressed == null) {
       return circle;
     }
-    final face = InkWell(
-      mouseCursor: AppCursors.press,
-      customBorder: const CircleBorder(),
-      onTap: silentPress(_press),
-      child: circle,
-    );
     final at = widget.at;
     final color = widget.color;
     // ⚠️The carry sits INSIDE the claim, and the order is the point: the
@@ -339,7 +360,14 @@ class _PlaceState extends State<_Place> {
     // the raw lift ([ControlPressClaim]).
     final claimed = ControlPressClaim(
       onPressed: _press,
-      child: at == null || color == null ? face : _carrying(face, color, at),
+      child: InkWell(
+        mouseCursor: AppCursors.press,
+        customBorder: const CircleBorder(),
+        onTap: silentPress(_press),
+        child: at == null || color == null
+            ? circle
+            : _carrying(circle, color, at),
+      ),
     );
     if (at == null) {
       return claimed;
@@ -367,7 +395,7 @@ class _PlaceState extends State<_Place> {
     );
   }
 
-  Widget _carrying(Widget face, int color, _At at) => Builder(
+  Widget _carrying(Widget circle, int color, _At at) => Builder(
     // 🚨★★★F-138 (유저 확정 2026-09-18): 「브러시처럼 **서있어야 하는곳**은
     // 누른 상자 벗어나면 시작으로」. A press on a place picks, so it is a
     // thing you stand on: the carry starts as the pointer leaves it. ⛔The
@@ -389,13 +417,12 @@ class _PlaceState extends State<_Place> {
           elevation: 6,
         ),
       ),
-      childWhenDragging: Opacity(
-        opacity: 0.35,
-        child: DecoratedBox(decoration: _circle(color)),
+      childWhenDragging: DecoratedBox(
+        decoration: _circle(color, left: true),
       ),
       onDragStarted: () => setState(() => _carried = true),
       onDragEnd: (_) => setState(() => _carried = false),
-      child: face,
+      child: circle,
     ),
   );
 }
@@ -500,6 +527,8 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     return strings.paletteNumbered(highest + 1);
   }
 
+  void _newPalette() => _change((now) => now.withNewPalette(_newName()));
+
   Future<void> _delete(NamedPalette palette) {
     final strings = AppText.strings;
     return confirmThenCommit(
@@ -580,11 +609,12 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
         ),
         AppIconButton(
           keyValue: 'palette-new',
-          tooltip: strings.paletteNew,
+          tooltip: editorActionLabel(EditorActionIds.paletteNew),
+          shortcuts: const [EditorActionIds.paletteNew],
           // 「＋가 있는 모든 곳, 공통적으로」 — the glyph wears the accent,
           // not the button around it.
           icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: true)),
-          onPressed: () => _change((now) => now.withNewPalette(_newName())),
+          onPressed: _newPalette,
         ),
       ],
     );
@@ -695,33 +725,39 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     // and the RGB bars must not scroll. A list, so a palette is laid out
     // only while it is in view — they are thirty places each, and nothing
     // caps how many palettes there are.
-    return ListView(
-      key: const ValueKey<String>('palette-panel'),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-      children: [
-        _top(),
-        Padding(
-          padding: const EdgeInsets.only(top: 10, bottom: 4),
-          child: Text(
-            AppText.strings.colorRecent,
-            style: Theme.of(context).textTheme.labelSmall,
+    //
+    // A key presses the ＋ — the palette panel is one panel, whatever is
+    // in hand (I-40).
+    return PanelKeysBinding(
+      buttons: {EditorActionIds.paletteNew: _newPalette},
+      child: ListView(
+        key: const ValueKey<String>('palette-panel'),
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        children: [
+          _top(),
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 4),
+            child: Text(
+              AppText.strings.colorRecent,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
           ),
-        ),
-        _RecentPlaces(hands: hands),
-        for (final palette in palettes.palettes)
-          Column(
-            key: ValueKey<String>('palette-${palette.id}'),
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _head(palette),
-              _PalettePlaces(
-                palette: palette,
-                view: palettes.view,
-                hands: hands,
-              ),
-            ],
-          ),
-      ],
+          _RecentPlaces(hands: hands),
+          for (final palette in palettes.palettes)
+            Column(
+              key: ValueKey<String>('palette-${palette.id}'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _head(palette),
+                _PalettePlaces(
+                  palette: palette,
+                  view: palettes.view,
+                  hands: hands,
+                ),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }
