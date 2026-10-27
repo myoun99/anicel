@@ -679,7 +679,7 @@ import '../../tool/refactor/clone_scan.dart';
 /// seen twice. 🔜A third verb of the show (or a shape kind beyond the
 /// stroke and the area) moves the dispatch into one value [ShapeShow]
 /// takes, and lowers this back.
-/// 🔬Measured on the lane over master (`556586179`, at 90): none added,
+/// 🔬Measured on the lane over master (`01f37d61d`, at 90): none added,
 /// these four gone.
 void main() {
   const ceiling = 86;
