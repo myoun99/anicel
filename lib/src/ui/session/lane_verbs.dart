@@ -290,7 +290,7 @@ class LaneVerbs {
     // 🗣️one-band-no-lane-tail-Q2 (유저 2026-10-27): 「칸 편집」 — so Edit and
     // the double tap open the cell's editor under such a band, and the key
     // window opens where lanes alone are selected ([_selectedLaneSpan]).
-    if (_selection.frameRangeSelection.value != null) {
+    if (bandClaimsThePress) {
       return null;
     }
     return switch (_currentRow()) {
@@ -320,6 +320,20 @@ class LaneVerbs {
       _ => null,
     };
   }
+
+  /// Whether a live band claims the press as CELLS ([laneVerbRange]): the
+  /// cut's or the track's, where no lane span is selected — a band on the
+  /// camera row alone is its header's span ([_selectedLaneSpan]). The frame
+  /// board then takes the press on a lane stood on, as its row's
+  /// (`FrameClipboard.timelinePlace`), and copies the band's lanes with its
+  /// cells (🗣️one-band-no-lane-tail-Q1, 유저 2026-10-27: 「칸과 키를 같이
+  /// 든다」). ↩️Only the cut's band claimed it: on the conte a lane stood on
+  /// under the track's band still answered, and a copy there took one key
+  /// at the playhead.
+  bool get bandClaimsThePress =>
+      _selectedLaneSpan == null &&
+      (_selection.frameRangeSelection.value != null ||
+          _selection.trackFrameRangeSelection.value != null);
 
   /// The lane span a SELECTION states — [laneVerbRange]'s, before the row
   /// stood on answers — or null where nothing is selected.
@@ -1584,6 +1598,92 @@ class LaneVerbs {
     ];
   }
 
+  /// What a copy of [lane]'s keys takes ([laneKeysCopiedFrom]) and the
+  /// frames it spans — null where the range names no row a lane verb
+  /// serves, or holds no key in reach. The key board's copy
+  /// ([KeyClipboard]) and a band's ([bandKeysOf]) alike.
+  KeyCopy? keyCopyOf(TimelineLaneSelection lane) {
+    final lanes = laneKeysCopiedFrom(lane);
+    return lanes != null && lanes.any((lane) => lane.keys.isNotEmpty)
+        ? (lanes: lanes, length: lane.lengthFrames)
+        : null;
+  }
+
+  /// What a copy of the live band takes of [layerId]'s lane rows
+  /// ([_bandLaneSpans]) — the keys a frame copy banks beside that row's
+  /// cells (🗣️one-band-no-lane-tail-Q1: 「띠의 칸(블록)과 띠의 레인 행 키를
+  /// 한 복사본에 같이 싣는다」). Null where the band holds none of its lanes,
+  /// or no key on them.
+  KeyCopy? bandKeysOf(LayerId layerId) {
+    for (final lane in _bandLaneSpans()) {
+      if (lane.layerId == layerId) {
+        return keyCopyOf(lane);
+      }
+    }
+    return null;
+  }
+
+  /// [copy]'s lanes on [layerId] from [start]: the lanes it was copied off,
+  /// by their ids, over the frames it spans.
+  static TimelineLaneSelection _lanesOfCopyOn(
+    LayerId layerId,
+    KeyCopy copy, {
+    required int start,
+  }) => TimelineLaneSelection(
+    layerId: layerId,
+    laneId: copy.lanes.first.laneId,
+    startIndex: start,
+    endIndexExclusive: start + copy.length,
+    laneIds: [for (final lane in copy.lanes) lane.laneId],
+  );
+
+  /// [copy]'s keys put down on [layerId]'s lanes of the ids they were copied
+  /// off, from [start] with the [liftCount] frames there replaced — beside
+  /// the cells a paste of a band's copy lays on that row (🗣️
+  /// one-band-no-lane-tail-Q1: 「붙여넣으면 서 있는 칸에 블록, 그 레이어의
+  /// 같은 레인에 키」), by the key paste's own law ([_keysPastedOver]); with
+  /// [keepNames], the 링크 붙여넣기's. Its own step: the caller holds the
+  /// one undo.
+  void pasteKeysOnRow(
+    LayerId layerId,
+    KeyCopy copy, {
+    required ({int index, int liftCount}) at,
+    required bool keepNames,
+    required String description,
+  }) {
+    if (_keysPastedOver(
+          _lanesOfCopyOn(layerId, copy, start: at.index),
+          copy,
+          liftCount: at.liftCount,
+          keepNames: keepNames,
+        )
+        case final pasted?) {
+      _commitSpanEdit(pasted.scope, pasted.edit, description: description);
+    }
+  }
+
+  /// The names a 링크 붙여넣기 of [copy] on [layerId] ([pasteKeysOnRow])
+  /// would join at another value — what it asks about first.
+  Set<String> keyNamesJoinedOnRow(
+    LayerId layerId,
+    KeyCopy copy, {
+    required ({int index, int liftCount}) at,
+  }) =>
+      _keysPastedOver(
+        _lanesOfCopyOn(layerId, copy, start: at.index),
+        copy,
+        liftCount: at.liftCount,
+        keepNames: true,
+      )?.joins ??
+      const {};
+
+  /// The keys [copy] was taken of, off [layerId]'s lanes from [start] —
+  /// what a 잘라내기 of a band lifts beside the cells it lifts: only what it
+  /// banked (결정 14 ②ⓐ), leaving a hole as the cells' lift does (⑳). Its
+  /// own step: the caller holds the one undo.
+  void liftKeysOnRow(LayerId layerId, KeyCopy copy, {required int start}) =>
+      removeLaneKeysForSelection(_lanesOfCopyOn(layerId, copy, start: start));
+
   /// 독립 붙여넣기 of [copy] where the press stands ([laneVerbRange]), as a
   /// frame paste puts its run down ([laneKeysSpliced]): a selection
   /// replaced, standing in at the playhead — each key unnamed, a value of
@@ -1638,8 +1738,28 @@ class LaneVerbs {
     required bool keepNames,
   }) {
     final lane = laneVerbRange;
-    final scope = lane == null ? null : _laneVerbScope(lane);
-    if (lane == null || scope == null) {
+    return lane == null
+        ? null
+        : _keysPastedOver(
+            lane,
+            copy,
+            liftCount: _selectedLaneSpan == null ? 0 : lane.lengthFrames,
+            keepNames: keepNames,
+          );
+  }
+
+  /// What a paste of [copy] on [lane]'s lanes from its first frame writes,
+  /// the [liftCount] frames there replaced ([laneKeysSpliced]) — null where
+  /// it lands nothing. The press's lanes ([_laneKeysPasted]) and a band
+  /// copy's row ([pasteKeysOnRow]) alike.
+  ({_SpanScope scope, LaneEdit edit, Set<String> joins})? _keysPastedOver(
+    TimelineLaneSelection lane,
+    KeyCopy copy, {
+    required int liftCount,
+    required bool keepNames,
+  }) {
+    final scope = _laneVerbScope(lane);
+    if (scope == null) {
       return null;
     }
     final pasted = _keysSplicedInto(
@@ -1647,7 +1767,7 @@ class LaneVerbs {
       _keysPairedWith(copy.lanes, _pasteTargetsOf(scope.homes), scope.homes),
       (
         start: lane.startIndex,
-        liftCount: _selectedLaneSpan == null ? 0 : lane.lengthFrames,
+        liftCount: liftCount,
         length: copy.length,
         last: _cameraLastFrameOf(scope.layer),
       ),

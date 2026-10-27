@@ -22,6 +22,10 @@ import 'text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
 ///
 /// [place] is where the pressing panel stands ([ClipboardPlace]) — asked
 /// again when the answer comes, as the press itself would be.
+///
+/// The keys a band's copy carries beside its blocks (one-band-no-lane-tail-
+/// Q1) ask in the same window, listed as the keys' own paste lists them
+/// ([pasteLinkedKeysAskingFirst]) — one question for the one press.
 Future<void> pasteLinkedAskingFirst(
   BuildContext context,
   EditorSessionManager session, {
@@ -34,16 +38,21 @@ Future<void> pasteLinkedAskingFirst(
   await offerLink<LinkedPasteJoins>(
     context,
     joins,
-    notice: AppText.strings.linkedPasteConflictBody,
+    notice: joins.any((row) => row.held.isNotEmpty)
+        ? AppText.strings.linkedPasteConflictBody
+        : null,
     onConflict: (
       lines: (joins) => [
-        for (final row in joins)
+        for (final row in joins) ...[
           ...drawingPlaceLines(
             session.repository.requireProject(),
             row.layerId,
             row.held,
             framePlace: session.framePlaceLabel,
           ),
+          if (row.keyNames.isNotEmpty)
+            ...rowPlaceLines(session.repository.requireProject(), row.layerId),
+        ],
       ],
       join: (_) =>
           session.clipboard.pasteLinkedAt(place(), joinTakenNames: true),
