@@ -952,9 +952,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final drag = _drag;
     return drag is TransformDrag ||
         // A move's Shift keeps it to one way (I-136) — and a finger beside
-        // a pen's or a mouse's move holds it, as beside any move
-        // ([CanvasTouchContacts.aFingerHoldsAMovesShift]).
-        (drag is MoveDrag && !drag.byTouch) ||
+        // a pen's or a mouse's move holds it, as beside any move.
+        (drag is MoveDrag &&
+            CanvasTouchContacts.aMoveTakesAModifierFinger(
+              byTouch: drag.byTouch,
+            )) ||
         (drag is MarqueeDrag &&
             _aShapeTakesAModifierTouch(
               byTouch: drag.byTouch,

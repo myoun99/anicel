@@ -319,7 +319,7 @@ final class MoveDrag extends SelectionDrag {
   });
 
   /// Whether a finger drives the drag — a finger laid beside it is then not
-  /// its Shift (`CanvasTouchContacts.aFingerHoldsAMovesShift`).
+  /// its Shift (`CanvasTouchContacts.aMoveTakesAModifierFinger`).
   final bool byTouch;
 
   /// The drag so far, in screen pixels. The layer rounds it into whole
