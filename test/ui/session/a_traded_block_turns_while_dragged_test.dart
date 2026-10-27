@@ -225,8 +225,8 @@ void main() {
                       ),
                     ],
                     timeline: {
-                      0: TimelineExposure.drawing(
-                        const FrameId('out0'),
+                      0: const TimelineExposure.drawing(
+                        FrameId('out0'),
                         length: 1,
                       ),
                     },
