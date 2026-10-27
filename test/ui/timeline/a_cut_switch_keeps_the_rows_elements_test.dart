@@ -1,20 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 
 import '../../helpers/named_finders.dart';
+import '../../helpers/number_pad_keyboard.dart';
 import '../../helpers/timeline_host.dart';
 
 /// 🚨I-57 (10-13, measured on the user's project): every timeline row was
@@ -38,13 +46,114 @@ Layer _drawing(String id) => Layer(
   timeline: const {},
 );
 
-Cut _cut(CutId id, List<String> layers) => Cut(
+/// A linked picture's row: its reference button among the name's.
+Layer _picture(String id) => Layer(
+  id: LayerId(id),
+  name: id,
+  kind: LayerKind.image,
+  frames: const [],
+  timeline: const {},
+  mediaReference: MediaReference(
+    assetPath: '/$id.png',
+    pose: TransformPose(center: CanvasPoint(x: 320, y: 180)),
+    pictureSize: const CanvasSize(width: 64, height: 36),
+  ),
+);
+
+const _number = EffectId('number');
+
+/// A drawing whose cel number is drawn in a colour of its own lane, under
+/// the lane's swatch.
+Layer _numbered(String id) => Layer(
+  id: LayerId(id),
+  name: id,
+  frames: [Frame(id: FrameId('$id-cel'), duration: 1, strokes: const [])],
+  timeline: const {},
+  effects: [
+    LayerEffect(
+      id: _number,
+      kind: EffectKind.celNumber,
+      ink: PropertyTrack<int>(keys: const {}),
+    ),
+  ],
+);
+
+/// Each cut's [layers], the second of them made by [second].
+Cut _cut(
+  CutId id,
+  List<String> layers, {
+  Layer Function(String id) second = _drawing,
+}) => Cut(
   id: id,
   name: id.value,
   duration: 12,
   canvasSize: const CanvasSize(width: 640, height: 360),
-  layers: [for (final layer in layers) _drawing(layer)],
+  layers: [
+    for (final (index, layer) in layers.indexed)
+      if (index == 1) second(layer) else _drawing(layer),
+  ],
 );
+
+/// A popup a row opens (`AnchoredPopupsOpenFrom`): on the cuts' second
+/// rows ([row]) or the track's SE row ([se]), from [button] — in a lane of
+/// the [lanes] group, opened first, if it has one.
+typedef _Popup = ({
+  String name,
+  Layer Function(String id) row,
+  bool se,
+  String? lanes,
+  Finder Function(_Grid grid) button,
+  Finder window,
+});
+
+Finder _keyed(RegExp pattern) => find.byWidgetPredicate(
+  (widget) => switch (widget.key) {
+    ValueKey<String>(:final value) => pattern.hasMatch(value),
+    _ => false,
+  },
+);
+
+final _popups = <_Popup>[
+  (
+    name: 'a pencil\'s number pad',
+    row: _drawing,
+    se: false,
+    lanes: 'transform-group',
+    button: (_) => _keyed(RegExp(r'-lane-value-a2-position-edit$')),
+    window: theNumberPadsNumber,
+  ),
+  (
+    name: 'a reference\'s popover',
+    row: _picture,
+    se: false,
+    lanes: null,
+    button: (grid) => find.named('${grid.prefix}-layer-reference-a2'),
+    window: find.byKey(const ValueKey<String>('layer-reference-popover')),
+  ),
+  (
+    name: 'an SE row\'s mixer',
+    row: _drawing,
+    se: true,
+    lanes: null,
+    button: (grid) => find.named('${grid.prefix}-layer-mute-se'),
+    window: find.byKey(const ValueKey<String>('se-layer-mixer')),
+  ),
+  (
+    name: 'a colour lane\'s swatch',
+    row: _numbered,
+    se: false,
+    lanes: effectGroupLaneId(_number),
+    button: (grid) => find.byKey(
+      ValueKey<String>(
+        '${grid.prefix}-lane-color-a2-'
+        '${effectLaneId(_number, effectInkLane)}',
+      ),
+    ),
+    window: find.byKey(
+      const ValueKey<String>('color-picker-popup-dismiss-field'),
+    ),
+  ),
+];
 
 /// A grid as these tests read it: how its rows are named.
 typedef _Grid = ({
@@ -91,11 +200,14 @@ extension on _Grid {
 
 /// The timeline tab alone ([pumpTimelineHost]), as the app's window of
 /// 800 × 600 laid it unless [surface] says another — the rows' berths are
-/// the panel's.
+/// the panel's. Each cut's [second] row as [_cut] makes it; an SE row on
+/// the track with [se].
 Future<EditorSessionManager> _open(
   WidgetTester tester,
   _Grid grid, {
   Size surface = const Size(640, 320),
+  Layer Function(String id) second = _drawing,
+  bool se = false,
 }) async {
   final session = await pumpTimelineHost(
     tester,
@@ -108,8 +220,18 @@ Future<EditorSessionManager> _open(
           id: const TrackId('track'),
           name: 'Video',
           cuts: [
-            _cut(_first, ['a1', 'a2', 'a3']),
-            _cut(_second, ['b1', 'b2', 'b3']),
+            _cut(_first, ['a1', 'a2', 'a3'], second: second),
+            _cut(_second, ['b1', 'b2', 'b3'], second: second),
+          ],
+          seLayers: [
+            if (se)
+              Layer(
+                id: const LayerId('se'),
+                name: 'se',
+                kind: LayerKind.se,
+                frames: const [],
+                timeline: const {},
+              ),
           ],
         ),
       ],
@@ -155,6 +277,15 @@ void _expectAfresh(List<List<Element>> before, List<List<Element>> after) {
     expect(after[family].where(before[family].contains), isEmpty);
   }
 }
+
+/// The elements of [before] that [after] still holds, family by family.
+List<List<Element>> _keptOf(
+  List<List<Element>> before,
+  List<List<Element>> after,
+) => [
+  for (final (index, family) in after.indexed)
+    family.where(before[index].contains).toList(),
+];
 
 void _expectKept(List<List<Element>> before, List<List<Element>> after) {
   for (var family = 0; family < before.length; family += 1) {
@@ -239,73 +370,69 @@ void main() {
           _expectKept(before, grid.everyRow());
         });
 
-        testWidgets('the keyboard\'s focus in a row builds them afresh', (
-          tester,
-        ) async {
-          // Room for the sheet's lane headers, under its layers' columns —
-          // the tab as a window of 1400 × 1200 laid it.
-          final session = await _open(
+        // An edit in flight on a popup a row opened — every kind the rows
+        // open. ↩️A number was typed in the row's own field, the keyboard's
+        // focus inside the rows, until I-134 (2026-10-27) put it on a pad.
+        for (final popup in _popups) {
+          testWidgets('${popup.name} open from a row builds them afresh — '
+              'and once it closes the next switch keeps them again', (
             tester,
-            grid,
-            surface: const Size(870, 546),
-          );
-          // A number being typed in the rows: a lane's, from its pencil.
-          // ↩️It was the focus of the blend chip's ink well until that chip
-          // became a rail plate (2026-10-24), which Tab passes over as every
-          // rail button does (F-450-Q2) — a layer's own row holds nothing
-          // the keyboard takes now.
-          await tester.tap(
-            find.byKey(const ValueKey<String>('legend-lanes-toggle')),
-          );
-          await tester.pumpAndSettle();
-          await tester.tap(
-            find.named('${grid.prefix}-lane-group-toggle-a2-transform-group'),
-          );
-          await tester.pumpAndSettle();
-          final before = grid.everyRow();
-          session.selectCut(_second);
-          await tester.pumpAndSettle();
-          session.selectCut(_first);
-          await tester.pumpAndSettle();
-          // What a switch with no hand in the rows keeps — a lane's own row
-          // is built afresh either way.
-          final kept = [
-            for (final (index, family) in grid.everyRow().indexed)
-              family.where(before[index].contains).toList(),
-          ];
-          for (final family in kept) {
-            expect(family, isNotEmpty, reason: 'LIVENESS: rows are kept');
-          }
+          ) async {
+            // Room for the sheet's lane headers, under its layers' columns —
+            // the tab as a window of 1400 × 1200 laid it.
+            final session = await _open(
+              tester,
+              grid,
+              surface: const Size(870, 546),
+              second: popup.row,
+              se: popup.se,
+            );
+            if (popup.lanes case final group?) {
+              await tester.tap(
+                find.byKey(const ValueKey<String>('legend-lanes-toggle')),
+              );
+              await tester.pumpAndSettle();
+              await tester.tap(
+                find.named('${grid.prefix}-lane-group-toggle-a2-$group'),
+              );
+              await tester.pumpAndSettle();
+            }
+            final before = grid.everyRow();
+            session.selectCut(_second);
+            await tester.pumpAndSettle();
+            session.selectCut(_first);
+            await tester.pumpAndSettle();
+            // What a switch with no hand in the rows keeps — a lane's own
+            // row is built afresh either way.
+            final kept = _keptOf(before, grid.everyRow());
+            for (final family in kept) {
+              expect(family, isNotEmpty, reason: 'LIVENESS: rows are kept');
+            }
 
-          Finder keyed(RegExp pattern) => find.byWidgetPredicate(
-            (widget) => switch (widget.key) {
-              ValueKey<String>(:final value) => pattern.hasMatch(value),
-              _ => false,
-            },
-          );
-          final pencil = keyed(RegExp(r'-lane-value-a2-position-edit$'));
-          await tester.ensureVisible(pencil);
-          await tester.pumpAndSettle();
-          await tester.tap(pencil);
-          await tester.pumpAndSettle();
-          final typed = find.descendant(
-            of: keyed(RegExp('-lane-value-field-a2-')),
-            matching: find.byType(EditableText),
-          );
-          expect(
-            tester.widget<EditableText>(typed).focusNode.hasPrimaryFocus,
-            isTrue,
-            reason: 'LIVENESS: the focus is in the rows',
-          );
+            final button = popup.button(grid);
+            await tester.ensureVisible(button);
+            await tester.pumpAndSettle();
+            await tester.tap(button);
+            await tester.pumpAndSettle();
+            expect(popup.window, findsOneWidget, reason: 'LIVENESS: it is up');
 
-          session.selectCut(_second);
-          await tester.pumpAndSettle();
+            session.selectCut(_second);
+            await tester.pumpAndSettle();
+            final after = grid.everyRow();
+            for (final (index, family) in kept.indexed) {
+              expect(after[index].where(family.contains), isEmpty);
+            }
 
-          final after = grid.everyRow();
-          for (final (index, family) in kept.indexed) {
-            expect(after[index].where(family.contains), isEmpty);
-          }
-        });
+            await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+            await tester.pumpAndSettle();
+            expect(popup.window, findsNothing, reason: 'LIVENESS: it closed');
+            session.selectCut(_first);
+            await tester.pumpAndSettle();
+            for (final family in _keptOf(after, grid.everyRow())) {
+              expect(family, isNotEmpty, reason: 'the hand is lifted');
+            }
+          });
+        }
       });
 
       testWidgets('within a cut a row keeps its elements as the rows move, '
