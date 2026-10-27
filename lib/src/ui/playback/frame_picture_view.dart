@@ -210,7 +210,6 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// Whether the frame is drawn as it stands in place of the picture shown.
   final _DrawnAsItStands _standing = _DrawnAsItStands();
 
-
   /// The cel the pen is on, as the key of the picture shown read it.
   CelAsOf? _drawnOn;
 
@@ -290,7 +289,6 @@ class _FramePictureViewState extends State<FramePictureView> {
 
   void _landed() => setState(_look);
 
-
   static bool _sameLive(LiveRows? a, LiveRows? b) =>
       identical(a?.activeSurfacePainter, b?.activeSurfacePainter) &&
       identical(a?.floatOverlay, b?.floatOverlay) &&
@@ -367,13 +365,9 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (key == _showing || key == _moving) {
       return;
     }
-    // 🚨A PAGE A PEN DRAWS ON IS A PICTURE TOO: its strokes patch into one,
-    // as every frame's do ([FramePictures.makeShown]). ⛔Not drawn as it
-    // stands there: each step of the first stroke on a blank frame composed
-    // the whole view (🔬Surface Pro 11, a new project's first stroke: step
-    // → ink p50 117–123 ms, 83–89 stalls over 50 ms a stroke, the second
-    // stroke back to p50 33; main PC, 2432×1313 rastered at all 92 steps —
-    // 2026-10-28).
+    // 🚨A PAGE A PEN DRAWS ON IS A PICTURE TOO ([FramePictures.makeShown]):
+    // drawn as it stood, each step of its first stroke composed the whole
+    // view (🔬Surface Pro 11, step → ink p50 117–123 ms, 2026-10-28).
     if (_pictures.gaveUpAt(key) ||
         (_pictures.drawsOnlyItsPage(key) && widget.live == null)) {
       _standAsStored(key);
@@ -441,8 +435,8 @@ class _FramePictureViewState extends State<FramePictureView> {
     return cel == null ? null : _pictures.celNow(cel);
   }
 
-  /// A frame with nothing of it to wait for — its page alone, or one whose
-  /// making threw — drawn as it stands.
+  /// A frame with nothing of it to wait for — its page alone where nothing
+  /// is drawn live, or one whose making threw — drawn as it stands.
   void _standAsStored(FramePictureKey key) {
     _letGo(_store);
     final now = _pictures.drawingNow(widget.nodes, widget.picture);
@@ -567,21 +561,17 @@ class _FramePictureViewState extends State<FramePictureView> {
   /// ⛔Not left unasked: a box's lift would come with the picture standing,
   /// the float drawn nowhere until the box landed.
   ///
-  /// 🚨A PEN'S ROW THAT COMES TO A PICTURE TAKEN WITHOUT ONE is told as the
-  /// picture's taking told the rows ([_tell]) — where it is kept under the
-  /// frame's own key it holds what they store — with the cel the pen is on.
-  /// ⛔Not left untold: a cel made on a blank page after its picture came
-  /// had its whole first stroke drawn as it stands (🔬2026-10-28, 92 of 92
-  /// steps).
+  /// 🚨A pen's row come to a picture that holds nothing of the live rows is
+  /// told as its taking told them ([_tell]), with the cel the pen is on —
+  /// untold, a blank page's first stroke was drawn as it stands, whole.
   void _liveRowsHandedAnew() {
-    if (_shown == null) {
-      return;
+    if (_shown != null) {
+      if (_held == null) {
+        _drawnOn = _celNow();
+        _tell();
+      }
+      _catchUp();
     }
-    if (_held == null && _keptAs == _showing) {
-      _drawnOn = _celNow();
-      _tell();
-    }
-    _catchUp();
   }
 
   /// Tells what of the live rows the picture just taken holds: all of them
