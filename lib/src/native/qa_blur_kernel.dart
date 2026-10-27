@@ -1,6 +1,7 @@
 import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'native_scratch.dart';
 import 'qa_engine_abi.dart';
@@ -183,6 +184,11 @@ class QaBlurKernel {
 
   /// Lets the passes' scratch go — a stroke's end.
   void releaseScratch() => _scratch.release();
+
+  /// The bytes the passes' scratch holds (the pin that a stroke's end lets
+  /// it go).
+  @visibleForTesting
+  int get debugScratchBytes => _scratch.length;
 
   /// The finished tile into [out]: the cel ([cel], `nullptr` = nothing
   /// there) moved toward the rewritten [own] by [mask] (`nullptr` = all

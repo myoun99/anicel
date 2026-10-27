@@ -525,6 +525,52 @@ void main() {
     ]);
   });
 
+  test('under the engine a blur stroke gives its memory back — a '
+      'coordinate\'s finished tile made again in its own buffer, and the '
+      'rewritten tiles and the scratch let go at the stroke\'s end', () {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+    final kernel = QaBlurKernel.instance!;
+    final base = edgeCel();
+    final rasterizer =
+        BrushLiveStrokeRasterizer(pasteboard: wall, tileSize: tileSize)
+          ..blurOver(base);
+    Uint8List shown() => rasterizer
+        .preBlendedOverlayTile(
+          tileX: 1,
+          tileY: 0,
+          base: base,
+          mode: BrushBlendMode.color,
+          erase: false,
+        )!
+        .readStraight((straight) => straight);
+
+    final dabs = rub();
+    rasterizer.blendFrom(dabs.sublist(0, 24), from: 0);
+    final first = shown();
+    rasterizer.blendFrom(dabs, from: 24);
+    expect(
+      identical(shown(), first),
+      isTrue,
+      reason: 'the next result is made in the buffer of the one before',
+    );
+    expect(kernel.debugScratchBytes, greaterThan(0), reason: 'premise');
+
+    final before = QaNativeEngine.debugReleasedTileBuffers;
+    rasterizer.clear();
+    expect(
+      QaNativeEngine.debugReleasedTileBuffers - before,
+      7,
+      reason: 'the six tiles the rub rewrote and the one finished tile shown',
+    );
+    expect(kernel.debugScratchBytes, 0);
+  });
+
   onEachEngine('a rasterizer let go after a blur paints the next stroke', () {
     final base = edgeCel();
     final rasterizer =
