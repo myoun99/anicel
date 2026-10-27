@@ -287,8 +287,9 @@ void main() {
           'to nowhere tells nothing',
     );
 
-    // A value a drag left off a stop, where the bar writes it as the stop,
-    // stands on it: the press must show.
+    // A value set off a stop, where the bar writes it as the stop, stands
+    // on it: the press must show. (↩️A drag left such values too, until
+    // the bar held what it hands over — F-488.)
     hold(() => value = 10.03);
     await tester.pump();
     expect(find.text('10.0 px'), findsOneWidget, reason: '⛔LIVENESS');
@@ -423,7 +424,7 @@ void main() {
       tester,
       FieldSlider(
         value: 1,
-        min: 0.25,
+        min: 0.2,
         max: 4,
         scale: FieldSliderScale.exponential,
         label: 'Gamma',
@@ -436,7 +437,7 @@ void main() {
     await tester.enterText(field, '-2');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pump();
-    expect(changes, [0.25]);
+    expect(changes, [0.2]);
   });
 
   testWidgets('Escape abandons the typing and changes nothing', (

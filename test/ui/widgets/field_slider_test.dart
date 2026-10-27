@@ -109,7 +109,10 @@ void main() {
 
   testWidgets('shift drag moves at one tenth speed', (tester) async {
     final value = ValueNotifier<double>(0.5);
-    await tester.pumpWidget(harness(value: value));
+    // A bar that writes tenths of a per cent, as the bars these steps are
+    // read on do — one that writes tenths of its range holds nothing finer
+    // (F-488).
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final track = tester.getSize(trackOf(sliderKey)).width;
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
     await tester.drag(trackOf(sliderKey), const Offset(100, 0));
@@ -121,7 +124,7 @@ void main() {
 
   testWidgets('scroll wheel steps by one percent of the track', (tester) async {
     final value = ValueNotifier<double>(0.5);
-    await tester.pumpWidget(harness(value: value));
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final center = tester.getCenter(trackOf(sliderKey));
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     pointer.hover(center);
@@ -139,7 +142,7 @@ void main() {
     tester,
   ) async {
     final value = ValueNotifier<double>(0.5);
-    await tester.pumpWidget(harness(value: value));
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final pointer = TestPointer(1, PointerDeviceKind.mouse);
     pointer.hover(tester.getCenter(trackOf(sliderKey)));
     await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
@@ -166,7 +169,7 @@ void main() {
   testWidgets('R10 R5: a bar does not TYPE — a double tap is just two taps, '
       'and the second one sets the value like the first', (tester) async {
     final value = ValueNotifier<double>(0.2);
-    await tester.pumpWidget(harness(value: value));
+    await tester.pumpWidget(harness(value: value, displayScale: 100));
     final box = tester.getRect(trackOf(sliderKey));
     final quarter = Offset(box.left + box.width * 0.25, box.center.dy);
 
@@ -633,6 +636,7 @@ void main() {
                     value: v,
                     min: 0,
                     max: 1,
+                    displayScale: 100,
                     label: 'Test',
                     unit: ' px',
                     onChanged: (next) => value.value = next,
@@ -825,6 +829,7 @@ void main() {
                   value: v,
                   min: 0,
                   max: 1,
+                  displayScale: 100,
                   label: 'Test',
                   unit: ' px',
                   onChanged: (next) => value.value = next,
@@ -1091,6 +1096,7 @@ void main() {
                       value: v,
                       min: 0,
                       max: 1,
+                      displayScale: 100,
                       label: 'Test',
                       onChanged: (next) => value.value = next,
                     ),

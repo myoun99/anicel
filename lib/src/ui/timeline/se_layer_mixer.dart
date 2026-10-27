@@ -178,6 +178,11 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               key: const ValueKey<String>('se-mixer-pan'),
               min: -1,
               max: 1,
+              // Whole per cents, which is what it writes (`L37`): a bar
+              // holds the numbers it writes (F-488), and without these it
+              // held tenths of its range — L30, L40 — under a whole per cent.
+              displayScale: 100,
+              divisions: 200,
               value: pan,
               label: strings.audioPanLabel,
               // A balance, not a quantity: the bar leaves CENTRE toward the

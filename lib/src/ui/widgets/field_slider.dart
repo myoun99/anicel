@@ -637,14 +637,24 @@ class FieldSlider extends StatefulWidget {
   /// not write, its fill sliding while its number stood still.
   double held(double value) {
     final written = _writtenPerUnit;
-    return ((value * written).round() / written)
-        .clamp(floor ?? min, max)
-        .toDouble();
+    // The least and the most it writes inside its range: an end it cannot
+    // write — a 0.25 on a bar of tenths — is no value it holds either.
+    final least = ((floor ?? min) * written - _slack).ceil();
+    final most = (max * written + _slack).floor();
+    if (least > most) {
+      // A range inside one step of its last digit writes no number at all.
+      return value.clamp(floor ?? min, max).toDouble();
+    }
+    return (value * written).round().clamp(least, most) / written;
   }
 
   /// How many of the last digit the bar writes one unit of its value holds.
   double get _writtenPerUnit =>
       math.pow(10, _decimals).toDouble() * displayScale;
+
+  /// What a product of two doubles misses a whole number by: 0.7 × 10 is
+  /// 7.000000000000001.
+  static const double _slack = 1e-9;
 
   /// Where one step [direction] from [value] lands: the next of the
   /// [stops], or one notch along the track — a [fine] one when Shift is

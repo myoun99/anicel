@@ -130,6 +130,11 @@ void main() {
     for (final value in handed) {
       expect(value, written(value, 3), reason: '$value is a written number');
     }
+    expect(
+      handed.where((value) => value != written(value, 2)),
+      isNotEmpty,
+      reason: 'tenths of a per cent, not whole ones',
+    );
   });
 
   testWidgets('a step that would write the number the bar already writes '
@@ -157,6 +162,59 @@ void main() {
     await tester.sendEventToBinding(wheel.scroll(const Offset(0, -20)));
     await tester.pump();
     expect(handed.last, 0.2);
+  });
+
+  testWidgets('a step to a stop the bar does not write lands on the number '
+      'it writes', (tester) async {
+    final handed = <double>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 300,
+              height: 42,
+              child: FieldSlider(
+                label: 'Size',
+                value: 0.1,
+                min: 0.1,
+                max: 10,
+                scale: FieldSliderScale.exponential,
+                stops: const [0.25, 1],
+                onChanged: handed.add,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('field-slider-step-up')));
+    await tester.pump();
+
+    expect(handed, [0.3], reason: 'it writes 0.25 「0.3」');
+  });
+
+  testWidgets('an end the bar cannot write is no value it holds: under its '
+      'range it holds the least number it writes inside it', (tester) async {
+    final handed = await pumpBar(
+      tester,
+      value: 1,
+      min: 0.32,
+      max: 4,
+      scale: FieldSliderScale.exponential,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('field-slider-type')));
+    await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('field-slider-type-input')),
+      '0.1',
+    );
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(handed.last, 0.4, reason: 'not its 0.32, which it writes 「0.3」');
   });
 
   testWidgets('a typed number lands on the numbers the bar writes', (
