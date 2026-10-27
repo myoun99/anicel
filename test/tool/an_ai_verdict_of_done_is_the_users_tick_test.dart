@@ -67,9 +67,13 @@ void main() {
 
   test('🚨검증완료 — plain or with evidence — ends the card as the tick does',
       () {
+    // ⚠️As long as the lines the verify session really writes: the label is
+    // read off the line's opening, and a short fixture never cuts one.
     for (final words in [
-      '🤖**AI 검증완료**(서피스): 봤다',
-      '🤖**AI 검증완료 · 증거 있음**(서피스): 첨부 1',
+      '🤖**AI 검증완료**(10-27 서피스, 윈도 릴리스 master `d61cca6da`, '
+          '마우스): ①일본어 セル 탭의 글자가 다 보인다',
+      '🤖**AI 검증완료 · 증거 있음**(10-27 서피스, 윈도 릴리스 master '
+          '`d61cca6da`): ①첨부 1 의 1 — 칸이 글자만큼 넓다',
     ]) {
       expect(
         asked([born, landed, note(words)]),
