@@ -90,4 +90,38 @@ void main() {
       layout.dispose();
     }
   });
+
+  // 🔬card paint-walk-redoes-the-same-work-each-step (2026-10-27): a block
+  // laid out at every paint is kept for what decides it.
+  testWidgets('a block kept is asked again for the same content, canvas and '
+      'budget — and another of any is another layout', (tester) async {
+    TextCelLayout kept({
+      String text = 'kept',
+      CanvasSize on = canvas,
+      double? maxWidth,
+    }) => textCelLaidOut(
+      // No position: the block stands on the canvas's middle.
+      content: TextCelContent(text: text, style: const TextCelStyle()),
+      canvas: on,
+      maxWidth: maxWidth,
+    );
+
+    final here = kept();
+    expect(kept(), same(here), reason: '🚨laid out again for the same');
+    expect(kept(text: 'other'), isNot(same(here)), reason: 'another text');
+    final elsewhere = kept(on: const CanvasSize(width: 800, height: 600));
+    expect(elsewhere, isNot(same(here)), reason: '🚨another canvas');
+    expect(
+      elsewhere.inkBounds,
+      isNot(here.inkBounds),
+      reason: '⛔전제: the canvas moves a block that stands nowhere',
+    );
+    final narrow = kept(maxWidth: 8);
+    expect(narrow, isNot(same(here)), reason: '🚨another budget');
+    expect(
+      narrow.textSize.width,
+      lessThan(here.textSize.width),
+      reason: '⛔전제: the budget shrinks the block',
+    );
+  });
 }

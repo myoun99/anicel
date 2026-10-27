@@ -92,8 +92,8 @@ class TextMeasure {
 
   /// How many times the fonts have changed since the first measure — a face
   /// registered while the app runs (a canvas letter face) can set a line
-  /// differently. A layout kept for its words is kept for this too (a cel
-  /// number's letters, `cel_number_paint.dart`).
+  /// differently. A layout kept for its words is kept for this too (a text
+  /// block's, `textCelLaidOut`).
   static int get fontsNow {
     if (!_hearingFonts) {
       _hearingFonts = true;

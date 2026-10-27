@@ -16,6 +16,9 @@ import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 /// 보이게함. 위치는 캐릭터 이름 박스 위 중앙정렬」 — and every type shows on
 /// the canvas, ON included (「ON일때는 … 캔버스에는 표시」).
 void main() {
+  // The tag's blocks are kept for the fonts there are, which the binding
+  // tells (`textCelLaidOut`).
+  TestWidgetsFlutterBinding.ensureInitialized();
   const canvas = CanvasSize(width: 2340, height: 1654);
   const camera = CanvasSize(width: 1920, height: 1080);
 

@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_number_letters.dart';
 import 'package:anicel/src/ui/text/cel_number_paint.dart';
+import 'package:anicel/src/ui/text/text_cel_render.dart'
+    show textCelLayoutsKept;
 
 /// 🔬card paint-walk-redoes-the-same-work-each-step (2026-10-27): a stroke's
 /// every step laid each numbered row's letters out twice — the buffer's
@@ -120,9 +122,8 @@ void main() {
     }
   });
 
-  testWidgets('letters pushed out by 64 others are let go of', (
-    tester,
-  ) async {
+  testWidgets('letters pushed out by as many others as are kept are let go '
+      'of', (tester) async {
     final drawn = _drawnBy(
       (canvas) => paintCelNumber(canvas, _letters('pushed out')),
     );
@@ -130,7 +131,7 @@ void main() {
     expect(drawn.first.debugDisposed, isFalse, reason: 'held');
 
     // Whatever another test left behind is older, and goes first.
-    for (var i = 0; i < 64; i += 1) {
+    for (var i = 0; i < textCelLayoutsKept; i += 1) {
       celNumberLayoutOf(_letters('other $i'));
     }
 

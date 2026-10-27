@@ -12,6 +12,9 @@ import 'package:anicel/src/ui/text/se_name_tag_paint.dart';
 /// the mockup: **the anchor is the exact geometric centre of the NAME BOX**,
 /// and the dialogue hangs to its right without ever moving it.
 void main() {
+  // The tag's blocks are kept for the fonts there are, which the binding
+  // tells (`textCelLaidOut`).
+  TestWidgetsFlutterBinding.ensureInitialized();
   const canvas = CanvasSize(width: 2340, height: 1654);
   const anchor = ui.Offset(800, 1200);
 

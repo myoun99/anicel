@@ -4,12 +4,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart' show MatrixUtils;
 import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
-import '../../core/lru.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cel_number_letters.dart';
 import '../../models/text_cel_style.dart';
 import 'text_cel_render.dart';
-import 'text_measure.dart';
 
 /// Draws a CEL NUMBER's letters (I-65) — the one implementation every walk
 /// that composites a row calls ([CompositeCelNumber]), so the canvas, the
@@ -54,34 +52,19 @@ TextCelLayout celNumberLayoutOf(CelNumberLetters letters) =>
     _layoutOf(letters);
 
 /// [letters] laid out with their anchor at the origin — once for each text
-/// and colour the fonts set alike ([TextMeasure.fontsNow]), and kept: where
-/// they stand and how large is [_standOf]'s, not the layout's.
-///
-/// 🔬Laid out afresh at every call, a stroke's every step laid each numbered
-/// row's letters out twice — the buffer's bounds ([celNumberExtent]) and the
-/// letters themselves — wherever the step was (card
-/// paint-walk-redoes-the-same-work-each-step, 2026-10-27: `layoutTextCel`
-/// 4.3% of the UI isolate over a stroke beside 8 numbered rows, profile,
-/// Windows).
-TextCelLayout _layoutOf(CelNumberLetters letters) => _laid.resolve(
-  (text: letters.text, color: letters.color, fonts: TextMeasure.fontsNow),
-  () => layoutTextCel(
-    content: TextCelContent(
-      text: letters.text,
-      style: TextCelStyle(color: letters.color),
-      position: ui.Offset.zero,
-    ),
-    // ⚠️Read only where a content stands nowhere, and this one stands at
-    // the origin.
-    canvas: const CanvasSize(width: 0, height: 0),
+/// and colour ([textCelLaidOut]): where they stand and how large is
+/// [_standOf]'s, not the layout's, so the buffer's bounds
+/// ([celNumberExtent]) and the letters themselves ask the one layout
+/// wherever a stroke's step is.
+TextCelLayout _layoutOf(CelNumberLetters letters) => textCelLaidOut(
+  content: TextCelContent(
+    text: letters.text,
+    style: TextCelStyle(color: letters.color),
+    position: ui.Offset.zero,
   ),
-);
-
-/// The layouts kept — an [Lru] and not a memo: a layout holds its painters,
-/// let go with it.
-final Lru<({String text, int color, int fonts}), TextCelLayout> _laid = Lru(
-  entryCap: () => 64,
-  letGo: (_, layout) => layout.dispose(),
+  // ⚠️Read only where a content stands nowhere, and this one stands at the
+  // origin.
+  canvas: const CanvasSize(width: 0, height: 0),
 );
 
 /// Where [layout] stands on the row's paper: its box's middle moved onto
