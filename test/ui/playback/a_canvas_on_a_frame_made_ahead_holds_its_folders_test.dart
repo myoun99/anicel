@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import 'package:anicel/src/ui/quiet_turns.dart';
 import '../../helpers/a_canvas_standing_on_a_frame.dart';
 import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
@@ -109,8 +110,9 @@ void main() {
     view: view,
   );
 
-  /// The run over the frame, its picture made ahead of any screen.
-  Future<StackRun> madeAhead(WidgetTester tester) async {
+  /// The run over the frame, its picture made ahead of any screen — its
+  /// background work taking its turns in [turns] where a test names them.
+  Future<StackRun> madeAhead(WidgetTester tester, {QuietTurns? turns}) async {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
       a: filled(const [0x30, 0x60, 0x90, 0xFF]),
@@ -125,6 +127,7 @@ void main() {
       store,
       canvasSize: canvasSize,
       stackOf: (_) => treeOf(),
+      quietTurns: turns,
     );
     await tester.runAsync(
       () => run.pictures.make(frame, shouldAbort: () => false),
@@ -142,6 +145,31 @@ void main() {
     return run;
   }
 
+  /// The rows a canvas that stands holds live: the pen's, nothing on it.
+  LiveRows liveRows() => (
+    activeSurfacePainter: BitmapSurfacePainter(
+      surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
+      showTransparentBackground: false,
+    ),
+    floatOverlay: null,
+    liftedRows: const {},
+  );
+
+  // While frames are held — a run playing — a job waits its turn behind
+  // the one before it, and the next waits on it. ⚠️Made off the fake
+  // clock: a turn given at once completes in the zone the turns were made
+  // in, and the fake clock's microtasks do not run inside `runAsync`.
+  Future<QuietTurns> held(WidgetTester tester) async => (await tester
+      .runAsync(
+        () async => QuietTurns(
+          clock: QuietClock(
+            held: () => true,
+            quiet: () => null,
+            gpuDone: () async {},
+          ),
+        ),
+      ))!;
+
   testWidgets('🚨a canvas standing on it holds its folder, drawn once — a '
       'step patched in then draws none', (tester) async {
     final run = await madeAhead(tester);
@@ -152,17 +180,7 @@ void main() {
           picture: frame,
           nodes: treeOf(),
           viewport: view,
-          live: (
-            activeSurfacePainter: BitmapSurfacePainter(
-              surface: BitmapSurface(
-                canvasSize: canvasSize,
-                tileSize: tileSize,
-              ),
-              showTransparentBackground: false,
-            ),
-            floatOverlay: null,
-            liftedRows: const {},
-          ),
+          live: liveRows(),
         ),
       ),
     );
@@ -210,6 +228,60 @@ void main() {
     await lendBothClocks(tester, rounds: 10);
     expect(run.pictures.heldNodes, hasLength(0));
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('🚨a hold gives its turn back — the next job is not kept '
+      'waiting behind it', (tester) async {
+    final turns = await held(tester);
+    final run = await madeAhead(tester, turns: turns);
+    await tester.runAsync(
+      () => run.pictures.holdNodesOf(
+        treeOf(),
+        frame,
+        shouldAbort: () => false,
+      ),
+    );
+    expect(run.pictures.heldNodes, hasLength(1), reason: '⛔premise');
+
+    final next = await tester.runAsync(
+      () => Future.any([
+        turns.inAQuiet(QuietSpan(), gone: () => false),
+        Future<QuietTurn?>.delayed(const Duration(seconds: 2)),
+      ]),
+    );
+    expect(next, isNotNull);
+    await tester.runAsync(() => next!.landed());
+  });
+
+  testWidgets('🚨a canvas gone before its hold\'s turn holds nothing', (
+    tester,
+  ) async {
+    final turns = await held(tester);
+    final run = await madeAhead(tester, turns: turns);
+    final before = await tester.runAsync(
+      () => turns.inAQuiet(QuietSpan(), gone: () => false),
+    );
+    await tester.pumpWidget(
+      onScreen(
+        standingOn(
+          run,
+          picture: frame,
+          nodes: treeOf(),
+          viewport: view,
+          live: liveRows(),
+        ),
+      ),
+    );
+    await lendBothClocks(tester, rounds: 3);
+    expect(
+      run.pictures.heldNodes,
+      hasLength(0),
+      reason: '⛔premise: the hold waits its turn',
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() => before!.landed());
+    await lendBothClocks(tester, rounds: 10);
+    expect(run.pictures.heldNodes, hasLength(0));
   });
 
   testWidgets('a hold asked off before its turn holds nothing', (

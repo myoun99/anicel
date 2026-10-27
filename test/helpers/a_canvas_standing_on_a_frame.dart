@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/playback/frame_picture_view.dart';
 import 'package:anicel/src/ui/playback/frame_pictures.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
+import 'package:anicel/src/ui/quiet_turns.dart';
 
 import 'settle_async.dart';
 
@@ -27,7 +28,8 @@ import 'settle_async.dart';
 typedef Shot = ({Uint8List rgba, int width});
 
 /// The pictures of the frames [stackOf] stacks, of [images]' cels, kept by
-/// [store] — on a page of [canvasSize] with no wall.
+/// [store] — on a page of [canvasSize] with no wall — their background work
+/// taking its turns in [quietTurns] where a test names them.
 StackRun runOver(
   LayerFrameImageCache images,
   FramePictureStore<FramePictureKey> store, {
@@ -35,6 +37,7 @@ StackRun runOver(
   required List<CompositeNode<CanvasStackRow>> Function(DemandedPicture)
   stackOf,
   ProjectBackground paper = ProjectBackground.defaultBackground,
+  QuietTurns? quietTurns,
 }) {
   final landings = ValueNotifier<int>(0);
   addTearDown(landings.dispose);
@@ -50,6 +53,7 @@ StackRun runOver(
         paintPaper: picture.paintPaper,
         paperBackground: paper,
       ),
+      quietTurns: quietTurns,
     ),
   );
 }
