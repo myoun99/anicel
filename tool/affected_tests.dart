@@ -833,6 +833,20 @@ Future<void> runInBatches(
   }
 }
 
+/// The console reporter every batch asks for, whatever machine it runs on.
+///
+/// 🚨★★★THE CONSOLE IS READ, SO ITS SHAPE IS NAMED. Three readers take the
+/// batch's output as it passes — whether any test ran ([_testOutput]), how
+/// many were skipped ([lastSkipCount]) and when one last finished
+/// ([BatchSilence]) — and all three read the counter `+N ~N -N:`. Left
+/// unnamed, package:test picks `expanded` here (a pipe, on Windows) but
+/// `github` inside GitHub Actions, which prints `✅ <path>: <name>` and no
+/// counter at all. 🧪2026-10-28, bundle PR #1485 (card
+/// ci-silent-batch-cut-reads-no-counter): the first CI to run its shards
+/// through this tool cut all three at exactly fifteen minutes — 25,643 log
+/// lines and not one counter, so the silence watch never saw a test finish.
+const kReporter = '--reporter=expanded';
+
 /// What one batch hands `flutter test`: [files], and at most [concurrency]
 /// suites at once when one is given.
 ///
@@ -857,6 +871,7 @@ List<String> flutterTestArguments(
 }) => [
   'test',
   '--no-pub',
+  kReporter,
   ...kind.engineFlags,
   if (concurrency != null) '--concurrency=$concurrency',
   if (report != null) '--file-reporter=json:$report',

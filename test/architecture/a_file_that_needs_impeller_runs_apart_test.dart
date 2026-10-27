@@ -17,6 +17,7 @@ import '../../tool/affected_tests.dart'
         impellerTag,
         impellerTagMarker,
         kNoTesterContext,
+        kReporter,
         kRunOrder,
         partitionByTag,
         ranNowhere,
@@ -208,6 +209,7 @@ void main() {
     expect(asked(BatchKind.gpu), [
       'test',
       '--no-pub',
+      kReporter,
       '--enable-impeller',
       '--enable-flutter-gpu',
       'test/a_test.dart',
@@ -215,13 +217,14 @@ void main() {
     expect(asked(BatchKind.impeller), [
       'test',
       '--no-pub',
+      kReporter,
       '--enable-impeller',
       'test/a_test.dart',
     ]);
     for (final kind in [BatchKind.crowd, BatchKind.collector]) {
       expect(
         asked(kind),
-        ['test', '--no-pub', 'test/a_test.dart'],
+        ['test', '--no-pub', kReporter, 'test/a_test.dart'],
         reason: '$kind runs on the engine CI runs',
       );
     }
