@@ -181,6 +181,7 @@ void main() {
       filePath: path,
     ).loadOrDefaults();
     expect(restored.toJson(), saved.toJson());
+    expect(restored.view, PaletteView.cards, reason: 'one side writes it');
 
     File(path).writeAsStringSync('not json');
     final fallback = await ColorPaletteFileService(

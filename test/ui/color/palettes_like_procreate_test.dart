@@ -459,6 +459,13 @@ void main() {
     expect(desk.palettes.view, PaletteView.cards);
     expect(find.text('#E53935'), findsNWidgets(2), reason: 'Skin holds two');
     expect(tester.getSize(_place('p1', 0)), const Size(56, 56));
+    // Three cards share a row's width, 8 apart.
+    final card = (tester.getSize(_key('palette-p1')).width - 2 * 8) / 3;
+    expect(
+      tester.getCenter(_place('p1', 2)).dx -
+          tester.getCenter(_place('p1', 0)).dx,
+      closeTo(2 * (card + 8), 0.01),
+    );
 
     await _press(tester, _key('palette-view-compact'));
     expect(find.text('#E53935'), findsNothing);
@@ -501,6 +508,11 @@ void main() {
       expect(
         tester.getSize(_place('p1', 0)).width,
         closeTo((room - 9 * 4) / 10, 0.01),
+      );
+      expect(
+        tester.getTopLeft(_place('p1', 1)).dx -
+            tester.getTopRight(_place('p1', 0)).dx,
+        closeTo(4, 0.01),
       );
 
       await _open(
