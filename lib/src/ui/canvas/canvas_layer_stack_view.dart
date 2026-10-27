@@ -264,8 +264,9 @@ typedef HeldNodePictures = ({HeldSubtreeRasters rasters, bool keeps});
 /// their backdrops, effects and poses — with every row drawn from its own
 /// tiles, by the body the live row is drawn with ([_PaintCelSurface], from
 /// what [storedRowOf] hands for it) — or, for a row a cel number is written
-/// on with none, [bareRowOf]'s ([mapCompositeLeaves]). No second
-/// compositor: a frame's picture is what the canvas would show of it.
+/// on with none, [bareRowOf]'s ([mapCompositeLeaves]), as for the row a pen
+/// draws on with none. No second compositor: a frame's picture is what the
+/// canvas would show of it.
 ///
 /// Under [live], the rows a canvas that stands holds live are drawn as it
 /// draws them ([_liveRowOf]) — the frame AS IT STANDS, what a still
@@ -304,7 +305,14 @@ final class StackedFrame {
             return row;
           }
         }
-        return paintOf(storedRowOf(row), row);
+        // The row a pen draws on stands with nothing stored on it, as it is
+        // drawn live: what lies below it is known before its first stroke
+        // ([SubtreeHolding.drawnOn]).
+        return paintOf(
+          storedRowOf(row) ??
+              (row is CanvasActiveLayerRow ? bareRowOf(row) : null),
+          row,
+        );
       },
       bare: (row) => paintOf(bareRowOf(row), row),
     );

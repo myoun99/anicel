@@ -46,14 +46,11 @@ void main() {
     frameId: const FrameId('f'),
   );
 
-  ({
-    CanvasSize canvasSize,
-    PasteboardReach pasteboardReach,
-    bool paintPaper,
-    ProjectBackground paperBackground,
-  })
-  pageOn(ProjectBackground paper) => (
-    canvasSize: const CanvasSize(width: 24, height: 16),
+  FramePage pageOn(
+    ProjectBackground paper, {
+    CanvasSize canvasSize = const CanvasSize(width: 24, height: 16),
+  }) => (
+    canvasSize: canvasSize,
     pasteboardReach: PasteboardReach.whole,
     paintPaper: true,
     paperBackground: paper,
@@ -124,7 +121,8 @@ void main() {
   });
   tearDown(() => held.clear());
 
-  final live = (
+  // A canvas that stands with the pen's stroke on it.
+  final penStep = (
     rows: (
       activeSurfacePainter: BitmapSurfacePainter(
         surface: inked,
@@ -139,19 +137,14 @@ void main() {
   StackedFrame frame(
     List<CompositeNode<CanvasStackRow>> nodes, {
     bool? keeps,
-    bool stepping = false,
-    ({
-      CanvasSize canvasSize,
-      PasteboardReach pasteboardReach,
-      bool paintPaper,
-      ProjectBackground paperBackground,
-    })?
-    page,
+    ({LiveRows rows, LiftedRowPainters painters})? live,
+    FramePage? page,
+    Map<String, BitmapSurface>? cels,
   }) => stackedFrameOf(
     nodes,
     page: page ?? white,
-    surfaceOf: (cel) => stored[cel.layerId.value],
-    live: stepping ? live : null,
+    surfaceOf: (cel) => (cels ?? stored)[cel.layerId.value],
+    live: live,
     held: switch (keeps) {
       final keeps? => (
         pictures: (rasters: held, keeps: keeps),
@@ -197,12 +190,12 @@ void main() {
   aStep(List<CompositeNode<CanvasStackRow>> nodes) async {
     debugSubtreeRasterCount = 0;
     final pixels = await drawn(
-      frame(nodes, keeps: false, stepping: true),
+      frame(nodes, keeps: false, live: penStep),
       step,
     );
     final rasters = debugSubtreeRasterCount;
     debugSubtreeRasterCount = 0;
-    final fresh = await drawn(frame(nodes, stepping: true), step);
+    final fresh = await drawn(frame(nodes, live: penStep), step);
     return (
       pixels: pixels,
       rasters: rasters,
@@ -221,6 +214,108 @@ void main() {
     expect(stepped.rasters, 0);
     expect(stepped.freshRasters, 1, reason: '⛔premise: the folder');
     expect(stepped.pixels, stepped.fresh);
+  });
+
+  test('🚨a step is cut from that one picture — nothing under the pen is '
+      'drawn, though no node is held on its own', () async {
+    held = HeldSubtreeRasters(bytes: () => 0, bytesBelow: () => 1 << 20);
+    final nodes = underThePen();
+    await lay(nodes);
+    expect(held, hasLength(1), reason: '⛔premise');
+
+    final stepped = await aStep(nodes);
+    expect(stepped.rasters, 0);
+    expect(stepped.pixels, stepped.fresh);
+  });
+
+  test('🚨the first stroke on an empty cel finds what lies below kept too — '
+      'the row stands bare as the frame is laid', () async {
+    held = HeldSubtreeRasters(bytes: () => 0, bytesBelow: () => 1 << 20);
+    final empty = {...stored}..remove('pen');
+    final nodes = underThePen();
+    final laid = frame(nodes, keeps: true, cels: empty);
+    await drawn(laid, laid.drawing.extent);
+    expect(held, hasLength(1));
+
+    debugSubtreeRasterCount = 0;
+    final pixels = await drawn(
+      frame(nodes, keeps: false, live: penStep, cels: empty),
+      step,
+    );
+    expect(debugSubtreeRasterCount, 0);
+    expect(
+      pixels,
+      await drawn(frame(nodes, live: penStep, cels: empty), step),
+    );
+  });
+
+  test('what lies below drawn in part is not kept', () async {
+    await drawn(frame(underThePen(), keeps: true), step);
+    expect(held, hasLength(0));
+  });
+
+  test('what lies below drawn whole where nothing keeps is not kept', () async {
+    final laid = frame(underThePen(), keeps: false);
+    await drawn(laid, laid.drawing.extent);
+    expect(held, hasLength(0));
+  });
+
+  test('what lies below is laid in place where its one picture would be '
+      'shrunk to fit — and is not kept', () async {
+    const wide = CanvasSize(width: maxSubtreeRasterSide + 8, height: 8);
+    final page = pageOn(
+      ProjectBackground.defaultBackground,
+      canvasSize: wide,
+    );
+    final cels = {
+      'below': BitmapSurface(
+        canvasSize: wide,
+        tileSize: 8,
+        tiles: {
+          TileCoord(x: 0, y: 0): BitmapTile(
+            size: 8,
+            pixels: Uint8List.fromList([
+              for (var at = 0; at < 64; at += 1) ...[at * 4, 0x40, 0x80, 0xFF],
+            ]),
+          ),
+        },
+      ),
+      'pen': BitmapSurface(canvasSize: wide, tileSize: 8),
+    };
+    final nodes = [rowOf('below'), pen()];
+    final laid = frame(nodes, keeps: true, page: page, cels: cels);
+    final pixels = await drawn(laid, laid.drawing.extent);
+    expect(held, hasLength(0));
+    final fresh = frame(nodes, page: page, cels: cels);
+    expect(pixels, await drawn(fresh, fresh.drawing.extent));
+  });
+
+  test('🚨a folder a lifted row is in is drawn again — the row stood for '
+      'nothing as the frame was laid', () async {
+    final nodes = [
+      rowOf('below'),
+      folder([rowOf('ramp'), rowOf('lifted')]),
+    ];
+    await lay(nodes);
+    expect(held, hasLength(1), reason: '⛔premise: the folder');
+
+    final float = SelectionFloatOverlay(null);
+    addTearDown(float.dispose);
+    final lifted = (
+      rows: (
+        activeSurfacePainter: null,
+        floatOverlay: null,
+        liftedRows: {cel('lifted'): (surface: inked, float: float)},
+      ),
+      painters: LiftedRowPainters(),
+    );
+    debugSubtreeRasterCount = 0;
+    final pixels = await drawn(
+      frame(nodes, keeps: false, live: lifted),
+      step,
+    );
+    expect(debugSubtreeRasterCount, 1);
+    expect(pixels, await drawn(frame(nodes, live: lifted), step));
   });
 
   test('🚨in a folder, what lies below the pen there is one picture more — '
@@ -257,6 +352,7 @@ void main() {
       'all below it — one picture', () async {
     TestWidgetsFlutterBinding.ensureInitialized();
     await LayerBlendShader.load();
+    held = HeldSubtreeRasters(bytes: () => 0, bytesBelow: () => 1 << 20);
     final nodes = <CompositeNode<CanvasStackRow>>[
       CompositeBackdropBlend(
         backdrop: [rowOf('below'), folder([rowOf('ramp'), rowOf('other')])],
@@ -307,10 +403,13 @@ void main() {
     final grey = pageOn(const ProjectBackground.color(0xFF808080));
     debugSubtreeRasterCount = 0;
     final pixels = await drawn(
-      frame(nodes, keeps: false, stepping: true, page: grey),
+      frame(nodes, keeps: false, live: penStep, page: grey),
       step,
     );
     expect(debugSubtreeRasterCount, 1, reason: 'the folder');
-    expect(pixels, await drawn(frame(nodes, stepping: true, page: grey), step));
+    expect(
+      pixels,
+      await drawn(frame(nodes, live: penStep, page: grey), step),
+    );
   });
 }

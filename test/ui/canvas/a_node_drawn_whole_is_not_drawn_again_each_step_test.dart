@@ -242,10 +242,10 @@ void main() {
         CompositeLeaf(CanvasActiveLayerRow(opacity: 1, frameKey: cel('pen'))),
       ],
     );
-    // Laid with nothing stored on the pen's cel: the folder is kept as the
-    // two rows beside it, which is all it drew then.
+    // Laid with nothing stored on the pen's cel, the row stands bare: the
+    // folder it is in is not kept.
     await lay(withThePen);
-    expect(held.length, 1, reason: '⛔premise');
+    expect(held, hasLength(0));
 
     final pen = surface(
       (x, y) => [0, 0, 0, if (x > 6 && y > 4) 0xFF else 0],
