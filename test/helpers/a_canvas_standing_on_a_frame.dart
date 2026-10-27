@@ -160,11 +160,9 @@ List<String> differences(Shot a, Shot b, {int by = 0}) => [
 /// it does with a write is its kind's: [WritesNeverLand], [WritesLand].
 abstract class RendersHeld implements FramePictureGpu {
   /// Whether every render waits its turn ([letOneThrough]): a step stays on
-  /// its way into the picture, none of its texels there — the run its
-  /// levels are written from is a render ([FramePictureGpu.render]); a
-  /// render in turn waits for nothing. ⛔Not left to the test's raster: it
-  /// renders a patch before the next paint, and the screen while a step
-  /// lands was never drawn.
+  /// its way into the picture, none of its texels there. ⛔Not left to the
+  /// test's raster: it renders a patch before the next paint, and the
+  /// screen while a step lands was never drawn.
   bool holdsRenders = false;
 
   final List<Completer<void>> _waiting = [];
@@ -193,10 +191,6 @@ abstract class RendersHeld implements FramePictureGpu {
     }
     return picture.toImage(width, height);
   }
-
-  @override
-  ui.Image renderInTurn(ui.Picture picture, int width, int height) =>
-      picture.toImageSync(width, height);
 }
 
 /// A GPU whose writes never come back: every patch stays on its way into
@@ -212,7 +206,7 @@ class WritesNeverLand extends RendersHeld {
   }
 
   @override
-  Future<bool> write(Object held, LevelWrites writes) =>
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) =>
       Completer<bool>().future;
 }
 
@@ -235,8 +229,12 @@ class WritesLand extends RendersHeld {
   void Function()? beforeTheNextLands;
 
   @override
-  Future<bool> write(Object held, LevelWrites writes) async {
-    final written = await _gpu.write(held, writes);
+  Future<bool> write(
+    Object held,
+    List<BaseWrite> base,
+    LevelWrites? levels,
+  ) async {
+    final written = await _gpu.write(held, base, levels);
     final meanwhile = beforeTheNextLands;
     beforeTheNextLands = null;
     meanwhile?.call();

@@ -102,14 +102,8 @@ void main() {
       );
       ink = white;
       expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
-      final run = await gpu.runs.single;
-      final block = gpu.bases.single.single;
-      final across = gpu.levelWrites.single.run.$1;
-      expect(
-        run!.getUint32((block.top * across + block.left) * 4),
-        0xFF0000FF,
-        reason: 'red, as RGBA',
-      );
+      final texels = await gpu.bases.single.single.source.toByteData();
+      expect(texels!.getUint32(0), 0xFF0000FF, reason: 'red, as RGBA');
       await _landAll(gpu, store);
       store.dispose();
     });
@@ -142,7 +136,7 @@ void main() {
         draw: fill,
       );
       expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
-      final texels = gpu.inTurn.firstWhere((image) => image.width == 8);
+      final texels = gpu.bases.single.single.source;
       expect(texels.debugDisposed, isFalse, reason: '⛔premise: on its way');
       await _landAll(gpu, store);
       expect(texels.debugDisposed, isTrue);
@@ -259,7 +253,7 @@ void main() {
         isTrue,
       );
       await _landAll(gpu, store);
-      final (:run, :base, :spans) = gpu.levelWrites.last;
+      final (:run, :spans) = gpu.levelWrites.last;
       expect(
         [
           for (final span in spans)
@@ -268,72 +262,13 @@ void main() {
         [0, 50],
         reason: '⛔premise: two patches in the one run',
       );
-      expect(
-        [for (final block in base) (block.left, block.top)],
-        [(0, 0), (8, 0)],
-        reason: 'each patch whole at the run\'s top, side by side',
-      );
-      // Under the patches' shelf, 8 rows.
-      var at = 8 * 2048;
+      var at = 0;
       for (final span in spans) {
         expect(span.start, at, reason: 'level ${span.level} at ${span.x}');
         at += span.width * span.height;
       }
       // The run wraps at 2048 a row: every texel, and no row more.
       expect(run, (2048, (at + 2047) ~/ 2048));
-      store.dispose();
-    });
-
-    test('lays each patch whole at the top of its run, a shelf under them '
-        'once the next does not fit, the run as wide as the widest',
-        () async {
-      final gpu = _RecordingGpu()..holdWrites = true;
-      final store = FramePictureStore<String>(gpu: gpu);
-      // 4096 wide halves four times to 256: a grid of 16.
-      await store.lay('a', over(const ui.Rect.fromLTWH(0, 0, 4096, 64)));
-      void patchAt(double left, double width) => store.patch(
-        from: 'a',
-        to: 'a',
-        rect: ui.Rect.fromLTWH(left, 0, width, 16),
-        draw: fill,
-      );
-      patchAt(0, 2400);
-      expect(await pollUntil(() => gpu.bases.isNotEmpty), isTrue);
-      patchAt(0, 1200);
-      patchAt(1600, 1200);
-      expect(
-        await pollUntil(
-          () => gpu.rendered.where((size) => size == (1200, 16)).length == 2,
-        ),
-        isTrue,
-      );
-      await _landAll(gpu, store);
-      expect(
-        [for (final write in gpu.levelWrites) write.run.$1],
-        [2400, 2048],
-        reason: 'a patch wider than the run widens it',
-      );
-      expect(
-        [
-          for (final batch in gpu.bases)
-            [for (final block in batch) (block.left, block.top, block.x)],
-        ],
-        [
-          [(0, 0, 0)],
-          [(0, 0, 0), (0, 16, 1600)],
-        ],
-      );
-      expect(
-        gpu.levelWrites.last.spans.first.start,
-        32 * 2048,
-        reason: 'the levels under both shelves',
-      );
-      final wide = (await gpu.runs.first)!;
-      expect(
-        wide.getUint32(gpu.levelWrites.first.spans.first.start * 4),
-        0xFF0000FF,
-        reason: 'red, as RGBA: its halvings wrap at the run\'s own width',
-      );
       store.dispose();
     });
 
@@ -486,18 +421,20 @@ void main() {
         rect: const ui.Rect.fromLTWH(0, 0, 8, 8),
         draw: fill,
       );
-      // The patch and its deepest level in turn, and the run held.
-      expect(
-        await pollUntil(() => gpu.recorded.length == asked + 3),
-        isTrue,
-        reason: '⛔premise: the levels drawn',
-      );
-      expect(gpu.inTurn, hasLength(2), reason: '⛔premise');
-      store.dispose();
+      expect(await pollUntil(() => gpu.recorded.length == asked + 1), isTrue);
       gpu.releaseRender();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      await pumpEventQueue();
-      expect(gpu.rendered.last.$1, 2048, reason: '⛔premise: its run');
+      expect(
+        await pollUntil(() => gpu.recorded.length == asked + 2),
+        isTrue,
+        reason: '⛔premise: a level under its base drawn',
+      );
+      store.dispose();
+      for (var render = 0; render < 2; render += 1) {
+        gpu.releaseRender();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await pumpEventQueue();
+      }
+      expect(gpu.recorded, hasLength(asked + 3), reason: '⛔premise: its run');
       expect(gpu.bases, isEmpty);
     });
 
@@ -622,8 +559,13 @@ Future<void> _landAll(
   }
 }
 
-(int, int, int, int, int) _baseDescribed(RunBlock block) =>
-    (0, block.x, block.y, block.width, block.height);
+(int, int, int, int, int) _baseDescribed(BaseWrite write) => (
+  0,
+  write.x,
+  write.y,
+  write.source.width,
+  write.source.height,
+);
 
 (int, int, int, int, int) _spanDescribed(RunSpan span) =>
     (span.level, span.x, span.y, span.width, span.height);
@@ -643,19 +585,10 @@ class _RecordingGpu implements FramePictureGpu {
   /// What every write answers: whether the GPU did it.
   bool writesLand = true;
 
-  /// The size of each raster, in its turn or not, as it was made.
   final List<(int, int)> rendered = [];
   final List<ui.Picture> recorded = [];
-
-  /// The images rastered in turn ([renderInTurn]).
-  final List<ui.Image> inTurn = [];
-  final List<({(int, int) run, List<RunBlock> base, List<RunSpan> spans})>
-  levelWrites = [];
-
-  /// What each write lays into the base level.
-  List<List<RunBlock>> get bases => [
-    for (final write in levelWrites) write.base,
-  ];
+  final List<List<BaseWrite>> bases = [];
+  final List<({(int, int) run, List<RunSpan> spans})> levelWrites = [];
 
   /// The texels of each run [levelWrites] was handed, RGBA row after row.
   final List<Future<ByteData?>> runs = [];
@@ -690,15 +623,6 @@ class _RecordingGpu implements FramePictureGpu {
   }
 
   @override
-  ui.Image renderInTurn(ui.Picture picture, int width, int height) {
-    recorded.add(picture);
-    rendered.add((width, height));
-    final image = picture.toImageSync(width, height);
-    inTurn.add(image);
-    return image;
-  }
-
-  @override
   Object? hold(ui.Image image) => gpu ? image : null;
 
   @override
@@ -708,10 +632,12 @@ class _RecordingGpu implements FramePictureGpu {
   }
 
   @override
-  Future<bool> write(Object held, LevelWrites writes) {
-    final (:run, :base, :spans) = writes;
-    levelWrites.add((run: (run.width, run.height), base: base, spans: spans));
-    runs.add(run.toByteData());
+  Future<bool> write(Object held, List<BaseWrite> base, LevelWrites? levels) {
+    bases.add(base);
+    if (levels case (:final run, :final spans)) {
+      levelWrites.add((run: (run.width, run.height), spans: spans));
+      runs.add(run.toByteData());
+    }
     return _written();
   }
 

@@ -204,9 +204,9 @@ class FramePictureStore<K extends Object> {
       _letGo(entry);
       return false;
     }
-    final asked = _Patch<K>(from, to, widened);
+    final asked = _Patch<K>(from, to, widened, _recorded(widened, draw));
     _becoming[to] = (entry: entry, patch: asked);
-    _inTurn(entry, asked, _recorded(widened, draw));
+    entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
   }
 
@@ -220,9 +220,9 @@ class FramePictureStore<K extends Object> {
     if (entry == null) {
       return false;
     }
-    final asked = _Patch<K>(from, to, ui.Rect.zero);
+    final asked = _Patch<K>(from, to, ui.Rect.zero, null);
     _becoming[to] = (entry: entry, patch: asked);
-    _inTurn(entry, asked, null);
+    entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
   }
 
@@ -233,6 +233,7 @@ class FramePictureStore<K extends Object> {
   /// Answers once every patch asked for is in its picture.
   Future<void> settled() async {
     for (final entry in _everyEntry) {
+      await entry.renders;
       await entry.writes;
     }
   }
@@ -355,13 +356,11 @@ class FramePictureStore<K extends Object> {
     return entry.picture;
   }
 
-  /// [asked]'s texels — [recorded], rastered in its turn
-  /// ([FramePictureGpu.renderInTurn]); none for a move — waiting for the
-  /// next write into [entry]'s picture.
-  void _inTurn(_Entry<K> entry, _Patch<K> asked, ui.Picture? recorded) {
+  Future<void> _renderPatch(_Entry<K> entry, _Patch<K> asked) async {
+    final recorded = asked.recorded;
     final image = recorded == null
         ? null
-        : _renderedInTurn(
+        : await _rendered(
             recorded,
             asked.rect.width.toInt(),
             asked.rect.height.toInt(),
@@ -452,50 +451,56 @@ class FramePictureStore<K extends Object> {
   /// Pro 11 (120 Hz) 13.1 / 20.9 ms and 136 late → 10.6 / 16.9 ms and 85,
   /// the main PC (144 Hz) 4.0 / 6.2 ms and 1 → 3.9 / 6.2 ms and 1. ⛔Not
   /// answered at the submission rather than its completion: fastest on the
-  /// main PC (3.0 ms), but 190 late on the Surface.
+  /// main PC (3.0 ms), but 190 late on the Surface. ⛔Not the deepest level
+  /// or the patch rastered at once (`toImageSync`): later on both.
   ///
-  /// 🔬TWO WAITS A BATCH, NOT FOUR (s5-stroke-trails-on-the-heavy-cut, 유저
-  /// 보드 2026-10-28 「쓰기 왕복을 줄인다(구조는 그대로)」): the patch and the
-  /// deepest level are rastered in their turn
-  /// ([FramePictureGpu.renderInTurn]) — only the run reads them — and the
-  /// base goes in out of the run, each patch laid whole at its top
-  /// ([RunBlock]); the run and the write are all that is waited on. ↩️⛔「Not
-  /// the deepest level or the patch rastered at once (`toImageSync`): later
-  /// on both」 (2026-10-26) — each waited on, then the run, then the write.
-  /// On the main PC (Windows, GLES, profile, S5_BA 컷352 · 비지블 전부 on and
-  /// a default project, the two in turn stroke by stroke in one run), a
-  /// step into its picture: under other sessions' tests (9–26 runners, 100%
-  /// CPU) p50 73–87 → 42–54 ms, 5–11 frames later → 2–8; quiet (none, each
-  /// stroke waiting for it, two rounds) p50 7.0–36.2 → 8.8–25.8 ms, p90
-  /// 14.7–67.2 → 17.4–43.8 ms — the same within a round's spread. ⚠️The
-  /// Surface Pro 11, which the 10-26 rejection was measured on too, is not
-  /// measured. ⛔The base through the run's buffer with the levels under
-  /// it: as fast under load, but on a quiet machine a frame later than
-  /// four waits — the write took 3.1 ms against 1.05.
+  /// ⛔⛔TWO WAITS A BATCH, TRIED AGAIN AND REVERTED (2026-10-28, card
+  /// s5-stroke-trails-on-the-heavy-cut ②b, 유저 답 「쓰기 왕복을 줄인다
+  /// (구조는 그대로)」): each patch laid whole at the top of one run with
+  /// the halvings under it, the patch and the deepest level rastered at
+  /// once, the base copied texture to texture and the levels through one
+  /// buffer, in one submission (`0fee89202`..`2defd8c03`). The main PC
+  /// under load: a step p50 73–87 → 42–54 ms. The Surface Pro 11 (release,
+  /// mouse, six runs in turn, S5_BA cut 352 and a new project alike): a
+  /// step showed 16 ms later — p50 33 → 50 ms, p90 49 → 67 ms — and vsync
+  /// to raster end p50 2.9–4.7 → 11.3–14.2 ms, the UI and the raster
+  /// themselves unchanged. 🚨The main PC does not speak for the Surface
+  /// here: measure a change to these waits there before it lands.
   Future<bool> _written(_Entry<K> entry, List<_Texels> batch) async {
     final picture = entry.picture;
     final patched = entry.patchedLevels;
     final below = entry.levels - 1 - patched;
-    final deepest = below > 0 ? _deepestPatchedLevel(entry, batch) : null;
-    final placed = [
+    final deepest = below > 0 ? await _deepestPatchedLevel(entry, batch) : null;
+    final run = await _run([
       for (final patch in batch)
         (
           image: patch.image,
+          level: 0,
           x: _xOf(picture, patch.rect),
           y: _yOf(picture, patch.rect),
+          count: patched,
         ),
-    ];
-    final run = await _run(placed, [
-      for (final (:image, :x, :y) in placed)
-        (image: image, level: 0, x: x, y: y, count: patched),
       if (deepest != null)
         (image: deepest, level: patched, x: 0, y: 0, count: below),
     ]);
     deepest?.dispose();
+    final image = run.image;
     try {
-      return entry.gone || await _gpu.write(entry.held!, run);
+      return entry.gone ||
+          await _gpu.write(
+            entry.held!,
+            [
+              for (final patch in batch)
+                (
+                  source: patch.image,
+                  x: _xOf(picture, patch.rect),
+                  y: _yOf(picture, patch.rect),
+                ),
+            ],
+            image == null ? null : (run: image, spans: run.spans),
+          );
     } finally {
-      run.run.dispose();
+      image?.dispose();
     }
   }
 
@@ -517,87 +522,74 @@ class FramePictureStore<K extends Object> {
 
   /// The picture's deepest patched level with [batch] in it: the level as
   /// the picture holds it, each patch drawn over its place there — the
-  /// reading its own write lays at that level ([_reading]) — whole, so the
-  /// levels under it are its halvings. Rastered in its turn: only the run
-  /// reads it ([_run]).
-  ui.Image _deepestPatchedLevel(_Entry<K> entry, List<_Texels> batch) {
+  /// reading its own write lays at that level ([_readAt]) — whole, so the
+  /// levels under it are its halvings.
+  Future<ui.Image> _deepestPatchedLevel(_Entry<K> entry, List<_Texels> batch) {
     final picture = entry.picture;
     final level = entry.patchedLevels;
     final width = math.max(1, picture.image.width >> level);
     final height = math.max(1, picture.image.height >> level);
     final scale = 1.0 / (1 << level);
-    return _renderedInTurn(
-      _reading([
+    return _readAt([
+      (
+        image: picture.image,
+        from: _whole(picture.image),
+        to: ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      ),
+      for (final patch in batch)
         (
-          image: picture.image,
-          from: _whole(picture.image),
-          to: ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+          image: patch.image,
+          from: _whole(patch.image),
+          to: _scaled(patch.rect.shift(-picture.extent.topLeft), scale),
         ),
-        for (final patch in batch)
-          (
-            image: patch.image,
-            from: _whole(patch.image),
-            to: _scaled(patch.rect.shift(-picture.extent.topLeft), scale),
-          ),
-      ]),
-      width,
-      height,
-    );
+    ], width, height);
   }
 
-  /// One raster ([_reading]) holding every texel a write lays: each of
-  /// [base] whole at its top, shelf after shelf ([_shelved]), with the
-  /// [RunBlock] that copies it into the base level where it lies; under
-  /// them the halvings 1 to `count` of each of [halved], their texels end
-  /// to end, row after row, wrapping at the run's width — as one copy out
-  /// of the GPU gives them back and as a level is written from it, row
-  /// after row ([FramePictureGpu.write]) — with the [RunSpan] that lays
-  /// each halving where its source lies, at `level` and (`x`, `y`),
-  /// halved. As wide as [_runWidth], or as the widest of [base]. Exact
-  /// where the sides halve evenly; under that, the GPU's own reading of a
-  /// side that does not.
-  Future<LevelWrites> _run(
-    List<({ui.Image image, int x, int y})> base,
-    List<({ui.Image image, int level, int x, int y, int count})> halved,
+  /// The halvings 1 to `count` of each of [sources], their texels end to
+  /// end, row after row, wrapping at [_runWidth] — as one copy out of the
+  /// GPU gives them back and as a level is written from it, row after row
+  /// ([FramePictureGpu.write]) — in one raster ([_readAt]); with the
+  /// [RunSpan] that lays each halving where its source lies, at `level`
+  /// and (`x`, `y`), halved. No image where there is no halving at all.
+  /// Exact where the sides halve evenly; under that, the GPU's own reading
+  /// of a side that does not.
+  Future<({ui.Image? image, List<RunSpan> spans})> _run(
+    List<({ui.Image image, int level, int x, int y, int count})> sources,
   ) async {
-    final runWidth = base.fold(
-      _runWidth,
-      (widest, block) => math.max(widest, block.image.width),
-    );
-    final (:blocks, :reads, :rows) = _shelved(base, runWidth);
+    final reads = <_PictureRead>[];
     final spans = <RunSpan>[];
-    var at = rows * runWidth;
-    for (final (:image, :level, :x, :y, :count) in halved) {
+    var at = 0;
+    for (final (:image, :level, :x, :y, :count) in sources) {
       for (var j = 1; j <= count; j += 1) {
-        final span = (
+        final width = math.max(1, image.width >> j);
+        final height = math.max(1, image.height >> j);
+        spans.add((
           start: at,
-          width: math.max(1, image.width >> j),
-          height: math.max(1, image.height >> j),
+          width: width,
+          height: height,
           x: x >> j,
           y: y >> j,
           level: level + j,
-        );
-        spans.add(span);
-        reads.addAll(_rowsOf(image, span, runWidth));
-        at += span.width * span.height;
+        ));
+        reads.addAll(_rowsOf(image, width, height, at));
+        at += width * height;
       }
     }
-    final runRows = (at + runWidth - 1) ~/ runWidth;
-    return (
-      run: await _rendered(_reading(reads), runWidth, runRows),
-      base: blocks,
-      spans: spans,
-    );
+    if (at == 0) {
+      return (image: null, spans: spans);
+    }
+    final rows = (at + _runWidth - 1) ~/ _runWidth;
+    return (image: await _readAt(reads, _runWidth, rows), spans: spans);
   }
 
-  /// Each of [reads] — a later one in place of an earlier — in one
-  /// picture, under `FilterQuality.medium`: drawn at 1/2^k a side so, the
-  /// GPU samples the image's own level k — the engine's halving, the one
-  /// the picture's chain was made with — so a patch's levels are the very
-  /// code of the levels round it, on any backend (measured on the Surface
-  /// Pro 11: the levels it replaced, byte for byte, 2026-10-24). Drawn 1:1
-  /// on whole pixels, it is a copy.
-  ui.Picture _reading(List<_PictureRead> reads) {
+  /// Each of [reads] — a later one in place of an earlier — in one [width]
+  /// x [height] raster, under `FilterQuality.medium`: drawn at 1/2^k a side
+  /// so, the GPU samples the image's own level k — the engine's halving,
+  /// the one the picture's chain was made with — so a patch's levels are
+  /// the very code of the levels round it, on any backend (measured on the
+  /// Surface Pro 11: the levels it replaced, byte for byte, 2026-10-24).
+  /// Drawn 1:1 on whole pixels, it is a copy.
+  Future<ui.Image> _readAt(List<_PictureRead> reads, int width, int height) {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     final paint = ui.Paint()
@@ -606,23 +598,13 @@ class FramePictureStore<K extends Object> {
     for (final (:image, :from, :to) in reads) {
       canvas.drawImageRect(image, from, to, paint);
     }
-    return recorder.endRecording();
+    return _rendered(recorder.endRecording(), width, height);
   }
 
   /// [recorded] rastered, and let go of — rendered or not.
   Future<ui.Image> _rendered(ui.Picture recorded, int width, int height) async {
     try {
       return await _gpu.render(recorded, width, height);
-    } finally {
-      recorded.dispose();
-    }
-  }
-
-  /// [recorded] rastered in its turn ([FramePictureGpu.renderInTurn]), and
-  /// let go of.
-  ui.Image _renderedInTurn(ui.Picture recorded, int width, int height) {
-    try {
-      return _gpu.renderInTurn(recorded, width, height);
     } finally {
       recorded.dispose();
     }
@@ -699,52 +681,8 @@ ui.Rect _scaled(ui.Rect rect, double scale) => ui.Rect.fromLTRB(
 );
 
 /// The run's width ([FramePictureStore._run]): the widest texture every
-/// GPU the app runs on takes — OpenGL ES 3's floor — or a patch's own
-/// width where it is wider, which that GPU has rastered already.
+/// GPU the app runs on takes — OpenGL ES 3's floor.
 const int _runWidth = 2048;
-
-/// [base] laid whole into a run [runWidth] wide, left to right on a shelf
-/// as tall as its tallest, a shelf under it once the next does not fit:
-/// the [RunBlock] that copies each into the base level where it lies, the
-/// reads that lay it there, and the rows the shelves take.
-({List<RunBlock> blocks, List<_PictureRead> reads, int rows}) _shelved(
-  List<({ui.Image image, int x, int y})> base,
-  int runWidth,
-) {
-  final blocks = <RunBlock>[];
-  final reads = <_PictureRead>[];
-  var left = 0;
-  var top = 0;
-  var shelf = 0;
-  for (final (:image, :x, :y) in base) {
-    if (left + image.width > runWidth) {
-      top += shelf;
-      left = 0;
-      shelf = 0;
-    }
-    blocks.add((
-      left: left,
-      top: top,
-      width: image.width,
-      height: image.height,
-      x: x,
-      y: y,
-    ));
-    reads.add((
-      image: image,
-      from: _whole(image),
-      to: ui.Rect.fromLTWH(
-        left.toDouble(),
-        top.toDouble(),
-        image.width.toDouble(),
-        image.height.toDouble(),
-      ),
-    ));
-    left += image.width;
-    shelf = math.max(shelf, image.height);
-  }
-  return (blocks: blocks, reads: reads, rows: top + shelf);
-}
 
 /// Where [rect] lies in [picture]'s base level.
 int _xOf(FramePicture picture, ui.Rect rect) =>
@@ -753,30 +691,28 @@ int _xOf(FramePicture picture, ui.Rect rect) =>
 int _yOf(FramePicture picture, ui.Rect rect) =>
     (rect.top - picture.extent.top).toInt();
 
-/// The reads that lay [image] halved to [span]'s width x height into a run
-/// [runWidth] wide from its start on: one a row, and one more each time a
-/// row wraps.
+/// The reads that lay [image] halved to [width] x [height] into a run from
+/// texel [at] on: one a row, and one more each time a row wraps.
 Iterable<_PictureRead> _rowsOf(
   ui.Image image,
-  RunSpan span,
-  int runWidth,
+  int width,
+  int height,
+  int at,
 ) sync* {
-  final width = span.width;
-  final height = span.height;
   final across = image.width / width;
   final down = image.height / height;
   for (var row = 0; row < height; row += 1) {
     var done = 0;
     while (done < width) {
-      final texel = span.start + row * width + done;
-      final x = texel % runWidth;
-      final piece = math.min(width - done, runWidth - x);
+      final start = at + row * width + done;
+      final x = start % _runWidth;
+      final piece = math.min(width - done, _runWidth - x);
       yield (
         image: image,
         from: ui.Rect.fromLTWH(done * across, row * down, piece * across, down),
         to: ui.Rect.fromLTWH(
           x.toDouble(),
-          (texel ~/ runWidth).toDouble(),
+          (start ~/ _runWidth).toDouble(),
           piece.toDouble(),
           1,
         ),
@@ -817,6 +753,10 @@ class _Entry<K> {
   int lastUsed = 0;
   bool gone = false;
 
+  /// Patch rasters, one after another: a patch's picture answers to its key
+  /// in the order the patches were asked for.
+  Future<void> renders = Future<void>.value();
+
   /// Writes into the texture, one after another — the deep levels a write
   /// makes are made from the levels the writes before it wrote.
   Future<void> writes = Future<void>.value();
@@ -840,11 +780,14 @@ class _Lay<K> {
 
 /// One [FramePictureStore.patch], widened, until its picture has moved.
 class _Patch<K> {
-  _Patch(this.from, this.to, this.rect);
+  _Patch(this.from, this.to, this.rect, this.recorded);
 
   final K from;
   final K to;
   final ui.Rect rect;
+
+  /// What the patch draws — none for a [FramePictureStore.move].
+  final ui.Picture? recorded;
 
   /// Answered once [to] answers with the patch's texels — or once its
   /// picture is let go before that ([FramePictureStore._letGo]), whichever
