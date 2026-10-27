@@ -531,7 +531,20 @@ final class HeldSubtreeRasters {
   /// How many rasters held have been let go of — a node's drawn anew in its
   /// place aside: while it stands, every node a frame was drawn whole to
   /// hold, and kept, is held still.
-  int get lettings => _nodes.lettings + _below.lettings;
+  int get _lettings => _nodes.lettings + _below.lettings;
+
+  /// 🚨THE FRAME WHOSE NODES WERE LAST DRAWN WHOLE TO BE HELD ([heldAllOf]),
+  /// and how many held rasters had been let go of then: while both stand,
+  /// every node of it that could be held is ([holdsAllOf]).
+  ({Object of, int lettings})? _allOf;
+
+  /// Notes that [of]'s frame was just drawn whole to hold its nodes
+  /// ([holdOnly]).
+  void heldAllOf(Object of) => _allOf = (of: of, lettings: _lettings);
+
+  /// Whether [of]'s frame was drawn whole to hold its nodes, none held let
+  /// go of since — drawn so again, it would hold nothing more.
+  bool holdsAllOf(Object of) => _allOf == (of: of, lettings: _lettings);
 
   /// Draws [draw] — a frame drawn whole to hold its nodes — and lets go of
   /// every raster held that it neither found nor kept: those of the frame
