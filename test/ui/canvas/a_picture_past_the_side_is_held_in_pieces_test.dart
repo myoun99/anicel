@@ -551,6 +551,18 @@ void main() {
           ),
         };
 
+    // ↩️The folder held its rows at the side of 64 too, until a raster a
+    // spreading chain reads lay on the canvas's 16-pixel cells
+    // (nested-folder-buffers-read-past-the-view). 🔬Through these cameras
+    // the blurred folder's raster is 64×48, 48×32 at half (96×64 of the
+    // cel), 32×16 at two fifths (80×40) and, turned, 80×80; the window its
+    // rows are drawn through, read 2 past each edge, went past 64, and its
+    // rows were drawn apart — at two fifths 70 bytes apart from the whole,
+    // by up to 20. At 112 the noise is held in the same six pieces of 64
+    // (the longest power of two inside) and every part, 100 at most, is
+    // laid; the sparse ink, 96×80, is held whole.
+    const sidePastTheCells = 112;
+
     for (final MapEntry(key: scene, value: nodes) in scenes.entries) {
       for (final MapEntry(key: camera, value: through) in cameras.entries) {
         testWidgets('$scene, through a camera $camera', (tester) async {
@@ -577,7 +589,9 @@ void main() {
             final whole = await render();
             final laid = debugSeenPartsLaid;
             final apart = debugPiecesDrawnApart;
-            debugPictureSideLimit = side;
+            debugPictureSideLimit = scene.startsWith('a folder')
+                ? sidePastTheCells
+                : side;
             final inPieces = await render();
             debugPictureSideLimit = wholeSide;
 
