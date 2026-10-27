@@ -9,7 +9,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
-import 'package:anicel/src/ui/session/folder_bands.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show folderBandOf;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';

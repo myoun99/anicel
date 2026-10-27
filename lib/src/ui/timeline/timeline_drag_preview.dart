@@ -21,6 +21,7 @@ import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
 import 'berth_row.dart';
+import 'property_lane_model.dart' show folderBandOf, folderBandRowsOf;
 
 /// The scoped edit-drag preview channel.
 ///
@@ -889,14 +890,17 @@ Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) =>
     );
 
 /// What [layer]'s row shows while a drag has the rows [movedRowOf] answers
-/// for where it put them, or null when the drag does not reach it.
+/// for where it put them, or null when the drag does not reach it — a row
+/// by its own, a mirror by its base, a folder's band by its rows.
 ///
 /// 🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 위치에
 /// 블록이 남아있는 버그. 이동끝나면 사라짐」. A folder's band and its grey
 /// asked the rows it holds by their own ids alone, so a synced attach row
 /// stood where its base had been: the band held the block twice, where the
 /// hand had it and where it was, until the release. They ask this now, as
-/// the row itself does.
+/// the row itself does — and the band is made here, of its rows as they
+/// show, for every drag (folder-band-lags-a-comma-drag: ↩️a block move laid
+/// it in its own preview, and no other drag did).
 Layer? rowShownWhileMoved(
   Layer layer,
   Layer? Function(LayerId layerId) movedRowOf,
@@ -904,6 +908,19 @@ Layer? rowShownWhileMoved(
   final direct = movedRowOf(layer.id);
   if (direct != null) {
     return direct;
+  }
+  // A FOLDER's band is what its rows hold (F-311): while a drag has one of
+  // them elsewhere, the band is made again of each as it shows — whichever
+  // drag it is (folder-band-lags-a-comma-drag).
+  if (folderBandRowsOf(layer) case final rows?) {
+    final shown = [
+      for (final row in rows) rowShownWhileMoved(row, movedRowOf),
+    ];
+    return shown.every((row) => row == null)
+        ? null
+        : folderBandOf(layer, [
+            for (final (index, row) in rows.indexed) shown[index] ?? row,
+          ]);
   }
   // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
   // drag previews the base, re-derive the mirrored display timeline

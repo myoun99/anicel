@@ -296,7 +296,7 @@ class LayerStack {
       // one member's empty block stood beside another's bare cells, the
       // bare cells turned the folder white. Grey is where no member holds a
       // PICTURE ([_blockIsDrawnAt]) — each member read where a drag in
-      // flight has it, as the band itself is (`folderBandsFollowing`).
+      // flight has it, as the band itself is (`rowShownWhileMoved`).
       return _anyMemberOf(
         layer,
         (member) => _blockIsDrawnAt(member, frameIndex) ?? false,
