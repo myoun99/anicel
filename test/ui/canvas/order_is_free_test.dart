@@ -145,6 +145,51 @@ void main() {
     expect(_keysOf(plan.preSteps.last), hasLength(1));
   });
 
+  test("what follows a run rides its LAST key's draw", () async {
+    // A red block on nothing; white then red keyed, a blur, and a key of a
+    // colour that is not there — so the blur is a step's. Ridden by the
+    // first key's draw it would spread the red before the second key took
+    // it, and the spill past the block, over nothing, is no pixel the red
+    // key names.
+    const side = 32;
+    final straight = Uint8List(side * side * 4);
+    for (var y = 8; y < 24; y++) {
+      for (var x = 8; x < 24; x++) {
+        straight[(y * side + x) * 4] = 255;
+        straight[(y * side + x) * 4 + 3] = 255;
+      }
+    }
+    final plan = resolveCompositeEffectPlan([
+      deleteWhite(),
+      deleteRed(),
+      blur(3),
+      ResolvedLayerEffect(
+        kind: EffectKind.colorKey,
+        values: const [0, 0, 255, 0, 0, 100],
+      ),
+    ]);
+    expect(_keysOf(plan.preSteps.first), hasLength(2), reason: 'fixture');
+    expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
+    final source = await _imageFrom(straight, side, side);
+    final stepped = applyEffectSteps(
+      source: source,
+      steps: plan.preSteps,
+      pixelWidth: side,
+      pixelHeight: side,
+      imageScale: 1,
+    );
+    final bytes = await _bytesOf(stepped, side);
+    stepped.dispose();
+    source.dispose();
+    var ink = 0;
+    for (var i = 3; i < bytes.length; i += 4) {
+      if (bytes[i] != 0) {
+        ink += 1;
+      }
+    }
+    expect(ink, 0, reason: 'the red is gone before the blur spreads it');
+  });
+
   final eraseAll = ResolvedLayerEffect(
     kind: EffectKind.colorKey,
     values: const [0, 0, 0, 0, 255, 100],

@@ -157,6 +157,31 @@ void main() {
     expect(ink, isNot(contains((-6, -6))));
   });
 
+  testWidgets('past the picture there is nothing — its edge is not smeared '
+      'in', (tester) async {
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(
+      Rect.fromLTWH(0, centre.toDouble(), 1, 1),
+      Paint()
+        ..color = const Color(0xFFFFFFFF)
+        ..isAntiAlias = false,
+    );
+    final picture = recorder.endRecording();
+    final source = picture.toImageSync(side, side);
+    picture.dispose();
+    addTearDown(source.dispose);
+    final out = steppedForChain(
+      image: source,
+      plan: resolveCompositeEffectPlan([directional(degrees: 90, length: 15)]),
+      canvasExtent: side.toDouble(),
+    );
+    addTearDown(out.dispose);
+    final alphas = await alphasOf(tester, out);
+    // One tap of fifteen lands on it, as anywhere else on the line: the
+    // seven left of the edge read nothing, not the edge pixel again.
+    expect(alphas[centre * side], 17);
+  });
+
   testWidgets('a long blur is passes, and still one unbroken line', (
     tester,
   ) async {
