@@ -343,7 +343,11 @@ class EffectParameterSpec {
     required this.minimum,
     required double maximum,
     this.unit = EffectParameterUnit.number,
-  }) : _maximum = maximum,
+  }) : assert(
+         unit != EffectParameterUnit.choice,
+         'A menu is EffectParameterSpec.choice — the words are what it is.',
+       ),
+       _maximum = maximum,
        choices = const [];
 
   /// A menu of [choices], the first chosen until a key or a value says

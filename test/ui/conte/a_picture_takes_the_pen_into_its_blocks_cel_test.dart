@@ -644,7 +644,7 @@ void main() {
     final keys = penOverThePicture(tester).overlay.sourceEffects;
 
     expect(keys.map((key) => key.kind), [EffectKind.colorKey]);
-    expect(keys.single.values, [64, 192, 96, 10, 100]);
+    expect(keys.single.values, [0, 64, 192, 96, 10, 100]);
   });
 
   // 🚨The shown is the result: while the brush is on, the picture on screen

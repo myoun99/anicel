@@ -1018,6 +1018,12 @@ ui.Image applyEffectSteps({
   required int pixelHeight,
   required double imageScale,
 }) {
+  // ⛔The IMAGE's own space. A step rasters at the identity — there is no
+  // CTM to map a sigma through — so the chain arrives pre-multiplied by
+  // however many image pixels a canvas pixel is.
+  final space = imageScale == 1
+      ? DrawSpace.canvas
+      : DrawSpace.preScaled(imageScale);
   var image = source;
   for (final step in steps) {
     // What every key of the run reads its colours from and a restore gives
@@ -1033,7 +1039,7 @@ ui.Image applyEffectSteps({
         then: index == draws - 1 ? step.then : const [],
         pixelWidth: pixelWidth,
         pixelHeight: pixelHeight,
-        imageScale: imageScale,
+        space: space,
       );
       if (!identical(image, source) && !identical(image, runInput)) {
         image.dispose();
@@ -1056,7 +1062,7 @@ ui.Image _effectStepDraw({
   required List<ResolvedLayerEffect> then,
   required int pixelWidth,
   required int pixelHeight,
-  required double imageScale,
+  required DrawSpace space,
 }) {
   final stepRecorder = ui.PictureRecorder();
   final into = Canvas(stepRecorder);
@@ -1072,15 +1078,7 @@ ui.Image _effectStepDraw({
     );
     paint.shader = shader;
   }
-  // ⛔Resolved HERE, in the IMAGE's own space. A step rasters at the
-  // identity — there is no CTM to map a sigma through — so the chain
-  // arrives pre-multiplied by however many image pixels a canvas pixel is.
-  resolveCompositeEffectPaint(
-    then,
-    space: imageScale == 1
-        ? DrawSpace.canvas
-        : DrawSpace.preScaled(imageScale),
-  ).applyTo(paint);
+  resolveCompositeEffectPaint(then, space: space).applyTo(paint);
   final rect = Rect.fromLTWH(
     0,
     0,

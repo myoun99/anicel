@@ -100,15 +100,24 @@ void main() {
       for (final unit in EffectParameterUnit.values) {
         roundTrips(
           formatEffectLaneValue(
-            EffectParameterSpec(
-              id: 'p',
-              label: 'P',
-              minimum: -100,
-              maximum: 100,
-              defaultValue: 0,
-              unit: unit,
-            ),
-            12.5,
+            unit == EffectParameterUnit.choice
+                ? const EffectParameterSpec.choice(
+                    id: 'p',
+                    label: 'P',
+                    choices: [
+                      EffectChoice(id: 'one', label: 'One'),
+                      EffectChoice(id: 'two', label: 'Two Words'),
+                    ],
+                  )
+                : EffectParameterSpec(
+                    id: 'p',
+                    label: 'P',
+                    minimum: -100,
+                    maximum: 100,
+                    defaultValue: 0,
+                    unit: unit,
+                  ),
+            unit == EffectParameterUnit.choice ? 1 : 12.5,
           ),
         );
       }
