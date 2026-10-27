@@ -450,15 +450,22 @@ void main() {
     await tap(tester, 'storyboard-lane-toggle-a-conte');
     String twirl(LayerId row, String lane) =>
         'storyboard-lane-group-toggle-$row-$lane';
+    // The conte's effect group stands open before the stroke: the sweep
+    // crosses it agreeing, and leaves it be.
+    await tap(tester, twirl(conteRow, effectGroupLaneId(shade)));
+    final alreadyOpen = laneGroupKey(
+      const LayerId('a-conte'),
+      effectGroupLaneId(shade),
+    );
     final keys = [
       for (final effect in effects)
         laneGroupKey(carrier, effectGroupLaneId(effect)),
       laneGroupKey(const LayerId('a-conte'), 'transform-group'),
-      laneGroupKey(const LayerId('a-conte'), effectGroupLaneId(shade)),
+      alreadyOpen,
     ];
     expect(
       session.railView.expandedLaneGroupKeys.value.where(keys.contains),
-      isEmpty,
+      [alreadyOpen],
       reason: '⛔전제',
     );
 
@@ -475,7 +482,9 @@ void main() {
       containsAll(keys),
       reason:
           'each group by the row it twirls in, as its own twirl turns it — '
-          'the press read as it left the group: a stale read spreads shut',
+          'the press read as it left the group: a stale read spreads shut; '
+          'the open one read off the conte in hand: by its own id the host '
+          'finds no row, reads it shut and shuts it',
     );
   });
 

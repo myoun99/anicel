@@ -138,6 +138,12 @@ class _StoryboardRailSweep {
   /// [row]'s group fold, as its label is told: a conte row's by its seat
   /// ([_conteHeadFolds]), its attach group's on the layer it has in hand;
   /// no other row of this rail folds.
+  ///
+  /// ⛔MUTANT SURVIVES (F-475, 2026-10-27): pressing by the row's own id
+  /// reddens nothing — the host's press finds the layer in hand itself
+  /// (`layerActedOn`). It presses by the layer in hand anyway, as the
+  /// row's own twirl does (`layerIdNow`), so the stroke and the press
+  /// cannot part.
   TimelineGroupFold _foldOf(TimelineDisplayRow row) {
     final toggle = _widget.onToggleAttachGroup;
     final held = _held(row.layer.id);
