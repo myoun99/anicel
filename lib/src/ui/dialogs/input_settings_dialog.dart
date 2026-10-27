@@ -41,10 +41,8 @@ class InputSettingsSection extends StatelessWidget {
               control: PenResponseButton(
                 keyValue: 'settings-pressure-curve',
                 curve: settings.pressureCurve,
-                onChanged: (curve) => AppInput.settings.value = AppInput
-                    .settings
-                    .value
-                    .copyWith(pressureCurve: curve),
+                onChanged: (curve) => AppInput.settings.value =
+                    AppInput.settings.value.copyWith(pressureCurve: curve),
                 onChangeEnd: (curve) => session.setInputSettings(
                   AppInput.settings.value.copyWith(pressureCurve: curve),
                 ),

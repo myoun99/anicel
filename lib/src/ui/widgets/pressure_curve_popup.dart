@@ -22,11 +22,9 @@ import '../repaint_props.dart';
 /// (a [BrushPressureCurve]?), so any future pressure-capable setting can
 /// reuse it unchanged.
 ///
-/// Editor grammar (CSP vocabulary):
-///  - drag a control point to move it (endpoints keep their x),
-///  - press an empty spot on the curve area to ADD a point and drag on,
-///  - drag a middle point well outside the graph to REMOVE it,
-///  - the switch turns pressure OFF (curve = null) / ON (identity line).
+/// Each graph is a [PressureCurveGraph] — the hand every curve in the app is
+/// edited by — and a source's name turns it OFF (curve = null) / ON (the
+/// identity line).
 class PressureCurveButton extends StatelessWidget {
   const PressureCurveButton({
     super.key,
@@ -597,11 +595,10 @@ class _PressureCurveGraphState extends State<PressureCurveGraph> {
   @override
   void didUpdateWidget(PressureCurveGraph oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // Points the caller changed itself (a reset) replace the copy, and a
+    // hand still on the graph lets go: its point may be gone.
     if (!listEquals(widget.points, _points)) {
       _points = List.of(widget.points);
-      _endDrag();
-    }
-    if (!widget.enabled) {
       _endDrag();
     }
   }
@@ -670,6 +667,9 @@ class _PressureCurveGraphState extends State<PressureCurveGraph> {
   );
 
   void _handlePanStart(Size box, DragStartDetails details) {
+    // Every drag starts empty-handed: one the grip dropped without an end
+    // (the graph switched off under the hand) leaves nothing in it.
+    _endDrag();
     final local = details.localPosition;
     // Grab the nearest point within reach, else add one at the press.
     //

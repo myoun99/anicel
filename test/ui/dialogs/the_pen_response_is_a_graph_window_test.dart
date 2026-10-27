@@ -122,6 +122,37 @@ void main() {
     expect(lit(tester), isFalse);
   });
 
+  testWidgets('a reset under a hand that holds a point lets the point go', (
+    tester,
+  ) async {
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+      pressureCurve: BrushPressureCurve(const [
+        BrushCurvePoint(0, 0),
+        BrushCurvePoint(0.5, 0.2),
+        BrushCurvePoint(1, 1),
+      ]),
+    );
+    await pumpInputTab(tester);
+    await openTheGraph(tester);
+    final rect = tester.getRect(graph);
+    // The hand holds the last of three points, at the top right.
+    final hand = await tester.startGesture(
+      rect.topRight + const Offset(-2, 2),
+    );
+    await tester.pump();
+    await hand.moveBy(const Offset(0, 10));
+    await tester.pump();
+
+    // Another finger resets: the line has two points, and the third is gone.
+    await tester.tap(find.byKey(const ValueKey<String>('pen-response-reset')));
+    await tester.pump();
+    await hand.moveBy(const Offset(0, 10));
+    await tester.pump();
+    await hand.up();
+    await tester.pumpAndSettle();
+    expect(AppInput.settings.value.pressureCurve, BrushPressureCurve.linear);
+  });
+
   testWidgets("its graph is the brush window's graph", (tester) async {
     await pumpInputTab(tester);
     await openTheGraph(tester);
