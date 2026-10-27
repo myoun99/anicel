@@ -458,8 +458,8 @@ void main() {
     return argb;
   }
 
-  void expectByTheLaw(List<BrushDab> dabs) {
-    final base = edgeCel();
+  void expectByTheLaw(List<BrushDab> dabs, {BitmapSurface? over}) {
+    final base = over ?? edgeCel();
     final landed = live(dabs, base);
     final expected = byTheLaw(base, dabs);
     var moved = 0;
@@ -523,6 +523,63 @@ void main() {
           pathStep: i == 0 ? null : 3,
         ),
     ]);
+  });
+
+  onEachEngine('a dab whose blur reaches tiles it does not touch reads them '
+      'as the cel has them, by the law written beside it', () {
+    // A hard square in the corner of tile (0, 0): its window runs a reach
+    // into the three tiles beside it, which it never rewrites — so the
+    // corner it moves is mostly what it reads from them.
+    final dab = BrushDab(
+      center: CanvasPoint(x: 52, y: 52),
+      color: 0xFF000000,
+      size: 24,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      blurs: true,
+    );
+    final plan = BrushDabPlan.of(
+      dab,
+      wall: wall,
+      tileSize: tileSize,
+      erase: false,
+    )!;
+    final range = plan.clip.tileRange(tileSize: tileSize);
+    expect(
+      (range.firstX, range.lastX, range.firstY, range.lastY),
+      (0, 0, 0, 0),
+      reason: 'premise: the dab touches one tile',
+    );
+    expect(
+      plan.rightExclusive + (24 / 6).round() * 3,
+      greaterThan(tileSize),
+      reason: 'premise: its window reaches past it',
+    );
+    expectByTheLaw(
+      [dab],
+      over: celOf(
+        (x, y) => (x ~/ 6 + y ~/ 6).isEven ? 0xFF2244CC : 0xFFEE8811,
+      ),
+    );
+  });
+
+  onEachEngine('over a cel with tiles missing, the blur reads nothing there '
+      '— also in memory a stroke before it let go', () {
+    // The stroke before leaves its rewritten tiles' blocks to be handed out
+    // again, its picture still in them.
+    live(rub(), edgeCel());
+    final whole = edgeCel();
+    expectByTheLaw(
+      rub(),
+      over: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize).putTiles([
+        for (final coord in [TileCoord(x: 0, y: 0), TileCoord(x: 2, y: 1)])
+          (coord: coord, tile: whole.tileAt(coord)!),
+      ]),
+    );
   });
 
   test('under the engine a blur stroke gives its memory back — a '
