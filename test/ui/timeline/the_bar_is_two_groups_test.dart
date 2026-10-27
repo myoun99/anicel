@@ -193,6 +193,15 @@ void main() {
         reason: 'the cut pill shown whole',
       );
 
+      // Just short of the floor, the cut pill is still whole IN the strip:
+      // the floor counts the inset the pills' scroller stands in.
+      await narrowTo(floorWidth + rightGroup + 28 - 2);
+      expect(
+        tester.getRect(floor).right,
+        lessThanOrEqualTo(tester.getRect(scrollerOn(bar)).right + 0.01),
+        reason: 'the cut pill shown whole in the strip',
+      );
+
       await narrowTo(floorWidth + rightGroup + 28 - 30);
       final shown = tester.getRect(transport);
       expect(
