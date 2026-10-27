@@ -140,9 +140,9 @@ void main() {
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    // 19.2 at 100%, where a cut opens (F-403: 「80%를 100%로」), laid on
-    // whole pixels; the painterized ruler (UI-R13 #1) reports
-    // geometry/labels through its painter. ↩️24 (R-toolbar round).
+    // 19.2, where a cut opens (F-403: 「80%를 100%로」) — 200% on the bar
+    // since F-491 — laid on whole pixels; the painterized ruler (UI-R13 #1)
+    // reports geometry/labels through its painter. ↩️24 (R-toolbar round).
     double headerWidth() => timelineHeaderGlobalRect(tester, 0).width;
     expect(headerWidth(), 19);
     // Wide cells label every frame in-cell.
@@ -151,16 +151,18 @@ void main() {
     Future<void> zoomTo(double pixelsPerFrame) =>
         zoomTimelineTo(tester, pixelsPerFrame);
 
-    // Under the bar's 200% (38.4, F-403-Q1). ↩️40, under 250%.
+    // Under the bar's ceiling, 38.4 (F-403-Q1; 400% since F-491). ↩️40,
+    // under 250%.
     await zoomTo(36);
     expect(headerWidth(), 36);
 
-    // A drag along the zoom readout, a percent a pixel (F-463): 125% to
-    // 156%. ↩️The −/+ step buttons flanking the slider stood here (UI-R11
-    // #11), ×1.25 a press.
+    // A drag along the zoom readout, a percent a pixel (F-463): 250% to
+    // 281% (F-491: 100% is 9.6). ↩️125% to 156% of 19.2; before that the
+    // −/+ step buttons flanking the slider stood here (UI-R11 #11), ×1.25 a
+    // press.
     await zoomTo(24);
     await dragTimelineZoom(tester, 31);
-    expect(headerWidth(), 30, reason: '156.0% of 19.2 = 29.952');
+    expect(headerWidth(), 27, reason: '281% of 9.6 = 26.976');
 
     await zoomTo(12);
     expect(headerWidth(), 12);
