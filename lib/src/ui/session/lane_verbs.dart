@@ -287,6 +287,9 @@ class LaneVerbs {
     // order the one Delete asks (F-87). ↩️Only the camera rows asked: a band
     // swept up from a lane into its layer's row left the press on that lane,
     // and ＋ keyed one frame of it and filled none of the band.
+    // 🗣️one-band-no-lane-tail-Q2 (유저 2026-10-27): 「칸 편집」 — so Edit and
+    // the double tap open the cell's editor under such a band, and the key
+    // window opens where lanes alone are selected ([_selectedLaneSpan]).
     if (_selection.frameRangeSelection.value != null) {
       return null;
     }

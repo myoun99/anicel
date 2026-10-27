@@ -419,7 +419,7 @@ void main() {
     });
 
     test('⚠️rows beside another row\'s header: the copy takes the rows '
-        '(F-476-Q3 asks)', () {
+        '(F-476-Q3: 「지금대로 — 행이 먼저」)', () {
       final session = _session();
       _select(session, [
         const LayerRowAddress(LayerId('x')),

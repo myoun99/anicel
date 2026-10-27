@@ -302,9 +302,9 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// effects fx headers name on other rows beside them.
   ///
   /// ⚠️The hand holds ONE board's copy (`AppClipboard`), so a selection of
-  /// rows and another row's fx header copies the rows — a session's pick,
-  /// asked on the board (F-476-Q3): Delete takes both, but a paste of both
-  /// would land in two places at once.
+  /// rows and another row's fx header copies the rows: Delete takes both,
+  /// but a paste of both would land in two places at once.
+  /// 🗣️F-476-Q3 (유저 2026-10-27): 「지금대로 — 행이 먼저」.
   bool get _copiesRows =>
       rowsAreThisPanels && session.layerClipboard.canCopySelectedRows;
 
