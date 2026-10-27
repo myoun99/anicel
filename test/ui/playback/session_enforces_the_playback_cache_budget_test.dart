@@ -115,13 +115,14 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false);
 
   /// What [cut]'s first frame's picture is kept under.
   FramePictureKey keyOf(EditorSessionManager s, Cut cut) => s
       .playbackRig
       .framePictures
-      .keyOf((cut: cut, frameIndex: 0, paintPaper: true));
+      .keyOf((cut: cut, frameIndex: 0, paintPaper: true, ghosts: false));
 
   /// What one frame's picture weighs: a cel inked over its canvas, laid as
   /// the store lays it — measured, on a line it fits in many times.

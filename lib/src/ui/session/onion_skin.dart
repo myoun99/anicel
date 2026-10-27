@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../models/attached_layer_resolve.dart';
+import '../../models/cut.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -13,7 +14,6 @@ import '../../services/onion_skin_plan.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
     show TimelineDragPreview, celPixelsOf, cutShowingDragPreview;
-import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
 /// The ONION SKIN — which layers ghost, the sweep over the displayed ones,
@@ -39,19 +39,25 @@ class OnionSkin {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required ActiveCutControllers controllers,
     required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _controllers = controllers,
-       _dragPreview = dragPreview;
+       _dragPreview = dragPreview {
+    layerIds.addListener(_warmAgain);
+    settings.addListener(_warmAgain);
+  }
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final ActiveCutControllers _controllers;
   final ValueListenable<TimelineDragPreview?> _dragPreview;
+
+  /// 🚨THE GHOSTS ARE MADE AHEAD AS THE FRAMES ARE ([ghostsAt]), so what
+  /// they are planned from is asked of the warmer again when it changes —
+  /// as an edit of the cut is. Neither is in the project: no command of
+  /// the cut's warms for them.
+  void _warmAgain() => _changes.warmActiveCut();
 
   /// The peg settings — the app's one notifier (see the class doc), so the
   /// canvas underlay and the onion panel subscribe without whole-session
@@ -67,6 +73,7 @@ class OnionSkin {
 
   /// Releases the layer set; the session's teardown calls it.
   void dispose() {
+    settings.removeListener(_warmAgain);
     layerIds.dispose();
   }
 
@@ -229,19 +236,23 @@ class OnionSkin {
     return attachedBaseOf(layer, layers) ?? layer;
   }
 
-  /// The ghost frames to composite at the playhead: every onion-enabled
-  /// VISIBLE drawing layer contributes its plan (unique drawings, peg
-  /// opacities, side tints) in layer-stack order.
+  /// The ghost frames to composite over [committed]'s frame [frameIndex]:
+  /// every onion-enabled VISIBLE drawing layer contributes its plan (unique
+  /// drawings, peg opacities, side tints) in layer-stack order.
   ///
   /// Planned from the cut as a drag in flight shows it, like the picture
   /// they ghost around (canvas-follows-block-moves) — a block moved past the
   /// playhead moves its ghost with it, and one carried onto another row
   /// ghosts the pixels where they still are ([celPixelsOf]).
-  List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
+  ///
+  /// 🚨ONE ANSWER, AT ANY FRAME: the canvas asks it at the playhead and the
+  /// warmer ahead of it (`FramePictures.stackOf`), so the picture laid
+  /// ahead is the one a scrub stands on. ↩️It answered at the playhead
+  /// alone, and every frame a scrub crossed laid its ghosts on the spot.
+  List<CanvasLayerImageRequest> ghostsAt(Cut committed, int frameIndex) {
     final pegs = settings.value;
-    final committed = _project.activeCutOrNull;
     final enabledIds = _ghosting;
-    if (committed == null || enabledIds.isEmpty) {
+    if (enabledIds.isEmpty) {
       return const [];
     }
     final dragPreview = _dragPreview.value;
@@ -258,7 +269,7 @@ class OnionSkin {
           // mirror of the base, whose cels are its own (F-183 ①).
           for (final plan in planOnionSkin(
             layer: attachedRowAsShown(layer, cut.layers),
-            frameIndex: _controllers.timelineController.currentFrameIndex,
+            frameIndex: frameIndex,
             settings: pegs,
           ))
             if (celPixelsOf(dragPreview, layer.id, plan.frameId)

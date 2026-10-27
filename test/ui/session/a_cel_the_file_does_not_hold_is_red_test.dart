@@ -105,6 +105,7 @@ void main() {
       cut: s.activeCutOrNull!,
       frameIndex: 0,
       paintPaper: true,
+      ghosts: false,
     ), shouldAbort: () => false),
     throwsA(anything),
     reason: '⛔CONTROL: the cel\'s bytes are not there to read',

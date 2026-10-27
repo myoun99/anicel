@@ -116,7 +116,12 @@ void main() {
   bool held(EditorSessionManager s, int frameIndex) => s
       .playbackRig
       .framePictures
-      .has((cut: s.activeCutOrNull!, frameIndex: frameIndex, paintPaper: true));
+      .has((
+        cut: s.activeCutOrNull!,
+        frameIndex: frameIndex,
+        paintPaper: true,
+        ghosts: false,
+      ));
 
   int heldBytes(EditorSessionManager s) =>
       s.renderCaches.framePictureStore.estimatedBytes;
@@ -126,7 +131,12 @@ void main() {
   Future<int> onePicture() async {
     final s = session();
     addTearDown(s.dispose);
-    final frame = (cut: s.activeCutOrNull!, frameIndex: 0, paintPaper: true);
+    final frame = (
+      cut: s.activeCutOrNull!,
+      frameIndex: 0,
+      paintPaper: true,
+      ghosts: false,
+    );
     await s.playbackRig.framePictures.make(frame, shouldAbort: () => false);
     return s.renderCaches.framePictureStore.bytesOf(
       s.playbackRig.framePictures.keyOf(frame),
@@ -194,7 +204,12 @@ void main() {
       // A second picture — the runway cel, made by another hand — and the
       // body cel is now the one used longest ago.
       await s.playbackRig.framePictures.make(
-        (cut: s.activeCutOrNull!, frameIndex: 5, paintPaper: true),
+        (
+          cut: s.activeCutOrNull!,
+          frameIndex: 5,
+          paintPaper: true,
+          ghosts: false,
+        ),
         shouldAbort: () => false,
       );
       expect([held(s, 0), held(s, 5)], [true, true], reason: '⛔premise');
@@ -287,7 +302,7 @@ void main() {
       );
 
       await s.playbackRig.framePictures.make(
-        (cut: activeCut, frameIndex: 5, paintPaper: true),
+        (cut: activeCut, frameIndex: 5, paintPaper: true, ghosts: false),
         shouldAbort: () => false,
       );
       expect(ready(5), isTrue);

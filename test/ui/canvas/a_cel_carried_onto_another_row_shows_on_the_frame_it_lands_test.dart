@@ -120,7 +120,12 @@ void main() {
           under: const Color(0xFF000000),
           view: FramePictureView(
             run: run,
-            picture: (cut: cut, frameIndex: frame, paintPaper: false),
+            picture: (
+              cut: cut,
+              frameIndex: frame,
+              paintPaper: false,
+              ghosts: false,
+            ),
             nodes: rowOf(cel),
             viewport: CanvasViewport(zoom: zoom),
             laysWhatItMisses: true,
@@ -176,6 +181,7 @@ void main() {
       cut: cut,
       frameIndex: frame,
       paintPaper: false,
+      ghosts: false,
     ));
     expect(
       await settleAsync(tester, () => store.peek(red) != null),

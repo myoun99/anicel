@@ -111,7 +111,7 @@ void main() {
       CanvasActiveLayerRow(opacity: 1, frameKey: cel),
     ),
   ];
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: false);
   final ghostTile = PromotedStrokeTile(
     TileCoord(x: 0, y: 0),
     tileOf((x, y) => x > 3 && x < 12 && y > 3 && y < 12 ? ghost : null),

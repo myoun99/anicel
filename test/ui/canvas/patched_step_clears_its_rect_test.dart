@@ -74,6 +74,7 @@ void main() {
     ),
     frameIndex: 0,
     paintPaper: false,
+    ghosts: false,
   );
   final nodes = [
     const CompositeLeaf<CanvasStackRow>(

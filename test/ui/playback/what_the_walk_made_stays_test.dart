@@ -119,7 +119,7 @@ void main() {
         for (final id in ['cut-1', 'cut-2', 'cut-3']) s.cutById(CutId(id))!,
       ];
       DemandedPicture headOf(Cut cut) =>
-          (cut: cut, frameIndex: 0, paintPaper: true);
+          (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
       keepInkedPastEveryEdge(s, cuts);
       await rig.prerenderScheduler.idle;
       // Nothing made but the first cut's picture, the one the run is put on.

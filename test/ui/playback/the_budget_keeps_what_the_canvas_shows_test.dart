@@ -94,7 +94,12 @@ void main() {
   }
 
   FramePictureKey keyOf(FramePictures pictures, String name) => pictures
-      .keyOf((cut: cut, frameIndex: names.indexOf(name), paintPaper: true));
+      .keyOf((
+        cut: cut,
+        frameIndex: names.indexOf(name),
+        paintPaper: true,
+        ghosts: false,
+      ));
 
   Future<void> makePictures(FramePictures pictures) async {
     for (final frame in [0, 1, 2]) {
@@ -102,6 +107,7 @@ void main() {
         cut: cut,
         frameIndex: frame,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false);
     }
   }

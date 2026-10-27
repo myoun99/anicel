@@ -86,7 +86,7 @@ void main() {
   ];
 
   /// The screen's pictures over [layerImages]: each frame one picture of
-  /// its rows, on its paper.
+  /// its rows, on its paper — and nothing ghosting over it.
   FramePictures picturesOver(
     LayerFrameImageCache layerImages, {
     FramePictureGpu? gpu,
@@ -97,8 +97,9 @@ void main() {
       store: store,
       layerImages: layerImages,
       stackOf: (picture) => [
-        for (final row in rowsOf(picture.cut, picture.frameIndex))
-          CompositeLeaf<CanvasStackRow>(row),
+        if (!picture.ghosts)
+          for (final row in rowsOf(picture.cut, picture.frameIndex))
+            CompositeLeaf<CanvasStackRow>(row),
       ],
       pageOf: (picture) => (
         canvasSize: picture.cut.canvasSize,
@@ -114,7 +115,12 @@ void main() {
   ui.Image? shownAt(FramePictures pictures, Cut cut, int frameIndex) =>
       pictures.store
           .peek(
-            pictures.keyOf((cut: cut, frameIndex: frameIndex, paintPaper: true)),
+            pictures.keyOf((
+              cut: cut,
+              frameIndex: frameIndex,
+              paintPaper: true,
+              ghosts: false,
+            )),
           )
           ?.image;
 
@@ -216,7 +222,12 @@ void main() {
         inkedSurface(),
       );
       expect(
-        f.pictures.has((cut: runwayCut(), frameIndex: 6, paintPaper: true)),
+        f.pictures.has((
+          cut: runwayCut(),
+          frameIndex: 6,
+          paintPaper: true,
+          ghosts: false,
+        )),
         isFalse,
         reason: '⛔premise: the runway has a picture to make',
       );
@@ -297,7 +308,12 @@ void main() {
       );
 
       expect(
-        f.pictures.has((cut: cut(), frameIndex: 0, paintPaper: true)),
+        f.pictures.has((
+          cut: cut(),
+          frameIndex: 0,
+          paintPaper: true,
+          ghosts: false,
+        )),
         isFalse,
         reason: '⛔premise: frame 0 has a picture to make',
       );
@@ -309,7 +325,12 @@ void main() {
 
       for (var index = 0; index < 4; index += 1) {
         expect(
-          f.pictures.has((cut: cut(), frameIndex: index, paintPaper: true)),
+          f.pictures.has((
+            cut: cut(),
+            frameIndex: index,
+            paintPaper: true,
+            ghosts: false,
+          )),
           isTrue,
           reason: 'frame $index should be warmed — 1..3 show no cel: their '
               'page alone, there by definition',
@@ -565,7 +586,12 @@ void main() {
           );
         }
         expect(
-          f.pictures.has((cut: nextCut(), frameIndex: 3, paintPaper: true)),
+          f.pictures.has((
+            cut: nextCut(),
+            frameIndex: 3,
+            paintPaper: true,
+            ghosts: false,
+          )),
           isFalse,
           reason: '⛔premise: the runway has a picture to make',
         );
@@ -587,7 +613,12 @@ void main() {
 
         for (var index = 0; index < 4; index += 1) {
           expect(
-            f.pictures.has((cut: nextCut(), frameIndex: index, paintPaper: true)),
+            f.pictures.has((
+              cut: nextCut(),
+              frameIndex: index,
+              paintPaper: true,
+              ghosts: false,
+            )),
             isTrue,
             reason: 'next-cut frame $index warms on the same run — index 3 '
                 'is the RUNWAY drawing, covered because the lookahead reads '
@@ -692,7 +723,12 @@ void main() {
       totalFrames: 4,
       loops: () => true,
       playhead: () => playhead,
-      picturesOf: (frame) => [(cut: four(), frameIndex: frame, paintPaper: true)],
+      picturesOf: (frame) => [(
+        cut: four(),
+        frameIndex: frame,
+        paintPaper: true,
+        ghosts: false,
+      )],
       playlistFrameOf: (cutId, frameIndex) =>
           cutId == const CutId('cut') ? frameIndex : null,
       lead: lead,
@@ -700,7 +736,12 @@ void main() {
 
     List<bool> there(FramePictures pictures) => [
       for (var frame = 0; frame < 4; frame += 1)
-        pictures.has((cut: four(), frameIndex: frame, paintPaper: true)),
+        pictures.has((
+          cut: four(),
+          frameIndex: frame,
+          paintPaper: true,
+          ghosts: false,
+        )),
     ];
 
     /// A cel inked across [four]'s canvas, and [past] tiles past every edge.
@@ -895,7 +936,12 @@ void main() {
             totalFrames: 6,
             loops: () => true,
             playhead: () => 0,
-            picturesOf: (frame) => [(cut: six(), frameIndex: frame, paintPaper: true)],
+            picturesOf: (frame) => [(
+              cut: six(),
+              frameIndex: frame,
+              paintPaper: true,
+              ghosts: false,
+            )],
             playlistFrameOf: (cutId, frameIndex) =>
                 cutId == const CutId('cut') ? frameIndex : null,
           ),
@@ -1082,7 +1128,12 @@ void main() {
             totalFrames: 1,
             loops: () => true,
             playhead: () => 0,
-            picturesOf: (frame) => [(cut: four(), frameIndex: frame, paintPaper: true)],
+            picturesOf: (frame) => [(
+              cut: four(),
+              frameIndex: frame,
+              paintPaper: true,
+              ghosts: false,
+            )],
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
@@ -1240,6 +1291,7 @@ void main() {
           cut: four(),
           frameIndex: 2,
           paintPaper: true,
+          ghosts: false,
         ), shouldAbort: () => false);
         final room = _Room(f.pictures, 3 * pictureBytes);
         final scheduler = PlaybackPrerenderScheduler(
@@ -1344,7 +1396,12 @@ void main() {
             playhead: () => playhead,
             picturesOf: (frame) {
               asked += 1;
-              return [(cut: cut(duration: 40), frameIndex: frame, paintPaper: true)];
+              return [(
+                cut: cut(duration: 40),
+                frameIndex: frame,
+                paintPaper: true,
+                ghosts: false,
+              )];
             },
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
@@ -1413,7 +1470,12 @@ void main() {
         );
         final passedAtEach = <bool>[];
         scheduler.changes.addListener(
-          () => passedAtEach.add(scheduler.has([(cut: four(), frameIndex: 1, paintPaper: true)])),
+          () => passedAtEach.add(scheduler.has([(
+            cut: four(),
+            frameIndex: 1,
+            paintPaper: true,
+            ghosts: false,
+          )])),
         );
 
         scheduler.follow(run());
@@ -1429,7 +1491,12 @@ void main() {
           reason: 'frame 1 is laid without the cel that would not read',
         );
         expect(
-          pictures.cannotRead((cut: four(), frameIndex: 1, paintPaper: true)),
+          pictures.cannotRead((
+            cut: four(),
+            frameIndex: 1,
+            paintPaper: true,
+            ghosts: false,
+          )),
           isTrue,
         );
         expect(reported, hasLength(1), reason: 'the failure is said, once');
@@ -1449,7 +1516,12 @@ void main() {
               'first (10-10)',
         );
         expect(
-          scheduler.has([(cut: four(), frameIndex: 1, paintPaper: true)]),
+          scheduler.has([(
+            cut: four(),
+            frameIndex: 1,
+            paintPaper: true,
+            ghosts: false,
+          )]),
           isTrue,
           reason: 'nothing waits for a picture that cannot be made',
         );

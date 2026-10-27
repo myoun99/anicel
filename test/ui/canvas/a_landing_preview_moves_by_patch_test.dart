@@ -98,6 +98,7 @@ void main() {
     ),
     frameIndex: 0,
     paintPaper: true,
+    ghosts: false,
   );
 
   /// One tile of [colour] at the pixels [inked] says, clear elsewhere.

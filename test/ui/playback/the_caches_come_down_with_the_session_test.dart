@@ -53,6 +53,7 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false),
     );
     expect(

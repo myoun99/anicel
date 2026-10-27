@@ -234,7 +234,12 @@ void main() {
         ),
       ),
     ];
-    final picture = (cut: cut(), frameIndex: 0, paintPaper: true);
+    final picture = (
+      cut: cut(),
+      frameIndex: 0,
+      paintPaper: true,
+      ghosts: false,
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(

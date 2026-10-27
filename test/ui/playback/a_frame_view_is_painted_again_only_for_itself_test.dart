@@ -65,7 +65,7 @@ void main() {
       canvasSize: canvasSize,
       stackOf: (_) => const [],
     );
-    final picture = (cut: cut, frameIndex: 0, paintPaper: true);
+    final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
     final LiveRows live = (
       activeSurfacePainter: BitmapSurfacePainter(
         surface: BitmapSurface(canvasSize: canvasSize, tileSize: 16),

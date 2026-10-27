@@ -131,7 +131,12 @@ void main() {
       draw(s, rowsOf[at][0], 10);
       draw(s, rowsOf[at][1], 20);
     }
-    return (cut: s.requireActiveCut, frameIndex: 0, paintPaper: true);
+    return (
+      cut: s.requireActiveCut,
+      frameIndex: 0,
+      paintPaper: true,
+      ghosts: false,
+    );
   }
 
   /// Laid for a canvas that stands on it to draw.
@@ -348,7 +353,12 @@ void main() {
       final pictures = s.playbackRig.framePictures;
       final store = s.renderCaches.framePictureStore;
       final stood = drawn(s);
-      final ahead = (cut: stood.cut, frameIndex: 0, paintPaper: false);
+      final ahead = (
+        cut: stood.cut,
+        frameIndex: 0,
+        paintPaper: false,
+        ghosts: false,
+      );
       await pictures.make(ahead, shouldAbort: () => false);
       await shown(s, stood);
       expect(store.estimatedBytes, 2 * picture, reason: '⛔premise: laid');
@@ -480,7 +490,12 @@ void main() {
       line.respondToMemoryPressure();
       expect(pictures.heldNodes, hasLength(0));
 
-      await shown(s, (cut: picture.cut, frameIndex: 0, paintPaper: false));
+      await shown(s, (
+        cut: picture.cut,
+        frameIndex: 0,
+        paintPaper: false,
+        ghosts: false,
+      ));
       expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
       s.dispose();
       expect(pictures.heldNodes, hasLength(0));

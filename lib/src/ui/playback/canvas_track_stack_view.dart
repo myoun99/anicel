@@ -328,7 +328,12 @@ class CanvasTrackStackView extends StatelessWidget {
             outline: pictureOutlineOnScreen(view, shot, cut.canvasSize, ratio),
             child: FramePictureView(
               run: pictures,
-              picture: (cut: cut, frameIndex: localFrame, paintPaper: isStage),
+              picture: (
+                cut: cut,
+                frameIndex: localFrame,
+                paintPaper: isStage,
+                ghosts: false,
+              ),
               nodes: stackOf(cut, localFrame),
               viewport: shot?.frameView ?? view,
               // A run's frames are made ahead of it by its warmer; parked, a

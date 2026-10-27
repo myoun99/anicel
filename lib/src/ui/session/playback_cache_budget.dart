@@ -245,6 +245,8 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
         cut: cut,
         frameIndex: span.start,
         paintPaper: paintPaper,
+        // A run shows no ghosts.
+        ghosts: false,
       );
       final bool unreadable;
       if (pictures.has(picture)) {

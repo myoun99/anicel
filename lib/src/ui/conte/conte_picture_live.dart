@@ -169,6 +169,7 @@ class ContePictureLive extends StatelessWidget {
                 cut: picture.cut,
                 frameIndex: picture.frame,
                 paintPaper: false,
+                ghosts: false,
               ),
               nodes: drawn.nodes,
               viewport: viewportOfSimilarity(canvasToBox)!,

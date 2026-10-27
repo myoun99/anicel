@@ -15,7 +15,6 @@
 import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 
 import '../../services/flutter_test_run.dart';
-import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_mode.dart';
@@ -66,7 +65,9 @@ class PlaybackRig implements PlaybackRun {
       int startGlobalFrame,
     )
     onPlaylistWarmRequested,
-    required List<CompositeNode<CanvasStackRow>> Function(Cut cut, int frameIndex)
+    required List<CompositeNode<CanvasStackRow>> Function(
+      DemandedPicture picture,
+    )
     stackOf,
   }) : _stackOf = stackOf,
        _project = project,
@@ -108,8 +109,9 @@ class PlaybackRig implements PlaybackRun {
   _onPlaylistWarmRequested;
 
   /// The tree a cut's frame stacks on the screen while a run plays it — the
-  /// session's editing canvas answers ([FramePictures.stackOf]).
-  final List<CompositeNode<CanvasStackRow>> Function(Cut cut, int frameIndex)
+  /// session's editing canvas answers — or its ghosts, the onion's
+  /// ([FramePictures.stackOf]).
+  final List<CompositeNode<CanvasStackRow>> Function(DemandedPicture picture)
   _stackOf;
 
   // ── what the screen shows a frame from ──────────────────────────────
@@ -122,7 +124,7 @@ class PlaybackRig implements PlaybackRun {
   late final FramePictures framePictures = FramePictures(
     store: _renderCaches.framePictureStore,
     layerImages: _renderCaches.layerFrameImageCache,
-    stackOf: (picture) => _stackOf(picture.cut, picture.frameIndex),
+    stackOf: _stackOf,
     pageOf: (picture) => (
       canvasSize: picture.cut.canvasSize,
       pasteboardReach: _project.repository.requireProject().pasteboardReach,

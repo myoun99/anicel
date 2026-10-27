@@ -132,6 +132,7 @@ void main() {
         cut: held,
         frameIndex: 0,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false);
       expect(budget.playbackReadyRuns(0, 30), [
         (startIndex: 0, endIndexExclusive: 30, unreadable: false),
@@ -172,6 +173,7 @@ void main() {
         cut: held,
         frameIndex: 0,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
@@ -213,6 +215,7 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(0, 24), [

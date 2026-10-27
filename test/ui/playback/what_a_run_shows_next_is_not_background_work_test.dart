@@ -81,7 +81,12 @@ void main() {
         totalFrames: 8,
         loops: () => true,
         playhead: () => playhead,
-        picturesOf: (frame) => [(cut: cut, frameIndex: frame, paintPaper: true)],
+        picturesOf: (frame) => [(
+          cut: cut,
+          frameIndex: frame,
+          paintPaper: true,
+          ghosts: false,
+        )],
         playlistFrameOf: (_, frame) => frame,
       ),
     );

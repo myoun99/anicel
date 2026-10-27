@@ -524,7 +524,10 @@ void main() {
       session.selectFrameIndex(6);
       session.createDrawingAtCurrentFrame();
       expect(
-        session.onionSkin.onionSkinCanvasRequests(),
+        session.onionSkin.ghostsAt(
+          session.requireActiveCut,
+          session.currentFrameIndex,
+        ),
         isEmpty,
         reason: '⛔전제: nothing ghosts yet',
       );
@@ -533,7 +536,10 @@ void main() {
 
       expect(
         [
-          for (final request in session.onionSkin.onionSkinCanvasRequests())
+          for (final request in session.onionSkin.ghostsAt(
+            session.requireActiveCut,
+            session.currentFrameIndex,
+          ))
             request.frameKey.layerId,
         ],
         [const LayerId('b-conte')],

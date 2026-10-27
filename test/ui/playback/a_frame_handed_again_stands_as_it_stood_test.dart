@@ -75,7 +75,7 @@ void main() {
     ],
   );
   // No paper: what lies under the ink is the screen's own.
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: false);
   final screen = GlobalKey();
 
   BitmapSurface filled(List<int> colour) => BitmapSurface(

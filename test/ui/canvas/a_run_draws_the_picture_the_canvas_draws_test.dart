@@ -215,7 +215,7 @@ void main() {
 
   /// The frame's picture as the canvas and the film ask for it — the paper
   /// under the ink, as every cut has, white unless it is absent.
-  final frame = (cut: cut, frameIndex: 0, paintPaper: true);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
 
   /// The editing canvas, as the canvas area mounts it: the frame's one
   /// picture — the cel [live] in it standing still, made by the view itself;

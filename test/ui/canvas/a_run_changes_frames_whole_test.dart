@@ -113,7 +113,12 @@ void main() {
   }
 
   DemandedPicture at(String cel, {bool paintPaper = true}) =>
-      (cut: cut, frameIndex: cels.indexOf(cel), paintPaper: paintPaper);
+      (
+        cut: cut,
+        frameIndex: cels.indexOf(cel),
+        paintPaper: paintPaper,
+        ghosts: false,
+      );
 
   /// What a run's maker does for a frame: its one picture.
   Future<void> makePicture(

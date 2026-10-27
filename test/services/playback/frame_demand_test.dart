@@ -22,11 +22,12 @@ void main() {
     layers: const [],
   );
 
-  /// The frames [demand] wants, in order, each named `cut:frame`.
+  /// The frames [demand] wants, in order, each named `cut:frame` — by the
+  /// pictures of them; the ghosts over a frame are pinned on their own.
   List<String> wanted(FrameDemand demand) => [
     for (var step = 0; step < demand.length; step += 1)
       for (final picture in demand.picturesAt(step)!)
-        '${picture.cut.id.value}:${picture.frameIndex}',
+        if (!picture.ghosts) '${picture.cut.id.value}:${picture.frameIndex}',
   ];
 
   group('while nothing plays', () {
@@ -60,7 +61,7 @@ void main() {
         'no step shows', () {
       final demand = standing();
       for (var step = 0; step < demand.length; step += 1) {
-        final picture = demand.picturesAt(step)!.single;
+        final picture = demand.picturesAt(step)!.first;
         expect(
           demand.stepOf(picture.cut.id, picture.frameIndex),
           step,
@@ -71,6 +72,18 @@ void main() {
       expect(demand.stepOf(a, -1), isNull);
       expect(demand.stepOf(b, 3), isNull, reason: 'past the next cut');
       expect(demand.stepOf(const CutId('elsewhere'), 0), isNull);
+    });
+
+    test('each frame is wanted with the ghosts a canvas standing on it lays '
+        'over it — the frame on its paper, then its ghosts off it', () {
+      final demand = standing();
+      for (var step = 0; step < demand.length; step += 1) {
+        final [frame, ghosts] = demand.picturesAt(step)!;
+        expect((frame.paintPaper, frame.ghosts), (true, false));
+        expect((ghosts.paintPaper, ghosts.ghosts), (false, true));
+        expect(identical(ghosts.cut, frame.cut), isTrue);
+        expect(ghosts.frameIndex, frame.frameIndex);
+      }
     });
 
     test('a playhead past either end starts at the nearest frame', () {
@@ -93,11 +106,11 @@ void main() {
         around: 0,
         resolveCut: (_) => now,
       );
-      expect(identical(demand.picturesAt(0)!.single.cut, now), isTrue);
+      expect(identical(demand.picturesAt(0)!.first.cut, now), isTrue);
 
       final edited = cutOf(a);
       now = edited;
-      expect(identical(demand.picturesAt(0)!.single.cut, edited), isTrue);
+      expect(identical(demand.picturesAt(0)!.first.cut, edited), isTrue);
 
       now = null;
       expect(demand.picturesAt(0), isEmpty);
@@ -170,7 +183,12 @@ void main() {
       totalFrames: 5,
       loops: () => loops,
       playhead: () => playhead,
-      picturesOf: (frame) => [(cut: cutOf(a), frameIndex: frame, paintPaper: true)],
+      picturesOf: (frame) => [(
+        cut: cutOf(a),
+        frameIndex: frame,
+        paintPaper: true,
+        ghosts: false,
+      )],
       playlistFrameOf: (cutId, frameIndex) => cutId == a ? frameIndex : null,
       lead: lead,
     );

@@ -184,6 +184,7 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
+        ghosts: false,
       ), shouldAbort: () => false);
       expect(
         s.playbackRig.playbackCache.playbackReadyRuns(0, 4),

@@ -178,7 +178,12 @@ void main() {
               // The canvas standing on its frame's one picture.
               child: FramePictureView(
                 run: pictures(),
-                picture: (cut: cut(), frameIndex: 0, paintPaper: true),
+                picture: (
+                  cut: cut(),
+                  frameIndex: 0,
+                  paintPaper: true,
+                  ghosts: false,
+                ),
                 nodes: const [
                   CompositeLeaf<CanvasStackRow>(
                     CanvasActiveLayerRow(opacity: 1),

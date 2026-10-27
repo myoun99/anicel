@@ -4,7 +4,8 @@ import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 
 /// One picture a frame shows: [cut]'s, at its own [frameIndex] — on its
-/// paper where the screen showing it paints the paper ([paintPaper]).
+/// paper where the screen showing it paints the paper ([paintPaper]) — or,
+/// where [ghosts], the onion ghosts a canvas standing on it lays over it.
 ///
 /// 🚨[paintPaper] IS PART OF WHICH PICTURE (one-picture-per-frame ②-2): the
 /// paper is the root's bottom row, read by a blend over its backdrop and by
@@ -12,7 +13,20 @@ import '../../models/cut_id.dart';
 /// without it. A cut on the canvas, and the film's stage — its lowest track
 /// covered at that frame — paint it; a track over the stage does not, and
 /// the same frame of it is another picture there.
-typedef DemandedPicture = ({Cut cut, int frameIndex, bool paintPaper});
+///
+/// 🚨[ghosts] IS TOO (card onion-scrub-rebuilds-the-ghost-each-step): the
+/// ghosts are a picture of their own over the frame's (`_ghostsOver`), and
+/// a picture is made ahead only where a demand can name it. 🔬Named by none,
+/// each frame a scrub crossed laid its ghosts on the spot: 3840² with lines
+/// to the pasteboard's ends, a ghost picture 11520×7680, asked→back p50
+/// 131ms, max 2.57s — 30 steps in 11.6s against 0.23s with the onion off
+/// (10-28, PC, the whole app, 14 testers beside it).
+typedef DemandedPicture = ({
+  Cut cut,
+  int frameIndex,
+  bool paintPaper,
+  bool ghosts,
+});
 
 /// The order frames will be WANTED in, counted in steps on from where the
 /// playhead stands — step 0 is the frame under it.
@@ -174,16 +188,16 @@ class StandingDemand implements FrameDemand {
     if (cut == null) {
       return const [];
     }
+    final frameIndex = own
+        ? standingFrameAt(step, center: _center, count: _frameCount)!
+        : step - _frameCount;
+    // Both cuts are the canvas's: the one it stands on, and the one it shows
+    // next — each frame on its paper, and the ghosts a canvas standing there
+    // lays over it. A frame nothing ghosts at draws no row, and is there
+    // (`FramePictures.drawsOnlyItsPage`).
     return [
-      (
-        cut: cut,
-        frameIndex: own
-            ? standingFrameAt(step, center: _center, count: _frameCount)!
-            : step - _frameCount,
-        // Both cuts are the canvas's: the one it stands on, and the one it
-        // shows next.
-        paintPaper: true,
-      ),
+      (cut: cut, frameIndex: frameIndex, paintPaper: true, ghosts: false),
+      (cut: cut, frameIndex: frameIndex, paintPaper: false, ghosts: true),
     ];
   }
 

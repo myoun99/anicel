@@ -69,7 +69,7 @@ void main() {
         ),
     ],
   );
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: false);
 
   BitmapSurface filled(List<int> colour) => BitmapSurface(
     canvasSize: canvasSize,

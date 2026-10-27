@@ -124,7 +124,7 @@ void main() {
   }
 
   DemandedPicture at(int frame, {bool paintPaper = true}) =>
-      (cut: cut, frameIndex: frame, paintPaper: paintPaper);
+      (cut: cut, frameIndex: frame, paintPaper: paintPaper, ghosts: false);
 
   testWidgets('a frame is there once its picture is made — one picture for '
       'every frame that stacks the same, and nothing else is made', (

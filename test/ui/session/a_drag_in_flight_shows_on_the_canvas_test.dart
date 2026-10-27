@@ -234,7 +234,10 @@ void main() {
     session.onionSkin.toggleLayerOnionSkin(a);
     session.selectFrameIndex(2);
     List<(FrameId, int?, double)> ghosts() => [
-      for (final request in session.onionSkin.onionSkinCanvasRequests())
+      for (final request in session.onionSkin.ghostsAt(
+        session.requireActiveCut,
+        session.currentFrameIndex,
+      ))
         (request.frameKey.frameId, request.tint, request.opacity),
     ];
     final before = ghosts();
@@ -653,7 +656,10 @@ void main() {
 
       expect(
         [
-          for (final ghost in session.onionSkin.onionSkinCanvasRequests())
+          for (final ghost in session.onionSkin.ghostsAt(
+            session.requireActiveCut,
+            session.currentFrameIndex,
+          ))
             if (ghost.frameKey.frameId == cel) drawn(session, ghost.frameKey),
         ],
         [true],

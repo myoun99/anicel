@@ -796,6 +796,7 @@ class _InteractiveCanvasBuild {
         cut: cut,
         frameIndex: session.currentFrameIndex,
         paintPaper: !_inGap,
+        ghosts: false,
       ),
       nodes: nodes,
       viewport: viewport,
@@ -818,9 +819,12 @@ class _InteractiveCanvasBuild {
     // No ghosts in a run: a ghost is editing scaffolding, as a guide is, and
     // the film has none. A gap parking shows the VOID (R16-⑥): no ghosts
     // either.
-    final ghosts = standing && !_inGap
-        ? session.onionSkin.onionSkinCanvasRequests()
-        : const <CanvasLayerImageRequest>[];
+    final ghosts = (
+      cut: cut,
+      frameIndex: session.currentFrameIndex,
+      paintPaper: false,
+      ghosts: true,
+    );
     return DeviceGridProbe(
       child: Stack(
         fit: StackFit.expand,
@@ -836,8 +840,8 @@ class _InteractiveCanvasBuild {
           if (standing)
             _ghostsOver(
               session,
-              cut,
               ghosts,
+              _inGap ? const [] : rig.framePictures.stackOf(ghosts),
               viewport,
               drawnLive: _celsDrawnLive(nodes),
             ),
@@ -877,10 +881,13 @@ class _InteractiveCanvasBuild {
   /// adjustment around it — and, for a day, in what clips to a base (I-92)
   /// — placed by `stackNodesWithGhosts`: no room for that between the rows
   /// of one picture, so a ghost is not cut by a clip's base either.
+  ///
+  /// 🚨STACKED AS THE WARMER STACKS THEM ([FramePictures.stackOf]): the
+  /// pictures it lays ahead of a scrub are the ones the scrub stands on.
   Widget _ghostsOver(
     EditorSessionManager session,
-    Cut cut,
-    List<CanvasLayerImageRequest> ghosts,
+    DemandedPicture ghosts,
+    List<CompositeNode<CanvasStackRow>> nodes,
     CanvasViewport viewport, {
     required Set<BrushFrameKey> drawnLive,
   }) => FramePictureView(
@@ -888,12 +895,8 @@ class _InteractiveCanvasBuild {
       landings: session.playbackRig.prerenderScheduler.landings,
       pictures: session.playbackRig.framePictures,
     ),
-    picture: (
-      cut: cut,
-      frameIndex: session.currentFrameIndex,
-      paintPaper: false,
-    ),
-    nodes: [for (final ghost in ghosts) CompositeLeaf<CanvasStackRow>(ghost)],
+    picture: ghosts,
+    nodes: nodes,
     viewport: viewport,
     laysWhatItMisses: true,
     wholeFrames: false,

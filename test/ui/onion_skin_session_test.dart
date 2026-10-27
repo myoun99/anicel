@@ -25,10 +25,17 @@ void main() {
     s.selectFrameIndex(1);
     s.createDrawingAtCurrentFrame();
 
-    expect(s.onionSkin.onionSkinCanvasRequests(), isEmpty, reason: 'master off');
+    expect(
+      s.onionSkin.ghostsAt(s.requireActiveCut, s.currentFrameIndex),
+      isEmpty,
+      reason: 'master off',
+    );
 
     s.onionSkin.toggleOnionSkin();
-    final requests = s.onionSkin.onionSkinCanvasRequests();
+    final requests = s.onionSkin.ghostsAt(
+      s.requireActiveCut,
+      s.currentFrameIndex,
+    );
     expect(requests, hasLength(1), reason: 'one unique drawing before');
     expect(requests.single.opacity, 0.4);
     expect(requests.single.tint, const OnionSkinSettings().tintBefore);
@@ -38,7 +45,13 @@ void main() {
     s.onionSkin.settings.value = s.onionSkin.settings.value.copyWith(
       mode: OnionSkinMode.images,
     );
-    expect(s.onionSkin.onionSkinCanvasRequests().single.tint, isNull);
+    expect(
+      s.onionSkin
+          .ghostsAt(s.requireActiveCut, s.currentFrameIndex)
+          .single
+          .tint,
+      isNull,
+    );
   });
 
   test('F-183 ①: a SYNCED attach row ghosts its own mirror cels — the row '
@@ -55,7 +68,10 @@ void main() {
 
     s.onionSkin.toggleOnionSkin();
 
-    final requests = s.onionSkin.onionSkinCanvasRequests();
+    final requests = s.onionSkin.ghostsAt(
+      s.requireActiveCut,
+      s.currentFrameIndex,
+    );
     expect(requests, hasLength(1), reason: 'the drawing before the playhead');
     expect(requests.single.frameKey.layerId, attach.id);
     expect(

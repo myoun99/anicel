@@ -152,6 +152,7 @@ void main() {
           cut: cut,
           frameIndex: 0,
           paintPaper: true,
+          ghosts: false,
         ), shouldAbort: () => false);
         await pumpEventQueue();
         expect(
@@ -164,7 +165,12 @@ void main() {
       for (final cel in ['a', 'b', 'c']) {
         expect(store.hotBakedSurfaceOrNull(keyOf(cel)), isNotNull);
       }
-      expect(pictures.has((cut: cut, frameIndex: 0, paintPaper: true)), isTrue);
+      expect(pictures.has((
+        cut: cut,
+        frameIndex: 0,
+        paintPaper: true,
+        ghosts: false,
+      )), isTrue);
     });
   });
 
@@ -184,6 +190,7 @@ void main() {
           cut: cut,
           frameIndex: 0,
           paintPaper: true,
+          ghosts: false,
         ), shouldAbort: () => true),
         isFalse,
       );

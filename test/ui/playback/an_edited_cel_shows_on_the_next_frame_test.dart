@@ -62,7 +62,7 @@ void main() {
     layers: const [],
   );
   // No paper: the screen shows the cel alone.
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: false);
   final screen = GlobalKey();
 
   BitmapSurface filled(List<int> colour) => BitmapSurface(

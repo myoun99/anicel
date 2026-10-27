@@ -307,7 +307,12 @@ void main() {
             child: FramePictureView(
               key: ValueKey<bool>(paperNone),
               run: picturesOn(paperNone ? absentPaper : paper),
-              picture: (cut: cut, frameIndex: 0, paintPaper: true),
+              picture: (
+                cut: cut,
+                frameIndex: 0,
+                paintPaper: true,
+                ghosts: false,
+              ),
               nodes: const [],
               viewport: view,
               laysWhatItMisses: true,

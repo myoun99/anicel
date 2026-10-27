@@ -117,8 +117,14 @@ void main() {
       cut: activeCut,
       frameIndex: 0,
       paintPaper: true,
+      ghosts: false,
     ), shouldAbort: () => false);
-    expect(pictures.has((cut: activeCut, frameIndex: 0, paintPaper: true)), isTrue);
+    expect(pictures.has((
+      cut: activeCut,
+      frameIndex: 0,
+      paintPaper: true,
+      ghosts: false,
+    )), isTrue);
 
     // Let any open-time warm restart land before counting.
     await Future<void>.delayed(Duration.zero);
@@ -147,7 +153,12 @@ void main() {
     }
 
     expect(
-      pictures.has((cut: activeCut, frameIndex: 0, paintPaper: true)),
+      pictures.has((
+        cut: activeCut,
+        frameIndex: 0,
+        paintPaper: true,
+        ghosts: false,
+      )),
       isFalse,
       reason: 'only the RESTART is deferred — a stale picture must be '
           'unservable before the event loop turns: the edit asks another '

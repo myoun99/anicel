@@ -111,7 +111,7 @@ void aStrokeIsWrittenIntoThePictureShown({
         ),
       ];
   // No paper: what lies under the ink is the screen's own.
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: false);
   final screen = GlobalKey();
 
   /// A tile of what [colourAt] says at each pixel's centre — clear where

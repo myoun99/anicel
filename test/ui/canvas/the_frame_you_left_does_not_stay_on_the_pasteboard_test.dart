@@ -131,6 +131,7 @@ void main() {
           cut: cut,
           frameIndex: cel == a ? 0 : 1,
           paintPaper: true,
+          ghosts: false,
         );
         final nodes = stackOn(cel);
         await tester.pumpWidget(

@@ -122,7 +122,12 @@ void main() {
       under: const Color(0xFF000000),
       view: FramePictureView(
         run: run,
-        picture: (cut: cut, frameIndex: frame, paintPaper: false),
+        picture: (
+          cut: cut,
+          frameIndex: frame,
+          paintPaper: false,
+          ghosts: false,
+        ),
         nodes: [
           for (final ghost in ghosts)
             CompositeLeaf<CanvasStackRow>(
