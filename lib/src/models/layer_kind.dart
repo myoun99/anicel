@@ -58,6 +58,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: true,
     posesInTheShot: false,
+    takesClipping: true,
   ),
 
   storyboard(
@@ -88,6 +89,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: true,
     posesInTheShot: false,
+    takesClipping: true,
   ),
 
   /// A PICTURE layer (BG/BOOK, imported stills): ONE cel a cut by
@@ -132,6 +134,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: true,
     posesInTheShot: false,
+    takesClipping: true,
   ),
 
   /// A GROUP: a layer that holds structure instead of a picture — "그림만
@@ -169,6 +172,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: false,
     posesInTheShot: false,
+    takesClipping: true,
   ),
 
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
@@ -205,6 +209,7 @@ enum LayerKind {
     celNameIsIdentity: false,
     numbersItsDrawings: false,
     posesInTheShot: true,
+    takesClipping: false,
   ),
 
   /// Camera-work instruction row (FI/FO/PAN … chips): carries instruction
@@ -244,6 +249,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: false,
     posesInTheShot: false,
+    takesClipping: false,
   ),
 
   /// The TRANSITION row: the same instruction events one level up —
@@ -301,6 +307,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: false,
     posesInTheShot: false,
+    takesClipping: false,
   ),
 
   /// The cut's camera track: selecting it puts the canvas into camera
@@ -338,6 +345,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: false,
     posesInTheShot: false,
+    takesClipping: false,
   ),
 
   /// An ADJUSTMENT layer (R6b, §6-z): a row with no picture of its own
@@ -392,6 +400,7 @@ enum LayerKind {
     celNameIsIdentity: true,
     numbersItsDrawings: false,
     posesInTheShot: false,
+    takesClipping: false,
   );
 
   const LayerKind(
@@ -419,6 +428,7 @@ enum LayerKind {
     required this.celNameIsIdentity,
     required this.numbersItsDrawings,
     required this.posesInTheShot,
+    required this.takesClipping,
   });
 
   final String jsonValue;
@@ -714,6 +724,18 @@ enum LayerKind {
   /// timeline's in the open cut's canvas.
   final bool posesInTheShot;
 
+  /// Whether a row of this kind can CLIP TO THE LAYER BELOW
+  /// ([Layer.clipsToBelow]) — its button on the rail, and the clip the
+  /// composite makes: the picture rows, and a folder (I-92-Q3 a). ↩️As the
+  /// fill's reference flag it sat on drawing rows only (R20-C2), and 유저
+  /// 2026-10-04 (F-288): 「그림이 존재하는 레이어면 다 가능해야하는거아닌가?
+  /// 이미지레이어 불가능함」.
+  ///
+  /// ⛔Its own column: it was derived ([paintsArtwork] or [groupsLayers]),
+  /// which answered true for the SE and direction rows too, and 🗣️F-471
+  /// (유저 2026-10-25): 「se행, 디렉션행은 아래 레이어 클리핑 버튼/기능 삭제」.
+  final bool takesClipping;
+
   /// The space this kind's rows are posed in: [shot] for a kind posed there
   /// ([posesInTheShot]), else [canvas] — null where there is none, a gap.
   CanvasSize? poseSpace({required CanvasSize shot, CanvasSize? canvas}) =>
@@ -831,13 +853,6 @@ enum LayerKind {
   /// [bandIsInstructionsOnly] follows, so the two halves cannot drift
   /// apart the way these two just did.
   bool get takesAuthoredCels => holdsDrawings || isDrawingCel;
-
-  /// Whether a row of this kind can CLIP TO THE LAYER BELOW
-  /// ([Layer.clipsToBelow]): every row that holds a picture, and a folder
-  /// (I-92-Q3 a). ↩️As the fill's reference flag it sat on drawing rows
-  /// only (R20-C2), and 유저 2026-10-04 (F-288): 「그림이 존재하는 레이어면
-  /// 다 가능해야하는거아닌가? 이미지레이어 불가능함」.
-  bool get takesClipping => paintsArtwork || groupsLayers;
 
   /// Whether a row of this kind carries the button that opens how the canvas
   /// shows the camera's path (I-89 ④, 유저 2026-10-12: 「카메라 경로표시

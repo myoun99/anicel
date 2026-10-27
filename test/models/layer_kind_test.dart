@@ -221,6 +221,14 @@ void _theCapabilityTable() {
     LayerKind.storyboard,
     LayerKind.image,
   });
+  // F-288 (picture rows) · I-92-Q3 a (a folder) · F-471 (유저: 「se행,
+  // 디렉션행은 아래 레이어 클리핑 버튼/기능 삭제」).
+  column('takesClipping', (kind) => kind.takesClipping, {
+    LayerKind.animation,
+    LayerKind.storyboard,
+    LayerKind.image,
+    LayerKind.folder,
+  });
 
   // ---- derived columns ---------------------------------------------------
   // Each of these is a composition the file states as a law of its own, and
