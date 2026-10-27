@@ -577,6 +577,36 @@ void main() {
     expectSameArtwork(live(rub(passes: 2), base), base, 'flat');
   });
 
+  onEachEngine('a colour behind no alpha the blur never reached is kept, '
+      'though its tile was rewritten', () {
+    // Rows 0-3 carry a colour under no alpha; the dabs smear an edge
+    // across rows 32-48 of the same 64px tiles.
+    final base = celOf(
+      (x, y) => y < 4 ? 0x00EE8811 : (x < 32 ? 0xFF2244CC : 0xFFCC4422),
+    );
+    final landed = live([
+      for (var i = 0; i < 6; i += 1)
+        BrushDab(
+          center: CanvasPoint(x: 20.0 + i * 4, y: 40),
+          color: 0xFF000000,
+          size: 16,
+          opacity: 1,
+          flow: 1,
+          hardness: 1,
+          tipShape: BrushTipShape.round,
+          pressure: 1,
+          sequence: i,
+          blurs: true,
+        ),
+    ], base);
+    expect(pixelAt(landed, 30, 1), 0x00EE8811);
+    expect(
+      pixelAt(landed, 32, 40),
+      isNot(pixelAt(base, 32, 40)),
+      reason: 'premise: the dabs smeared their own rows',
+    );
+  });
+
   onEachEngine('over nothing a line fades, it does not darken', () {
     final base = celOf(
       (x, y) => (x - 96).abs() <= 1 ? 0xFFFF0000 : 0x00000000,

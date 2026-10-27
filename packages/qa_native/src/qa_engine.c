@@ -2729,8 +2729,10 @@ QA_EXPORT int32_t qa_blur_tile_sizeof(void) {
 }
 
 // The scratch tile the laid share is measured on (the Dart side's
-// `_scratchTileSize`).
+// `_scratchTileSize`): its bytes, then its 16-bit plane.
 #define QA_BLUR_SCRATCH 64
+#define QA_BLUR_SCRATCH_PIXEL_BYTES (QA_BLUR_SCRATCH * QA_BLUR_SCRATCH * 4)
+#define QA_BLUR_SCRATCH_BYTES (QA_BLUR_SCRATCH_PIXEL_BYTES * 3)
 
 // Past this many window pixels a dab's passes are cut into bands for the
 // pool; below it the wake costs more than the work.
@@ -2776,10 +2778,20 @@ typedef struct {
   int32_t reach;
   int32_t wide;
   int32_t tall;
-  const uint16_t* laid;
+  const qa_dab_spec* spec;
+  uint16_t* laid;
   uint16_t* across;
   uint16_t* lines;
   size_t line_values;
+  // The scratch tiles the laid share is measured on: a grid of
+  // `scratch_wide` a row from (`scratch_x0`, `scratch_y0`), one scratch a
+  // band.
+  uint8_t* scratch_tiles;
+  int32_t scratch_x0;
+  int32_t scratch_y0;
+  int32_t scratch_wide;
+  int32_t scratch_count;
+  int32_t band_scratch;
   int32_t band_rows;
   int32_t band_columns;
 } qa_blur_context;
@@ -2791,37 +2803,44 @@ static inline const qa_blur_tile* qa_blur_tile_at(const qa_blur_context* c,
                    (tile_x - c->tile_x0)];
 }
 
-// What the dab lays onto nothing over its rect, alpha * 65535 a pixel -
-// read off the kernel's own 16-bit plane, a scratch tile at a time.
-static void qa_blur_measure_laid(const qa_dab_spec* spec,
-                                 const qa_blur_context* c, uint16_t* laid,
-                                 uint8_t* pixels, uint16_t* wide) {
+// What the dab lays onto nothing over scratch tile `index` of its rect,
+// alpha * 65535 a pixel - read off the kernel's own 16-bit plane.
+static void qa_blur_laid_tile(const qa_blur_context* c, int32_t index,
+                              uint8_t* pixels, uint16_t* wide) {
   const int32_t s = QA_BLUR_SCRATCH;
   const int32_t right = c->left + c->width;
   const int32_t bottom = c->top + c->height;
-  for (int32_t ty = qa_blur_floor_div(c->top, s); ty * s < bottom; ty += 1) {
-    for (int32_t tx = qa_blur_floor_div(c->left, s); tx * s < right;
-         tx += 1) {
-      const int32_t tile_left = tx * s;
-      const int32_t tile_top = ty * s;
-      const int32_t x0 = c->left > tile_left ? c->left : tile_left;
-      const int32_t x1 = right < tile_left + s ? right : tile_left + s;
-      const int32_t y0 = c->top > tile_top ? c->top : tile_top;
-      const int32_t y1 = bottom < tile_top + s ? bottom : tile_top + s;
-      memset(pixels, 0, (size_t)s * s * 4);
-      memset(wide, 0, (size_t)s * s * 4 * sizeof(uint16_t));
-      qa_dab_blend_tile(pixels, wide, s, tile_left, tile_top, x0, x1, y0, y1,
-                        spec);
-      for (int32_t y = y0; y < y1; y += 1) {
-        const uint16_t* from =
-            wide + ((size_t)(y - tile_top) * s + (x0 - tile_left)) * 4 + 3;
-        uint16_t* to = laid + (size_t)(y - c->top) * c->width + (x0 - c->left);
-        for (int32_t x = x0; x < x1; x += 1) {
-          *to++ = *from;
-          from += 4;
-        }
-      }
+  const int32_t tile_left = (c->scratch_x0 + index % c->scratch_wide) * s;
+  const int32_t tile_top = (c->scratch_y0 + index / c->scratch_wide) * s;
+  const int32_t x0 = c->left > tile_left ? c->left : tile_left;
+  const int32_t x1 = right < tile_left + s ? right : tile_left + s;
+  const int32_t y0 = c->top > tile_top ? c->top : tile_top;
+  const int32_t y1 = bottom < tile_top + s ? bottom : tile_top + s;
+  memset(pixels, 0, (size_t)s * s * 4);
+  memset(wide, 0, (size_t)s * s * 4 * sizeof(uint16_t));
+  qa_dab_blend_tile(pixels, wide, s, tile_left, tile_top, x0, x1, y0, y1,
+                    c->spec);
+  for (int32_t y = y0; y < y1; y += 1) {
+    const uint16_t* from =
+        wide + ((size_t)(y - tile_top) * s + (x0 - tile_left)) * 4 + 3;
+    uint16_t* to = c->laid + (size_t)(y - c->top) * c->width + (x0 - c->left);
+    for (int32_t x = x0; x < x1; x += 1) {
+      *to++ = *from;
+      from += 4;
     }
+  }
+}
+
+static void qa_blur_laid_item(int32_t band, void* context) {
+  const qa_blur_context* c = (const qa_blur_context*)context;
+  uint8_t* pixels = c->scratch_tiles + (size_t)band * QA_BLUR_SCRATCH_BYTES;
+  uint16_t* wide = (uint16_t*)(pixels + QA_BLUR_SCRATCH_PIXEL_BYTES);
+  const int32_t first = band * c->band_scratch;
+  const int32_t last = first + c->band_scratch < c->scratch_count
+                           ? first + c->band_scratch
+                           : c->scratch_count;
+  for (int32_t index = first; index < last; index += 1) {
+    qa_blur_laid_tile(c, index, pixels, wide);
   }
 }
 
@@ -2861,6 +2880,30 @@ static void qa_blur_gather_row(const qa_blur_context* c, uint16_t* into,
   }
 }
 
+// floor(n / d) as a multiply and a shift, exact for every n < 2^n_bits
+// (division by an invariant integer, Granlund & Montgomery): a box pass
+// divides every value it writes by the same count, and a divide each was
+// most of what a pass cost.
+typedef struct {
+  uint64_t multiplier;
+  int shift;
+} qa_blur_divisor;
+
+static qa_blur_divisor qa_blur_divisor_of(uint64_t d, int n_bits) {
+  int d_bits = 0;
+  while (((uint64_t)1 << d_bits) < d) {
+    d_bits += 1;
+  }
+  qa_blur_divisor v;
+  v.shift = n_bits + d_bits;
+  v.multiplier = (((uint64_t)1 << v.shift) + d - 1) / d;
+  return v;
+}
+
+static inline uint16_t qa_blur_divided(uint64_t n, qa_blur_divisor v) {
+  return (uint16_t)((n * v.multiplier) >> v.shift);
+}
+
 // Box pass `pass` along a line of `length` pixels, the first at `from` in
 // `values`, each next `step` values on: every pixel `pass` radii in from
 // either end takes into `target` the mean of the `radius` pixels either
@@ -2871,7 +2914,13 @@ static void qa_blur_box(const uint16_t* values, size_t from, size_t step,
   const int32_t start = radius * pass;
   const int32_t end = length - start;
   const int64_t count = (int64_t)radius * 2 + 1;
-  const int64_t twice = count * 2;
+  // A sum is at most count * 65535, so what is divided stays under
+  // count * 131071 + 1.
+  int n_bits = 0;
+  while (((uint64_t)1 << n_bits) <= (uint64_t)count * 131071) {
+    n_bits += 1;
+  }
+  const qa_blur_divisor twice = qa_blur_divisor_of((uint64_t)count * 2, n_bits);
   int64_t r = 0, g = 0, b = 0, a = 0;
   for (int32_t at = start - radius; at <= start + radius; at += 1) {
     const uint16_t* p = values + from + (size_t)at * step;
@@ -2882,10 +2931,10 @@ static void qa_blur_box(const uint16_t* values, size_t from, size_t step,
   }
   for (int32_t at = start; at < end; at += 1) {
     uint16_t* o = target + (size_t)at * 4;
-    o[0] = (uint16_t)((r * 2 + count) / twice);
-    o[1] = (uint16_t)((g * 2 + count) / twice);
-    o[2] = (uint16_t)((b * 2 + count) / twice);
-    o[3] = (uint16_t)((a * 2 + count) / twice);
+    o[0] = qa_blur_divided((uint64_t)(r * 2 + count), twice);
+    o[1] = qa_blur_divided((uint64_t)(g * 2 + count), twice);
+    o[2] = qa_blur_divided((uint64_t)(b * 2 + count), twice);
+    o[3] = qa_blur_divided((uint64_t)(a * 2 + count), twice);
     if (at + 1 < end) {
       const uint16_t* enter = values + from + (size_t)(at + radius + 1) * step;
       const uint16_t* leave = values + from + (size_t)(at - radius) * step;
@@ -2976,18 +3025,25 @@ static void qa_blur_run(qa_job_fn item, qa_blur_context* c, int32_t count,
   qa_pool_run(item, c, used);
 }
 
+static size_t qa_blur_aligned(size_t bytes) {
+  return (bytes + 15) & ~(size_t)15;
+}
+
 // Blurs the picture under one dab (BrushBlurPicture.blurDab): `spec` is
 // the dab staged as paint - its coverage, white onto nothing; `tiles` the
 // picture over the window the blur reads, `tiles_wide` a row from tile
 // (`tile_x0`, `tile_y0`); the rect is the dab's clip; `radius` its box
-// radius. Returns 0, having written nothing, when it cannot get its
-// buffers.
-QA_EXPORT int32_t qa_blur_dab(const qa_dab_spec* spec,
+// radius. Its buffers are carved from `scratch`, the caller's: when
+// `scratch_bytes` is short it writes nothing and returns the bytes it
+// needs, else 0. (A dab's buffers are megabytes at a large size; made
+// and freed a dab, their pages were faulted in every time.)
+QA_EXPORT int64_t qa_blur_dab(const qa_dab_spec* spec,
                               const qa_blur_tile* tiles, int32_t tiles_wide,
                               int32_t tile_x0, int32_t tile_y0,
                               int32_t tile_size, int32_t left, int32_t top,
                               int32_t right_exclusive,
-                              int32_t bottom_exclusive, int32_t radius) {
+                              int32_t bottom_exclusive, int32_t radius,
+                              uint8_t* scratch, int64_t scratch_bytes) {
   qa_blur_context c;
   c.tiles = tiles;
   c.tiles_wide = tiles_wide;
@@ -3006,32 +3062,35 @@ QA_EXPORT int32_t qa_blur_dab(const qa_dab_spec* spec,
   const int32_t bands = (int64_t)c.wide * c.tall < QA_BLUR_POOL_PIXELS
                             ? 1
                             : QA_BLUR_MAX_BANDS;
-  const size_t s = QA_BLUR_SCRATCH;
-  uint16_t* laid =
-      (uint16_t*)malloc((size_t)c.width * c.height * sizeof(uint16_t));
-  uint8_t* scratch_pixels = (uint8_t*)malloc(s * s * 4);
-  uint16_t* scratch_wide = (uint16_t*)malloc(s * s * 4 * sizeof(uint16_t));
-  uint16_t* across = (uint16_t*)malloc((size_t)c.width * c.tall * 4 *
-                                       sizeof(uint16_t));
-  uint16_t* lines = (uint16_t*)malloc((size_t)bands * 2 * c.line_values *
-                                      sizeof(uint16_t));
-  const int32_t ready = laid != NULL && scratch_pixels != NULL &&
-                        scratch_wide != NULL && across != NULL &&
-                        lines != NULL;
-  if (ready) {
-    c.laid = laid;
-    c.across = across;
-    c.lines = lines;
-    qa_blur_measure_laid(spec, &c, laid, scratch_pixels, scratch_wide);
-    qa_blur_run(qa_blur_rows_item, &c, c.tall, bands, &c.band_rows);
-    qa_blur_run(qa_blur_columns_item, &c, c.width, bands, &c.band_columns);
+  const int32_t s = QA_BLUR_SCRATCH;
+  c.spec = spec;
+  c.scratch_x0 = qa_blur_floor_div(left, s);
+  c.scratch_y0 = qa_blur_floor_div(top, s);
+  c.scratch_wide = qa_blur_floor_div(right_exclusive - 1, s) - c.scratch_x0 + 1;
+  c.scratch_count =
+      c.scratch_wide *
+      (qa_blur_floor_div(bottom_exclusive - 1, s) - c.scratch_y0 + 1);
+
+  const size_t laid_bytes =
+      qa_blur_aligned((size_t)c.width * c.height * sizeof(uint16_t));
+  const size_t across_bytes =
+      qa_blur_aligned((size_t)c.width * c.tall * 4 * sizeof(uint16_t));
+  const size_t lines_bytes =
+      qa_blur_aligned((size_t)bands * 2 * c.line_values * sizeof(uint16_t));
+  const size_t need = laid_bytes + across_bytes + lines_bytes +
+                      (size_t)bands * QA_BLUR_SCRATCH_BYTES;
+  if (scratch_bytes < 0 || (size_t)scratch_bytes < need) {
+    return (int64_t)need;
   }
-  free(laid);
-  free(scratch_pixels);
-  free(scratch_wide);
-  free(across);
-  free(lines);
-  return ready;
+  c.laid = (uint16_t*)scratch;
+  c.across = (uint16_t*)(scratch + laid_bytes);
+  c.lines = (uint16_t*)(scratch + laid_bytes + across_bytes);
+  c.scratch_tiles = scratch + laid_bytes + across_bytes + lines_bytes;
+
+  qa_blur_run(qa_blur_laid_item, &c, c.scratch_count, bands, &c.band_scratch);
+  qa_blur_run(qa_blur_rows_item, &c, c.tall, bands, &c.band_rows);
+  qa_blur_run(qa_blur_columns_item, &c, c.width, bands, &c.band_columns);
+  return 0;
 }
 
 // The cel's `channel` (straight, under `cel_alpha`) moved toward the
@@ -3051,8 +3110,9 @@ static inline uint8_t qa_blur_straight(int64_t channel, int64_t alpha,
 
 // The finished tile (BrushBlurPicture.resultTile): the cel (`cel`, NULL =
 // nothing there) moved toward the rewritten picture `own` by `mask` (NULL
-// = all the way), straight 8-bit, into `out`. Returns whether any pixel
-// differs from the cel's.
+// = all the way), straight 8-bit, into `out` - the cel's own bytes where
+// the picture is still the cel's. Returns whether any pixel differs from
+// the cel's.
 QA_EXPORT int32_t qa_blur_result_tile(const uint16_t* own,
                                       const uint8_t* cel,
                                       const uint8_t* mask, int32_t tile_size,
@@ -3072,6 +3132,12 @@ QA_EXPORT int32_t qa_blur_result_tile(const uint16_t* own,
     uint8_t* o = out + p * 4;
     const uint16_t* w = own + p * 4;
     const uint32_t cel_alpha = o[3];
+    if (w[3] == cel_alpha * 257 &&
+        w[0] == qa_blur_premultiplied(o[0], cel_alpha) &&
+        w[1] == qa_blur_premultiplied(o[1], cel_alpha) &&
+        w[2] == qa_blur_premultiplied(o[2], cel_alpha)) {
+      continue;  // The picture is the cel's here: its bytes stand.
+    }
     int64_t alpha = w[3];
     int64_t red = w[0];
     int64_t green = w[1];

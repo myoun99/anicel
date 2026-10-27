@@ -134,8 +134,10 @@ class BrushBlurPicture {
     _radius = blurRadiusOf(dab);
     _rewriteUnder(plan.clip);
     final native = _native;
-    if (native == null || !_blurInC(native, plan)) {
+    if (native == null) {
       _blurInDart(plan);
+    } else {
+      _blurInC(native, plan);
     }
     return plan.clip;
   }
@@ -153,9 +155,8 @@ class BrushBlurPicture {
   }
 
   /// The C's dab: the picture over the window the blur reads, a tile table
-  /// row by row. False when the C could not get its buffers — it has
-  /// written nothing, and the passes below run instead.
-  bool _blurInC(
+  /// row by row.
+  void _blurInC(
     ({QaNativeEngine engine, QaBlurKernel kernel}) native,
     BrushDabPlan plan,
   ) {
@@ -174,7 +175,7 @@ class BrushBlurPicture {
         entry.cel = _celPointer(coord);
       }
     }
-    return native.kernel.blurDab(
+    native.kernel.blurDab(
       stageDabAlone(native.engine, plan),
       tilesWide: tilesWide,
       tileX0: x0,
@@ -452,14 +453,15 @@ class BrushBlurPicture {
   /// Lets the engine's memory go — the rewritten tiles it holds. The
   /// stroke's end ([BrushLiveStrokeRasterizer.clear]).
   void dispose() {
-    final engine = _native?.engine;
+    final native = _native;
     for (final tile in _tiles.values) {
       final buffer = tile.buffer;
-      if (engine != null && buffer != null) {
-        engine.releaseTileBuffer(buffer);
+      if (native != null && buffer != null) {
+        native.engine.releaseTileBuffer(buffer);
       }
     }
     _tiles.clear();
+    native?.kernel.releaseScratch();
   }
 
   /// The finished tile at [coord]: the cel moved toward the rewritten
@@ -468,9 +470,10 @@ class BrushBlurPicture {
   /// cel tile — and whether any pixel differs from the cel's. Null where no
   /// dab has written.
   ///
-  /// Where nothing moved the bytes ARE the cel's: premultiplying a byte to
-  /// 16 bits and back returns it exactly (the rounding error stays under
-  /// half a level at every alpha).
+  /// Where the picture is still the cel's the bytes ARE the cel's — kept,
+  /// not made again: a colour behind no alpha would not come back from
+  /// its premultiplied form, and making the rest again would cost what
+  /// keeping it does not.
   ///
   /// Under the engine the C makes it, into [into] — the buffer the
   /// coordinate's last result held — or a fresh one; the caller owns the
@@ -532,6 +535,12 @@ class BrushBlurPicture {
       var red = own[i];
       var green = own[i + 1];
       var blue = own[i + 2];
+      if (alpha == celAlpha * 257 &&
+          red == _premultiplied(bytes[i], celAlpha) &&
+          green == _premultiplied(bytes[i + 1], celAlpha) &&
+          blue == _premultiplied(bytes[i + 2], celAlpha)) {
+        continue; // The picture is the cel's here: its bytes stand.
+      }
       if (cover != 255) {
         final cel = celAlpha * 257;
         alpha = cel + _scaled(alpha - cel, cover, 255);

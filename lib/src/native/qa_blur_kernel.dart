@@ -32,6 +32,8 @@ class QaBlurKernel {
     int rightExclusive,
     int bottomExclusive,
     int radius,
+    Pointer<Uint8> scratch,
+    int scratchBytes,
   )
   _blurDab;
 
@@ -49,6 +51,11 @@ class QaBlurKernel {
     (n) => calloc<QaBlurTileStruct>(n),
     bytesPerElement: sizeOf<QaBlurTileStruct>(),
   );
+
+  /// What a dab's passes run through — megabytes at a large size, so held
+  /// across a stroke's dabs rather than made for each, and let go at its
+  /// end ([releaseScratch]).
+  final _scratch = NativeScratch<Uint8>((n) => calloc<Uint8>(n));
 
   static QaBlurKernel? _instance;
   static bool _tried = false;
@@ -82,7 +89,7 @@ class QaBlurKernel {
       }
       return QaBlurKernel._(
         library.lookupFunction<
-          Int32 Function(
+          Int64 Function(
             Pointer<QaDabSpecStruct>,
             Pointer<QaBlurTileStruct>,
             Int32,
@@ -94,6 +101,8 @@ class QaBlurKernel {
             Int32,
             Int32,
             Int32,
+            Pointer<Uint8>,
+            Int64,
           ),
           int Function(
             Pointer<QaDabSpecStruct>,
@@ -106,6 +115,8 @@ class QaBlurKernel {
             int,
             int,
             int,
+            int,
+            Pointer<Uint8>,
             int,
           )
         >('qa_blur_dab'),
@@ -137,9 +148,8 @@ class QaBlurKernel {
 
   /// Blurs the picture under the dab [spec] stages, over the rect it was
   /// clipped to, reading the [tiles] table — [tilesWide] a row from tile
-  /// ([tileX0], [tileY0]). False, having written nothing, when the C could
-  /// not get its buffers.
-  bool blurDab(
+  /// ([tileX0], [tileY0]).
+  void blurDab(
     Pointer<QaDabSpecStruct> spec, {
     required int tilesWide,
     required int tileX0,
@@ -148,8 +158,12 @@ class QaBlurKernel {
     required ({int left, int top, int rightExclusive, int bottomExclusive})
     rect,
     required int radius,
-  }) =>
-      _blurDab(
+  }) {
+    // The C names what it needs when the scratch is short, having written
+    // nothing; the second call has it.
+    var needs = _scratch.length;
+    do {
+      needs = _blurDab(
         spec,
         _tiles.pointer,
         tilesWide,
@@ -161,8 +175,14 @@ class QaBlurKernel {
         rect.rightExclusive,
         rect.bottomExclusive,
         radius,
-      ) !=
-      0;
+        _scratch.ensure(needs),
+        _scratch.length,
+      );
+    } while (needs > 0);
+  }
+
+  /// Lets the passes' scratch go — a stroke's end.
+  void releaseScratch() => _scratch.release();
 
   /// The finished tile into [out]: the cel ([cel], `nullptr` = nothing
   /// there) moved toward the rewritten [own] by [mask] (`nullptr` = all
