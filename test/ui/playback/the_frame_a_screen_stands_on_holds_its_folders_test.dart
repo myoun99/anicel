@@ -147,7 +147,7 @@ void main() {
   });
 
   testWidgets('⚖️what is held is one page at the most — the page of the frame '
-      'last kept on', (tester) async {
+      'last drawn with them', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);

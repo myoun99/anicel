@@ -374,6 +374,42 @@ void main() {
       expect(debugSubtreeRasterCount, 3, reason: 'at another scale');
     });
 
+    test('a part cut from what is held lays the picture its compose asks for '
+        '— the raster, or the image its steps made of it', () async {
+      Future<Uint8List> laid(SubtreeHold? hold, {bool steps = false}) async {
+        final recorder = ui.PictureRecorder();
+        drawSubtreeAsImage(
+          canvas: ui.Canvas(recorder),
+          bounds: whole,
+          rasterScale: 1,
+          paintSubtree: (into, _) => into.drawRect(
+            const Rect.fromLTWH(2, 2, 10, 10),
+            Paint()..color = const Color(0xFF804020),
+          ),
+          compose: (blit) => blit(Paint(), stepped: steps),
+          steps: stepped,
+          held: hold,
+        );
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(16, 16);
+        picture.dispose();
+        final bytes = await image.toByteData();
+        image.dispose();
+        return bytes!.buffer.asUint8List();
+      }
+
+      final raw = await laid(SubtreeHold(held, key: 'node', keeps: true));
+      expect(
+        await laid(null, steps: true),
+        isNot(raw),
+        reason: '⛔premise: the steps change the picture',
+      );
+      debugSubtreeRasterCount = 0;
+      final cut = await laid(SubtreeHold(held, key: 'node', keeps: false));
+      expect(debugSubtreeRasterCount, 0, reason: '⛔premise: cut from it');
+      expect(cut, raw);
+    });
+
     test('one the cap magnified is not kept', () {
       final recorder = ui.PictureRecorder();
       draw(
@@ -391,8 +427,11 @@ void main() {
       final room = HeldSubtreeRasters(bytes: () => 16 * 16 * 4);
       addTearDown(room.clear);
       drawOnce(SubtreeHold(room, key: 'first', keeps: true));
+      final first = heldFor(room, 'first')!;
       drawOnce(SubtreeHold(room, key: 'second', keeps: true));
       expect(room, hasLength(1));
+      expect(heldFor(room, 'second'), isNotNull, reason: 'the newest stays');
+      expect(first.raster.debugDisposed, isTrue, reason: 'the other goes');
 
       final none = HeldSubtreeRasters(bytes: () => 16 * 16 * 4 - 1);
       addTearDown(none.clear);

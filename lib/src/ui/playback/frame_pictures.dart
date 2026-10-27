@@ -96,10 +96,10 @@ class FramePictures implements PlaybackPictures {
   /// folder drawn whole is not drawn again for each step that does not
   /// touch it.
   ///
-  /// ⚖️One page of them at the most — the page of the frame last kept on
-  /// ([estimatedImageBytes]): the screen is fed by the frame's picture, and
-  /// these only make its patches cheaper. Past it they are let go of, and a
-  /// patch draws the node as it did before.
+  /// ⚖️One page of them at the most — the page of the frame last drawn
+  /// with them ([estimatedImageBytes]): the screen is fed by the frame's
+  /// picture, and these only make its patches cheaper. Past it they are let
+  /// go of, and a patch draws the node as it did before.
   late final HeldSubtreeRasters heldNodes = HeldSubtreeRasters(
     bytes: () => _heldNodeBytes,
   );
@@ -110,12 +110,10 @@ class FramePictures implements PlaybackPictures {
   /// whole where it [keeps].
   ({HeldNodePictures pictures, int Function(BrushFrameKey cel) revisionOf})
   _holding(FramePage page, {required bool keeps}) {
-    if (keeps) {
-      _heldNodeBytes = estimatedImageBytes(
-        page.canvasSize.width,
-        page.canvasSize.height,
-      );
-    }
+    _heldNodeBytes = estimatedImageBytes(
+      page.canvasSize.width,
+      page.canvasSize.height,
+    );
     return (
       pictures: (rasters: heldNodes, keeps: keeps),
       revisionOf: _revisionOf,
