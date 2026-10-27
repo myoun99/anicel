@@ -8,6 +8,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -20,14 +21,17 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/folder_bands.dart';
@@ -873,6 +877,66 @@ void main() {
         reason: 'b ends at 3 under the hand, over the a that ends at 3 now',
       );
       s.edgeDrag.cancelExposureEdgeDrag();
+    });
+
+    // The folder's OWN form in a drag is no band: it holds no block, so
+    // the row read as that form alone went blank while its keys moved.
+    test('a folder\'s block moved with its own keys shows its rows where '
+        'they go, and its keys with them', () {
+      final s = _session([
+        for (final layer in _stack())
+          if (layer.id == _folder)
+            layer.copyWith(
+              transformTrack: TransformTrack.empty().copyWith(
+                position: PropertyTrack<CanvasPoint>.empty().withKey(
+                  1,
+                  CanvasPoint(x: 5, y: 5),
+                ),
+              ),
+            )
+          else
+            layer,
+      ]);
+      s.updateFrameRangeSelectionDrag(
+        layerId: _folder,
+        anchorIndex: 1,
+        headIndex: 1,
+        spanRows: const [
+          LayerRowAddress(_folder),
+          LaneRowAddress(_folder, 'position'),
+        ],
+      );
+      expect(s.rangeMove.beginFrameRangeMoveDrag(_folder), isTrue);
+
+      s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 12);
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(
+        folder == null ? null : _blocks(folder),
+        {8: 2, 12: 6},
+        reason: 'a\'s 0..4 and b\'s 2..6 went 12 on',
+      );
+      expect(folder?.transformTrack.position.keys.keys.toList(), [13]);
+      s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('a folder\'s own keys scrubbed leave its row holding what its rows '
+        'hold', () {
+      final s = _session(_stack());
+      s.laneVerbs.previewLayerTransformAtPlayhead(
+        _folder,
+        (track, frame) => track.withKeyframe(
+          frame,
+          TransformPose(center: CanvasPoint(x: 12, y: 34)),
+        ),
+      );
+      final scrubbed = (s.dragPreview.value as LaneEditPreview?)?.row;
+      expect(scrubbed?.id, _folder, reason: '⛔전제: the scrub is on F');
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(folder == null ? null : _blocks(folder), {0: 6, 8: 2});
+      expect(folder?.transformTrack, scrubbed?.transformTrack);
+      s.laneVerbs.endLaneEditPreview();
     });
 
     group('🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 '

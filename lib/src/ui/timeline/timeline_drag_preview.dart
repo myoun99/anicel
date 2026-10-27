@@ -906,21 +906,24 @@ Layer? rowShownWhileMoved(
   Layer? Function(LayerId layerId) movedRowOf,
 ) {
   final direct = movedRowOf(layer.id);
-  if (direct != null) {
-    return direct;
-  }
-  // A FOLDER's band is what its rows hold (F-311): while a drag has one of
-  // them elsewhere, the band is made again of each as it shows — whichever
-  // drag it is (folder-band-lags-a-comma-drag).
+  // A FOLDER's band is what its rows hold (F-311): while a drag has the
+  // folder or one of its rows elsewhere, the band is made again — of the
+  // folder as the drag shows it and of each row as it shows, whichever
+  // drag it is (folder-band-lags-a-comma-drag). ⛔The folder's own form
+  // alone holds no block: read as that, its row went blank while its own
+  // keys moved.
   if (folderBandRowsOf(layer) case final rows?) {
     final shown = [
       for (final row in rows) rowShownWhileMoved(row, movedRowOf),
     ];
-    return shown.every((row) => row == null)
+    return direct == null && shown.every((row) => row == null)
         ? null
-        : folderBandOf(layer, [
+        : folderBandOf(direct ?? layer, [
             for (final (index, row) in rows.indexed) shown[index] ?? row,
           ]);
+  }
+  if (direct != null) {
+    return direct;
   }
   // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
   // drag previews the base, re-derive the mirrored display timeline
