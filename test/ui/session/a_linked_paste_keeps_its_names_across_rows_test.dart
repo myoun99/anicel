@@ -376,7 +376,10 @@ void main() {
       );
     });
 
-    test('a direction row wears no names, so a named copy links nothing '
+    // ↩️A direction row wore no names at all until I-72-direction-link: its
+    // drawings are named by what their blocks say now, and a hand's name
+    // means nothing there.
+    test('a direction row wears no typed names, so a named copy links nothing '
         'there', () {
       final (:s, :base, mirror: _, other: _) = baseMirrorAndAnEmptyRow();
       copyTheRunOf(s, base);

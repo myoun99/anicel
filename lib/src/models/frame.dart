@@ -79,10 +79,35 @@ DrawingHead drawingHeadOf(String? name, {required LayerKind kind}) =>
 /// `name.isEmpty`, so a name of spaces printed as spaces on the timeline and
 /// as the mark on the sheet. A painter holds a name, not a frame — so the
 /// answer is a function of the name, and the getter asks it too.
+///
+/// A WRITTEN name ([writtenDrawingName]) prints none: it is the drawing's
+/// to link by, and nobody's to read.
 String? celNumberOf(String? name) {
+  if (isWrittenDrawingName(name)) {
+    return null;
+  }
   final trimmed = name?.trim() ?? '';
   return trimmed.isEmpty ? null : trimmed;
 }
+
+/// What a WRITTEN name starts with — a name a drawing is given by what its
+/// block says, never by a hand (a direction block's,
+/// `linkNameOfWriting`). No keyboard types U+001F, so no typed name is one.
+const String _writtenNameMark = '\u001F';
+
+/// The name [parts] write — linked by as a typed name is
+/// (「같은 이름 = 같은 그림」), and printed nowhere ([celNumberOf]).
+///
+/// 🗣️유저 2026-09-12, of a direction row's drawings: 「이름을 안보이게,
+/// 수정못하게」. ↩️Then they had no name, so that no two could link; since
+/// I-72-direction-link they link by what they say, and the name stays out
+/// of sight and out of reach.
+String writtenDrawingName(Iterable<String> parts) =>
+    '$_writtenNameMark${parts.join(_writtenNameMark)}';
+
+/// Whether [name] is one [writtenDrawingName] wrote.
+bool isWrittenDrawingName(String? name) =>
+    name?.startsWith(_writtenNameMark) ?? false;
 
 /// What a drawing named [name] on a row of [kind] WRITES where its block
 /// starts, as TEXT — a file name, a notice: [drawingHeadOf], its mark

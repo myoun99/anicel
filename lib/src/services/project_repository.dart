@@ -450,9 +450,9 @@ class ProjectRepository {
 
   /// The six invariants above, in their stated order, over one cut of
   /// [project] — the project being settled, read for the two things a cut
-  /// cannot say alone: the instruction a bare direction block takes, and a
-  /// linked attach row's group — and over what the [last] write settled of
-  /// it, where there was one.
+  /// cannot say alone: the vocabulary a direction block's drawing is named
+  /// by, and a linked attach row's group — and over what the [last] write
+  /// settled of it, where there was one.
   static Cut _normalizedCut(
     Cut cut, {
     required Project project,
@@ -487,6 +487,7 @@ class ProjectRepository {
           attached: attached,
         ),
       ),
+      defById: project.cameraInstructions.defById,
     );
     final layers = mappedOrSame(
       shaped.layers,

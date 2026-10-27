@@ -1,3 +1,5 @@
+import 'dart:async' show FutureOr;
+
 import 'package:flutter/material.dart';
 
 import '../../models/audio_clip.dart' show AudioClip;
@@ -607,7 +609,7 @@ typedef _SpanRow = ({
   void Function()? create,
   void Function() remove,
   int Function(InstructionEvent covering) length,
-  void Function(InstructionEvent event) commit,
+  FutureOr<void> Function(InstructionEvent event) commit,
 });
 
 Future<void> _editSpanInstance(
@@ -639,13 +641,63 @@ Future<void> _editSpanInstance(
   if (instructionId == null && !row.offersNoMark) {
     return;
   }
-  row.commit(
+  await row.commit(
     InstructionEvent(
       instructionId: instructionId,
       length: row.length(covering.value),
       text: result.text,
       valueA: result.valueA,
       valueB: result.valueB,
+    ),
+  );
+}
+
+/// The direction row's commit: [event] said on the block covering
+/// [frameIndex] — and, where it says what another drawing of the row says,
+/// the link offered first, listing the drawing the link throws away.
+///
+/// 🗣️I-72-direction-link (유저 2026-10-08): 「같은이름이라는 규칙을
+/// 시작이름,끝이름,지시 세개 같으면 같은 링크로서」 — what a block says is
+/// its drawing's name ([linkNameOfWriting]), so this is a rename onto a
+/// held name ([_renameSelectedFrame]): Link joins, Cancel writes nothing.
+Future<void> _commitInstruction(
+  BuildContext context,
+  EditorSessionManager session,
+  LayerId layerId,
+  int frameIndex,
+  InstructionEvent event,
+) async {
+  final project = session.repository.requireProject();
+  final shown = switch (layerAnywhereOrNull(project, layerId)) {
+    final layer? => coveringDrawingBlockAt(layer.timeline, frameIndex),
+    null => null,
+  }?.entry.frameId;
+  final held = session.instructionVerbs.upsertInstructionEventAt(
+    layerId,
+    frameIndex,
+    event,
+    createLengthFrames: 1,
+  );
+  if (held == null || shown == null || !context.mounted) {
+    return;
+  }
+  await offerLink<FrameId>(
+    context,
+    held,
+    onConflict: (
+      lines: (_) => drawingPlaceLines(
+        project,
+        layerId,
+        [shown],
+        framePlace: session.framePlaceLabel,
+      ),
+      join: (held) => session.instructionVerbs.linkInstructionEventAt(
+        layerId,
+        frameIndex,
+        event,
+        held,
+      ),
+      decline: null,
     ),
   );
 }
@@ -672,12 +724,8 @@ Future<void> _editInstructionEvent(
   // The direction row's events are one frame each; the cell you opened
   // is the span.
   length: (_) => 1,
-  commit: (event) => session.instructionVerbs.upsertInstructionEventAt(
-    layerId,
-    frameIndex,
-    event,
-    createLengthFrames: 1,
-  ),
+  commit: (event) =>
+      _commitInstruction(context, session, layerId, frameIndex, event),
 ));
 
 /// The TRANSITION row's instance: the span at the playhead on the GLOBAL axis.

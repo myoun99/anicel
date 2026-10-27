@@ -703,7 +703,8 @@ enum LayerKind {
   /// 🗣️I-18 targets-Q1 (유저): 「애니메이션 · 콘티 + 이미지 행」 — and never the
   /// SE, direction or camera rows. An SE entry's name is its dialogue
   /// ([celNameIsIdentity]), and a direction row's cels carry no name to edit
-  /// (유저 2026-09-12, `FrameVerbs.canRenameFrameAtCurrentFrame`).
+  /// (유저 2026-09-12, `FrameVerbs.canRenameFrameAtCurrentFrame`) — what
+  /// their blocks say writes it (I-72-direction-link).
   ///
   /// ⛔Its own column, though the three trues are the kinds that both hold
   /// drawings and draw ([holdsDrawings] ∧ [isDrawingCel]) today: which rows a

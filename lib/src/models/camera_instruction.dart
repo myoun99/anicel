@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import '../core/collection_equality.dart';
 import 'exposure_instruction.dart';
+import 'frame.dart' show writtenDrawingName;
 
 /// Camera-work instruction vocabulary and events for instruction rows.
 ///
@@ -353,16 +354,8 @@ class InstructionEvent {
 
   /// What displays/prints for this event given its vocabulary [def] — with
   /// no mark and no text, nothing.
-  String displayLabel(CameraInstructionDef? def) {
-    final text = this.text;
-    if (text != null && text.isNotEmpty) {
-      return text;
-    }
-    return switch (instructionId) {
-      final id? => instructionTermName(id, def),
-      null => '',
-    };
-  }
+  String displayLabel(CameraInstructionDef? def) =>
+      labelOfWriting(writing, def);
 
   /// The vocabulary entry this span's mark names in [defById] — null with no
   /// mark, as with a dangling one or no vocabulary at hand.
@@ -499,7 +492,44 @@ List<Map<String, dynamic>> instructionMapToJson(
 }
 /// What a term is written as: its [def]'s name in the vocabulary, or the
 /// raw [id] where the vocabulary has none (a term since deleted) — an
-/// instruction span's fallback ([InstructionEvent.displayLabel]) and the
+/// instruction span's fallback ([labelOfWriting]) and the
 /// camera's moves' only name (I-73 ⑤).
 String instructionTermName(String id, CameraInstructionDef? def) =>
     def?.name ?? id;
+
+/// What [writing] says, given its mark's [def]: its own words, else its
+/// mark's term name — nothing with neither.
+String labelOfWriting(ExposureInstruction? writing, CameraInstructionDef? def) {
+  final text = writing?.text;
+  if (text != null && text.isNotEmpty) {
+    return text;
+  }
+  return switch (writing?.instructionId) {
+    final id? => instructionTermName(id, def),
+    null => '',
+  };
+}
+
+/// The name a direction block's drawing LINKS by: the two ends [writing]
+/// names and what it says ([labelOfWriting]), written
+/// ([writtenDrawingName]) — so blocks saying the same show one drawing, as
+/// two blocks of one name do on a drawing row. Null when it names neither
+/// end: the drawing is its own, whatever the block says.
+///
+/// 🗣️I-72-direction-link (유저 2026-10-08): 「같은이름이라는 규칙을
+/// 시작이름,끝이름,지시 세개 같으면 같은 링크로서 작동하도록 … 이름이 비우면
+/// 기호이름이란 시스템이잖아? 그거의 결과를 지시 라는 항목으로」, and Q1's
+/// note (10-25): 「독립붙여넣기나 복제는 프레임블록은 링크발동안되게 이름
+/// 없음으로 태어나니 디렉션도 시작이름 끝이름만 없음으로 태어나게」 — the
+/// ends are the name, and a block without them links to none.
+String? linkNameOfWriting(
+  ExposureInstruction? writing,
+  CameraInstructionDef? def,
+) {
+  final from = writing?.valueA?.trim() ?? '';
+  final to = writing?.valueB?.trim() ?? '';
+  if (from.isEmpty && to.isEmpty) {
+    return null;
+  }
+  return writtenDrawingName([from, to, labelOfWriting(writing, def).trim()]);
+}

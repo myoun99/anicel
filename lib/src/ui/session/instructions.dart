@@ -2,7 +2,10 @@ import 'dart:collection';
 import 'dart:math' as math;
 
 import '../../models/camera_instruction.dart';
+import '../../models/cel_bank_lanes.dart' show layerJoined;
+import '../../models/exposure_instruction.dart';
 import '../../models/frame.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -93,11 +96,18 @@ class Instructions {
   }
 
   /// Creates or edits the instruction event at [frameIndex] in ONE undo
-  /// step: a covered cell replaces what its block says (start and length
-  /// stay, and so does the drawing), an empty cell lays a new block on a
-  /// cel of its own, holding for the dialog's length — clamped into the
-  /// cut and at the next block.
-  void upsertInstructionEventAt(
+  /// step: a covered cell replaces what its block says — and what every
+  /// block showing its drawing says, the blocks it is linked with (start
+  /// and length stay, and so does the drawing) — an empty cell lays a new
+  /// block on a cel of its own, holding for the dialog's length — clamped
+  /// into the cut and at the next block.
+  ///
+  /// 🗣️I-72-direction-link: what a block says names its drawing
+  /// ([linkNameOfWriting]), so an edit that would say what ANOTHER drawing
+  /// of the row says writes nothing and hands back that drawing — the link
+  /// is the user's to take ([linkInstructionEventAt]), as a rename onto a
+  /// held name is (`FrameVerbs.renameSelectedFrame`). Null when it wrote.
+  FrameId? upsertInstructionEventAt(
     LayerId layerId,
     int frameIndex,
     InstructionEvent event, {
@@ -105,7 +115,7 @@ class Instructions {
   }) {
     final layer = _project.layerById(layerId);
     if (layer == null || layer.kind != LayerKind.instruction) {
-      return;
+      return null;
     }
 
     // A resolvable instruction layer implies an active cut.
@@ -117,16 +127,17 @@ class Instructions {
     final edits = covering != null && !covering.entry.ghost;
     final Layer Function(Layer row) spans;
     if (edits) {
-      spans = (row) => row.copyWith(
-        timeline: {
-          ...row.timeline,
-          covering.startIndex: covering.entry.copyWith(
-            instruction: () => event.writing,
-          ),
-        },
-      );
+      final drawing = covering.entry.frameId!;
+      if (_drawingSaying(layer, event.writing, besides: drawing)
+          case final held?) {
+        return held;
+      }
+      spans = (row) => _sayingOnEveryBlockOf(row, drawing, event.writing);
     } else {
-      final cel = _frameIds.mintFrameId(layerId);
+      // A new block saying what a drawing of the row says shows that one:
+      // nothing is thrown away, so there is nothing to ask.
+      final held = _drawingSaying(layer, event.writing);
+      final cel = held ?? _frameIds.mintFrameId(layerId);
       final wanted = (createLengthFrames ?? available).clamp(1, available);
       spans = (row) {
         // A ghost is a hold's projection, not a block: it neither stops the
@@ -137,7 +148,7 @@ class Instructions {
         return row.copyWith(
           frames: [
             ...row.frames,
-            Frame(id: cel, duration: 1, strokes: const []),
+            if (held == null) Frame(id: cel, duration: 1, strokes: const []),
           ],
           timeline: {
             ...authored,
@@ -165,7 +176,87 @@ class Instructions {
       description: edits ? 'Edit instruction' : 'Add instruction',
     );
     _changes.notifyChanged();
+    return null;
   }
+
+  /// Links the block covering [frameIndex] to [held] — the drawing of the
+  /// row that already says what [event] says ([upsertInstructionEventAt]
+  /// handed it back) — and says [event] on every block of [held]: the
+  /// blocks of the drawing the block showed show [held], and that drawing
+  /// goes from the bank unless a lane of it still shows it ([layerJoined],
+  /// the rename's join). ONE undo step.
+  void linkInstructionEventAt(
+    LayerId layerId,
+    int frameIndex,
+    InstructionEvent event,
+    FrameId held,
+  ) {
+    final layer = _project.layerById(layerId);
+    if (layer == null || layer.kind != LayerKind.instruction) {
+      return;
+    }
+    final covering = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    final drawing = covering?.entry.frameId;
+    if (covering == null || covering.entry.ghost || drawing == null) {
+      return;
+    }
+    final bank = _controllers.timelineController.bankLanesOf(layerId);
+    _project.cutCommandCoordinator.updateDirectionSpans(
+      cutId: _project.requireActiveCut.id,
+      layerId: layerId,
+      spans: (row) => _sayingOnEveryBlockOf(
+        layerJoined(row, {drawing: held}, bank: bank),
+        held,
+        event.writing,
+      ),
+      description: 'Link instruction',
+    );
+    _changes.notifyChanged();
+  }
+
+  /// The drawing of [layer] — other than [besides] — that already says
+  /// what [writing] says: the one holding the name it gives
+  /// ([linkNameOfWriting]). None where it names no end.
+  FrameId? _drawingSaying(
+    Layer layer,
+    ExposureInstruction? writing, {
+    FrameId? besides,
+  }) {
+    final name = linkNameOfWriting(
+      writing,
+      switch (writing?.instructionId) {
+        final id? => _project.repository
+            .requireProject()
+            .cameraInstructions
+            .defById(id),
+        null => null,
+      },
+    );
+    if (name == null) {
+      return null;
+    }
+    for (final frame in layer.frames) {
+      if (frame.id != besides && frame.name == name) {
+        return frame.id;
+      }
+    }
+    return null;
+  }
+
+  /// [row] with [writing] said on every block that shows [drawing] — what
+  /// the drawing's blocks say is one thing, as the drawing is.
+  Layer _sayingOnEveryBlockOf(
+    Layer row,
+    FrameId drawing,
+    ExposureInstruction? writing,
+  ) => row.copyWith(
+    timeline: {
+      for (final MapEntry(key: start, value: entry) in row.timeline.entries)
+        start: !entry.ghost && entry.frameId == drawing
+            ? entry.copyWith(instruction: () => writing)
+            : entry,
+    },
+  );
 
   /// Removes the instruction span covering [frameIndex] — the block it is,
   /// with its drawing, by the delete button's own code; one undo step.

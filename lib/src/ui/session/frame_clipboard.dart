@@ -3,6 +3,7 @@ import '../../controllers/timeline_controller.dart'
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/exposure_instruction.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -263,9 +264,8 @@ class FrameClipboard implements BringsMedia {
       return 'Copy: -';
     }
 
-    final label = copiedFrame.frameName?.isNotEmpty ?? false
-        ? copiedFrame.frameName!
-        : copiedFrame.frameId.value;
+    final label =
+        celNumberOf(copiedFrame.frameName) ?? copiedFrame.frameId.value;
     return 'Copy: $label';
   }
 
@@ -599,14 +599,36 @@ class FrameClipboard implements BringsMedia {
   TimelineClipRow _clipToBank(ClipboardPlace place, Frame frame) {
     final run = _selectedRunAt(place);
     return run == null
-        ? _oneCellOf(frame.id)
+        ? _oneCellOf(frame.id, saying: _sayingOf(place._row, frame.id))
         : _runCopiedOff(place._row, index: run.index, count: run.count);
   }
 
   /// One comma of [frameId] — the whole clip a copy or a cut with nothing
-  /// selected banks.
-  static TimelineClipRow _oneCellOf(FrameId frameId) =>
-      TimelineClipRow.untimed(TimelineExposure.drawing(frameId, length: 1));
+  /// selected banks — [saying] what the drawing's blocks say.
+  ///
+  /// 🗣️I-72-direction-link: on a direction row that is the DRAWING's, not
+  /// only the block's — it names the drawing (`linkNameOfWriting`), and a
+  /// drawing's blocks say one thing. Banked bare, a linked paste laid a
+  /// block saying nothing on a drawing saying A → B, and a copy of its own
+  /// lost what it says with its ends (Q1's note: 「시작이름 끝이름만
+  /// 없음으로 태어나게」 — the ends only).
+  static TimelineClipRow _oneCellOf(
+    FrameId frameId, {
+    ExposureInstruction? saying,
+  }) => TimelineClipRow.untimed(
+    TimelineExposure.drawing(frameId, length: 1, instruction: saying),
+  );
+
+  /// What the blocks of [drawing] on [row] say — one thing, as the drawing
+  /// is (`Instructions.upsertInstructionEventAt` says it on all of them).
+  static ExposureInstruction? _sayingOf(Layer row, FrameId drawing) {
+    for (final entry in row.timeline.values) {
+      if (!entry.ghost && entry.frameId == drawing) {
+        return entry.instruction;
+      }
+    }
+    return null;
+  }
 
   /// Puts [clip] on the board as the copy of [frame] on [layer] — the
   /// half a copy and a 잘라내기 share, clip and all ([_clipToBank]).
@@ -769,16 +791,20 @@ class FrameClipboard implements BringsMedia {
   /// it was NOT copied from — the name-keeping paste (I-71).
   ///
   /// It makes drawings there, so the row has to take them
-  /// ([rowTakesNewCels]) and to WEAR names: a direction row's drawings have
-  /// none (유저 2026-09-12: 「이름없으면 독립적인거니까」). And the copy has
-  /// to be one of NAMED drawings — with no name to keep, the press would be
-  /// the independent paste under another button, and that button alone is
-  /// lit (F-115, said of the SE row: 「링크붙여넣기의 차이점이 없기때문」).
+  /// ([rowTakesNewCels]) and to WEAR the copy's names ([wearsNamesOf]): a
+  /// direction row's are written by what its blocks say, every other row's
+  /// by a hand. And the copy has to be one of NAMED drawings — with no name
+  /// to keep, the press would be the independent paste under another
+  /// button, and that button alone is lit (F-115, said of the SE row:
+  /// 「링크붙여넣기의 차이점이 없기때문」).
+  /// ↩️A direction row wore none (유저 2026-09-12: 「이름없으면
+  /// 독립적인거니까」) until its blocks linked by what they say
+  /// (I-72-direction-link).
   bool _keepsNamesOn(Layer layer, _CopiedFrameReference copied) =>
       rowTakesNewCels(layer) &&
-      !layer.kind.spansRideBlocks &&
       (copied.rows.firstOrNull?.linkable ?? false) &&
-      copied.cels.any((cel) => cel.name != null);
+      copied.cels.any((cel) => cel.name != null) &&
+      wearsNamesOf(layer, copied.cels);
 
   /// 결정 14 ②ⓐ×③ⓐ — EVERY ROW a paste on [layer] lands on, each with the
   /// row of the board it receives.
@@ -839,7 +865,7 @@ class FrameClipboard implements BringsMedia {
   static ClipLanding _linkLandingOf(_PasteLanding landing) =>
       landing.target.id == landing.source
       ? ClipLanding.sameDrawings
-      : landing.linkable && !landing.target.kind.spansRideBlocks
+      : landing.linkable && wearsNamesOf(landing.target, landing.cels)
       ? ClipLanding.sameNames
       : ClipLanding.ownDrawings;
 

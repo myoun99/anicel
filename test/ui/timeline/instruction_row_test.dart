@@ -4,6 +4,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -313,6 +314,72 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(_camLayer(repository).instructions, isEmpty);
+  });
+
+  // 🗣️I-72-direction-link (유저 2026-10-08): 「시작이름,끝이름,지시 세개
+  // 같으면 같은 링크로서 작동하도록」 — told what another block says, a block
+  // asks before it links, as a rename onto a held name does.
+  testWidgets('told what another block says, a block asks first — Cancel '
+      'writes nothing, Link shows the one drawing', (tester) async {
+    late ProjectRepository repository;
+    await _open(
+      tester,
+      _project(
+        instructions: {
+          2: const InstructionEvent(
+            instructionId: 'pan',
+            length: 3,
+            valueA: 'A',
+            valueB: 'B',
+          ),
+          8: const InstructionEvent(instructionId: 'pan', length: 2),
+        },
+      ),
+      onRepositoryCreated: (repo) => repository = repo,
+    );
+    await standTheClassicRail(tester);
+    FrameId? celAt(int frame) => _camLayer(repository).timeline[frame]?.frameId;
+    final own = celAt(8);
+
+    Future<void> tellTheSecond() async {
+      await _doubleTapCell(tester, 'inst-cam', 8);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('instruction-value-a-field')),
+        'A',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('instruction-value-b-field')),
+        'B',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await tellTheSecond();
+    expect(
+      find.byKey(const ValueKey<String>('frame-name-conflict-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(celAt(8), own);
+    expect(
+      _camLayer(repository).instructions[8]?.valueA,
+      isNull,
+      reason: 'Cancel writes nothing',
+    );
+
+    await tellTheSecond();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('frame-name-conflict-link-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(celAt(8), celAt(2));
+    expect(_camLayer(repository).instructions[8]?.valueB, 'B');
   });
 
   // 🗣️I-72-block-without-instruction (유저 2026-10-05 · 10-08): 「지시
