@@ -1355,13 +1355,25 @@ const kAiVerdicts = <(String, String)>[
 /// replaces an earlier one the way the story always reads.
 ({String verdict, String day})? aiVerdictOf(BoardCard e) {
   for (final entry in e.log.reversed) {
-    final opening = entry.text.replaceAll('**', '');
-    for (final (words, verdict) in kAiVerdicts) {
-      if (opening.startsWith(words)) {
-        final day = entry.ts.length >= 10 ? entry.ts.substring(5, 10) : '';
-        return (verdict: verdict, day: day);
-      }
-    }
+    final verdict = aiVerdictIn(entry);
+    if (verdict == null) continue;
+    final day = entry.ts.length >= 10 ? entry.ts.substring(5, 10) : '';
+    return (verdict: verdict, day: day);
+  }
+  return null;
+}
+
+/// The key of the [kAiVerdicts] label [entry] opens with, or null.
+///
+/// ⚠️Only the opening is read: the label is the line's first words, and
+/// [stageName] asks this of every line of every story on each page — a whole
+/// line can run to pages.
+String? aiVerdictIn(BoardLog entry) {
+  final text = entry.text;
+  final opening =
+      (text.length > 48 ? text.substring(0, 48) : text).replaceAll('**', '');
+  for (final (words, verdict) in kAiVerdicts) {
+    if (opening.startsWith(words)) return verdict;
   }
   return null;
 }
@@ -1704,6 +1716,7 @@ final kQName = RegExp(r'^(.+)-Q(\d+)$');
 bool stillOwed(BoardCard e) => lastSection(e) == '남은 것';
 
 String stageName(BoardCard e, int i) {
+  if (_aiConfirmed(e, i)) return '완료';
   final at = e.log[i].at;
   if (at.isNotEmpty) return at;
   if (i == 0) {
@@ -1712,6 +1725,38 @@ String stageName(BoardCard e, int i) {
     if (e.tags.contains('임시')) return '임시 메모';
   }
   return '작업 기록';
+}
+
+/// 🚨★★★AN AI 검증완료 IS THE USER'S 확인 (유저 2026-10-27: 「ai 검증완료면
+/// 그냥 내가 확인한거랑 똑같이 작동하도록」).
+///
+/// Whether entry [i] is an AI hands-on check that came out 검증완료 — with
+/// evidence or without — on a card standing in 검증. Such a line IS the
+/// card's 완료, the word the user's own tick writes (`tickRecords` in the
+/// server), so the section, the checks still waiting and the guard on ended
+/// cards follow it through the readers that already follow that word.
+///
+/// ↩️It reverses `law-검증` (10-22) 「완료는 유저가 누른다」: the verdict was a
+/// chip beside the title ([aiVerdictOf]) and the card waited in 검증 for the
+/// tick.
+/// ⚠️READ, NOT WRITTEN. The line is the record and no 완료 is appended for
+/// it — 🧪the 24 cards that already carried one when this came in left 검증
+/// without a word written about them.
+/// ⚠️Only on a card standing in 검증 (or 실기 확인) just before the line —
+/// where the user's last tick ends a card, and nowhere else: a verdict on a
+/// card someone has taken back into work does not finish that work.
+/// ⚠️Never a letter, which stands in the story and moves nothing
+/// ([BoardLog.to]); never a line whose `at` names a 대분류 of its own.
+bool _aiConfirmed(BoardCard e, int i) {
+  final entry = e.log[i];
+  if (entry.isLetter || kSection.containsKey(entry.at)) return false;
+  final verdict = aiVerdictIn(entry);
+  if (verdict != 'done' && verdict != 'evidence') return false;
+  for (var j = i - 1; j >= 0; j--) {
+    final name = stageName(e, j);
+    if (isPlaceWord(name)) return kSection[name] == 'hands';
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------- the axes
