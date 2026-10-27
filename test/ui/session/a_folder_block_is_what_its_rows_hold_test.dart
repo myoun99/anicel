@@ -839,6 +839,42 @@ void main() {
       s.mediaPlacement.clear();
     });
 
+    test('a folder kept over an edit that left its blocks as they were is '
+        'read from its rows as they are now', () {
+      final s = _session(_stack());
+      final before = _band(s);
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: const LayerId('a'),
+        blockStartIndex: 0,
+        edge: TimelineBlockEdge.end,
+      );
+      s.edgeDrag.updateExposureEdgeDrag(-1);
+      s.edgeDrag.endExposureEdgeDrag();
+      expect(
+        [_blocks(_layer(s, 'a')), identical(_band(s), before)],
+        [
+          {0: 3, 8: 2},
+          true,
+        ],
+        reason: '⛔전제: a ends at 3 under b\'s 2..6, so the band was kept',
+      );
+
+      s.edgeDrag.beginExposureEdgeDrag(
+        layerId: const LayerId('b'),
+        blockStartIndex: 2,
+        edge: TimelineBlockEdge.end,
+      );
+      s.edgeDrag.updateExposureEdgeDrag(-3);
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(
+        folder == null ? null : _blocks(folder),
+        {0: 3, 8: 2},
+        reason: 'b ends at 3 under the hand, over the a that ends at 3 now',
+      );
+      s.edgeDrag.cancelExposureEdgeDrag();
+    });
+
     group('🐛F-467 (유저 2026-10-25): 「폴더의 블록을 잡고 이동시킬때, 원래 '
         '위치에 블록이 남아있는 버그. 이동끝나면 사라짐」 — a synced attach '
         'row in it is read as its row shows it, by its base', () {
