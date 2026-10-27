@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/cut_command_group.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
@@ -175,12 +176,16 @@ void main() {
       session.frameScrub.scrubGlobalFrame(20);
       await tester.pump();
       final bar = tester.renderObject(find.byType(TimelineCommandBar));
-      // The nearest: the bar stands on one too.
-      final layer = tester.renderObject(
-        find
-            .ancestor(of: find.byKey(name), matching: find.byType(TickLayer))
-            .first,
+      // Inside the pill: the bar stands on one too.
+      final own = find.descendant(
+        of: find.byType(CutCommandGroup),
+        matching: find.ancestor(
+          of: find.byKey(name),
+          matching: find.byType(TickLayer),
+        ),
       );
+      expect(own, findsOneWidget, reason: 'a layer of the name\'s own');
+      final layer = tester.renderObject(own);
 
       session.frameScrub.scrubGlobalFrame(26);
       await tester.pump(null, EnginePhase.layout);
