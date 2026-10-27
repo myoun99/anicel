@@ -5,41 +5,29 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 import '../../services/history_manager.dart';
 import '../input/control_press_claim.dart' show PressFireWatch;
-import '../input/value_control_pointers.dart';
-import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
-    show
-        LayerRailColumnWidths,
-        RailSwipeColumnPointer,
-        layerClipSlotWidth,
-        layerFxSlotWidth,
-        layerGraphSlotWidth,
-        layerLanePinSlotWidth,
-        layerOnionSlotWidth,
-        layerVisibilitySlotWidth;
+    show RailSwipeColumn, RailSwipeColumnPointer, railSwipeColumnPressedBy;
 import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
-import 'axis_turn.dart' show partAcross, partAlong;
+import 'axis_turn.dart' show partAlong;
 import 'timeline_row_edges.dart';
 import 'timeline_visible_range.dart';
 
-/// A column a rail can SWIPE: where its band sits on a given row, what
-/// value a row shows there, and how to flip that row.
+/// A column a rail can SWIPE: which one it is, what value a row shows
+/// there, and how to flip that row.
 ///
-/// 🚨A band RESOLVER rather than a fixed x-range: a button at the end of a
-/// row's NAME stands where that row's name ends — a layer row keeps its
-/// fold slot last (F-29), a header has none — so where the column is
-/// depends on the row under the press (I-89 Q1). That is also why the
-/// swipe paints by column IDENTITY once it has latched — one drag can
-/// cross rows whose buttons stand at different places without ever
-/// leaving its column. ↩️It was asked the row's DEPTH, for the leading
-/// columns the folder indent used to push (I-1); the indent lives in the
-/// name now, and no band read it.
+/// 🚨WHICH ONE, NOT WHERE: the button a press lands on says what column it
+/// stands in ([RailSwipeColumnPointer.column]), and the swipe paints by that
+/// IDENTITY once it has latched — one drag crosses rows whose buttons stand
+/// at different places (a button at the end of a NAME stands where that
+/// row's name ends, I-89 Q1) without ever leaving its column. ↩️Each column
+/// was a band of the row the rail worked out from the layout's own sums;
+/// see the pointer for what that cost.
 ///
 /// [valueOf] returns null for a row that HAS NO control in this column (an
 /// attach row's sheet slot holds an arrow, a laneless row has no twirl).
 /// Null is skipped: a swipe cannot paint what a tap could not.
 typedef RailToggleColumn<TRow> = ({
-  ({double start, double end}) Function(TRow row) bandAt,
+  RailSwipeColumn column,
   bool? Function(TRow row) valueOf,
   void Function(TRow row) toggle,
 });
@@ -160,7 +148,7 @@ typedef _Stroke<TRow> = ({Object id, TRow row, bool pressed, int steps});
 ///
 /// 🚨★★★AND IT IS NOT ABOUT THE TIMELINE EITHER. This lived inside the layer
 /// grid's private state until 2026-08-29, which is why the storyboard rail —
-/// the same buttons, laid out by the same [layerRailTrailingCells] — had no
+/// the same buttons, laid out by the same `layerRailTrailingCells` — had no
 /// swipe at all. 유저: 「타임라인이랑 왜 통일안한거지?」. Anything that lays
 /// rows in a column can wear it now; what a host supplies is its columns and
 /// a way to name the rows a stretch of rail holds.
@@ -177,8 +165,8 @@ class RailColumnSwipe<TRow> extends StatefulWidget {
   /// (which is the same rail transposed — layers are columns there).
   final Axis axis;
 
-  /// The swipeable columns, in any order — a press picks the first whose
-  /// band holds it.
+  /// The swipeable columns, in any order — a press picks the one its button
+  /// stands in.
   final List<RailToggleColumn<TRow>> columns;
 
   /// The rows a SEGMENT of the rail covers, in layout order — every row
@@ -324,14 +312,12 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
 
   /// The coordinate that runs ALONG the rail — down the layer rail, ACROSS
   /// the x-sheet's layer columns. It names the row.
-  double _along(Offset local) => partAlong(widget.axis, local);
-
-  /// The coordinate that runs ACROSS the rail. It names the column.
   ///
-  /// 🚨These two are the whole axis story. Everything else here — the latch,
-  /// the held stretch, the "only rows that disagree" rule — is written in
-  /// along/across and does not know which way the rail points.
-  double _across(Offset local) => partAcross(widget.axis, local);
+  /// 🚨The whole axis story. Everything else here — the latch, the held
+  /// stretch, the "only rows that disagree" rule — is written along the
+  /// rail and does not know which way it points; the column is the
+  /// button's to name.
+  double _along(Offset local) => partAlong(widget.axis, local);
 
   /// The row under a POINT — the segment of no length, asked of the one
   /// resolver the host implements.
@@ -369,40 +355,28 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
     }
   }
 
-  /// The column whose slot on the row under [local] holds it, or -1.
-  int _columnAt(Offset local) {
-    final row = _rowAt(_along(local));
-    if (row == null) {
-      return -1;
-    }
-    final across = _across(local);
-    for (var index = 0; index < widget.columns.length; index += 1) {
-      final band = widget.columns[index].bandAt(row.row);
-      if (across >= band.start && across <= band.end) {
-        return index;
-      }
-    }
-    return -1;
-  }
-
   /// Offers the sweep [event]'s press — when a column's BUTTON took it, and
   /// only then.
   ///
   /// 🚨★★★WHAT WAS PRESSED DECIDES (유저 2026-08-30: 「클릭이 버튼이면
   /// 스크롤 절대 발생안하게한다」). A column's button takes the strong claim
-  /// on its own down ([RailSwipeColumnPointer]), deeper than this, so by now
-  /// it has said so. A press anywhere else on the rail — the name, a slot
-  /// with no button, the slider — is not the sweep's: it scrolls, drags the
-  /// row or is the slider's, as it would with no sweep here at all.
+  /// on its own down and says which column it stands in
+  /// ([RailSwipeColumnPointer]), deeper than this, so by now it has said so.
+  /// A press anywhere else on the rail — the name, a slot with no button,
+  /// the slider — is not the sweep's: it scrolls, drags the row or is the
+  /// slider's, as it would with no sweep here at all.
+  ///
+  /// A column this rail does not sweep is held all the same: its button
+  /// stood its own claim down for the strong one, so nothing else would
+  /// hold the press, and a drag from a button is the button's (F-475).
   void _offer(PointerDownEvent event) {
-    if (!valueControlOwnsPointer(event.pointer)) {
+    final pressed = railSwipeColumnPressedBy(event);
+    if (pressed == null) {
       return;
     }
-    final column = _columnAt(event.localPosition);
-    if (column < 0) {
-      return;
-    }
-    _pressedColumn = column;
+    _pressedColumn = widget.columns.indexWhere(
+      (column) => column.column == pressed,
+    );
     _drag.addPointer(event);
   }
 
@@ -442,9 +416,12 @@ class _RailColumnSwipeState<TRow> extends State<RailColumnSwipe<TRow>> {
   /// and that press, which fired nothing, painted its own row first. The
   /// slots stand edge to edge, so the pad was the next button's: pressing
   /// the onion near the eye and pulling down swept the EYE column (F-475).
+  ///
+  /// A press on a column this rail does not sweep ([columnIndex] -1) holds
+  /// its drag and latches nothing.
   void _start(int columnIndex, double alongPosition) {
     final row = _rowAt(alongPosition);
-    if (row == null) {
+    if (columnIndex < 0 || row == null) {
       return;
     }
     final column = widget.columns[columnIndex];
@@ -522,129 +499,52 @@ typedef RailToggle<TRow> = ({
 /// the claim already carried a note begging the two be kept in step.
 ///
 /// ⇒ There is ONE construction. A rail passes what it can toggle; WHICH
-/// columns exist, WHERE their bands fall and IN WHAT ORDER they are asked
-/// are answered here for every rail at once. A column a rail cannot toggle
-/// is absent because its argument is null, never because a list forgot it.
+/// columns exist is answered here for every rail at once, and which one a
+/// press is in by the button pressed ([RailSwipeColumnPointer.column]). A
+/// column a rail cannot toggle is absent because its argument is null,
+/// never because a list forgot it.
 ///
 /// ⛔The controls left out are left out by KIND, not by rail: the mark chip,
 /// the type button, the blend picker and the mute button all open flyouts
 /// (the mute button is named a toggle and is not one — it opens the mixer),
-/// and the opacity field is a slider. None has a value a sweep could paint.
-/// If one ever gains a boolean, it gains a parameter here and both rails get
-/// it in the same commit.
+/// the name's buttons open windows (link, reference, camera path), a group's
+/// reset and the key navigator's arrows act rather than switch, and the
+/// opacity field is a slider. None has a value a sweep could paint. The
+/// SCALE CHAIN is a switch, and ONE for every row it stands on (the
+/// transform tool's 「배율 연동」, `transform-fx-scale-x-y-Q1`): a sweep
+/// would find each row it crosses showing what the press already set. If
+/// one ever gains a value of its row's own, it gains a parameter here and
+/// both rails get it in the same commit.
 ///
 /// 🗣️F-475 (유저 2026-10-26): 「클리핑버튼도 위아래 드래그로 여러 버튼
-/// 동시조작 가능하게」. ↩️The clip toggle (I-92) came after this list and
-/// never joined it — not left out, forgotten.
+/// 동시조작 가능하게 … 다른버튼도 조사」. ↩️The clip toggle (I-92) came after
+/// this list and never joined it — not left out, forgotten; and the two
+/// folds, a group's at the end of a row's name and a lane group's twirl,
+/// had no band to be found by.
 List<RailToggleColumn<TRow>> railSwipeColumns<TRow>({
-  required double crossExtent,
-  required double leadingOrigin,
-  required LayerRailColumnWidths columns,
-  required LayerRailOptionalColumns optionalColumns,
-  ({RailToggle<TRow> toggle, double Function(TRow row) after})? graph,
   RailToggle<TRow>? visibility,
   RailToggle<TRow>? onion,
   RailToggle<TRow>? fx,
   RailToggle<TRow>? clip,
   RailToggle<TRow>? timesheet,
   RailToggle<TRow>? laneToggle,
-  ({RailToggle<TRow> toggle, double inset})? lanePin,
-}) {
-  /// A LEADING column, read off the slot skeleton from the row's start.
-  ({double start, double end}) Function(TRow row) leadingBand(
-    LayerRailLeadingSlot slot,
-  ) {
-    // The row plate's left border comes before its first cell, so a column
-    // measured from the row's edge is that much further in than the slot
-    // skeleton alone says.
-    final start = leadingOrigin + layerRailLeadingWidthTo(to: slot);
-    final at = (start: start, end: start + layerRailLeadingSlotWidth(slot));
-    return (_) => at;
-  }
-
-  /// Where [from] begins: everything from it onward is what sits to its
-  /// right, read off the slot skeleton — so adding a column cannot put the
-  /// bands out of date.
-  double trailingEdge(LayerRailTrailingSlot from) =>
-      crossExtent -
-      layerRailEndPadding -
-      layerRailTrailingWidth(
-        columns: columns,
-        from: from,
-        optionalColumns: optionalColumns,
-      );
-
-  /// The column right before [after] — its slot, and nothing either side:
-  /// the slots stand edge to edge, so anything past one is the next
-  /// button's (F-475; the pad that was here is told at
-  /// `_RailColumnSwipeState._start`).
-  ({double start, double end}) Function(TRow row) trailingBand(
-    LayerRailTrailingSlot after,
-    double width,
-  ) {
-    final edge = trailingEdge(after);
-    final at = (start: edge - width, end: edge);
-    return (_) => at;
-  }
-
-  /// A MEMBER LANE's column, [inset] from the row's end — where its cell
-  /// lays it, which no slot skeleton does. ⛔No slack either side: the
-  /// chain, or the name a press stands on, is before it, and the value a
-  /// gap after.
-  ({double start, double end}) Function(TRow row) laneEndBand(
-    double inset,
-    double width,
-  ) {
-    final end = crossExtent - inset;
-    final at = (start: end - width, end: end);
-    return (_) => at;
-  }
-
-  /// A button at the END OF A ROW'S NAME (I-89 Q1), [after] short of the
-  /// trailing run on that row — what its row lays past it there. ⛔No slack
-  /// either side: the name, or a button of the name's, is before it, and a
-  /// slot after.
-  ({double start, double end}) Function(TRow row) nameEndBand(
-    double Function(TRow row) after,
-    double width,
-  ) {
-    final edge = trailingEdge(LayerRailTrailingSlot.clip);
-    return (row) {
-      final end = edge - after(row);
-      return (start: end - width, end: end);
-    };
-  }
-
-  RailToggleColumn<TRow> column(
-    ({double start, double end}) Function(TRow row) bandAt,
-    RailToggle<TRow> toggle,
-  ) => (bandAt: bandAt, valueOf: toggle.valueOf, toggle: toggle.toggle);
-
-  return [
-    if (visibility != null)
-      column(
-        trailingBand(LayerRailTrailingSlot.opacity, layerVisibilitySlotWidth),
-        visibility,
-      ),
-    if (onion != null)
-      column(
-        trailingBand(LayerRailTrailingSlot.visibility, layerOnionSlotWidth),
-        onion,
-      ),
-    if (fx != null)
-      column(trailingBand(LayerRailTrailingSlot.onion, layerFxSlotWidth), fx),
-    if (clip != null)
-      column(trailingBand(LayerRailTrailingSlot.fx, layerClipSlotWidth), clip),
-    if (graph != null)
-      column(nameEndBand(graph.after, layerGraphSlotWidth), graph.toggle),
-    if (lanePin != null)
-      column(
-        laneEndBand(lanePin.inset, layerLanePinSlotWidth),
-        lanePin.toggle,
-      ),
-    if (timesheet != null)
-      column(leadingBand(LayerRailLeadingSlot.timesheet), timesheet),
-    if (laneToggle != null)
-      column(leadingBand(LayerRailLeadingSlot.laneToggle), laneToggle),
-  ];
-}
+  RailToggle<TRow>? graph,
+  RailToggle<TRow>? lanePin,
+  RailToggle<TRow>? groupFold,
+  RailToggle<TRow>? laneGroupToggle,
+}) => [
+  for (final (column, toggle) in [
+    (RailSwipeColumn.visibility, visibility),
+    (RailSwipeColumn.onion, onion),
+    (RailSwipeColumn.fx, fx),
+    (RailSwipeColumn.clip, clip),
+    (RailSwipeColumn.timesheet, timesheet),
+    (RailSwipeColumn.laneToggle, laneToggle),
+    (RailSwipeColumn.graph, graph),
+    (RailSwipeColumn.lanePin, lanePin),
+    (RailSwipeColumn.groupFold, groupFold),
+    (RailSwipeColumn.laneGroupToggle, laneGroupToggle),
+  ])
+    if (toggle != null)
+      (column: column, valueOf: toggle.valueOf, toggle: toggle.toggle),
+];

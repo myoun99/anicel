@@ -135,6 +135,8 @@ class TimelineGridHooks {
     this.layerEyeOnOf,
     this.layerOnTimesheetOf,
     this.layerClipsOf,
+    this.groupFoldOpenOf,
+    this.laneGroupOpenOf,
     this.onToggleLayerLanes,
     this.lanesForLayer,
     this.unionLaneForLayer,
@@ -495,6 +497,15 @@ class TimelineGridHooks {
   /// as [layerEyeOnOf] — the read the session keeps for it
   /// (`isLayerClipping`).
   final bool Function(LayerId layerId)? layerClipsOf;
+
+  /// A LIVE read of a row's group fold — a folder's, or a base's attach
+  /// group — for the same reason as [laneOpenOf]: [collapsedAttachBaseIds]
+  /// and the row's layer reach here a build late (`isGroupFoldOpen`).
+  final bool Function(LayerId layerId)? groupFoldOpenOf;
+
+  /// A LIVE read of a lane GROUP's twirl, named by the group's header, for
+  /// the same reason as [laneOpenOf] (`isLaneGroupOpen`).
+  final bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf;
 
   final ValueChanged<LayerId>? onToggleLayerLanes;
 

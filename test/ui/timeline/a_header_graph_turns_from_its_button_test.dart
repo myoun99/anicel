@@ -19,17 +19,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show
-        layerGraphSlotWidth,
-        layerLaneToggleSlotWidth,
-        layerRailColumnWidthsAtOne;
-import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
-    show noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
-import 'package:anicel/src/ui/timeline/rail_column_swipe.dart'
-    show railSwipeColumns;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
@@ -236,28 +227,6 @@ void main() {
       _bothTransforms,
       reason: 'the column a twirl further in, where this row lays it',
     );
-  });
-
-  test('the button\'s band is its slot to the pixel, each row\'s own way '
-      'short of the trailing run — not one either side', () {
-    // Through the pointer a band a little too wide cannot be seen: the name
-    // before it and the fold twirl after it claim their own presses. The
-    // band is asked here instead, where it is made, as the lane pin's is.
-    final columns = railSwipeColumns<int>(
-      crossExtent: 400,
-      leadingOrigin: 0,
-      columns: layerRailColumnWidthsAtOne,
-      optionalColumns: noOptionalRailColumns,
-      graph: (
-        toggle: (valueOf: (_) => false, toggle: (_) {}),
-        after: (row) => row * layerLaneToggleSlotWidth,
-      ),
-    );
-    final header = columns.single.bandAt(0);
-    final layerRow = columns.single.bandAt(1);
-    expect(header.end - header.start, layerGraphSlotWidth);
-    expect(layerRow.end - layerRow.start, layerGraphSlotWidth);
-    expect(layerRow.end, header.end - layerLaneToggleSlotWidth);
   });
 
   testWidgets('the X-sheet\'s stood-up headers carry the same buttons', (

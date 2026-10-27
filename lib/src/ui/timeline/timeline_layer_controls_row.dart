@@ -615,6 +615,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final onToggle = onToggleLanes;
     if (!hasLanes || onToggle == null) return null;
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.laneToggle,
       child: LayerFoldTwirl(
         name: '$keyPrefix-lane-toggle-${layer.id}',
         axis: axis,
@@ -918,15 +919,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// arm used to spell the pair out by hand while the x-sheet read the
   /// helper). Same key grammar on both surfaces so a folder and an attach
   /// base read alike anywhere.
+  ///
+  /// A drag from it sweeps the folds down the rail as the eye's does its
+  /// column (F-475).
   Widget? _foldTwirl(BuildContext context) {
     final onToggle = onToggleGroupFold;
     if (!hasGroupFold || onToggle == null) return null;
     final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
-    return LayerFoldTwirl(
-      name: '$keyPrefix-$kind-twirl-${layer.id}',
-      axis: axis,
-      expanded: groupFoldExpanded,
-      onToggle: () => onToggle(layerIdNow(context, layer.id)),
+    return RailSwipeColumnPointer(
+      column: RailSwipeColumn.groupFold,
+      child: LayerFoldTwirl(
+        name: '$keyPrefix-$kind-twirl-${layer.id}',
+        axis: axis,
+        expanded: groupFoldExpanded,
+        onToggle: () => onToggle(layerIdNow(context, layer.id)),
+      ),
     );
   }
 
@@ -962,6 +969,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     final onToggle = onToggleLayerClip;
     if (onToggle == null || !layer.kind.takesClipping) return null;
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.clip,
       child: ClipButton(
         name: '$keyPrefix-layer-clip-${layer.id}',
         isOn: layer.clipsToBelow,
@@ -995,6 +1003,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       return null;
     }
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.fx,
       child: FxToggleButton(
         name: '$keyPrefix-layer-fx-${layer.id}',
         state: fxState,
@@ -1013,6 +1022,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       return null;
     }
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.onion,
       child: RailGlyphButton(
         name: '$keyPrefix-layer-onion-${layer.id}',
         tooltip: onionSkinEnabled
@@ -1039,6 +1049,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// [Layer] it was built with, and the eye is the one thing a flip changes
   /// — so it is the one thing a flip rebuilds (an-eye-rebuilds-its-whole-row).
   Widget _visibilityToggle() => RailSwipeColumnPointer(
+    column: RailSwipeColumn.visibility,
     child: RailEyeBuilder(
       layer: layer,
       builder: (context, eye) => LayerVisibilityToggleButton(
@@ -1119,7 +1130,7 @@ TimelineGroupFold timelineGroupFoldFor({
   required ValueChanged<LayerId>? onToggleLayerCollapsed,
   required ValueChanged<LayerId>? onToggleAttachGroup,
 }) {
-  final has = timelineRowFolds(row, layers);
+  final has = _rowFolds(row, layers);
   if (row.isFolder) {
     return (
       has: has,
@@ -1136,8 +1147,8 @@ TimelineGroupFold timelineGroupFoldFor({
 
 /// Whether [row] of [layers] folds rows of its own — a folder its members,
 /// an attach base the attach rows riding it: a twirl ends its name
-/// ([timelineGroupFoldFor]), which a sweep lays past the graph's button.
-bool timelineRowFolds(TimelineDisplayRow row, List<Layer> layers) =>
+/// ([timelineGroupFoldFor]).
+bool _rowFolds(TimelineDisplayRow row, List<Layer> layers) =>
     row.isFolder || attachedLayersOf(row.layer.id, layers).isNotEmpty;
 
 /// What a button at the end of a name looks like

@@ -249,7 +249,7 @@ import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
-    show ControlsRowFace, TimelineLayerControlsRow;
+    show ControlsRowFace, TimelineGroupFold, TimelineLayerControlsRow;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
@@ -691,10 +691,12 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerBlendModeSelected,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
+    this.groupFoldOpenOf,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
     this.onToggleLaneGroupKey,
+    this.laneGroupOpenOf,
     this.laneGraphs = LaneGraphsView.none,
     this.laneGraphVerbs,
     this.laneGraphsNow,
@@ -1336,6 +1338,9 @@ class StoryboardPanel extends StatefulWidget {
   final Set<LayerId> collapsedAttachBaseIds;
   final ValueChanged<LayerId>? onToggleAttachGroup;
 
+  /// A LIVE read of a row's group fold — see [layerOnTimesheetOf].
+  final bool Function(LayerId layerId)? groupFoldOpenOf;
+
   /// The rows whose property lanes are twirled down, and the twirl's verb —
   /// the timeline rail's own pair (I-73 ④ⓔ). A projection row's head is
   /// the timeline's row, and its twirl is that row's: the camera row's,
@@ -1350,6 +1355,10 @@ class StoryboardPanel extends StatefulWidget {
   /// of the track at once.
   final Set<String> expandedLaneGroupKeys;
   final ValueChanged<String>? onToggleLaneGroupKey;
+
+  /// A LIVE read of a lane group's twirl, by its header lane — see
+  /// [layerOnTimesheetOf].
+  final bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf;
 
   /// The header graphs open over those groups, and their verbs — the
   /// timeline rail's own (I-89 ①): a lane this rail draws is seated in its
@@ -4909,6 +4918,7 @@ class StoryboardTrackLabelRow extends KeptPiece {
                 laneToggle: onToggleLane == null
                     ? null
                     : RailSwipeColumnPointer(
+                        column: RailSwipeColumn.laneToggle,
                         child: LayerFoldTwirl(
                           name:
                               'storyboard-track-lane-toggle-${trackId.value}',
@@ -4982,6 +4992,7 @@ class StoryboardTrackLabelRow extends KeptPiece {
                 fx: onToggleTrackFx == null
                     ? null
                     : RailSwipeColumnPointer(
+                        column: RailSwipeColumn.fx,
                         child: FxToggleButton(
                           name: 'storyboard-track-fx-${trackId.value}',
                           subject: RailSubject.track,

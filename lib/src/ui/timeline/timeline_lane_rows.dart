@@ -21,8 +21,8 @@ import '../../models/timeline_row_address.dart';
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import 'layer_label_controls.dart'
     show
-        LayerRailColumnWidths,
         LayerSectionBandCell,
+        RailSwipeColumn,
         RailSwipeColumnPointer,
         fxGlyphStyle,
         layerLaneChipsSlotWidth,
@@ -119,17 +119,6 @@ const double _laneColumnEndPadding = 4;
 /// numbers are drawn in, at the mock's size (5판).
 const double _laneChipSize = 9;
 const double _laneChipGap = 2;
-
-/// How far a member lane's PIN stands from the END of its cell along
-/// [axis] (I-89 ③): the cell's end padding, the value's slot and the gap
-/// before it — the rail's value column, turned on the sheet. What a
-/// sweep's band is measured by, so the band is the column the row lays.
-double laneMemberPinInset(Axis axis, LayerRailColumnWidths columns) =>
-    (axis == Axis.horizontal
-        ? _laneMemberEndPadding
-        : _laneColumnEndPadding) +
-    columns.laneValue +
-    _laneValueGap;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -766,17 +755,22 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// excluded from both, and that exclusion is exactly the kind of
   /// surface-local rule this rail keeps paying for.
   ///
-  /// The app's one twirl, as small as the glyph it was.
+  /// The app's one twirl, as small as the glyph it was — and a drag from it
+  /// sweeps the group twirls down the rail, as the eye's does its column
+  /// (F-475).
   Widget _groupTwirl() {
     final onToggleGroup = widget.onToggleLaneGroup;
-    return LayerFoldTwirl(
-      name: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-      axis: widget.axis,
-      expanded: lane.groupExpanded,
-      across: 16,
-      onToggle: onToggleGroup == null
-          ? null
-          : () => onToggleGroup(layer, lane),
+    return RailSwipeColumnPointer(
+      column: RailSwipeColumn.laneGroupToggle,
+      child: LayerFoldTwirl(
+        name: '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+        axis: widget.axis,
+        expanded: lane.groupExpanded,
+        across: 16,
+        onToggle: onToggleGroup == null
+            ? null
+            : () => onToggleGroup(layer, lane),
+      ),
     );
   }
 
@@ -845,6 +839,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (enabled == null) return null;
     final onToggle = widget.onToggleLaneGroupEnabled;
     return RailSwipeColumnPointer(
+      column: RailSwipeColumn.fx,
       child: RailGlyphButton(
         name: '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
         tooltip:

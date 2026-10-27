@@ -223,16 +223,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid>
   );
   final GlobalKey _rulerScrubViewportKey = GlobalKey();
 
-  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
-  /// laid on this rail's own width.
+  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]).
   List<RailToggleColumn<TimelineDisplayRow>> _swipeColumns() =>
       timelineSwipeColumns(
         hooks: timelineRailSwipeHooks(widget.hooks, widget.layers),
-        axis: Axis.horizontal,
-        crossExtent:
-            _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth,
-        leadingOrigin: timelineLayerRowLeadingBorder,
-        columns: _metrics.railColumns,
       );
 
   @override

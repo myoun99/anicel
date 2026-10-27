@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show BoxHitTestEntry;
 
 import '../input/control_press_claim.dart';
 import '../widgets/app_icon_button.dart';
@@ -1582,12 +1583,20 @@ PlateWords plateWordsIn(
 ///
 /// ⇒ The strong claim, applied by the RAIL to the columns it can swipe —
 /// never by the button widget itself, which rails other than this one also
-/// mount. A rail that has no swipe for a column must not wear this.
+/// mount.
 ///
-/// ⚠️Keep this in step with the grid's swipe column list. A column that
-/// claims but is not listed swallows drags for nothing; one that is listed
-/// but does not claim is unreachable, which is exactly the state the eye
-/// was found in.
+/// 🚨★★★AND IT SAYS WHICH COLUMN THE PRESS IS IN ([column]) — what was
+/// pressed decides, so the button under the press is the one that knows.
+/// ↩️The rail worked it out again from where the press stood: each column
+/// a band of the row, written beside the layout that lays the button —
+/// the slot skeleton's sums, a member lane's inset, a name's end past the
+/// twirl. Two answers to 「where is this button」 that had to agree, and
+/// did not: the bands reached 4px past their slots into the next button
+/// (F-475), and a column whose button stands where no sum reaches — a
+/// lane header's twirl, a fold at a name's end — had no band at all.
+///
+/// A column worn on a rail whose list does not sweep it holds its press
+/// all the same — the press is the button's — and sweeps nothing.
 ///
 /// The LEADING columns wear it too now — the sheet toggle the report named
 /// and the lane twirl beside it. They are worn HERE, at the rail's call
@@ -1615,8 +1624,87 @@ class RailSwipeColumnPointer extends DragVerbClaim {
   // the storyboard's label shell), so a scope here said it a second time
   // and cost an element per column on every panel reopen; it went
   // 2026-10-25 (card frame-panels-build-in-one-frame).
-  const RailSwipeColumnPointer({super.key, required super.child});
+  const RailSwipeColumnPointer({
+    super.key,
+    required this.column,
+    required super.child,
+  });
+
+  /// The column this button stands in — the one a drag from it sweeps.
+  final RailSwipeColumn column;
+
+  @override
+  RenderRailSwipeColumnPointer createRenderObject(BuildContext context) =>
+      RenderRailSwipeColumnPointer(column, behavior: behavior);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderRailSwipeColumnPointer renderObject,
+  ) {
+    super.updateRenderObject(context, renderObject);
+    renderObject.column = column;
+  }
 }
+
+/// The toggle columns a rail sweeps — which one a button stands in is the
+/// button's to say ([RailSwipeColumnPointer.column]); what a row reads in
+/// each and how a sweep flips it is the rail's list (`railSwipeColumns`).
+enum RailSwipeColumn {
+  visibility,
+  onion,
+  fx,
+  clip,
+  timesheet,
+
+  /// A layer row's twirl of its property lanes.
+  laneToggle,
+
+  /// A header graph's button — a lane group header's, the camera row's.
+  graph,
+  lanePin,
+
+  /// A folder's fold, or the attach group's riding a base — one twirl at
+  /// the end of a row's name (`timelineGroupFoldFor`).
+  groupFold,
+
+  /// A lane group header's twirl — Transform, an effect.
+  laneGroupToggle,
+}
+
+/// [RailSwipeColumnPointer]'s box: the strong claim, and the column it
+/// tells a press is in ([railSwipeColumnPressedBy]).
+class RenderRailSwipeColumnPointer extends RenderDragVerbClaim {
+  RenderRailSwipeColumnPointer(this.column, {required super.behavior});
+
+  RailSwipeColumn column;
+
+  @override
+  void handleEvent(PointerEvent event, BoxHitTestEntry entry) {
+    super.handleEvent(event, entry);
+    if (event is PointerDownEvent) {
+      _columnPressed = (down: event.original ?? event, column: column);
+    }
+  }
+}
+
+/// The last press a column's button took, as the press itself: the event
+/// before any box's transform, which every box it is handed to shares.
+({PointerEvent down, RailSwipeColumn column})? _columnPressed;
+
+/// The column whose button took [down], or null when none did.
+///
+/// Asked by a rail of the same press on its own way up: hit-test dispatch
+/// runs deepest-first, so the button has spoken by then. ⛔By the press,
+/// not its pointer id: an id comes round again, and a column read off an
+/// earlier press would sweep from a button this press never touched.
+RailSwipeColumn? railSwipeColumnPressedBy(PointerDownEvent down) =>
+    switch (_columnPressed) {
+      (down: final pressed, :final column)
+          when identical(pressed, down.original ?? down) =>
+        column,
+      _ => null,
+    };
 
 /// 테이크 라벨의 얼굴 — **바탕 없이 글자만**.
 ///

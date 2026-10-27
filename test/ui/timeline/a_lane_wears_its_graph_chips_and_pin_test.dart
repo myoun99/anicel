@@ -24,15 +24,8 @@ import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/lane_graph.dart';
 import 'package:anicel/src/ui/timeline/lane_graph_seats.dart' show lanePinOf;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show
-        layerLaneChipsSlotWidth,
-        layerLanePinSlotWidth,
-        layerRailColumnWidthsAtOne;
-import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
-    show noOptionalRailColumns;
+    show layerLaneChipsSlotWidth, layerLanePinSlotWidth;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/rail_column_swipe.dart'
-    show railSwipeColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
     show
         TimelineGridMetrics,
@@ -171,7 +164,7 @@ void main() {
     });
   });
 
-  testWidgets('the pin\'s sweep band is its own slot, edge to edge', (
+  testWidgets('the pin\'s sweep starts on its own slot, edge to edge', (
     tester,
   ) async {
     final s = await _pump(tester);
@@ -207,23 +200,6 @@ void main() {
     expect(_pinned(s), isEmpty, reason: 'nor from the gap after it');
   });
 
-  test('the pin\'s band is its slot to the pixel — not one either side', () {
-    // Through the pointer a band a little too wide cannot be seen: the name
-    // before it and the value after it claim their own presses. The band is
-    // asked here instead, where it is made.
-    final columns = railSwipeColumns<int>(
-      crossExtent: 300,
-      leadingOrigin: 0,
-      columns: layerRailColumnWidthsAtOne,
-      optionalColumns: noOptionalRailColumns,
-      lanePin: (toggle: (valueOf: (_) => false, toggle: (_) {}), inset: 40),
-    );
-    expect(columns.single.bandAt(0), (
-      start: 260 - layerLanePinSlotWidth,
-      end: 260.0,
-    ));
-  });
-
   testWidgets('the sheet\'s lane columns wear the pin, swept across them as '
       'down the rail', (tester) async {
     final s = await _pump(tester);
@@ -255,7 +231,9 @@ void main() {
   });
 
   testWidgets('the sheet\'s lane columns wear their chips as the rail\'s '
-      'rows do, and the pin\'s band is its slot there too', (tester) async {
+      'rows do, and the pin sweeps from its own slot there too', (
+    tester,
+  ) async {
     final s = await _pump(tester);
     await _openTransform(tester);
     await _tap(tester, 'timeline-lane-group-graph-draw-$_transform');

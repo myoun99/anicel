@@ -309,6 +309,7 @@ Widget? layerRailTimesheetCell({
     return null;
   }
   return RailSwipeColumnPointer(
+    column: RailSwipeColumn.timesheet,
     child: LayerTimesheetToggleButton(
       keyPrefix: keyPrefix,
       layerId: layer.id,
@@ -376,17 +377,11 @@ Widget? layerRailDepthGuides(
 /// comment of its own. [name] is where the run ends and the label begins.
 enum LayerRailLeadingSlot { mark, laneToggle, timesheet, typeButton, name }
 
-/// How much sits to the LEFT of [to] on a row at [depth].
+/// How much sits to the LEFT of [to] on a rail row — on every row alike:
+/// a row's depth is spent on its name, not in front of it (2026-08-29).
 ///
-/// 🚨Unlike the trailing run this DEPENDS ON THE ROW: the nesting indent
-/// falls between the mark and the twirl, so every leading column from the
-/// twirl rightward moves by a whole slot per level of folder depth. A
-/// caller that treats a leading column as a fixed x is right only on
-/// unnested rows — which is why the rail's column swipe asks the row it was
-/// pressed on before it asks anything else (I-1).
-///
-/// [layerRailLeadingWidth] is this function at depth 0 with `to: name`, kept
-/// as a const because a window minimum needs one; `layer_rail_columns_test`
+/// [layerRailLeadingWidth] is this function with `to: name`, kept as a
+/// const because a window minimum needs one; `layer_rail_columns_test`
 /// pins the two together so neither can drift.
 double layerRailLeadingWidthTo({
   required LayerRailLeadingSlot to,
@@ -410,16 +405,6 @@ double layerRailLeadingWidthTo({
   }
   return total + layerTypeSlotWidth + layerControlChipGap;
 }
-
-/// What one leading cell costs. [LayerRailLeadingSlot.name] has no width of
-/// its own — it is the end of the run, not a cell — so it is not a case.
-double layerRailLeadingSlotWidth(LayerRailLeadingSlot slot) => switch (slot) {
-  LayerRailLeadingSlot.mark => layerLabelSlotWidth,
-  LayerRailLeadingSlot.laneToggle => layerLaneToggleSlotWidth,
-  LayerRailLeadingSlot.timesheet => layerTimesheetSlotWidth,
-  LayerRailLeadingSlot.typeButton => layerTypeSlotWidth,
-  LayerRailLeadingSlot.name => 0,
-};
 
 /// The cells AFTER a rail row's name, in order. Null cells reserve
 /// their slot; a column [optionalColumns] does not carry is dropped outright,

@@ -40,20 +40,13 @@ class _XSheetGridColumns {
     rowAt: (index) => (row: entries[index], id: entries[index].address),
   );
 
-  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]),
-  /// laid on the header's own extent: the rail's row width turned on its side
-  /// (the slot skeleton lays these cells with `axis: Axis.vertical`, so a
-  /// slot's WIDTH is its height here).
+  /// The sweepable columns — ONE list for both grids ([timelineSwipeColumns]).
   List<RailToggleColumn<TimelineDisplayRow>> swipeColumns() =>
       timelineSwipeColumns(
         hooks: timelineRailSwipeHooks(
           _state.widget.hooks,
           _state.widget.layers,
         ),
-        axis: Axis.vertical,
-        crossExtent: _state._headers.naturalHeaderExtent,
-        leadingOrigin: 0,
-        columns: _state.widget.metrics.railColumns,
       );
 
   /// One column: a layer of its own size, and in it the row's gate — an

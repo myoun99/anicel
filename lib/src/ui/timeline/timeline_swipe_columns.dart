@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show ValueChanged;
-import 'package:flutter/painting.dart' show Axis;
 
 import '../../models/attached_layer_resolve.dart'
     show attachRowWearsBaseComposite;
@@ -13,8 +12,8 @@ import 'layer_rail_columns.dart';
 import 'property_lane_model.dart';
 import 'rail_column_swipe.dart';
 import 'timeline_grid_hooks.dart';
-import 'timeline_lane_rows.dart' show laneMemberPinInset;
-import 'timeline_layer_controls_row.dart' show timelineRowFolds;
+import 'timeline_layer_controls_row.dart'
+    show TimelineGroupFold, timelineGroupFoldFor;
 
 /// The toggle columns a rail's bulk-drag can sweep, for BOTH grids.
 ///
@@ -26,53 +25,28 @@ import 'timeline_layer_controls_row.dart' show timelineRowFolds;
 /// the rail's over the display row — and the two had drifted: the rail read
 /// the twirl state a frame stale (its own doc said not to), the sheet could
 /// not sweep a lane group's fx switch, the sheet had no sheet-toggle column
-/// until the row widget was shared. ONE list over the display row now; the
-/// geometry stays [railSwipeColumns]'s.
+/// until the row widget was shared. ONE list over the display row now.
 ///
 /// 🚨THE SUBJECT IS THE ROW, NOT ITS LAYER, because a rail stacks two kinds
 /// and they do not share one. A layer row's fx switch is the LAYER's; a lane
 /// row's is that LANE GROUP's. Every other column belongs to layer rows only
 /// and answers null on a lane, which is already what
 /// [RailToggleColumn.valueOf]'s null means. The sheet's columns are these
-/// rows stood up, so a lane COLUMN answers exactly as a lane ROW does.
-///
-/// [crossExtent] is the strip's extent across the sweep — the rail's row
-/// width, or the sheet's header height, which is that width turned on its
-/// side: the slot skeleton lays the sheet's cells with `axis: Axis.vertical`,
-/// so a slot's WIDTH is its height there. [axis] is the grid's: a member
-/// lane's pin is laid by its cell, not by the skeleton, and the cell lays
-/// its value a different length on each.
+/// rows stood up, so a lane COLUMN answers exactly as a lane ROW does —
+/// and which column a press is in, its button says on either grid.
 List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
   required RailSwipeHooks hooks,
-  required Axis axis,
-  required double crossExtent,
-  required double leadingOrigin,
-  required LayerRailColumnWidths columns,
 }) => railSwipeColumns<TimelineDisplayRow>(
-  crossExtent: crossExtent,
-  leadingOrigin: leadingOrigin,
-  columns: columns,
-  optionalColumns: hooks.optionalColumns,
-  graph: switch (_graph(hooks)) {
-    final toggle? => (
-      toggle: toggle,
-      after: (row) => _pastTheGraph(row, hooks),
-    ),
-    null => null,
-  },
   visibility: _visibility(hooks),
   onion: _onion(hooks),
   fx: _fx(hooks),
   clip: _clip(hooks),
   timesheet: _timesheet(hooks),
   laneToggle: _laneToggle(hooks),
-  lanePin: switch (_lanePin(hooks)) {
-    final toggle? => (
-      toggle: toggle,
-      inset: laneMemberPinInset(axis, columns),
-    ),
-    null => null,
-  },
+  graph: _graph(hooks),
+  lanePin: _lanePin(hooks),
+  groupFold: _groupFold(hooks),
+  laneGroupToggle: _laneGroupToggle(hooks),
 );
 
 /// What a rail's column sweep reads of its host: the verbs its rows'
@@ -86,7 +60,6 @@ List<RailToggleColumn<TimelineDisplayRow>> timelineSwipeColumns({
 /// 콘티패널에도 동일하게 있어야해. 같은 법으로」) — as the header graph was
 /// narrowed to what it reads (`LaneGraphGrid`).
 typedef RailSwipeHooks = ({
-  LayerRailOptionalColumns optionalColumns,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   bool Function(LayerId layerId)? layerEyeOnOf,
   ValueChanged<LayerId>? onToggleLayerOnionSkin,
@@ -108,9 +81,13 @@ typedef RailSwipeHooks = ({
   LaneGraphVerbs? laneGraphVerbs,
   LaneGraphsView Function() laneGraphsNow,
   RailRowHands hands,
-  // Whether a row folds rows of its own, as its label is told — its twirl
-  // ends its name, past the graph's button (F-454).
-  bool Function(TimelineDisplayRow row) folds,
+  // A row's group fold as its label is told (`timelineGroupFoldFor`):
+  // whether it folds rows of its own, open or shut, and what its twirl
+  // presses.
+  TimelineGroupFold Function(TimelineDisplayRow row) foldOf,
+  bool Function(LayerId layerId)? groupFoldOpenOf,
+  void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup,
+  bool Function(LayerId layerId, String headerLaneId)? laneGroupOpenOf,
 });
 
 /// Which of a rail's verbs a ROW is handed, as its label is — what the row
@@ -152,7 +129,6 @@ RailSwipeHooks timelineRailSwipeHooks(
   TimelineGridHooks hooks,
   List<Layer> layers,
 ) => (
-  optionalColumns: hooks.optionalRailColumns,
   onToggleLayerVisibility: hooks.onToggleLayerVisibility,
   layerEyeOnOf: hooks.layerEyeOnOf,
   onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
@@ -174,7 +150,16 @@ RailSwipeHooks timelineRailSwipeHooks(
   laneGraphVerbs: hooks.laneGraphVerbs,
   laneGraphsNow: () => hooks.laneGraphsNow?.call() ?? hooks.laneGraphs,
   hands: handsEveryRow,
-  folds: (row) => timelineRowFolds(row, layers),
+  foldOf: (row) => timelineGroupFoldFor(
+    row: row,
+    layers: layers,
+    collapsedAttachBaseIds: hooks.collapsedAttachBaseIds,
+    onToggleLayerCollapsed: hooks.onToggleLayerCollapsed,
+    onToggleAttachGroup: hooks.onToggleAttachGroup,
+  ),
+  groupFoldOpenOf: hooks.groupFoldOpenOf,
+  onToggleLaneGroup: hooks.onToggleLaneGroup,
+  laneGroupOpenOf: hooks.laneGroupOpenOf,
 );
 
 /// I-89 ③: a header graph's button, on each row that heads one — a
@@ -195,13 +180,6 @@ RailToggle<TimelineDisplayRow>? _graph(RailSwipeHooks hooks) {
     },
   );
 }
-
-/// What a row lays past its graph button at the end of its name (I-89 Q1):
-/// a layer row that folds its twirl, the last of its own buttons (F-454);
-/// any other row nothing. ↩️A layer row laid its fold slot there whether
-/// it folded or not (F-29).
-double _pastTheGraph(TimelineDisplayRow row, RailSwipeHooks hooks) =>
-    !row.isLane && hooks.folds(row) ? layerLaneToggleSlotWidth : 0;
 
 /// I-89 ③: a member lane's pin, on each lane that wears one ([lanePinOf]),
 /// swept as it is pressed and read live, as the graph's button is.
@@ -372,4 +350,43 @@ bool? _laneOpen(RailSwipeHooks hooks, TimelineDisplayRow row) {
       hooks.lanesForLayer?.call(row.layer) ?? const <PropertyLaneRow>[];
   if (lanes.isEmpty) return null;
   return hooks.laneOpenOf(row.layer.id);
+}
+
+/// 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — and a button I-32 named
+/// among a layer's (09-14: 「그룹펼치기」): a folder's fold, or the attach
+/// group's riding a base, one twirl at the end of the name
+/// ([timelineGroupFoldFor]) on each row that folds rows of its own.
+///
+/// Read LIVE where the host reads it, as every column is: a row the sweep
+/// crosses may have been folded a moment ago by the press, spread across
+/// the selection.
+RailToggle<TimelineDisplayRow> _groupFold(RailSwipeHooks hooks) => (
+  valueOf: (row) {
+    if (row.isLane) return null;
+    final fold = hooks.foldOf(row);
+    if (!fold.has || fold.onToggle == null) return null;
+    return hooks.groupFoldOpenOf?.call(row.layer.id) ?? fold.expanded;
+  },
+  toggle: (row) => hooks.foldOf(row).onToggle?.call(row.layer.id),
+);
+
+/// A LANE GROUP's twirl — Transform, an effect — worn by the group's
+/// header alone. Read LIVE where the host reads it: the group's open state
+/// is its row's (`Layer.expandedLaneGroups`, F-360).
+RailToggle<TimelineDisplayRow>? _laneGroupToggle(RailSwipeHooks hooks) {
+  final onToggle = hooks.onToggleLaneGroup;
+  if (onToggle == null) return null;
+  return (
+    valueOf: (row) => switch (row.lane) {
+      final lane? when lane.isGroupHeader =>
+        hooks.laneGroupOpenOf?.call(row.layer.id, lane.laneId) ??
+            lane.groupExpanded,
+      _ => null,
+    },
+    toggle: (row) {
+      if (row.lane case final lane?) {
+        onToggle(row.layer, lane);
+      }
+    },
+  );
 }

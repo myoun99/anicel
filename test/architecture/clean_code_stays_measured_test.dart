@@ -1026,6 +1026,16 @@ void main() {
   /// 🔬`clean_code_diff` against master (`3354f5258`, at 412) named those
   /// three added and nothing gone. ⛔Not split to fit: each is one walk or
   /// one switch over the node kinds, as the notes above say of their kin.
+  ///
+  /// ⚠️One in and one out on 2026-10-27 under the same ceiling (F-475 —
+  /// the button a press lands on says which column it sweeps).
+  /// `_StoryboardRailSweep._hooks` (66) crossed the line handing the conte
+  /// rail's sweep the two folds the timeline's sweeps — a group's at the
+  /// end of a name and a lane group's twirl — and `railSwipeColumns` went
+  /// under it with the bands it no longer works out. 🔬`clean_code_diff`
+  /// against the lane's base (`e059586e1`) named those two and no other.
+  /// ⛔Not split to fit: it is one record of what this rail reads and
+  /// presses, field for field the grids' (`timelineRailSwipeHooks`).
   const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
@@ -1353,6 +1363,15 @@ void main() {
   /// one and no other class. ⛔Not split to fit: a move is the store's own
   /// hold on a picture's texture, renamed in the one line its patches land
   /// in, under the one count of who pins it.
+  ///
+  /// ⚠️One crossed on 2026-10-27 under the same ceiling: `TimelineGridHooks`
+  /// (600 → 611) when the column sweep came to read a row's two folds live
+  /// (F-475 — a group's fold at the end of a name and a lane group's twirl
+  /// are swept as the eye is): `groupFoldOpenOf` · `laneGroupOpenOf`, beside
+  /// the live read of every other column. 🔬`clean_code_diff` against the
+  /// lane's base (`e059586e1`) names this one and no other class. ⛔Not split
+  /// to fit: it is the one bundle both grids take (`one_grid_hooks_test`),
+  /// and a read their sweep needs is one more of its answers.
   const longClasses = 75;
 
   late CleanCodeScan scan;

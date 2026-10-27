@@ -160,6 +160,25 @@ class LayerSwitchVerbs {
           ?.lanesExpanded ??
       false;
 
+  /// Whether [layerId]'s group fold is open right now — a folder's members
+  /// or the attach rows riding a base, the row's own `collapsed` (F-360);
+  /// open where no row is. A LIVE read, as [isLayerLanesOpen] is: the
+  /// column sweep spreads what its press just set (F-475).
+  bool isGroupFoldOpen(LayerId layerId) =>
+      !(layerAnywhereOrNull(_project.repository.requireProject(), layerId)
+              ?.collapsed ??
+          false);
+
+  /// Whether the lane group [headerLaneId] heads is twirled open inside
+  /// [layerId]'s lanes right now — the row's own (F-360), a V row's its
+  /// track's ([rowTwirlsOf]). A LIVE read, as [isLayerLanesOpen] is.
+  bool isLaneGroupOpen(LayerId layerId, String headerLaneId) =>
+      rowTwirlsOf(
+        _project.repository.requireProject(),
+        layerId,
+      )?.expandedLaneGroups.contains(headerLaneId) ??
+      false;
+
   /// Whether [layerId]'s own eye is on RIGHT NOW.
   ///
   /// 🚨A LIVE READ, for the same reason as [isLayerOnTimesheet]: a caller

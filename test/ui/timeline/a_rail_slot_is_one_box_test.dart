@@ -172,7 +172,10 @@ void main() {
       'WHEN its controls act is the row\'s to say', (tester) async {
     const body = ValueKey<String>('body');
     await tester.pumpWidget(
-      const RailSwipeColumnPointer(child: SizedBox(key: body)),
+      const RailSwipeColumnPointer(
+        column: RailSwipeColumn.visibility,
+        child: SizedBox(key: body),
+      ),
     );
     final column = tester.element(find.byType(RailSwipeColumnPointer));
     expect(

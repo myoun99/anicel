@@ -7,6 +7,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_kind.dart' show LayerFxState;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -252,33 +253,6 @@ void main() {
     }
   }
 
-  // The sweep begins on the FIRST move and spreads what the press wrote, so
-  // it reads the row as the press left it — which no frame has shown yet
-  // when a fast pen's first move shares the press's frame. Every column
-  // reads LIVE for that ([RailColumnSwipe]'s `_start`); a column that read
-  // the row it was built with would latch the old value and sweep nothing.
-  for (final column in columns.where((column) => !column.laysRows)) {
-    testWidgets('${column.button}: a first move in the press\'s own frame '
-        'sweeps the column too', (tester) async {
-      final s = await pump(tester);
-      final before = read(s, column);
-      final rowHeight = tester
-          .getRect(find.named('timeline-layer-row-l12'))
-          .height;
-      await drag(
-        tester,
-        tester.getCenter(find.named('${column.button}-l12')),
-        PointerDeviceKind.stylus,
-        [Offset(0, rowHeight), Offset(0, rowHeight)],
-        frameAfterPress: false,
-      );
-      expect(
-        changedSince(s, column, before),
-        unorderedEquals(['l12', 'l11', 'l10']),
-      );
-    });
-  }
-
   // ↩️A column's band reached 4px past its slot either side, and the slots
   // stand edge to edge — so a button's edge lay in its NEIGHBOUR's band as
   // well, and the band asked first took the press: the onion pressed by its
@@ -387,5 +361,227 @@ void main() {
         });
       });
     }
+  });
+
+  // 🗣️「다른버튼도 조사」 — THE FOLDS are toggle columns too: a group's fold
+  // at the end of a row's name (a folder's members, or the attach rows
+  // riding a base — one twirl) and a lane group's twirl. ↩️Neither had a
+  // band of the row to be found by, so a drag from one swept nothing.
+  group('the group folds', () {
+    /// Three empty folders over a base and the row riding it, over plain
+    /// rows enough to scroll.
+    Project folders() => Project(
+      id: const ProjectId('f475-folds'),
+      name: 'F-475 folds',
+      createdAt: DateTime.utc(2026, 10, 27),
+      tracks: [
+        Track(
+          id: const TrackId('t'),
+          name: 'V',
+          cuts: [
+            Cut(
+              id: const CutId('c'),
+              name: 'C',
+              duration: 12,
+              canvasSize: const CanvasSize(width: 640, height: 360),
+              layers: [
+                for (var i = 0; i < 10; i += 1)
+                  Layer(id: LayerId('l$i'), name: 'L$i', frames: const []),
+                Layer(id: const LayerId('b'), name: 'B', frames: const []),
+                Layer(
+                  id: const LayerId('a'),
+                  name: 'A',
+                  frames: const [],
+                  attachedToLayerId: const LayerId('b'),
+                ),
+                for (var i = 0; i < 3; i += 1)
+                  createFolderLayer(id: LayerId('f$i'), name: 'F$i'),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    Future<EditorSessionManager> pumpFolders(WidgetTester tester) =>
+        pumpTimelineHost(tester, folders(), surface: const Size(870, 446));
+
+    /// Top to bottom: the folders, then the base past the row riding it.
+    const folds = ['f2', 'f1', 'f0', 'b'];
+
+    Finder twirl(String id) => find.named(
+      id == 'b' ? 'timeline-attach-twirl-b' : 'timeline-folder-twirl-$id',
+    );
+
+    List<String> folded(EditorSessionManager s) => [
+      for (final id in folds)
+        if (layerOf(s, LayerId(id)).collapsed) id,
+    ];
+
+    /// The moves from [from]'s twirl to [to]'s, in [steps] even steps.
+    List<Offset> walk(WidgetTester tester, String from, String to, int steps) {
+      final along = tester.getCenter(twirl(to)) - tester.getCenter(twirl(from));
+      return List.filled(steps, along / steps.toDouble());
+    }
+
+    for (final kind in const [
+      PointerDeviceKind.mouse,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.touch,
+    ]) {
+      testWidgets('${kind.name}: a fold holds a drag across the rail, and '
+          'down it sweeps the folds — a folder\'s and a base\'s alike', (
+        tester,
+      ) async {
+        final s = await pumpFolders(tester);
+        final scroll = rows(tester);
+        expect(
+          scroll.position.maxScrollExtent,
+          greaterThan(0),
+          reason: 'the fixture: a rail that can scroll',
+        );
+        expect(folded(s), isEmpty, reason: '⛔전제');
+
+        final rowAt = tester.getRect(find.named('timeline-folder-row-f2'));
+        await drag(tester, tester.getCenter(twirl('f2')), kind, sideways);
+        expect(scroll.offset, 0, reason: 'sideways from a fold scrolled');
+        expect(
+          tester.getRect(find.named('timeline-folder-row-f2')),
+          rowAt,
+          reason: 'the row moved under a drag that began on its fold',
+        );
+        expect(
+          folded(s),
+          ['f2'],
+          reason:
+              'the press folds its own row, and a drag across the rail '
+              'sweeps nothing',
+        );
+
+        await drag(
+          tester,
+          tester.getCenter(twirl('f1')),
+          kind,
+          walk(tester, 'f1', 'b', 3),
+        );
+        expect(scroll.offset, 0, reason: 'down from a fold scrolled');
+        expect(
+          folded(s),
+          folds,
+          reason:
+              'the press, and every fold the sweep crossed — the base\'s '
+              'past the row riding it, which has none',
+        );
+      });
+    }
+
+    // The sweep spreads what the press set, read LIVE (`isGroupFoldOpen`):
+    // a fast pen's first move shares the press's frame, and the row as it
+    // was built still shows the fold open.
+    testWidgets('a first move in the press\'s own frame sweeps the folds '
+        'too', (tester) async {
+      final s = await pumpFolders(tester);
+      await drag(
+        tester,
+        tester.getCenter(twirl('f2')),
+        PointerDeviceKind.stylus,
+        walk(tester, 'f2', 'f0', 1),
+        frameAfterPress: false,
+      );
+      expect(folded(s), ['f2', 'f1', 'f0']);
+    });
+  });
+
+  group('the lane groups\' twirls', () {
+    final transform = transformGroupHeaderLane.laneId;
+    const layers = ['l13', 'l12', 'l11'];
+
+    Finder twirl(String layer) =>
+        find.named('timeline-lane-group-toggle-$layer-$transform');
+
+    /// The three top layers' lanes open, and their Transform groups —
+    /// opened bottom up, so each twirl is on screen when it is pressed.
+    Future<EditorSessionManager> pumpGroups(WidgetTester tester) async {
+      final s = await pump(tester);
+      for (final name in [
+        for (final layer in layers) 'timeline-lane-toggle-$layer',
+        for (final layer in layers.reversed)
+          'timeline-lane-group-toggle-$layer-$transform',
+      ]) {
+        await tester.tap(find.named(name));
+        await tester.pumpAndSettle();
+      }
+      return s;
+    }
+
+    List<String> open(EditorSessionManager s) => [
+      for (final layer in layers)
+        if (s.railView.expandedLaneGroupKeys.value.contains(
+          laneGroupKey(LayerId(layer), transform),
+        ))
+          layer,
+    ];
+
+    /// Presses [from]'s twirl and walks the pointer to [to]'s — found afresh
+    /// each move, as a group shut lifts every row under it.
+    Future<void> sweep(
+      WidgetTester tester,
+      String from,
+      String to,
+      PointerDeviceKind kind,
+    ) async {
+      final start = tester.getCenter(twirl(from));
+      final gesture = await tester.startGesture(start, kind: kind);
+      await tester.pump(const Duration(milliseconds: 16));
+      for (var step = 0; step < 3; step += 1) {
+        final at = tester.getCenter(twirl(to));
+        await gesture.moveTo(Offset(start.dx, at.dy));
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+    }
+
+    for (final kind in const [
+      PointerDeviceKind.mouse,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.touch,
+    ]) {
+      testWidgets('${kind.name}: a group\'s twirl holds a drag across the '
+          'rail, and down it sweeps the groups', (tester) async {
+        final s = await pumpGroups(tester);
+        final scroll = rows(tester);
+        expect(open(s), layers, reason: '⛔전제');
+
+        await drag(tester, tester.getCenter(twirl('l13')), kind, sideways);
+        expect(scroll.offset, 0, reason: 'sideways from a twirl scrolled');
+        expect(
+          open(s),
+          ['l12', 'l11'],
+          reason:
+              'the press shuts its own group, and a drag across the rail '
+              'sweeps nothing',
+        );
+
+        await sweep(tester, 'l12', 'l11', kind);
+        expect(scroll.offset, 0, reason: 'down from a twirl scrolled');
+        expect(open(s), isEmpty, reason: 'the press, and the group it crossed');
+      });
+    }
+
+    // Read LIVE (`isLaneGroupOpen`), as the folds are: the row as it was
+    // built still shows the group the press shut open.
+    testWidgets('a first move in the press\'s own frame sweeps the groups '
+        'too', (tester) async {
+      final s = await pumpGroups(tester);
+      await drag(
+        tester,
+        tester.getCenter(twirl('l13')),
+        PointerDeviceKind.stylus,
+        [tester.getCenter(twirl('l12')) - tester.getCenter(twirl('l13'))],
+        frameAfterPress: false,
+      );
+      expect(open(s), ['l11']);
+    });
   });
 }

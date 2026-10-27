@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -22,6 +24,8 @@ import 'package:anicel/src/ui/input/value_control_pointers.dart';
 import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId;
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
 
 import '../../helpers/named_finders.dart';
@@ -61,7 +65,8 @@ void main() {
     timeline: const {},
   );
 
-  Cut cutOf(String id, {bool projections = true}) => Cut(
+  /// [riders]: a row rides the conte, so the conte head folds.
+  Cut cutOf(String id, {bool projections = true, bool riders = false}) => Cut(
     id: CutId(id),
     name: id,
     duration: 12,
@@ -87,12 +92,23 @@ void main() {
             0: TimelineExposure.drawing(FrameId('$id-panel'), length: 12),
           },
         ),
+        if (riders)
+          Layer(
+            id: LayerId('$id-over'),
+            name: 'Conte+1',
+            kind: LayerKind.storyboard,
+            attachedToLayerId: LayerId('$id-conte'),
+            attachedPlacement: AttachedPlacement.above,
+            attachedMode: AttachedMode.free,
+            frames: const [],
+            timeline: const {},
+          ),
       ],
     ],
   );
 
   /// [conteOnT2]: t2's cut holds a camera and a conte of its own too.
-  Project film({bool conteOnT2 = false}) => Project(
+  Project film({bool conteOnT2 = false, bool riders = false}) => Project(
     id: const ProjectId('conte-sweep'),
     name: 'Conte sweep',
     createdAt: DateTime.utc(2026, 10, 17),
@@ -105,13 +121,16 @@ void main() {
           for (final effect in effects)
             LayerEffect(id: effect, kind: EffectKind.blur),
         ],
-        cuts: [cutOf('a'), cutOf('b')],
+        cuts: [
+          cutOf('a', riders: riders),
+          cutOf('b', riders: riders),
+        ],
       ),
       Track(
         id: const TrackId('t2'),
         name: 'V2',
         seLayers: [se('t2-s1')],
-        cuts: [cutOf('c', projections: conteOnT2)],
+        cuts: [cutOf('c', projections: conteOnT2, riders: riders)],
       ),
     ],
   );
@@ -119,9 +138,10 @@ void main() {
   Future<EditorSessionManager> pump(
     WidgetTester tester, {
     bool conteOnT2 = false,
+    bool riders = false,
   }) => pumpStoryboardHost(
     tester,
-    film(conteOnT2: conteOnT2),
+    film(conteOnT2: conteOnT2, riders: riders),
     surface: const Size(1600, 1400),
     pixelsPerFrame: 12,
   );
@@ -416,6 +436,74 @@ void main() {
         for (final pin in members) 'a-conte|${pin.substring(pins.length)}',
       ]),
       reason: 'each by the layer in hand, as the pins\' own buttons press it',
+    );
+  });
+
+  // 🗣️F-475 (유저 2026-10-26): 「다른버튼도 조사」 — the folds are toggle
+  // columns the timeline's rail sweeps, and this rail sweeps its one list.
+  testWidgets('🚨the GROUP TWIRL column opens every lane group it crosses — '
+      'the V row\'s on its TRACK, the conte\'s on the conte in hand', (
+    tester,
+  ) async {
+    final session = await pump(tester);
+    await tap(tester, 'storyboard-track-lane-toggle-t1');
+    await tap(tester, 'storyboard-lane-toggle-a-conte');
+    String twirl(LayerId row, String lane) =>
+        'storyboard-lane-group-toggle-$row-$lane';
+    final keys = [
+      for (final effect in effects)
+        laneGroupKey(carrier, effectGroupLaneId(effect)),
+      laneGroupKey(const LayerId('a-conte'), 'transform-group'),
+      laneGroupKey(const LayerId('a-conte'), effectGroupLaneId(shade)),
+    ];
+    expect(
+      session.railView.expandedLaneGroupKeys.value.where(keys.contains),
+      isEmpty,
+      reason: '⛔전제',
+    );
+
+    // Down to the conte's Transform, the last group: its effect stands
+    // over it.
+    await sweep(
+      tester,
+      twirl(carrier, effectGroupLaneId(effects.first)),
+      twirl(conteRow, 'transform-group'),
+    );
+
+    expect(
+      session.railView.expandedLaneGroupKeys.value,
+      containsAll(keys),
+      reason:
+          'each group by the row it twirls in, as its own twirl turns it — '
+          'the press read as it left the group: a stale read spreads shut',
+    );
+  });
+
+  testWidgets('🚨the FOLD column folds every conte head it crosses, on to the '
+      'next track\'s — read off the conte in hand as the press left it', (
+    tester,
+  ) async {
+    final session = await pump(tester, conteOnT2: true, riders: true);
+    Set<LayerId> folded() => session.railView.collapsedAttachBaseIds.value;
+    expect(folded(), isEmpty, reason: '⛔전제');
+
+    await sweep(
+      tester,
+      'storyboard-attach-twirl-a-conte',
+      'storyboard-attach-twirl-c-conte',
+    );
+
+    expect(
+      folded(),
+      containsAll(const [
+        LayerId('a-conte'),
+        LayerId('b-conte'),
+        LayerId('c-conte'),
+      ]),
+      reason:
+          'the press folded t1\'s head — cut b\'s group with cut a\'s — and '
+          'the sweep the head it reached: by its own id the host finds no '
+          'layer, and the sweep would spread the fold open',
     );
   });
 
