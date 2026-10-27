@@ -1,12 +1,18 @@
+import 'dart:async' show unawaited;
+
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
+import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../editor_session_manager.dart';
 import '../playback/audio_input_monitor.dart';
 import '../../models/audio_sync_settings.dart';
+import '../playback/playback_transport_controls.dart'
+    show toggleVoiceRecordingWithFeedback;
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
+import 'app_confirm_dialog.dart' show showAppNotice;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../widgets/panel_flyout.dart';
@@ -37,6 +43,33 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
   void dispose() {
     widget.session.voiceRecording.detachInputMeter();
     super.dispose();
+  }
+
+  /// The consent switch (I-133). Turning it on is the one moment the OS is
+  /// asked, and the meter opens only on its yes; turning it off shuts the
+  /// meter and ends a rolling take as the record button would.
+  Future<void> _allowMicrophone(
+    bool allowed,
+    AudioSyncSettings settings,
+    AppStrings strings,
+  ) async {
+    final session = widget.session;
+    session.appSettings.setAudioSyncSettings(
+      settings.copyWith(microphoneAllowed: allowed),
+    );
+    if (!allowed && session.voiceRecording.isVoiceRecording.value) {
+      await toggleVoiceRecordingWithFeedback(context, session);
+    } else if (allowed && !await AppStorage.ensureMicrophoneAccess()) {
+      if (mounted) {
+        await showAppNotice(
+          context,
+          title: strings.commonNotice,
+          message: strings.recordMicPermissionDenied,
+        );
+      }
+      return;
+    }
+    session.voiceRecording.restartInputMeter();
   }
 
   /// One device picker row: "System default" plus the live enumeration.
@@ -205,6 +238,15 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                   (_) => session.playbackRig.audioDeviceTransport.openAhead(),
                 );
               },
+            ),
+            // The consent leads the input rows (I-133): nothing below it
+            // listens until it is on.
+            SettingsSwitchRow(
+              tileKey: const ValueKey<String>('settings-microphone-allowed'),
+              label: strings.audioMicrophoneAllowedLabel,
+              value: settings.microphoneAllowed,
+              onChanged: (allowed) =>
+                  unawaited(_allowMicrophone(allowed, settings, strings)),
             ),
             _deviceRow(
               strings: strings,

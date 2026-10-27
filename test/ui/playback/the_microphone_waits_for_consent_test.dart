@@ -4,10 +4,14 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
+import 'package:anicel/src/ui/dialogs/audio_settings_section.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/audio_input_monitor.dart';
 import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/timeline/frame_panel_transport.dart';
+
+import '../../helpers/boolean_dot_probe.dart';
+import '../../helpers/dart_sources.dart';
 
 /// 🗣️I-133 (유저 2026-10-26): 「환경설정 오디오탭에 입력항목에 마이크 허용버튼
 /// 신설. 이게 허용되어있지 않으면 일절 마이크를 인식안함. 즉 앞으로는 앱 키고 이
@@ -154,6 +158,122 @@ void main() {
       await session.voiceRecording.stopVoiceRecordingAndPlace();
       await tester.pumpAndSettle();
     });
+  });
+
+  group('the switch in Preferences ▸ Audio', () {
+    final consent = find.byKey(
+      const ValueKey<String>('settings-microphone-allowed'),
+    );
+
+    Future<EditorSessionManager> pumpAudioSection(
+      WidgetTester tester, {
+      required _Meter meter,
+    }) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1400));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.voiceRecording.debugInputMonitorFactory = () => meter;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: AudioSettingsSection(session: session),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return session;
+    }
+
+    Future<void> flip(WidgetTester tester) async {
+      await tester.ensureVisible(consent);
+      await tester.pumpAndSettle();
+      await tester.pressRingIn(consent);
+      await tester.pump();
+      await tester.pump();
+    }
+
+    bool allowedIn(EditorSessionManager session) =>
+        session.appSettings.audioSyncSettings.value.microphoneAllowed;
+
+    testWidgets('turning it on asks the OS — the meter opens only on its '
+        'yes — and turning it off asks nothing and shuts the meter', (
+      tester,
+    ) async {
+      final meter = _Meter();
+      final session = await pumpAudioSection(tester, meter: meter);
+      var answer = false;
+      var asked = 0;
+      AppStorage.debugMicrophoneAccess = () async {
+        asked += 1;
+        return answer;
+      };
+      expect(meter.starts, 0, reason: 'the window opens on a shut meter');
+
+      await flip(tester);
+      expect(allowedIn(session), isTrue);
+      expect(asked, 1);
+      expect(meter.starts, 0, reason: 'the OS said no');
+      expect(
+        find.text(session.uiStrings.recordMicPermissionDenied),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
+      await tester.pumpAndSettle();
+
+      await flip(tester);
+      expect(allowedIn(session), isFalse);
+      expect(asked, 1, reason: 'turning it off asks nothing');
+
+      answer = true;
+      await flip(tester);
+      expect(allowedIn(session), isTrue);
+      expect(asked, 2);
+      expect(meter.starts, 1);
+      expect(meter.isRunning, isTrue);
+
+      await flip(tester);
+      expect(allowedIn(session), isFalse);
+      expect(asked, 2);
+      expect(meter.isRunning, isFalse);
+    });
+
+    testWidgets('turning it off ends a rolling take, as the record button '
+        'would', (tester) async {
+      final session = await pumpAudioSection(tester, meter: _Meter());
+      AppStorage.debugMicrophoneAccess = () async => true;
+      session.appSettings.setAudioSyncSettings(allowed);
+      session.voiceRecording.debugVoiceRecorderFactory = _Microphone().lend;
+      expect(
+        session.voiceRecording.startVoiceRecording(),
+        VoiceRecordStartResult.started,
+      );
+      await tester.pump();
+
+      await flip(tester);
+      expect(allowedIn(session), isFalse);
+      expect(session.voiceRecording.isVoiceRecording.value, isFalse);
+      await tester.pumpAndSettle();
+    });
+  });
+
+  // ⛔No launch ask (↩️F-178, 🗣️I-133): the OS hears of the microphone from
+  // the two places the consent stands in front of, and from nowhere else.
+  test('the OS is asked for the microphone from behind the consent only', () {
+    final askers = [
+      for (final file in dartFilesUnder('lib'))
+        if (file.readAsStringSync().contains('ensureMicrophoneAccess('))
+          libPath(file),
+    ]..sort();
+    expect(askers, [
+      'lib/src/services/persistence/app_documents.dart',
+      'lib/src/ui/dialogs/audio_settings_section.dart',
+      'lib/src/ui/playback/playback_transport_controls.dart',
+    ]);
   });
 }
 
