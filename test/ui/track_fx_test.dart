@@ -18,7 +18,7 @@ import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
+import 'package:anicel/src/services/composite_effect_paint.dart'    show        CompositeEffectPaint,        CompositeEffectStep,        KeyRun,        blurSigmaPerRadius,        resolveCompositeEffectPaint,        resolveCompositeEffectPlan;
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart' show effectGroupLaneId;
 import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
@@ -192,7 +192,7 @@ void main() {
         plan.preSteps, hasLength(1),
         reason: 'the key rides its own raster, like a group or a layer image',
       );
-      expect(plan.preSteps.single.keys, hasLength(1));
+      expect(_keysOf(plan.preSteps.single), hasLength(1));
       expect(
         plan.finalPaint.isEmpty,
         isTrue,
@@ -206,13 +206,13 @@ void main() {
       );
       expect(plan.preSteps, hasLength(2));
       expect(
-        plan.preSteps.first.keys,
-        isEmpty,
+        plan.preSteps.first.lead,
+        isNull,
         reason: 'the darken runs first, with no key of its own',
       );
       expect(plan.preSteps.first.then, hasLength(1));
       expect(
-        plan.preSteps.last.keys,
+        _keysOf(plan.preSteps.last),
         hasLength(1),
         reason: 'and the key sees what the darken made — order is free here '
             'too, the same law the layer rows got in #1312',
@@ -361,3 +361,9 @@ void main() {
     );
   });
 }
+
+/// The keys [step] opens with — none unless its lead is a run of them.
+List<Object> _keysOf(CompositeEffectStep step) => switch (step.lead) {
+  KeyRun(:final keys) => keys,
+  _ => const [],
+};

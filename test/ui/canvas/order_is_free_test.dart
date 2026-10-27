@@ -55,7 +55,7 @@ void main() {
       // image filter, so the key can lead the same draw the blur rides.
       final plan = resolveCompositeEffectPlan([deleteWhite(), blur(3)]);
       expect(plan.preSteps.length, 1);
-      expect(plan.preSteps.single.keys, hasLength(1));
+      expect(_keysOf(plan.preSteps.single), hasLength(1));
       expect(plan.preSteps.single.then, isEmpty);
       // The blur stayed on the final draw, where it always was.
       expect(plan.finalPaint.isNotEmpty, isTrue);
@@ -65,9 +65,9 @@ void main() {
     test('blur then key is TWO steps, and the first has no key', () {
       final plan = resolveCompositeEffectPlan([blur(3), deleteWhite()]);
       expect(plan.preSteps.length, 2);
-      expect(plan.preSteps.first.keys, isEmpty);
+      expect(plan.preSteps.first.lead, isNull);
       expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
-      expect(plan.preSteps.last.keys, hasLength(1));
+      expect(_keysOf(plan.preSteps.last), hasLength(1));
       // Nothing follows the key, so the composite draw carries nothing.
       expect(plan.finalPaint.isEmpty, isTrue);
       expect(plan.outsetPixels, greaterThan(0));
@@ -103,7 +103,7 @@ void main() {
     final source = await _imageFrom(straight, side, side);
     final plan = resolveCompositeEffectPlan([deleteWhite(), deleteRed()]);
     expect(
-      plan.preSteps.single.keys,
+      _keysOf(plan.preSteps.single),
       hasLength(2),
       reason: 'two keys standing together: one run, one step',
     );
@@ -140,9 +140,9 @@ void main() {
       deleteRed(),
     ]);
     expect(plan.preSteps, hasLength(2));
-    expect(plan.preSteps.first.keys, hasLength(1));
+    expect(_keysOf(plan.preSteps.first), hasLength(1));
     expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
-    expect(plan.preSteps.last.keys, hasLength(1));
+    expect(_keysOf(plan.preSteps.last), hasLength(1));
   });
 
   final eraseAll = ResolvedLayerEffect(
@@ -418,3 +418,9 @@ Future<Uint8List> _bytesOf(ui.Image image, int side) async {
   final bytes = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
   return bytes!.buffer.asUint8List();
 }
+
+/// The keys [step] opens with — none unless its lead is a run of them.
+List<Object> _keysOf(CompositeEffectStep step) => switch (step.lead) {
+  KeyRun(:final keys) => keys,
+  _ => const [],
+};

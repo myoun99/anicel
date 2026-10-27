@@ -9,9 +9,9 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
+import 'directional_blur_shader.dart';
 import 'display_resample.dart';
 import 'layer_blend_shader.dart';
-import '../../services/cel_source_effect_pass.dart' show CelColorKey;
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart'
     show LayerPlacement, placementMatrix;
@@ -995,22 +995,20 @@ void _composeInTheFrame({
   }
 }
 
-/// Turns a finished recording into the image, hands [compose] a blit for it,
-/// and owns its lifetime.
 /// Runs [steps] over [source], returning a NEW image the caller owns, or
 /// [source] itself when there is nothing to do.
 ///
-/// 🚨EACH STEP IS ITS OWN RASTER, AT THE IDENTITY. A colour key is a fragment
-/// shader, and a shader reads `FlutterFragCoord()` — the position in the
+/// 🚨EACH STEP IS ITS OWN RASTER, AT THE IDENTITY. A step's lead is fragment
+/// shaders, and a shader reads `FlutterFragCoord()` — the position in the
 /// space it is drawn into. Folding one into a draw that sits under a
 /// transform would make it read through that transform. Rasterising the step
 /// by itself, 1:1 into a rect at the origin, is what makes the shader's own
 /// coordinates mean what it thinks they mean.
 ///
-/// A step's last key and its painted effects share ONE raster: a `ui.Paint`
-/// applies its shader, then its colour filter, then its image filter, so
-/// "key, then blur" needs no second pass. Each key before it in its run is a
-/// raster of its own, read beside the run's input by the next.
+/// A step's last lead draw and its painted effects share ONE raster: a
+/// `ui.Paint` applies its shader, then its colour filter, then its image
+/// filter, so "key, then blur" needs no second pass. Each draw before it is a
+/// raster of its own, read beside the step's input by the next.
 ui.Image applyEffectSteps({
   required ui.Image source,
   required List<CompositeEffectStep> steps,
@@ -1019,46 +1017,84 @@ ui.Image applyEffectSteps({
   required double imageScale,
 }) {
   // ⛔The IMAGE's own space. A step rasters at the identity — there is no
-  // CTM to map a sigma through — so the chain arrives pre-multiplied by
-  // however many image pixels a canvas pixel is.
+  // CTM to map a sigma or a length through — so the chain arrives
+  // pre-multiplied by however many image pixels a canvas pixel is.
   final space = imageScale == 1
       ? DrawSpace.canvas
       : DrawSpace.preScaled(imageScale);
   var image = source;
   for (final step in steps) {
-    // What every key of the run reads its colours from and a restore gives
-    // back to ([CompositeEffectStep.keys]) — alive until the run is done.
-    final runInput = image;
-    final keys = step.keys;
-    final draws = keys.isEmpty ? 1 : keys.length;
+    // What every key of a run reads its colours from and a restore gives
+    // back to ([KeyRun]) — alive until the step is done.
+    final input = image;
+    final leads = _leadDraws(
+      step.lead,
+      space: space,
+      width: pixelWidth.toDouble(),
+      height: pixelHeight.toDouble(),
+    );
+    final draws = leads.isEmpty ? 1 : leads.length;
     for (var index = 0; index < draws; index += 1) {
       final next = _effectStepDraw(
         image: image,
-        original: runInput,
-        key: keys.isEmpty ? null : keys[index],
+        input: input,
+        lead: leads.isEmpty ? null : leads[index],
         then: index == draws - 1 ? step.then : const [],
         pixelWidth: pixelWidth,
         pixelHeight: pixelHeight,
         space: space,
       );
-      if (!identical(image, source) && !identical(image, runInput)) {
+      if (!identical(image, source) && !identical(image, input)) {
         image.dispose();
       }
       image = next;
     }
-    if (!identical(runInput, source)) {
-      runInput.dispose();
+    if (!identical(input, source)) {
+      input.dispose();
     }
   }
   return image;
 }
 
-/// One raster of a step: [key] over [image] ([original] its run's input),
-/// then [then], 1:1 at the identity ([applyEffectSteps]).
+/// One lead draw: a shader over the picture the draw before it made and
+/// the step's input.
+typedef _LeadDraw = ui.FragmentShader Function(ui.Image image, ui.Image input);
+
+/// The rasters [lead] takes at [space] — none for a step that only paints.
+List<_LeadDraw> _leadDraws(
+  EffectStepLead? lead, {
+  required DrawSpace space,
+  required double width,
+  required double height,
+}) => switch (lead) {
+  null => const [],
+  KeyRun(:final keys) => [
+    for (final key in keys)
+      (image, input) => ColourKeyShader.shaderFor(
+        source: image,
+        original: input,
+        key: key,
+        width: width,
+        height: height,
+      ),
+  ],
+  ShadedEffect(:final effect) => [
+    for (final pass in shadedPassesOf(effect, space))
+      (image, _) => DirectionalBlurShader.shaderFor(
+        source: image,
+        pass: pass,
+        width: width,
+        height: height,
+      ),
+  ],
+};
+
+/// One raster of a step: [lead] over [image] ([input] the step's), then
+/// [then], 1:1 at the identity ([applyEffectSteps]).
 ui.Image _effectStepDraw({
   required ui.Image image,
-  required ui.Image original,
-  required CelColorKey? key,
+  required ui.Image input,
+  required _LeadDraw? lead,
   required List<ResolvedLayerEffect> then,
   required int pixelWidth,
   required int pixelHeight,
@@ -1067,15 +1103,8 @@ ui.Image _effectStepDraw({
   final stepRecorder = ui.PictureRecorder();
   final into = Canvas(stepRecorder);
   final paint = Paint();
-  ui.FragmentShader? shader;
-  if (key != null) {
-    shader = ColourKeyShader.shaderFor(
-      source: image,
-      original: original,
-      key: key,
-      width: pixelWidth.toDouble(),
-      height: pixelHeight.toDouble(),
-    );
+  final shader = lead?.call(image, input);
+  if (shader != null) {
     paint.shader = shader;
   }
   resolveCompositeEffectPaint(then, space: space).applyTo(paint);
@@ -1107,6 +1136,8 @@ ui.Image _effectStepDraw({
   }
 }
 
+/// Turns a finished recording into the image, hands [compose] a blit for it,
+/// and owns its lifetime.
 void _finishSubtreeRaster({
   required Canvas canvas,
   required ui.PictureRecorder recorder,

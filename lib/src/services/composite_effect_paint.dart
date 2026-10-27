@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
@@ -8,6 +9,7 @@ import '../core/draw_space.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
 import 'cel_source_effect_pass.dart';
+import 'directional_blur_passes.dart';
 
 /// How much a blur RADIUS parameter spreads, as a Gaussian sigma. A radius
 /// is the visible reach of the blur; three sigma covers it, so a radius of
@@ -245,6 +247,23 @@ final class _SpatialPart extends _PaintPart {
   final double outset;
 }
 
+/// A sample that changes no pixel though its values are not its defaults.
+final class _NoPart extends _PaintPart {
+  const _NoPart();
+}
+
+/// A kind a fragment shader draws over a whole raster, in [passes], because
+/// it reads past the pixel and no `ui.ImageFilter` carries it — a step of
+/// its own ([ShadedEffect]), [reach] past its input.
+final class _StepPart extends _PaintPart {
+  const _StepPart(this.passes, {required this.reach});
+
+  final List<LineBoxPass> passes;
+
+  /// How far past its input it paints.
+  final double reach;
+}
+
 /// A kind no paint carries: the chain is split before a paint is resolved.
 final class _SplitPart extends _PaintPart {
   const _SplitPart(this.splitBy);
@@ -270,6 +289,7 @@ _PaintPart _paintPartOf(ResolvedLayerEffect effect, DrawSpace space) =>
         ),
       ),
       EffectKind.blur => _blurPart(effect, space),
+      EffectKind.directionalBlur => _directionalBlurPart(effect, space),
       // ⛔THE CPU HALF MUST BE GONE BY NOW. `splitSourceEffects` takes the
       // color keys out in the shared visit and `celSurfaceWithSourceEffects`
       // has already applied them to the surface this paint will draw. A
@@ -306,6 +326,35 @@ _SpatialPart _blurPart(ResolvedLayerEffect effect, DrawSpace space) {
     outset: blurSpreadForRadius(radiusX > radiusY ? radiusX : radiusY),
   );
 }
+
+/// A directional blur of no length changes no pixel, whichever way it
+/// points — [ResolvedLayerEffect.isNoOp] reads only "at its defaults".
+_PaintPart _directionalBlurPart(ResolvedLayerEffect effect, DrawSpace space) {
+  final length = effect.parameter('blurLength') * space.scale;
+  if (length <= 0) {
+    return const _NoPart();
+  }
+  final radians = effect.parameter('direction') * math.pi / 180;
+  return _StepPart(
+    directionalBlurPasses(
+      dx: math.sin(radians),
+      dy: -math.cos(radians),
+      length: length,
+    ),
+    // Half the line each way, and the texel a sample at its end reads.
+    reach: length / 2 + 1,
+  );
+}
+
+/// The rasters [effect] — a step's [ShadedEffect] — is drawn in at [space],
+/// the raster's own: empty where it changes no pixel there.
+List<LineBoxPass> shadedPassesOf(
+  ResolvedLayerEffect effect,
+  DrawSpace space,
+) => switch (_paintPartOf(effect, space)) {
+  _StepPart(:final passes) => passes,
+  _ => const [],
+};
 
 /// Translates [effects] (already sampled at a frame) into paint state.
 ///
@@ -376,6 +425,14 @@ CompositeEffectPaint resolveCompositeEffectPaint(
       // looks exactly like "the artist set Amount to 0".
       case _SplitPart(:final splitBy):
         assert(false, splitBy);
+      case _StepPart():
+        assert(
+          false,
+          'A shaded effect is a step of its own — see '
+          'resolveCompositeEffectPlan.',
+        );
+      case _NoPart():
+        break;
       case _ColourPart(:final next):
         pendingColor = pendingColor == null
             ? next
@@ -412,28 +469,57 @@ CompositeEffectPaint resolveCompositeEffectPaint(
   return CompositeEffectPaint(imageFilter: chain, outsetPixels: outset);
 }
 
-/// The `saveLayer` bounds for a buffered group whose chain is [plan]:
-/// [bounds] grown by the blur spread, so a group blur is not clipped at the
-/// buffer edge it was meant to bleed past.
-/// One raster a chain takes before the draw that composites it.
+/// What a step draws before its painted effects — each draw a fragment
+/// shader over the whole raster, at the identity.
+sealed class EffectStepLead {
+  const EffectStepLead();
+}
+
+/// The colour keys standing together in the chain: a draw a key, each over
+/// the picture the key before it made and the step's input — what a
+/// restore gives back to ([CelColorKey.alphaFor]).
+final class KeyRun extends EffectStepLead {
+  const KeyRun(this.keys);
+
+  final List<CelColorKey> keys;
+}
+
+/// An effect that reads past the pixel and that no `ui.ImageFilter` carries:
+/// a directional blur, drawn in [shadedPassesOf]'s rasters.
 ///
-/// A step is a RUN of colour keys — the keys standing together in the chain —
-/// and then the painted effects that follow it, with the last key's draw: a
-/// `ui.Paint` applies its shader, then its colour filter, then its image
-/// filter, so "key, then blur" is one raster and needs no second. "Blur, then
-/// key" is two, and the first of them has no key.
+/// 🔬WHY NOT `ImageFilter.shader`. Measured on Impeller (10-28,
+/// `flutter_tester --enable-impeller`): a shader filter is evaluated in
+/// device space — a canvas turned 90° left a horizontal blur horizontal,
+/// where the Gaussian turned with it — and paints no further than the
+/// picture it is handed: a blur 16 long over a dot spread it ±1 px. A step
+/// rasters at the identity over a buffer the plan already grew
+/// ([CompositeEffectPlan.outsetPixels]).
+final class ShadedEffect extends EffectStepLead {
+  const ShadedEffect(this.effect);
+
+  /// ⛔UNRESOLVED, as [CompositeEffectStep.then]: its length belongs to the
+  /// raster the step runs in.
+  final ResolvedLayerEffect effect;
+}
+
+/// One raster a chain takes before the draw that composites it — more than
+/// one where its [lead] draws more.
+///
+/// A step is its [lead] and then the painted effects that follow it, with
+/// the lead's last draw: a `ui.Paint` applies its shader, then its colour
+/// filter, then its image filter, so "key, then blur" is one raster and
+/// needs no second. "Blur, then key" is two, and the first of them has no
+/// lead.
 @immutable
 class CompositeEffectStep {
-  const CompositeEffectStep({this.keys = const [], required this.then});
+  const CompositeEffectStep({this.lead, required this.then});
 
-  /// Applied first, in order, each by a fragment shader over the image the
-  /// key before it made and the image handed in — what a restore gives back
-  /// to ([CelColorKey.alphaFor]).
-  final List<CelColorKey> keys;
+  /// Drawn first; null for a step that only paints.
+  final EffectStepLead? lead;
 
-  /// Applied after [keys], in the last one's draw. ⛔UNRESOLVED, because a
-  /// blur's radii belong to the RASTER this step runs in, and only the
-  /// renderer knows that scale.
+  /// Applied after [lead], in its last draw. ⛔UNRESOLVED, because a blur's
+  /// radii belong to the RASTER this step runs in, and only the renderer
+  /// knows that scale.
   final List<ResolvedLayerEffect> then;
 }
 
@@ -490,14 +576,21 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   DrawSpace space = DrawSpace.canvas,
   int? tint,
 }) {
-  // Each run is "the keys that open it, then the painted effects until the
-  // next key". The first run has no key.
-  final keys = <List<CelColorKey>>[const []];
+  // Each run is "the lead that opens it — keys, or a shaded effect — then
+  // the painted effects until the next lead". The first run has no lead.
+  final leads = <EffectStepLead?>[null];
   final runs = <List<ResolvedLayerEffect>>[<ResolvedLayerEffect>[]];
+  var outset = 0.0;
   for (final effect in effects) {
     final key = CelColorKey.fromResolved(effect);
     if (key == null) {
-      runs.last.add(effect);
+      if (_paintPartOf(effect, space) case _StepPart(:final reach)) {
+        outset += reach;
+        leads.add(ShadedEffect(effect));
+        runs.add(<ResolvedLayerEffect>[]);
+      } else {
+        runs.last.add(effect);
+      }
       continue;
     }
     // ⛔A key at Amount 0 is dropped, not rasterised. The CPU pass drops it
@@ -508,11 +601,11 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     }
     // A key right after a key joins its run: a restore gives back what the
     // keys before it took, so they share the picture they started from.
-    if (keys.length > 1 && runs.last.isEmpty) {
-      keys.last.add(key);
+    if (leads.last case KeyRun(:final keys) when runs.last.isEmpty) {
+      keys.add(key);
       continue;
     }
-    keys.add([key]);
+    leads.add(KeyRun([key]));
     runs.add(<ResolvedLayerEffect>[]);
   }
   final last = runs.length - 1;
@@ -521,32 +614,33 @@ CompositeEffectPlan resolveCompositeEffectPlan(
     space: space,
     tint: tint,
   );
+  outset += finalPaint.outsetPixels;
   if (last == 0) {
-    // No keys survived: the chain is one draw, exactly as it always was.
+    // No lead survived: the chain is one draw, exactly as it always was.
     return finalPaint.isEmpty
         ? CompositeEffectPlan.none
         : CompositeEffectPlan._(
             preSteps: const [],
             finalPaint: finalPaint,
-            outsetPixels: finalPaint.outsetPixels,
+            outsetPixels: outset,
           );
   }
-  var outset = finalPaint.outsetPixels;
   final steps = <CompositeEffectStep>[];
   for (var i = 0; i < last; i += 1) {
-    if (keys[i].isEmpty && runs[i].isEmpty) {
-      // The leading run is empty whenever the chain opens with a key, which
-      // is the ordinary shape.
+    if (leads[i] == null && runs[i].isEmpty) {
+      // The leading run is empty whenever the chain opens with a lead,
+      // which is the ordinary shape.
       continue;
     }
     outset += resolveCompositeEffectPaint(
       runs[i],
       space: space,
     ).outsetPixels;
-    steps.add(CompositeEffectStep(keys: keys[i], then: runs[i]));
+    steps.add(CompositeEffectStep(lead: leads[i], then: runs[i]));
   }
-  // The last key has to happen before the final draw carries what follows it.
-  steps.add(CompositeEffectStep(keys: keys[last], then: const []));
+  // The last lead has to happen before the final draw carries what follows
+  // it.
+  steps.add(CompositeEffectStep(lead: leads[last], then: const []));
   return CompositeEffectPlan._(
     preSteps: steps,
     finalPaint: finalPaint,
@@ -554,6 +648,9 @@ CompositeEffectPlan resolveCompositeEffectPlan(
   );
 }
 
+/// The `saveLayer` bounds for a buffered group whose chain paints
+/// [outsetPixels] past its input: [bounds] grown by them, so a group blur is
+/// not clipped at the buffer edge it was meant to bleed past.
 ui.Rect effectBufferBounds(ui.Rect bounds, double outsetPixels) {
   if (outsetPixels <= 0) {
     return bounds;

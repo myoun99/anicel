@@ -31,8 +31,8 @@ final class EffectId extends StringId {
 /// whose math is exact on every backend: the color kinds fold into one
 /// `ui.ColorFilter.matrix` and the blur is `ui.ImageFilter.blur`, so the
 /// editing canvas, playback, the camera view and the exported video all
-/// produce the same pixels without a shader (which `ImageFilter.shader`
-/// would have made Impeller-only).
+/// produce the same pixels. The directional blur is a box a fragment shader
+/// draws, a raster at a time (`ShadedEffect`), on every one of those routes.
 ///
 /// The COLOR KEYS (I-8) keep that premise by running on the CPU over the
 /// cel's own tile bytes instead — see [runsOnSourcePixels]. A threshold
@@ -135,6 +135,43 @@ enum EffectKind {
       EffectParameterSpec(
         id: 'blurY',
         label: 'Blur Height',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 500,
+        unit: EffectParameterUnit.pixels,
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+
+  /// Every pixel the average of the line through it — AE's Directional
+  /// Blur, a box [blurLength] long (`directionalBlurPasses`).
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」,
+  /// AE's names and items. ★DIRECTION READS AS AN ANGLE DIAL: 0° up,
+  /// clockwise, so 0° blurs up and down — 🗣️I-132-Q8 (유저 2026-10-27):
+  /// 「0° 에서 세로로 번진다」; no help page says it. Its help does say the
+  /// blur goes both ways from a pixel, so 0° and 180° are one blur. The
+  /// length's range is ours: no help page gives AE's.
+  directionalBlur(
+    'directionalBlur',
+    label: 'Directional Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'direction',
+        label: 'Direction',
+        defaultValue: 0,
+        minimum: -180,
+        maximum: 180,
+        unit: EffectParameterUnit.degrees,
+      ),
+      EffectParameterSpec(
+        id: 'blurLength',
+        label: 'Blur Length',
         defaultValue: 0,
         minimum: 0,
         maximum: 500,
