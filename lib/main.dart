@@ -179,15 +179,11 @@ Future<void> main(List<String> handedAtLaunch) async {
   MemoryBlackBox.reset();
   LaunchSplash.drawing(AppText.strings);
   runApp(AnicelApp(handedAtLaunch: handedAtLaunch));
-  // 🗣️F-178 (유저 2026-09-24): 「ios에서 녹음누르면 권한묻는데 그게아니라 앱
-  // 실행시로 못하나? 한번 권한 얻으면 심플하잖아」. Once, at launch, after the
-  // first frame so the system dialog lands on the app rather than on an empty
-  // window. The record button still awaits the same ask, so no take rolls
-  // before the answer is in — and an answer already given comes back at
-  // once, which is what makes this cheap on every later launch.
-  WidgetsBinding.instance.addPostFrameCallback(
-    (_) => unawaited(AppStorage.ensureMicrophoneAccess()),
-  );
+  // ↩️F-178 (유저 2026-09-24) asked for the microphone here, once at launch:
+  // 「ios에서 녹음누르면 권한묻는데 그게아니라 앱 실행시로 못하나?」. 🗣️I-133
+  // (유저 2026-10-26) took it back: 「앞으로는 앱 키고 이 허용을 체크해야
+  // 권한묻도록」 — ⛔nothing asks at launch; the OS first hears of the
+  // microphone when Preferences ▸ Audio ▸ Allow microphone is turned on.
   // The side this engine holds, read once after the first frame (a few small
   // pictures, off the frame): a compose past it is made
   // in pieces (`piecesOver`), and one made inside a build before it is read

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -46,6 +47,8 @@ void main() {
       ),
       log: (_) {},
     ),
+  )..appSettings.setAudioSyncSettings(
+    const AudioSyncSettings(microphoneAllowed: true),
   );
 
   AudioRecording takeOf(double amplitude, {double seconds = 0.5}) {

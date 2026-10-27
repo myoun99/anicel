@@ -39,6 +39,8 @@ void main() {
           ),
           log: (_) {},
         ),
+      )..appSettings.setAudioSyncSettings(
+        const AudioSyncSettings(microphoneAllowed: true),
       );
 
   AudioRecording takeOfSeconds(double seconds, {int sampleRate = 48000}) {

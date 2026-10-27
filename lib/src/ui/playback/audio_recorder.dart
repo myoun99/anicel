@@ -212,6 +212,9 @@ enum VoiceRecordStartResult {
   started,
   alreadyRecording,
 
+  /// The app's own consent is off (I-133) — nothing was opened.
+  notAllowed,
+
   /// The device would not open (no binary, no microphone, no OS grant).
   deviceFailed,
 }

@@ -74,6 +74,9 @@ abstract final class AppStorage {
   /// Test hook: forces the all-files-access answer.
   static bool? debugAllFilesAccessOverride;
 
+  /// Test hook: stands in for the OS's microphone ask.
+  static Future<bool> Function()? debugMicrophoneAccess;
+
   /// Resolves the mobile documents home once at startup (main()).
   static Future<void> ensureInitialized() async {
     if (!Platform.isAndroid && !Platform.isIOS) {
@@ -119,7 +122,14 @@ abstract final class AppStorage {
   /// answer yes here and let the capture open trigger the prompt — so the
   /// take rolled while the dialog was still up, recording a microphone the
   /// app did not have yet.
+  ///
+  /// Asked only with the app's own consent on (I-133,
+  /// `AudioSyncSettings.microphoneAllowed`) — never at launch.
   static Future<bool> ensureMicrophoneAccess() async {
+    final standIn = debugMicrophoneAccess;
+    if (standIn != null) {
+      return standIn();
+    }
     if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
       return true;
     }

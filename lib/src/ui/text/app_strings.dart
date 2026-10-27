@@ -250,6 +250,7 @@ enum AppStrings {
   String get recordVoiceStopTooltip => _s('recordVoiceStopTooltip');
   String get recordMicOpenFailed => _s('recordMicOpenFailed');
   String get recordMicPermissionDenied => _s('recordMicPermissionDenied');
+  String get recordMicNotAllowed => _s('recordMicNotAllowed');
 
   // --- Capture chain (REC1-D) ---
   String get recordTakeClipped => _s('recordTakeClipped');
@@ -276,6 +277,9 @@ enum AppStrings {
   /// The RNNoise toggle (voice-only by design: dialogue ON, foley OFF).
   String get audioDenoiseLabel => _s('audioDenoiseLabel');
   String get audioInputMeterLabel => _s('audioInputMeterLabel');
+
+  /// The app's consent to the microphone (I-133).
+  String get audioMicrophoneAllowedLabel => _s('audioMicrophoneAllowedLabel');
   String get audioTestSoundLabel => _s('audioTestSoundLabel');
 
   // --- ADR cueing (REC1-E) ---
@@ -2006,6 +2010,8 @@ enum AppStrings {
         'Could not open the microphone — check Preferences ▸ Audio and the OS microphone permission.',
     'recordMicPermissionDenied':
         'Microphone access is off — allow it for Anicel in Settings.',
+    'recordMicNotAllowed':
+        'The microphone is not allowed — turn on Preferences ▸ Audio ▸ Allow microphone.',
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
     'tlTransitionCrossingWarning': 'Crosses the cut boundary — not applied',
@@ -2019,6 +2025,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': 'Clipping warnings (toast + block marker)',
     'audioDenoiseLabel': 'Noise suppression (voice only — turn off for foley)',
     'audioInputMeterLabel': 'Input level',
+    'audioMicrophoneAllowedLabel': 'Allow microphone',
     'audioTestSoundLabel': 'Test sound',
     'audioCountInLabel': 'Count-in (seconds)',
     'audioCueBeepsLabel': 'Cue beeps (ADR 3-beep)',
@@ -3258,6 +3265,7 @@ enum AppStrings {
     'recordVoiceStopTooltip': '録音を停止（テイクを配置）',
     'recordMicOpenFailed': 'マイクを開けませんでした — 環境設定▸オーディオとOSのマイク権限を確認してください。',
     'recordMicPermissionDenied': 'マイクへのアクセスがオフです — 設定でAnicelのマイクを許可してください。',
+    'recordMicNotAllowed': 'マイクが許可されていません — 環境設定▸オーディオ▸「マイクを許可」をオンにしてください。',
     'recordTakeClipped': 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
     'recordClipMarkerTooltip': 'このテイクはクリッピングしています（入力過大）',
     'tlTransitionCrossingWarning': 'カット境界を越えています — 適用されません',
@@ -3271,6 +3279,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': 'クリッピング警告（トースト＋ブロックマーカー）',
     'audioDenoiseLabel': 'ノイズ抑制（音声専用 — 効果音はオフに）',
     'audioInputMeterLabel': '入力レベル',
+    'audioMicrophoneAllowedLabel': 'マイクを許可',
     'audioTestSoundLabel': 'テスト音を再生',
     'audioCountInLabel': 'カウントイン（秒）',
     'audioCueBeepsLabel': 'キュービープ（ADR式3ビープ）',
@@ -4938,6 +4947,7 @@ enum AppStrings {
     'recordVoiceStopTooltip': '녹음 정지(테이크 배치)',
     'recordMicOpenFailed': '마이크를 열 수 없습니다 — 환경설정▸오디오와 OS 마이크 권한을 확인하세요.',
     'recordMicPermissionDenied': '마이크 접근이 꺼져 있습니다 — 설정에서 Anicel의 마이크를 허용하세요.',
+    'recordMicNotAllowed': '마이크가 허용되어 있지 않습니다 — 환경설정▸오디오▸「마이크 허용」을 켜세요.',
     'recordTakeClipped': '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
     'recordClipMarkerTooltip': '이 테이크는 클리핑되었습니다(입력 과대)',
     'tlTransitionCrossingWarning': '컷 경계를 넘어 적용되지 않습니다',
@@ -4951,6 +4961,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': '클리핑 주의 안내(토스트+블록 마커)',
     'audioDenoiseLabel': '잡음 제거(음성 전용 — 효과음 녹음 시 끄기)',
     'audioInputMeterLabel': '입력 레벨',
+    'audioMicrophoneAllowedLabel': '마이크 허용',
     'audioTestSoundLabel': '테스트 사운드',
     'audioCountInLabel': '카운트인(초)',
     'audioCueBeepsLabel': '큐 비프(ADR식 3비프)',
@@ -6608,6 +6619,8 @@ enum AppStrings {
         'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio et l\'autorisation micro du système.',
     'recordMicPermissionDenied':
         'L\'accès au micro est désactivé — autorisez-le pour Anicel dans les Réglages.',
+    'recordMicNotAllowed':
+        'Le micro n\'est pas autorisé — activez Préférences ▸ Audio ▸ Autoriser le micro.',
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
     'tlTransitionCrossingWarning': 'Dépasse la limite du plan — non appliqué',
@@ -6622,6 +6635,7 @@ enum AppStrings {
     'audioDenoiseLabel':
         'Réduction de bruit (voix — désactiver pour le bruitage)',
     'audioInputMeterLabel': 'Niveau d\'entrée',
+    'audioMicrophoneAllowedLabel': 'Autoriser le micro',
     'audioTestSoundLabel': 'Son de test',
     'audioCountInLabel': 'Décompte (secondes)',
     'audioCueBeepsLabel': 'Bips de repère (3 bips ADR)',
@@ -8398,6 +8412,7 @@ enum AppStrings {
     'recordVoiceStopTooltip': '停止录音（放置素材）',
     'recordMicOpenFailed': '无法打开麦克风 — 请检查首选项▸音频以及系统麦克风权限。',
     'recordMicPermissionDenied': '麦克风访问已关闭 — 请在设置中允许 Anicel 使用麦克风。',
+    'recordMicNotAllowed': '未允许使用麦克风 — 请在首选项▸音频中打开「允许麦克风」。',
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
     'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
@@ -8411,6 +8426,7 @@ enum AppStrings {
     'audioClippingNoticeLabel': '削波警告（提示+块标记）',
     'audioDenoiseLabel': '降噪（仅人声 — 录拟音时请关闭）',
     'audioInputMeterLabel': '输入电平',
+    'audioMicrophoneAllowedLabel': '允许麦克风',
     'audioTestSoundLabel': '测试声音',
     'audioCountInLabel': '倒数（秒）',
     'audioCueBeepsLabel': '提示音（ADR三响）',

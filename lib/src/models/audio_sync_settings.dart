@@ -42,6 +42,7 @@ class AudioSyncSettings {
     this.cueBeeps = true,
     this.streamerEnabled = true,
     this.denoiseVoice = false,
+    this.microphoneAllowed = false,
   });
 
   static const AudioSyncSettings defaults = AudioSyncSettings();
@@ -95,6 +96,15 @@ class AudioSyncSettings {
   /// take conforms once through the normal pipeline on placement.
   final bool denoiseVoice;
 
+  /// The app's own consent to the microphone: while it is off nothing
+  /// opens one — no take, no meter — and the OS is never asked. Default
+  /// OFF.
+  ///
+  /// 🗣️I-133 (유저 2026-10-26): 「이게 허용되어있지 않으면 일절 마이크를
+  /// 인식안함. 즉 앞으로는 앱 키고 이 허용을 체크해야 권한묻도록. 마이크로
+  /// 무언가 정보 빼앗기는건가 싶은 불안같은걸 해결하기 위함」.
+  final bool microphoneAllowed;
+
   static const int maxCountInSeconds = 10;
 
   static int clampCountInSeconds(int value) =>
@@ -121,6 +131,7 @@ class AudioSyncSettings {
     bool? cueBeeps,
     bool? streamerEnabled,
     bool? denoiseVoice,
+    bool? microphoneAllowed,
   }) => AudioSyncSettings(
     offset: offset ?? this.offset,
     unit: unit ?? this.unit,
@@ -137,6 +148,7 @@ class AudioSyncSettings {
     cueBeeps: cueBeeps ?? this.cueBeeps,
     streamerEnabled: streamerEnabled ?? this.streamerEnabled,
     denoiseVoice: denoiseVoice ?? this.denoiseVoice,
+    microphoneAllowed: microphoneAllowed ?? this.microphoneAllowed,
   );
 
   static int clampMicGainDb(int value) =>
@@ -208,6 +220,7 @@ class AudioSyncSettings {
     if (!cueBeeps) 'cueBeeps': false,
     if (!streamerEnabled) 'streamerEnabled': false,
     if (denoiseVoice) 'denoiseVoice': true,
+    if (microphoneAllowed) 'microphoneAllowed': true,
   };
 
   factory AudioSyncSettings.fromJson(Map<String, dynamic> json) {
@@ -232,6 +245,7 @@ class AudioSyncSettings {
       cueBeeps: json['cueBeeps'] as bool? ?? true,
       streamerEnabled: json['streamerEnabled'] as bool? ?? true,
       denoiseVoice: json['denoiseVoice'] as bool? ?? false,
+      microphoneAllowed: json['microphoneAllowed'] as bool? ?? false,
     );
   }
 
@@ -249,7 +263,8 @@ class AudioSyncSettings {
           other.countInSeconds == countInSeconds &&
           other.cueBeeps == cueBeeps &&
           other.streamerEnabled == streamerEnabled &&
-          other.denoiseVoice == denoiseVoice;
+          other.denoiseVoice == denoiseVoice &&
+          other.microphoneAllowed == microphoneAllowed;
 
   @override
   int get hashCode => Object.hash(
@@ -264,6 +279,7 @@ class AudioSyncSettings {
     cueBeeps,
     streamerEnabled,
     denoiseVoice,
+    microphoneAllowed,
   );
 
   @override

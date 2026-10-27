@@ -35,6 +35,8 @@ void main() {
       ),
       log: (_) {},
     ),
+  )..appSettings.setAudioSyncSettings(
+    const AudioSyncSettings(microphoneAllowed: true),
   );
 
   AudioRecording take() {
@@ -143,7 +145,9 @@ void main() {
     }) async {
       final manager = session();
       manager.appSettings.setAudioSyncSettings(
-        AudioSyncSettings(inputChannelMode: mode),
+        manager.appSettings.audioSyncSettings.value.copyWith(
+          inputChannelMode: mode,
+        ),
       );
       manager.selectLayer(manager.activeTrack.seLayers.first.id);
       manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());

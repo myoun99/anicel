@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart' show drawingBlocks;
@@ -43,6 +44,8 @@ void main() {
       ),
       log: (_) {},
     ),
+  )..appSettings.setAudioSyncSettings(
+    const AudioSyncSettings(microphoneAllowed: true),
   );
 
   AudioRecording takeOfSeconds(

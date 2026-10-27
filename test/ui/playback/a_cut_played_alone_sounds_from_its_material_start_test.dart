@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -85,6 +86,9 @@ void main() {
       18: const InstructionEvent(instructionId: 'ol', length: 12),
     });
     s.selectCut(const CutId('b'));
+    s.appSettings.setAudioSyncSettings(
+      const AudioSyncSettings(microphoneAllowed: true),
+    );
     return s;
   }
 

@@ -48,9 +48,8 @@ import '../audio/audio_conform_store.dart';
 /// cueing (AUDIO-PRO R5, REC1-E), the settings input meter and test tone
 /// (REC1-D2), the live take preview (REC1-C), and the take's landing.
 ///
-/// It moved out of [EditorSessionManager] whole, and its public verbs are
-/// still called on the session — every one of them has a one-line delegation
-/// there.
+/// It moved out of [EditorSessionManager] whole; callers say
+/// `session.voiceRecording.x` (the forwarders went in G3, 2026-09-07).
 ///
 /// What it needs from the session it NAMES: the twenty-one members in the
 /// constructor below. That width is the finding, not an accident of the move
@@ -63,11 +62,6 @@ import '../audio/audio_conform_store.dart';
 /// `playback`, `audioConformStore`, `audioDeviceTransport` — are `late final`
 /// on the session, so taking them by value here would force them into
 /// existence at a different moment than the app does today.
-///
-/// The four test hooks below lost their `@visibleForTesting` on the way: the
-/// session forwards them, and that forwarding is production code. The
-/// annotation moved with the member that callers actually see, which is the
-/// one on [EditorSessionManager].
 class EditorVoiceRecording {
   EditorVoiceRecording({
     required CanvasPlaybackController Function() playback,
@@ -133,6 +127,11 @@ class EditorVoiceRecording {
   final ValueNotifier<AudioSyncSettings> Function() _audioSyncSettings;
   ValueNotifier<AudioSyncSettings> get audioSyncSettings =>
       _audioSyncSettings();
+
+  /// The app's consent to the microphone (I-133): read before the OS is
+  /// asked and again before a device opens, so neither happens while it
+  /// is off.
+  bool get microphoneAllowed => audioSyncSettings.value.microphoneAllowed;
 
   final ProjectRepository Function() _repositoryRef;
   ProjectRepository get _repository => _repositoryRef();
@@ -486,20 +485,23 @@ class EditorVoiceRecording {
   /// mounted, detach when it goes. The monitor yields to the recorder
   /// (capture is single-open) and resumes when the take finishes.
   AudioInputMonitor attachInputMeter() {
-    final monitor = _inputMonitor ??= AudioInputMonitor(
-      device: audioDeviceUnlessTesting(),
-    );
+    final monitor = _inputMonitor ??=
+        debugInputMonitorFactory?.call() ??
+        AudioInputMonitor(device: audioDeviceUnlessTesting());
     _resumeInputMeter();
     return monitor;
   }
+
+  /// Test hook: stand in for the meter's microphone.
+  AudioInputMonitor Function()? debugInputMonitorFactory;
 
   void detachInputMeter() {
     _inputMonitor?.dispose();
     _inputMonitor = null;
   }
 
-  /// The input device choice changed while the dialog is open: reopen on
-  /// the new microphone.
+  /// The input device choice or the consent changed while the dialog is
+  /// open: reopen on the new microphone, or stay shut without consent.
   void restartInputMeter() {
     _inputMonitor?.stop();
     _resumeInputMeter();
@@ -507,7 +509,10 @@ class EditorVoiceRecording {
 
   void _resumeInputMeter() {
     final monitor = _inputMonitor;
-    if (monitor == null || monitor.isRunning || isVoiceRecording.value) {
+    if (monitor == null ||
+        monitor.isRunning ||
+        isVoiceRecording.value ||
+        !microphoneAllowed) {
       return;
     }
     final device = audioDeviceUnlessTesting();
@@ -810,6 +815,9 @@ class EditorVoiceRecording {
   VoiceRecordStartResult startVoiceRecording() {
     if (isVoiceRecording.value) {
       return VoiceRecordStartResult.alreadyRecording;
+    }
+    if (!microphoneAllowed) {
+      return VoiceRecordStartResult.notAllowed;
     }
     // The settings meter yields the microphone to the take (REC1-D2).
     _inputMonitor?.stop();

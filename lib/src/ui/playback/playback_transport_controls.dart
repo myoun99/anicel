@@ -27,6 +27,10 @@ Future<void> toggleVoiceRecordingWithFeedback(
   final String? message;
   if (session.voiceRecording.isVoiceRecording.value) {
     message = await session.voiceRecording.stopVoiceRecordingAndPlace();
+  } else if (!session.voiceRecording.microphoneAllowed) {
+    // Without the app's consent the OS is not even asked (I-133) — the
+    // switch in Preferences ▸ Audio is where that happens.
+    message = strings.recordMicNotAllowed;
   } else if (!await AppStorage.ensureMicrophoneAccess()) {
     // The OS grant (Android, iOS, macOS): the Future waits out the system
     // dialog, so a take never rolls before the answer is in (F-178).
@@ -35,6 +39,7 @@ Future<void> toggleVoiceRecordingWithFeedback(
     message = switch (session.voiceRecording.startVoiceRecording()) {
       VoiceRecordStartResult.started ||
       VoiceRecordStartResult.alreadyRecording => null,
+      VoiceRecordStartResult.notAllowed => strings.recordMicNotAllowed,
       VoiceRecordStartResult.deviceFailed => strings.recordMicOpenFailed,
     };
   }
