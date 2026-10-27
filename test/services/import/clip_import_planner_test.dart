@@ -9,7 +9,7 @@ import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/frame.dart' show defaultInbetweenMark;
+import 'package:anicel/src/models/frame.dart' show InbetweenMark;
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -169,7 +169,7 @@ void main() {
     ClipLayer layer,
     List<(int, String)> keys, {
     ClipSpan span = (start: 0, end: 12),
-    List<int> labels = const [],
+    Map<int, InbetweenMark> breakdownMarks = const {},
   }) => MapEntry(
     layer.uuid,
     ClipTrack(
@@ -180,7 +180,7 @@ void main() {
           cels: [for (final (frame, cel) in keys) (frame: frame, cel: cel)],
         ),
       ],
-      labels: labels,
+      breakdownMarks: breakdownMarks,
     ),
   );
 
@@ -193,7 +193,6 @@ void main() {
     ClipTrack(
       kind: 2001,
       pieces: [for (final span in spans) (span: span, cels: const [])],
-      labels: const [],
     ),
   );
 
@@ -819,7 +818,11 @@ void main() {
                   ),
                   (span: (start: 8, end: 20), cels: [(frame: 8, cel: '1')]),
                 ],
-                labels: [3, 4, 9],
+                breakdownMarks: {
+                  3: InbetweenMark.one,
+                  4: InbetweenMark.two,
+                  9: InbetweenMark.two,
+                },
               ),
             ),
             shownOver(above, [(start: 0, end: 10)]),
@@ -845,11 +848,18 @@ void main() {
         reason: 'the label on 「2」\'s head is that key — nothing more',
       );
       expect(
-        base.timeline.values.first.breakdownMarks,
-        {1: defaultInbetweenMark},
+        [
+          for (final exposure in base.timeline.values)
+            exposure.breakdownMarks,
+        ],
+        [
+          {1: InbetweenMark.one},
+          <int, InbetweenMark>{},
+          {1: InbetweenMark.two},
+        ],
         reason:
-            '🗣️I-130-csp-import-Q2 (유저 2026-10-27): a mark whose kind the '
-            'file is not read for wears the default — 「모를 때는 ○마크1」',
+            'each dot wears the mark its label says it is '
+            '(I-130-csp-import-Q1)',
       );
     });
 
@@ -1666,7 +1676,6 @@ void main() {
       ClipTrack(
         kind: 4001,
         pieces: [for (final cue in cues) (span: cue.span, cels: const [])],
-        labels: const [],
         sounds: cues,
       ),
     );
@@ -1888,7 +1897,6 @@ void main() {
     ClipTrack(
       kind: kind,
       pieces: [for (final move in moves) (span: move.span, cels: const [])],
-      labels: const [],
       moves: moves,
     ),
   );
@@ -2238,7 +2246,6 @@ void main() {
                     (span: (start: 0, end: 6), cels: []),
                     (span: (start: 6, end: 12), cels: []),
                   ],
-                  labels: const [],
                   moves: [
                     move((start: 6, end: 12), x: ClipCurve.held(6, 100)),
                   ],
@@ -2484,7 +2491,6 @@ void main() {
                 pieces: const [
                   (span: (start: 0, end: 30), cels: [(frame: 0, cel: '1')]),
                 ],
-                labels: const [],
                 moves: [
                   move(
                     (start: 0, end: 30),

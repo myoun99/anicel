@@ -35,7 +35,8 @@ enum InbetweenMark {
 /// THE DEFAULT MARK — the one worn wherever nothing says which of the two:
 /// an unnamed drawing's head ([unnamedDrawingMark]), the mark-every window
 /// before one is picked, and a dot a file marks without saying which (the
-/// TVPaint and Clip Studio imports).
+/// TVPaint import; the Clip Studio one reads each label's kind since
+/// I-130-csp-import-Q1).
 ///
 /// 🗣️F-469 (유저 2026-10-25): 「이름없는 프레임의 기본마크, 앞으로 마크1 사용.
 /// 지금 마크2인 채운 점 사용되고있음. 다른곳도 같은곳있으면 확인해서 법

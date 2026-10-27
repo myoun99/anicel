@@ -42,7 +42,9 @@ import '../helpers/source_ledger.dart';
 /// 「모를 때는 ○마크1」. F-469 left the answer spelled twice — the unnamed
 /// head and the mark-every window, each its own `InbetweenMark.one` — and the
 /// TVPaint and Clip Studio imports each spelled the ● the one mark had been.
-/// Now `defaultInbetweenMark` in the home is the answer all four read.
+/// Now `defaultInbetweenMark` in the home is the one answer — the Clip
+/// Studio import asks it no more, reading each label's kind off its file
+/// (I-130-csp-import-Q1).
 ///
 /// ⛔SO THIS SCANS SOURCE: copies that agree today all pass a behaviour
 /// test. Either glyph spelled outside the home, a
