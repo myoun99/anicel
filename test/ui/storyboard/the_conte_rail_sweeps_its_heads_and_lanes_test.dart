@@ -765,20 +765,45 @@ void main() {
         findsOneWidget,
         reason: 'the fixture: the row keeps its lanes with no cut stood in',
       );
+      // A key the stroke would cross: a sweep that started anyway, toward
+      // the unkeyed ◆ it began on, would take it away.
+      final standing = session.editingGlobalFrame;
+      session.laneVerbs.toggleLaneKeyAt(
+        const LayerId('t2-s1'),
+        'rotation',
+        standing,
+        frameIsGlobal: true,
+        description: 'a key the stroke crosses',
+      );
+      await tester.pumpAndSettle();
 
       await sweepBetween(
         tester,
         start,
-        diamond(const LayerId('t2-s1'), 'position'),
+        diamond(const LayerId('t2-s1'), 'rotation'),
       );
 
+      final crossed = row(session, 't2-s1').transformTrack;
       expect(
-        [...row(session, 't2-s1').transformTrack.position.keys.keys],
-        isEmpty,
+        {
+          'position': [...crossed.position.keys.keys],
+          'rotation': [...crossed.rotation.keys.keys],
+        },
+        {
+          'position': <int>[],
+          'rotation': [standing],
+        },
         reason:
             'no cut of the row is stood in, so its ◆ has nothing to key — '
             'and a ◆ a tap cannot press starts no sweep',
       );
+      for (final conte in ['a-conte', 'b-conte']) {
+        expect(
+          [...row(session, conte).transformTrack.position.keys.keys],
+          isEmpty,
+          reason: '$conte is not stood in, and keeps no key',
+        );
+      }
     });
   });
 }

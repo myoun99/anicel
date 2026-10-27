@@ -17,6 +17,10 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show flagLaneWord;
+import 'package:anicel/src/ui/timeline/se_name_tag_lane_policy.dart'
+    show seNameTagUnderlineLaneId;
 
 import '../../helpers/named_finders.dart';
 import '../../helpers/storyboard_host.dart';
@@ -448,6 +452,32 @@ void main() {
       Finder ring(String member) => find.byKey(
         ValueKey<String>('storyboard-lane-toggle-$se-name-tag:$member'),
       );
+      // The underline is OFF where the playhead stands and ON a frame on: a
+      // row read at any frame but the one it stands on — the cut's own
+      // frame taken for the track's lands the cut's start further on —
+      // finds it on already and passes it by.
+      expect(
+        session.activeCutGlobalStartFrame,
+        greaterThan(1),
+        reason: 'fixture premise: the wrong frame lies past the ON key',
+      );
+      for (final (frame, on) in [(standing - 1, false), (standing + 1, true)]) {
+        session.laneVerbs.setLaneValueAt(
+          _s1(session).id,
+          seNameTagUnderlineLaneId,
+          frame,
+          flagLaneWord(on),
+          frameIsGlobal: true,
+          description: 'the underline around the playhead',
+          scaleLinked: false,
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(
+        _tagAt(session, standing).style.underline,
+        isFalse,
+        reason: 'fixture premise: off where the playhead stands',
+      );
 
       await _sweep(tester, ring('italic'), ring('strikethrough'));
 
@@ -463,13 +493,13 @@ void main() {
       final keys = _s1(session).seNameTag!.track!;
       expect(
         {
-          'italic': [...keys.italic.keys.keys],
-          'underline': [...keys.underline.keys.keys],
-          'strikethrough': [...keys.strikethrough.keys.keys],
+          'italic': [...keys.italic.keys.keys]..sort(),
+          'underline': [...keys.underline.keys.keys]..sort(),
+          'strikethrough': [...keys.strikethrough.keys.keys]..sort(),
         },
         {
           'italic': [standing],
-          'underline': [standing],
+          'underline': [standing - 1, standing, standing + 1],
           'strikethrough': [standing],
         },
         reason: 'each keyed at the frame the playhead stands on',
