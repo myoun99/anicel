@@ -33,11 +33,17 @@ void main() {
   BitmapSurface emptySurface() =>
       BitmapSurface(canvasSize: canvasSize, tileSize: 8);
 
-  /// One pixel's worth of paint at (2, 2), laid [flow] deep.
+  /// Paint over (2, 2), laid [flow] deep — the pixel well inside the nib.
+  ///
+  /// ↩️A one-pixel nib until its edge stopped piling
+  /// (a-one-pixel-dab-drops-out-by-where-it-lies Q4 a · Q6 b, 2026-10-25): a
+  /// 1px dot lays its area, about half the pixel, however many times it is
+  /// laid over itself — so it never reached opaque, which is this file's
+  /// premise. Inside the nib the dabs still pile to the ceiling.
   BrushDab pixelDab(int sequence, {double flow = 0.5}) => BrushDab(
     center: CanvasPoint(x: 2.5, y: 2.5),
     color: 0xFFFF0000,
-    size: 1,
+    size: 6,
     // The dab's OWN opacity, which after F-12 carries only per-dab
     // variation (the pressure curve, the jitter) and never the setting.
     opacity: 1,

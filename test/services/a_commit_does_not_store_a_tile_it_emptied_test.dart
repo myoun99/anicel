@@ -40,6 +40,25 @@ void main() {
     sequence: 0,
   ).copyWith(erase: erase);
 
+  /// An eraser over the whole of the tile at [origin], every pixel of it
+  /// well inside the nib.
+  ///
+  /// ↩️A one-pixel eraser over the dot until a nib's edge stopped piling
+  /// (a-one-pixel-dab-drops-out-by-where-it-lies Q4 a · Q6 b, 2026-10-25): a
+  /// 1px dot lays its area, about half the pixel, and a 1px eraser takes its
+  /// share of what is there — it no longer erased the last ink.
+  final wipe = BrushDab(
+    center: CanvasPoint(x: 1, y: 1),
+    color: 0xFFFF0000,
+    size: 8,
+    opacity: 1,
+    flow: 1,
+    hardness: 1,
+    tipShape: BrushTipShape.round,
+    pressure: 1,
+    sequence: 0,
+  ).copyWith(erase: true);
+
   BitmapSurface commit(BitmapSurface onto, BrushDab dab) =>
       materializeBrushDabSequenceOnBitmapSurface(
         surface: onto,
@@ -52,7 +71,7 @@ void main() {
     final painted = commit(empty(), dabAt(0, 0));
     expect(painted.tileAt(origin), isNotNull, reason: 'a drawn tile is here');
 
-    final erased = commit(painted, dabAt(0, 0, erase: true));
+    final erased = commit(painted, wipe);
 
     expect(
       erased.tileAt(origin),
@@ -77,7 +96,7 @@ void main() {
 
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: painted,
-      sequence: BrushDabSequence([dabAt(0, 0, erase: true)]),
+      sequence: BrushDabSequence([wipe]),
     );
 
     expect(result.surface.tileAt(origin), isNull);
