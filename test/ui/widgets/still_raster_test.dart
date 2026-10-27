@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -64,20 +63,6 @@ Future<void> _pump(
       width: _width,
       height: _height,
     );
-
-Color _pixelAt(WidgetTester tester, ByteData bytes, Offset logical) {
-  final ratio = tester.view.devicePixelRatio;
-  final width = (parityCaptureWidth * ratio).round();
-  final i =
-      ((logical.dy * ratio).floor() * width + (logical.dx * ratio).floor()) *
-      4;
-  return Color.fromARGB(
-    bytes.getUint8(i + 3),
-    bytes.getUint8(i),
-    bytes.getUint8(i + 1),
-    bytes.getUint8(i + 2),
-  );
-}
 
 const _red = Color(0xFFE53935);
 const _blue = Color(0xFF1E88E5);
@@ -434,7 +419,7 @@ void main() {
     expect(_region(tester).debugDrawnFromImage, isFalse);
     final bytes = await captureBytes(tester);
     expect(
-      _pixelAt(tester, bytes, const Offset(_left + 100, _top + 100)),
+      capturePixelAt(tester, bytes, const Offset(_left + 100, _top + 100)),
       _blue,
       reason: 'the region kept showing its old image',
     );
@@ -568,8 +553,8 @@ void main() {
     final tinted = await captureBytes(tester);
     const probe = Offset(_left + 100, _top + 100);
     expect(
-      _pixelAt(tester, tinted, probe),
-      isNot(_pixelAt(tester, untinted, probe)),
+      capturePixelAt(tester, tinted, probe),
+      isNot(capturePixelAt(tester, untinted, probe)),
     );
   });
 

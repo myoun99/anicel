@@ -517,9 +517,9 @@ void main() {
     // cut-end line is drawn — the two mark the same instant, so they answer
     // from the same number or the picture disagrees with itself.
     final washes = tester
-        .widgetList<CustomPaint>(find.byType(CustomPaint))
-        .map((paint) => paint.painter)
-        .whereType<TimelineOutsideCutWashPainter>()
+        .widgetList<TimelineOutsideCutWash>(
+          find.byType(TimelineOutsideCutWash),
+        )
         .toList();
     expect(washes, isNotEmpty);
     expect(washes.first.axis, Axis.vertical);

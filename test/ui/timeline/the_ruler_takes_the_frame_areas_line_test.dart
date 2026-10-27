@@ -15,6 +15,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 
+import '../../helpers/raster_parity.dart';
+
 /// 🚨D8-2 (유저 2026-08-22) — **A STANDING LAW, NOT ONE INSTRUCTION.**
 ///
 /// > 「프레임영역 왼쪽 선 좋은데 **룰러도 통일.** 프레임영역은 **기본 뭔가
@@ -95,27 +97,36 @@ void main() {
     );
   });
 
-  testWidgets('and it is drawn in the foreground, taking no layout room', (
+  testWidgets('and it is drawn OVER the area, taking no layout room', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: project())),
+    const ground = Color(0xFFE53935);
+    await pumpSurface(
+      tester,
+      const TimelineFrameAreaEdge(child: ColoredBox(color: ground)),
+      left: 20,
+      width: 100,
+      height: 50,
     );
-    await tester.pumpAndSettle();
+    final edge = find.byType(TimelineFrameAreaEdge);
+    expect(
+      tester.getRect(find.byType(ColoredBox)),
+      tester.getRect(edge),
+      reason: 'a line over the area cannot shift the LayoutBuilder underneath '
+          'it — this is the half that keeps the viewport width honest',
+    );
 
-    final edge = find.byType(TimelineFrameAreaEdge).first;
-    final box = tester.widget<DecoratedBox>(
-      find.descendant(of: edge, matching: find.byType(DecoratedBox)).first,
+    final bytes = await captureBytes(tester);
+    expect(
+      capturePixelAt(tester, bytes, const Offset(20.5, 45)),
+      Theme.of(tester.element(edge)).colorScheme.outlineVariant,
+      reason: 'the area\'s first column is the line, over what the area '
+          'draws there',
     );
     expect(
-      box.position,
-      DecorationPosition.foreground,
-      reason: 'a background border would inset nothing but a foreground one '
-          'cannot shift the LayoutBuilder underneath it either — this is the '
-          'half that keeps the viewport width honest',
+      capturePixelAt(tester, bytes, const Offset(25, 45)),
+      ground,
+      reason: '⛔premise: the area is drawn',
     );
-    expect(tester.getRect(edge).width, greaterThan(0));
   });
 }

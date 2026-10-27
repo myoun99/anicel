@@ -457,9 +457,8 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     final height = DeviceGrid.of(context).position(EditorPanelTabs.stripHeight);
     return widget.chromeless
         ? null
-        : Container(
+        : SizedBox(
             height: height,
-            color: colorScheme.surfaceContainerLow,
             // 🚨The strip is a TICK LAYER. ↩️(I-22 ③) The sill carried the
             // transport, whose readouts move on a tick — the level meter on
             // every frame played, the drop count on every frame missed —
@@ -473,6 +472,15 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
             child: TickLayer(
               child: Stack(
                 children: [
+                  // 🚨The strip's ground is painted INSIDE the layer (10-27,
+                  // F-244-drag-start ③). Painted around it, it went into the
+                  // region's own picture after the panel above — a picture
+                  // whose bounds are the whole region — and held the part of
+                  // the region's image above the timeline's moving cursor at
+                  // the region's full height.
+                  Positioned.fill(
+                    child: ColoredBox(color: colorScheme.surfaceContainerLow),
+                  ),
                   // The append drop target carpets the whole strip BEHIND the
                   // tabs: drops on empty strip space append, drops on a tab
                   // hit its own insertion targets above.

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../../models/app_frame_grid_settings.dart';
 import '../theme/app_theme.dart';
@@ -92,22 +93,86 @@ import '../repaint_props.dart';
 /// ⚠️The border is drawn in the FOREGROUND and takes no layout room, so
 /// wrapping a `LayoutBuilder` in it does not change the constraints that
 /// builder reads.
-class TimelineFrameAreaEdge extends StatelessWidget {
-  const TimelineFrameAreaEdge({super.key, required this.child});
-
-  final Widget child;
+///
+/// 🚨In a layer of the LINE's size (10-27, F-244-drag-start ③): drawn over
+/// the area, the line is painted after every tick inside it, and painted
+/// as a `DecoratedBox` it went into a picture whose bounds were the whole
+/// boundary it was painted in — the ruler's was the whole timeline panel.
+/// A still dock region keeps what is painted after a moving tick in a part
+/// of its image as large as those bounds (`StillRaster`), so the line held
+/// one the size of the panel over the ruler's ticks, and one the size of
+/// the rows over the moving cursor. Its own layer makes the part a column
+/// a pixel wide. A press, the layout and the pixels are the box's as they
+/// were.
+class TimelineFrameAreaEdge extends SingleChildRenderObjectWidget {
+  const TimelineFrameAreaEdge({super.key, required Widget super.child});
 
   @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      position: DecorationPosition.foreground,
-      decoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-      ),
-      child: child,
+  RenderTimelineFrameAreaEdge createRenderObject(BuildContext context) =>
+      RenderTimelineFrameAreaEdge(_sideOf(context));
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    RenderTimelineFrameAreaEdge renderObject,
+  ) {
+    renderObject.side = _sideOf(context);
+  }
+
+  static BorderSide _sideOf(BuildContext context) =>
+      BorderSide(color: Theme.of(context).colorScheme.outlineVariant);
+}
+
+/// [TimelineFrameAreaEdge]'s box: its child, and over it the line, painted
+/// as the `DecoratedBox` it was in a layer of the line's own bounds.
+class RenderTimelineFrameAreaEdge extends RenderProxyBox {
+  RenderTimelineFrameAreaEdge(this._side);
+
+  BorderSide get side => _side;
+  BorderSide _side;
+  set side(BorderSide value) {
+    if (value == _side) {
+      return;
+    }
+    _side = value;
+    _painter?.dispose();
+    _painter = null;
+    markNeedsPaint();
+  }
+
+  BoxPainter? _painter;
+  final _line = LayerHandle<OffsetLayer>();
+
+  @override
+  bool get alwaysNeedsCompositing => true;
+
+  /// The whole box takes a press, as the `DecoratedBox` did.
+  @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    super.paint(context, offset);
+    context.pushLayer(
+      _line.layer ??= OffsetLayer(),
+      _paintLine,
+      offset,
+      childPaintBounds: offset & Size(_side.width, size.height),
     );
+  }
+
+  void _paintLine(PaintingContext context, Offset offset) {
+    _painter ??= BoxDecoration(
+      border: Border(left: _side),
+    ).createBoxPainter(markNeedsPaint);
+    _painter!.paint(context.canvas, offset, ImageConfiguration(size: size));
+  }
+
+  @override
+  void dispose() {
+    _line.layer = null;
+    _painter?.dispose();
+    super.dispose();
   }
 }
 
@@ -571,36 +636,34 @@ Color timelineStandingGround(Color resting, ColorScheme colorScheme) =>
 /// BORDERS differ slightly: they had their own dim ink, and one rect cannot
 /// tell a border from its cell — accepted by the user, and the wash reads
 /// as one region rather than as a run of separately shaded cells.
-class TimelineOutsideCutWashPainter extends CustomPainter with RepaintOnProps {
-  const TimelineOutsideCutWashPainter({
+///
+/// 🚨The wash's own layer is the size of the WASH (10-27, F-244-drag-start
+/// ③). It filled the grid and painted from [outsideStart] on, so its
+/// picture's bounds were the whole grid's: over the moving cursor of a
+/// drag, a still dock region kept a part of its image the size of the rows
+/// for it (`StillRaster`) — though the wash was past the cut's end and off
+/// the screen.
+class TimelineOutsideCutWash extends StatelessWidget {
+  const TimelineOutsideCutWash({
+    super.key,
     required this.outsideStart,
-    required this.colorScheme,
     this.axis = Axis.horizontal,
   });
 
   /// Where the cut ends, in content pixels along the frame axis.
   final double outsideStart;
-  final ColorScheme colorScheme;
   final Axis axis;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final mainExtent = extentAlong(axis, size);
-    if (outsideStart >= mainExtent) {
-      return;
-    }
-    final start = outsideStart < 0 ? 0.0 : outsideStart;
-    canvas.drawRect(
-      Rect.fromPoints(
-        offsetAlong(axis, along: start, across: 0),
-        offsetAlong(axis, along: mainExtent, across: extentAcross(axis, size)),
+  Widget build(BuildContext context) => pastAlong(
+    axis,
+    along: outsideStart < 0 ? 0 : outsideStart,
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: ColoredBox(color: AppColors.washUp.withValues(alpha: 0.54)),
       ),
-      Paint()..color = AppColors.washUp.withValues(alpha: 0.54),
-    );
-  }
-
-  @override
-  Object get props => (outsideStart, colorScheme, axis);
+    ),
+  );
 }
 
 

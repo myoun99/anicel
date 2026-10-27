@@ -470,10 +470,7 @@ void main() {
       await tester.pumpAndSettle();
 
       double washStart() => tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((paint) => paint.painter)
-          .whereType<TimelineOutsideCutWashPainter>()
-          .single
+          .widget<TimelineOutsideCutWash>(find.byType(TimelineOutsideCutWash))
           .outsideStart;
 
       final session = tester

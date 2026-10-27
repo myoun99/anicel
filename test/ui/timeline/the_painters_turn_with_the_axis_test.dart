@@ -152,30 +152,55 @@ void main() {
     });
   });
 
-  group('TimelineOutsideCutWashPainter', () {
-    _CanvasSpy paint(Axis axis, Size size, double outsideStart) {
-      final spy = _CanvasSpy();
-      TimelineOutsideCutWashPainter(
-        outsideStart: outsideStart,
-        colorScheme: scheme,
-        axis: axis,
-      ).paint(spy, size);
-      return spy;
+  // The wash is a box of its own size now (F-244-drag-start ③), not a
+  // painter over the whole grid — its turn is read off where the box lands.
+  group('TimelineOutsideCutWash', () {
+    Future<Rect> washed(
+      WidgetTester tester,
+      Axis axis,
+      Size size,
+      double outsideStart,
+    ) async {
+      await tester.pumpWidget(
+        Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox.fromSize(
+            size: size,
+            child: Stack(
+              textDirection: TextDirection.ltr,
+              children: [
+                TimelineOutsideCutWash(outsideStart: outsideStart, axis: axis),
+              ],
+            ),
+          ),
+        ),
+      );
+      return tester.getRect(find.byType(ColoredBox));
     }
 
-    test('horizontal: the wash covers from the cut end to the right edge', () {
-      expect(paint(Axis.horizontal, const Size(40, 24), 20).rects, [
+    testWidgets('horizontal: the wash covers from the cut end to the right '
+        'edge', (tester) async {
+      expect(
+        await washed(tester, Axis.horizontal, const Size(40, 24), 20),
         const Rect.fromLTWH(20, 0, 20, 24),
-      ]);
+      );
     });
 
-    test('vertical: the wash covers from the cut end to the bottom edge, '
-        'and a cut end past the HEIGHT (not the width) paints nothing', () {
-      expect(paint(Axis.vertical, const Size(24, 40), 20).rects, [
+    testWidgets('vertical: the wash covers from the cut end to the bottom '
+        'edge, and a cut end past the HEIGHT (not the width) covers '
+        'nothing', (tester) async {
+      expect(
+        await washed(tester, Axis.vertical, const Size(24, 40), 20),
         const Rect.fromLTWH(0, 20, 24, 20),
-      ]);
-      expect(paint(Axis.vertical, const Size(24, 40), 30).rects, hasLength(1));
-      expect(paint(Axis.vertical, const Size(24, 40), 40).rects, isEmpty);
+      );
+      expect(
+        (await washed(tester, Axis.vertical, const Size(24, 40), 30)).height,
+        10,
+      );
+      expect(
+        (await washed(tester, Axis.vertical, const Size(24, 40), 40)).isEmpty,
+        isTrue,
+      );
     });
   });
 

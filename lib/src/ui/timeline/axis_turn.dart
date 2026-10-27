@@ -107,6 +107,17 @@ Positioned stripAlong(
   );
 }
 
+/// A stack child from [along] to the far end of the main axis, across the
+/// whole cross axis — what lies past a frame (the out-of-cut wash). Past
+/// the stack's end it is empty.
+Positioned pastAlong(
+  Axis axis, {
+  required double along,
+  required Widget child,
+}) => axis == Axis.horizontal
+    ? Positioned(left: along, top: 0, right: 0, bottom: 0, child: child)
+    : Positioned(top: along, left: 0, right: 0, bottom: 0, child: child);
+
 /// Text a person READS, turned by the axis: across the strip it is one line
 /// that ellipsises; down a column it STANDS UP — upright letters, the column
 /// beginning at its top (user, 2026-08-08: the rail's left-aligned name,

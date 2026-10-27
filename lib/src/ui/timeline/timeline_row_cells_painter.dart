@@ -568,7 +568,7 @@ class TimelineRowCellsPainter extends CustomPainter
     // now (「블록에 존재하는 그리드선만 싹 삭제」); the grid sheet under the
     // row is the only thing that draws one.
     // Nothing here asks where the cut ends any more: the out-of-cut wash is
-    // one rect in its own overlay ([TimelineOutsideCutWashPainter]), which
+    // one rect in its own overlay ([TimelineOutsideCutWash]), which
     // is what lets it follow a live drag while these tiles stay baked.
     return (
       background: baseBackground,

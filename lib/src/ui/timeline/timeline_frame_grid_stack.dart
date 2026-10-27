@@ -140,7 +140,7 @@ class TimelineFrameGridStack extends StatelessWidget {
             // over everything, cursor and selection included. The wash being
             // its own layer at all is what lets a cut-length drag repaint one
             // rect instead of re-baking every row's tiles.
-            _wash(context),
+            _wash(),
             // Over the wash, under nothing: one continuous mark with the
             // ruler's.
             _noriShiro(),
@@ -169,31 +169,19 @@ class TimelineFrameGridStack extends StatelessWidget {
   /// のりしろ frames are drawn material, so shading them as "outside the
   /// cut" was the wash claiming territory it does not own. Without a handle
   /// the two are the same number and nothing changes.
-  Widget _wash(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+  Widget _wash() {
     final live = _liveTrim;
-    return Positioned.fill(
-      child: IgnorePointer(
-        child: RepaintBoundary(
-          child: live == null
-              ? CustomPaint(
-                  painter: TimelineOutsideCutWashPainter(
-                    axis: axis,
-                    outsideStart: _drawnEndOffset(null),
-                    colorScheme: colorScheme,
-                  ),
-                )
-              : ValueListenableBuilder<TimelineDragPreview?>(
-                  valueListenable: live.preview,
-                  builder: (context, preview, _) => CustomPaint(
-                    painter: TimelineOutsideCutWashPainter(
-                      axis: axis,
-                      outsideStart: _drawnEndOffset(preview),
-                      colorScheme: colorScheme,
-                    ),
-                  ),
-                ),
-        ),
+    if (live == null) {
+      return TimelineOutsideCutWash(
+        axis: axis,
+        outsideStart: _drawnEndOffset(null),
+      );
+    }
+    return ValueListenableBuilder<TimelineDragPreview?>(
+      valueListenable: live.preview,
+      builder: (context, preview, _) => TimelineOutsideCutWash(
+        axis: axis,
+        outsideStart: _drawnEndOffset(preview),
       ),
     );
   }

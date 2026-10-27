@@ -10,7 +10,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/comma_button.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
-    show TimelineGridLaw, TimelineOutsideCutWashPainter;
+    show TimelineGridLaw, TimelineOutsideCutWash;
 import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
@@ -459,18 +459,11 @@ void main() {
   });
 }
 
-/// The out-of-cut wash the [stack] paints — its own painter, found by type.
-TimelineOutsideCutWashPainter washOf(WidgetTester tester, Finder stack) =>
-    tester
-            .widget<CustomPaint>(
-              find.descendant(
-                of: stack,
-                matching: find.byWidgetPredicate(
-                  (widget) =>
-                      widget is CustomPaint &&
-                      widget.painter is TimelineOutsideCutWashPainter,
-                ),
-              ),
-            )
-            .painter!
-        as TimelineOutsideCutWashPainter;
+/// The out-of-cut wash the [stack] shows — its own widget, found by type.
+TimelineOutsideCutWash washOf(WidgetTester tester, Finder stack) =>
+    tester.widget<TimelineOutsideCutWash>(
+      find.descendant(
+        of: stack,
+        matching: find.byType(TimelineOutsideCutWash),
+      ),
+    );

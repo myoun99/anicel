@@ -66,17 +66,9 @@ void main() {
     testWidgets('every overlay is turned with the stack', (tester) async {
       await _pumpFrameGridStack(tester, axis: Axis.vertical);
 
-      final wash =
-          tester
-                  .widget<CustomPaint>(
-                    find.byWidgetPredicate(
-                      (w) =>
-                          w is CustomPaint &&
-                          w.painter is TimelineOutsideCutWashPainter,
-                    ),
-                  )
-                  .painter!
-              as TimelineOutsideCutWashPainter;
+      final wash = tester.widget<TimelineOutsideCutWash>(
+        find.byType(TimelineOutsideCutWash),
+      );
       expect(wash.axis, Axis.vertical);
       expect(
         tester
