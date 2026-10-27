@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -103,6 +104,27 @@ void main() {
               '${given.toStringAsFixed(1)} of ${whole.toStringAsFixed(1)}',
   ];
 
+  /// Opens every accordion the tab shows folded, until none is: a button
+  /// a folded one holds is a button of the window too. ↩️Only the open
+  /// ones were read, and the naming's pills gave their words up unseen
+  /// once the row names grew (F-486-Q1).
+  Future<void> unfoldAll(WidgetTester tester) async {
+    for (var round = 0; round < 20; round += 1) {
+      final folded = [
+        for (final element in find.byType(ExportAccordion).evaluate())
+          if (element.widget case final ExportAccordion accordion
+              when !accordion.expanded)
+            accordion,
+      ];
+      if (folded.isEmpty) {
+        return;
+      }
+      folded.first.onToggle();
+      await tester.pump();
+    }
+    fail('an accordion would not stay open');
+  }
+
   for (final language in [
     for (final language in AppLanguage.values)
       if (AppTypography.familyFor(language) != null) language,
@@ -136,6 +158,7 @@ void main() {
           find.byKey(ValueKey<String>('export-tab-${tab.jsonValue}')),
         );
         await tester.pump();
+        await unfoldAll(tester);
         for (final type in [Pill, PanelFlyoutChip, AppIconButton]) {
           expect(
             cutWords(tester, type),

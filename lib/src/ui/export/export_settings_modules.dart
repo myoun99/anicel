@@ -1297,43 +1297,37 @@ class ExportCelNamingModule extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        ExportModuleRow(
+        ExportModuleRow.strip(
           caption: ExportCaption.folders,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: _names(
-              keyPrefix: 'export-cel-folder',
-              project: naming.projectFolder,
-              cut: naming.cutFolder,
-              layer: naming.layerFolder,
-              toggled: (which) => switch (which) {
-                'project' =>
-                  naming.copyWith(projectFolder: !naming.projectFolder),
-                'cut' => naming.copyWith(cutFolder: !naming.cutFolder),
-                _ => naming.copyWith(layerFolder: !naming.layerFolder),
-              },
-            ),
+          strip: _names(
+            keyPrefix: 'export-cel-folder',
+            project: naming.projectFolder,
+            cut: naming.cutFolder,
+            layer: naming.layerFolder,
+            toggled: (which) => switch (which) {
+              'project' =>
+                naming.copyWith(projectFolder: !naming.projectFolder),
+              'cut' => naming.copyWith(cutFolder: !naming.cutFolder),
+              _ => naming.copyWith(layerFolder: !naming.layerFolder),
+            },
           ),
         ),
-        ExportModuleRow(
+        ExportModuleRow.strip(
           caption: ExportCaption.nameParts,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: _names(
-              keyPrefix: 'export-cel-include',
-              project: naming.includeProjectName,
-              cut: naming.includeCutName,
-              layer: naming.includeLayerName,
-              toggled: (which) => switch (which) {
-                'project' => naming.copyWith(
-                  includeProjectName: !naming.includeProjectName,
-                ),
-                'cut' => naming.copyWith(includeCutName: !naming.includeCutName),
-                _ => naming.copyWith(
-                  includeLayerName: !naming.includeLayerName,
-                ),
-              },
-            ),
+          strip: _names(
+            keyPrefix: 'export-cel-include',
+            project: naming.includeProjectName,
+            cut: naming.includeCutName,
+            layer: naming.includeLayerName,
+            toggled: (which) => switch (which) {
+              'project' => naming.copyWith(
+                includeProjectName: !naming.includeProjectName,
+              ),
+              'cut' => naming.copyWith(includeCutName: !naming.includeCutName),
+              _ => naming.copyWith(
+                includeLayerName: !naming.includeLayerName,
+              ),
+            },
           ),
         ),
         ExportModuleRow(
