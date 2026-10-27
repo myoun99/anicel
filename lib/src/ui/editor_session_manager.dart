@@ -2449,8 +2449,6 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     timeline: this,
     layerIds: layerIds,
-    layerIndexAboveActive: () =>
-        activeCutControllers.layerController.insertionIndexAboveActiveLayer(),
     acceptsPlacedFrames: acceptsPlacedFrames,
   );
 

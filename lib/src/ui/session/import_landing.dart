@@ -132,14 +132,12 @@ class ImportLanding {
     required FrameIds frameIds,
     required TimelineAccess timeline,
     required LayerIdMint layerIds,
-    required int Function() layerIndexAboveActive,
     required bool Function(LayerId layerId) acceptsPlacedFrames,
   }) : _project = project,
        _selection = selection,
        _frameIds = frameIds,
        _timeline = timeline,
        _layerIds = layerIds,
-       _layerIndexAboveActive = layerIndexAboveActive,
        _acceptsPlacedFrames = acceptsPlacedFrames;
 
   final ProjectAccess _project;
@@ -147,9 +145,6 @@ class ImportLanding {
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
   final LayerIdMint _layerIds;
-
-  /// Add Layer's own slot above the active row — asked, not re-derived.
-  final int Function() _layerIndexAboveActive;
 
   /// Which rows take dropped frames — the session's one answer.
   final bool Function(LayerId layerId) _acceptsPlacedFrames;
@@ -268,6 +263,16 @@ class ImportLanding {
     );
   }
 
+  /// The row to stand on once an import made [made] in [cutId]: it — or,
+  /// where it went inside the folder you stand on, that folder still, as
+  /// Add Layer leaves you ([rowStoodOnAfterMaking], F-492).
+  LayerId rowStoodOnAfterLanding(CutId cutId, LayerId made) =>
+      rowStoodOnAfterMaking(
+        _project.cutById(cutId)?.layers ?? const [],
+        made: made,
+        standing: _selection.activeLayerId,
+      );
+
   /// Lands imported [layers] where [arrival] says: as rows in the cut
   /// that is already there, or as a NEW cut built from the default — and,
   /// when a drop chose the spot ([ImportArrival.spot]), directly above the
@@ -297,16 +302,17 @@ class ImportLanding {
       );
     }
     if (arrival.targetCut != null) {
-      // A drop's spot aims the new rows — above the active row, or at the
-      // gap the rail's caret showed — and they join the stack the way every
-      // new row does ([newRowPlacement]): the folder of the row below,
-      // never inside an attach group. No spot is the import menu's answer,
-      // the top of the stack.
+      // A drop's spot aims the new rows — above the active row (inside it,
+      // where it is a folder: [newRowPlacementOn]), or at the gap the
+      // rail's caret showed — and they join the stack the way every new
+      // row does ([newRowPlacement]): the folder of the row below, never
+      // inside an attach group. No spot is the import menu's answer, the
+      // top of the stack.
       final stack = _project.requireActiveCut.layers;
       final placement = switch (arrival.spot) {
-        AboveActiveLayerSpot() => newRowPlacement(
+        AboveActiveLayerSpot() => newRowPlacementOn(
           stack,
-          _layerIndexAboveActive(),
+          _selection.activeLayerId,
         ),
         LayerSlotSpot(:final insertionIndex) => newRowPlacement(
           stack,

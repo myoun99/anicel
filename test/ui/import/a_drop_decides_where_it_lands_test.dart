@@ -625,6 +625,26 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('the canvas drop standing on the FOLDER lands inside it, at '
+        'the top of what it holds — as Add Layer does (F-492)', (
+      tester,
+    ) async {
+      final s = session();
+      foldAround(s);
+      s.selectLayer(folderId);
+      expect(s.activeLayerId, folderId, reason: 'the premise: on it');
+
+      final added = (await land(tester, s, const AboveActiveLayerSpot()))
+          .single;
+
+      final layers = s.requireActiveCut.layers;
+      expect(added.folderId, folderId);
+      expect(layers[layers.indexOf(added) + 1].id, folderId);
+      expect(folderStructureProblem(layers), isNull);
+      expect(s.activeLayerId, folderId, reason: 'you still stand there');
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('🚨the canvas drop on an attach base lands past its rider — '
         'the group is indivisible, as Add Layer keeps it', (tester) async {
       final s = session();

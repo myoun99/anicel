@@ -1,6 +1,7 @@
 import 'attached_layer_resolve.dart' show attachedGroupEndIndex;
 import 'layer.dart';
-import 'layer_folder.dart' show attachOrganizerBaseOf;
+import 'layer_folder.dart'
+    show LayerFolderQueries, attachOrganizerBaseOf, folderChainAbove;
 import 'layer_id.dart';
 
 /// Where a NEW row joins [stack] when it is aimed at [insertAt]: the model
@@ -20,7 +21,8 @@ import 'layer_id.dart';
 ///   attaches. BOTH sides count: a below-only group used to slip through an
 ///   above-only check.
 /// - the row joins the folder of the row BELOW it — for Add Layer, the
-///   active row's own folder. A member names its own folder, a folder row
+///   active row's own folder, or the folder stood on ([newRowPlacementOn],
+///   which aims inside it). A member names its own folder, a folder row
 ///   names its parent, nothing below is top level: the membership a moved
 ///   row takes (`resolveLayerDrop`). A row inserted into a folder's
 ///   contiguous member run without belonging to it breaks the folder
@@ -41,6 +43,58 @@ import 'layer_id.dart';
     index: index,
     folderId: index > 0 ? stack[index - 1].folderId : null,
   );
+}
+
+/// Where a row made while standing on [standing] joins [stack]: above it,
+/// as [newRowPlacement] places a row aimed there — or, standing on a
+/// FOLDER, inside it, at the top of what it holds. Nothing stood on in the
+/// stack (no row, or a track's SE row) is the top of the stack.
+///
+/// 🗣️F-492 (유저 2026-10-27): 「폴더위에 서서 레이어만들때 폴더 안에서
+/// 만들도록 서있는상태는 유지」. ↩️A folder stood on was a row like any
+/// other, and the new row went above it — out of it, into its parent.
+///
+/// ⛔Not an attach ORGANIZER: everything inside one rides its base (유저
+/// 2026-08-29: 「a레이어 어태치 안에 있는 모든거는 a에 대한 어태치여야해」),
+/// and a new row rides nothing — it goes above the organizer, as above any
+/// row.
+({int index, LayerId? folderId}) newRowPlacementOn(
+  List<Layer> stack,
+  LayerId? standing,
+) {
+  final index = stack.indexWhere((layer) => layer.id == standing);
+  if (index == -1) {
+    return newRowPlacement(stack, stack.length);
+  }
+  final row = stack[index];
+  if (row.kind.groupsLayers && attachOrganizerBaseOf(row, stack) == null) {
+    // The folder row sits right above its members: its own seat is the
+    // top of their run, and the folder steps up over the new row.
+    return (index: index, folderId: row.id);
+  }
+  return newRowPlacement(stack, index + 1);
+}
+
+/// The row you stand on once [made] joined [stack] while you stood on
+/// [standing]: the row you made — or, where it went inside the folder you
+/// stood on, that folder still (「서있는상태는 유지」, F-492 above).
+///
+/// ONE answer for every door that makes a row and stands on it — Add Layer,
+/// and a file let go on the canvas or between two rail rows.
+LayerId rowStoodOnAfterMaking(
+  List<Layer> stack, {
+  required LayerId made,
+  required LayerId? standing,
+}) {
+  final index = stack.indexWhere((layer) => layer.id == made);
+  if (standing == null || index == -1) {
+    return made;
+  }
+  final inside = folderChainAbove(
+    stack[index].folderId,
+    stack.folderById,
+  ).any((folder) => folder.id == standing);
+  return inside ? standing : made;
 }
 
 /// Where a cut's CONTE row is born in [stack]: at the bottom of ACTION —
