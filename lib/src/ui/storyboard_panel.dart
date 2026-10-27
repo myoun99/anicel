@@ -4782,11 +4782,12 @@ class _StoryboardLaneStripRow extends StatelessWidget {
 
 /// The name of a track's V row — its label, the chip it shows picked up
 /// (I-39), the sheet's group — by its place among the tracks: the first is
-/// Video, and a film has one track (전제 8); one past it is numbered.
-/// 🗣️F-322 (유저 2026-10-09): 「V행 이제 이름 V1행이아니라 Video나 Cut으로
-/// 하고싶음. Video로하자」. ↩️It was V1, V2, ….
+/// Cut, and a film has one track (전제 8); one past it is numbered.
+/// 🗣️F-491 (유저 2026-10-27): 「콘티패널의 비디오행, 이름 Cut으로 변경」.
+/// ↩️Video from F-322 (유저 2026-10-09: 「V행 이제 이름 V1행이아니라
+/// Video나 Cut으로 하고싶음. Video로하자」), and V1, V2, … before that.
 String storyboardVideoRowName(int index) =>
-    index == 0 ? 'Video' : 'Video ${index + 1}';
+    index == 0 ? 'Cut' : 'Cut ${index + 1}';
 
 /// Rail rows share the timeline label rail's row language — bordered
 /// surface rows, a kind icon leading the name — so the storyboard's left

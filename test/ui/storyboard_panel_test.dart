@@ -200,12 +200,12 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-track-label-track-a')),
       findsOneWidget,
     );
-    expect(find.text('Video'), findsOneWidget);
+    expect(find.text('Cut'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('storyboard-track-label-track-b')),
       findsOneWidget,
     );
-    expect(find.text('Video 2'), findsOneWidget);
+    expect(find.text('Cut 2'), findsOneWidget);
 
     final block = requireCutBlock(tester, 'cut-a');
     expect(block.title, 'Cut A');

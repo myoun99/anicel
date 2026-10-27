@@ -142,7 +142,7 @@ void main() {
 
     final lines = await _linesOfACarry(
       tester,
-      'Video 2',
+      'Cut 2',
       // A group's pitch is the group: past the last one takes a group's
       // travel more.
       _stops(t.top - 8, u.bottom + u.height),
