@@ -728,7 +728,15 @@ void main() {
   /// ⛔Not bundled to fit: the name and the mark meet only in the head's
   /// one case ([drawingHeadOf]), and a value of the two would be built for
   /// every cell first.
-  const wideSignatures = 427;
+  ///
+  /// ⚠️427 → 428 on 2026-10-28 under the same ceiling (F-489-Q1 — 유저
+  /// 2026-10-27 「둘 다 따라간다」): `planTvpImport` (five) takes the mark a
+  /// TVPaint dot wears, as its door heard the pick — the planner is pure
+  /// and reads no setting. 🔬`clean_code_diff` against the lane's base
+  /// (`7111911e6`) named that one added and nothing gone. ⛔Not bundled to
+  /// fit: the clip, the file key, the mint and the mark are each the
+  /// door's own, at the one call.
+  const wideSignatures = 428;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

@@ -3,6 +3,7 @@ import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/tvp_import_model.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
@@ -100,6 +101,7 @@ void main() {
         parsed: parsed,
         resolveFile: (relative) => relative,
         mint: mint(),
+        unnamedMark: defaultUnnamedDrawingMark,
       );
 
   group('cels and names', () {
@@ -298,6 +300,7 @@ void main() {
         ),
         resolveFile: (relative) => relative,
         mint: mint(),
+        unnamedMark: defaultUnnamedDrawingMark,
       ).cut.camera;
     }
 

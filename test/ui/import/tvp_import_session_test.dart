@@ -2,7 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/services/diagnostics/memory_black_box.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart'
@@ -44,11 +46,13 @@ void main() {
   setUp(() => temp = Directory.systemTemp.createTempSync('tvpp-session'));
   tearDown(() => deleteTempQuietly(temp));
 
-  String writeTvpp() {
+  String writeTvpp({
+    List<(int layer, int frame, int color)> imageMarks = const [],
+  }) {
     final b = TvppBuilder();
     b.projectProperties(cameraWidth: 960, cameraHeight: 540);
     b.clipProperties('番号');
-    b.clipHeader(width: 64, height: 48);
+    b.clipHeader(width: 64, height: 48, imageMarks: imageMarks);
     b.layerHead('카메라레이어', headerChunk: 'LRCA');
     b.layerExt(const {});
     // TEN drawings back to back — the mint loop the wall clock could
@@ -323,6 +327,37 @@ void main() {
       isNotEmpty,
       reason: 'and the door says the sound file is not where it points',
     );
+  });
+
+  test('a TVPaint dot wears the mark Preferences ▸ Display picks for an '
+      'unnamed drawing, whichever it is', () async {
+    // 🗣️F-489-Q1 (유저 2026-10-27) 「둘 다 따라간다」: the file says a dot's
+    // colour, never which mark it is. The planner is handed the mark, so
+    // this is where the DOOR is seen reading the pick — a door that hands
+    // the setting's first value instead passes the default's half alone.
+    addTearDown(
+      () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
+    );
+    for (final pick in InbetweenMark.values) {
+      AppFrameGridSettings.settings.value = AppFrameGridSettings(
+        unnamedMark: pick,
+      );
+      // Layer 2 is TAP (the camera is 0): its one drawing held ten frames,
+      // the dot at the fourth.
+      final opened = await openedTvpp(
+        writeTvpp(imageMarks: const [(2, 3, 1)]),
+      );
+      expect(opened, isNotNull, reason: 'the file parses');
+      addTearDown(opened!.session.dispose);
+      final tap = opened.session.repository
+          .requireProject()
+          .tracks
+          .expand((track) => track.cuts)
+          .single
+          .layers
+          .singleWhere((layer) => layer.name == 'TAP');
+      expect(tap.timeline[0]!.breakdownMarks, {3: pick});
+    }
   });
 
 

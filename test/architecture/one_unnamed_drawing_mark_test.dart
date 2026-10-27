@@ -42,7 +42,7 @@ import '../helpers/source_ledger.dart';
 /// 「모를 때는 ○마크1」. F-469 left the answer spelled twice — the unnamed
 /// head and the mark-every window, each its own `InbetweenMark.one` — and the
 /// TVPaint and Clip Studio imports each spelled the ● the one mark had been.
-/// Now `defaultInbetweenMark` in the home is the one answer — the Clip
+/// Then `defaultInbetweenMark` in the home was the one answer — the Clip
 /// Studio import asks it no more, reading each label's kind off its file
 /// (I-130-csp-import-Q1).
 ///
@@ -51,9 +51,11 @@ import '../helpers/source_ledger.dart';
 /// Preferences ▸ Display holds it (`AppFrameGridSettings.unnamedMark`), its
 /// first value `defaultUnnamedDrawingMark` beside the enum in the marks'
 /// own file, and `unnamedDrawingMark` in the home is the live pick. The
-/// mark-every window opens on it until one is picked (F-489-Q1 「둘 다
-/// 따라간다」); `defaultInbetweenMark` is the TVPaint import's alone until the
-/// save lane moves that line onto the pick too.
+/// mark-every window opens on it until one is picked, and a TVPaint dot —
+/// whose file never says which mark it is — wears it (F-489-Q1 「둘 다
+/// 따라간다」), the pick handed to the planner by its door.
+/// ↩️`defaultInbetweenMark`, the ○, was that import's alone after F-489's
+/// first landing, and went with its last reader (2026-10-28).
 ///
 /// ⛔SO THIS SCANS SOURCE: copies that agree today all pass a behaviour
 /// test. Either glyph spelled outside the home, a
@@ -147,14 +149,6 @@ void main() {
           '🚨유저: 「중간나누기 마크1로서 작동했으면」 — the unnamed drawing '
           'wears a mark itself, as data, not a glyph of its own: the one '
           'Preferences ▸ Display picks (F-489)',
-    );
-    expect(
-      text,
-      contains('const InbetweenMark defaultInbetweenMark = InbetweenMark.one;'),
-      reason:
-          'a TVPaint dot whose kind its file does not say is mark 1, the ○ '
-          '(I-130-csp-import-Q2 「모를 때는 ○마크1」) — until the save lane '
-          'moves it onto the pick (F-489-Q1)',
     );
     expect(markText, contains("InbetweenMark.one => '○'"));
     expect(

@@ -9,18 +9,6 @@ import 'stroke.dart';
 
 export 'inbetween_mark.dart';
 
-/// THE MARK A DOT WEARS WHEN ITS FILE DOES NOT SAY WHICH — the TVPaint
-/// import's (the Clip Studio one reads each label's kind since
-/// I-130-csp-import-Q1). 🗣️I-130-csp-import-Q2 (유저 2026-10-27): 「모를
-/// 때는 ○마크1」.
-///
-/// ↩️It was THE default mark, an unnamed drawing's head's and the
-/// mark-every window's first pick too (F-469), until F-489 made the head's
-/// a setting ([unnamedDrawingMark]). F-489-Q1 (유저 2026-10-27 「둘 다
-/// 따라간다」) has the import follow the setting as well; that line is the
-/// save lane's (관제 2026-10-28), and until it lands the import keeps the ○.
-const InbetweenMark defaultInbetweenMark = InbetweenMark.one;
-
 /// The mark a drawing without a cel number wears where the number would
 /// stand — the one Preferences ▸ Display picks
 /// ([AppFrameGridSettings.unnamedMark], F-489), drawn as the mark inside a
