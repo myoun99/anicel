@@ -123,7 +123,7 @@ class AnchoredPopupHeader extends StatelessWidget {
   }
 }
 
-/// The ONE anchored sub-window (R28 #9), in two kinds.
+/// The ONE anchored sub-window (R28 #9).
 ///
 /// The brush panel's pressure-curve editor established this shape and the
 /// user asked for it to become the shared one: "창 자체는 브러시의 필압설정
@@ -132,20 +132,19 @@ class AnchoredPopupHeader extends StatelessWidget {
 /// behaves — where it lands, how it dismisses, that it appears in one
 /// frame — lives here, so restyling it restyles every caller.
 ///
-/// The two kinds differ ONLY in what makes them go away:
+/// Anything you touch outside it closes it: right for a pick-one-and-go
+/// list. It lands right-aligned under the anchor, flipped above when there
+/// is no room below, clamped into the overlay either way
+/// ([_placeAnchoredPopup]).
 ///
-///  * [showAnchoredPopup] — the DISMISSING kind. Anything you touch
-///    outside it closes it. Right for a pick-one-and-go list.
-///  * [PinnedAnchoredPopup] — the PINNED kind. It stays while you work the
-///    canvas underneath, and closes when its anchor is tapped again. Right
-///    for the colour window, where the whole point is to nudge a colour and
-///    test the stroke without the window blinking out (유저 확정: "색만 안
-///    사라지게").
-///
-/// They share [_placeAnchoredPopup] — right-aligned under the anchor,
-/// flipped above when there is no room below, clamped into the overlay
-/// either way. That shared placement is what keeps them one window with two
-/// lifetimes rather than two windows that merely look alike.
+/// 🪦A second, PINNED kind stood here (`PinnedAnchoredPopup`), for the
+/// colour window: it stayed while you worked the canvas underneath, so a
+/// colour could be nudged and the stroke tried without the window blinking
+/// out (유저 확정: "색만 안 사라지게"). ⚠️It could not be a route — a
+/// barrier eats the canvas stroke even when it is transparent — and rode an
+/// `OverlayPortal` instead. The colour window became the colour panels
+/// (`67893911e`, 2026-08-07) and nothing opened it again; it went with
+/// I-131 (2026-10-28).
 Future<T?> showAnchoredPopup<T>(
   BuildContext anchorContext, {
   required String label,
@@ -230,118 +229,6 @@ class AnchoredPopupsOpenFrom extends InheritedWidget {
   /// Asked once, at a popup's opening, and by nothing that depends on it.
   @override
   bool updateShouldNotify(AnchoredPopupsOpenFrom oldWidget) => false;
-}
-
-/// The PINNED kind: wrap the anchor in it, drive it with [controller].
-///
-/// 🚨 It is NOT a route, and that is the whole reason it exists.
-/// [showGeneralDialog] installs a [ModalBarrier], and a barrier eats input
-/// aimed at everything under it even at `barrierColor: transparent` — so a
-/// window that has to survive a canvas stroke cannot be a route at all. No
-/// amount of barrier tuning gets there.
-///
-/// It rides [OverlayPortal] rather than a hand-rolled [OverlayEntry],
-/// which buys three things a raw entry would each need code for:
-///
-///  * the popup rebuilds when the ANCHOR rebuilds, so content built from
-///    the host's current values is never stale — an eyedropper landing on
-///    the canvas reaches the open colour window, which is only possible
-///    now that the window no longer closes when the canvas is touched;
-///  * `Theme`, `MediaQuery` and the app's other inherited widgets flow in
-///    from the anchor's position in the tree, not the overlay's;
-///  * unmounting the anchor takes the popup with it, so a panel torn off or
-///    a project switched cannot leave a window floating over the canvas
-///    with nothing left to dismiss it.
-///
-/// Because it is not a route there is no [Navigator.pop] to lean on, so the
-/// close triggers are explicit, and there are exactly three: the anchor
-/// again (the host toggles [controller]), the content itself (through the
-/// `close` callback it is built with), and the anchor going away.
-///
-/// Only the popup's own box takes hits: there is no fill and no barrier
-/// between it and the canvas.
-class PinnedAnchoredPopup extends StatefulWidget {
-  const PinnedAnchoredPopup({
-    super.key,
-    required this.controller,
-    required this.label,
-    required this.width,
-    required this.height,
-    required this.builder,
-    required this.child,
-  });
-
-  final OverlayPortalController controller;
-
-  /// Names the popup's box for tests, the way the dismissing kind's
-  /// barrier label does.
-  final String label;
-
-  final double width;
-
-  /// Only decides above-or-below; the content states its own height (the
-  /// popup constrains WIDTH alone).
-  final double height;
-
-  final AnchoredPopupBuilder builder;
-
-  /// The anchor. Its box is what the popup is placed against.
-  final Widget child;
-
-  @override
-  State<PinnedAnchoredPopup> createState() => _PinnedAnchoredPopupState();
-}
-
-class _PinnedAnchoredPopupState extends State<PinnedAnchoredPopup> {
-  /// The last placement that measured cleanly. Kept so a frame where the
-  /// anchor is mid-relayout reuses the previous answer instead of dropping
-  /// the window to a corner.
-  _AnchoredPopupPlacement? _placement;
-
-  @override
-  Widget build(BuildContext context) {
-    return OverlayPortal(
-      controller: widget.controller,
-      overlayChildBuilder: (overlayContext) {
-        // Reading the media size SUBSCRIBES the popup to resizes, so the
-        // window follows its button when the app window changes shape
-        // instead of sitting at its opening coordinates. The dependency is
-        // registered on the anchor's MediaQuery — that is what the portal
-        // gives us over a raw overlay entry.
-        MediaQuery.sizeOf(overlayContext);
-        // `context` here is the ANCHOR's: the portal's own render object is
-        // a proxy sized and positioned exactly like the child it wraps.
-        final anchor = context.findRenderObject();
-        final overlay = Overlay.of(context).context.findRenderObject();
-        if (anchor is RenderBox && overlay is RenderBox) {
-          _placement =
-              _placeAnchoredPopup(
-                anchor: anchor,
-                overlay: overlay,
-                width: widget.width,
-                height: widget.height,
-              ) ??
-              _placement;
-        }
-        final placement = _placement;
-        if (placement == null) {
-          return const SizedBox.shrink();
-        }
-        return Positioned(
-          key: ValueKey<String>('${widget.label}-pinned'),
-          left: placement.left,
-          top: placement.top,
-          width: widget.width,
-          // The same surface as the dismissing kind: they differ in what
-          // makes them go away and in nothing else.
-          child: _AnchoredPopupSurface(
-            child: widget.builder(overlayContext, widget.controller.hide),
-          ),
-        );
-      },
-      child: widget.child,
-    );
-  }
 }
 
 /// Where an anchored popup's box lands in overlay coordinates.
