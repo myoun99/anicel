@@ -528,6 +528,11 @@ final class HeldSubtreeRasters {
   /// the nodes held one by one.
   int get heldBelowBytes => _below._held.held;
 
+  /// How many rasters held have been let go of — a node's drawn anew in its
+  /// place aside: while it stands, every node a frame was drawn whole to
+  /// hold, and kept, is held still.
+  int get lettings => _nodes.lettings + _below.lettings;
+
   /// Draws [draw] — a frame drawn whole to hold its nodes — and lets go of
   /// every raster held that it neither found nor kept: those of the frame
   /// a canvas stood on before, and of what a frame held before it changed.
@@ -561,16 +566,19 @@ final class HeldSubtreeRasters {
 final class _HeldShelf {
   _HeldShelf(int Function() bytes, {int Function()? each})
     : _bytes = bytes,
-      _each = each ?? bytes,
-      _held = Lru(
-        limit: bytes,
-        costOf: _bytesOf,
-        letGo: (_, held) => _letGo(held),
-      );
+      _each = each ?? bytes;
 
   final int Function() _bytes;
   final int Function() _each;
-  final Lru<Object, HeldSubtreeRaster> _held;
+  late final Lru<Object, HeldSubtreeRaster> _held = Lru(
+    limit: _bytes,
+    costOf: _bytesOf,
+    letGo: (_, held) => _letGo(held),
+  );
+
+  /// How many rasters this shelf has let go of — a node's drawn anew in its
+  /// place aside ([HeldSubtreeRasters.lettings]).
+  int lettings = 0;
 
   bool _fits(int bytes) => bytes <= _each() && bytes <= _bytes();
 
@@ -589,7 +597,7 @@ final class _HeldShelf {
           : drawn.image.clone(),
     );
     if (_held.keep(key, whole) case final replaced?) {
-      _letGo(replaced);
+      _dispose(replaced);
     }
     return true;
   }
@@ -614,7 +622,12 @@ final class _HeldShelf {
       estimatedImageBytes(held.plan.pixelWidth, held.plan.pixelHeight) *
       (identical(held.image, held.raster) ? 1 : 2);
 
-  static void _letGo(HeldSubtreeRaster held) {
+  void _letGo(HeldSubtreeRaster held) {
+    lettings += 1;
+    _dispose(held);
+  }
+
+  static void _dispose(HeldSubtreeRaster held) {
     if (!identical(held.image, held.raster)) {
       held.image.dispose();
     }

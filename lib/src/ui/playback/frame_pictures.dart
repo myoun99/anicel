@@ -417,6 +417,10 @@ class FramePictures implements PlaybackPictures {
     required bool Function() shouldAbort,
   }) async {
     await readInStack(nodes, picture);
+    if (_nodesHeld == _heldNow(keyOfStack(nodes, picture))) {
+      line?.giveWayToNodes();
+      return;
+    }
     final turn = await quietTurns.inAQuiet(_holdSpan, gone: shouldAbort);
     if (turn == null) {
       return;
@@ -430,9 +434,35 @@ class FramePictures implements PlaybackPictures {
       keepsNodes: true,
     ).frame.drawing.draw(ui.Canvas(recorder));
     recorder.endRecording().dispose();
+    _nodesHeld = _heldNow(keyOfStack(nodes, picture));
     line?.giveWayToNodes();
     await turn.landed();
   }
+
+  /// 🚨THE FRAME WHOSE NODES WERE LAST DRAWN WHOLE TO BE HELD, and how many
+  /// held rasters had been let go of then ([HeldSubtreeRasters.lettings]):
+  /// while both stand, a screen that takes that frame's picture holds them
+  /// all already, and [holdNodesOf] draws nothing. 🔬Drawn again, it was a
+  /// third composite of the frame after one show-all — the screen as it
+  /// stands, the picture laid ([makeShown], keeping them), then this — and
+  /// 65–114ms of the raster thread on S5_BA cut 352 (공통's measurement,
+  /// 10-28, the whole app, Windows, profile).
+  ({FramePictureKey key, int lettings})? _nodesHeld;
+
+  ({FramePictureKey key, int lettings}) _heldNow(FramePictureKey key) =>
+      (key: key, lettings: heldNodes.lettings);
+
+  /// [drawing], noting once it is drawn that [key]'s nodes are held
+  /// ([_nodesHeld]) — where its lay draws it, not where the store hands
+  /// back a picture there already.
+  FrameDrawing _holdingAs(FramePictureKey key, FrameDrawing drawing) => (
+    extent: drawing.extent,
+    outside: drawing.outside,
+    draw: (canvas) {
+      drawing.draw(canvas);
+      _nodesHeld = _heldNow(key);
+    },
+  );
 
   Future<bool> _make(
     List<CompositeNode<CanvasStackRow>> Function() nodesOf,
@@ -456,7 +486,9 @@ class FramePictures implements PlaybackPictures {
     if (!drawsOnlyItsPage(key) &&
         !await _lay(
           key,
-          made.frame.drawing,
+          keepsNodes
+              ? _holdingAs(key, made.frame.drawing)
+              : made.frame.drawing,
           shouldAbort,
           due,
           shownNow: shownNow,

@@ -228,6 +228,60 @@ void main() {
     });
   });
 
+  testWidgets('🚨the frame laid for the canvas that stands on it is not drawn '
+      'again to hold its nodes as the screen takes it — one laid ahead is, '
+      'and one whose held were let go of since', (tester) async {
+    await tester.runAsync(() async {
+      /// How many rasters holding the nodes of [s]'s frame [stood] draws.
+      Future<int> holding(
+        EditorSessionManager s,
+        DemandedPicture stood,
+      ) async {
+        final pictures = s.playbackRig.framePictures;
+        debugSubtreeRasterCount = 0;
+        await pictures.holdNodesOf(
+          pictures.stackOf(stood),
+          stood,
+          shouldAbort: () => false,
+        );
+        return debugSubtreeRasterCount;
+      }
+
+      /// A session whose line has no room for the folder: every frame
+      /// drawn whole draws it.
+      EditorSessionManager noRoom() {
+        final s = session();
+        addTearDown(s.dispose);
+        s.playbackRig.playbackCache.lend(1 << 40);
+        return s;
+      }
+
+      final ahead = noRoom();
+      final laidAhead = drawn(ahead);
+      await ahead.playbackRig.framePictures.make(
+        laidAhead,
+        shouldAbort: () => false,
+      );
+      expect(await holding(ahead, laidAhead), 1, reason: '⛔premise');
+      expect(await holding(ahead, laidAhead), 0, reason: 'held since');
+
+      final standing = noRoom();
+      final stood = drawn(standing);
+      await shown(standing, stood);
+      expect(await holding(standing, stood), 0);
+
+      final warned = session();
+      addTearDown(warned.dispose);
+      final atWarning = drawn(warned);
+      await shown(warned, atWarning);
+      final pictures = warned.playbackRig.framePictures;
+      expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
+      warned.playbackRig.playbackCache.respondToMemoryPressure();
+      expect(await holding(warned, atWarning), 1);
+      expect(pictures.heldNodes, hasLength(1));
+    });
+  });
+
   testWidgets('⚖️each node held is a page at the most, and as many are held '
       'as the playback line has room for', (tester) async {
     await tester.runAsync(() async {
