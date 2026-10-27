@@ -284,6 +284,8 @@ void main() {
       expect(asNow('test/b_test.dart', 'key1'), isFalse);
       expect(quarantined('test/a_test.dart', flaky, (_) => null), isFalse,
           reason: 'no key, no quarantine');
+      expect(quarantined('test/b_test.dart', flaky, (_) => null), isFalse,
+          reason: 'not in the record and no key is not a match');
     });
 
     test('🧪red then green is flaky only when what it reads is the same when '
