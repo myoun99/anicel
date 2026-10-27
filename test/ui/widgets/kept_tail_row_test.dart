@@ -508,6 +508,64 @@ void main() {
       expect(headShown(tester), 40, reason: 'still the far one\'s');
     });
 
+    testWidgets('🚨one that moves to the other group is that group\'s alone', (
+      tester,
+    ) async {
+      final moving = GlobalKey();
+      Future<void> pumpMoved({required bool inTail}) => tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 120,
+              height: rowHeight,
+              child: FloorFoldRow(
+                gap: gap,
+                head: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!inTail)
+                        FoldFloor(
+                          key: moving,
+                          child: const SizedBox(width: 30, height: 10),
+                        ),
+                      const SizedBox(width: 70, height: 10),
+                    ],
+                  ),
+                ),
+                tail: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(width: 70, height: 10),
+                    if (inTail)
+                      FoldFloor(
+                        key: moving,
+                        child: const SizedBox(width: 30, height: 10),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await pumpMoved(inTail: false);
+      expect(headShown(tester), 120 - gap - 70, reason: '⛔전제: room for it');
+
+      await pumpMoved(inTail: true);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        headShown(tester),
+        120 - gap - 100,
+        reason: 'the head holds no floor now — it gives way to nothing',
+      );
+    });
+
     testWidgets('🚨one taken away keeps nothing, in the frame it goes', (
       tester,
     ) async {

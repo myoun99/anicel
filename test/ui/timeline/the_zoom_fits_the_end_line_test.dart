@@ -189,11 +189,17 @@ void main() {
       }
     });
 
-    test('a fit that falls between two steps takes the wider', () {
-      // 1000 / 100 = 10px is 104.17 steps of 1% of 9.6px.
+    test('a fit that falls between two steps takes the wider — past the '
+        'middle of them too, where the nearer would run over', () {
+      // 1000 / 100 = 10px is 104.17 steps of 1% of 9.6px; 1000 / 96 =
+      // 10.42px is 108.51.
       expect(
         TimelineZoomLimits.fitting(1000, frames: 100, framesPerSecond: fps),
         closeTo(104 * step, 1e-9),
+      );
+      expect(
+        TimelineZoomLimits.fitting(1000, frames: 96, framesPerSecond: fps),
+        closeTo(108 * step, 1e-9),
       );
     });
   });

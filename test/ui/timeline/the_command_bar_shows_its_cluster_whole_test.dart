@@ -94,16 +94,20 @@ void main() {
     const transportWidth = 236.0;
     const transportHeight = 28.0;
 
-    Future<void> pumpBar(WidgetTester tester, double width) =>
-        tester.pumpWidget(
+    /// The bar at [width] — with no pills where [withLeading] says so.
+    Future<void> pumpBar(
+      WidgetTester tester,
+      double width, {
+      bool withLeading = true,
+    }) => tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
               body: Align(
                 alignment: Alignment.topLeft,
                 child: SizedBox(
                   width: width,
-                  child: const TimelineCommandBar(
-                    transport: Row(
+                  child: TimelineCommandBar(
+                    transport: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
@@ -113,10 +117,12 @@ void main() {
                         ),
                       ],
                     ),
-                    leading: Row(
-                      children: [SizedBox(width: 600, height: 20)],
-                    ),
-                    cluster: Row(
+                    leading: withLeading
+                        ? const Row(
+                            children: [SizedBox(width: 600, height: 20)],
+                          )
+                        : null,
+                    cluster: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         SizedBox(
@@ -201,6 +207,19 @@ void main() {
         shownTransport.right,
         lessThanOrEqualTo(shownCluster.left),
         reason: 'nothing run over',
+      );
+    });
+
+    testWidgets('with no pills after it, the transport is kept whole the '
+        'same', (tester) async {
+      const width = 360.0;
+      await pumpBar(tester, width, withLeading: false);
+
+      expect(tester.takeException(), isNull);
+      final factor = (width - sides) / (transportWidth + gap + clusterWidth);
+      expect(
+        tester.getRect(find.byKey(transport)).width,
+        moreOrLessEquals(transportWidth * factor),
       );
     });
   });
