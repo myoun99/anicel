@@ -102,9 +102,10 @@ void main() {
   }
 
   // ↩️「위치는 줌 확대버튼 오른쪽」 (I-111) — F-463 took the + off, and the
-  // fit stayed where it was: 「그 옆의 줌 fit버튼은 그대로」.
-  testWidgets('it stands right of the zoom\'s readout, the first button past '
-      'the readout\'s own pencil', (tester) async {
+  // fit stayed where it was: 「그 옆의 줌 fit버튼은 그대로」. ↩️It stood
+  // past the readout's own pencil, until F-463 took that off too (10-27).
+  testWidgets('it stands right of the zoom\'s readout, the cluster\'s first '
+      'button', (tester) async {
     await open(tester);
     final buttons = [
       for (final button in tester.widgetList<AppIconButton>(
@@ -115,11 +116,7 @@ void main() {
       ))
         button.keyValue,
     ];
-    expect(
-      buttons.indexOf('timeline-zoom-fit-button'),
-      buttons.indexOf('timeline-zoom-readout-edit') + 1,
-      reason: '$buttons',
-    );
+    expect(buttons.indexOf('timeline-zoom-fit-button'), 0, reason: '$buttons');
     expect(
       tester.getRect(fit).left,
       greaterThanOrEqualTo(tester.getRect(timelineZoomReadout).right),
@@ -151,7 +148,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
-    await typeTimelineZoom(tester, TimelineZoomLimits.maxPixelsPerFrame);
+    await zoomTimelineTo(tester, TimelineZoomLimits.maxPixelsPerFrame);
     final kept = session.panelViews.frameAxisOffsets[LayerRailId.storyboard]!;
     kept.value = 200;
     await tester.pumpAndSettle();

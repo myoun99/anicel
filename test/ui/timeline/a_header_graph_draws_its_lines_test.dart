@@ -186,7 +186,7 @@ void main() {
     // row is the tighter of the two; zoomed out, the cell is.
     final seen = <Size>{};
     for (final (step, zoom) in [32.0, 24.0, 16.0].indexed) {
-      await typeTimelineZoom(tester, zoom);
+      await zoomTimelineTo(tester, zoom);
       final member = memberMark();
       seen.add(member);
       final marks = graphMarks();

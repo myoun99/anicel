@@ -149,7 +149,7 @@ void main() {
     expect(timelineHeaderModel(tester, 0).label, '1');
 
     Future<void> zoomTo(double pixelsPerFrame) =>
-        typeTimelineZoom(tester, pixelsPerFrame);
+        zoomTimelineTo(tester, pixelsPerFrame);
 
     // Under the bar's 200% (38.4, F-403-Q1). ↩️40, under 250%.
     await zoomTo(36);
@@ -195,7 +195,7 @@ void main() {
     // 19.2 at 100%, laid on whole pixels, as the timeline's header (F-403).
     expect(xsheetFrameRowGlobalRect(tester, 0).height, 19);
 
-    await typeTimelineZoom(tester, 36);
+    await zoomTimelineTo(tester, 36);
     // 36 is a step of the bar (187.5%), under its 200% (F-403-Q1).
     // ↩️40: the bar's tenth nearest it, 39.9936, laid on the pixel 40.
     expect(xsheetFrameRowGlobalRect(tester, 0).height, moreOrLessEquals(36));

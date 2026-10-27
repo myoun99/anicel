@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
-import '../text/readout_text.dart' show columnValueOf, readoutText;
+import '../text/readout_text.dart' show readoutText;
 import '../text/text_measure.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/kept_tail_row.dart' show FoldFloor;
 import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
@@ -102,25 +103,36 @@ class TimelineViewCluster extends StatelessWidget {
   );
 
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      _zoomReadout(context),
+  Widget build(BuildContext context) {
+    final buttons = [
       // 🗣️F-463: 「그 옆의 줌 fit버튼은 그대로」 — I-111's 「위치는 줌
       // 확대버튼 오른쪽」, the + gone from beside it.
       _zoomFitButton(),
       ...trailing,
-    ],
-  );
+    ];
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _zoomReadout(context),
+        ...buttons.take(buttons.length - 1),
+        // 🗣️F-463-Q1 (유저 2026-10-27, 16:46 그대로): the least of the
+        // cluster its bar shows — 「줌은 맨 오른쪽 버튼 하나」.
+        FoldFloor(child: buttons.last),
+      ],
+    );
+  }
 
   /// The zoom as a number to drag — 🗣️F-463 (유저 2026-10-25): 「축소,확대
   /// 버튼 없애고, 슬라이더는 캔버스패널의 줌 위젯마냥 숫자로 이루어진 위젯에
   /// 드래그로 조절. 공용화된거 그대로 사용. 이유는 이렇게 하면 더 공간
   /// 간략화 가능하니」 — the canvas zoom's readout ([DragValueLabel]): a
-  /// percent a pixel of drag, a step a notch of the wheel, its pencil to
-  /// type one, each landed on the zoom's steps inside its range
-  /// ([TimelineZoomLimits.clamped]). The keys still press the zoom in and
-  /// out (`EditorActionIds.timelineZoomIn`).
+  /// percent a pixel of drag, a step a notch of the wheel, each landed on
+  /// the zoom's steps inside its range ([TimelineZoomLimits.clamped]). The
+  /// keys still press the zoom in and out (`EditorActionIds.timelineZoomIn`).
+  ///
+  /// 🗣️F-463 (유저 2026-10-27): 「타임라인 줌 버튼에 연필버튼 삭제.
+  /// 텍스트줌이랑 fit버튼으로 줌관련은 충분」 — no number is typed here.
+  /// ↩️Its pencil typed one, as the canvas zoom's still does.
   ///
   /// ↩️A 140px `FieldSlider` stood here between a − and a + (UI-R11 #11),
   /// on a MULTIPLICATIVE track (I-22 ②-1: a linear one spent 97% of its
@@ -159,12 +171,6 @@ class TimelineViewCluster extends StatelessWidget {
       textStyle: _zoomStyle,
       onDragDelta: (units) =>
           zoomTo(TimelineZoomLimits.percentOf(sent) + units),
-      onEditSubmit: (text) {
-        final parsed = columnValueOf(text);
-        if (parsed != null) {
-          zoomTo(parsed);
-        }
-      },
     );
   }
 }

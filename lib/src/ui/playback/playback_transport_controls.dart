@@ -11,6 +11,7 @@ import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_tooltip.dart';
+import '../widgets/kept_tail_row.dart' show FoldFloor;
 import '../widgets/tick_layer.dart';
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
@@ -204,7 +205,10 @@ class PlaybackTransportControls extends StatelessWidget {
             // row with the count in a FIXED 72px slot, right-aligned, so its
             // digits grew into reserved space and no button moved. An overlay
             // keeps that — it moves nothing because it takes nothing.
-            _skipToStartButton(),
+            //
+            // 🗣️F-463-Q1 (유저 2026-10-27, 16:46 그대로): the least of the
+            // transport its bar shows — 「재생은 맨 왼쪽 버튼 하나」.
+            FoldFloor(child: _skipToStartButton()),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
             //

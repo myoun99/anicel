@@ -1,7 +1,7 @@
 // THE VIEW CLUSTER: THE ZOOM IS A NUMBER TO DRAG (F-463) — the canvas zoom's
 // readout, saying the zoom in percent with every digit it has, a percent a
-// pixel of drag, its pencil to type one — each landed on the zoom's 0.1%
-// steps inside its range; and its fit beside it.
+// pixel of drag, each landed on the zoom's 0.1% steps inside its range, and
+// no pencil to type one (유저 2026-10-27); and its fit beside it.
 //
 // No test named this widget (audit 2026-09-03) although both the timeline
 // and the storyboard tabs mount it. These pins drive it alone.
@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
+import 'package:anicel/src/ui/widgets/value_hands.dart' show ValuePencil;
 
 void main() {
   const reference = TimelineZoomLimits.referencePixelsPerFrame;
@@ -111,20 +112,15 @@ void main() {
     );
   });
 
-  testWidgets('the pencil types a percent, landed on a step', (tester) async {
-    final run = await pump(tester);
-    await tester.tap(
+  testWidgets('🗣️F-463 (10-27): 「타임라인 줌 버튼에 연필버튼 삭제」 — no '
+      'number is typed into it', (tester) async {
+    await pump(tester);
+    expect(said(tester), '100.0%', reason: '⛔전제: the readout is up');
+    expect(
       find.byKey(const ValueKey<String>('timeline-zoom-readout-edit')),
+      findsNothing,
     );
-    await tester.pump();
-    final field = find.byKey(
-      const ValueKey<String>('timeline-zoom-readout-input'),
-    );
-    await tester.enterText(field, '55.5');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    expect(run.zoom.value, closeTo(reference * 0.555, 1e-9));
-    expect(said(tester), '55.5%');
+    expect(find.byType(ValuePencil), findsNothing);
   });
 
   testWidgets('with no zoom handed in the readout does not turn', (

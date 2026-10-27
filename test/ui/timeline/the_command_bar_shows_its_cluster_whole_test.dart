@@ -58,6 +58,10 @@ void main() {
   /// no [FoldFloor] in it is shown at.
   const insets = 2 * TimelineCommandBar.leadingInset;
 
+  /// The pills' overflow scroller — the bar's first: the transport and the
+  /// cluster stand in scrollers of their own after it (F-463-Q1).
+  final pills = find.byType(SingleChildScrollView).first;
+
   for (final withLeading in [true, false]) {
     testWidgets('🚨too narrow for its cluster, the bar '
         '${withLeading ? 'with' : 'without'} a leading shows all of it, '
@@ -142,7 +146,7 @@ void main() {
         width - TimelineCommandBar.padding.right,
       );
       expect(shown.right, moreOrLessEquals(shownCluster.left - gap));
-      final scroller = tester.getRect(find.byType(SingleChildScrollView));
+      final scroller = tester.getRect(pills);
       expect(
         scroller.width,
         moreOrLessEquals(
@@ -157,7 +161,7 @@ void main() {
       );
       expect(
         find.descendant(
-          of: find.byType(SingleChildScrollView),
+          of: pills,
           matching: find.byKey(transport),
         ),
         findsNothing,
@@ -202,7 +206,7 @@ void main() {
 
     final shown = tester.getRect(find.byKey(cluster));
     expect(shown.size, const Size(clusterWidth, clusterHeight));
-    final scroller = tester.getRect(find.byType(SingleChildScrollView));
+    final scroller = tester.getRect(pills);
     expect(
       scroller.width,
       moreOrLessEquals(width - sides - clusterWidth - gap - insets),

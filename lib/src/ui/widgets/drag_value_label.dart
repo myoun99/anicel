@@ -45,15 +45,16 @@ import 'value_hands.dart';
 /// ([OwningHorizontalDragGestureRecognizer]), so no list around it ever
 /// scrolls; a vertical move scrubs nothing and scrolls nothing.
 class DragValueLabel extends StatefulWidget {
-  /// The bare readout — the number in its own width, its pencil after it;
-  /// its steps where the host has none of its own ([steps]: the canvas bar
-  /// turns the view with its ⟲ ⟳, the page band with its ◀ ▶).
+  /// The bare readout — the number in its own width, its pencil after it
+  /// where a number is typed into it ([onEditSubmit]); its steps where the
+  /// host has none of its own ([steps]: the canvas bar turns the view with
+  /// its ⟲ ⟳, the page band with its ◀ ▶).
   const DragValueLabel({
     super.key,
     required this.keyValue,
     required this.text,
     required this.onDragDelta,
-    required this.onEditSubmit,
+    this.onEditSubmit,
     this.unitsPerPixel = 1.0,
     this.width = 48,
     this.tooltip,
@@ -183,8 +184,10 @@ class DragValueLabel extends StatefulWidget {
   /// notch of the wheel are one unit each.
   final ValueChanged<double> onDragDelta;
 
-  /// Receives the raw typed text on commit; the owner parses/clamps.
-  final ValueChanged<String> onEditSubmit;
+  /// Receives the raw typed text on commit; the owner parses/clamps. Null
+  /// on a number that is only dragged: it has no pencil (the timeline's
+  /// zoom, F-463 — 「연필버튼 삭제」).
+  final ValueChanged<String>? onEditSubmit;
 
   final double unitsPerPixel;
   final double width;
@@ -238,9 +241,10 @@ class _DragValueLabelState extends State<DragValueLabel> {
 
   void _commitEdit(String text) {
     setState(() => _editing = false);
-    if (text.isNotEmpty) {
+    final submit = widget.onEditSubmit;
+    if (text.isNotEmpty && submit != null) {
       widget.onOperationStart?.call();
-      widget.onEditSubmit(text);
+      submit(text);
     }
   }
 
@@ -391,36 +395,49 @@ class _DragValueLabelState extends State<DragValueLabel> {
     );
   }
 
+  /// Whether a number is typed into it: its pencil is.
+  bool get _typed => widget.onEditSubmit != null;
+
   /// [face] with its hands after it: its steps where it carries them, and
-  /// its pencil — after the host's step that stands there
-  /// ([DragValueLabel.stepBeforePencil]).
+  /// its pencil where a number is typed into it — after the host's step
+  /// that stands there ([DragValueLabel.stepBeforePencil]).
   Widget _withHands(Widget face) {
-    final hands = keptWhileSame(
-      _hands,
-      DragValueLabel,
-      (widget.enabled, widget.keyValue, widget._face, widget.steps),
-      _handsNow,
-    );
+    final hands = widget.steps || _typed
+        ? keptWhileSame(
+            _hands,
+            DragValueLabel,
+            (
+              widget.enabled,
+              widget.keyValue,
+              widget._face,
+              widget.steps,
+              _typed,
+            ),
+            _handsNow,
+          )
+        : null;
     final fills = widget._face == _Face.box;
     return Row(
       mainAxisSize: fills ? MainAxisSize.max : MainAxisSize.min,
       children: [
         if (fills) Expanded(child: face) else face,
         ?widget.stepBeforePencil,
-        hands,
+        ?hands,
       ],
     );
   }
 
   Widget _handsNow() {
-    final pencil = ValuePencil(
-      keyValue: '${widget.keyValue}-edit',
-      height: _handsHeight,
-      enabled: widget.enabled,
-      onPressed: _beginEdit,
-    );
+    final pencil = _typed
+        ? ValuePencil(
+            keyValue: '${widget.keyValue}-edit',
+            height: _handsHeight,
+            enabled: widget.enabled,
+            onPressed: _beginEdit,
+          )
+        : null;
     if (!widget.steps) {
-      return pencil;
+      return pencil!;
     }
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -431,7 +448,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
           enabled: widget.enabled,
           onStep: _step,
         ),
-        pencil,
+        ?pencil,
       ],
     );
   }

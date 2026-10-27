@@ -138,12 +138,14 @@ class TimelineCommandBar extends StatelessWidget {
 /// ↩️The layer was the frame counter's, which read the cursor and moved
 /// the row with its width (I-22 ③), until F-463 took the counter off.
 ///
-/// The two groups give way as [FloorFoldRow] lays them: the pills first,
-/// down to the cut pill ([FoldFloor], 「컷알약까지 최소폭」), and below
-/// that both groups, smaller. In a 360px window the timeline's bar had
-/// 248px for its two ends' 252 (`timeline-row-overflows-at-360`, measured
-/// 2026-10-14) — a row too narrow for what it keeps shows all of it,
-/// smaller, never run off.
+/// The groups give way as [FloorFoldRow] lays them: the pills first, down
+/// to the cut pill ([FoldFloor], 「컷알약까지 최소폭」), then the zoom down
+/// to its last button, then the transport down to its first (F-463-Q1:
+/// 「묶음 안에서 재생 · 줌이 따로」) — each in a scroller of its own, the
+/// zoom's showing its end — and below that all of them, smaller. In a
+/// 360px window the timeline's bar had 248px for its two ends' 252
+/// (`timeline-row-overflows-at-360`, measured 2026-10-14) — a row too
+/// narrow for what it keeps never runs off.
 class _BarFrame extends StatelessWidget {
   const _BarFrame({required this.transport, required this.leading});
 
@@ -180,13 +182,17 @@ class _BarFrame extends StatelessWidget {
                 ),
               )
             : null,
-        tail: transport
-            ? const Row(
-                mainAxisSize: MainAxisSize.min,
-                spacing: TimelineCommandBar._gap,
-                children: [_Seat(_Piece.transport), _Seat(_Piece.cluster)],
+        middle: transport
+            ? const SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: _Seat(_Piece.transport),
               )
-            : const _Seat(_Piece.cluster),
+            : null,
+        tail: const SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          reverse: true,
+          child: _Seat(_Piece.cluster),
+        ),
       ),
     ),
   );

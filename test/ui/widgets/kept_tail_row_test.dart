@@ -293,4 +293,129 @@ void main() {
       expect(pressed, 1, reason: 'past what is shown is not the floor');
     });
   });
+
+  group('🗣️F-463-Q1 (「묶음 안에서 재생 · 줌이 따로 — 16:46 그대로」): past '
+      'the head\'s floor the groups at the end give way in turn — the tail '
+      'first, showing its end, then the middle, showing its start — each '
+      'down to its own floor', () {
+    const headFloor = ValueKey<String>('head-floor');
+    const middleFloor = ValueKey<String>('middle-floor');
+    const tailFloor = ValueKey<String>('tail-floor');
+    const gap = 8.0;
+
+    /// A group 100 wide in a scroller of its own — its [floor] 30 of it, at
+    /// the end it is kept by.
+    Widget group(Key floor, {bool keptByItsEnd = false}) {
+      final kept = FoldFloor(
+        child: SizedBox(key: floor, width: 30, height: 10),
+      );
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        reverse: keptByItsEnd,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!keptByItsEnd) kept,
+            const SizedBox(width: 70, height: 10),
+            if (keptByItsEnd) kept,
+          ],
+        ),
+      );
+    }
+
+    Future<void> pumpRow(WidgetTester tester, double width) =>
+        tester.pumpWidget(
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                height: rowHeight,
+                child: FloorFoldRow(
+                  gap: gap,
+                  head: group(headFloor),
+                  middle: group(middleFloor),
+                  tail: group(tailFloor, keptByItsEnd: true),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    /// Where [floor]'s group is shown — its scroller.
+    Rect groupOf(WidgetTester tester, Key floor) => tester.getRect(
+      find.ancestor(
+        of: find.byKey(floor),
+        matching: find.byType(SingleChildScrollView),
+      ),
+    );
+
+    testWidgets('where the row holds them, the end groups are whole', (
+      tester,
+    ) async {
+      await pumpRow(tester, 250);
+
+      expect(tester.takeException(), isNull);
+      expect(groupOf(tester, headFloor).width, 250 - 216);
+      expect(
+        groupOf(tester, middleFloor),
+        const Rect.fromLTWH(42, 15, 100, 10),
+      );
+      expect(groupOf(tester, tailFloor), const Rect.fromLTWH(150, 15, 100, 10));
+    });
+
+    testWidgets('narrower, the TAIL gives way next, showing its end — the '
+        'middle keeps its size', (tester) async {
+      // The head at its 30; the tail is left 200 − 30 − 8 − 100 − 8.
+      await pumpRow(tester, 200);
+
+      expect(tester.takeException(), isNull);
+      expect(groupOf(tester, headFloor).width, 30);
+      expect(groupOf(tester, middleFloor).width, 100);
+      expect(groupOf(tester, tailFloor), const Rect.fromLTWH(146, 15, 54, 10));
+      expect(
+        tester.getRect(find.byKey(tailFloor)),
+        const Rect.fromLTWH(170, 15, 30, 10),
+        reason: 'its floor whole, at the row\'s end',
+      );
+    });
+
+    testWidgets('narrower still, the tail at its floor, the MIDDLE gives way, '
+        'showing its start', (tester) async {
+      await pumpRow(tester, 140);
+
+      expect(tester.takeException(), isNull);
+      expect(groupOf(tester, headFloor).width, 30);
+      expect(groupOf(tester, tailFloor), const Rect.fromLTWH(110, 15, 30, 10));
+      expect(groupOf(tester, middleFloor), const Rect.fromLTWH(38, 15, 64, 10));
+      expect(
+        tester.getRect(find.byKey(middleFloor)),
+        const Rect.fromLTWH(38, 15, 30, 10),
+        reason: 'its floor whole, at its start',
+      );
+    });
+
+    testWidgets('🚨below every floor, all of them at their floors, smaller by '
+        'one factor — each floor whole, nothing run over', (tester) async {
+      const width = 100.0;
+      await pumpRow(tester, width);
+
+      expect(tester.takeException(), isNull);
+      const factor = width / (30 + gap + 30 + gap + 30);
+      for (final floor in [headFloor, middleFloor, tailFloor]) {
+        final group = groupOf(tester, floor);
+        expect(group.width, moreOrLessEquals(30 * factor), reason: '$floor');
+        final shown = tester.getRect(find.byKey(floor));
+        expect(shown.left, moreOrLessEquals(group.left), reason: '$floor');
+        expect(
+          shown.right,
+          moreOrLessEquals(group.right),
+          reason: '$floor shows its floor and no more',
+        );
+      }
+      expect(groupOf(tester, tailFloor).right, moreOrLessEquals(width));
+      expect(groupOf(tester, headFloor).left, 0);
+    });
+  });
 }

@@ -368,7 +368,7 @@ void main() {
     // is narrower than the 32px name-box drop threshold (the overflow
     // invariant), and this test reads the name box. ↩️It handed the slider
     // 48px, past the zoom's top, which a typed zoom does not reach.
-    await typeTimelineZoom(tester, TimelineZoomLimits.maxPixelsPerFrame);
+    await zoomTimelineTo(tester, TimelineZoomLimits.maxPixelsPerFrame);
 
     // Double-tap on the EMPTY cell creates the default entry DIRECTLY —
     // no dialog (UI-R25 #2, 조작 통일화).

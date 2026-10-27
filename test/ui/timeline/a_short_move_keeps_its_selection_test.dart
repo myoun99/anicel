@@ -84,7 +84,7 @@ void main() {
       MaterialApp(home: HomePage(initialProject: project())),
     );
     await tester.pumpAndSettle();
-    await typeTimelineZoom(tester, cell);
+    await zoomTimelineTo(tester, cell);
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
