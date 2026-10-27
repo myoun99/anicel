@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart'
+    show Builder, MaterialApp, Text, TextButton;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/canvas_point.dart';
@@ -18,7 +20,11 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/dialogs/frame_name_conflict_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/paste_linked_asking_first.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/place_lines.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// 🗣️one-band-no-lane-tail-Q1 (유저 2026-10-27): 「칸과 키를 같이 든다」 — a
@@ -32,6 +38,7 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 /// the copy was dark — on the conte it took the one key at the playhead.
 const _a = LayerId('band-a');
 const _b = LayerId('band-b');
+const _c = LayerId('band-c');
 const _s1 = LayerId('band-s1');
 const _position = 'position';
 
@@ -87,6 +94,17 @@ EditorSessionManager _session() {
                 _row(_a, position: _keyed(0, 1, name: 'K')),
                 // The same name, held at another value on another row.
                 _row(_b, drawn: false, position: _keyed(10, 5, name: 'K')),
+                // Its own drawing called A1, and the name K at another
+                // value — with a key of its own inside the first band.
+                _row(
+                  _c,
+                  position: PropertyTrack<CanvasPoint>(
+                    keys: {
+                      2: PropertyKey(CanvasPoint(x: 7, y: 7)),
+                      10: PropertyKey(CanvasPoint(x: 5, y: 5), name: 'K'),
+                    },
+                  ),
+                ),
               ],
             ),
           ],
@@ -269,5 +287,109 @@ void main() {
 
     expect(_blocksOf(_seRow(s)), {0: 3, 6: 3});
     expect(_keysOf(_seRow(s)), {0: (1.0, null), 6: (1.0, null)});
+  });
+
+  test('a band over two rows and their lanes, pasted over a band of the same '
+      'rows, puts each row\'s keys on its own row — replacing the keys the '
+      'band covers there, as it replaces the cells (결정 14 ③ⓐ)', () {
+    final s = _session();
+    void sweep(int from) => s.updateFrameRangeSelectionDrag(
+      layerId: _a,
+      anchorIndex: from,
+      headIndex: from + 5,
+      spanRows: const [
+        LayerRowAddress(_a),
+        LaneRowAddress(_a, _position),
+        LayerRowAddress(_c),
+        LaneRowAddress(_c, _position),
+      ],
+    );
+    s.standOnRow(const LayerRowAddress(_a), frameIndex: 0);
+    sweep(0);
+    final pill = TimelineToolbarPanelContext(s);
+    pill.copyFrame();
+    expect(s.clipboard.bankedRowLayerIds, [_a, _c]);
+
+    s.standOnRow(const LayerRowAddress(_a), frameIndex: 8);
+    sweep(8);
+    pill.pasteIndependentFrame();
+
+    expect(_blocksOf(_cutRow(s, _a)), {0: 3, 8: 3});
+    expect(_blocksOf(_cutRow(s, _c)), {0: 3, 8: 3});
+    expect(_keysOf(_cutRow(s, _a)), {0: (1.0, 'K'), 8: (1.0, null)});
+    expect(_keysOf(_cutRow(s, _c)), {
+      2: (7.0, null),
+      10: (7.0, null),
+    }, reason: 'C\'s own key at 2 put at 8 + 2, where K stood under the band');
+  });
+
+  testWidgets('the link window asks of the drawings and the keys a 링크 '
+      '붙여넣기 joins on a row together — once, for the one press', (
+    tester,
+  ) async {
+    final s = _session();
+    s.standOnRow(const LayerRowAddress(_a), frameIndex: 0);
+    _sweepAAndItsLane(s);
+    TimelineToolbarPanelContext(s).copyFrame();
+    s.standOnRow(const LayerRowAddress(_c), frameIndex: 6);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => pasteLinkedAskingFirst(
+              context,
+              s,
+              place: () => s.clipboard.timelinePlace,
+            ),
+            child: const Text('paste'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('paste'));
+    await tester.pumpAndSettle();
+
+    final window = tester.widget<FrameNameConflictDialog>(
+      find.byType(FrameNameConflictDialog),
+    );
+    final project = s.repository.requireProject();
+    expect(window.targets, [
+      ...drawingPlaceLines(project, _c, const [
+        FrameId('band-c-f'),
+      ], framePlace: s.framePlaceLabel),
+      ...rowPlaceLines(project, _c),
+    ]);
+    expect(window.message, AppText.strings.linkedPasteConflictBody);
+  });
+
+  testWidgets('where only a key joins, the window lists the keys\' row with '
+      'their own notice', (tester) async {
+    final s = _session();
+    s.standOnRow(const LayerRowAddress(_a), frameIndex: 0);
+    _sweepAAndItsLane(s);
+    TimelineToolbarPanelContext(s).copyFrame();
+    s.standOnRow(const LayerRowAddress(_b), frameIndex: 6);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => pasteLinkedAskingFirst(
+              context,
+              s,
+              place: () => s.clipboard.timelinePlace,
+            ),
+            child: const Text('paste'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('paste'));
+    await tester.pumpAndSettle();
+
+    final window = tester.widget<FrameNameConflictDialog>(
+      find.byType(FrameNameConflictDialog),
+    );
+    expect(window.targets, rowPlaceLines(s.repository.requireProject(), _b));
+    expect(window.message, isNull, reason: 'the keys\' paste says none');
   });
 }
