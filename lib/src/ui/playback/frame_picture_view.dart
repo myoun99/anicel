@@ -700,21 +700,31 @@ class _FramePictureViewState extends State<FramePictureView> {
     _held = null;
   }
 
+  /// 🚨PAINTED AGAIN ONLY FOR WHAT CHANGES IN IT — a layer of its own, as
+  /// the brush's own canvas has (`brush_edit_canvas_view.dart`). In its
+  /// screen's layer, a neighbour's repaint painted it too: the canvas's
+  /// underlay is laid out again at each commit of the timeline (its tick
+  /// layer's builder), and a layout marks its layer for paint — so a frame
+  /// drawn as it stands, a page of nothing but paper, was composed whole at
+  /// each block moved, though nothing in it had (F-244: 🔬1920×1080 a
+  /// commit, +25ms in profile, Surface Pro 11, 저장 2026-10-27).
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _FramePicturePainter(
-        shown: _shown,
-        // ⛔Not the stored cels where the view draws rows live: a frame of
-        // no row is a page the pen may be drawing on.
-        asItStands: _live ?? _asItStands,
-        standing: _standing,
-        catchUp: _catchUp,
-        viewport: widget.viewport,
-        devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-        repaint: Listenable.merge([_repaint, _liveChanges]),
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: _FramePicturePainter(
+          shown: _shown,
+          // ⛔Not the stored cels where the view draws rows live: a frame of
+          // no row is a page the pen may be drawing on.
+          asItStands: _live ?? _asItStands,
+          standing: _standing,
+          catchUp: _catchUp,
+          viewport: widget.viewport,
+          devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+          repaint: Listenable.merge([_repaint, _liveChanges]),
+        ),
+        child: const SizedBox.expand(),
       ),
-      child: const SizedBox.expand(),
     );
   }
 }
