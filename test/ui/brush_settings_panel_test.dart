@@ -707,38 +707,32 @@ void main() {
       );
     });
 
+    // 🗣️F-478-Q2 (유저 2026-10-27): the method row is one of the rows under
+    // the mixing switch, and the reservoir's three are the mix's alone.
     testWidgets('the mixing method is picked by its row and reaches the '
-        'canvas — DEAD with mixing off, and a blur deadens the reservoir\'s '
-        'knobs (I-75)', (tester) async {
+        'canvas — there only while mixing is on, and a blur takes the '
+        'reservoir\'s knobs away (I-75)', (tester) async {
       final blur = find.byKey(
         const ValueKey<String>('brush-tool-mixing-method-blur'),
       );
       final bare = await _pumpPanel(tester);
       expect(bare().mixesGroundColor, isFalse, reason: 'fixture premise');
-      expect(blur, findsOneWidget, reason: 'the row must keep its place');
-      await tester.ensureVisible(blur);
-      await tester.tap(blur);
-      await tester.pumpAndSettle();
-      expect(
-        bare().mixingMethod,
-        BrushMixingMethod.mix,
-        reason: 'mixing off, nothing to pick',
-      );
+      expect(blur, findsNothing, reason: 'mixing off, nothing to pick');
 
       final read = await _pumpPanel(
         tester,
         initial: BrushToolState.defaults.copyWith(mixesGroundColor: true),
       );
       const amount = ValueKey<String>('brush-tool-paint-amount-slider');
-      expect(tester.widget<FieldSlider>(find.byKey(amount)).onChanged, isNotNull);
+      expect(find.byKey(amount), findsOneWidget, reason: 'premise: a mix');
       await tester.ensureVisible(blur);
       await tester.tap(blur);
       await tester.pumpAndSettle();
 
       expect(read().toInputSettings().blurs, isTrue);
       expect(
-        tester.widget<FieldSlider>(find.byKey(amount)).onChanged,
-        isNull,
+        find.byKey(amount),
+        findsNothing,
         reason: 'a blur picks no colour up',
       );
       expect(tester.takeException(), isNull);
