@@ -103,6 +103,10 @@ class AudioSyncSettings {
   /// 🗣️I-133 (유저 2026-10-26): 「이게 허용되어있지 않으면 일절 마이크를
   /// 인식안함. 즉 앞으로는 앱 키고 이 허용을 체크해야 권한묻도록. 마이크로
   /// 무언가 정보 빼앗기는건가 싶은 불안같은걸 해결하기 위함」.
+  ///
+  /// ON also says the OS granted it: 🗣️I-133-Q1 (유저 2026-10-27) 「OS 가
+  /// 거절하면 스위치를 다시 끈다」 — a no turns it back off, wherever the OS
+  /// is asked (`askTheOsForTheMicrophone`).
   final bool microphoneAllowed;
 
   static const int maxCountInSeconds = 10;

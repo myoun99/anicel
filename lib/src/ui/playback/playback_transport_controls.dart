@@ -32,7 +32,7 @@ Future<void> toggleVoiceRecordingWithFeedback(
     // Without the app's consent the OS is not even asked (I-133) — the
     // switch in Preferences ▸ Audio is where that happens.
     message = strings.recordMicNotAllowed;
-  } else if (!await AppStorage.ensureMicrophoneAccess()) {
+  } else if (!await askTheOsForTheMicrophone(session)) {
     // The OS grant (Android, iOS, macOS): the Future waits out the system
     // dialog, so a take never rolls before the answer is in (F-178).
     message = strings.recordMicPermissionDenied;
@@ -52,6 +52,25 @@ Future<void> toggleVoiceRecordingWithFeedback(
   if (message != null && context.mounted) {
     await showAppNotice(context, title: strings.commonNotice, message: message);
   }
+}
+
+/// Asks the OS for the microphone — the one road both places behind the
+/// app's consent take (I-133): the switch in Preferences ▸ Audio turned
+/// on, and the record button with it on. A no turns the switch back off.
+///
+/// 🗣️I-133-Q1 (유저 2026-10-27): 「OS 가 거절하면 스위치를 다시 끈다」 — a
+/// switch that is on is a microphone that works. ↩️The first landing
+/// (53e76a6a2) kept it on after a no, the app's consent and the OS grant
+/// two answers; the user chose the one switch to say both.
+Future<bool> askTheOsForTheMicrophone(EditorSessionManager session) async {
+  if (await AppStorage.ensureMicrophoneAccess()) {
+    return true;
+  }
+  final settings = session.appSettings.audioSyncSettings.value;
+  session.appSettings.setAudioSyncSettings(
+    settings.copyWith(microphoneAllowed: false),
+  );
+  return false;
 }
 
 /// The play button's press — and its key's (F-261), so the key does what

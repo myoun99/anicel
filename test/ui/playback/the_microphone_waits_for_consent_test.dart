@@ -128,10 +128,12 @@ void main() {
       await closeTheNotice(tester);
     });
 
-    testWidgets('with consent it asks the OS first, and only a yes opens the '
-        'microphone', (tester) async {
+    testWidgets('with consent it asks the OS first — its no turns the consent '
+        'back off — and only a yes opens the microphone', (tester) async {
       final session = await pumpTransport(tester);
-      session.appSettings.setAudioSyncSettings(allowed);
+      // 🗣️I-133-Q1: a switch that is on is a microphone that works.
+      final gained = allowed.copyWith(micGainDb: 6);
+      session.appSettings.setAudioSyncSettings(gained);
       var answer = false;
       var asked = 0;
       AppStorage.debugMicrophoneAccess = () async {
@@ -148,8 +150,14 @@ void main() {
         find.text(session.uiStrings.recordMicPermissionDenied),
         findsOneWidget,
       );
+      expect(
+        session.appSettings.audioSyncSettings.value,
+        gained.copyWith(microphoneAllowed: false),
+        reason: 'the consent off, the rest as it was',
+      );
       await closeTheNotice(tester);
 
+      session.appSettings.setAudioSyncSettings(allowed);
       answer = true;
       await press(tester);
       expect(asked, 2);
@@ -219,10 +227,9 @@ void main() {
     bool allowedIn(EditorSessionManager session) =>
         session.appSettings.audioSyncSettings.value.microphoneAllowed;
 
-    testWidgets('turning it on asks the OS — the meter opens only on its '
-        'yes — and turning it off asks nothing and shuts the meter', (
-      tester,
-    ) async {
+    testWidgets('turning it on asks the OS — its no turns it back off, the '
+        'meter opens only on its yes — and turning it off asks nothing and '
+        'shuts the meter', (tester) async {
       final meter = _Meter();
       final session = await pumpAudioSection(tester, meter: meter);
       var answer = false;
@@ -234,19 +241,16 @@ void main() {
       expect(meter.starts, 0, reason: 'the window opens on a shut meter');
 
       await flip(tester);
-      expect(allowedIn(session), isTrue);
       expect(asked, 1);
-      expect(meter.starts, 0, reason: 'the OS said no');
+      // 🗣️I-133-Q1: a switch that is on is a microphone that works.
+      expect(allowedIn(session), isFalse, reason: 'the OS said no');
+      expect(meter.starts, 0);
       expect(
         find.text(session.uiStrings.recordMicPermissionDenied),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
       await tester.pumpAndSettle();
-
-      await flip(tester);
-      expect(allowedIn(session), isFalse);
-      expect(asked, 1, reason: 'turning it off asks nothing');
 
       answer = true;
       await flip(tester);
@@ -257,7 +261,7 @@ void main() {
 
       await flip(tester);
       expect(allowedIn(session), isFalse);
-      expect(asked, 2);
+      expect(asked, 2, reason: 'turning it off asks nothing');
       expect(meter.isRunning, isFalse);
     });
 
@@ -281,18 +285,24 @@ void main() {
   });
 
   // ⛔No launch ask (↩️F-178, 🗣️I-133): the OS hears of the microphone from
-  // the two places the consent stands in front of, and from nowhere else.
-  test('the OS is asked for the microphone from behind the consent only', () {
-    final askers = [
+  // the two places the consent stands in front of, and from nowhere else —
+  // through one road, whose no turns the consent back off (🗣️I-133-Q1).
+  test('the OS is asked for the microphone from behind the consent only, '
+      'through one road', () {
+    Map<String, int> callersOf(String call) => {
       for (final file in dartFilesUnder('lib'))
-        if (file.readAsStringSync().contains('ensureMicrophoneAccess('))
-          libPath(file),
-    ]..sort();
-    expect(askers, [
-      'lib/src/services/persistence/app_documents.dart',
-      'lib/src/ui/dialogs/audio_settings_section.dart',
-      'lib/src/ui/playback/playback_transport_controls.dart',
-    ]);
+        if (call.allMatches(file.readAsStringSync()) case final calls
+            when calls.isNotEmpty)
+          libPath(file): calls.length,
+    };
+    expect(callersOf('ensureMicrophoneAccess('), {
+      'lib/src/services/persistence/app_documents.dart': 1,
+      'lib/src/ui/playback/playback_transport_controls.dart': 1,
+    });
+    expect(callersOf('askTheOsForTheMicrophone('), {
+      'lib/src/ui/dialogs/audio_settings_section.dart': 1,
+      'lib/src/ui/playback/playback_transport_controls.dart': 2,
+    });
   });
 }
 

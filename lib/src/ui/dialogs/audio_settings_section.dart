@@ -4,12 +4,11 @@ import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
-import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../editor_session_manager.dart';
 import '../playback/audio_input_monitor.dart';
 import '../../models/audio_sync_settings.dart';
 import '../playback/playback_transport_controls.dart'
-    show toggleVoiceRecordingWithFeedback;
+    show askTheOsForTheMicrophone, toggleVoiceRecordingWithFeedback;
 import '../playback/voice_take_processing.dart'
     show micGainFactor, voiceClipThreshold;
 import 'app_confirm_dialog.dart' show showAppNotice;
@@ -46,8 +45,9 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
   }
 
   /// The consent switch (I-133). Turning it on is the one moment the OS is
-  /// asked, and the meter opens only on its yes; turning it off shuts the
-  /// meter and ends a rolling take as the record button would.
+  /// asked — its no turns the switch back off ([askTheOsForTheMicrophone])
+  /// — and the meter opens only on its yes; turning it off shuts the meter
+  /// and ends a rolling take as the record button would.
   Future<void> _allowMicrophone(
     bool allowed,
     AudioSyncSettings settings,
@@ -59,7 +59,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
     );
     if (!allowed && session.voiceRecording.isVoiceRecording.value) {
       await toggleVoiceRecordingWithFeedback(context, session);
-    } else if (allowed && !await AppStorage.ensureMicrophoneAccess()) {
+    } else if (allowed && !await askTheOsForTheMicrophone(session)) {
       if (mounted) {
         await showAppNotice(
           context,
