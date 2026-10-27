@@ -462,13 +462,16 @@ class FramePictureStore<K extends Object> {
   /// ([RunBlock]); the run and the write are all that is waited on. ↩️⛔「Not
   /// the deepest level or the patch rastered at once (`toImageSync`): later
   /// on both」 (2026-10-26) — each waited on, then the run, then the write.
-  /// On the main PC under other sessions' tests (S5_BA 컷352 · 비지블 전부
-  /// on, profile, 4K, the two in turn stroke by stroke in one run, 9–17
-  /// test runners at 100% CPU) a step into its picture p50 77–86 →
-  /// 44–54 ms, 5–11 frames later → 2–8, on S5 and a default project alike.
-  /// ⛔The base through the run's buffer with the levels under it: as fast
-  /// under load, but on a quiet machine a frame later than four waits —
-  /// the write took 3.1 ms against 1.05.
+  /// On the main PC (Windows, GLES, profile, S5_BA 컷352 · 비지블 전부 on and
+  /// a default project, the two in turn stroke by stroke in one run), a
+  /// step into its picture: under other sessions' tests (9–26 runners, 100%
+  /// CPU) p50 73–87 → 42–54 ms, 5–11 frames later → 2–8; quiet (none, each
+  /// stroke waiting for it, two rounds) p50 7.0–36.2 → 8.8–25.8 ms, p90
+  /// 14.7–67.2 → 17.4–43.8 ms — the same within a round's spread. ⚠️The
+  /// Surface Pro 11, which the 10-26 rejection was measured on too, is not
+  /// measured. ⛔The base through the run's buffer with the levels under
+  /// it: as fast under load, but on a quiet machine a frame later than
+  /// four waits — the write took 3.1 ms against 1.05.
   Future<bool> _written(_Entry<K> entry, List<_Texels> batch) async {
     final picture = entry.picture;
     final patched = entry.patchedLevels;
