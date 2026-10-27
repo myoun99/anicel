@@ -56,9 +56,10 @@ import 'static_raster.dart';
 /// rest. A region that is re-added has changed (or was moved, which the
 /// grid fit judges); a region that is retained has not. The image is taken
 /// after [stillFrames] frames of being retained — in the frame it changed
-/// in while a clock looks ([_StillLayer._waitNow]) — and dropped the moment
-/// the region is re-added with a different layer tree
-/// ([_StillLayer._signatureOf] says what "different" covers).
+/// in while a clock looks ([_StillLayer._waitNow]), and again in the very
+/// frame only its ticks moved in — and dropped the moment the region is
+/// re-added with a different layer tree ([_StillLayer._signatureOf] says
+/// what "different" covers).
 ///
 /// Content that changes without the layer tree knowing — an external
 /// texture, a platform view, a follower pinned to a leader elsewhere, a
@@ -430,15 +431,7 @@ class _StillLayer extends OffsetLayer {
   void addToScene(ui.SceneBuilder builder) {
     final strata = _strata;
     if (strata != null && _stillShows(strata)) {
-      engineLayer = builder.pushOffset(
-        offset.dx,
-        offset.dy,
-        oldLayer: engineLayer as ui.OffsetEngineLayer?,
-      );
-      strata.addTo(builder);
-      builder.pop();
-      _owner._drawnFromImage = true;
-      _owner._standDown = StillStandDown.none;
+      _drawFrom(strata, builder);
       _noteWhoMovedAlone();
       return;
     }
@@ -478,9 +471,36 @@ class _StillLayer extends OffsetLayer {
         ? StillStandDown.changing
         : gate;
     if (gate == StillStandDown.none) {
+      // 🚨STRATA THAT WENT WHILE THE REGION STOOD STILL ARE TAKEN AGAIN IN
+      // THEIR OWN FRAME, BEFORE IT IS DRAWN (F-244-drag-start, 10-27). A
+      // tick that stood still when they were taken moving — the rows a block
+      // drag carries, at its first step — or a live one gone still leaves
+      // the rest of the region as it was, and the frame's own check took
+      // the strata again right AFTER this frame, which was drawn live in
+      // between. 🔬On the Surface (profile, Impeller GLES, 3567×2166) that
+      // live frame was 26–46 ms of raster and the image after it 18–31, at
+      // the start of every block, row, comma and [+] drag. Taken here, the
+      // frame is drawn from the new strata, the moving ticks live in them.
+      if (dropped && _mayTake && _capture()) {
+        _drawFrom(_strata!, builder);
+        return;
+      }
       _watch();
     }
     super.addToScene(builder);
+  }
+
+  /// Hands the scene [strata] in place of the region's children.
+  void _drawFrom(_Strata strata, ui.SceneBuilder builder) {
+    engineLayer = builder.pushOffset(
+      offset.dx,
+      offset.dy,
+      oldLayer: engineLayer as ui.OffsetEngineLayer?,
+    );
+    strata.addTo(builder);
+    builder.pop();
+    _owner._drawnFromImage = true;
+    _owner._standDown = StillStandDown.none;
   }
 
   /// 🚨Runs on EVERY layer of the tree before every frame's scene is
@@ -641,6 +661,13 @@ class _StillLayer extends OffsetLayer {
       _stillFramesNeeded -
       (aClockLooksInThisFrame() ? StillRaster.stillFrames : 0);
 
+  /// Whether an image taken now may be first drawn in the frame [_frame]
+  /// reads: the region has stood still past its wait by then, and no other
+  /// region's image is first drawn in it ([StillRaster._lastCaptureFrame]).
+  bool get _mayTake =>
+      _frame - _changedAt > _waitNow &&
+      StillRaster._lastCaptureFrame != _frame;
+
   void _watch() {
     if (_watching) {
       return;
@@ -654,12 +681,23 @@ class _StillLayer extends OffsetLayer {
       if (_owner._gate() != StillStandDown.none) {
         return;
       }
-      // `>`: the frame clock ticks after the scene is built, so the frame
-      // the region changed in already reads one here. And one image a
-      // frame across every region ([StillRaster._lastCaptureFrame]).
-      if (_frame - _changedAt > _waitNow &&
-          StillRaster._lastCaptureFrame != _frame) {
-        _capture();
+      // The frame clock ticks after the scene is built, so [_frame] here
+      // already reads the next frame — the one that draws what is taken.
+      if (_mayTake) {
+        if (_capture()) {
+          // The scene still holds the children: re-add this layer so the
+          // next frame draws the strata instead.
+          //
+          // ⛔NOT A FRAME OF ITS OWN (2026-09-25, H40). One asked for here
+          // shows nothing new — the image is of what is already on screen —
+          // and its frame counted as still for every other region, which
+          // then took ITS image and asked for another: a brush pick with the
+          // settings open grew nine frames longer, ~20 ms more of UI thread,
+          // and the images taken in a row landed on the stroke that followed
+          // (worst frame 48 → 63 ms). The next frame that comes anyway draws
+          // it.
+          markNeedsAddToScene();
+        }
         return;
       }
       _watching = true;
@@ -670,17 +708,17 @@ class _StillLayer extends OffsetLayer {
   }
 
   /// Takes the region's strata as the scene last had it — every stratum a
-  /// part of ONE image, aligned to the device pixel grid — for the next
-  /// frame to show.
+  /// part of ONE image, aligned to the device pixel grid — for the frame
+  /// [_frame] reads to show; false where the region cannot be taken.
   ///
   /// The ticks drawn live are the ones moving ([_moving]): a tick that
   /// is not is painted into its stratum like anything else, and its
   /// moving later is a change of the region's.
-  void _capture() {
+  bool _capture() {
     final fit = _owner._gridFit();
     if (fit == null) {
       _owner._standDown = StillStandDown.unlocatable;
-      return;
+      return false;
     }
     final layout = _Strata.layoutOf(this, _moving);
     _owner._tickRefusals = layout.refusals;
@@ -689,12 +727,12 @@ class _StillLayer extends OffsetLayer {
         : null;
     if (signature == null) {
       _owner._standDown = StillStandDown.unvouched;
-      return;
+      return false;
     }
     try {
       if (!supportsRasterization()) {
         _owner._standDown = StillStandDown.unvouched;
-        return;
+        return false;
       }
       StillRaster._lastCaptureFrame = _frame;
       _strata = _Strata.take(
@@ -714,19 +752,9 @@ class _StillLayer extends OffsetLayer {
       StillRaster._capturesEver += 1;
     } on Object catch (error, stack) {
       _refused(error, stack);
-      return;
+      return false;
     }
-    // The scene still holds the children: re-add this layer so the next
-    // frame draws the strata instead.
-    //
-    // ⛔NOT A FRAME OF ITS OWN (2026-09-25, H40). One asked for here shows
-    // nothing new — the image is of what is already on screen — and its
-    // frame counted as still for every other region, which then took ITS
-    // image and asked for another: a brush pick with the settings open grew
-    // nine frames longer, ~20 ms more of UI thread, and the images taken in
-    // a row landed on the stroke that followed (worst frame 48 → 63 ms).
-    // The next frame that comes anyway draws it.
-    markNeedsAddToScene();
+    return true;
   }
 
   /// Painting is always available and always correct, so a refused capture

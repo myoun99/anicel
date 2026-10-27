@@ -51,6 +51,14 @@ Future<void> _moveUntilStill(
   }
 }
 
+/// Lets the strata just taken live until they paid for themselves — ones
+/// thrown away sooner make the next wait longer ([StillRaster.framesToPay]).
+Future<void> _untilPaid(WidgetTester tester) async {
+  for (var i = 0; i < StillRaster.framesToPay; i += 1) {
+    await _frame(tester);
+  }
+}
+
 Color _pixelAt(WidgetTester tester, ByteData bytes, Offset logical) {
   final ratio = tester.view.devicePixelRatio;
   final width = (parityCaptureWidth * ratio).round();
@@ -326,8 +334,10 @@ void main() {
   });
 
   testWidgets('🚨a tick that stood still while the strata were taken is in '
-      'its stratum — when it moves, the region paints, and the next strata '
-      'draw it live', (tester) async {
+      'its stratum — when it moves, the strata are taken again in that '
+      'frame, it live between them, and the frame is drawn from them', (
+    tester,
+  ) async {
     final at = ValueNotifier<double>(0);
     addTearDown(at.dispose);
     await _pump(tester, _regionWith(at));
@@ -339,14 +349,21 @@ void main() {
     }
     final region = _region(tester);
     expect(region.debugDrawnFromImage, isTrue, reason: '⛔premise: still');
+    expect(region.debugLiveTicks, isEmpty, reason: '⛔premise: in a stratum');
+    await _untilPaid(tester);
 
+    // 🔬F-244-drag-start: that frame drew the whole region live, and the
+    // strata were taken again right after it — at every drag's start.
+    final before = region.debugCaptureCount;
     at.value = 60;
     await tester.pump();
+    expect(region.debugCaptureCount, before + 1, reason: 'taken again');
     expect(
       region.debugDrawnFromImage,
-      isFalse,
-      reason: 'a tick in a stratum moving is a change of the region\'s',
+      isTrue,
+      reason: 'in the frame the tick moved in',
     );
+    expect(region.debugLiveTicks, hasLength(1), reason: 'the tick, live');
     expect(
       _pixelAt(
         tester,
@@ -356,13 +373,60 @@ void main() {
       _mark,
     );
 
-    await _moveUntilStill(tester, at);
-    expect(region.debugDrawnFromImage, isTrue);
     final taken = region.debugCaptureCount;
     at.value = 100;
     await tester.pump();
     expect(region.debugDrawnFromImage, isTrue, reason: 'drawn live now');
     expect(region.debugCaptureCount, taken);
+  });
+
+  testWidgets('two regions whose ticks start moving in one frame: one is '
+      'taken again in that frame and drawn from it, the other drawn live and '
+      'taken after it — one image a frame', (tester) async {
+    final at = ValueNotifier<double>(0);
+    addTearDown(at.dispose);
+    // Each region as wide as its tick — no overflow, so no clip over it.
+    await pumpSurface(
+      tester,
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _regionWith(at, key: const ValueKey('a'))),
+          Expanded(child: _regionWith(at, key: const ValueKey('b'))),
+        ],
+      ),
+      left: 10,
+      width: 400,
+      height: _height,
+    );
+    final regions = tester
+        .renderObjectList<RenderStillRaster>(find.byType(StillRaster))
+        .toList();
+    bool still(RenderStillRaster r) =>
+        r.debugDrawnFromImage && r.debugLiveTicks.isEmpty;
+    for (var i = 0; i < StillRaster.maxStillFrames * 2; i += 1) {
+      if (regions.every(still)) {
+        break;
+      }
+      await _frame(tester);
+    }
+    expect(regions.every(still), isTrue, reason: '⛔premise: both still');
+    await _untilPaid(tester);
+    int taken() => regions.fold(0, (sum, r) => sum + r.debugCaptureCount);
+
+    final before = taken();
+    at.value = 60;
+    await tester.pump();
+    expect(
+      [for (final r in regions) r.debugDrawnFromImage],
+      unorderedEquals([true, false]),
+      reason: 'one image first drawn a frame',
+    );
+    expect(taken(), before + 2, reason: 'the other taken after the frame');
+
+    await _frame(tester);
+    expect(regions.every((r) => r.debugDrawnFromImage), isTrue);
+    expect(taken(), before + 2);
   });
 
   testWidgets('🚨a tick inside a tick: the inner one moving is drawn live, and '
