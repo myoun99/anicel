@@ -10,8 +10,11 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
+import 'package:anicel/src/ui/widgets/tick_layer.dart';
 
+import '../../helpers/repaint_strays.dart';
 import '../../helpers/storyboard_host.dart';
 import '../../helpers/timeline_host.dart';
 
@@ -159,6 +162,33 @@ void main() {
         'c002',
         reason: 'the release lands where it showed',
       );
+    });
+
+    // 🚨I-22 ③: the name turns over on a scrub's move, so it is drawn on a
+    // layer of its own — the bar's own is a tick layer too, and the app's
+    // scrub pin lets it repaint, pills and all.
+    testWidgets('a crossing repaints the name\'s layer and nothing else of '
+        'the $tab\'s bar', (tester) async {
+      final session = await open(tester, storyboard: storyboard);
+      session.selectCut(const CutId('cut-a'));
+      await tester.pumpAndSettle();
+      session.frameScrub.scrubGlobalFrame(20);
+      await tester.pump();
+      final bar = tester.renderObject(find.byType(TimelineCommandBar));
+      // The nearest: the bar stands on one too.
+      final layer = tester.renderObject(
+        find
+            .ancestor(of: find.byKey(name), matching: find.byType(TickLayer))
+            .first,
+      );
+
+      session.frameScrub.scrubGlobalFrame(26);
+      await tester.pump(null, EnginePhase.layout);
+      final strays = repaintStrays(bar, allowed: {layer});
+      await tester.pump();
+
+      expect(shown(tester), 'c002', reason: '⛔전제: the move crossed');
+      expect(strays, isEmpty);
     });
   }
 

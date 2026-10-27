@@ -42,9 +42,15 @@ void main() {
   RenderObject layerOf(RenderObject bar) {
     var node = bar;
     while (!node.isRepaintBoundary) {
-      late RenderObject child;
-      node.visitChildren((only) => child = only);
-      node = child;
+      final children = <RenderObject>[];
+      node.visitChildren(children.add);
+      expect(
+        children,
+        hasLength(1),
+        reason: 'the bar branches at ${node.runtimeType} with no layer of '
+            'its own above',
+      );
+      node = children.single;
     }
     return node;
   }
