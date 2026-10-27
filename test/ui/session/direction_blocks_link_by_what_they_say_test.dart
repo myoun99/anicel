@@ -230,6 +230,21 @@ void main() {
     });
   });
 
+  test('the verbs are a direction row\'s: told of a drawing row, they '
+      'leave its block be', () {
+    final drawing = session.requireActiveCut.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    session.selectLayer(drawing);
+    session.selectFrameIndex(4);
+    session.createDrawingAtCurrentFrame();
+    final cel = celAt(4, drawing);
+
+    session.instructionVerbs.removeInstructionEventAt(drawing, 4);
+
+    expect(celAt(4, drawing), cel);
+  });
+
   test('an edit of a linked block says it on every block of its drawing', () {
     block(2);
     say(2, from: 'A', to: 'B');
