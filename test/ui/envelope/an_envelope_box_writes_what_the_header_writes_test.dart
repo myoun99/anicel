@@ -132,21 +132,28 @@ void main() {
     session.cutVerbs.createLinkedCutFromActiveCut();
     await tester.pumpAndSettle();
     final cuts = [for (final cut in session.activeTrack.cuts) cut.id];
+    String nameOf(int line) => session.cutById(cuts[line])!.name;
     expect(cuts, hasLength(2), reason: '⛔premise: two cuts share a folder');
     expect(printed(tester).cuts, hasLength(2), reason: '⛔premise');
+    final before = [nameOf(0), nameOf(1)];
+    // Names no cut holds yet: typing the name a line already prints moves
+    // nothing, and would pass whichever cut it landed on.
+    for (final name in ['38', '41']) {
+      expect(before, isNot(contains(name)), reason: '⛔premise: $name');
+    }
 
-    await typeInto(tester, box('cut-1-number'), '40');
+    await typeInto(tester, box('cut-1-number'), '41');
 
-    expect(session.cutById(cuts[1])!.name, '40');
-    expect(session.cutById(cuts[0])!.name, '39', reason: 'the other line\'s');
+    expect(nameOf(1), '41');
+    expect(nameOf(0), before[0], reason: 'the other line\'s');
 
     // Both lines, whichever cut the envelope is shown for: a line that
     // named the envelope's own cut would pass one of the two.
     await typeInto(tester, box('cut-0-number'), '38');
 
-    expect(session.cutById(cuts[0])!.name, '38');
-    expect(session.cutById(cuts[1])!.name, '40', reason: 'the other line\'s');
-    expect(printed(tester).cuts.map((line) => line.name), ['38', '40']);
+    expect(nameOf(0), '38');
+    expect(nameOf(1), '41', reason: 'the other line\'s');
+    expect(printed(tester).cuts.map((line) => line.name), ['38', '41']);
     expect(
       box('cut-2-number'),
       findsNothing,
