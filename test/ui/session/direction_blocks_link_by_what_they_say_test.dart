@@ -149,8 +149,8 @@ void main() {
       block(2);
       say(2, from: 'A', to: 'B');
 
-      expect(say(2, text: 'again', from: 'A', to: 'B'), isNull);
-      expect(spanAt(2)?.text, 'again');
+      expect(say(2, id: 'fix', text: pan(), from: 'A', to: 'B'), isNull);
+      expect(spanAt(2)?.instructionId, 'fix');
     });
 
     test('on an empty cell, a new block shows that drawing and asks nothing '

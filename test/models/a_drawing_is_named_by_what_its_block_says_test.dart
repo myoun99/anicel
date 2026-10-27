@@ -25,7 +25,7 @@ void main() {
   const pan = CameraInstructionDef(id: 'pan', name: 'PAN', iconKey: 'pan');
   final written = linkNameOfWriting(said, pan)!;
 
-  Cut cutOf(LayerKind kind, {String? name}) => Cut(
+  Cut cutOf(LayerKind kind, {String? name, bool shown = true}) => Cut(
     id: const CutId('c'),
     name: 'c',
     duration: 8,
@@ -44,11 +44,12 @@ void main() {
           ),
         ],
         timeline: {
-          2: const TimelineExposure.drawing(
-            FrameId('d'),
-            length: 2,
-            instruction: said,
-          ),
+          if (shown)
+            2: const TimelineExposure.drawing(
+              FrameId('d'),
+              length: 2,
+              instruction: said,
+            ),
         },
       ),
     ],
@@ -67,6 +68,15 @@ void main() {
   test('…and the name it held before is not the one it keeps', () {
     final cut = cutWithSpansOnTheirBlocks(
       cutOf(LayerKind.instruction, name: 'A1'),
+      defById: (id) => id == 'pan' ? pan : null,
+    );
+    expect(drawingOf(cut).name, written);
+  });
+
+  test('a drawing no block of the row shows keeps its name — a lane of its '
+      'bank in a linked cut says it (F-136)', () {
+    final cut = cutWithSpansOnTheirBlocks(
+      cutOf(LayerKind.instruction, name: written, shown: false),
       defById: (id) => id == 'pan' ? pan : null,
     );
     expect(drawingOf(cut).name, written);
