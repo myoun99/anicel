@@ -36,7 +36,12 @@ import '../../services/editing/default_layer_helpers.dart';
 import '../timeline/timeline_cel_content_source.dart' show RowNamingRevision;
 import '../canvas/stroke_in_flight.dart';
 import '../timeline/timeline_drag_preview.dart'
-    show TimelineDragPreview, celPixelsOf, timelineDragPreviewLayerFor;
+    show
+        CelPixelsHung,
+        TimelineDragPreview,
+        celPixelsHungBy,
+        celPixelsOf,
+        timelineDragPreviewLayerFor;
 import '../audio/sound_cannot_play.dart';
 import 'folder_bands.dart';
 import 'layer_verbs.dart';
@@ -580,9 +585,39 @@ class LayerStack {
         layerId: crossed.layerId,
       );
 
+  /// What the drag in flight hung where it is not when the rows were last
+  /// told ([celPixelsHungBy]).
+  CelPixelsHung _hungWhenTold = celPixelsHungBy(null);
+
+  /// A drag that hangs a cel's pixels somewhere else flips that cel's
+  /// answers as surely as a stroke does — both of them, each read where the
+  /// pixels are ([_pixelsOf]). A TRADE most of all: it lays no row again —
+  /// its blocks stand where they stood and only their pictures go — so
+  /// nothing else tells the rows (I-98, 유저 2026-10-26: 「바꾸는동안 블록이
+  /// 라이브로 안변함 … 거기서 손 떼고 나서야 블록이 서로 변함」).
+  void _bumpWhereTheDragHangsPixels() {
+    final told = _hungWhenTold;
+    final hung = celPixelsHungBy(_dragPreview.value);
+    if (listEquals(hung.rekeys, told.rekeys) &&
+        listEquals(hung.pictures, told.pictures)) {
+      return;
+    }
+    _hungWhenTold = hung;
+    celTintRevision.bump(
+      rows: _rowsShowing({
+        for (final shown in [told, hung]) ...[
+          for (final rekey in shown.rekeys) rekey.to,
+          for (final move in shown.pictures) move.toRow,
+        ],
+      }),
+    );
+  }
+
   /// The two events that can flip [celHasContentForLayer]'s answer, and the
   /// two that can flip [celCannotBeReadForLayer]'s: a cel found unreadable,
-  /// and a sound's answer moving ([_soundsMoved]).
+  /// and a sound's answer moving ([_soundsMoved]) — and a drag hanging a
+  /// cel's pixels somewhere else, which can flip both
+  /// ([_bumpWhereTheDragHangsPixels]).
   ///
   /// ⛔NOT EVERY PIXEL EDIT. A third listener stood here, on the store's
   /// `celPixelRevision`, for 픽셀 비우기: the crossing detector used to ask
@@ -603,9 +638,11 @@ class LayerStack {
       _bumpCelTintRevision,
     );
     _soundsMovedHeard = _soundsMoved()..addListener(_bumpCelTintRevision);
+    _dragPreview.addListener(_bumpWhereTheDragHangsPixels);
   }
 
   void dispose() {
+    _dragPreview.removeListener(_bumpWhereTheDragHangsPixels);
     _renderCaches.brushFrameStore.celContentRevision.removeListener(
       _bumpWhereTheStoreCrossed,
     );

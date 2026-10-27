@@ -582,20 +582,39 @@ Layer? timelineDragPreviewLayerFor(
   LayerId layerId,
   FrameId frameId,
 ) {
-  if (preview is BlockMoveDragPreview) {
-    for (final rekey in preview.rekeys) {
-      if (rekey.to == layerId && rekey.frameId == frameId) {
-        return (row: rekey.from, cel: frameId);
-      }
+  final (:rekeys, :pictures) = celPixelsHungBy(preview);
+  for (final rekey in rekeys) {
+    if (rekey.to == layerId && rekey.frameId == frameId) {
+      return (row: rekey.from, cel: frameId);
     }
-    for (final move in preview.picturesMoved) {
-      if (move.toRow == layerId && move.toCel == frameId) {
-        return (row: move.fromRow, cel: move.fromCel);
-      }
+  }
+  for (final move in pictures) {
+    if (move.toRow == layerId && move.toCel == frameId) {
+      return (row: move.fromRow, cel: move.fromCel);
     }
   }
   return (row: layerId, cel: frameId);
 }
+
+/// What a drag hangs where it is not ([celPixelsHungBy]).
+typedef CelPixelsHung = ({
+  List<CelRekey> rekeys,
+  List<CelPictureMove> pictures,
+});
+
+/// What [preview] hangs where it is not — the cels it carries onto another
+/// row ([BlockMoveDragPreview.rekeys]) and the pictures it hangs in another
+/// cel ([BlockMoveDragPreview.picturesMoved]); nothing for any other drag.
+/// [celPixelsOf] answers through it, and what paints from that answer hears
+/// it change (`LayerStack`, I-98).
+CelPixelsHung celPixelsHungBy(TimelineDragPreview? preview) =>
+    switch (preview) {
+      BlockMoveDragPreview(:final rekeys, :final picturesMoved) => (
+        rekeys: rekeys,
+        pictures: picturesMoved,
+      ),
+      _ => (rekeys: const [], pictures: const []),
+    };
 
 /// The EFFECT chain [preview] shows for [trackId]'s V row, or null when it
 /// does not touch that track — a block move carrying the chain's keys, or a
