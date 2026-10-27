@@ -112,6 +112,7 @@ void main() {
     'deleteLayerTitle': (s) => s.deleteLayerTitle,
     'deleteLayersMessage': (s) => s.deleteLayersMessage,
     'deleteLayersHeading': (s) => s.deleteLayersHeading,
+    'deleteEffectsHeading': (s) => s.deleteEffectsHeading,
     'frameNameConflictTitle': (s) => s.frameNameConflictTitle,
     'frameNameConflictBody': (s) => s.frameNameConflictBody,
     'linkedPasteConflictBody': (s) => s.linkedPasteConflictBody,
