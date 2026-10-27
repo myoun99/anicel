@@ -8,6 +8,7 @@ import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -24,6 +25,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -45,7 +47,7 @@ void main() {
   ];
   final page = estimatedImageBytes(32, 24);
 
-  Layer row(String id, LayerId folder) => Layer(
+  Layer row(String id, [LayerId? folder]) => Layer(
     id: LayerId(id),
     name: id,
     folderId: folder,
@@ -54,37 +56,42 @@ void main() {
   );
 
   /// [count] folders at half strength, two drawn rows in each — each one
-  /// picture of its own.
-  EditorSessionManager session({int count = 1}) => EditorSessionManager(
-    initialProject: Project(
-      id: const ProjectId('held'),
-      name: 'Held',
-      createdAt: DateTime.utc(2026, 10, 27),
-      tracks: [
-        Track(
-          id: const TrackId('track'),
-          name: 'Video',
-          cuts: [
-            Cut(
-              id: const CutId('cut'),
-              name: 'cut',
-              duration: 1,
-              canvasSize: canvasSize,
-              layers: [
-                for (var at = 0; at < count; at += 1) ...[
-                  for (final id in rowsOf[at]) row(id, folders[at]),
-                  createFolderLayer(
-                    id: folders[at],
-                    name: 'F$at',
-                  ).copyWith(opacity: 0.5),
-                ],
-              ],
-            ),
-          ],
-        ),
+  /// picture of its own — and, [withPen], a row a pen may draw on between
+  /// the first and the rest.
+  EditorSessionManager session({int count = 1, bool withPen = false}) {
+    final layers = [
+      for (var at = 0; at < count; at += 1) ...[
+        for (final id in rowsOf[at]) row(id, folders[at]),
+        createFolderLayer(
+          id: folders[at],
+          name: 'F$at',
+        ).copyWith(opacity: 0.5),
+        if (withPen && at == 0) row('pen'),
       ],
-    ),
-  );
+    ];
+    return EditorSessionManager(
+      initialProject: Project(
+        id: const ProjectId('held'),
+        name: 'Held',
+        createdAt: DateTime.utc(2026, 10, 27),
+        tracks: [
+          Track(
+            id: const TrackId('track'),
+            name: 'Video',
+            cuts: [
+              Cut(
+                id: const CutId('cut'),
+                name: 'cut',
+                duration: 1,
+                canvasSize: canvasSize,
+                layers: layers,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   void draw(EditorSessionManager s, String id, double x) {
     final cut = s.requireActiveCut;
@@ -306,13 +313,82 @@ void main() {
       expect(store.estimatedBytes, picture, reason: 'the one ahead gave way');
       expect(store.holds(key), isTrue);
 
-      final under = session();
-      addTearDown(under.dispose);
-      under.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(
-        node - 1,
+      /// How many nodes a canvas holds, standing on the frame made ahead on
+      /// a line with room for its picture and its folder but a byte — the
+      /// picture [pinned] as the screen holds it, and [lent] bytes lent.
+      Future<int> heldStanding({required bool pinned, int lent = 0}) async {
+        final s = session();
+        addTearDown(s.dispose);
+        final line = s.playbackRig.playbackCache
+          ..debugSetPlaybackCacheBudgetBytes(picture + node - 1);
+        final pictures = s.playbackRig.framePictures;
+        final stood = drawn(s);
+        await pictures.make(stood, shouldAbort: () => false);
+        if (pinned) {
+          final key = pictures.keyOf(stood);
+          s.renderCaches.framePictureStore.retainPin(key);
+          addTearDown(() => s.renderCaches.framePictureStore.releasePin(key));
+        }
+        line.lend(lent);
+        await pictures.holdNodesOf(
+          pictures.stackOf(stood),
+          stood,
+          shouldAbort: () => false,
+        );
+        return pictures.heldNodes.length;
+      }
+
+      expect(await heldStanding(pinned: false), 1, reason: '⛔premise');
+      expect(await heldStanding(pinned: true), 0, reason: 'what it shows');
+      expect(
+        await heldStanding(pinned: false, lent: picture),
+        0,
+        reason: 'what is lent',
       );
-      await shown(under, drawn(under));
-      expect(under.playbackRig.framePictures.heldNodes, hasLength(0));
+    });
+  });
+
+  testWidgets('⚖️what lies below the pen held is no room for the nodes over '
+      'it', (tester) async {
+    await tester.runAsync(() async {
+      /// The bytes held below the pen and in all, standing on a frame with
+      /// a folder under the pen and one over it, on a line of [line].
+      Future<({int below, int all})> heldOn({int? line}) async {
+        final s = session(count: 2, withPen: true);
+        addTearDown(s.dispose);
+        if (line != null) {
+          s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(line);
+        }
+        final pictures = s.playbackRig.framePictures;
+        final stood = drawn(s, count: 2);
+        final nodes = [
+          for (final node in pictures.stackOf(stood))
+            switch (node) {
+              CompositeLeaf(
+                payload: CanvasLayerImageRequest(:final frameKey),
+              )
+                  when frameKey.layerId == const LayerId('pen') =>
+                CompositeLeaf<CanvasStackRow>(
+                  CanvasActiveLayerRow(opacity: 1, frameKey: frameKey),
+                ),
+              _ => node,
+            },
+        ];
+        await pictures.holdNodesOf(nodes, stood, shouldAbort: () => false);
+        return (
+          below: pictures.heldNodes.heldBelowBytes,
+          all: pictures.heldNodes.heldBytes,
+        );
+      }
+
+      final wide = await heldOn();
+      final over = wide.all - wide.below;
+      expect(wide.below, greaterThan(0), reason: '⛔premise: under the pen');
+      expect(over, greaterThan(0), reason: '⛔premise: over the pen');
+
+      final narrow = await heldOn(line: wide.below + over - 1);
+      expect(narrow.below, wide.below);
+      expect(narrow.all, wide.below, reason: 'no room left over it');
     });
   });
 
