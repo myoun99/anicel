@@ -264,7 +264,7 @@ class EditorVoiceRecording {
   bool _voiceRecordDenoise = false;
   bool _lastVoiceTakeClipped = false;
 
-  /// The transport's clip light (REC1-D): latches on the first post-gain
+  /// The transport's clip mark (REC1-D): latches on the first post-gain
   /// sample at the ceiling and stays lit for the rest of the take — the
   /// performer sees "that pass clipped" without reading a meter. Always
   /// on duty (the toast and block marker sit behind the notice toggle;
@@ -618,7 +618,7 @@ class EditorVoiceRecording {
   /// split out so tests can feed made chunks).
   ///
   /// POST-chain (REC1-D): the channel fold picks what the take will
-  /// keep, the gain scales it — the envelope and the clip light both
+  /// keep, the gain scales it — the envelope and the clip mark both
   /// show what lands in the file, which is the whole point of baking.
   void debugIngestVoiceRecordChunk(Float32List interleaved, int channels) {
     final fold = _voiceRecordPeakFold;
@@ -843,7 +843,7 @@ class EditorVoiceRecording {
     );
     isVoiceRecording.value = true;
     // Capture-chain snapshot (REC1-D): gain and channel fold ride the
-    // whole take; the clip light re-arms per take.
+    // whole take; the clip mark re-arms per take.
     _voiceRecordGainDb = AudioSyncSettings.clampMicGainDb(
       audioSyncSettings.value.micGainDb,
     );

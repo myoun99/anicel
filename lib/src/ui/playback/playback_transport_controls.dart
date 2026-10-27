@@ -126,6 +126,9 @@ const double _wordsReach = 3;
 /// The words' size — 「글자 작아도됨」 (F-463 ②).
 const double _wordsFontSize = 8;
 
+/// The clip mark's size — 「오른쪽 위에 들어가니 작게」 (F-487-Q1).
+const double _clipMarkSize = 10;
+
 /// Play/stop and loop mode transport row.
 ///
 /// One widget serves both contexts: the timeline hosts it with
@@ -170,9 +173,10 @@ class PlaybackTransportControls extends StatelessWidget {
   final ValueListenable<bool>? isVoiceRecording;
   final VoidCallback? onToggleVoiceRecording;
 
-  /// The take's clip light (REC1-D): shown ONLY while recording, red once
-  /// any post-gain sample hit the ceiling — always on duty, unlike the
-  /// toast/marker which sit behind the notice toggle.
+  /// The take's clip mark (REC1-D), on the mic's corner: red once any
+  /// post-gain sample of the take hit the ceiling — always on duty, unlike
+  /// the toast/marker which sit behind the notice toggle. The session lights
+  /// it inside a take only, and clears it when the take ends.
   final ValueListenable<bool>? voiceRecordClipLit;
 
   /// The PROGRAM-language table for the mic tooltips; null keeps English
@@ -244,9 +248,13 @@ class PlaybackTransportControls extends StatelessWidget {
             _loopToggle(),
             ?afterLoop,
             if (isVoiceRecording != null && onToggleVoiceRecording != null)
-              _voiceRecordButton(),
-            if (isVoiceRecording != null && voiceRecordClipLit != null)
-              _clipLight(),
+              switch (voiceRecordClipLit) {
+                final clipLit? => _withItsClipMark(
+                  _voiceRecordButton(),
+                  clipLit,
+                ),
+                null => _voiceRecordButton(),
+              },
             // ↩️The QUALITY selector left this row (유저 확정, 2026-08-10:
             // 품질도 설정에 두자) — a setting, not a transport control, and
             // the transport is the one row that has to stay readable at a
@@ -303,39 +311,43 @@ class PlaybackTransportControls extends StatelessWidget {
     );
   }
 
-  ValueListenableBuilder<bool> _clipLight() {
-    return ValueListenableBuilder<bool>(
-      valueListenable: isVoiceRecording!,
-      builder: (context, recording, _) =>
-          ValueListenableBuilder<bool>(
-            valueListenable: voiceRecordClipLit!,
-            builder: (context, lit, _) => Padding(
-              padding: const EdgeInsets.only(left: 2, right: 2),
-              child: Icon(
-                Icons.circle,
-                key: const ValueKey<String>(
-                  'playback-record-clip-light',
-                ),
-                size: 8,
-                // ⛔THE SEAT IS ALWAYS RESERVED; only the colour
-                // changes. This used to be `!recording ?
-                // SizedBox.shrink() : …`, so arming a take GREW the
-                // row, and the gap that appeared beside the mic is
-                // what the user was looking at — 유저 08-27:
-                // 「재생하면 생기는 마이크 오른쪽 패딩? 공간? **그게
-                // 왜 생기는건지 몰랐어서**」. They were reading a
-                // layout jump as a bug in the mic button, and it
-                // was: 없다가 생기는 UI 금지.
-                color: !recording
-                    ? Colors.transparent
-                    : lit
-                    ? Theme.of(context).colorScheme.error
-                    : Theme.of(context).colorScheme.outlineVariant,
-              ),
+  /// The take's clip mark on the mic's top-right corner.
+  ///
+  /// 🗣️F-487-Q1 (유저 2026-10-27): 「합치는데, 빨간 점을 마이크에 오버레이로
+  /// 오른쪽 위에 둠. 근데 빨간 점은 녹음중이다 라는거랑 비슷해서 좀 더
+  /// 깨졌다는거 알기쉬운 아이콘으로? 오른쪽 위에 들어가니 작게」 — a warning's
+  /// glyph, not the dot a recording light is.
+  ///
+  /// ↩️It had a seat of its own right of the mic: an 8px dot, dim while a
+  /// take was armed and clear while none was. 유저 08-27: 「재생하면 생기는
+  /// 마이크 오른쪽 패딩? 공간? **그게 왜 생기는건지 몰랐어서**」 — it was
+  /// mounted only while recording, so arming a take grew the row, and the
+  /// seat was kept from then on (없다가 생기는 UI 금지). Kept clear, the seat
+  /// was a gap nobody could read (F-487). The mark rides over the mic, so
+  /// it has no seat to keep: only its colour changes.
+  Widget _withItsClipMark(Widget mic, ValueListenable<bool> clipLit) => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      mic,
+      Positioned(
+        top: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: ValueListenableBuilder<bool>(
+            valueListenable: clipLit,
+            builder: (context, lit, _) => Icon(
+              Icons.warning_rounded,
+              key: const ValueKey<String>('playback-record-clip-mark'),
+              size: _clipMarkSize,
+              color: lit
+                  ? Theme.of(context).colorScheme.error
+                  : Colors.transparent,
             ),
           ),
-    );
-  }
+        ),
+      ),
+    ],
+  );
 
   ValueListenableBuilder<bool> _voiceRecordButton() {
     return ValueListenableBuilder<bool>(
@@ -352,8 +364,8 @@ class PlaybackTransportControls extends StatelessWidget {
         // ⛔RED LEAVES, AND THAT IS THE POINT. "Recording" is an ON
         // state like Loop and Play, and the app's law for an on
         // state is the accent foreground ([AppIconButton], and
-        // [[ui-selection-style]]). Red stays on the clip light
-        // beside it, where it means the one thing red should mean
+        // [[ui-selection-style]]). Red stays on the clip mark on
+        // its corner, where it means the one thing red should mean
         // here — a sample hit the ceiling. Two meanings on one
         // colour is what made the row hard to read.
         return AppIconButton(
