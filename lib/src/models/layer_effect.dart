@@ -710,14 +710,11 @@ class ResolvedLayerEffect {
 
   double parameter(String id) {
     final specs = kind.parameters;
-    for (var index = 0; index < specs.length; index += 1) {
-      if (specs[index].id == id) {
-        return index < values.length
-            ? values[index]
-            : specs[index].defaultValue;
-      }
+    final index = specs.indexWhere((spec) => spec.id == id);
+    if (index < 0) {
+      return 0;
     }
-    return 0;
+    return index < values.length ? values[index] : specs[index].defaultValue;
   }
 
   /// Whether this sample changes any pixel. An effect resolved to its
