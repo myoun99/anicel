@@ -57,7 +57,12 @@ void main() {
   ) async {
     final images = LayerFrameImageCache(frameStore: BrushFrameStore());
     addTearDown(images.dispose);
-    final store = FramePictureStore<FramePictureKey>(gpu: WritesNeverLand());
+    // Its picture held on its way: the page is drawn as it stands meanwhile
+    // — what a commit composed whole. (A page a pen stands on is made a
+    // picture of, first-stroke-on-a-new-project-trails 2026-10-28.)
+    final store = FramePictureStore<FramePictureKey>(
+      gpu: WritesNeverLand()..holdsRenders = true,
+    );
     addTearDown(store.dispose);
     final run = runOver(
       images,

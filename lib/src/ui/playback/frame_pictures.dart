@@ -373,7 +373,8 @@ class FramePictures implements PlaybackPictures {
   /// front of the store's line: the frame on screen before any made ahead
   /// of it ([make] has the rest). Where it [keepsNodes] — a canvas that
   /// stands on it to draw — the pictures its nodes are drawn into are what
-  /// is held ([heldNodes]).
+  /// is held ([heldNodes]), and a frame of its page alone is laid too
+  /// ([drawsOnlyItsPage]): the pen's steps patch into it.
   ///
   /// ⛔Not every screen's: a screen that draws nothing live patches no step
   /// in, and a frame it laid let go of the nodes of the frame a pen is on
@@ -461,7 +462,7 @@ class FramePictures implements PlaybackPictures {
     final made = drawingNow(nodes, picture, keepsNodes: keepsNodes);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
-    if (!drawsOnlyItsPage(key) &&
+    if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
           keepsNodes

@@ -367,7 +367,15 @@ class _FramePictureViewState extends State<FramePictureView> {
     if (key == _showing || key == _moving) {
       return;
     }
-    if (_pictures.drawsOnlyItsPage(key) || _pictures.gaveUpAt(key)) {
+    // 🚨A PAGE A PEN DRAWS ON IS A PICTURE TOO: its strokes patch into one,
+    // as every frame's do ([FramePictures.makeShown]). ⛔Not drawn as it
+    // stands there: each step of the first stroke on a blank frame composed
+    // the whole view (🔬Surface Pro 11, a new project's first stroke: step
+    // → ink p50 117–123 ms, 83–89 stalls over 50 ms a stroke, the second
+    // stroke back to p50 33; main PC, 2432×1313 rastered at all 92 steps —
+    // 2026-10-28).
+    if (_pictures.gaveUpAt(key) ||
+        (_pictures.drawsOnlyItsPage(key) && widget.live == null)) {
       _standAsStored(key);
       return;
     }
@@ -558,10 +566,22 @@ class _FramePictureViewState extends State<FramePictureView> {
   ///
   /// ⛔Not left unasked: a box's lift would come with the picture standing,
   /// the float drawn nowhere until the box landed.
+  ///
+  /// 🚨A PEN'S ROW THAT COMES TO A PICTURE TAKEN WITHOUT ONE is told as the
+  /// picture's taking told the rows ([_tell]) — where it is kept under the
+  /// frame's own key it holds what they store — with the cel the pen is on.
+  /// ⛔Not left untold: a cel made on a blank page after its picture came
+  /// had its whole first stroke drawn as it stands (🔬2026-10-28, 92 of 92
+  /// steps).
   void _liveRowsHandedAnew() {
-    if (_shown != null) {
-      _catchUp();
+    if (_shown == null) {
+      return;
     }
+    if (_held == null && _keptAs == _showing) {
+      _drawnOn = _celNow();
+      _tell();
+    }
+    _catchUp();
   }
 
   /// Tells what of the live rows the picture just taken holds: all of them
