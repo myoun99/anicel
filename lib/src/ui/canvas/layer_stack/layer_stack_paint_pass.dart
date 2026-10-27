@@ -591,7 +591,7 @@ class _LayerStackPaintPass {
   /// The CANVAS-SPACE rect a buffer for [node] covers — what of it lies
   /// [within] what reads it: the view at the top, and under a folder that
   /// folder's buffer, which a blur on it reads past the view
-  /// ([subtreeBufferBounds], the one law the camera's walk keeps too).
+  /// ([subtreeBufferBounds], the one law the camera's render keeps too).
   ///
   /// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
   ///
@@ -625,232 +625,63 @@ class _LayerStackPaintPass {
     // the blur there changed as the view moved (card
     // nested-folder-buffers-read-past-the-view).
     within: within,
-    extentOf: (row) => switch (row) {
-      _PaintActiveSurface() => _activeSurfaceExtent(),
-      // What a row beside the live one draws — its surface, and a lift's
-      // float — as the live row's extent is measured
-      // ([_activeSurfaceExtent]).
-      final _SurfaceRow surface => _slotOf(surface).extent,
-      _PaintPaper() => _canvasRect,
-    },
-    placementOf: (row) => switch (row) {
-      final _SurfaceRow surface => surface.placement,
-      _PaintPaper() => null,
-    },
+    extentOf: _extentOf,
+    placementOf: _placementOf,
   );
 
+  /// The rect [row] stands for.
+  Rect _extentOf(_PaintRow row) => switch (row) {
+    _PaintActiveSurface() => _activeSurfaceExtent(),
+    // What a row beside the live one draws — its surface, and a lift's
+    // float — as the live row's extent is measured
+    // ([_activeSurfaceExtent]).
+    final _SurfaceRow surface => _slotOf(surface).extent,
+    _PaintPaper() => _canvasRect,
+  };
+
+  /// Where [row] lies.
+  LayerPlacement? _placementOf(_PaintRow row) => switch (row) {
+    final _SurfaceRow surface => surface.placement,
+    _PaintPaper() => null,
+  };
+
+  /// [list] painted by the one walk of a composite tree
+  /// ([paintCompositeTree]), this stack's rows drawn by [_paintRow].
   void _paintNodes(
     Canvas canvas,
     List<CompositeNode<_PaintRow>> list,
-    // The scale the CTM this walk draws under is at. A group that
-    // rasterises ITSELF needs it, and a `Canvas` will not tell anyone.
     double rasterScale,
-    // What reads these nodes ([_bufferBoundsFor]).
     Rect within,
-  ) {
-    for (final node in list) {
-      // Poses apply at composite time — the stack shows the same picture
-      // playback composes (route parity).
-      final nodePlacement = switch (node) {
-        CompositeLeaf(payload: _SurfaceRow(:final placement)) => placement,
-        // A row's letters lie where the row does (I-65).
-        CompositeCelNumber(
-          on: CompositeLeaf(payload: _SurfaceRow(:final placement)),
-        ) =>
-          placement,
-        CompositeLeaf(payload: _PaintPaper()) ||
-        CompositeCelNumber() ||
-        CompositeGroup() ||
-        CompositeAdjustment() ||
-        CompositeBackdropBlend() ||
-        CompositeClip() ||
-        CompositeOpaque() => null,
-      };
-      // The wrap straddles the live-surface node too, which HAS a placement
-      // and no image — that is why the wrap and the draw are separate
-      // helpers rather than one.
+  ) => paintCompositeTree(
+    canvas,
+    list,
+    rasterScale: rasterScale,
+    within: within,
+    route: (
+      paintRow: _paintRow,
+      extentOf: _extentOf,
+      placementOf: _placementOf,
+      shownWithin: _shownWithin,
+    ),
+  );
+
+  /// [row] where it lies. Poses apply at composite time — the stack shows
+  /// the same picture playback composes (route parity). The wrap straddles
+  /// the live-surface node too, which HAS a placement and no image — that
+  /// is why the wrap and the draw are separate helpers rather than one.
+  void _paintRow(Canvas canvas, _PaintRow row, double rasterScale) =>
       withLayerPlacement(
         canvas,
-        placement: nodePlacement,
+        placement: _placementOf(row),
         body: () {
-          switch (node) {
-            case final CompositeGroup<_PaintRow> group:
-              _paintGroupNode(canvas, group, rasterScale, within);
-            case final CompositeAdjustment<_PaintRow> adjustment:
-              _paintAdjustmentNode(canvas, adjustment, rasterScale, within);
-            case final CompositeBackdropBlend<_PaintRow> blend:
-              _paintBackdropBlendNode(canvas, blend, rasterScale, within);
-            case final CompositeClip<_PaintRow> clip:
-              _paintClipNode(canvas, clip, rasterScale, within);
-            case final CompositeOpaque<_PaintRow> opaque:
-              drawOpaque(
-                canvas: canvas,
-                bounds: _bufferBoundsFor(opaque, within),
-                paintOf: (into) =>
-                    _paintNodes(into, [opaque.of], rasterScale, within),
-              );
-            case CompositeCelNumber(:final letters):
-              paintCelNumber(canvas, letters);
-            case CompositeLeaf(payload: _PaintPaper()):
+          switch (row) {
+            case _PaintPaper():
               _paintPaperInto(canvas, intoTheBuffer: _composingTheBuffer);
-            case CompositeLeaf(payload: final _SurfaceRow row):
+            case final _SurfaceRow row:
               _paintSurfaceRow(canvas, _slotOf(row), row.paint, rasterScale);
           }
         },
       );
-    }
-  }
-
-  /// A folder: its children buffered as one image, blended once with the
-  /// folder's paint.
-  void _paintGroupNode(
-    Canvas canvas,
-    CompositeGroup<_PaintRow> node,
-    double rasterScale,
-    Rect within,
-  ) {
-    final CompositeGroup<_PaintRow>(:children, :opacity, :blendMode, :effects) =
-        node;
-    // R27 #29: one buffer for the group, one blend on it — and
-    // because the ACTIVE layer is a node in here, a stroke drawn
-    // inside a blended folder finally reads the way it will play
-    // back. R6: the folder's effect chain lands on the same buffer.
-    final groupPlan = resolveCompositeEffectPlan(effects);
-    final groupPaint = layerCompositePaint(
-      opacity: opacity,
-      blendMode: blendMode,
-      effects: groupPlan.finalPaint,
-    );
-    // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
-    // Bounded by the view, a folder asked Skia for the whole
-    // pasteboard (9× the page) at far zoom-out — an offscreen
-    // that the enclosing canvas-resolution buffer then clipped
-    // away. Content bounds keep it inside by construction, and
-    // this says so where it can fail.
-    //
-    // ⚠️It is the CONTENT that must sit inside, before the effect
-    // grows it. The spread the size hint adds below is deliberate
-    // — artwork just outside the view has to reach the blur at the
-    // view's edge — so there the buffer lies past what reads it by
-    // exactly that spread, off screen. ↩️This asserted the grown
-    // rect, and a blurred folder whose ink crossed the view's edge
-    // stopped every debug build at any zoom (board
-    // `a-blurred-folder-outgrows-the-composite`). ↩️And it asserted
-    // the display buffer, which a folder inside a blurred one lies
-    // past by the outer one's spread (card
-    // nested-folder-buffers-read-past-the-view).
-    final contentRect = _bufferBoundsFor(node, within);
-    assert(
-      within.expandToInclude(contentRect) == within,
-      'a group buffer must sit inside the buffer that reads it: '
-      '$contentRect is not within $within',
-    );
-    final groupRect = effectBufferBounds(
-      contentRect,
-      groupPlan.outsetPixels,
-    );
-    // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
-    // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
-    // the reason, and the test that certifies it against the
-    // saveLayer it replaced calls THAT function, not a copy.
-    drawSubtreeAsImage(
-      canvas: canvas,
-      // The size hint grows by the blur's spread, so artwork just
-      // OUTSIDE the visible rect still bleeds in — without this the
-      // blur at the screen edge would change as you scroll. It is
-      // what reads the children, so a folder among them holds its
-      // artwork out there too.
-      bounds: groupRect,
-      rasterScale: rasterScale,
-      paintSubtree: (into, scale) =>
-          _paintNodes(into, children, scale, groupRect),
-      compose: (blit) => blit(groupPaint),
-      steps: groupPlan.preSteps,
-    );
-  }
-
-  /// An adjustment scope: the rows under it buffered and graded as one.
-  void _paintAdjustmentNode(
-    Canvas canvas,
-    CompositeAdjustment<_PaintRow> node,
-    double rasterScale,
-    Rect within,
-  ) {
-    final CompositeAdjustment<_PaintRow>(:children, :effects, :mix) = node;
-    // R6b: the scope into one buffer, the row's chain onto it —
-    // which is what lets a stroke drawn UNDER an adjustment read
-    // through the grade while you draw it.
-    final pass = resolveAdjustmentScopePass(
-      bounds: _bufferBoundsFor(node, within),
-      effects: effects,
-      mix: mix,
-    );
-    // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
-    // twice below full strength — a mix is a crossfade, not a
-    // fade-out — and it is the same picture both times. The
-    // passes keep their layers; what changed is that they now
-    // contain a blit of one raster instead of a second walk of
-    // the scope.
-    drawSubtreeAsImage(
-      canvas: canvas,
-      bounds: pass.bufferBounds,
-      rasterScale: rasterScale,
-      paintSubtree: (into, scale) =>
-          _paintNodes(into, children, scale, pass.bufferBounds),
-      compose: composeAdjustmentScope(canvas, pass),
-      steps: pass.preSteps,
-    );
-  }
-
-  /// A row in an advanced blend, composed over a picture of what lies
-  /// below it in its scope ([drawBlendOverBackdrop], brush-fidelity-Q4) —
-  /// the camera's walk calls the same function.
-  void _paintBackdropBlendNode(
-    Canvas canvas,
-    CompositeBackdropBlend<_PaintRow> node,
-    double rasterScale,
-    Rect within,
-  ) {
-    final CompositeBackdropBlend<_PaintRow>(:backdrop, :source, :blendMode) =
-        node;
-    final bounds = _bufferBoundsFor(node, within);
-    drawBlendOverBackdrop(
-      canvas: canvas,
-      bounds: bounds,
-      rasterScale: rasterScale,
-      paintBackdrop: (into, scale) =>
-          _paintNodes(into, backdrop, scale, bounds),
-      paintSource: (into, scale) =>
-          _paintNodes(into, [source], scale, bounds),
-      blendMode: blendMode,
-      shownWithin: _shownWithin,
-    );
-  }
-
-  /// A clipping group (I-92): the base and what clips to it as one image,
-  /// laid once with the base's strength and blend ([drawClipAsImage]) —
-  /// the camera's walk calls the same function.
-  void _paintClipNode(
-    Canvas canvas,
-    CompositeClip<_PaintRow> node,
-    double rasterScale,
-    Rect within,
-  ) {
-    final CompositeClip<_PaintRow>(:base, :scope, :opacity, :blendMode) = node;
-    final bounds = _bufferBoundsFor(node, within);
-    drawClipAsImage(
-      canvas: canvas,
-      bounds: bounds,
-      rasterScale: rasterScale,
-      paintBase: (into, scale) => _paintNodes(into, [base], scale, bounds),
-      paintScope: (into, scale) => _paintNodes(into, scope, scale, bounds),
-      paint: layerCompositePaint(
-        opacity: opacity,
-        blendMode: blendMode,
-        effects: CompositeEffectPaint.none,
-      ),
-    );
-  }
 
   /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
   /// F-329): drawn straight onto the canvas when its paint can ride the

@@ -117,21 +117,18 @@ void main() {
     );
   });
 
-  test('every group route builds its paint with the one function', () {
-    const routes = [
-      'lib/src/ui/canvas/canvas_layer_stack_view.dart',
-      'lib/src/ui/camera/camera_frame_render_service.dart',
-    ];
-    for (final route in routes) {
-      // Host and parts: the stack view keeps its paint in a part.
-      final source = librarySource(route);
-      expect(
-        source.contains('layerCompositePaint('),
-        isTrue,
-        reason:
-            '$route composites a group and must build its paint with '
-            'the shared function',
-      );
-    }
+  // ↩️Each route that composited a group was read here — the editing
+  // stack's and the camera's — until one walk composited them both (card
+  // one-walk-of-the-composite-tree).
+  test('the walk that composites a group builds its paint with the one '
+      'function', () {
+    const walk = 'lib/src/ui/canvas/composite_tree_paint.dart';
+    expect(
+      librarySource(walk).contains('layerCompositePaint('),
+      isTrue,
+      reason:
+          '$walk composites a group and must build its paint with the '
+          'shared function',
+    );
   });
 }

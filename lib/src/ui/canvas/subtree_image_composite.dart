@@ -24,7 +24,7 @@ import '../text/cel_number_paint.dart' show celNumberExtent;
 /// remedy is to clamp the scale — refusing here would be a second code path,
 /// the one where a folder's effect silently does not apply.
 ///
-/// It is one constant rather than one per route so the walks cannot
+/// It is one constant rather than one per route so the routes cannot
 /// disagree about how big a folder may get.
 const int maxSubtreeRasterSide = 8192;
 
@@ -116,11 +116,13 @@ Rect _placed(Rect extent, LayerPlacement? placement) => placement == null
 
 /// The grid a sub-tree rasterises on, decided once and then obeyed.
 ///
-/// ⛔The arithmetic lives HERE and only here. Two walks composite a group —
-/// the editing stack (playback's too, since 2026-10-10) and the camera
-/// (which the export renders through). What they share is how big a group's
-/// buffer is ([subtreeBufferBounds]) and `drawSubtreeAsImage`; the plan and
-/// the blit are the machinery underneath and belong to this file alone.
+/// ⛔The arithmetic lives HERE and only here. One walk composites a group
+/// (`paintCompositeTree`) for the editing stack (playback's too, since
+/// 2026-10-10) and the camera (which the export renders through) — ↩️two,
+/// one each, until card one-walk-of-the-composite-tree. What it calls is
+/// how big a group's buffer is ([subtreeBufferBounds]) and
+/// `drawSubtreeAsImage`; the plan and the blit are the machinery underneath
+/// and belong to this file alone.
 @immutable
 class SubtreeRasterPlan {
   const SubtreeRasterPlan({
