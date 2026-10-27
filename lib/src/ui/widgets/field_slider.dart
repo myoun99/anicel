@@ -1406,8 +1406,8 @@ class FieldSliderReadout {
 
 /// A stood bar's number OUTSIDE it ([FieldSlider.readout]), where its host
 /// stands it — the pill stands each right above its bar: what the bar
-/// would write at rest, small and centred, and the bar's pencil: a press
-/// types into the bar as the pencil's did.
+/// would write at rest, centred, and the bar's pencil: a press types into
+/// the bar as the pencil's did.
 ///
 /// [bar] is the bar it writes for, as its host built it from the same
 /// state: the readout reads the value off it as the bar does, so the two
@@ -1415,17 +1415,17 @@ class FieldSliderReadout {
 /// (R4 #4/#5's commit-on-release bars) would run ahead of its readout; the
 /// pill's bars are handed every move, and no other bar has a readout.
 ///
-/// Its size is FIXED — [width] across, [heightIn] tall — the bubble's law,
-/// kept: 「고정으로 하는게 성능적인 면에서 효율적인가? 그렇다면 길이
-/// 브러시사이즈 최대 길이(2000.0 의 길이)를 고정으로, 텍스트 중앙정렬로
-/// 하도록. 그냥 고정크기로하자. 그러고 불투명도도 그 고정크기로 통일」
-/// ([widthIn]).
+/// Its box is FIXED — the bubble's law, kept: 「고정으로 하는게 성능적인
+/// 면에서 효율적인가? 그렇다면 길이 브러시사이즈 최대 길이(2000.0 의 길이)를
+/// 고정으로, 텍스트 중앙정렬로 하도록. 그냥 고정크기로하자. 그러고 불투명도도
+/// 그 고정크기로 통일」 — and its letters are as large as the box lets a
+/// number of their length be ([FieldSliderReadoutSizes]).
 class FieldSliderValueReadout extends StatefulWidget {
   const FieldSliderValueReadout({
     super.key,
     required this.keyValue,
     required this.bar,
-    required this.width,
+    required this.sizes,
   });
 
   /// The readout's handle: its box's key, and its press's name.
@@ -1434,21 +1434,25 @@ class FieldSliderValueReadout extends StatefulWidget {
   /// A bar with a [FieldSlider.readout].
   final FieldSlider bar;
 
-  /// Its width — one for every readout its host shows ([widthIn]).
-  final double width;
+  /// Its box and its letters — one for every readout its host shows
+  /// ([FieldSliderReadoutSizes.of]).
+  final FieldSliderReadoutSizes sizes;
 
+  /// The size the WIDEST number is written at, which the box is as wide
+  /// as.
+  ///
   /// 🗣️I-135-Q1 (유저 2026-10-27: 「a로가자」): of 8, 9 and the other bars'
   /// 11, the size that asks the canvas for the least room — 「2000.0」 runs
   /// 33 across at 8, so the pill stands 37 across where it stood 28 (41 at
-  /// 9, 50 at 11).
+  /// 9, 50 at 11). ↩️Every number was written at it until F-493.
   static const double fontSize = 8;
 
   /// The room either side of the words.
   static const double _pad = 1;
 
-  /// Its height at 1×, as I-135-Q1's sheet drew it: the line, and two
-  /// pixels above and below it for the press.
-  static const double _height = fontSize + 4;
+  /// The room above and below the line, for the press — I-135-Q1's sheet
+  /// drew two.
+  static const double _rim = 2;
 
   /// The style it writes in: a bar's own ([FieldSlider.valueStyleIn]) at
   /// [fontSize], the line as tall as the letters.
@@ -1456,26 +1460,120 @@ class FieldSliderValueReadout extends StatefulWidget {
     context,
   )?.copyWith(fontSize: fontSize, height: 1);
 
-  /// The one width for [bars]' readouts: the widest thing any of them says,
-  /// whole, and the room either side of it.
-  static double widthIn(BuildContext context, Iterable<FieldSlider> bars) =>
-      TextMeasure(context, styleIn(context))
-          .widest([for (final bar in bars) ...bar._saidAtEnds])
-          .ceilToDouble() +
-      _pad * 2;
-
-  /// Its height here: [_height], grown as its line grows with the text
-  /// scale (text-scale-fixed-height-bars).
-  static double heightIn(BuildContext context) =>
-      _height +
-      TextMeasure(
-        context,
-        styleIn(context),
-      ).lineGrowthOf(TextMeasure.everyScript);
-
   @override
   State<FieldSliderValueReadout> createState() =>
       _FieldSliderValueReadoutState();
+}
+
+/// The readouts of one host as one: one box for all of them — as wide as
+/// the widest number any of them says, set at
+/// [FieldSliderValueReadout.fontSize] — and in it, a number's letters as
+/// large as the box lets a number of its LENGTH be.
+///
+/// 🗣️F-493 (유저 2026-10-28): 「4자리(99.9 등 숫자2개+점+숫자하나)를 지금의
+/// 길이에서 최대치로 키우도록. 즉 0.1이나 99.9나 텍스트크기 똑같고(지금보다는
+/// 큼.), 100넘어가면 작아지고, 1000넘어가면 또 작아지는 방식으로 가변으로
+/// 크기조절. 불투명도도 규칙은 통일」. 「4자리」 counts the point, so the
+/// size is read off how many letters a number has, four or fewer being one
+/// size ([_fullest]): the opacity's 「100」, three long, stands as large as
+/// the size's 「0.1」 and 「99.9」, and 「100.0」 and 「1000.0」 step down.
+///
+/// The box stays as I-135-Q1 took it, and its height is the largest
+/// letters' — a number that crosses into another length changes its
+/// letters and moves nothing.
+@immutable
+class FieldSliderReadoutSizes {
+  const FieldSliderReadoutSizes._({
+    required this.width,
+    required this.height,
+    required Map<int, double> fontSizes,
+  }) : _fontSizes = fontSizes;
+
+  /// The box's width — the widest number any of the readouts says, whole,
+  /// and the room either side of it.
+  final double width;
+
+  /// The box's height: the largest letters' line and the room above and
+  /// below it, grown as the line grows with the text scale
+  /// (text-scale-fixed-height-bars).
+  final double height;
+
+  /// The letters' size for a number of each length, from [_fullest] up.
+  final Map<int, double> _fontSizes;
+
+  /// 「4자리 … 최대치로」: a number this long or shorter is written in the
+  /// largest letters.
+  static const int _fullest = 4;
+
+  static final RegExp _digit = RegExp(r'\d');
+
+  static int _lengthOf(String said) => math.max(_fullest, said.length);
+
+  /// The size [said] is written at — the largest at which every number of
+  /// its length the readouts can say stands whole in the box.
+  double fontSizeFor(String said) =>
+      _fontSizes[_lengthOf(said)] ?? FieldSliderValueReadout.fontSize;
+
+  /// [bars]' readouts' sizes, measured where [context] lays text out.
+  factory FieldSliderReadoutSizes.of(
+    BuildContext context,
+    Iterable<FieldSlider> bars,
+  ) {
+    final base = FieldSliderValueReadout.styleIn(context);
+    final measure = TextMeasure(context, base);
+    final said = [for (final bar in bars) ...bar._saidAtEnds];
+    const pad = FieldSliderValueReadout._pad;
+    final width = measure.widest(said).ceilToDouble() + pad * 2;
+    final widestOf = <int, double>{};
+    for (final form in said.expand(_shorter)) {
+      final length = _lengthOf(form);
+      final widest = measure.widest(
+        everyDigitIn((digit) => form.replaceAll(_digit, digit)),
+      );
+      widestOf[length] = math.max(widestOf[length] ?? 0, widest);
+    }
+    final fontSizes = {
+      for (final MapEntry(key: length, value: widest) in widestOf.entries)
+        length: _wholeBelow(
+          FieldSliderValueReadout.fontSize * (width - pad * 2) / widest,
+        ),
+    };
+    final largest = fontSizes.values.fold(
+      FieldSliderValueReadout.fontSize,
+      math.max,
+    );
+    return FieldSliderReadoutSizes._(
+      width: width,
+      height:
+          largest +
+          FieldSliderValueReadout._rim * 2 +
+          TextMeasure(
+            context,
+            base?.copyWith(fontSize: largest),
+          ).lineGrowthOf(TextMeasure.everyScript),
+      fontSizes: fontSizes,
+    );
+  }
+
+  /// [word], and [word] a whole digit shorter for as long as it has one to
+  /// spare — `2000.0`, `000.0`, `00.0`, `0.0`: every length the numbers
+  /// under it run to.
+  static Iterable<String> _shorter(String word) sync* {
+    var form = word;
+    while (true) {
+      yield form;
+      if (_digit.allMatches(form.split('.').first).length < 2) {
+        return;
+      }
+      form = form.replaceFirst(_digit, '');
+    }
+  }
+
+  /// A letter size a whole pixel at a time, never past [size]: a line set
+  /// at 12.7 lays out 13 tall, so the box's height and its letters' line
+  /// would part — and a size measured to fill the box exactly would stand
+  /// a hair over it.
+  static double _wholeBelow(double size) => size.floorToDouble();
 }
 
 class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
@@ -1489,33 +1587,35 @@ class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
 
   @override
   Widget build(BuildContext context) {
-    final height = FieldSliderValueReadout.heightIn(context);
+    final sizes = widget.sizes;
+    final said = widget.bar._saidAtRest;
     // On its host's ground — the pill's, the surface ([AppColors.surface]).
     final ink = dimmedIfDisabled(
       textOnColor(AppColors.surface),
       enabled: _enabled,
     );
+    final style =
+        FieldSliderValueReadout.styleIn(context) ?? const TextStyle();
     return SizedBox(
       key: ValueKey<String>(widget.keyValue),
-      width: widget.width,
-      height: height,
+      width: sizes.width,
+      height: sizes.height,
       child: keyboardReaches(
         RailPlateButton(
           name: widget.keyValue,
           tooltip: AppText.strings.valueTypeIn,
           onPressed: _enabled ? _type : null,
           focus: keyboardFocus,
-          hoverShape: AppShapes.control(height),
+          hoverShape: AppShapes.control(sizes.height),
           child: Center(
             child: Text(
-              widget.bar._saidAtRest,
+              said,
               maxLines: 1,
               softWrap: false,
-              style:
-                  FieldSliderValueReadout.styleIn(
-                    context,
-                  )?.copyWith(color: ink) ??
-                  TextStyle(color: ink),
+              style: style.copyWith(
+                color: ink,
+                fontSize: sizes.fontSizeFor(said),
+              ),
             ),
           ),
         ),
