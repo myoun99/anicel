@@ -110,7 +110,9 @@ void main() {
     );
     final edge = find.byType(TimelineFrameAreaEdge);
     expect(
-      tester.getRect(find.byType(ColoredBox)),
+      tester.getRect(
+        find.descendant(of: edge, matching: find.byType(ColoredBox)),
+      ),
       tester.getRect(edge),
       reason: 'a line over the area cannot shift the LayoutBuilder underneath '
           'it — this is the half that keeps the viewport width honest',

@@ -112,9 +112,11 @@ const _allowed = <String>[
   // in the source.
   'BorderRadius.circular(_thickness / 2)',
   // Not a corner at all: `StillRaster` READS the rounded clip a descendant
-  // pushed, to notice it changing. A `ClipRRectLayer` BUILT anywhere would
-  // still be caught — only the switch case that reads one is let through.
-  'case ClipRRectLayer(',
+  // pushed — to notice it changing, and to cut what a picture under it
+  // reaches to it. A `ClipRRectLayer` BUILT anywhere would still be caught
+  // (it is handed `clipRRect:`) — only a pattern that reads one is let
+  // through.
+  'ClipRRectLayer(:final',
   // Not a corner either: `StillRaster` pushes AGAIN the rounded clip a
   // descendant pushed, to draw what that clip holds into the region's image
   // and its live ticks back under it — the descendant's own corner.

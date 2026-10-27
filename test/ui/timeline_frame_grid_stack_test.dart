@@ -108,7 +108,7 @@ void main() {
       expect((playheadPositioned.child as SizedBox).child!.key, playheadKey);
       final overlay = stack.children[3] as TickOverlay;
       expect(overlay.children, hasLength(3));
-      expect(overlay.children[0], isA<Positioned>());
+      expect(overlay.children[0], isA<TimelineOutsideCutWash>());
       expect(overlay.children[1], isA<TimelineBodyNoriShiroBoundary>());
       expect(overlay.children[2], isA<TimelineBodyCutEndBoundary>());
     });
