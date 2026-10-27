@@ -100,10 +100,11 @@ void main() {
       final store = FramePictureStore<String>();
       const extent = ui.Rect.fromLTWH(0, 0, side + 0.0, side + 0.0);
       // Each overlaps the one before it; the frame each patch draws is the
-      // frame with every stroke so far.
+      // frame with every stroke so far. Wider together than the run they
+      // go into the base from (2048): the last lies under the others there.
       const strokes = [
-        (ui.Rect.fromLTWH(480, 490, 61, 50), ui.Color(0xFFFFEE00)),
-        (ui.Rect.fromLTWH(509, 503, 45, 70), ui.Color(0xFF20C040)),
+        (ui.Rect.fromLTWH(0, 490, 1024, 50), ui.Color(0xFFFFEE00)),
+        (ui.Rect.fromLTWH(0, 503, 1024, 70), ui.Color(0xFF20C040)),
         (ui.Rect.fromLTWH(530, 470, 33, 64), ui.Color(0xFF8020C0)),
       ];
       void Function(ui.Canvas) upTo(int count) => (canvas) {
