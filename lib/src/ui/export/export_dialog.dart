@@ -4254,7 +4254,7 @@ class ExportDialogState extends State<ExportDialog> {
       expansion: _expansion('sheet-format', open: true),
       child: ExportPaperFormatModule(
         keyPrefix: 'export-tsformat',
-        label: AppText.strings.exFormat,
+        caption: ExportCaption.format,
         image: spec.sheetImage,
         stillEnabled: _availability.stillAllowed,
         pictured: pictured,
@@ -4298,7 +4298,7 @@ class ExportDialogState extends State<ExportDialog> {
         children: [
           ExportPaperFormatModule(
             keyPrefix: 'export-envelope-format',
-            label: strings.exImage,
+            caption: ExportCaption.image,
             image: spec.envelopeImage,
             stillEnabled: _availability.stillAllowed,
             onImageChanged: _isExporting
@@ -4306,7 +4306,7 @@ class ExportDialogState extends State<ExportDialog> {
                 : (image) => _updateSpec(spec.copyWith(envelopeImage: image)),
           ),
           ExportModuleRow.strip(
-            label: strings.exPaperLabel,
+            caption: ExportCaption.paper,
             strip: PillStrip(
               items: [
                 _pill(
@@ -4355,7 +4355,7 @@ class ExportDialogState extends State<ExportDialog> {
         expansion: _expansion('format', open: true),
         child: ExportPaperFormatModule(
           keyPrefix: 'export-conteformat',
-          label: AppText.strings.exFormat,
+          caption: ExportCaption.format,
           image: spec.image,
           stillEnabled: _availability.stillAllowed,
           pictured: pictured,
@@ -4426,7 +4426,7 @@ class ExportDialogState extends State<ExportDialog> {
       },
       expansion: _expansion('options'),
       child: ExportChoiceRow<ExportLayerFx>(
-        label: strings.exApplyLayerFx,
+        caption: ExportCaption.layerFx,
         keyPrefix: keyPrefix,
         values: ExportLayerFx.values,
         selected: layerFx,

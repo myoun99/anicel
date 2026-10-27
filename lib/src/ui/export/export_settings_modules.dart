@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../text/full_width_numerals.dart';
 
@@ -12,6 +14,7 @@ import '../timeline/layer_label_controls.dart' show layerMarkChipText;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 import '../text/pixel_size_label.dart';
+import '../text/text_measure.dart';
 import '../input/control_press_claim.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
@@ -164,9 +167,49 @@ class ExportResetChip extends StatelessWidget {
   }
 }
 
+/// A row name of the settings column — every name a row there can give, so
+/// the column of names is as wide as the widest of them in the program's
+/// language ([ExportModuleRow.captionWidthIn]): a row that shows only for
+/// one format or inside a folded accordion counts as much as one that
+/// shows, so no row moves another's control when it comes.
+enum ExportCaption {
+  format,
+  codec,
+  bitrate,
+  quality,
+  channels,
+  background,
+  image,
+  paper,
+  layerFx,
+  target,
+  folders,
+  nameParts,
+  prefix;
+
+  String wordsIn(AppStrings strings) => switch (this) {
+    format => strings.exFormat,
+    codec => strings.exCodec,
+    bitrate => strings.exBitrate,
+    quality => strings.exQuality,
+    channels => strings.exChannels,
+    background => strings.exBackground,
+    image => strings.exImage,
+    paper => strings.exPaperLabel,
+    layerFx => strings.exApplyLayerFx,
+    target => strings.exTarget,
+    folders => strings.exFolders,
+    nameParts => strings.exNameParts,
+    prefix => strings.exPrefix,
+  };
+}
+
 class ExportModuleRow extends StatelessWidget {
-  const ExportModuleRow({super.key, required this.label, required this.child})
-    : _strip = false;
+  const ExportModuleRow({
+    super.key,
+    required this.caption,
+    required this.child,
+  }) : _strip = false;
 
   /// A row whose control is a strip of pills: beside its caption where the
   /// strip's words fit there, under it where they do not — every pill as
@@ -177,34 +220,50 @@ class ExportModuleRow extends StatelessWidget {
   /// réelle」 both gave their words up.
   const ExportModuleRow.strip({
     super.key,
-    required this.label,
+    required this.caption,
     required PillStrip strip,
   }) : child = strip,
        _strip = true;
 
-  final String label;
+  final ExportCaption caption;
   final Widget child;
 
   /// Whether [child] is a strip that goes under the caption when it does
   /// not fit beside it ([ExportModuleRow.strip]).
   final bool _strip;
 
-  /// Wide enough for the longest row name the export tab uses (「폴더 생성」,
-  /// 「이름 지정」) so every pill strip starts at one x.
-  static const double labelWidth = 54;
+  /// The column of row names: as wide as the widest name the column can
+  /// give ([ExportCaption]) where this [context] lays text out, so every
+  /// control starts at one x and every name is whole.
+  ///
+  /// 🗣️F-486-Q1 (유저 2026-10-27): 「칸 이름만 맞춘다」. ↩️54 in every
+  /// language — the Korean's longest (「폴더 생성」, 「이름 지정」) — so
+  /// 「ビットレート」 and 「Channels」 gave their ends up.
+  static double captionWidthIn(BuildContext context) {
+    final words = TextMeasure(
+      context,
+      DefaultTextStyle.of(context).style.merge(_wordStyleOf(Theme.of(context))),
+    );
+    final strings = AppText.strings;
+    return ExportCaption.values
+        .map((caption) => words.size(caption.wordsIn(strings)).width)
+        .reduce(math.max);
+  }
+
+  static TextStyle? _wordStyleOf(ThemeData theme) =>
+      theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      );
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final caption = SizedBox(
-      width: labelWidth,
+    final name = SizedBox(
+      width: captionWidthIn(context),
       child: Text(
-        label,
+        caption.wordsIn(AppText.strings),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
+        style: _wordStyleOf(Theme.of(context)),
       ),
     );
     return Padding(
@@ -213,11 +272,11 @@ class ExportModuleRow extends StatelessWidget {
           ? Wrap(
               runSpacing: 3,
               crossAxisAlignment: WrapCrossAlignment.center,
-              children: [caption, child],
+              children: [name, child],
             )
           : Row(
               crossAxisAlignment: CrossAxisAlignment.center,
-              children: [caption, Expanded(child: child)],
+              children: [name, Expanded(child: child)],
             ),
     );
   }
@@ -261,7 +320,7 @@ String exportCelFilterSummary(CelsExportSpec spec) {
 class ExportChoiceRow<T> extends StatelessWidget {
   const ExportChoiceRow({
     super.key,
-    required this.label,
+    required this.caption,
     required this.keyPrefix,
     required this.values,
     required this.selected,
@@ -271,7 +330,7 @@ class ExportChoiceRow<T> extends StatelessWidget {
     this.enabledFor,
   });
 
-  final String label;
+  final ExportCaption caption;
 
   /// The pills are keyed `<keyPrefix>-<keyOf(value)>` — tests reach for
   /// those strings, so the prefix is part of the row's contract.
@@ -288,7 +347,7 @@ class ExportChoiceRow<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ExportModuleRow.strip(
-    label: label,
+    caption: caption,
     strip: PillStrip(
       items: [
         for (final value in values)
@@ -406,7 +465,7 @@ class ExportFormatModule extends StatelessWidget {
   /// The format button stands whichever kind is chosen: what it lists is
   /// what changes.
   Widget _formatRow() => ExportModuleRow(
-    label: AppText.strings.exFormat,
+    caption: ExportCaption.format,
     child: Align(
       alignment: Alignment.centerLeft,
       child: Row(
@@ -550,7 +609,7 @@ class ExportFormatModule extends StatelessWidget {
   /// settings column's row at some 30px each — every name cut to an
   /// ellipsis (실측 10-05).
   Widget _codecRow(List<ExportVideoCodec> codecs) => ExportModuleRow(
-    label: AppText.strings.exCodec,
+    caption: ExportCaption.codec,
     child: Align(
       alignment: Alignment.centerLeft,
       child: PanelFlyoutButton(
@@ -585,7 +644,7 @@ class ExportFormatModule extends StatelessWidget {
       mbps <= 0 ? AppText.strings.exBitrateAuto : derived;
 
   Widget _bitrateRow() => ExportModuleRow(
-    label: AppText.strings.exBitrate,
+    caption: ExportCaption.bitrate,
     child: FieldSlider(
       key: const ValueKey<String>('export-format-bitrate'),
       value: selection.videoBitrateMbps.clamp(0, 50).toDouble(),
@@ -610,7 +669,7 @@ class ExportFormatModule extends StatelessWidget {
   );
 
   Widget _channelsRow() => ExportChoiceRow<ExportChannels>(
-    label: AppText.strings.exChannels,
+    caption: ExportCaption.channels,
     keyPrefix: 'export-format-channels',
     values: ExportChannels.values,
     selected: selection.effectiveChannels,
@@ -621,7 +680,7 @@ class ExportFormatModule extends StatelessWidget {
   );
 
   Widget _backgroundRow() => ExportModuleRow.strip(
-    label: AppText.strings.exBackground,
+    caption: ExportCaption.background,
     strip: PillStrip(
       items: [
         PillItem(
@@ -690,7 +749,7 @@ class ExportJpgQualityRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final changed = onChanged;
     return ExportModuleRow(
-      label: AppText.strings.exQuality,
+      caption: ExportCaption.quality,
       child: FieldSlider(
         key: ValueKey<String>(keyValue),
         value: quality.clamp(1, 100).toDouble(),
@@ -718,7 +777,7 @@ class ExportPaperFormatModule extends StatelessWidget {
   const ExportPaperFormatModule({
     super.key,
     required this.keyPrefix,
-    required this.label,
+    required this.caption,
     required this.image,
     required this.onImageChanged,
     required this.stillEnabled,
@@ -730,7 +789,7 @@ class ExportPaperFormatModule extends StatelessWidget {
   /// Leads every key of the module: the list's button `<keyPrefix>-file`,
   /// its rows `-png`, `-jpg` …, and `-quality`.
   final String keyPrefix;
-  final String label;
+  final ExportCaption caption;
   final ExportFormatSelection image;
 
   /// A picture format, picked — or its quality, moved. Null while the
@@ -821,7 +880,7 @@ class ExportPaperFormatModule extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ExportModuleRow(
-          label: label,
+          caption: caption,
           child: Align(
             alignment: Alignment.centerLeft,
             child: PanelFlyoutButton(
@@ -872,7 +931,7 @@ class ExportScopeModule extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ExportChoiceRow<ExportScopeKind>(
-          label: AppText.strings.exTarget,
+          caption: ExportCaption.target,
           keyPrefix: 'export-scope',
           values: ExportScopeKind.values,
           selected: scope,
@@ -1232,7 +1291,6 @@ class ExportCelNamingModule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppText.strings;
     // Top to bottom the way the file is built: the folder it lands in, the
     // name it gets, what each kind's name starts with, then the digits and
     // suffix (유저 2026-09-09: 「젤 위에 폴더 생성, 이름 지정, 자릿수/접미사」).
@@ -1240,7 +1298,7 @@ class ExportCelNamingModule extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ExportModuleRow(
-          label: strings.exFolders,
+          caption: ExportCaption.folders,
           child: Align(
             alignment: Alignment.centerLeft,
             child: _names(
@@ -1258,7 +1316,7 @@ class ExportCelNamingModule extends StatelessWidget {
           ),
         ),
         ExportModuleRow(
-          label: strings.exNameParts,
+          caption: ExportCaption.nameParts,
           child: Align(
             alignment: Alignment.centerLeft,
             child: _names(
@@ -1279,7 +1337,7 @@ class ExportCelNamingModule extends StatelessWidget {
           ),
         ),
         ExportModuleRow(
-          label: strings.exPrefix,
+          caption: ExportCaption.prefix,
           child: _prefixFields(),
         ),
         Row(
