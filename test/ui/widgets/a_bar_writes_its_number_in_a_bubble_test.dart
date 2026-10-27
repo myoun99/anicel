@@ -89,6 +89,21 @@ void main() {
     expect(typing, findsOneWidget);
   });
 
+  testWidgets('a bubble takes the keyboard\'s press as its pencil did: '
+      'Enter on it types into its bar', (tester) async {
+    final link = FieldSliderBubble();
+    await pumpBarAndBubble(tester, leads: link, follows: link);
+    final plate = find.descendant(
+      of: bubble,
+      matching: find.byType(RailPlateButton),
+    );
+    Focus.of(tester.element(plate)).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(typing, findsOneWidget);
+  });
+
   testWidgets('a bubble its bar has left is dead: its press — even the '
       'keyboard\'s, which reaches a bubble no bar leads — types into '
       'nothing, and nothing breaks', (tester) async {

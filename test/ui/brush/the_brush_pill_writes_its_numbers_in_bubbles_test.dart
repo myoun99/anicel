@@ -210,6 +210,37 @@ void main() {
     expect(tester.widget<Text>(wordsOf('size')).data, '2000.0');
   });
 
+  testWidgets('a bubble\'s point is its body\'s ground, ringed as the body '
+      'is, its tip at the middle of the bubble\'s left edge', (tester) async {
+    await pumpPill(tester);
+    final ground = CanvasCapsule.groundIn(tester.element(bubble('size')));
+    for (final side in sides) {
+      final face = find
+          .ancestor(
+            of: bubble(side),
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is CustomPaint && widget.foregroundPainter != null,
+            ),
+          )
+          .first;
+      final point = tester.widget<CustomPaint>(face).foregroundPainter!;
+      final size = tester.getSize(face);
+      final middle = size.height / 2;
+      expect(
+        (Canvas canvas) => point.paint(canvas, size),
+        paints
+          ..path(
+            color: ground,
+            includes: [Offset(1, middle)],
+            excludes: [Offset(1, middle - 3), Offset(1, middle + 3)],
+          )
+          ..path(color: CanvasCapsule.ring, style: PaintingStyle.stroke),
+        reason: side,
+      );
+    }
+  });
+
   testWidgets('a press on a bubble types into its bar, as its pencil did, '
       'with the bubble standing where it stood; the typed number lands, and '
       'the bubble says it', (tester) async {
