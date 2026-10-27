@@ -15,10 +15,10 @@ import '../../helpers/raster_parity.dart';
 /// 세로쓰기 … 숫자가 90도로 안기울었으면」, 「불투명도는 % 없앰」, and Q1
 /// 「a 한 글자씩 한 칸」.
 ///
-/// ↩️The brush pill's bars stand nothing now: their numbers stepped out
-/// beside them, into bubbles (I-135 —
-/// `the_brush_pill_writes_its_numbers_in_bubbles_test`). The onion skin's
-/// pegs stand theirs.
+/// ↩️The brush pill's bars stand nothing now: their numbers stepped out of
+/// them, into readouts above them (I-135 —
+/// `the_brush_pill_writes_its_numbers_above_its_bars_test`). The onion
+/// skin's pegs stand theirs.
 void main() {
   Future<void> pumpStood(
     WidgetTester tester, {

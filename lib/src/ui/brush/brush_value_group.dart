@@ -27,16 +27,19 @@ typedef BrushBarWidths = ({double size, double opacity});
 /// The size bar and the opacity bar, as one place lays them.
 typedef BrushBars = ({FieldSlider size, FieldSlider opacity});
 
-/// The pill's links from each bar to the bubble its number stands in
-/// ([FieldSliderBubble]).
-typedef BrushBarBubbles = ({FieldSliderBubble size, FieldSliderBubble opacity});
+/// The pill's links from each bar to the readout its number stands in
+/// ([FieldSliderReadout]).
+typedef BrushBarReadouts = ({
+  FieldSliderReadout size,
+  FieldSliderReadout opacity,
+});
 
 /// How a bar stands where it is laid: the place's [BrushValuesLayout], its
-/// thickness there, and its bubble where its number stands beside it.
+/// thickness there, and its readout where its number stands above it.
 typedef _BarStand = ({
   BrushValuesLayout layout,
   double thickness,
-  FieldSliderBubble? bubble,
+  FieldSliderReadout? readout,
 });
 
 /// What the bars show of the state ([BrushValueBars.build]).
@@ -52,8 +55,8 @@ enum BrushValuesLayout {
   popover,
 
   /// The canvas's brush pill (I-34): one column, each bar stood up with its
-  /// number alone — beside it, in a bubble (I-135) — and its ± and its
-  /// curve under it.
+  /// number alone — right above it, in its readout (I-135) — and its ± and
+  /// its curve under it.
   pill;
 
   /// Whether the bars stand.
@@ -92,10 +95,10 @@ class BrushValueBars extends StatelessWidget {
     required this.brushTool,
     required this.widths,
     this.layout = BrushValuesLayout.strip,
-    this.bubbles,
+    this.readouts,
   }) : assert(
-         (bubbles != null) == (layout == BrushValuesLayout.pill),
-         'the pill\'s bars, and only they, write their numbers in bubbles',
+         (readouts != null) == (layout == BrushValuesLayout.pill),
+         'the pill\'s bars, and only they, write their numbers in readouts',
        );
 
   final ValueNotifier<BrushToolState> brushTool;
@@ -108,10 +111,10 @@ class BrushValueBars extends StatelessWidget {
   /// stood, one over the other, in the canvas's pill.
   final BrushValuesLayout layout;
 
-  /// The pill's links to the bubbles its bars' numbers stand in
+  /// The pill's links to the readouts its bars' numbers stand in
   /// ([BrushValuesPill]); null in the strip and its popover, whose bars
   /// write their own.
-  final BrushBarBubbles? bubbles;
+  final BrushBarReadouts? readouts;
 
   /// A bar at its full width — its track as it was at 140 and its pencil
   /// after it ([ValuePencil.reach]), so a bar that took its pencil writes
@@ -126,6 +129,10 @@ class BrushValueBars extends StatelessWidget {
 
   /// Between two lines laid one over the other — the popover's.
   static const double lineGap = 6;
+
+  /// Between a stood bar and its number over it, as I-135-Q1's sheet drew
+  /// it.
+  static const double _readoutGap = 2;
 
   /// Everything beside the two bars when they stand side by side: a
   /// pressure button after each, and the gaps.
@@ -168,13 +175,13 @@ class BrushValueBars extends StatelessWidget {
     // size panel's rack, as it is.
     stops: ToolSizePresetPanel.presets,
     // 🗣️I-125-Q1 (유저 2026-10-23): in the pill, 「px는 필요없어보임」 — and
-    // its bubble writes 「<20.0」 (I-135).
+    // its readout over it writes 「20.0」 (I-135).
     unit: stand.layout.stood ? '' : ' px',
     height: stand.thickness,
     axis: stand.layout.axis,
     // 🗣️I-34 (유저 2026-10-18): 「숫자만으로 하자」 — the pill's bars.
     nameInside: !stand.layout.stood,
-    bubble: stand.bubble,
+    readout: stand.readout,
     onChanged: onChanged,
   );
 
@@ -192,14 +199,14 @@ class BrushValueBars extends StatelessWidget {
     height: stand.thickness,
     axis: stand.layout.axis,
     nameInside: !stand.layout.stood,
-    bubble: stand.bubble,
+    readout: stand.readout,
     onChanged: onChanged,
   );
 
   /// The two bars as [layout] writes them, at the ends of their ranges —
   /// what the measures below read.
   static BrushBars _measured(BrushValuesLayout layout, double thickness) {
-    final stand = (layout: layout, thickness: thickness, bubble: null);
+    final stand = (layout: layout, thickness: thickness, readout: null);
     return (
       size: _sizeBar(stand, value: BrushToolState.maxSize, onChanged: null),
       opacity: _opacityBar(stand, value: 1, onChanged: null),
@@ -225,16 +232,16 @@ class BrushValueBars extends StatelessWidget {
   /// The pill's bars' one TRACK: as long as the longer of the two's widest
   /// number would stand in it, a glyph to a cell
   /// ([FieldSlider.standingRunIn]) — so the two stand alike. Their ± stand
-  /// under it ([FieldSlider.bubbleHandsReach]).
+  /// under it ([FieldSlider.readoutHandsReach]).
   ///
   /// 🗣️I-34 (유저 2026-10-18): 「크기랑 불투명도 막대길이 다른거
   /// 신경쓰이니 길이는 통일하는방향. 그리고 가로길이 좀 더 슬림하게
   /// 할수있나? 최대한 슬림했으면」.
   ///
   /// ↩️The numbers stood IN the tracks (I-125 → F-460) until they stepped
-  /// out beside them, into their bubbles (I-135); the tracks kept the
-  /// length the numbers had given them. ⚠️Keeping it was my call — the
-  /// card asked nothing of the length.
+  /// out of them (I-135) — beside them in bubbles for a day, then above
+  /// them; the tracks kept the length the numbers had given them, as
+  /// I-135-Q1's sheet drew them and the user took it (「a로가자」).
   static double pillTrackIn(BuildContext context) {
     final bars = _measured(BrushValuesLayout.pill, stoodThicknessIn(context));
     return math
@@ -245,12 +252,15 @@ class BrushValueBars extends StatelessWidget {
         .ceilToDouble();
   }
 
-  /// The pill's bubbles' one width: the widest number either bar says,
-  /// whole ([FieldSliderValueBubble.widthIn]) — 「불투명도도 그 고정크기로
+  /// The pill's readouts' one width: the widest number either bar says,
+  /// whole ([FieldSliderValueReadout.widthIn]) — 「불투명도도 그 고정크기로
   /// 통일」 (I-135).
-  static double bubbleWidthIn(BuildContext context) {
+  static double readoutWidthIn(BuildContext context) {
     final bars = _measured(BrushValuesLayout.pill, stoodThicknessIn(context));
-    return FieldSliderValueBubble.widthIn(context, [bars.size, bars.opacity]);
+    return FieldSliderValueReadout.widthIn(context, [
+      bars.size,
+      bars.opacity,
+    ]);
   }
 
   /// What the bars show of [state] — a drag elsewhere, or a colour, moves
@@ -265,7 +275,7 @@ class BrushValueBars extends StatelessWidget {
   );
 
   /// The two bars as this place lays them from [state] — the ones it
-  /// shows, and the ones the pill's bubbles read their numbers off.
+  /// shows, and the ones the pill's readouts read their numbers off.
   ///
   /// ⛔Every write reads the notifier when it happens, never [state] — a
   /// field outside the slice may have moved since it was built.
@@ -273,7 +283,7 @@ class BrushValueBars extends StatelessWidget {
     final thickness = layout.stood ? stoodThicknessIn(context) : barHeight;
     return (
       size: _sizeBar(
-        (layout: layout, thickness: thickness, bubble: bubbles?.size),
+        (layout: layout, thickness: thickness, readout: readouts?.size),
         // The ACTIVE tool's size, as the bar beside it is the active
         // tool's opacity: the shape tool's plain line keeps its own.
         value: BrushToolState.clampSize(state.activeSize),
@@ -283,7 +293,7 @@ class BrushValueBars extends StatelessWidget {
             : null,
       ),
       opacity: _opacityBar(
-        (layout: layout, thickness: thickness, bubble: bubbles?.opacity),
+        (layout: layout, thickness: thickness, readout: readouts?.opacity),
         // TP1: the ACTIVE tool's opacity — the fill and the stamp keep
         // their own, so this bar stops being the brush's alone (유저: 툴마다
         // 기억하게해서 필 툴도 불투명도 설정하면 그걸로 채워지게).
@@ -366,14 +376,16 @@ class BrushValueBars extends StatelessWidget {
         );
         final bars = _barsFor(context, state);
         // Along the line: a bar, then its curve — after it lying, under it
-        // stood.
+        // stood, where its number heads the line.
         final step = alongBox(layout.axis, gap);
         final sizeLine = [
+          ..._readoutOver(context, 'size', bars.size),
           placed(widths.size, bars.size),
           step,
           pressure(BrushPressureTarget.size),
         ];
         final opacityLine = [
+          ..._readoutOver(context, 'opacity', bars.opacity),
           placed(widths.opacity, bars.opacity),
           step,
           pressure(BrushPressureTarget.opacity),
@@ -402,6 +414,24 @@ class BrushValueBars extends StatelessWidget {
       },
     );
   }
+
+  /// [bar]'s number right above it, in its readout, and the room between
+  /// them — where [bar] has one, the pill's (I-135: 「그냥 해당하는 막대
+  /// 슬라이더 위에 이 텍스트 두자」); nothing where a bar writes its own.
+  List<Widget> _readoutOver(
+    BuildContext context,
+    String name,
+    FieldSlider bar,
+  ) => [
+    if (bar.readout != null) ...[
+      FieldSliderValueReadout(
+        keyValue: '${layout._keyPrefix}-$name-readout',
+        bar: bar,
+        width: readoutWidthIn(context),
+      ),
+      alongBox(layout.axis, _readoutGap),
+    ],
+  ];
 }
 
 /// The blend mode and its lock — at the strip's left-most right-group
@@ -532,147 +562,73 @@ class BrushBlendModeControl extends StatelessWidget {
 /// ([BrushValuesLayout.strip]). A capsule as the view pill is, ringed and
 /// opaque, so what it covers is cover to the canvas's framing.
 ///
-/// Its bars' numbers stand BESIDE them, each in a bubble at its value
-/// (I-135, [FieldSliderValueBubble]), in a lane to the capsule's right.
+/// Its bars' numbers stand right above them, each in its readout (I-135,
+/// [FieldSliderValueReadout]), and the capsule is as wide as they ask.
 class BrushValuesPill extends StatefulWidget {
   const BrushValuesPill({super.key, required this.brushTool});
 
   final ValueNotifier<BrushToolState> brushTool;
 
-  /// How wide the pill stands: its parts' thickness, and the ring's room
-  /// inside it on each side — the view pill's ([CanvasCapsule.barPillEnd]).
+  /// How wide the pill stands: its widest part, and the room inside it on
+  /// each side — its parts' thickness and the view pill's room
+  /// ([CanvasCapsule.barPillEnd]), or its readouts, which run wider, and
+  /// the ring's pixel (I-135-Q1: 37 where it stood 28).
   ///
   /// The capsule's width, and so the framing's band
-  /// ([CanvasEdgePill.width]): the bubbles beside it stand outside the
-  /// band. ⚠️My call — they are two numbers over the drawing, and a band as
-  /// wide as them would frame all of the drawing a bubble's width further
-  /// in for them.
-  static double widthIn(BuildContext context) =>
-      BrushValueBars.stoodThicknessIn(context) + CanvasCapsule.barPillEnd * 2;
+  /// ([CanvasEdgePill.width]).
+  static double widthIn(BuildContext context) => math.max(
+    BrushValueBars.stoodThicknessIn(context) + CanvasCapsule.barPillEnd * 2,
+    BrushValueBars.readoutWidthIn(context) + _ringRoom * 2,
+  );
 
-  /// From the capsule's edge to a bubble's point.
-  static const double _bubbleBreath = 2;
+  /// The ring's pixel inside the capsule's edge ([CanvasCapsule]), which a
+  /// readout as wide as the pill keeps clear of.
+  static const double _ringRoom = 1;
 
   @override
   State<BrushValuesPill> createState() => _BrushValuesPillState();
 }
 
 class _BrushValuesPillState extends State<BrushValuesPill> {
-  /// Each bar's link to its bubble, kept while the pill stands.
-  final BrushBarBubbles _bubbles = (
-    size: FieldSliderBubble(),
-    opacity: FieldSliderBubble(),
+  /// Each bar's link to its readout, kept while the pill stands.
+  final BrushBarReadouts _readouts = (
+    size: FieldSliderReadout(),
+    opacity: FieldSliderReadout(),
   );
 
   @override
   Widget build(BuildContext context) {
     final track = BrushValueBars.pillTrackIn(context);
-    final length = track + FieldSlider.bubbleHandsReach;
-    final bars = BrushValueBars(
-      brushTool: widget.brushTool,
-      widths: (size: length, opacity: length),
-      layout: BrushValuesLayout.pill,
-      bubbles: _bubbles,
-    );
-    final bubbleWidth = BrushValueBars.bubbleWidthIn(context);
-    final lane =
-        BrushValuesPill._bubbleBreath +
-        FieldSliderValueBubble.point +
-        bubbleWidth;
-    // The lane stands as tall as the pill, so a bubble at either end of its
-    // bar is still inside a box that takes a press — and holds nothing but
-    // the bubbles, so the drawing under the rest of it still takes the pen.
-    return Stack(
-      children: [
-        Padding(
-          padding: EdgeInsets.only(right: lane),
-          child: _capsule(context, track: track, bars: bars),
+    final length = track + FieldSlider.readoutHandsReach;
+    return CanvasCapsule(
+      keyValue: 'canvas-brush-pill',
+      width: BrushValuesPill.widthIn(context),
+      child: Padding(
+        // Across, every part stands centred in it (유저 2026-10-18: 「넘치더라도
+        // 알약에서 가로로 중앙정렬이도록」).
+        padding: const EdgeInsets.symmetric(vertical: CanvasCapsule.barPillEnd),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // As long as the bars' TRACK — their ± are under it.
+            BrushBlendModeControl(
+              brushTool: widget.brushTool,
+              axis: Axis.vertical,
+              length: track,
+              thickness: BrushValueBars.stoodThicknessIn(context),
+            ),
+            const SizedBox(height: StripGroupRule.margin),
+            const StripGroupRule(run: Axis.vertical),
+            const SizedBox(height: StripGroupRule.margin),
+            BrushValueBars(
+              brushTool: widget.brushTool,
+              widths: (size: length, opacity: length),
+              layout: BrushValuesLayout.pill,
+              readouts: _readouts,
+            ),
+          ],
         ),
-        Positioned(
-          top: 0,
-          right: 0,
-          bottom: 0,
-          width: lane,
-          child: _BrushValueBubbles(
-            bars: bars,
-            width: bubbleWidth,
-            // The track's edge is the ring's room in from the capsule's.
-            reach: CanvasCapsule.barPillEnd + BrushValuesPill._bubbleBreath,
-          ),
-        ),
-      ],
+      ),
     );
   }
-
-  /// The capsule: the blend over the [bars], as long as their [track].
-  Widget _capsule(
-    BuildContext context, {
-    required double track,
-    required BrushValueBars bars,
-  }) => CanvasCapsule(
-    keyValue: 'canvas-brush-pill',
-    width: BrushValuesPill.widthIn(context),
-    child: Padding(
-      padding: const EdgeInsets.all(CanvasCapsule.barPillEnd),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // As long as the bars' TRACK — their ± are under it.
-          BrushBlendModeControl(
-            brushTool: widget.brushTool,
-            axis: Axis.vertical,
-            length: track,
-            thickness: BrushValueBars.stoodThicknessIn(context),
-          ),
-          const SizedBox(height: StripGroupRule.margin),
-          const StripGroupRule(run: Axis.vertical),
-          const SizedBox(height: StripGroupRule.margin),
-          bars,
-        ],
-      ),
-    ),
-  );
-}
-
-/// The pill's bars' numbers, each in its bubble beside its bar
-/// ([FieldSliderValueBubble]): read off the bars as [bars] lays them, from
-/// the same slice of the state, so a bubble and its bar say one number.
-class _BrushValueBubbles extends StatelessWidget {
-  const _BrushValueBubbles({
-    required this.bars,
-    required this.width,
-    required this.reach,
-  });
-
-  /// The pill's bars, with their bubbles.
-  final BrushValueBars bars;
-  final double width;
-  final double reach;
-
-  @override
-  Widget build(BuildContext context) =>
-      SlicedValueListenableBuilder<BrushToolState, _BarsSlice>(
-        valueListenable: bars.brushTool,
-        slice: BrushValueBars._sliceOf,
-        builder: (context, state) {
-          final laid = bars._barsFor(context, state);
-          final prefix = bars.layout._keyPrefix;
-          return Stack(
-            children: [
-              FieldSliderValueBubble(
-                keyValue: '$prefix-size-bubble',
-                bar: laid.size,
-                width: width,
-                reach: reach,
-              ),
-              FieldSliderValueBubble(
-                keyValue: '$prefix-opacity-bubble',
-                bar: laid.opacity,
-                width: width,
-                reach: reach,
-              ),
-            ],
-          );
-        },
-      );
 }

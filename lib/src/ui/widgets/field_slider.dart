@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/input/modifier_keys.dart';
-import '../canvas/canvas_capsule.dart';
 import '../input/control_press_claim.dart';
 import '../input/wheel_law.dart';
 import '../text/app_strings.dart';
@@ -52,7 +51,8 @@ typedef FieldSliderLevel = ({double value, Color color});
 ///   though they take the same branch, which is why the `%`-dropping rule
 ///   sits in [FieldSlider.opacity] and not in the writing.
 /// - A STOOD-UP bar writes the same row, turned a quarter clockwise — or
-///   writes nothing, its number BESIDE it in a bubble ([bubble]).
+///   writes nothing, its number in a readout its host stands by it
+///   ([readout]).
 /// - Drag or tap sets the value by absolute track position; holding Shift
 ///   switches to relative movement at 1/10 speed for fine control.
 /// - The scroll wheel steps the value by 1% of the track (Shift: 0.1%); with
@@ -74,8 +74,8 @@ typedef FieldSliderLevel = ({double value, Color color});
 /// the bar rather than inside it: that one types on a single tap, so the
 /// app-wide rule ("tap = pick or edit, double-tap = open") stays whole.
 /// ↩️It types again, never on a tap of the bar: through its pencil since
-/// 2026-10-10 ([ValuePencil]), and through its bubble's press where its
-/// bubble stands for the pencil (I-135).
+/// 2026-10-10 ([ValuePencil]), and through its readout's press where its
+/// readout stands for the pencil (I-135).
 class FieldSlider extends StatefulWidget {
   const FieldSlider({
     super.key,
@@ -99,7 +99,7 @@ class FieldSlider extends StatefulWidget {
     this.axis = Axis.horizontal,
     this.nameInside = true,
     this.upright = false,
-    this.bubble,
+    this.readout,
   }) : levels = null,
        floor = null,
        assert(max > min, 'max must exceed min'),
@@ -108,8 +108,8 @@ class FieldSlider extends StatefulWidget {
          'a bar stands its number up only stood, and writes the number alone',
        ),
        assert(
-         bubble == null || (axis == Axis.vertical && !upright),
-         'a bubble stands beside a stood bar, and its bar writes nothing',
+         readout == null || (axis == Axis.vertical && !upright),
+         'a readout writes the number of a stood bar, which writes nothing',
        ),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -157,7 +157,7 @@ class FieldSlider extends StatefulWidget {
        height = defaultHeight,
        axis = Axis.horizontal,
        upright = false,
-       bubble = null,
+       readout = null,
        assert(max > min, 'max must exceed min'),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -201,14 +201,14 @@ class FieldSlider extends StatefulWidget {
     this.axis = Axis.horizontal,
     this.nameInside = true,
     this.upright = false,
-    this.bubble,
+    this.readout,
   }) : assert(
          !upright || (axis == Axis.vertical && (label == null || !nameInside)),
          'a bar stands its number up only stood, and writes the number alone',
        ),
        assert(
-         bubble == null || (axis == Axis.vertical && !upright),
-         'a bubble stands beside a stood bar, and its bar writes nothing',
+         readout == null || (axis == Axis.vertical && !upright),
+         'a readout writes the number of a stood bar, which writes nothing',
        ),
        min = 0,
        fillOrigin = null,
@@ -271,7 +271,7 @@ class FieldSlider extends StatefulWidget {
        axis = Axis.horizontal,
        nameInside = true,
        upright = false,
-       bubble = null,
+       readout = null,
        assert(max > 0, 'max must exceed min'),
        assert(floor <= max, 'the floor stands on the scale');
 
@@ -370,8 +370,8 @@ class FieldSlider extends StatefulWidget {
   /// Whether the bar writes its [label] inside, at its left — false for a
   /// grid's bar ([FieldSlider.cell]), whose name stands in its row, and for
   /// the canvas's brush pill, whose stood bars write their number alone
-  /// (I-34, 유저 2026-10-18: 「숫자만으로 하자」) — ↩️beside them since
-  /// I-135, in their bubbles ([bubble]). Either way the bar keeps its
+  /// (I-34, 유저 2026-10-18: 「숫자만으로 하자」) — ↩️above them since
+  /// I-135, in their readouts ([readout]). Either way the bar keeps its
   /// hands, and its [label] still names it to a screen reader.
   final bool nameInside;
 
@@ -382,18 +382,19 @@ class FieldSlider extends StatefulWidget {
   /// 🗣️I-125-Q1 (유저 2026-10-23): the brush pill's bars — 「숫자가 옆으로
   /// 누워있어서 읽기 힘든게 큰 단점」. The x-sheet's stood rail still lies
   /// (유저 2026-09-10: 「세로쓰기 세로표기」; I-125-Q2 a, the pill alone).
-  /// ↩️The pill's bars stand nothing since their numbers stepped out beside
-  /// them ([bubble]); the onion skin's pegs stand theirs.
+  /// ↩️The pill's bars stand nothing since their numbers stepped out of
+  /// them ([readout]); the onion skin's pegs stand theirs.
   final bool upright;
 
-  /// The link to this bar's number where it stands BESIDE the bar, in a
-  /// bubble at the value ([FieldSliderValueBubble]) — the bar writes
-  /// nothing in its track, and its bubble is its pencil: the ± stay.
+  /// The link to this bar's number where it is written OUTSIDE the bar, in
+  /// a readout its host stands by it ([FieldSliderValueReadout]) — the bar
+  /// writes nothing in its track, and its readout is its pencil: the ±
+  /// stay.
   ///
   /// 🗣️I-135 (유저 2026-10-27), the brush pill's bars: 「역시 사이즈 글자가
   /// 세로면 알기힘듬. 그러니 그냥 텍스트 독립시키자. 슬라이더 막대엔 텍스트
   /// 없애고, 연필버튼도 여기선 대체되니 없애고」.
-  final FieldSliderBubble? bubble;
+  final FieldSliderReadout? readout;
 
   /// How many digits a standing number sets in one cell: one — 「한 글자씩
   /// 한 칸」 (F-460-Q1, 유저 2026-10-23: 「2/0/0/0/./0 이렇게 위에서
@@ -411,11 +412,11 @@ class FieldSlider extends StatefulWidget {
   /// settings grid keeps on every row ([ToolSettingEnd]).
   static const double handsReach = valueHandsReach;
 
-  /// What the hands of a bar whose [bubble] is its pencil take: its ±.
-  static const double bubbleHandsReach = ValueSteps.reach;
+  /// What the hands of a bar whose [readout] is its pencil take: its ±.
+  static const double readoutHandsReach = ValueSteps.reach;
 
   /// What this bar's hands take of its run.
-  double get _handsReach => bubble == null ? handsReach : bubbleHandsReach;
+  double get _handsReach => readout == null ? handsReach : readoutHandsReach;
 
   /// How round a bar [height] thick is cornered.
   static double radiusFor(double height) => height < 20 ? 3 : 4;
@@ -488,8 +489,8 @@ class FieldSlider extends StatefulWidget {
   /// saying what it is.
   double narrowestIn(BuildContext context) {
     final hands = _carriesHands ? _handsReach : 0.0;
-    if (bubble != null) {
-      // Its number stands in its bubble: nothing in its track asks room.
+    if (readout != null) {
+      // Its number is in its readout: nothing in its track asks room.
       return hands;
     }
     if (upright) {
@@ -823,7 +824,7 @@ class _FieldSliderState extends State<FieldSlider> {
   final Map<Type, Kept<Object?>> _hands = {};
 
   /// Whether the bar is being typed into: its pencil opened the number pad
-  /// ([ValuePencil], [showNumberPad]) — or its bubble did, being its
+  /// ([ValuePencil], [showNumberPad]) — or its readout did, being its
   /// pencil — and the bar wears the typed frame until the pad closes.
   bool _typing = false;
 
@@ -852,23 +853,23 @@ class _FieldSliderState extends State<FieldSlider> {
     }
   }
 
-  // The bubble's press reaches [_beginTyping] while this bar stands.
+  // The readout's press reaches [_beginTyping] while this bar stands.
   @override
   void initState() {
     super.initState();
-    widget.bubble?._type = _beginTyping;
+    widget.readout?._type = _beginTyping;
   }
 
   @override
   void didUpdateWidget(FieldSlider oldWidget) {
     super.didUpdateWidget(oldWidget);
-    oldWidget.bubble?._letGo(_beginTyping);
-    widget.bubble?._type = _beginTyping;
+    oldWidget.readout?._letGo(_beginTyping);
+    widget.readout?._type = _beginTyping;
   }
 
   @override
   void dispose() {
-    widget.bubble?._letGo(_beginTyping);
+    widget.readout?._letGo(_beginTyping);
     super.dispose();
   }
 
@@ -1095,29 +1096,27 @@ class _FieldSliderState extends State<FieldSlider> {
 
     final own = widget.color ?? AppColors.accent;
     final accent = dragging ? own : (widget.restingAccent ?? own);
-    var bar = _led(
-      FieldSliderTrack(
-        axis: widget.axis,
-        onExtent: _takeTrackExtent,
-        frame: FieldSlider.frameOf(
-          widget.height,
-          enabled: _enabled,
-          typed: _typing,
-        ),
-        shape: AppShapes.container(_radius),
-        fill: _trackFill(t, accent),
-        child: acrossBox(
-          widget.axis,
-          widget.height,
-          // A bubble bar writes nothing: its number stands in its bubble.
-          child: widget.bubble == null
-              ? _FieldSliderWriting(
-                  bar: widget,
-                  valueText: valueText,
-                  runs: _inkRuns(t, accent),
-                )
-              : null,
-        ),
+    Widget bar = FieldSliderTrack(
+      axis: widget.axis,
+      onExtent: _takeTrackExtent,
+      frame: FieldSlider.frameOf(
+        widget.height,
+        enabled: _enabled,
+        typed: _typing,
+      ),
+      shape: AppShapes.container(_radius),
+      fill: _trackFill(t, accent),
+      child: acrossBox(
+        widget.axis,
+        widget.height,
+        // A readout's bar writes nothing: its number is in its readout.
+        child: widget.readout == null
+            ? _FieldSliderWriting(
+                bar: widget,
+                valueText: valueText,
+                runs: _inkRuns(t, accent),
+              )
+            : null,
       ),
     );
 
@@ -1173,17 +1172,6 @@ class _FieldSliderState extends State<FieldSlider> {
     return _withHands(claimed);
   }
 
-  /// [face] — the track, or the box it stands as while typed in — as what
-  /// the bar's [FieldSlider.bubble] follows: the bubble stays at the
-  /// value's place on it whichever face stands.
-  Widget _led(Widget face) => switch (widget.bubble) {
-    final bubble? => CompositedTransformTarget(
-      link: bubble._link,
-      child: face,
-    ),
-    null => face,
-  };
-
   /// [bar] with its hands beside it — the +/− pair and the pencil
   /// ([ValueSteps], [ValuePencil]) — when this is the kind of bar that
   /// carries them.
@@ -1210,7 +1198,7 @@ class _FieldSliderState extends State<FieldSlider> {
   /// has no room across at all; that one is the micro variant, and the
   /// variant is what keeps it bare.
   ///
-  /// A bar whose number stands in its bubble has no pencil: the bubble is
+  /// A bar whose number is in its readout has no pencil: the readout is
   /// its pencil (I-135: 「연필버튼도 여기선 대체되니 없애고」).
   Widget _withHands(Widget bar) {
     if (!widget._carriesHands) {
@@ -1222,7 +1210,7 @@ class _FieldSliderState extends State<FieldSlider> {
     final hands = keptWhileSame(
       _hands,
       FieldSlider,
-      (widget.height, widget.axis, _enabled, widget.bubble == null),
+      (widget.height, widget.axis, _enabled, widget.readout == null),
       () => Flex(
         direction: widget.axis,
         mainAxisSize: MainAxisSize.min,
@@ -1234,7 +1222,7 @@ class _FieldSliderState extends State<FieldSlider> {
             onStep: _stepBy,
             axis: widget.axis,
           ),
-          if (widget.bubble == null)
+          if (widget.readout == null)
             ValuePencil(
               keyValue: 'field-slider-type',
               height: widget.height,
@@ -1288,7 +1276,7 @@ class _FieldSliderWriting extends StatelessWidget {
     // ↩️The table is back where a bar asks for it ([FieldSlider.upright]):
     // the brush pill's, by I-125-Q1 — a glyph to a cell since F-460-Q1 —
     // and the onion skin's pegs' (F-461). ↩️The pill's own numbers stand
-    // beside its bars in bubbles since I-135.
+    // above its bars in readouts since I-135.
     //
     // ⚠️A `RotatedBox` HERE and never around the bar: the writing has no
     // gesture, while a turned recognizer would never see an on-screen
@@ -1354,22 +1342,17 @@ class _FieldSliderWriting extends StatelessWidget {
   }
 }
 
-/// The link between a stood bar and the bubble its number stands in BESIDE
-/// it ([FieldSlider.bubble], [FieldSliderValueBubble]): the bar's track
-/// leads and the bubble follows it, and the bubble's press reaches the
-/// bar's typing. The bar's host makes one for each such bar, hands it to
-/// both, and keeps it while they stand.
+/// The link between a stood bar and the readout its number stands in
+/// OUTSIDE it ([FieldSlider.readout], [FieldSliderValueReadout]): the
+/// readout's press reaches the bar's typing. The bar's host makes one for
+/// each such bar, hands it to both, and keeps it while they stand.
 ///
-/// 🗣️I-135 (유저 2026-10-27): 「막대 옆에 <20.0 이런식으로 약간 말풍선컨셉?
-/// 으로 슬라이더 값이 위치한곳에 텍스트 위젯 넣도록. 이 위젯은 슬라이더 값
-/// 위치한곳 따라다님. 따라가는 로직이라던가 최대한 가볍고 효율적으로」.
-class FieldSliderBubble {
-  /// Followed as the frame is COMPOSITED ([CompositedTransformFollower]): a
-  /// value that moves lays nothing out to move its bubble — the bubble's
-  /// anchor slides along the track's box, and only its words are built
-  /// again.
-  final LayerLink _link = LayerLink();
-
+/// 🗣️I-135 (유저 2026-10-27): 「그냥 해당하는 막대 슬라이더 위에 이 텍스트
+/// 두자. 물론 다 안들어가니 최대한 텍스트쪽 위젯 컴팩트하게 하고」. ↩️The
+/// number stood a day in a bubble beside its bar that followed the value
+/// (「막대 옆에 <20.0 이런식으로 약간 말풍선컨셉?」), until 「생각보다 너무
+/// 캔버스 좌우공간을 차지함」.
+class FieldSliderReadout {
   /// The bar's typing, while the bar stands
   /// ([_FieldSliderState._beginTyping]).
   VoidCallback? _type;
@@ -1381,183 +1364,124 @@ class FieldSliderBubble {
   }
 }
 
-/// A stood bar's number BESIDE it ([FieldSlider.bubble]): a bubble whose
-/// point stands at the value's place on the track and follows it there,
-/// written as the bar writes its number — and the bar's pencil: a press
+/// A stood bar's number OUTSIDE it ([FieldSlider.readout]), where its host
+/// stands it — the pill stands each right above its bar: what the bar
+/// would write at rest, small and centred, and the bar's pencil: a press
 /// types into the bar as the pencil's did.
 ///
-/// [bar] is the bar it stands beside, as its host built it from the same
-/// state: the bubble reads the value off it as the bar does, so the two
+/// [bar] is the bar it writes for, as its host built it from the same
+/// state: the readout reads the value off it as the bar does, so the two
 /// say one number. ⚠️A bar that echoes a drag before its value comes back
-/// (R4 #4/#5's commit-on-release bars) would run ahead of its bubble; the
-/// pill's bars are handed every move, and no other bar has a bubble.
+/// (R4 #4/#5's commit-on-release bars) would run ahead of its readout; the
+/// pill's bars are handed every move, and no other bar has a readout.
 ///
-/// Its size is FIXED — [width] across, the bar's thickness tall: 「참고로
-/// 말풍선 텍스트위젯은 글자에 따라 자동맞춤으로 크기 변함. 고정으로 하는게
-/// 성능적인 면에서 효율적인가? 그렇다면 길이 브러시사이즈 최대 길이(2000.0 의
-/// 길이)를 고정으로, 텍스트 중앙정렬로 하도록. 그냥 고정크기로하자. 그러고
-/// 불투명도도 그 고정크기로 통일」 ([widthIn]).
-///
-/// ⛔NOT AN OVERLAY. Its host lays a lane beside the bar for it, as tall as
-/// everywhere the bubble can go — a box takes a press only inside its
-/// parent's box — and the bubble follows the track from there. An
-/// [OverlayPortal] shown for good under the workspace's layout builder
-/// trips 「a _RenderLayoutBuilder was mutated in performLayout」 whenever
-/// the canvas, a GlobalKey subtree, moves: the preset rail's tooltips met
-/// it (`brush_preset_panel.dart`).
-class FieldSliderValueBubble extends StatelessWidget {
-  const FieldSliderValueBubble({
+/// Its size is FIXED — [width] across, [heightIn] tall — the bubble's law,
+/// kept: 「고정으로 하는게 성능적인 면에서 효율적인가? 그렇다면 길이
+/// 브러시사이즈 최대 길이(2000.0 의 길이)를 고정으로, 텍스트 중앙정렬로
+/// 하도록. 그냥 고정크기로하자. 그러고 불투명도도 그 고정크기로 통일」
+/// ([widthIn]).
+class FieldSliderValueReadout extends StatefulWidget {
+  const FieldSliderValueReadout({
     super.key,
     required this.keyValue,
     required this.bar,
     required this.width,
-    required this.reach,
   });
 
-  /// The bubble's handle: its body's key, and its press's name.
+  /// The readout's handle: its box's key, and its press's name.
   final String keyValue;
 
-  /// A bar with a [FieldSlider.bubble].
+  /// A bar with a [FieldSlider.readout].
   final FieldSlider bar;
 
-  /// The body's width — one for every bubble its host shows ([widthIn]).
+  /// Its width — one for every readout its host shows ([widthIn]).
   final double width;
 
-  /// From the track's edge to the bubble's point.
-  final double reach;
+  /// 🗣️I-135-Q1 (유저 2026-10-27: 「a로가자」): of 8, 9 and the other bars'
+  /// 11, the size that asks the canvas for the least room — 「2000.0」 runs
+  /// 33 across at 8, so the pill stands 37 across where it stood 28 (41 at
+  /// 9, 50 at 11).
+  static const double fontSize = 8;
 
-  /// How far the point stands out of the body.
-  static const double point = 4;
+  /// The room either side of the words.
+  static const double _pad = 1;
 
-  /// The point's base, along the body's edge.
-  static const double _pointBase = 8;
+  /// Its height at 1×, as I-135-Q1's sheet drew it: the line, and two
+  /// pixels above and below it for the press.
+  static const double _height = fontSize + 4;
 
-  /// The room either side of the words — a capsule's own.
-  static const double _pad = CanvasCapsule.barPillEnd;
+  /// The style it writes in: a bar's own ([FieldSlider.valueStyleIn]) at
+  /// [fontSize], the line as tall as the letters.
+  static TextStyle? styleIn(BuildContext context) => FieldSlider.valueStyleIn(
+    context,
+  )?.copyWith(fontSize: fontSize, height: 1);
 
-  /// The one body width for [bars]' bubbles: the widest thing any of them
-  /// says, whole, and the room either side of it.
+  /// The one width for [bars]' readouts: the widest thing any of them says,
+  /// whole, and the room either side of it.
   static double widthIn(BuildContext context, Iterable<FieldSlider> bars) =>
-      TextMeasure(context, FieldSlider.valueStyleIn(context))
+      TextMeasure(context, styleIn(context))
           .widest([for (final bar in bars) ...bar._saidAtEnds])
           .ceilToDouble() +
       _pad * 2;
 
-  @override
-  Widget build(BuildContext context) => CompositedTransformFollower(
-    link: bar.bubble!._link,
-    showWhenUnlinked: false,
-    // The value's place along the track — a stood bar fills UP.
-    targetAnchor: Alignment(1, 1 - 2 * bar._tFor(bar.value)),
-    followerAnchor: Alignment.centerLeft,
-    offset: Offset(reach, 0),
-    child: _FieldSliderBubbleFace(keyValue: keyValue, bar: bar, width: width),
-  );
-}
-
-/// What a [FieldSliderValueBubble] shows and takes a press on: a canvas
-/// capsule — it floats over the drawing as the pill does, so it is opaque
-/// and ringed as the pill is ([CanvasCapsule]) — its point out of its left
-/// edge, its words in its middle, and the bar's pencil's press and
-/// tooltip.
-class _FieldSliderBubbleFace extends StatefulWidget {
-  const _FieldSliderBubbleFace({
-    required this.keyValue,
-    required this.bar,
-    required this.width,
-  });
-
-  final String keyValue;
-  final FieldSlider bar;
-  final double width;
+  /// Its height here: [_height], grown as its line grows with the text
+  /// scale (text-scale-fixed-height-bars).
+  static double heightIn(BuildContext context) =>
+      _height +
+      TextMeasure(
+        context,
+        styleIn(context),
+      ).lineGrowthOf(TextMeasure.everyScript);
 
   @override
-  State<_FieldSliderBubbleFace> createState() => _FieldSliderBubbleFaceState();
+  State<FieldSliderValueReadout> createState() =>
+      _FieldSliderValueReadoutState();
 }
 
-class _FieldSliderBubbleFaceState extends State<_FieldSliderBubbleFace>
+class _FieldSliderValueReadoutState extends State<FieldSliderValueReadout>
     with KeyboardPress {
   bool get _enabled => widget.bar.onChanged != null;
 
-  void _type() => widget.bar.bubble?._type?.call();
+  void _type() => widget.bar.readout?._type?.call();
 
   @override
   VoidCallback? get keyboardPress => _enabled ? _type : null;
 
   @override
   Widget build(BuildContext context) {
-    final bar = widget.bar;
-    final ground = CanvasCapsule.groundIn(context);
-    final ink = dimmedIfDisabled(textOnColor(ground), enabled: _enabled);
-    return CustomPaint(
-      foregroundPainter: _FieldSliderBubblePoint(ground: ground),
-      child: Padding(
-        padding: const EdgeInsets.only(left: FieldSliderValueBubble.point),
-        child: CanvasCapsule(
-          keyValue: widget.keyValue,
-          width: widget.width,
-          height: bar.height,
-          child: keyboardReaches(
-            RailPlateButton(
-              name: widget.keyValue,
-              tooltip: AppText.strings.valueTypeIn,
-              onPressed: _enabled ? _type : null,
-              focus: keyboardFocus,
-              hoverShape: AppShapes.control(bar.height),
-              child: Center(
-                child: Text(
-                  bar._saidAtRest,
-                  maxLines: 1,
-                  softWrap: false,
-                  style:
-                      FieldSlider.valueStyleIn(context)?.copyWith(color: ink) ??
-                      TextStyle(color: ink),
-                ),
-              ),
+    final height = FieldSliderValueReadout.heightIn(context);
+    // On its host's ground — the pill's, the surface ([AppColors.surface]).
+    final ink = dimmedIfDisabled(
+      textOnColor(AppColors.surface),
+      enabled: _enabled,
+    );
+    return SizedBox(
+      key: ValueKey<String>(widget.keyValue),
+      width: widget.width,
+      height: height,
+      child: keyboardReaches(
+        RailPlateButton(
+          name: widget.keyValue,
+          tooltip: AppText.strings.valueTypeIn,
+          onPressed: _enabled ? _type : null,
+          focus: keyboardFocus,
+          hoverShape: AppShapes.control(height),
+          child: Center(
+            child: Text(
+              widget.bar._saidAtRest,
+              maxLines: 1,
+              softWrap: false,
+              style:
+                  FieldSliderValueReadout.styleIn(
+                    context,
+                  )?.copyWith(color: ink) ??
+                  TextStyle(color: ink),
             ),
           ),
         ),
       ),
     );
   }
-}
-
-/// A [FieldSliderValueBubble]'s point, out of its body's left edge to the
-/// value: in the body's ground and ring, its ground run a pixel into the
-/// body over the ring there, so the two read as one shape.
-class _FieldSliderBubblePoint extends CustomPainter with RepaintOnProps {
-  const _FieldSliderBubblePoint({required this.ground});
-
-  final Color ground;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const point = FieldSliderValueBubble.point;
-    const half = FieldSliderValueBubble._pointBase / 2;
-    final middle = size.height / 2;
-    canvas
-      ..drawPath(
-        Path()
-          ..moveTo(0, middle)
-          ..lineTo(point + 1, middle - half)
-          ..lineTo(point + 1, middle + half)
-          ..close(),
-        Paint()..color = ground,
-      )
-      ..drawPath(
-        Path()
-          ..moveTo(point, middle - half)
-          ..lineTo(0.5, middle)
-          ..lineTo(point, middle + half),
-        Paint()
-          ..color = CanvasCapsule.ring
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1,
-      );
-  }
-
-  @override
-  Object get props => ground;
 }
 
 class _FieldSliderTrackPainter extends CustomPainter with RepaintOnProps {

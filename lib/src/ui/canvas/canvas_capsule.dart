@@ -43,14 +43,6 @@ class CanvasCapsule extends StatelessWidget {
   static const double barPillHeight = 28;
   static const double barPillEnd = 4;
 
-  /// What a capsule is filled with — and a part that reads as the same
-  /// shape, a bar's value bubble's point (`FieldSliderValueBubble`).
-  static Color groundIn(BuildContext context) =>
-      Theme.of(context).colorScheme.surface;
-
-  /// The ring around it (see the class doc for why it is there).
-  static const Color ring = AppColors.backdrop;
-
   final String keyValue;
   final Widget child;
   final double? width;
@@ -68,8 +60,10 @@ class CanvasCapsule extends StatelessWidget {
     return DecoratedBox(
       key: ValueKey<String>(keyValue),
       decoration: ShapeDecoration(
-        color: groundIn(context),
-        shape: shape.copyWith(side: const BorderSide(color: ring)),
+        color: Theme.of(context).colorScheme.surface,
+        shape: shape.copyWith(
+          side: const BorderSide(color: AppColors.backdrop),
+        ),
       ),
       child: SuperellipseClip(
         shape: shape,
