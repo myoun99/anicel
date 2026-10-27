@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// PEN-2: the Input Settings dialog's tablet-service switch (Windows
 /// only — the CSP-style dual backend).
@@ -118,6 +119,7 @@ void main() {
         find.byKey(const ValueKey<String>('settings-zoom-ceiling-new-edit')),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('settings-zoom-ceiling-new-input')),
         text,
@@ -286,6 +288,7 @@ void main() {
         find.byKey(const ValueKey<String>('settings-zoom-snap-new-edit')),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('settings-zoom-snap-new-input')),
         text,

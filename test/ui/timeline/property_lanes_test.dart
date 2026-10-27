@@ -52,6 +52,7 @@ import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 import '../../helpers/named_finders.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// A straight key that holds from there on — AE's Toggle Hold Keyframe.
 const _heldOut = SidesKeyMark(
@@ -571,6 +572,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await openThePadsKeyboard(tester);
         expect(
           find.byKey(
             const ValueKey<String>(
@@ -1366,6 +1368,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       // F-22 ②: the percent sign is CHROME. The box opens holding the
       // number alone, and a bare number is what commits.
       expect(
@@ -1456,6 +1459,7 @@ void main() {
         find.byKey(ValueKey<String>('${secondKey.value}-edit')),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       expect(find.byKey(yKey), findsOneWidget);
       expect(find.byKey(xKey), findsNothing, reason: 'x stands as shown');
       expect(
@@ -1804,6 +1808,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       // F-22 ②: a bare number here too — the sheet's editor wears the unit
       // the same way the rail's does.
       await tester.enterText(

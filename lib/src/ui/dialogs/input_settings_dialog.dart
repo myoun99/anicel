@@ -500,6 +500,7 @@ class _PercentListRowState extends State<_PercentListRow> {
             text: '${_shownPercent(_toPutIn.value)}%',
             textStyle: const TextStyle(fontSize: 12),
             width: 56,
+            signed: false,
             onDragDelta: (units) =>
                 _toPutIn.value = _reachablePercent(_toPutIn.value + units),
             onEditSubmit: (text) {

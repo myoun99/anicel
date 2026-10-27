@@ -40,6 +40,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppTypography;
+import '../helpers/number_pad_keyboard.dart';
 
 /// The conte panel IS the sheet: it draws the renderer the export draws, a
 /// cell press picks that cut and frame, and the ACTION text lands on the
@@ -254,6 +255,7 @@ void main() {
     // paper — the body's first page.
     await tester.tap(find.byKey(const ValueKey<String>('conte-page-readout-edit')));
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(
       find.byKey(const ValueKey<String>('conte-page-input')),
       '3',

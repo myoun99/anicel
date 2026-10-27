@@ -1117,6 +1117,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
     name: name,
     text: '$value',
     enabled: live,
+    digitsOnly: true,
     onDragDelta: (units) => onChanged(
       TransformToolOptions.clampMeshCells(value + units.round()),
     ),

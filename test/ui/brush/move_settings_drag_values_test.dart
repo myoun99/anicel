@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/scale_chain_button.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// R26 #14: the Move/Transform settings' x/y/angle/scale are the shared
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a
@@ -123,6 +124,7 @@ void main() {
   Future<void> typeInto(WidgetTester tester, String key, String text) async {
     await tester.tap(find.byKey(ValueKey<String>('$key-edit')));
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(find.byKey(ValueKey<String>('$key-input')), text);
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();

@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 void main() {
   const pageSize = ui.Size(600, 800);
@@ -543,6 +544,7 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
       );
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         '125',

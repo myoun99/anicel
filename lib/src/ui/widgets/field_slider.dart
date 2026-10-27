@@ -17,8 +17,8 @@ import '../theme/text_on_ground.dart';
 import '../timeline/axis_turn.dart';
 import '../timeline/memo_token.dart' show ByList, Kept, keptWhileSame;
 import 'ground_ink_writing.dart';
-import 'inline_numeric_field.dart';
 import 'keyboard_press.dart';
+import 'number_pad.dart';
 import 'owning_axis_grip.dart';
 import 'rail_glyph_button.dart' show RailPlateButton;
 import 'superellipse_clip.dart';
@@ -425,10 +425,11 @@ class FieldSlider extends StatefulWidget {
   /// (tool-settings-panel-tidy, 유저 2026-10-10: the box is 「다른 도구의
   /// 숫자 상자와 같은 모양」).
   ///
-  /// [typed]: the frame of a bar or a box being typed in. Its field runs
-  /// the whole of it, so the frame is the field's, in the accent a focused
-  /// field wears (유저 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데.
-  /// 다른박스 마찬가지 통일」).
+  /// [typed]: the frame of a bar or a box being typed in — its number pad
+  /// open ([showNumberPad]) — in the accent a focused field wears. ↩️Its
+  /// field ran the whole of it, so the frame was the field's (유저
+  /// 2026-10-11: 「X 글자 없애고 최대치로 잡아도 될거같은데. 다른박스 마찬가지
+  /// 통일」), until the field moved into the pad (I-134).
   static ShapeDecoration frameOf(
     double height, {
     required bool enabled,
@@ -821,12 +822,35 @@ class _FieldSliderState extends State<FieldSlider> {
   /// whether it takes the gesture, and the language its tooltips speak.
   final Map<Type, Kept<Object?>> _hands = {};
 
-  /// Whether the bar is being typed into: its pencil opened the field
-  /// ([ValuePencil]) — or its bubble did, being its pencil — and the bar
-  /// stands as a box holding it until Enter, a press elsewhere, or Escape.
+  /// Whether the bar is being typed into: its pencil opened the number pad
+  /// ([ValuePencil], [showNumberPad]) — or its bubble did, being its
+  /// pencil — and the bar wears the typed frame until the pad closes.
   bool _typing = false;
 
-  void _beginTyping() => setState(() => _typing = true);
+  /// The pencil: the number pad, anchored under the bar (I-134), on the
+  /// number alone ([readoutParts]) — a − where the bar runs below zero, a
+  /// point where it lands between whole numbers ([FieldSlider._decimals]).
+  Future<void> _beginTyping() async {
+    setState(() => _typing = true);
+    final shown = widget._saidAtRest;
+    await showNumberPad(
+      context,
+      keyValue: 'field-slider-type',
+      initialText: switch (readoutParts(shown)) {
+        [final part] => part.number,
+        _ => shown,
+      },
+      keys: (
+        minus: widget.min * widget.displayScale < 0,
+        point: widget._decimals > 0,
+      ),
+      fieldKey: const ValueKey<String>('field-slider-type-input'),
+      onSubmit: _typed,
+    );
+    if (mounted) {
+      setState(() => _typing = false);
+    }
+  }
 
   // The bubble's press reaches [_beginTyping] while this bar stands.
   @override
@@ -1068,18 +1092,6 @@ class _FieldSliderState extends State<FieldSlider> {
     final valueText = dragging
         ? widget._textFor(widget._valueFor(gestureT))
         : widget._saidAtRest;
-    if (_typing) {
-      return _withHands(
-        _led(
-          _FieldSliderTypedFace(
-            bar: widget,
-            valueText: valueText,
-            onSubmit: _typed,
-            onCancel: () => setState(() => _typing = false),
-          ),
-        ),
-      );
-    }
 
     final own = widget.color ?? AppColors.accent;
     final accent = dragging ? own : (widget.restingAccent ?? own);
@@ -1087,7 +1099,11 @@ class _FieldSliderState extends State<FieldSlider> {
       FieldSliderTrack(
         axis: widget.axis,
         onExtent: _takeTrackExtent,
-        frame: FieldSlider.frameOf(widget.height, enabled: _enabled),
+        frame: FieldSlider.frameOf(
+          widget.height,
+          enabled: _enabled,
+          typed: _typing,
+        ),
         shape: AppShapes.container(_radius),
         fill: _trackFill(t, accent),
         child: acrossBox(
@@ -1240,8 +1256,9 @@ class _FieldSliderState extends State<FieldSlider> {
 }
 
 /// What a bar writes in its track — its name and its number, or its number
-/// alone — in the ink the ground under each stretch asks for ([runs]): the
-/// writing that stands until the bar is typed in ([_FieldSliderTypedFace]).
+/// alone — in the ink the ground under each stretch asks for ([runs]),
+/// typed in too: the number pad opens under the bar ([showNumberPad]).
+/// ↩️It gave way to a typed face, all field, while the bar was typed in.
 class _FieldSliderWriting extends StatelessWidget {
   const _FieldSliderWriting({
     required this.bar,
@@ -1333,63 +1350,6 @@ class _FieldSliderWriting extends StatelessWidget {
         ),
         Text(valueText, maxLines: 1, style: value),
       ],
-    );
-  }
-}
-
-/// The bar while it is typed in ([_FieldSliderState._typing]): its frame,
-/// typed ([FieldSlider.frameOf]), and all of it the field — the number
-/// alone, the law every typed number opens by ([readoutParts]), with no
-/// name, no unit and no fill, as a number box typed in (`DragValueLabel`).
-class _FieldSliderTypedFace extends StatelessWidget {
-  const _FieldSliderTypedFace({
-    required this.bar,
-    required this.valueText,
-    required this.onSubmit,
-    required this.onCancel,
-  });
-
-  final FieldSlider bar;
-
-  /// What the bar writes at rest — its number and its unit.
-  final String valueText;
-  final ValueChanged<String> onSubmit;
-  final VoidCallback onCancel;
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = readoutParts(valueText);
-    final part = parts.length == 1 ? parts.single : null;
-    final ink = TextStyle(color: textOnColor(AppColors.surface));
-    final style = FieldSlider.valueStyleIn(context)?.merge(ink) ?? ink;
-    final field = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
-      child: Row(
-        children: [
-          Expanded(
-            child: InlineNumericField(
-              fieldKey: const ValueKey<String>('field-slider-type-input'),
-              initialText: part?.number ?? valueText,
-              textStyle: style,
-              textAlign: TextAlign.right,
-              onSubmit: onSubmit,
-              onCancel: onCancel,
-            ),
-          ),
-        ],
-      ),
-    );
-    // A stood bar is typed in as it writes: the row turned a quarter
-    // clockwise, its number at the foot ([FieldSlider.axis] — the writing
-    // turns, and a field has no drag to lose by turning).
-    final stood = bar.axis == Axis.vertical;
-    return DecoratedBox(
-      decoration: FieldSlider.frameOf(bar.height, enabled: true, typed: true),
-      child: acrossBox(
-        bar.axis,
-        bar.height,
-        child: stood ? RotatedBox(quarterTurns: 1, child: field) : field,
-      ),
     );
   }
 }

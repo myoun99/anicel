@@ -4,6 +4,8 @@ import 'package:anicel/src/ui/text/readout_text.dart';
 import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import '../../helpers/number_pad_keyboard.dart';
+
 /// 🗣️유저 2026-10-10 (tool-settings-panel-tidy): 「%나 각도같은 단위값은
 /// 텍스트 편집시 안보이도록. 즉 100.00%를 눌러서 편집하려할때 %도 같이
 /// 편집되버리는 텍스트면 너무 불편하니까. 편집시 100.00 만 뜨는느낌. 다른 모든
@@ -19,6 +21,10 @@ void main() {
   String typed(WidgetTester tester, String key) =>
       tester.widget<TextField>(find.byKey(ValueKey<String>(key))).controller!
           .text;
+
+  /// The number the open number pad shows at its top (I-134).
+  String? padShows(WidgetTester tester) =>
+      tester.widget<Text>(theNumberPadsNumber).data;
 
   group('the readout law: what is typed is the number', () {
     test('a unit, a page count, a pair', () {
@@ -52,6 +58,8 @@ void main() {
         );
         await tester.tap(find.byKey(const ValueKey<String>('v-edit')));
         await tester.pump();
+        expect(padShows(tester), number, reason: readout);
+        await openThePadsKeyboard(tester);
         expect(typed(tester, 'v-input'), number, reason: readout);
         await tester.pumpWidget(const SizedBox.shrink());
       }
@@ -107,18 +115,19 @@ void main() {
       expect(find.text('X'), findsOneWidget, reason: 'its name, inside');
     });
 
-    testWidgets('typed in — its pencil opens it — it holds the number and '
-        'nothing else: no unit, no name', (tester) async {
+    testWidgets('typed in — its pencil opens the number pad — it holds the '
+        'number and nothing else: no unit, no name', (tester) async {
       final submitted = await pumpBox(tester);
       await tester.tap(find.byKey(const ValueKey<String>('box-edit')));
       await tester.pump();
 
-      expect(typed(tester, 'box-input'), '100.00');
       // 🗣️유저 2026-10-11: 「뒤에 붙은 %나 도같은 단위도 텍스트편집창에서
       // 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」 — 「편집시 100.00 만
-      // 뜨는느낌」, as 10-10 put it. ↩️It stood beside the field, as chrome.
-      expect(find.text('%'), findsNothing);
-      expect(find.text('X'), findsNothing);
+      // 뜨는느낌」, as 10-10 put it. ↩️It stood beside the field, as chrome;
+      // the field is the pad's top now (I-134), and the box stands as shown.
+      expect(padShows(tester), '100.00');
+      await openThePadsKeyboard(tester);
+      expect(typed(tester, 'box-input'), '100.00');
 
       await tester.enterText(
         find.byKey(const ValueKey<String>('box-input')),

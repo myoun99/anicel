@@ -361,6 +361,7 @@ class TransportBar extends StatelessWidget {
       unitsPerPixel: 1,
       enabled: live,
       steps: true,
+      digitsOnly: true,
       onDragDelta: (delta) => set(frame + delta.round()),
       onEditSubmit: (text) {
         final typed = int.tryParse(text.trim());

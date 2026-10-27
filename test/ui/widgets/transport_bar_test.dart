@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/words_cut_off.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// The shared transport. Two things are pinned here, because every surface
 /// that runs in time relies on them without re-testing them:
@@ -652,6 +653,7 @@ void main() {
       );
       await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('in-input')), '13');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
@@ -667,6 +669,7 @@ void main() {
       );
       await tester.tap(find.byKey(k('in-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('in-input')), '99');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
@@ -684,6 +687,7 @@ void main() {
       );
       await tester.tap(find.byKey(k('out-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(k('out-input')), '5');
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();

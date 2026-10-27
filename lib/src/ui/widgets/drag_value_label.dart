@@ -13,7 +13,7 @@ import '../theme/text_on_ground.dart';
 import '../timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'axis_bar_gesture.dart';
 import 'field_slider.dart';
-import 'inline_numeric_field.dart';
+import 'number_pad.dart';
 import 'owning_axis_grip.dart';
 import 'value_hands.dart';
 
@@ -25,8 +25,8 @@ import 'value_hands.dart';
 ///   [onDragDelta]); a press that does not move does nothing; the wheel
 ///   over it turns it a step a notch;
 /// - its STEPS (the settings bar's own ±, [ValueSteps]) move it a step;
-/// - its PENCIL ([ValuePencil]) opens the inline field — the number alone
-///   ([readoutParts]), selected, the field all of the readout; Enter or a
+/// - its PENCIL ([ValuePencil]) opens the number pad under it
+///   ([showNumberPad]) on the number alone ([readoutParts]); ✓, Enter or a
 ///   press elsewhere commits through [onEditSubmit], Escape abandons.
 ///
 /// 🗣️tool-settings-panel-tidy (유저 2026-10-10): 「모든 드래그+편집이 가능한
@@ -66,6 +66,7 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
+    this.signed = true,
     this.steps = false,
     this.stepBeforePencil,
   }) : name = null,
@@ -103,6 +104,7 @@ class DragValueLabel extends StatefulWidget {
     this.onOperationStart,
     this.onOperationEnd,
     this.digitsOnly = false,
+    this.signed = true,
     this.turned = false,
   }) : width = double.infinity,
        textStyle = null,
@@ -135,11 +137,16 @@ class DragValueLabel extends StatefulWidget {
   /// Which face — the bare readout or the box.
   final _Face _face;
 
-  /// Whether the typed value is a whole number with no sign: the field
-  /// takes digits alone (full-width ones converted) on the number pad
+  /// Whether the typed value is a whole number with no sign: the number
+  /// pad's − and . are dark ([NumberPadKeys]), and its field takes digits
+  /// alone (full-width ones converted) on the keyboard's number pad
   /// ([halfWidthDigitsOnly]). The readouts that type a sign or a point
   /// leave it false.
   final bool digitsOnly;
+
+  /// Whether the typed value takes a minus — the number pad's − key
+  /// ([NumberPadKeys]); a zoom does not. A [digitsOnly] value never does.
+  final bool signed;
 
   /// Called ONCE at the top of an operation — a scrub, a step, a notch of
   /// the wheel, a typed commit — before the value moves, for a host that
@@ -246,7 +253,29 @@ class _DragValueLabelState extends State<DragValueLabel> {
   /// `37`.
   String get _seed => _part?.number ?? widget.text;
 
-  void _beginEdit() => setState(() => _editing = true);
+  /// The pencil: the number pad, anchored under the readout ([showNumberPad],
+  /// I-134), the readout's frame typed while it is open.
+  Future<void> _beginEdit() async {
+    setState(() => _editing = true);
+    await showNumberPad(
+      context,
+      keyValue: widget.keyValue,
+      initialText: _seed,
+      keys: (
+        minus: widget.signed && !widget.digitsOnly,
+        point: !widget.digitsOnly,
+      ),
+      fieldKey: ValueKey<String>(
+        widget.inputKeyValue ?? '${widget.keyValue}-input',
+      ),
+      keyboardType: widget.digitsOnly ? TextInputType.number : null,
+      inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
+      onSubmit: _commitEdit,
+    );
+    if (mounted) {
+      setState(() => _editing = false);
+    }
+  }
 
   void _commitEdit(String text) {
     setState(() => _editing = false);
@@ -346,28 +375,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
     _Face.bare => _bareHandsHeight,
   };
 
-  /// The field the readout turns into, holding [_seed] — and nothing else:
-  /// typed in, a readout is all field, its name and its unit gone with the
-  /// rest of its chrome (유저 2026-10-11: 「X같은 글자 없애고
-  /// 전면텍스트박스로 하는거니까 뒤에 붙은 %나 도같은 단위도 텍스트편집창에서
-  /// 없도록. 진짜 박스 전면 텍스트로 하고싶은거야」). ↩️The unit stood beside
-  /// the field and the name before it; a narrow readout kept half of itself
-  /// for the unit.
-  Widget _field(TextStyle style, TextAlign align) => InlineNumericField(
-    fieldKey: ValueKey<String>(
-      widget.inputKeyValue ?? '${widget.keyValue}-input',
-    ),
-    initialText: _seed,
-    textStyle: style,
-    textAlign: align,
-    keyboardType: widget.digitsOnly ? TextInputType.number : null,
-    inputFormatters: widget.digitsOnly ? halfWidthDigitsOnly : null,
-    onSubmit: _commitEdit,
-    onCancel: () => setState(() => _editing = false),
-  );
-
-  /// The bare readout: the number, in its own width — typed in, all of it
-  /// the field.
+  /// The bare readout: the number, in its own width.
   Widget _bare(BuildContext context) {
     final base = widget.textStyle ?? DragValueLabel._bareStyle;
     final style = widget.enabled
@@ -379,14 +387,17 @@ class _DragValueLabelState extends State<DragValueLabel> {
           );
     return SizedBox(
       width: widget.width,
-      child: _editing
-          ? _field(style, TextAlign.center)
-          : Text(widget.text, textAlign: widget.textAlign, style: style),
+      child: Text(widget.text, textAlign: widget.textAlign, style: style),
     );
   }
 
-  /// The box: a settings bar's frame around the name and the number —
-  /// typed in, all of it the field, in a typed frame ([FieldSlider.frameOf]).
+  /// The box: a settings bar's frame around the name and the number — in a
+  /// typed frame ([FieldSlider.frameOf]) while its number pad is open.
+  ///
+  /// ↩️Typed in, all of it was the field — the number alone, its name and
+  /// its unit gone (유저 2026-10-11: 「X같은 글자 없애고 전면텍스트박스로
+  /// 하는거니까 뒤에 붙은 %나 도같은 단위도 텍스트편집창에서 없도록」); the
+  /// number pad's top is that field now, and it opens on the number alone.
   Widget _box(BuildContext context) {
     const height = FieldSlider.defaultHeight;
     final ink = TextStyle(
@@ -408,28 +419,24 @@ class _DragValueLabelState extends State<DragValueLabel> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: FieldSlider.inset),
           child: Row(
-            children: _editing
-                ? [Expanded(child: _field(numberStyle, TextAlign.right))]
-                : [
-                    if (name != null)
-                      Text(
-                        name,
-                        maxLines: 1,
-                        style:
-                            Theme.of(
-                              context,
-                            ).textTheme.labelSmall?.merge(ink) ??
-                            ink,
-                      ),
-                    Expanded(
-                      child: Text(
-                        widget.text,
-                        maxLines: 1,
-                        textAlign: TextAlign.right,
-                        style: numberStyle,
-                      ),
-                    ),
-                  ],
+            children: [
+              if (name != null)
+                Text(
+                  name,
+                  maxLines: 1,
+                  style:
+                      Theme.of(context).textTheme.labelSmall?.merge(ink) ??
+                      ink,
+                ),
+              Expanded(
+                child: Text(
+                  widget.text,
+                  maxLines: 1,
+                  textAlign: TextAlign.right,
+                  style: numberStyle,
+                ),
+              ),
+            ],
           ),
         ),
       ),

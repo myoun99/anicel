@@ -4,6 +4,7 @@ import 'package:anicel/src/models/camera_path_settings.dart';
 import 'package:anicel/src/ui/camera/camera_path_settings_rows.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// I-89 ④ — how the canvas shows a camera's path, as rows of a list
 /// ([cameraPathSettingsRows]): what is chosen there is written whole, the
@@ -109,6 +110,7 @@ void main() {
 
     Future<void> type(String row, String text) async {
       await tap(tester, '$row-edit');
+      await openThePadsKeyboard(tester);
       await tester.enterText(find.byKey(ValueKey<String>('$row-input')), text);
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();

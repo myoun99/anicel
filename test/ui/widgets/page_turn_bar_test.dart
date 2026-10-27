@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/widgets/page_turn_bar.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/app_faces.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// The one page turner every panel that turns pages wears in the band under
 /// it (F-383, 「최대한 통일」): ◀ n/N ▶ lying in a row, a drag on the
@@ -249,7 +250,8 @@ void main() {
     // Its pencil types one.
     await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byKey(input), '3/7');
+    await openThePadsKeyboard(tester);
+    await tester.enterText(find.byKey(input), '3');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(turns, [2], reason: 'page three is index 2');
@@ -257,6 +259,7 @@ void main() {
     turns.clear();
     await tester.tap(find.byKey(pencil));
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(find.byKey(input), '5');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();

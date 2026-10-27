@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/timeline_host.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
 /// 지정이고, 누르면 숫자 편집하는 창 나와서 숫자만 입력가능」 — the button on
@@ -75,6 +76,7 @@ void main() {
       find.byKey(const ValueKey<String>('auto-name-start-edit')),
     );
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(
       find.byKey(const ValueKey<String>('auto-name-start-input')),
       '$start',

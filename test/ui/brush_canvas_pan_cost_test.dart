@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import 'brush_canvas_test_helpers.dart';
+import '../helpers/number_pad_keyboard.dart';
 
 /// What a PAN costs the panel beyond the redraw it genuinely owes.
 ///
@@ -185,6 +186,7 @@ void main() {
       find.byKey(const ValueKey<String>('canvas-viewport-zoom-label-edit')),
     );
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     await tester.enterText(
       find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
       '250',

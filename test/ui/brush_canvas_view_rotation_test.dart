@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/pinch_recognised_at.dart';
+import '../helpers/number_pad_keyboard.dart';
 
 /// P8: canvas view rotation + horizontal flip — toolbar buttons, the
 /// shortcut command channel, Fit's reset, pointer round-trip through a
@@ -292,6 +293,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(pencil);
       await tester.pumpAndSettle();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(
           const ValueKey<String>('canvas-viewport-rotation-label-input'),

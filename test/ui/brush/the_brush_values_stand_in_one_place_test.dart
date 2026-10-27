@@ -30,6 +30,7 @@ import '../../helpers/boolean_dot_probe.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settings_flyout.dart';
 import '../../helpers/settle_async.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 const pill = ValueKey<String>('canvas-brush-pill');
 const row = 'menu-window-brush-values-on-strip';
@@ -329,28 +330,13 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await pumpHome(tester);
 
-    // The size's bubble is its bar's pencil: a press types into the bar, in
-    // the row turned a quarter clockwise — a field types a line, not a
-    // column — its start at the bar's right and its length down it.
+    // The size's bubble is its bar's pencil: a press opens the bar's number
+    // pad (I-134). ↩️It typed into the bar, in the row turned a quarter
+    // clockwise, its field the bar's track whole.
     await tester.tap(find.byKey(ValueKey<String>(bubbles.first)));
     await tester.pumpAndSettle();
+    await openThePadsKeyboard(tester);
     final input = find.byKey(const ValueKey<String>('field-slider-type-input'));
-    expect(
-      find.descendant(of: inPill('brush-pill-size-bar'), matching: input),
-      findsOneWidget,
-    );
-    final start = tester.getTopLeft(input);
-    final end = tester.getBottomRight(input);
-    expect(start.dx, greaterThan(end.dx), reason: 'the row is turned');
-    expect(end.dy - start.dy, greaterThan(start.dx - end.dx));
-    // Its frame is the bar's track, whole: as thick as the bar, and as long
-    // as it less the ± under it.
-    final typed = find.ancestor(of: input, matching: find.byType(RotatedBox));
-    final stood = tester.getSize(inPill('brush-pill-size-bar'));
-    expect(
-      tester.getSize(typed),
-      Size(stood.width, stood.height - FieldSlider.bubbleHandsReach),
-    );
     await tester.enterText(input, '2000');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();

@@ -29,6 +29,7 @@ import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/number_pad_keyboard.dart';
 
 /// Empties [file], once nothing else holds it mapped.
 ///
@@ -119,6 +120,7 @@ void main() {
     for (final (end, at) in [('in', first), ('out', last)]) {
       await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
       await tester.pump();
+      await openThePadsKeyboard(tester);
       await tester.enterText(
         find.byKey(ValueKey<String>('transport-$end-input')),
         '$at',
