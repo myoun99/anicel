@@ -816,6 +816,7 @@ class EditorSessionManager extends ChangeNotifier
     frameIds: this,
     renderCaches: renderCaches,
     rowSelection: rowSelectionVerbs,
+    rangeSelections: rangeSelections,
     layerVerbs: layerVerbs,
   );
 
@@ -3239,6 +3240,19 @@ class EditorSessionManager extends ChangeNotifier
         break;
     }
   }
+
+  /// 🗣️I-78 — WHAT the shared MERGE would merge right now: the selected
+  /// rows it makes one, else the band's blocks it makes one per row
+  /// (round ③, Q4) — the pill's one ladder ([pillSubjectOn], T25). A band
+  /// of cuts on the panel whose noun they are holds nothing a merge takes.
+  PillSubject mergeSubjectFor({required bool cutsAreThisPanels}) =>
+      pillSubjectOn(
+        cuts:
+            cutsAreThisPanels &&
+            storyboardRows.storyboardSelectedCutIds.isNotEmpty,
+        layers: () => layerMerging.mergesSelection,
+        cells: () => layerMerging.mergesBand,
+      );
 
   /// 🚨I-45 — WHAT the link-independent button would unlink right now, on
   /// the TIMELINE: the selected linked rows, else the frame axis.

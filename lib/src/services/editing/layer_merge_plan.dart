@@ -11,6 +11,8 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart' show firstUnusedName;
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
+import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
+import '../../models/timeline_run_behavior.dart';
 import '../cut_frame_composite_plan.dart'
     show clipBaseOf, clipsToLayerBelow, exposedCelIdAt;
 import '../playback/cut_frame_composite_signature.dart';
@@ -676,3 +678,291 @@ int _max(int a, int b) => a > b ? a : b;
 /// folder's pass-through is no blend of its own (Photoshop · CSP's 「통과」).
 bool _blendsItsOwnWay(LayerBlendMode mode) =>
     mode != LayerBlendMode.normal && mode != LayerBlendMode.passThrough;
+
+/// What ONE press of MERGE makes of the blocks a band of frames holds —
+/// each row's blocks made one block over one cel (I-78, round ③).
+///
+/// 🗣️I-78-Q4 (유저 2026-10-07): 「한 행의 여러 블록을 레이어랑 같은 규칙으로
+/// 제일 왼쪽 블록에 합침. 이름은 제일 왼쪽 블록 이름따라감 … 여러 행의 여러
+/// 프레임에 걸쳐서 병합할때는 그걸 여러행으로 나눌뿐 … 각 행이 판단해서 이건
+/// 병합이 가능한 상태서만 작동하도록. 즉 불가능한것들은 자연스럽게 무시」:
+/// - each row merges on its own, and a row that cannot is passed over;
+/// - the blocks of a row the band holds become ONE block where the leftmost
+///   stood, over the run they make — first start to last end, the frames
+///   between them too (the option the answer took: 「길이는 고른 범위
+///   전체」) — showing a new cel named as the leftmost's is, with Q10's tail
+///   where a cel that stays wears that name;
+/// - the cel is their cels laid over each other as they are: the row's own
+///   look — its keys, its fx — stays on the row, and lands on the one cel
+///   as it landed on each.
+///
+/// ⚠️My calls, put to the user (I-78-Q17 · Q18): the leftmost cel lies on
+/// top, as the topmost row's picture does in a merge of rows; the run's
+/// outer edges — a hold, a repeat — stay with it, while its blocks' marks
+/// and memos do not come along, as a merge of rows' do not; a cel only the
+/// run showed goes, as a delete takes it (F-136); and a synced attach row
+/// riding the row merges along, its cels for the run's laid the same way
+/// (「어태치 레이어는 주인과 같이」, 07-21), its mirrors of the cels that go
+/// going with them.
+class BlockMergePlan {
+  const BlockMergePlan._({
+    required this.cut,
+    required this.rows,
+    required this.pictures,
+  });
+
+  /// The cut it was planned of, as it was.
+  final Cut cut;
+
+  /// Every row the merge changes, as it leaves it: each row whose blocks
+  /// it makes one, and the synced attach rows riding it.
+  final List<Layer> rows;
+
+  /// The new cels' pictures, still to be laid.
+  final List<BlockMergePicture> pictures;
+
+  /// The cut's rows after the merge: [rows] where they stood.
+  List<Layer> get layers {
+    final replaced = {for (final row in rows) row.id: row};
+    return [for (final row in cut.layers) replaced[row.id] ?? row];
+  }
+}
+
+/// One new cel of a block merge: of [rowId], laid of [layers] — each the
+/// cut holding one of the cels it is made of, alone and as it is, drawn at
+/// its first frame — bottom → top.
+typedef BlockMergePicture = ({
+  LayerId rowId,
+  FrameId frameId,
+  List<Cut> layers,
+});
+
+/// The blocks ONE press of MERGE takes of a band — what lights its button
+/// and what the press plans from ([planBlockMerge]), as [LayerMergeTaking]
+/// is for rows.
+final class BlockMergeTaking {
+  BlockMergeTaking._(this.cut, this._starts);
+
+  /// The cut it was taken of.
+  final Cut cut;
+
+  /// Each row it merges, in the cut's order, and its blocks' starts.
+  final Map<Layer, List<int>> _starts;
+}
+
+/// What a press of MERGE takes of [cut]'s blocks starting at
+/// [blockStarts], by row — null where no row merges any.
+///
+/// A row passes over as a merge of rows passes it over ([_standsDown]),
+/// and so does a row with one block in the band, or none. A synced attach
+/// row owns no blocks of its own: it merges as its base does.
+BlockMergeTaking? takeBlocksToMerge({
+  required Cut cut,
+  required Map<LayerId, List<int>> blockStarts,
+  required bool Function(Layer row) isLinked,
+}) {
+  final starts = {
+    for (final row in cut.layers)
+      if ([...?blockStarts[row.id]]..sort() case final starts
+          when starts.length > 1 &&
+              _isPicture(row) &&
+              !isSyncedAttachedLayer(row) &&
+              !_standsDown(row, cut.layers, isLinked))
+        row: starts,
+  };
+  return starts.isEmpty ? null : BlockMergeTaking._(cut, starts);
+}
+
+/// What a press makes of [taking]; [mintFrameId] names each new cel.
+BlockMergePlan planBlockMerge(
+  BlockMergeTaking taking, {
+  required FrameId Function(LayerId row) mintFrameId,
+}) {
+  final cut = taking.cut;
+  final rows = <Layer>[];
+  final pictures = <BlockMergePicture>[];
+  for (final MapEntry(key: row, value: starts) in taking._starts.entries) {
+    final merged = _blocksMerged(cut, row, starts, mintFrameId(row.id));
+    rows.add(merged.row);
+    pictures.add(merged.picture);
+    for (final rider in attachedLayersOf(row.id, cut.layers)) {
+      if (isSyncedAttachedLayer(rider)) {
+        final ridden = _riderMerged(cut, rider, merged);
+        rows.add(ridden.row);
+        pictures.addAll(ridden.pictures);
+      }
+    }
+  }
+  return BlockMergePlan._(cut: cut, rows: rows, pictures: pictures);
+}
+
+/// One row's blocks made one: the row after, the cels the run showed —
+/// leftmost first, each once — those of them the row lets go, and the new
+/// cel's picture.
+typedef _BlocksMerged = ({
+  Layer row,
+  List<FrameId> cels,
+  Set<FrameId> gone,
+  BlockMergePicture picture,
+});
+
+/// [row]'s blocks at [starts] made one block over the new cel [celId].
+_BlocksMerged _blocksMerged(
+  Cut cut,
+  Layer row,
+  List<int> starts,
+  FrameId celId,
+) {
+  final blocks = [for (final start in starts) row.timeline[start]!];
+  final runEnd = starts.last + blocks.last.length!;
+  final cels = [
+    ...{for (final block in blocks) block.frameId!},
+  ];
+  final timeline = ghostFreeTimeline(row)
+    ..removeWhere((index, _) => index >= starts.first && index < runEnd)
+    ..[starts.first] = TimelineExposure.drawing(
+      celId,
+      length: runEnd - starts.first,
+      startEdge: _markKept(blocks, TimelineRunEdgeSide.start),
+      endEdge: _markKept(blocks, TimelineRunEdgeSide.end),
+    );
+  final shown = {
+    for (final exposure in timeline.values)
+      if (exposure.isDrawing) exposure.frameId,
+  };
+  final gone = {
+    for (final cel in cels)
+      if (!shown.contains(cel)) cel,
+  };
+  final kept = [
+    for (final cel in row.frames)
+      if (!gone.contains(cel.id)) cel,
+  ];
+  return (
+    row: row.copyWith(
+      frames: [
+        ...kept,
+        Frame(
+          id: celId,
+          duration: runEnd - starts.first,
+          name: _nameKept(row.frameById(cels.first)?.name, kept),
+          strokes: const [],
+        ),
+      ],
+      timeline: timeline,
+      // A cel that goes takes its sounds with it (REC1-A).
+      audioClips: [
+        for (final clip in row.audioClips)
+          if (!gone.contains(clip.frameId)) clip,
+      ],
+    ),
+    cels: cels,
+    gone: gone,
+    picture: (
+      rowId: row.id,
+      frameId: celId,
+      layers: [for (final cel in cels.reversed) _celAlone(cut, row, cel)],
+    ),
+  );
+}
+
+/// [rider] as its base's blocks [merged] leaves it: a mirror of the new
+/// cel laid of its own for the run's, and its mirrors of the cels the base
+/// lets go gone with them.
+({Layer row, List<BlockMergePicture> pictures}) _riderMerged(
+  Cut cut,
+  Layer rider,
+  _BlocksMerged merged,
+) {
+  final baseCel = merged.picture.frameId;
+  final celId = attachedMirrorCelId(rider.id, baseCel);
+  final laid = [
+    for (final cel in {
+      for (final cel in merged.cels) ?rider.baseFrameLinks[cel],
+    })
+      if (rider.frameById(cel) != null) cel,
+  ];
+  final links = {
+    for (final link in rider.baseFrameLinks.entries)
+      if (!merged.gone.contains(link.key)) link.key: link.value,
+  };
+  final unlinked = {
+    for (final cel in merged.gone) ?rider.baseFrameLinks[cel],
+  }.difference({...links.values});
+  final kept = [
+    for (final cel in rider.frames)
+      if (!unlinked.contains(cel.id)) cel,
+  ];
+  return (
+    row: rider.copyWith(
+      frames: [
+        ...kept,
+        Frame(
+          id: celId,
+          duration: 1,
+          name: _nameKept(switch (rider.baseFrameLinks[merged.cels.first]) {
+            final leftmost? => rider.frameById(leftmost)?.name,
+            null => null,
+          }, kept),
+          strokes: const [],
+        ),
+      ],
+      baseFrameLinks: {...links, baseCel: celId},
+    ),
+    pictures: [
+      if (laid.isNotEmpty)
+        (
+          rowId: rider.id,
+          frameId: celId,
+          layers: [
+            for (final cel in laid.reversed) _celAlone(cut, rider, cel),
+          ],
+        ),
+    ],
+  );
+}
+
+/// The [side] mark the one block [blocks] become carries: the mode of the
+/// carrier nearest that edge — the one a run glued of runs keeps
+/// ([TimelineRunEdgeMark]) — and the bound one of them claimed, so a hold
+/// set before frames were glued on past it holds on.
+TimelineRunEdgeMark _markKept(
+  List<TimelineExposure> blocks,
+  TimelineRunEdgeSide side,
+) {
+  final marks = [for (final block in blocks) block.edgeMark(side)];
+  final inward = side == TimelineRunEdgeSide.end ? marks.reversed : marks;
+  return TimelineRunEdgeMark(
+    mode: inward.map((mark) => mark.mode).nonNulls.firstOrNull,
+    bound: marks.any((mark) => mark.bound),
+  );
+}
+
+/// [name] as a new cel takes it among the cels [kept]: its printed number
+/// ([celNumberOf]), with the tail an attach row takes where one of them
+/// wears that already (Q10).
+String? _nameKept(String? name, List<Frame> kept) {
+  final shown = celNumberOf(name);
+  if (shown == null) {
+    return null;
+  }
+  final held = {for (final cel in kept) ?celNumberOf(cel.name)};
+  return firstUnusedName(
+    held,
+    (index) => index == 1 ? shown : '$shown-$index',
+  );
+}
+
+/// [cut] holding [cel] of [row] alone and as it is — no look of the row's,
+/// no folder over it — shown at its first frame.
+Cut _celAlone(Cut cut, Layer row, FrameId cel) => cut.copyWith(
+  layers: [
+    Layer(
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      frames: [row.frameById(cel)!],
+      timeline: {0: TimelineExposure.drawing(cel, length: 1)},
+    ),
+  ],
+);

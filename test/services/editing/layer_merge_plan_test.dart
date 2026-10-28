@@ -14,8 +14,11 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/editing/layer_merge_plan.dart';
+
+import '../../helpers/run_edge_fixtures.dart';
 
 /// 🗣️I-78 (유저 2026-10-06 · 10-07 · 10-28): MERGE makes the rows it takes
 /// one row — a picture wherever what they show changes (Q3 · Q6), named by
@@ -103,6 +106,27 @@ void main() {
   Cut bakedOf(LayerMergePlan plan) => plan.pictures
       .firstWhere((picture) => picture.rowId == plan.result.id)
       .from;
+
+  /// A SYNCED attach row named [id] riding [base], its cel `R<n>` showing
+  /// wherever [base]'s cel `<n>` does.
+  Layer synced(String id, Layer base) => Layer(
+    id: LayerId(id),
+    name: id,
+    attachedToLayerId: base.id,
+    timeline: const {},
+    frames: [
+      for (final cel in base.frames)
+        Frame(
+          id: FrameId('$id-${cel.name}'),
+          duration: 1,
+          name: 'R${cel.name}',
+          strokes: const [],
+        ),
+    ],
+    baseFrameLinks: {
+      for (final cel in base.frames) cel.id: FrameId('$id-${cel.name}'),
+    },
+  );
 
   group('a picture wherever what the rows show changes', () {
     test('the topmost row\'s cel names it, and where the topmost shows '
@@ -364,27 +388,6 @@ void main() {
   });
 
   group('an attach row the merge does not take rides the result (Q8)', () {
-    /// A SYNCED attach row named [id] riding [base], its cel `R<n>` showing
-    /// wherever [base]'s cel `<n>` does.
-    Layer synced(String id, Layer base) => Layer(
-      id: LayerId(id),
-      name: id,
-      attachedToLayerId: base.id,
-      timeline: const {},
-      frames: [
-        for (final cel in base.frames)
-          Frame(
-            id: FrameId('$id-${cel.name}'),
-            duration: 1,
-            name: 'R${cel.name}',
-            strokes: const [],
-          ),
-      ],
-      baseFrameLinks: {
-        for (final cel in base.frames) cel.id: FrameId('$id-${cel.name}'),
-      },
-    );
-
     test('🎯a synced one takes a cel for each of the result\'s — named by '
         'the cel it showed there — and is drawn alone, wearing its base, '
         'the base itself hidden', () {
@@ -609,5 +612,227 @@ void main() {
       'b',
       'a',
     ]);
+  });
+
+  /// 🗣️I-78-Q4 (유저 2026-10-07): 「한 행의 여러 블록을 레이어랑 같은 규칙으로
+  /// 제일 왼쪽 블록에 합침 … 각 행이 판단해서 이건 병합이 가능한 상태서만
+  /// 작동하도록」.
+  group('a row\'s blocks a band holds (Q4)', () {
+    /// What a press of MERGE makes of [cut]'s blocks at [starts], by row.
+    BlockMergePlan? mergeBlocks(
+      Cut cut,
+      Map<String, List<int>> starts, {
+      Set<String> linked = const {},
+    }) {
+      final taking = takeBlocksToMerge(
+        cut: cut,
+        blockStarts: {
+          for (final MapEntry(:key, :value) in starts.entries)
+            LayerId(key): value,
+        },
+        isLinked: (row) => linked.contains(row.id.value),
+      );
+      var minted = 0;
+      return taking == null
+          ? null
+          : planBlockMerge(
+              taking,
+              mintFrameId: (_) => FrameId('m${minted++}'),
+            );
+    }
+
+    Layer rowOf(BlockMergePlan plan, String id) =>
+        plan.layers.firstWhere((row) => row.id.value == id);
+
+    /// The cel each of [picture]'s layers holds, bottom → top.
+    List<String> laidOf(BlockMergePicture picture) => [
+      for (final layer in picture.layers)
+        layer.layers.single.frames.single.id.value,
+    ];
+
+    /// [id]'s blocks `start: (length, cel name)`, each [marks] as given.
+    Layer marked(
+      String id,
+      Map<int, (int, String)> blocks, {
+      Map<int, TimelineRunEdgeMark> starting = const {},
+      Map<int, TimelineRunEdgeMark> ending = const {},
+    }) => row(id, {
+      for (final MapEntry(:key, :value) in blocks.entries) key: value.$2,
+    }).copyWith(
+      timeline: {
+        for (final MapEntry(:key, :value) in blocks.entries)
+          key: TimelineExposure.drawing(
+            FrameId('$id-${value.$2}'),
+            length: value.$1,
+            startEdge: starting[key] ?? TimelineRunEdgeMark.none,
+            endEdge: ending[key] ?? TimelineRunEdgeMark.none,
+          ),
+      },
+    );
+
+    test('🎯they become one where the leftmost stood, over the run they '
+        'make — the frames between them too — a new cel named as the '
+        'leftmost is, laid of theirs with the leftmost on top', () {
+      final plan = mergeBlocks(
+        cutOf([
+          marked('a', {0: (2, 'A1'), 4: (2, 'A2'), 6: (2, 'A3')}),
+        ]),
+        {
+          'a': [4, 0],
+        },
+      )!;
+
+      final merged = rowOf(plan, 'a');
+      expect(blocksOf(merged), {0: (6, 'A1'), 6: (2, 'A3')});
+      expect([for (final cel in merged.frames) cel.id.value], [
+        'a-A3',
+        'm0',
+      ], reason: 'a cel only the run showed goes, as a delete takes it');
+      final picture = plan.pictures.single;
+      expect((picture.rowId, picture.frameId), (
+        const LayerId('a'),
+        const FrameId('m0'),
+      ));
+      expect(laidOf(picture), ['a-A2', 'a-A1']);
+    });
+
+    test('a cel shown past the run stays, and the new one wears its name\'s '
+        'tail; a cel the run shows twice is laid once', () {
+      final cut = cutOf([
+        row('a', {0: 'A1', 2: 'A2', 4: 'A1'}),
+      ]);
+
+      final some = mergeBlocks(cut, {
+        'a': [0, 2],
+      })!;
+      final all = mergeBlocks(cut, {
+        'a': [0, 2, 4],
+      })!;
+
+      expect(blocksOf(rowOf(some, 'a')), {0: (4, 'A1-2'), 4: (2, 'A1')});
+      expect([for (final cel in rowOf(some, 'a').frames) cel.id.value], [
+        'a-A1',
+        'm0',
+      ]);
+      expect(blocksOf(rowOf(all, 'a')), {0: (6, 'A1')});
+      expect(laidOf(all.pictures.single), ['a-A2', 'a-A1']);
+    });
+
+    test('the run keeps its outer edges: on each side the mode of the '
+        'carrier nearest it — a hold set before frames were glued on past '
+        'it holds on — and a bound one of them claimed', () {
+      Layer mergedOf(Layer row, List<int> starts) =>
+          rowOf(mergeBlocks(cutOf([row]), {'a': starts})!, 'a');
+      final blocks = {0: (2, 'A1'), 2: (2, 'A2'), 4: (2, 'A3')};
+
+      final held = mergedOf(
+        marked(
+          'a',
+          blocks,
+          starting: {2: holdMark, 4: repeatMark},
+          ending: {0: holdMark},
+        ),
+        [0, 2, 4],
+      );
+      final bounded = mergedOf(
+        marked('a', blocks, ending: {2: boundMark, 4: repeatMark}),
+        [0, 2],
+      );
+
+      expect((held.timeline[0]!.startEdge, held.timeline[0]!.endEdge), (
+        holdMark,
+        holdMark,
+      ));
+      expect(
+        (bounded.timeline[0]!.endEdge, bounded.timeline[4]!.endEdge),
+        (boundMark, repeatMark),
+        reason: 'A3\'s repeat still starts at the block A2 became',
+      );
+    });
+
+    test('each row merges on its own, and a row that cannot is passed '
+        'over: one block, a 겸용 row, a synced attach row', () {
+      final base = row('a', {0: 'A1', 2: 'A2'});
+      final cut = cutOf([
+        row('c', {0: 'C1', 2: 'C2'}),
+        row('b', {0: 'B1', 2: 'B2'}),
+        base,
+        synced('r', base),
+      ]);
+
+      final plan = mergeBlocks(cut, {
+        'a': [0, 2],
+        'b': [0, 2],
+        'c': [0, 2],
+      }, linked: {'c'})!;
+
+      expect([for (final row in plan.rows) row.id.value], ['b', 'a', 'r']);
+      expect([for (final row in plan.layers) row.id.value], [
+        'c',
+        'b',
+        'a',
+        'r',
+      ]);
+      expect(blocksOf(rowOf(plan, 'b')), {0: (4, 'B1')});
+      expect(blocksOf(rowOf(plan, 'c')), blocksOf(cut.layers.first));
+      expect(
+        mergeBlocks(cut, {
+          'a': [2],
+          'c': [0, 2],
+          'r': [0, 2],
+        }, linked: {'c'}),
+        isNull,
+      );
+    });
+
+    test('a synced attach row riding it merges along: a mirror of the new '
+        'cel laid of its own, its mirrors of the cels that go gone', () {
+      final base = row('a', {0: '1', 2: '2', 4: '3'});
+      final plan = mergeBlocks(cutOf([base, synced('r', base)]), {
+        'a': [0, 2],
+      })!;
+
+      final rider = rowOf(plan, 'r');
+      expect(rider.baseFrameLinks, {
+        const FrameId('a-3'): const FrameId('r-3'),
+        const FrameId('m0'): const FrameId('attach-mirror-r-m0'),
+      });
+      expect([for (final cel in rider.frames) (cel.id.value, cel.name)], [
+        ('r-3', 'R3'),
+        ('attach-mirror-r-m0', 'R1'),
+      ]);
+      final drawn = plan.pictures.last;
+      expect((drawn.rowId, drawn.frameId), (
+        rider.id,
+        const FrameId('attach-mirror-r-m0'),
+      ));
+      expect(laidOf(drawn), ['r-2', 'r-1']);
+    });
+
+    test('a synced one showing nothing over the run is drawn of nothing, '
+        'and its cels the merge did not unlink stay', () {
+      final base = row('a', {0: '1', 2: '2', 4: '3'});
+      final plan = mergeBlocks(
+        cutOf([
+          base,
+          synced('r', base).copyWith(
+            baseFrameLinks: {const FrameId('a-3'): const FrameId('r-3')},
+          ),
+        ]),
+        {
+          'a': [0, 2],
+        },
+      )!;
+
+      expect([for (final picture in plan.pictures) picture.rowId.value], [
+        'a',
+      ]);
+      expect([for (final cel in rowOf(plan, 'r').frames) cel.id.value], [
+        'r-1',
+        'r-2',
+        'r-3',
+        'attach-mirror-r-m0',
+      ]);
+    });
   });
 }

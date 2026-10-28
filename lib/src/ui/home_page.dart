@@ -1301,7 +1301,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.duplicatePress?.call();
       case EditorActionIds.editMerge:
         if (_workingPanel.canMerge) {
-          unawaited(mergeLayerRows(context, _session));
+          unawaited(
+            mergeSelectionSubject(
+              context,
+              _session,
+              _workingPanel.mergeSubject,
+            ),
+          );
         }
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by

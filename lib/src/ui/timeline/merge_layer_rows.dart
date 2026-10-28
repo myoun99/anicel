@@ -3,6 +3,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/progress_share.dart';
+import '../../models/cut.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer_id.dart';
+import '../../models/pasteboard_bounds.dart' show PasteboardWall;
+import '../../models/pill_subject.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/guide_geometry.dart' show GuideTransform;
 import '../../services/import/cel_picture.dart' show EnginePicture;
@@ -11,6 +16,7 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
 import '../editor_session_manager.dart';
 import '../export/export_frame_renderer.dart';
+import '../export/offscreen_raster.dart' show rasterizeOffscreen;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
@@ -77,53 +83,156 @@ Future<bool?> _accepts(BuildContext context, Set<LayerMergeChange> changes) {
   );
 }
 
-/// Each of [plan]'s pictures drawn of the cut it is made from over the
-/// whole pasteboard — what lies past the canvas is the rows' too (a pan's
-/// background) — and laid on its new cel where it lies.
+/// MERGE as the shared pill's button and its key press it: whatever
+/// [subject] names — the panel's ladder ([ToolbarPanelContext.mergeSubject])
+/// — so the press does what its light said.
+Future<void> mergeSelectionSubject(
+  BuildContext context,
+  EditorSessionManager session,
+  PillSubject subject,
+) => switch (subject) {
+  PillSubject.layers => mergeLayerRows(context, session),
+  PillSubject.cells => mergeBlocks(context, session),
+  PillSubject.cuts || PillSubject.nothing => Future.value(),
+};
+
+/// MERGE on the frame axis (I-78 round ③, Q4): each row's blocks the band
+/// holds made one block over one cel, laid of their cels as they are
+/// behind the one wait window heavy work shows ([runWithAppProgress]), and
+/// landed as one undo step ([LayerMerging.landBlocks]).
+Future<void> mergeBlocks(
+  BuildContext context,
+  EditorSessionManager session,
+) async {
+  final plan = session.layerMerging.planOfBand();
+  if (plan == null) {
+    return;
+  }
+  final strings = AppText.strings;
+  await runWithAppProgress<void>(
+    context: context,
+    title: editorActionLabel(EditorActionIds.editMerge),
+    titleIcon: Icons.merge,
+    runningLabel: strings.bakeProgressRunning,
+    doneLabel: strings.bakeProgressDone,
+    windowKey: const ValueKey<String>('layer-merge-progress'),
+    task: (report) async {
+      await _layBlockPictures(session, plan, report);
+      session.layerMerging.landBlocks(plan);
+    },
+  );
+}
+
+/// Each of [plan]'s pictures drawn of the cut it is made from, laid on its
+/// new cel.
 Future<void> _layPictures(
   EditorSessionManager session,
   LayerMergePlan plan,
   void Function(double) report,
 ) async {
-  final canvas = plan.cut.canvasSize;
-  final wall = session.pasteboardOf(canvas);
-  final renderer = ExportFrameRenderer(
-    session: session,
-    background: const ui.Color(0x00000000),
-  );
+  final laying = _Laying(session, plan.cut);
   try {
     for (final (index, picture) in plan.pictures.indexed) {
-      final drawn = EnginePicture(
-        await renderer.renderPicture(
-          picture.from,
-          picture.frameIndex,
-          width: wall.rect.width.round(),
-          region: wall.rect,
-        ),
+      await laying.lay(
+        picture.rowId,
+        picture.frameId,
+        await laying.draw(picture.from, picture.frameIndex),
       );
+      report(doneShare(index + 1, plan.pictures.length));
+    }
+  } finally {
+    laying.dispose();
+  }
+}
+
+/// Each of [plan]'s new cels laid of the cels it is made of, each drawn
+/// alone and then laid over the one under it.
+Future<void> _layBlockPictures(
+  EditorSessionManager session,
+  BlockMergePlan plan,
+  void Function(double) report,
+) async {
+  final laying = _Laying(session, plan.cut);
+  try {
+    for (final (index, picture) in plan.pictures.indexed) {
+      final layers = [
+        for (final layer in picture.layers) await laying.draw(layer, 0),
+      ];
       try {
-        session.layerMerging.layPicture(
-          plan,
-          picture,
-          await layCelPicture(
-            picture: drawn,
-            canvas: canvas,
-            placement: GuideTransform(
-              1,
-              0,
-              0,
-              1,
-              wall.left.toDouble(),
-              wall.top.toDouble(),
-            ),
+        await laying.lay(
+          picture.rowId,
+          picture.frameId,
+          await rasterizeOffscreen(
+            width: layers.first.width,
+            height: layers.first.height,
+            paint: (canvas) {
+              for (final layer in layers) {
+                canvas.drawImage(layer, Offset.zero, Paint());
+              }
+            },
           ),
         );
       } finally {
-        drawn.dispose();
+        for (final layer in layers) {
+          layer.dispose();
+        }
       }
       report(doneShare(index + 1, plan.pictures.length));
     }
   } finally {
-    renderer.dispose();
+    laying.dispose();
   }
+}
+
+/// What a merge lays its pictures with: each drawn over [cut]'s whole
+/// pasteboard — what lies past the canvas is the rows' too (a pan's
+/// background) — on a clear ground, and laid on its new cel where it lies.
+final class _Laying {
+  _Laying(this.session, this.cut)
+    : wall = session.pasteboardOf(cut.canvasSize),
+      _renderer = ExportFrameRenderer(
+        session: session,
+        background: const ui.Color(0x00000000),
+      );
+
+  final EditorSessionManager session;
+  final Cut cut;
+  final PasteboardWall wall;
+  final ExportFrameRenderer _renderer;
+
+  /// [from] at [frameIndex], over the whole wall.
+  Future<ui.Image> draw(Cut from, int frameIndex) => _renderer.renderPicture(
+    from,
+    frameIndex,
+    width: wall.rect.width.round(),
+    region: wall.rect,
+  );
+
+  /// [image] laid as [cut]'s cel [frameId] of [rowId], where it lies.
+  Future<void> lay(LayerId rowId, FrameId frameId, ui.Image image) async {
+    final drawn = EnginePicture(image);
+    try {
+      session.layerMerging.layPicture(
+        cut,
+        rowId,
+        frameId,
+        await layCelPicture(
+          picture: drawn,
+          canvas: cut.canvasSize,
+          placement: GuideTransform(
+            1,
+            0,
+            0,
+            1,
+            wall.left.toDouble(),
+            wall.top.toDouble(),
+          ),
+        ),
+      );
+    } finally {
+      drawn.dispose();
+    }
+  }
+
+  void dispose() => _renderer.dispose();
 }

@@ -19,6 +19,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
@@ -87,15 +88,39 @@ void main() {
     timeline: const {},
   );
 
+  /// [layer] parted into two blocks a frame long: its cel `1`, then `2`.
+  Layer parted(Layer layer) => layer.copyWith(
+    frames: [
+      for (final cel in ['1', '2'])
+        Frame(
+          id: FrameId('${layer.id.value}-$cel'),
+          duration: 1,
+          name: cel,
+          strokes: [],
+        ),
+    ],
+    timeline: {
+      for (final (index, cel) in ['1', '2'].indexed)
+        index: TimelineExposure.drawing(
+          FrameId('${layer.id.value}-$cel'),
+          length: 1,
+        ),
+    },
+  );
+
   /// A cut of `b` under `a`, `b`'s ink red in the canvas's second column of
   /// tiles and `a`'s green in its third, both rows selected — `a` moved by
-  /// [aMoves] and ridden by [rider] when [aRidden].
+  /// [aMoves], ridden by [rider] when [aRidden], and [parted] when
+  /// [aParted], its second cel blue over its first's tile and the canvas's
+  /// first of the second row.
   EditorSessionManager session({
     bool bShown = true,
     LayerBlendMode? aBlend,
     TransformTrack? aMoves,
     bool aRidden = false,
+    bool aParted = false,
   }) {
+    final a = row('a', blendMode: aBlend).copyWith(transformTrack: aMoves);
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -113,7 +138,7 @@ void main() {
                 canvasSize: canvasSize,
                 layers: [
                   row('b', isVisible: bShown),
-                  row('a', blendMode: aBlend).copyWith(transformTrack: aMoves),
+                  if (aParted) parted(a) else a,
                   if (aRidden) rider,
                   createCameraLayer(cutId: cutId),
                 ],
@@ -126,15 +151,17 @@ void main() {
     );
     final cut = s.requireActiveCut;
     final store = s.renderCaches.brushFrameStore;
-    for (final (id, coords, rgba) in [
+    for (final (id, cel, coords, rgba) in [
       // A tile of b's past the canvas's left edge — a pan's background.
-      ('b', [TileCoord(x: 1, y: 0), TileCoord(x: -1, y: 0)], red),
-      ('a', [TileCoord(x: 2, y: 0)], green),
-      if (aRidden) ('r', [TileCoord(x: 0, y: 1)], blue),
+      ('b', '1', [TileCoord(x: 1, y: 0), TileCoord(x: -1, y: 0)], red),
+      ('a', '1', [TileCoord(x: 2, y: 0)], green),
+      if (aRidden) ('r', '1', [TileCoord(x: 0, y: 1)], blue),
+      if (aParted)
+        ('a', '2', [TileCoord(x: 2, y: 0), TileCoord(x: 0, y: 1)], blue),
     ]) {
       bakeCelSurface(
         store,
-        s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-1')),
+        s.brushFrameKeyForCut(cut, LayerId(id), FrameId('$id-$cel')),
         inkAt(coords, rgba),
       );
     }
@@ -185,13 +212,22 @@ void main() {
     );
   }
 
+  /// Whether the press's wait window has gone.
+  bool windowGone() => find
+      .byKey(const ValueKey<String>('layer-merge-progress'))
+      .evaluate()
+      .isEmpty;
+
   /// Whether the press has made the rows one and its window has gone.
   bool merged(EditorSessionManager s) =>
       s.requireActiveCut.layers.byId(const LayerId('b')) == null &&
-      find
-          .byKey(const ValueKey<String>('layer-merge-progress'))
-          .evaluate()
-          .isEmpty;
+      windowGone();
+
+  /// Whether the press has made `a`'s blocks one and its window has gone.
+  bool blocksMerged(EditorSessionManager s) =>
+      s.requireActiveCut.layers.byId(const LayerId('a'))!.timeline.length ==
+          1 &&
+      windowGone();
 
   testWidgets('🎯the rows become one row whose cel is what they showed '
       'together — a hidden row baked shown (Q7) — and one undo gives both '
@@ -279,6 +315,40 @@ void main() {
     expect(s.requireActiveCut.layers, before);
     s.redo();
     expect(at(mergedCel(s, 'r'), 20, 20), blue);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯a row\'s blocks a band holds become one block over a cel '
+      'laid of theirs — the leftmost on top — and one undo gives them back '
+      '(Q4)', (tester) async {
+    final s = session(aParted: true);
+    addTearDown(s.dispose);
+    s.rowSelection.value = const [];
+    s.frameRangeSelection.value = const TimelineFrameRangeSelection(
+      layerId: LayerId('a'),
+      startIndex: 0,
+      endIndexExclusive: 2,
+    );
+    final before = s.requireActiveCut.layers;
+    expect(s.layerMerging.mergesBand, isTrue, reason: 'the button lit');
+    final context = await hostedContext(tester);
+
+    unawaited(mergeBlocks(context, s));
+    await settleBehindTheWaitWindow(tester, () => blocksMerged(s));
+
+    final cut = s.requireActiveCut;
+    final block = cut.layers.byId(const LayerId('a'))!.timeline[0]!;
+    expect(block.length, 2);
+    final cel = mergedCel(s);
+    expect([at(cel, 36, 5), at(cel, 5, 20)], [green, blue]);
+    expect(at(cel, 20, 5)?[3] ?? 0, 0, reason: 'b is not in it');
+    expect(cut.layers.byId(const LayerId('b')), before.first);
+    expect(s.frameRangeSelection.value, isNull);
+
+    s.undo();
+    expect(s.requireActiveCut.layers, before);
+    s.redo();
+    expect([at(mergedCel(s), 36, 5), at(mergedCel(s), 5, 20)], [green, blue]);
     s.playbackRig.prerenderScheduler.cancel();
   });
 

@@ -887,7 +887,13 @@ class TimelineActionToolbar extends StatelessWidget {
             shortcuts: const [EditorActionIds.editMerge],
             icon: Icons.merge,
             onPressed: panelContext.canMerge
-                ? () => unawaited(mergeLayerRows(context, session))
+                ? () => unawaited(
+                    mergeSelectionSubject(
+                      context,
+                      session,
+                      panelContext.mergeSubject,
+                    ),
+                  )
                 : null,
           ),
         ),

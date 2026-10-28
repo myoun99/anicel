@@ -168,9 +168,11 @@ abstract class ToolbarPanelContext {
   bool get canDuplicate;
   void duplicate();
 
-  /// 🗣️I-78 — 병합: whether this panel's press would merge anything. The
-  /// press asks before it bakes, so it is a window's (`mergeLayerRows`).
-  bool get canMerge;
+  /// 🗣️I-78 — 병합: what this panel's press would merge — the rows, the
+  /// band's blocks, or nothing ([EditorSessionManager.mergeSubjectFor]).
+  /// The press asks before it bakes, so it is a window's
+  /// (`mergeSelectionSubject`), handed this.
+  PillSubject get mergeSubject;
 
   /// 🗣️I-18 — 자동 이름 지정: what this panel's press numbers, or null when
   /// there is nothing to number (the button dims). ONE answer for the gate,
@@ -203,6 +205,13 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
   void Function()? get unlinkPress => canUnlink ? unlink : null;
 
   void Function()? get duplicatePress => canDuplicate ? duplicate : null;
+
+  /// Whether 병합 has anything to merge here — the button's gate and the
+  /// key's, read off the one ladder ([mergeSubject]).
+  bool get canMerge => switch (mergeSubject) {
+    PillSubject.layers || PillSubject.cells => true,
+    PillSubject.cuts || PillSubject.nothing => false,
+  };
 
   /// Whether 자동 이름 지정 has anything to number here — the button's gate
   /// and the key's, read off the one resolver ([autoNameTargets]).
@@ -690,10 +699,9 @@ class TimelineToolbarPanelContext
       session.layerVerbs.duplicatableSelectedLayerIds().isEmpty &&
       session.effectClipboard.namesEffects;
 
-  /// The selected rows (I-78 round ①) — the frame axis's merge (Q4) is a
-  /// round of its own.
   @override
-  bool get canMerge => session.layerMerging.mergesSelection;
+  PillSubject get mergeSubject =>
+      session.mergeSubjectFor(cutsAreThisPanels: false);
 
   @override
   AutoNameTargets? get autoNameTargets => session.blockNaming.timelineTargets;
@@ -1307,12 +1315,11 @@ class StoryboardToolbarPanelContext
       session.storyboardRows.storyboardSelectedCutIds.isEmpty &&
       session.effectClipboard.namesEffects;
 
-  /// The rail's selected rows, as the timeline's (I-78) — under no band of
-  /// cuts: cuts are this panel's noun (R5q1), and no merge takes a cut.
+  /// The timeline's ladder, under a band of cuts first: cuts are this
+  /// panel's noun (R5q1), and no merge takes a cut.
   @override
-  bool get canMerge =>
-      session.storyboardRows.storyboardSelectedCutIds.isEmpty &&
-      session.layerMerging.mergesSelection;
+  PillSubject get mergeSubject =>
+      session.mergeSubjectFor(cutsAreThisPanels: true);
 
   /// 자동 이름 지정 on this panel (I-18: 「대상은 선택된 블록들(컷이나
   /// 프레임)이 있으면 선택한 대상만」). The selected cuts first; a CELL band —
