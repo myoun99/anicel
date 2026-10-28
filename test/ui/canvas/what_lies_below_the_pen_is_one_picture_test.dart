@@ -582,6 +582,27 @@ void main() {
       expect(stepped.pixels, stepped.fresh);
     });
 
+    // 🗣️I-132-Q21 a: what a folder's chain reads is drawn afresh as it
+    // changes; what lies in the folder is held as in any other.
+    test('and into a folder that reads a row: the folder over the pen in it '
+        'drawn whole to be held', () async {
+      final nodes = <CompositeNode<CanvasStackRow>>[
+        CompositeReadsRows(
+          node: folder([
+            pen(),
+            folder([rowOf('ramp'), rowOf('other')]),
+          ]),
+          rows: {
+            const LayerId('below'): [rowOf('below')],
+          },
+        ),
+      ];
+      debugSubtreeRasterCount = 0;
+      await comeTo(nodes);
+      expect(debugSubtreeRasterCount, 1, reason: 'the folder over the pen');
+      expect(held, hasLength(1));
+    });
+
     test('nor below the pen inside the folder it is in, nor in a blend over '
         'what lies below — each found in its cells after', () async {
       TestWidgetsFlutterBinding.ensureInitialized();

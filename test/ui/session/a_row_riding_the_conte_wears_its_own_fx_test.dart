@@ -420,6 +420,24 @@ void main() {
       expect(shown('a1'), closeTo(0.3, 1e-9));
     });
 
+    // 🗣️I-132-Q21 a: the rows its chain names are read there.
+    test('a ghost stands at the frame its peg reaches', () {
+      final session = standingOn('rider');
+      session.selectFrameIndex(0);
+      session.onionSkin.toggleLayerOnionSkin(const LayerId('rider'));
+      final ghosts = [
+        ...?session.onionSkin.ghostsAt(
+          session.requireActiveCut,
+          0,
+          null,
+        )[const LayerId('rider')],
+      ];
+      expect(
+        {for (final ghost in ghosts) ghost.frameId: ghost.frameIndex},
+        {const FrameId('rider-1'): 1},
+      );
+    });
+
     test('a ghost wears the chain the composite lays its row with', () {
       final session = standingOn('rider');
       session.selectFrameIndex(1);

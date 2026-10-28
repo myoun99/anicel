@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -27,7 +28,9 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/composite_tree_paint.dart';
 import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
+import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🗣️I-132-Q21 a (유저 2026-10-28): a camera lens blur reads its blur map's
@@ -50,6 +53,26 @@ void main() {
   const shift = 8.0;
   const map = LayerId('map');
   const shifted = LayerPlacement(1, 0, 0, 1, shift, 0);
+  const cel = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('checker'),
+    frameId: FrameId('f'),
+  );
+  const mapCel = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: map,
+    frameId: FrameId('f'),
+  );
+  const page = (
+    canvasSize: canvasSize,
+    pasteboardReach: PasteboardReach.whole,
+    paintPaper: false,
+    paperBackground: ProjectBackground.defaultBackground,
+  );
 
   BitmapSurface surfaceOf(List<int> Function(int x, int y) rgbaAt) {
     final pixels = Uint8List(width * width * 4);
@@ -130,20 +153,6 @@ void main() {
       ))!.buffer.asUint8List();
 
   testWidgets('on the canvas\'s own road', (tester) async {
-    const cel = BrushFrameKey(
-      projectId: ProjectId('p'),
-      trackId: TrackId('t'),
-      cutId: CutId('c'),
-      layerId: LayerId('checker'),
-      frameId: FrameId('f'),
-    );
-    final mapCel = BrushFrameKey(
-      projectId: cel.projectId,
-      trackId: cel.trackId,
-      cutId: cel.cutId,
-      layerId: map,
-      frameId: cel.frameId,
-    );
     Future<Uint8List> drawn(String scene) async {
       final row = CompositeLeaf<CanvasStackRow>(
         CanvasLayerImageRequest(
@@ -160,7 +169,7 @@ void main() {
               node: row,
               rows: {
                 map: [
-                  CompositeLeaf(
+                  const CompositeLeaf(
                     CanvasLayerImageRequest(frameKey: mapCel, opacity: 1),
                   ),
                 ],
@@ -169,12 +178,7 @@ void main() {
           else
             row,
         ],
-        page: (
-          canvasSize: canvasSize,
-          pasteboardReach: PasteboardReach.whole,
-          paintPaper: false,
-          paperBackground: ProjectBackground.defaultBackground,
-        ),
+        page: page,
         surfaceOf: (key) => key == cel ? checker : depth,
       );
       final recorder = ui.PictureRecorder();
@@ -187,6 +191,79 @@ void main() {
     }
 
     await expectReadWhereItShows(drawn);
+  });
+
+  // What a folder reads is part of what it draws: the picture of it a
+  // frame holds is kept under both ([CompositeReadsRows]).
+  testWidgets('🚨a folder that reads a map is held with the map it read — '
+      'the map drawn on since, the folder is drawn again', (tester) async {
+    final held = HeldSubtreeRasters(bytes: () => 1 << 20);
+    addTearDown(held.clear);
+    final flipped = surfaceOf(
+      (x, _) =>
+          x < seam ? const [0xFF, 0xFF, 0xFF, 0xFF] : const [0, 0, 0, 0xFF],
+    );
+    var drawnOn = false;
+    final nodes = <CompositeNode<CanvasStackRow>>[
+      CompositeReadsRows(
+        node: CompositeGroup(
+          children: [
+            const CompositeLeaf(
+              CanvasLayerImageRequest(frameKey: cel, opacity: 1),
+            ),
+          ],
+          opacity: 1,
+          blendMode: LayerBlendMode.normal,
+          effects: [lens(mapped: true)],
+        ),
+        rows: {
+          map: [
+            const CompositeLeaf(
+              CanvasLayerImageRequest(frameKey: mapCel, opacity: 1),
+            ),
+          ],
+        },
+      ),
+    ];
+    StackedFrame frameOf({bool? keeps}) => stackedFrameOf(
+      nodes,
+      page: page,
+      surfaceOf: (key) => key == cel
+          ? checker
+          : drawnOn
+          ? flipped
+          : depth,
+      held: switch (keeps) {
+        final keeps? => (
+          pictures: (
+            rasters: held,
+            keeps: keeps,
+            below: keeps ? BelowThePen.whole : BelowThePen.inCells,
+          ),
+          revisionOf: (key) => key == mapCel && drawnOn ? 2 : 1,
+        ),
+        null => null,
+      },
+    );
+    Future<Uint8List> drawn(StackedFrame frame) async {
+      final recorder = ui.PictureRecorder();
+      frame.drawing.draw(Canvas(recorder)..clipRect(frame.drawing.extent));
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(width, height);
+      picture.dispose();
+      addTearDown(image.dispose);
+      return bytesOf(tester, image);
+    }
+
+    await drawn(frameOf(keeps: true));
+    expect(held.length, 1, reason: '⛔premise: the folder was kept');
+    debugSubtreeRasterCount = 0;
+    await drawn(frameOf(keeps: false));
+    expect(debugSubtreeRasterCount, 0, reason: '⛔premise: it is cut from');
+
+    drawnOn = true;
+    final again = await drawn(frameOf(keeps: false));
+    expect(again, await drawn(frameOf()));
   });
 
   testWidgets('on the camera\'s road, the export\'s', (tester) async {

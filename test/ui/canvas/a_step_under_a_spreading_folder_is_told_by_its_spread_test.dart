@@ -26,6 +26,8 @@ import 'package:anicel/src/services/guide_geometry.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/composite_tree_paint.dart'
+    show readsPastOf;
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 
 /// 🚨A STEP UNDER A FOLDER OR AN ADJUSTMENT THAT SPREADS IS TOLD BY ITS
@@ -269,6 +271,25 @@ void main() {
         map: [row()],
       },
     );
+
+    test('a cell is read as far past it as the folder that reads the map '
+        'reads past a pixel', () {
+      const paper = Rect.fromLTWH(0, 0, 24, 8);
+      final folder = blurredFolder([row()]);
+      final past = readsPastOf([folder], paper: paper);
+      expect(past, greaterThan(0), reason: '⛔premise: its chain spreads');
+      expect(
+        readsPastOf([
+          CompositeReadsRows<CanvasStackRow>(
+            node: folder,
+            rows: {
+              map: [row()],
+            },
+          ),
+        ], paper: paper),
+        past,
+      );
+    });
 
     testWidgets('its eye off: told where it is read, grown by the reading '
         'row\'s chain', (tester) async {
