@@ -749,9 +749,6 @@ Set<LayerMergeChange> _changesOf(
   final looksOver = cut.layers.any(
     (folder) => over.contains(folder.id) && _laysALook(folder),
   );
-  final order = {for (final (index, row) in cut.layers.indexed) row.id: index};
-  final pictures = [for (final row in pictureRows) order[row.id]!];
-  final led = _ledAround(taking, over);
   return {
     if (takenRows.any((row) => _blendsItsOwnWay(row.blendMode)))
       LayerMergeChange.blend,
@@ -763,11 +760,25 @@ Set<LayerMergeChange> _changesOf(
           ),
         ))
       LayerMergeChange.folder,
+    ..._ridersLed(taking, over),
+    if (_cutAtTheWall(drawn, wall)) LayerMergeChange.wall,
+  };
+}
+
+/// The changes the rows [_ledAround] the result make: one led over a
+/// picture it did not cover ([LayerMergeChange.riderOver]), or under one
+/// it did not stand under ([LayerMergeChange.riderUnder]).
+Set<LayerMergeChange> _ridersLed(LayerMergeTaking taking, Set<LayerId> over) {
+  final order = {
+    for (final (index, row) in taking.cut.layers.indexed) row.id: index,
+  };
+  final pictures = [for (final row in taking._pictureRows) order[row.id]!];
+  final led = _ledAround(taking, over);
+  return {
     if (led.above.any((row) => pictures.any((at) => at > order[row.id]!)))
       LayerMergeChange.riderOver,
     if (led.below.any((row) => pictures.any((at) => at < order[row.id]!)))
       LayerMergeChange.riderUnder,
-    if (_cutAtTheWall(drawn, wall)) LayerMergeChange.wall,
   };
 }
 
