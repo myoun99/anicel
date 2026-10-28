@@ -23,6 +23,33 @@ class _MemoryStore extends UsageStatsStore {
   Future<void> save(List<int>? activeDays) async => days = activeDays;
 }
 
+/// A periodic timer the test ticks by hand ([fire]).
+class _Periodic implements Timer {
+  _Periodic(this.every, this._onTick);
+
+  final Duration every;
+  final void Function(Timer) _onTick;
+  bool _active = true;
+  int _ticks = 0;
+
+  /// One period gone by.
+  void fire() {
+    if (_active) {
+      _ticks += 1;
+      _onTick(this);
+    }
+  }
+
+  @override
+  void cancel() => _active = false;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => _ticks;
+}
+
 /// One POST's events, each as its name and props: `day days=3+`.
 typedef _Sent = List<String>;
 
@@ -50,11 +77,15 @@ void main() {
   late Completer<void>? hold;
   late DateTime clock;
 
+  /// Every periodic timer a run started, the latest last.
+  late List<_Periodic> timers;
+
   setUp(() {
     sent = [];
     status = 200;
     hold = null;
     clock = DateTime.utc(2026, 10, 29, 6, 20);
+    timers = [];
   });
 
   final today = UsageStats.dayOf(DateTime.utc(2026, 10, 29, 6, 20));
@@ -70,6 +101,13 @@ void main() {
     build: '1081',
   );
 
+  /// A periodic timer the test ticks, kept in [timers].
+  Timer periodic(Duration every, void Function(Timer) onTick) {
+    final timer = _Periodic(every, onTick);
+    timers.add(timer);
+    return timer;
+  }
+
   /// A run of the app on [store], restored as the shell restores it.
   UsageStats run(_MemoryStore? store, {String appKey = 'A-EU-1462843916'}) {
     final stats = UsageStats(
@@ -77,11 +115,18 @@ void main() {
       client: client(appKey: appKey),
       locale: () => 'ko',
       now: () => clock,
+      periodic: periodic,
     );
     addTearDown(stats.dispose);
     unawaited(stats.restore());
     return stats;
   }
+
+  /// The periodic timers still running.
+  List<_Periodic> running() => [
+    for (final timer in timers)
+      if (timer.isActive) timer,
+  ];
 
   void nextDay([int days = 1]) => clock = clock.add(Duration(days: days));
 
@@ -368,6 +413,102 @@ void main() {
       await launch;
       await stats.reportResume();
       expect(sent, hasLength(1));
+    });
+  });
+
+  /// 🗣️유저 2026-10-29: Aptabase's live view shows who is still using the
+  /// app — an `in_use` 「1시간마다」 while it is on and in front.
+  group('in_use, once an hour', () {
+    test('🎯on and in front: one every hour, its name alone — and none '
+        'before the first hour is up', () async {
+      final store = _MemoryStore([today - 1]);
+      final stats = run(store);
+      await stats.reportLaunch();
+      expect(UsageStats.inUseEvery, const Duration(hours: 1));
+      expect(timers.single.every, UsageStats.inUseEvery);
+      expect(sent, [
+        ['app_started', 'day days=1-2'],
+      ]);
+
+      timers.single.fire();
+      await pumpEventQueue();
+      expect(sent.last, ['in_use']);
+      timers.single.fire();
+      await pumpEventQueue();
+      expect(sent, hasLength(3));
+      expect(sent.last, ['in_use']);
+      expect(store.days, [today - 1, today], reason: 'an in_use records no day');
+      expect(stats.enabled.value, isTrue);
+    });
+
+    test('⛔none while off — at launch, and from the moment it is turned '
+        'off; turned on, the hour starts then', () async {
+      final stats = run(_MemoryStore());
+      await stats.reportLaunch();
+      expect(timers, isEmpty);
+
+      stats.setEnabled(true);
+      await pumpEventQueue();
+      expect(running(), hasLength(1));
+      final hour = timers.single;
+
+      stats.setEnabled(false);
+      expect(running(), isEmpty);
+      hour.fire();
+      await pumpEventQueue();
+      expect(sent.expand((events) => events), isNot(contains('in_use')));
+    });
+
+    test('⛔none while away; back in front, the hour starts again — and a '
+        'return while still in front keeps the hour it has', () async {
+      final stats = run(_MemoryStore([]));
+      await stats.reportLaunch();
+      final first = timers.single;
+
+      await stats.reportResume();
+      expect(timers, [first], reason: 'inactive and back: the same hour');
+
+      stats.reportAway();
+      expect(running(), isEmpty);
+      first.fire();
+      await pumpEventQueue();
+      expect(sent, hasLength(1));
+
+      await stats.reportResume();
+      expect(running(), hasLength(1));
+      expect(running().single, isNot(same(first)));
+      running().single.fire();
+      await pumpEventQueue();
+      expect(sent.last, ['in_use']);
+    });
+
+    test('away before the saved answer is back: the launch starts no hour',
+        () async {
+      final stats = run(_MemoryStore([]));
+      final launch = stats.reportLaunch();
+      stats.reportAway();
+      await launch;
+      expect(stats.enabled.value, isTrue);
+      expect(timers, isEmpty);
+    });
+
+    test('gone with the settings — and a launch reported after starts none',
+        () async {
+      final stats = UsageStats(
+        store: _MemoryStore([]),
+        client: client(),
+        locale: () => 'ko',
+        now: () => clock,
+        periodic: periodic,
+      );
+      unawaited(stats.restore());
+      await stats.reportLaunch();
+      expect(running(), hasLength(1));
+
+      stats.dispose();
+      expect(running(), isEmpty);
+      await stats.reportLaunch();
+      expect(running(), isEmpty);
     });
   });
 

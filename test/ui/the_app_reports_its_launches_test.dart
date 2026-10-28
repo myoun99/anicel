@@ -88,4 +88,62 @@ void main() {
     expect(posts, hasLength(2));
     expect(posts.last.map((event) => event['eventName']), ['day']);
   });
+
+  testWidgets('🎯on and in front, an in_use once an hour — on through '
+      'another window\'s focus, none while hidden, and the hour starts again '
+      'when the app is back', (tester) async {
+    final posts = <List<Object?>>[];
+    final client = AptabaseClient(
+      appKey: 'A-EU-1462843916',
+      post: (_, _, body) async {
+        posts.add([
+          for (final event in jsonDecode(body) as List)
+            (event as Map<String, dynamic>)['eventName'],
+        ]);
+        return 200;
+      },
+      describe: () => (model: 'x', os: FeedbackOs.windows, osVersion: '11'),
+      build: '1081',
+    );
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(usageStatsStore: _OnStore(), usageStatsClient: client),
+      ),
+    );
+    await tester.pump();
+    expect(posts, [
+      ['app_started', 'day'],
+    ]);
+
+    await tester.pump(const Duration(minutes: 59));
+    expect(posts, hasLength(1));
+    await tester.pump(const Duration(minutes: 1));
+    expect(posts, hasLength(2));
+    expect(posts.last, ['in_use']);
+
+    void lifecycle(List<AppLifecycleState> states) {
+      for (final state in states) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+    }
+
+    lifecycle([AppLifecycleState.inactive]);
+    await tester.pump(const Duration(hours: 1));
+    expect(posts, hasLength(3));
+    expect(posts.last, ['in_use']);
+
+    lifecycle([AppLifecycleState.hidden]);
+    await tester.pump(const Duration(hours: 3));
+    expect(posts, hasLength(3));
+
+    lifecycle([AppLifecycleState.inactive, AppLifecycleState.resumed]);
+    await tester.pump(const Duration(minutes: 59));
+    expect(posts, hasLength(3), reason: 'the day went at launch');
+    await tester.pump(const Duration(minutes: 1));
+    expect(posts, hasLength(4));
+    expect(posts.last, ['in_use']);
+  });
 }

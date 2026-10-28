@@ -6,7 +6,8 @@ import '../persistence/usage_stats_store.dart';
 import 'aptabase_client.dart';
 
 /// The usage statistics (I-70): whether this device sends them, and what it
-/// sends when it does — `app_started` once a run and `day` once a UTC day.
+/// sends when it does — `app_started` once a run, `day` once a UTC day and
+/// `in_use` once an hour while the app is in front.
 ///
 /// 🗣️I-70 (유저 2026-10-29): Q1 「둘 다」 — downloads are counted from the
 /// releases, and how many people USE the app from here; Q2 Aptabase
@@ -22,10 +23,12 @@ class UsageStats {
     AptabaseClient? client,
     required String Function() locale,
     DateTime Function() now = DateTime.now,
+    Timer Function(Duration, void Function(Timer)) periodic = Timer.periodic,
   }) : _store = store,
        _client = client ?? AptabaseClient(),
        _locale = locale,
-       _now = now;
+       _now = now,
+       _periodic = periodic;
 
   /// Null (a test) keeps the answer in memory.
   final UsageStatsStore? _store;
@@ -34,6 +37,7 @@ class UsageStats {
   /// The program language's code, read at each send.
   final String Function() _locale;
   final DateTime Function() _now;
+  final Timer Function(Duration, void Function(Timer)) _periodic;
 
   /// Whether this device sends — OFF until the person says otherwise.
   final ValueNotifier<bool> enabled = ValueNotifier<bool>(false);
@@ -43,6 +47,22 @@ class UsageStats {
 
   /// How many days in the window make a device a regular.
   static const int regularDays = 3;
+
+  /// How often a device says it is still in use while the app is in front.
+  ///
+  /// 🗣️유저 2026-10-29: Aptabase's live view should show the people still
+  /// using the app — 「1시간마다」, chosen over 30 minutes.
+  static const Duration inUseEvery = Duration(hours: 1);
+
+  /// Whether the app is in front: from its launch or a return to it, until
+  /// it goes away ([reportAway]).
+  bool _inFront = false;
+
+  /// The hourly `in_use` — running exactly while it is on and the app is in
+  /// front ([_keepInUse]).
+  Timer? _inUse;
+
+  bool _disposed = false;
 
   /// The UTC days this device was used on, as far back as [windowDays] —
   /// kept on the device, never sent; empty while off.
@@ -74,18 +94,50 @@ class UsageStats {
   }
 
   /// The app has started: this run's `app_started`, and today's `day` if
-  /// it is still owed — once the saved answer is back.
+  /// it is still owed — once the saved answer is back; and the hour to the
+  /// first `in_use` starts.
   Future<void> reportLaunch() async {
+    _inFront = true;
     await _restored;
+    _keepInUse();
     await _report(countRun: true);
   }
 
   /// The app is in front again: today's `day` if it is still owed — a run
-  /// that crosses midnight UTC, or a send that failed earlier today.
+  /// that crosses midnight UTC, or a send that failed earlier today — and,
+  /// back from away, the hour to the next `in_use` starts again.
   Future<void> reportResume() async {
+    _inFront = true;
     await _restored;
+    _keepInUse();
     await _report(countRun: false);
   }
+
+  /// The app is no longer in front — hidden, minimized, paused: no
+  /// `in_use` until it is back.
+  void reportAway() {
+    _inFront = false;
+    _keepInUse();
+  }
+
+  /// Starts the hourly `in_use` when it is on and the app is in front, and
+  /// stops it otherwise. One already running keeps its hour.
+  void _keepInUse() {
+    if (_disposed || !enabled.value || !_inFront) {
+      _inUse?.cancel();
+      _inUse = null;
+      return;
+    }
+    _inUse ??= _periodic(inUseEvery, (_) => unawaited(_reportInUse()));
+  }
+
+  /// The hour's `in_use`: the event's name alone — not retried, not
+  /// recorded.
+  Future<void> _reportInUse() => _client.send(
+    [(name: 'in_use', props: const <String, Object>{})],
+    now: _now(),
+    locale: _locale(),
+  );
 
   /// The person's answer. On reports at once — this run and today, as a
   /// launch would have; off forgets the record kept on this device.
@@ -100,6 +152,7 @@ class UsageStats {
       _turnedOff += 1;
     }
     unawaited(_store?.save(on ? _days : null));
+    _keepInUse();
     if (on) {
       unawaited(_report(countRun: true));
     }
@@ -175,5 +228,12 @@ class UsageStats {
     }
   }
 
-  void dispose() => enabled.dispose();
+  /// ⚠️A launch or a return whose saved answer lands after this starts no
+  /// hour: the shell reports them once the language is back, and does not
+  /// ask whether it is still there.
+  void dispose() {
+    _disposed = true;
+    _keepInUse();
+    enabled.dispose();
+  }
 }

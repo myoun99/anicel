@@ -951,11 +951,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// back to it.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_warnIfProjectFileVanished(_session));
-      // I-70: a day the app is in front on is a day it was used — a run
-      // that crossed midnight UTC, or a send that failed earlier today.
-      unawaited(_appSettings.usageStats.reportResume());
+    switch (state) {
+      case AppLifecycleState.resumed:
+        unawaited(_warnIfProjectFileVanished(_session));
+        // I-70: a day the app is in front on is a day it was used — a run
+        // that crossed midnight UTC, or a send that failed earlier today.
+        unawaited(_appSettings.usageStats.reportResume());
+      // ⚖️INACTIVE IS STILL IN FRONT for the hourly `in_use` (2026-10-29,
+      // this lane): what stops it is what 관제 relayed — 「paused / hidden /
+      // minimized」 — and inactive is a desktop window whenever another one
+      // has the focus (the reference beside the canvas), and every return
+      // passes through it on the way to resumed.
+      case AppLifecycleState.hidden ||
+          AppLifecycleState.paused ||
+          AppLifecycleState.detached:
+        _appSettings.usageStats.reportAway();
+      case AppLifecycleState.inactive:
+        break;
     }
   }
 

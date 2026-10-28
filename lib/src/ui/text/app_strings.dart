@@ -2100,10 +2100,12 @@ enum AppStrings {
     'launchNoticeDontShowAgain': "Don't show again",
     'usageStatsSend': 'Send usage statistics',
     'usageStatsHelp':
-        'When on, sends anonymously when the app opens and once a day: the '
-        'OS and its version, the app build, the language, and how many of '
-        'the last 28 days it was used (new, 1–2, 3 or more). No drawings, '
-        'files or device names. Turning it off also deletes the record kept '
+        'When on, the app sends anonymously, when it opens and once an hour '
+        'while you use it, that it is in use — with the OS and its version, '
+        'the app build and the language. Once a day it also sends how many '
+        'of the last 28 days it was used (new, 1–2, 3 or more). Nothing that '
+        'identifies you or this device is sent: no drawings or projects, no '
+        'file names, no names. Turning it off also deletes the record kept '
         'on this device.',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
@@ -3426,9 +3428,11 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '次回から表示しない',
     'usageStatsSend': '利用統計を送信',
     'usageStatsHelp':
-        'オンにすると、アプリを開いたときと1日1回、OSとそのバージョン・アプリのビルド・'
-        '言語・直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）を匿名で送信します。'
-        '絵・ファイル・デバイス名は送信しません。オフにすると、この端末に残した記録も削除します。',
+        'オンにすると、アプリを開いたときと使っている間の1時間に1回、使用中であることを'
+        'OSとそのバージョン・アプリのビルド・言語とともに匿名で送信します。1日1回、'
+        '直近28日間に使った日数の区分（初回 / 1〜2日 / 3日以上）も送信します。'
+        '絵・プロジェクト・ファイル名・名前など、あなたやこの端末を特定できるものは'
+        '送信しません。オフにすると、この端末に残した記録も削除します。',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -5216,10 +5220,11 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '다음부터 표시 안 함',
     'usageStatsSend': '사용 통계 보내기',
     'usageStatsHelp':
-        '켜 두면 앱을 열 때와 하루에 한 번, OS와 그 버전 · 앱 빌드 · 언어 · '
-        '최근 28일 동안 쓴 날의 구간(처음 / 1–2일 / 3일 이상)을 익명으로 보냅니다. '
-        '그림 · 파일 · 기기 이름은 보내지 않습니다. 끄면 이 기기에 남긴 기록도 '
-        '지웁니다.',
+        '켜 두면 앱을 열 때와 쓰는 동안 1시간마다 한 번, 쓰고 있다는 것을 '
+        'OS와 그 버전 · 앱 빌드 · 언어와 함께 익명으로 보냅니다. 하루 한 번은 '
+        '최근 28일 중 쓴 날의 구간(처음 / 1–2일 / 3일 이상)도 보냅니다. '
+        '그림 · 프로젝트 · 파일 이름 · 이름 등 사용자나 이 기기를 알아볼 수 있는 '
+        '것은 보내지 않습니다. 끄면 이 기기에 남긴 기록도 지웁니다.',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -6995,11 +7000,14 @@ enum AppStrings {
     'launchNoticeDontShowAgain': 'Ne plus afficher',
     'usageStatsSend': "Envoyer des statistiques d'utilisation",
     'usageStatsHelp':
-        "Activé, envoie de façon anonyme à l'ouverture de l'app et une fois "
-        "par jour : le système et sa version, la version de l'app, la langue, "
-        "et le nombre de jours d'utilisation sur les 28 derniers (nouveau, "
-        "1–2, 3 ou plus). Aucun dessin, fichier ni nom d'appareil. Le "
-        "désactiver efface aussi l'historique gardé sur cet appareil.",
+        "Activé, l'app envoie de façon anonyme, à son ouverture et une fois "
+        "par heure pendant que vous l'utilisez, qu'elle est utilisée — avec "
+        "le système et sa version, la version de l'app et la langue. Une "
+        "fois par jour, elle envoie aussi le nombre de jours d'utilisation "
+        'sur les 28 derniers (nouveau, 1–2, 3 ou plus). Rien qui vous '
+        "identifie, vous ou cet appareil, n'est envoyé : ni dessins ni "
+        'projets, ni noms de fichiers, ni noms. Le désactiver efface aussi '
+        "l'historique gardé sur cet appareil.",
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -8907,9 +8915,10 @@ enum AppStrings {
     'launchNoticeDontShowAgain': '不再显示',
     'usageStatsSend': '发送使用统计',
     'usageStatsHelp':
-        '开启后，会在打开应用时以及每天一次匿名发送：操作系统及其版本、应用版本号、语言，'
-        '以及最近 28 天内使用天数的区间（首次 / 1–2 天 / 3 天以上）。不会发送画作、文件或'
-        '设备名称。关闭后也会删除本设备上保存的记录。',
+        '开启后，会在打开应用时以及使用期间每小时一次，匿名发送“正在使用”，'
+        '并附带操作系统及其版本、应用版本号和语言。每天一次还会发送最近 28 天内'
+        '使用天数的区间（首次 / 1–2 天 / 3 天以上）。不会发送画作、项目、文件名、'
+        '名称等任何能识别您或本设备的信息。关闭后也会删除本设备上保存的记录。',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',
