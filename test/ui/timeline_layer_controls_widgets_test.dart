@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/input/arena_tap_hold.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerMarkEdit;
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -14,6 +15,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show layerRailEndPadding, noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -332,6 +334,37 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer, active: true));
       expect(tester.getSemantics(plate).label, 'selected layer');
+      semantics.dispose();
+    });
+
+    testWidgets('the row\'s node speaks the PROGRAM language, as the conte\'s '
+        'own rows do — it was English whatever the app read in', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      final layer = _layer();
+      final plate = find.descendant(
+        of: find.named('timeline-layer-row-${layer.id}'),
+        matching: find.byType(RowPlate),
+      );
+      expect(
+        AppText.strings.semLayer,
+        isNot('layer'),
+        reason: '⛔전제: the table has the word in Korean',
+      );
+
+      await tester.pumpWidget(_row(layer: layer));
+      expect(tester.getSemantics(plate).label, AppText.strings.semLayer);
+
+      await tester.pumpWidget(_row(layer: layer, active: true));
+      expect(
+        tester.getSemantics(plate).label,
+        AppText.strings.semSelectedLayer,
+      );
       semantics.dispose();
     });
 

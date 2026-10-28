@@ -480,7 +480,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
           height: _size.height,
           padding: _padding,
           decoration: _plate(colorScheme),
-          label: active ? 'selected layer' : 'layer',
+          // The program language's word, as the conte's own rows say it.
+          label: active
+              ? AppText.strings.semSelectedLayer
+              : AppText.strings.semLayer,
           // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
           // shared skeleton in the shared order at the shared extents,
           // running downward: the same list the rail's rows and the legend
