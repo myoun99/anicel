@@ -390,12 +390,28 @@ Words wordsFor(AppLanguage language) => switch (language) {
     field: '野原',
     bounce: 'ポン',
   ),
-  _ => (
+  AppLanguage.en => (
     speaker: 'Ball',
     line: 'Boing!',
     shadow: 'Shadow',
     field: 'Field',
     bounce: 'Boing',
+  ),
+  // French sets its `!` off with a space — a no-break one, so the `!`
+  // never starts a line of its own.
+  AppLanguage.fr => (
+    speaker: 'Balle',
+    line: 'Boing !',
+    shadow: 'Ombre',
+    field: 'Prairie',
+    bounce: 'Boing',
+  ),
+  AppLanguage.zhHans => (
+    speaker: '皮球',
+    line: '嘭！',
+    shadow: '影子',
+    field: '原野',
+    bounce: '嘭',
   ),
 };
 

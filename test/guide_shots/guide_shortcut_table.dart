@@ -37,7 +37,9 @@ const _end = '<!-- shortcuts:end -->';
     switch (language) {
       AppLanguage.ko => (action: '동작', key: '키', or: '또는'),
       AppLanguage.ja => (action: '操作', key: 'キー', or: 'または'),
-      _ => (action: 'Action', key: 'Key', or: 'or'),
+      AppLanguage.en => (action: 'Action', key: 'Key', or: 'or'),
+      AppLanguage.fr => (action: 'Action', key: 'Touche', or: 'ou'),
+      AppLanguage.zhHans => (action: '操作', key: '按键', or: '或'),
     };
 
 /// Re-writes the generated part of `<language>/shortcuts.md` under
@@ -116,7 +118,13 @@ void writeShortcutKeymap(String guideRoot) {
 }
 
 /// The languages the guide is written in — one folder each.
-const _guideLanguages = [AppLanguage.ko, AppLanguage.ja, AppLanguage.en];
+const _guideLanguages = [
+  AppLanguage.ko,
+  AppLanguage.ja,
+  AppLanguage.en,
+  AppLanguage.fr,
+  AppLanguage.zhHans,
+];
 
 /// Every action that ships with a key in any preset, one table per shelf,
 /// in [language] (I-63, 유저 2026-10-03: 「이를 가이드페이지에도 두
