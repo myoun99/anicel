@@ -262,8 +262,14 @@ void main() {
           final builtFor =
               (row.widget as TimelineLayerControlsRow).layer.id.value;
           void visit(Element element) {
-            if (element.widget case Named(name: final name?)
-                when name.contains(builtFor)) {
+            // Both ways a widget wears a name, as the finder reads them
+            // ([nameOf]): a [Named] over it, or its own ([NamesItself]).
+            final name = switch (element.widget) {
+              Named(:final name) => name,
+              NamesItself(:final name) => name,
+              _ => null,
+            };
+            if (name != null && name.contains(builtFor)) {
               spelled += 1;
               expect(
                 name,

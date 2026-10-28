@@ -192,12 +192,12 @@ void main() {
             child: layerRailSlot(
               Axis.horizontal,
               30,
-              RailSwipeColumnPointer(
+              const RailSwipeColumnPointer(
                 column: RailSwipeColumn.fx,
                 child: Listener(
                   key: body,
                   behavior: HitTestBehavior.opaque,
-                  child: const SizedBox(height: 24),
+                  child: SizedBox(height: 24),
                 ),
               ),
             ),
@@ -232,6 +232,50 @@ void main() {
     expect(said, RailSwipeColumn.fx);
     expect(held, isTrue);
     await press.up();
+  });
+
+  testWidgets('a slot built again for another column says the new one', (
+    tester,
+  ) async {
+    RailSwipeColumn? said;
+    Future<void> pressIn(RailSwipeColumn column) async {
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            child: Listener(
+              onPointerDown: (down) => said = railSwipeColumnPressedBy(down),
+              child: layerRailSlot(
+                Axis.horizontal,
+                30,
+                RailSwipeColumnPointer(
+                  column: column,
+                  child: const Listener(
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(height: 24),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final press = await tester.startGesture(
+        tester.getCenter(find.byType(RailSwipeColumnSlot)),
+      );
+      await press.up();
+    }
+
+    await pressIn(RailSwipeColumn.fx);
+    final slot = tester.renderObject(find.byType(RailSwipeColumnSlot));
+    expect(said, RailSwipeColumn.fx);
+    await pressIn(RailSwipeColumn.visibility);
+    expect(
+      tester.renderObject(find.byType(RailSwipeColumnSlot)),
+      same(slot),
+      reason: '⛔premise: the same box, built again',
+    );
+    expect(said, RailSwipeColumn.visibility);
   });
 
   testWidgets('the eye, the fx switch and the sheet toggle are their faces — '
