@@ -89,19 +89,37 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
     ];
   }
 
+  /// 🪶ONE LINE CUT, DRAWN AT EACH START (card frame-panels-build-in-one-
+  /// frame, 2026-10-28): every line runs the row's height from its top, so
+  /// its dashes stand where any other's do. Each start used to cut its own
+  /// line into dashes and draw each dash on its own — on the storyboard,
+  /// zoomed out to the whole film, every row of it again whenever the
+  /// panel was shown (measured: ~1ms of the reopen frame).
   @override
   void paint(Canvas canvas, Size size) {
+    final starts = cutStarts();
+    if (starts.isEmpty) {
+      return;
+    }
     final dash = Paint()
       ..color = colorScheme.outline
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
-    for (final x in cutStarts()) {
-      final edge = Path()
-        ..moveTo(x, 0)
-        ..lineTo(x, size.height);
-      for (final piece in dashesAlong(edge, dashes)) {
-        canvas.drawPath(piece, dash);
-      }
+    final line = Path();
+    for (final piece in dashesAlong(
+      Path()
+        ..moveTo(0, 0)
+        ..lineTo(0, size.height),
+      dashes,
+    )) {
+      line.addPath(piece, Offset.zero);
+    }
+    for (final x in starts) {
+      canvas
+        ..save()
+        ..translate(x, 0)
+        ..drawPath(line, dash)
+        ..restore();
     }
   }
 
