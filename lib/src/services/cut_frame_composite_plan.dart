@@ -1690,6 +1690,36 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
+}) => _withSurfaces(
+  resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+  cut: cut,
+  surfaceResolver: surfaceResolver,
+);
+
+/// Row [row] of [cut] at [frameIndex] as a chain that reads it reads it
+/// ([_rowAsRead]), its surfaces resolved as [planCutFrameCompositeTree]
+/// resolves them: what a route that lays a row by itself hands
+/// [withTheRowsTheyRead]. Null for no row there.
+List<CompositeNode<CutFrameCompositeLayer>>? planRowAsRead({
+  required Cut cut,
+  required LayerId row,
+  required int frameIndex,
+  required LayerFrameSurfaceResolver surfaceResolver,
+}) => switch (_rowAsRead(cut, row, frameIndex: frameIndex, liveLayerId: null)) {
+  final read? => _withSurfaces(
+    read,
+    cut: cut,
+    surfaceResolver: surfaceResolver,
+  ),
+  null => null,
+};
+
+/// [nodes] of [cut] with each leaf's surface resolved by [surfaceResolver]
+/// ([planCutFrameCompositeTree]).
+List<CompositeNode<CutFrameCompositeLayer>> _withSurfaces(
+  List<CompositeNode<CutFrameCompositeRow>> nodes, {
+  required Cut cut,
+  required LayerFrameSurfaceResolver surfaceResolver,
 }) {
   CutFrameCompositeLayer? layerOf(
     CutFrameCompositeRow row,
@@ -1716,7 +1746,7 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
 
   return List.unmodifiable(
     mapCompositeLeaves(
-      resolveCutFrameCompositeTree(cut: cut, frameIndex: frameIndex),
+      nodes,
       (row) => layerOf(
         row,
         (entry) => surfaceResolver(entry.layer, entry.frame),

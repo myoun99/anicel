@@ -571,7 +571,7 @@ class ExportFrameRenderer {
             clipped: clipsToLayerBelow(layer),
             draw: () => drawn(
               _transparentRenderService,
-              laid: () => _laidAlone(task.cut, layer, drawing),
+              laid: () => _laidAlone(task, layer, drawing),
             ),
           ),
         };
@@ -590,38 +590,49 @@ class ExportFrameRenderer {
     ];
   }
 
-  /// [layer]'s [drawing] by itself — whole, in no blend, its pose and its
-  /// effects on it, its cel number with them ([celNumberedRow]): the
-  /// picture a layered file lays by the row's own strength and blend
-  /// ([frameRows]). Nothing where it exposes no cel here, or one with
-  /// nothing on it.
+  /// [layer]'s [drawing] in [task]'s frame by itself — whole, in no blend,
+  /// its pose and its effects on it, reading the rows they name as the
+  /// film reads them ([planRowAsRead]), its cel number with them
+  /// ([celNumberedRow]): the picture a layered file lays by the row's own
+  /// strength and blend ([frameRows]). Nothing where it exposes no cel
+  /// here, or one with nothing on it.
   List<CompositeNode<CutFrameCompositeLayer>> _laidAlone(
-    Cut cut,
+    ExportFrameTask task,
     Layer layer,
     ({Frame? frame, ResolvedRowRender render}) drawing,
   ) {
+    final cut = task.cut;
     final frame = drawing.frame;
     final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
     if (frame == null || surface == null) {
       return const [];
     }
-    return celNumberedRow(
-      paint: _alone(drawing.render.effects),
-      rowOf: (paint) => CutFrameCompositeLayer(
-        surface: surface,
-        opacity: paint.opacity,
-        blendMode: paint.blendMode,
-        placement: drawing.render.placement,
-        effects: paint.effects,
+    return withTheRowsTheyRead(
+      celNumberedRow(
+        paint: _alone(drawing.render.effects),
+        rowOf: (paint) => CutFrameCompositeLayer(
+          surface: surface,
+          opacity: paint.opacity,
+          blendMode: paint.blendMode,
+          placement: drawing.render.placement,
+          effects: paint.effects,
+        ),
+        text: celNumberText(
+          rowName: layer.name,
+          drawingName: frame.name,
+          kind: layer.kind,
+        ),
+        paper: cut.canvasSize,
+        // By itself in its picture: the file clips the picture, not a node.
+        asOnePicture: false,
       ),
-      text: celNumberText(
-        rowName: layer.name,
-        drawingName: frame.name,
-        kind: layer.kind,
+      effectsOf: (row) => row.effects,
+      drawnOf: (row, _) => planRowAsRead(
+        cut: _cutForRender(cut),
+        row: row,
+        frameIndex: task.frameIndex,
+        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
       ),
-      paper: cut.canvasSize,
-      // By itself in its picture: the file clips the picture, not a node.
-      asOnePicture: false,
     );
   }
 
