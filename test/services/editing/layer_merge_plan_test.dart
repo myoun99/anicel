@@ -636,7 +636,7 @@ void main() {
     /// 🗣️I-78-Q14 (유저 2026-10-28): 「보이던 그대로 같이 굽는다」.
     test('🎯one chosen without its base is baked wearing it, and stands just '
         'outside the group when it is the topmost', () {
-      final base = row('base', {0: '1'});
+      final base = row('base', {0: '1'}, lastLength: 4);
       final plan = merge(
         cutOf([
           row('c', {0: 'C1'}),
@@ -650,7 +650,7 @@ void main() {
 
       expect(plan.result.id, const LayerId('r'));
       expect(plan.result.attachedToLayerId, isNull);
-      expect(blocksOf(plan.result), {0: (2, 'R1')});
+      expect(blocksOf(plan.result), {0: (2, 'R1'), 2: (2, 'R1-2')});
       expect([for (final row in plan.layers) row.id.value], [
         'base',
         's',
