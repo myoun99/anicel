@@ -166,8 +166,10 @@ Future<void> _layBlockPictures(
             width: layers.first.width,
             height: layers.first.height,
             paint: (canvas) {
+              // 1:1 — each drawn over the same wall, one texel to a pixel.
+              final blit = Paint()..filterQuality = FilterQuality.none;
               for (final layer in layers) {
-                canvas.drawImage(layer, Offset.zero, Paint());
+                canvas.drawImage(layer, Offset.zero, blit);
               }
             },
           ),

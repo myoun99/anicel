@@ -834,21 +834,13 @@ _BlocksMerged _blocksMerged(
     for (final cel in cels)
       if (!shown.contains(cel)) cel,
   };
-  final kept = [
-    for (final cel in row.frames)
-      if (!gone.contains(cel.id)) cel,
-  ];
   return (
     row: row.copyWith(
-      frames: [
-        ...kept,
-        Frame(
-          id: celId,
-          duration: runEnd - starts.first,
-          name: _nameKept(row.frameById(cels.first)?.name, kept),
-          strokes: const [],
-        ),
-      ],
+      frames: _celsAfter(row, gone, (
+        id: celId,
+        length: runEnd - starts.first,
+        name: row.frameById(cels.first)?.name,
+      )),
       timeline: timeline,
       // A cel that goes takes its sounds with it (REC1-A).
       audioClips: [
@@ -889,24 +881,16 @@ _BlocksMerged _blocksMerged(
   final unlinked = {
     for (final cel in merged.gone) ?rider.baseFrameLinks[cel],
   }.difference({...links.values});
-  final kept = [
-    for (final cel in rider.frames)
-      if (!unlinked.contains(cel.id)) cel,
-  ];
   return (
     row: rider.copyWith(
-      frames: [
-        ...kept,
-        Frame(
-          id: celId,
-          duration: 1,
-          name: _nameKept(switch (rider.baseFrameLinks[merged.cels.first]) {
-            final leftmost? => rider.frameById(leftmost)?.name,
-            null => null,
-          }, kept),
-          strokes: const [],
-        ),
-      ],
+      frames: _celsAfter(rider, unlinked, (
+        id: celId,
+        length: 1,
+        name: switch (rider.baseFrameLinks[merged.cels.first]) {
+          final leftmost? => rider.frameById(leftmost)?.name,
+          null => null,
+        },
+      )),
       baseFrameLinks: {...links, baseCel: celId},
     ),
     pictures: [
@@ -936,6 +920,29 @@ TimelineRunEdgeMark _markKept(
     mode: inward.map((mark) => mark.mode).nonNulls.firstOrNull,
     bound: marks.any((mark) => mark.bound),
   );
+}
+
+/// [row]'s cels less those [going], and after them [made] — the one a
+/// block merge makes, [made]'s length long — named as [made]'s name is
+/// among the ones kept.
+List<Frame> _celsAfter(
+  Layer row,
+  Set<FrameId> going,
+  ({FrameId id, int length, String? name}) made,
+) {
+  final kept = [
+    for (final cel in row.frames)
+      if (!going.contains(cel.id)) cel,
+  ];
+  return [
+    ...kept,
+    Frame(
+      id: made.id,
+      duration: made.length,
+      name: _nameKept(made.name, kept),
+      strokes: const [],
+    ),
+  ];
 }
 
 /// [name] as a new cel takes it among the cels [kept]: its printed number

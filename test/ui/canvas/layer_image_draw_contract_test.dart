@@ -343,7 +343,13 @@ void main() {
 /// transform's preview and a text's landing are laid with their edges cut
 /// on the pixel grid (`drawImageRectOnThePixelGrid`), as the coordinates
 /// they float over are.
-const int _knownRawDraws = 27;
+/// **28** on 2026-10-28 (board `I-78-Q4`, 유저 「한 행의 여러 블록을 …
+/// 제일 왼쪽 블록에 합침」): +1 in timeline/merge_layer_rows — a block
+/// merge's new cel laid of the cels it is made of (`_layBlockPictures`),
+/// each drawn alone over the same wall at the same size and laid over the
+/// one under it at the origin. The 1:1 blit class, owning
+/// `FilterQuality.none` on its own Paint.
+const int _knownRawDraws = 28;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

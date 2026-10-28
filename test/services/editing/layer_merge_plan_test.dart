@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -719,34 +720,60 @@ void main() {
     });
 
     test('the run keeps its outer edges: on each side the mode of the '
-        'carrier nearest it — a hold set before frames were glued on past '
-        'it holds on — and a bound one of them claimed', () {
+        'carrier nearest it — one standing inside its run too, as a hold set '
+        'before frames were glued on past it does — and a bound one of them '
+        'claimed', () {
       Layer mergedOf(Layer row, List<int> starts) =>
           rowOf(mergeBlocks(cutOf([row]), {'a': starts})!, 'a');
-      final blocks = {0: (2, 'A1'), 2: (2, 'A2'), 4: (2, 'A3')};
 
+      // Two runs, the frame at 4 between them.
       final held = mergedOf(
         marked(
           'a',
-          blocks,
-          starting: {2: holdMark, 4: repeatMark},
-          ending: {0: holdMark},
+          {0: (2, 'A1'), 2: (2, 'A2'), 5: (2, 'A3'), 7: (2, 'A4')},
+          starting: {2: holdMark, 5: repeatMark},
+          ending: {0: holdMark, 5: repeatMark},
         ),
-        [0, 2, 4],
+        [0, 2, 5, 7],
       );
       final bounded = mergedOf(
-        marked('a', blocks, ending: {2: boundMark, 4: repeatMark}),
+        marked(
+          'a',
+          {0: (2, 'A1'), 2: (2, 'A2'), 4: (2, 'A3')},
+          ending: {2: boundMark, 4: repeatMark},
+        ),
         [0, 2],
       );
 
       expect((held.timeline[0]!.startEdge, held.timeline[0]!.endEdge), (
         holdMark,
-        holdMark,
+        repeatMark,
       ));
       expect(
         (bounded.timeline[0]!.endEdge, bounded.timeline[4]!.endEdge),
         (boundMark, repeatMark),
         reason: 'A3\'s repeat still starts at the block A2 became',
+      );
+    });
+
+    test('a cel that goes takes its sounds with it (REC1-A)', () {
+      final plan = mergeBlocks(
+        cutOf([
+          row('a', {0: 'A1', 2: 'A2', 4: 'A3'}).copyWith(
+            audioClips: [
+              for (final cel in ['A1', 'A3'])
+                AudioClip(filePath: 'take.wav', frameId: FrameId('a-$cel')),
+            ],
+          ),
+        ]),
+        {
+          'a': [0, 2],
+        },
+      )!;
+
+      expect(
+        [for (final clip in rowOf(plan, 'a').audioClips) clip.frameId.value],
+        ['a-A3'],
       );
     });
 
@@ -809,14 +836,18 @@ void main() {
       expect(laidOf(drawn), ['r-2', 'r-1']);
     });
 
-    test('a synced one showing nothing over the run is drawn of nothing, '
-        'and its cels the merge did not unlink stay', () {
+    test('a synced one showing nothing over the run — its link there to a '
+        'cel it no longer has — is drawn of nothing, and its cels the merge '
+        'did not unlink stay', () {
       final base = row('a', {0: '1', 2: '2', 4: '3'});
       final plan = mergeBlocks(
         cutOf([
           base,
           synced('r', base).copyWith(
-            baseFrameLinks: {const FrameId('a-3'): const FrameId('r-3')},
+            baseFrameLinks: {
+              const FrameId('a-1'): const FrameId('r-gone'),
+              const FrameId('a-3'): const FrameId('r-3'),
+            },
           ),
         ]),
         {
@@ -833,6 +864,31 @@ void main() {
         'r-3',
         'attach-mirror-r-m0',
       ]);
+    });
+
+    test('a cel of its that a cel the base keeps still shows stays, and the '
+        'new mirror wears its name\'s tail', () {
+      final base = row('a', {0: '1', 2: '2', 4: '3'});
+      final plan = mergeBlocks(
+        cutOf([
+          base,
+          synced('r', base).copyWith(
+            baseFrameLinks: {
+              const FrameId('a-1'): const FrameId('r-1'),
+              const FrameId('a-2'): const FrameId('r-2'),
+              const FrameId('a-3'): const FrameId('r-1'),
+            },
+          ),
+        ]),
+        {
+          'a': [0, 2],
+        },
+      )!;
+
+      expect(
+        [for (final cel in rowOf(plan, 'r').frames) (cel.id.value, cel.name)],
+        [('r-1', 'R1'), ('r-3', 'R3'), ('attach-mirror-r-m0', 'R1-2')],
+      );
     });
   });
 }
