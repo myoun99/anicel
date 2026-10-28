@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/sound_cannot_play.dart';
@@ -77,6 +78,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     this.rangeGesture,
     this.runEdit,
     this.spillInLeadFrames,
+    this.cutId,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.nextPage,
@@ -252,6 +254,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
   /// the cut before is drawn from this cut's frame 0.
   final int? spillInLeadFrames;
 
+  /// The cut the row is seen in ([BerthWorld.cutId]): an SE block writes
+  /// its delivery there (F-496).
+  final CutId? cutId;
+
   /// What the row draws now ([BerthRow.shows]) — the row as it was built,
   /// where no berth stands above it.
   _Shows _showsAt(BuildContext context) {
@@ -266,6 +272,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             substrateGeneration: substrateGeneration,
             drawnFrameCount: drawnFrameCount,
             spillInLeadFrames: spillInLeadFrames,
+            cutId: cutId,
             coverageIdentity: ByIdentity(coverageIdentity),
             seAudioPeaks: const ByList([]),
             seSoundsCannotPlay: const ByList([]),
@@ -510,6 +517,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         frameEndIndexExclusive: frames.frameEndIndexExclusive,
         axis: axis,
         spillInLeadFrames: spillInLeadFrames,
+        cutId: shows.world.cutId,
         keyPrefix: keyPrefix,
       ),
       ...timelineRowSoundWarningOverlays(

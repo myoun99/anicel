@@ -183,6 +183,7 @@ BerthWorld timelineCellsRowWorld(
     drawnFrameCount: hooks.runFrames,
     // F-113: the waveform's start moves with it.
     spillInLeadFrames: hooks.spillInLeadFrames[row.layer.id],
+    cutId: hooks.cutId,
     // The sparse rows' EXTERNAL inputs (UI-R20 #4): the camera track / the
     // instruction registry.
     coverageIdentity: ByIdentity(
@@ -279,6 +280,7 @@ Widget timelineCellsRowFrom(TimelineDisplayRow row, TimelineCellsRowGrid grid) {
     rangeGesture: grid.rangeGesture,
     runEdit: hooks.runEdit,
     spillInLeadFrames: world.spillInLeadFrames,
+    cutId: world.cutId,
     windowBucket: grid.windowBucket,
     viewportMainExtent: grid.viewportMainExtent,
     nextPage: grid.nextPage,

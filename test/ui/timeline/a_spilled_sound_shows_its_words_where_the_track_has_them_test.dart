@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -52,7 +53,7 @@ void main() {
 
   /// One sound [4, 12) across the cut-1 → cut-2 boundary at 8, and one
   /// inside cut 2 right after it: cut 2 sees the first from 4 frames in.
-  Project film() => Project(
+  Project film({SeLineTypes seTypes = SeLineTypes.allOn}) => Project(
     id: const ProjectId('spilled-words'),
     name: 'Spilled words',
     createdAt: DateTime.utc(2026, 10, 18),
@@ -72,6 +73,7 @@ void main() {
                 duration: 8,
                 name: line,
                 seName: 'X',
+                seTypes: seTypes,
                 strokes: const [],
               ),
               Frame(
@@ -91,13 +93,16 @@ void main() {
     ],
   );
 
-  Future<void> pumpFilm(WidgetTester tester) async {
+  Future<void> pumpFilm(
+    WidgetTester tester, {
+    SeLineTypes seTypes = SeLineTypes.allOn,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         theme: buildAppTheme(),
-        home: HomePage(initialProject: film()),
+        home: HomePage(initialProject: film(seTypes: seTypes)),
       ),
     );
     await tester.pumpAndSettle();
@@ -191,6 +196,57 @@ void main() {
     expect([folded.frames, folded.shownFrom], [8, 4]);
   });
 
+  // 🗣️F-496 (유저 2026-10-28): 「타임라인패널도 … OFF랑 MONO도 se블록에
+  // 표시」 — and F-386's 「어떤컷에선 ON이지만 다음컷에선 OFF」: a cut's
+  // rows write the delivery the block has IN THAT CUT; the storyboard's
+  // track, in no one cut, the one its head plays in.
+  testWidgets('🚨each cut writes the delivery the block has there, and the '
+      'storyboard the head\'s', (tester) async {
+    await pumpFilm(
+      tester,
+      seTypes: SeLineTypes(byCut: {const CutId('cut-2'): SeLineType.mono}),
+    );
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    /// The crossing line's span at [key], and what it writes.
+    SeLineType? deliveryAt(String key, {Finder? within}) {
+      final span = spanOf(
+        tester,
+        within == null
+            ? find.byKey(ValueKey<String>(key))
+            : find.descendant(of: within, matching: find.byKey(ValueKey(key))),
+      );
+      expect(span.dialogue, line, reason: '⛔전제: the line across the cuts');
+      return span.delivery;
+    }
+
+    expect(deliveryAt('timeline-se-label-se-row-1-4'), SeLineType.on);
+    session.selectCut(const CutId('cut-2'));
+    await tester.pumpAndSettle();
+    expect(deliveryAt('timeline-se-label-se-row-1-0'), SeLineType.mono);
+
+    await tapKey(tester, 'timeline-mode-storyboard-button');
+    expect(
+      deliveryAt('storyboard-se-label-se-row-1-4'),
+      SeLineType.on,
+      reason: 'cut 2 is the one open, and the track reads the head\'s',
+    );
+
+    await tapKey(tester, 'timeline-mode-timeline-button');
+    session.selectLayer(const LayerId('se-row-1'));
+    await tester.pumpAndSettle();
+    await tapKey(tester, 'floating-bottom-collapse');
+    expect(
+      deliveryAt(
+        'timeline-se-label-se-row-1-0',
+        within: find.byType(CollapsedRowOverlay),
+      ),
+      SeLineType.mono,
+      reason: 'the canvas\'s folded row, the same',
+    );
+  });
+
   /// The boxes the dialogue under [span] paints its glyphs in, where they
   /// stand on screen.
   List<Rect> painted(WidgetTester tester, Finder span) {
@@ -210,8 +266,8 @@ void main() {
 
   for (final axis in Axis.values) {
     testWidgets('🚨a window paints the glyphs whose centre it holds, WHOLE '
-        'and where the whole line lays them, and not the name chip at the '
-        'block\'s head — ${axis.name}', (tester) async {
+        'and where the whole line lays them, and the name chip at ITS head '
+        '— ${axis.name}', (tester) async {
       // Eight frames of 24, seen from frame 4 on: the window opens at 96.
       const cellExtent = 24.0;
       Future<List<Rect>> seenFrom(int shownFrom) async {
@@ -251,11 +307,15 @@ void main() {
         inExclusiveRange(0, whole.length),
         reason: '⛔전제: the window cuts the line',
       );
+      // 🗣️F-496 (유저 2026-10-28): 「넘어간 다음 컷도 이름도 보이게」 — the
+      // cut the line ran into names it where it sees it from, over the
+      // words there. ↩️The chip was the head frame's alone (F-358-Q1).
+      final chip = find.bySemanticsLabel('SE name X');
+      expect(chip, findsOneWidget);
       expect(
-        find.bySemanticsLabel('SE name X'),
-        findsNothing,
-        reason: 'the chip is the head frame\'s, in the earlier cut — even '
-            'where it lies over the words past it (F-358-Q1)',
+        partAlong(axis, tester.getTopLeft(chip)),
+        moreOrLessEquals(window),
+        reason: 'at the window\'s head, not the block\'s',
       );
     });
   }

@@ -312,6 +312,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
         axis: widget.previewAxis,
         dialogue: _dialogue,
         seName: _seNameController.text.trim(),
+        delivery: _seTypes.inCut(_cutId),
       ),
       onSubmit: _submit,
     );

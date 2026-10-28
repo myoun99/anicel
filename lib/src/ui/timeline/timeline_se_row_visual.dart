@@ -3,10 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
+import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import '../../models/track_se_window.dart' show seSoundRunsPast;
@@ -53,12 +55,17 @@ bool layerKindUsesSeSheetCells(LayerKind kind) => kind == LayerKind.se;
 /// ([SeSpanVisual.shownFrom]), so its words stand where the track's own
 /// row has them (F-358). Each chip reads the frames free before its block
 /// on the row, the room it may stand in outside it ([seFramesFreeBefore]).
+///
+/// [cutId] is the cut whose delivery each line wears beside its name
+/// ([SeLineTypes.inCut]) — the cut a cut's view shows; null for a strip of
+/// the whole track, where each line wears the one its head's cut has.
 List<Widget> timelineRowSeLabelOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
   required Axis axis,
   int? spillInLeadFrames,
+  CutId? cutId,
   String keyPrefix = 'timeline',
 }) {
   final overlays = <Widget>[];
@@ -92,6 +99,7 @@ List<Widget> timelineRowSeLabelOverlays({
             frames: block.length + lead,
             dialogue: dialogue ?? '',
             seName: seName,
+            delivery: frame?.seTypes.inCut(cutId),
             shownFrom: lead,
             framesFreeBefore: seFramesFreeBefore(blocks, index),
           ),
@@ -647,6 +655,7 @@ class SeSpanVisual extends StatelessWidget {
     required this.frames,
     required this.dialogue,
     this.seName,
+    this.delivery,
     this.shownFrom = 0,
     this.framesFreeBefore = 0,
   });
@@ -663,6 +672,16 @@ class SeSpanVisual extends StatelessWidget {
   final int frames;
   final String dialogue;
   final String? seName;
+
+  /// The line's delivery where the span is seen — written beside its name,
+  /// in the name's type and by its law, where it says something
+  /// ([SeLineType.writtenOut]); in the name's place where it has none.
+  ///
+  /// 🗣️F-496 (유저 2026-10-28): 「OFF랑 MONO도 se블록에 표시. 타임시트
+  /// 용지패널처럼 이름 앞이니까 이름 왼쪽에. 이름이랑 같은텍스트/규칙.
+  /// 공간없으면 이름이 블록안에 첫부분에 들어가니까, 그 경우 이름 오른쪽에
+  /// 검정색으로. 대사랑 겹쳐도 문제없음」 — [_SeSpanFit.headIn].
+  final SeLineType? delivery;
 
   /// How many of [frames] run before the window the span is seen through:
   /// the cut a sound spilled into sees its block from its own frame 0 on,
@@ -685,23 +704,28 @@ class SeSpanVisual extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final seName = this.seName ?? '';
+    final said = delivery?.writtenOut == true ? delivery!.label : null;
     final ink = timelineRowLookOf(
       context,
       layer,
       ink: timelineDrawingInkColor,
     ).ink;
+    // The name stands at the head the span is SEEN from: a sound spilled
+    // in from an earlier cut wears it at this cut's frame 0 (F-496).
+    // ↩️The chip was the head frame's alone, so the cut a line ran into
+    // never named it (F-358-Q1).
+    final chipShown = seName.isNotEmpty;
     final fit = _SeSpanFit(
       axis: axis,
       frames: frames,
       framesFreeBefore: framesFreeBefore,
+      shownFrom: shownFrom,
+      named: chipShown,
       dialogue: dialogue,
       style: dialogueFitStyle(context, color: ink),
     );
-    // The chip is the head frame's, and a window opens on a whole frame: one
-    // opening past the head never shows it.
-    final chipShown = seName.isNotEmpty && shownFrom <= 0;
     return CustomPaint(
-      painter: chipShown ? _SeNameGroundPainter(fit) : null,
+      painter: chipShown || said != null ? _SeNameGroundPainter(fit) : null,
       child: CustomMultiChildLayout(
         delegate: _SeSpanLayout(fit),
         children: [
@@ -722,7 +746,22 @@ class SeSpanVisual extends StatelessWidget {
           if (chipShown)
             LayoutId(
               id: _SeSpanSlot.chip,
-              child: _SeNameBox(axis: axis, name: seName, ink: fit.nameInk),
+              child: _SeHeadWord(
+                axis: axis,
+                word: seName,
+                ink: fit.nameInk,
+                semanticsLabel: 'SE name $seName',
+              ),
+            ),
+          if (said != null)
+            LayoutId(
+              id: _SeSpanSlot.delivery,
+              child: _SeHeadWord(
+                axis: axis,
+                word: said,
+                ink: fit.deliveryInk,
+                semanticsLabel: 'SE delivery $said',
+              ),
             ),
         ],
       ),
@@ -747,6 +786,8 @@ final class _SeSpanFit {
     required this.axis,
     required this.frames,
     required this.framesFreeBefore,
+    required this.shownFrom,
+    required this.named,
     required this.dialogue,
     required this.style,
   });
@@ -759,22 +800,31 @@ final class _SeSpanFit {
   /// The frames free before the block on its row, which a box turns into
   /// the chip's room ([SeSpanVisual.framesFreeBefore]).
   final int framesFreeBefore;
+
+  /// How many of [frames] run before the window the span is seen through
+  /// ([SeSpanVisual.shownFrom]): where its head's words stand.
+  final int shownFrom;
+
+  /// Whether the span shows its name's chip — where its delivery stands
+  /// beside it rather than in its place.
+  final bool named;
   final String dialogue;
   final TextStyle style;
 
   double? _measuredAcross;
   double _dialogueExtent = 0;
 
-  /// Whether the box the span was last asked about put the chip just
-  /// before the block ([chipIn]) — what its name's ink is read off at paint
-  /// ([nameInk]). ⚠️Fresh at that paint by construction: a shown chip is
-  /// always under its ground's painter ([_SeNameGroundPainter]), which asks
-  /// [chipIn] of the very box and paints first — a `CustomPaint` paints its
-  /// painter under its child. So a span built again with what it had, and
-  /// not laid again, still writes its name in the ink of where it stands.
-  bool _outside = false;
+  /// Where the box the span was last asked about put the head's words
+  /// ([headIn]) — what each one's ink is read off at paint ([nameInk],
+  /// [deliveryInk]). ⚠️Fresh at that paint by construction: a shown word
+  /// is always under its ground's painter ([_SeNameGroundPainter]), which
+  /// asks [headIn] of the very box and paints first — a `CustomPaint`
+  /// paints its painter under its child. So a span built again with what it
+  /// had, and not laid again, still writes each word in the ink of where it
+  /// stands.
+  _SeHead _head = (chip: 0, nameFrom: 0, deliveryFrom: 0);
 
-  /// The chip's name's ink where it stands ([chipIn]).
+  /// The chip's name's ink where it stands ([headIn]).
   ///
   /// 🗣️F-444 (유저 2026-10-23): 「지금 이름칸마저 블록으로 보여서, 어차피
   /// 뒤에 배경 어두운색이니까, 배경 바탕색 삭제하고, 심플하게 하얀색 텍스트
@@ -783,9 +833,22 @@ final class _SeSpanFit {
   /// its head, the block's ink over the tint, as it was. ⚠️The timesheet's
   /// own writing stays as it is: 「타임시트랑 달라지지만 변경하고싶음」. On
   /// its head it is the block's word, in the block's look ([style], I-129).
-  Color nameInk() => _outside ? timelineTextOnDarkGroundColor : style.color!;
+  Color nameInk() => _inkAt(_head.nameFrom);
 
-  ({double chip, bool outside}) chipIn(Size size) {
+  /// The delivery's ink where it stands ([headIn]) — the name's law: white
+  /// before the block, the block's ink on it (F-496: 「이름이랑 같은
+  /// 텍스트/규칙 … 이름 오른쪽에 검정색으로」).
+  Color deliveryInk() => _inkAt(_head.deliveryFrom);
+
+  Color _inkAt(double from) =>
+      from < 0 ? timelineTextOnDarkGroundColor : style.color!;
+
+  /// Where the head's words stand along [size]: the name's chip where
+  /// [seNameChipPlace] says — just before the block, or at the head the
+  /// span is seen from — and the delivery in a chip of its length beside
+  /// it: before it where the room before the block holds both, after it
+  /// where it does not, and in its place on a nameless span (F-496).
+  _SeHead headIn(Size size) {
     final across = extentAcross(axis, size);
     if (_measuredAcross != across) {
       _measuredAcross = across;
@@ -796,14 +859,24 @@ final class _SeSpanFit {
         maxCrossExtent: across,
       );
     }
-    final along = extentAlong(axis, size);
+    final frame = frames <= 0 ? 0.0 : extentAlong(axis, size) / frames;
+    final room = framesFreeBefore * frame;
     final place = seNameChipPlace(
-      along,
+      extentAlong(axis, size),
       dialogueExtent: _dialogueExtent,
-      roomBefore: frames <= 0 ? 0 : framesFreeBefore * along / frames,
+      roomBefore: room,
     );
-    _outside = place.outside;
-    return place;
+    final chip = place.chip;
+    final nameFrom = place.outside ? -chip : shownFrom * frame;
+    return _head = (
+      chip: chip,
+      nameFrom: nameFrom,
+      deliveryFrom: switch ((named, place.outside)) {
+        (false, _) => nameFrom,
+        (true, true) => room >= 2 * chip ? -2 * chip : 0,
+        (true, false) => nameFrom + chip,
+      },
+    );
   }
 
   /// Whether [other] answers as this does for every box.
@@ -811,15 +884,22 @@ final class _SeSpanFit {
       axis == other.axis &&
       frames == other.frames &&
       framesFreeBefore == other.framesFreeBefore &&
+      shownFrom == other.shownFrom &&
+      named == other.named &&
       dialogue == other.dialogue &&
       style == other.style;
 }
 
-enum _SeSpanSlot { chip, dialogue }
+/// Where a span's head words stand along its box ([_SeSpanFit.headIn]):
+/// each in a chip [chip] long, the name's from [nameFrom] and the
+/// delivery's from [deliveryFrom] — before the block where negative.
+typedef _SeHead = ({double chip, double nameFrom, double deliveryFrom});
 
-/// The words over the whole span and the chip where [seNameChipPlace]
-/// says — just before the span, or at its head — each centred across, as
-/// the flex that laid them did.
+enum _SeSpanSlot { chip, delivery, dialogue }
+
+/// The words over the whole span and the head's words where
+/// [_SeSpanFit.headIn] says — just before the span, or at its head — each
+/// centred across, as the flex that laid them did.
 class _SeSpanLayout extends MultiChildLayoutDelegate {
   _SeSpanLayout(this.fit);
 
@@ -847,9 +927,12 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
     }
 
     lay(_SeSpanSlot.dialogue, 0, extentAlong(axis, size));
+    final head = fit.headIn(size);
     if (hasChild(_SeSpanSlot.chip)) {
-      final place = fit.chipIn(size);
-      lay(_SeSpanSlot.chip, place.outside ? -place.chip : 0, place.chip);
+      lay(_SeSpanSlot.chip, head.nameFrom, head.chip);
+    }
+    if (hasChild(_SeSpanSlot.delivery)) {
+      lay(_SeSpanSlot.delivery, head.deliveryFrom, head.chip);
     }
   }
 
@@ -878,6 +961,11 @@ class _SeSpanLayout extends MultiChildLayoutDelegate {
 /// of its own in the block's shape, the colour the tint gives the block's
 /// paper — so the name read the same on either side of the block's start,
 /// and read as a block of its own.
+///
+/// The delivery beside the name lays no ground: the timesheet writes it 「배경
+/// 색없이 텍스트만」 (I-20), and F-496 has the name's text law carried over —
+/// so a span that writes only its delivery is still painted here, for the
+/// box it asks of [_SeSpanFit.headIn] to keep its ink fresh.
 class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
   const _SeNameGroundPainter(this.fit);
 
@@ -887,8 +975,8 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final place = fit.chipIn(size);
-    if (place.outside) {
+    final head = fit.headIn(size);
+    if (!fit.named || head.nameFrom < 0) {
       return;
     }
     final axis = fit.axis;
@@ -909,8 +997,8 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
       )
       ..drawRect(
         Rect.fromPoints(
-          Offset.zero,
-          offsetAlong(axis, along: place.chip, across: across),
+          offsetAlong(axis, along: head.nameFrom, across: 0),
+          offsetAlong(axis, along: head.nameFrom + head.chip, across: across),
         ),
         Paint()..color = tint,
       )
@@ -925,25 +1013,34 @@ class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
     fit.axis,
     fit.frames,
     fit.framesFreeBefore,
+    fit.shownFrom,
+    fit.named,
     fit.dialogue,
     fit.style,
     AppColors.accent,
   );
 }
 
-/// The chip's room and its name. Where it stands and how far it runs ALONG
-/// the block are the layout's to say ([_SeSpanLayout], [seNameChipPlace]): its
-/// [seNameBoxExtent], narrowed with the words (F-224).
-class _SeNameBox extends StatelessWidget {
-  const _SeNameBox({required this.axis, required this.name, required this.ink});
+/// A chip's room and the word in it — the name, or the delivery beside it.
+/// Where it stands and how far it runs ALONG the block are the layout's to
+/// say ([_SeSpanLayout], [_SeSpanFit.headIn]): its [seNameBoxExtent],
+/// narrowed with the words (F-224).
+class _SeHeadWord extends StatelessWidget {
+  const _SeHeadWord({
+    required this.axis,
+    required this.word,
+    required this.ink,
+    required this.semanticsLabel,
+  });
 
   final Axis axis;
-  final String name;
+  final String word;
 
-  /// The name's ink, asked at paint: where the chip stands is the layout's
+  /// The word's ink, asked at paint: where the chip stands is the layout's
   /// to say, and a zoom lays it out again without building it
   /// ([_SeSpanFit.nameInk]).
   final BuiltWordInk ink;
+  final String semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -957,7 +1054,7 @@ class _SeNameBox extends StatelessWidget {
     // this box is the chip's room and its name. Just before the block there
     // is no tint, and the name is white on the row (F-444).
     return Semantics(
-      label: 'SE name $name',
+      label: semanticsLabel,
       // Own node even where an ancestor would merge labels (the dialog
       // preview) — tests and screen readers address the box directly.
       container: true,
@@ -965,7 +1062,7 @@ class _SeNameBox extends StatelessWidget {
     );
   }
 
-  /// The name written in the chip: down it on the row strip, along it on
+  /// The word written in the chip: down it on the row strip, along it on
   /// the X-sheet band.
   ///
   /// R10 R6: the vertical arm was its own glyph stack, so an SE name with a
@@ -1002,7 +1099,7 @@ class _SeNameBox extends StatelessWidget {
     return ExcludeSemantics(
       child: axis == Axis.horizontal
           ? TimelineBlockColumn(
-              text: name,
+              text: word,
               style: style,
               lineHeight: 1.05,
               latinForm: VerticalLatinForm.upright,
@@ -1010,7 +1107,7 @@ class _SeNameBox extends StatelessWidget {
               ink: ink,
             )
           : TimelineBlockText(
-              text: name,
+              text: word,
               style: style,
               place: place,
               ink: ink,

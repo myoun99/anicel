@@ -6,6 +6,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_line_type.dart';
 import '../../models/timeline_exposure.dart';
 import '../timeline/timeline_beat_lines.dart' show TimelineGridLaw;
 import '../timeline/axis_turn.dart' show sizedAlong;
@@ -36,9 +37,11 @@ class InstanceEditPreview extends StatefulWidget {
     required this.axis,
     required String dialogue,
     required String seName,
+    SeLineType delivery = SeLineType.on,
   }) : _kind = LayerKind.se,
        _dialogue = dialogue,
        _seName = seName,
+       _delivery = delivery,
        _event = null,
        _defById = null;
 
@@ -50,6 +53,7 @@ class InstanceEditPreview extends StatefulWidget {
   }) : _kind = LayerKind.instruction,
        _dialogue = '',
        _seName = '',
+       _delivery = SeLineType.on,
        _event = event,
        _defById = defById;
 
@@ -57,6 +61,10 @@ class InstanceEditPreview extends StatefulWidget {
   final LayerKind _kind;
   final String _dialogue;
   final String _seName;
+
+  /// The delivery in the cut the window sets — what the block writes beside
+  /// its name there (F-496).
+  final SeLineType _delivery;
   final InstructionEvent? _event;
   final CameraInstructionDef? Function(String instructionId)? _defById;
 
@@ -79,6 +87,7 @@ class InstanceEditPreview extends StatefulWidget {
             strokes: const [],
             name: _dialogue,
             seName: _seName.isEmpty ? null : _seName,
+            seTypes: SeLineTypes(own: _delivery),
           ),
         ],
         timeline: {0: TimelineExposure.drawing(frameId, length: komaCount)},

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
     show CameraInstructionDef;
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -119,6 +120,7 @@ void main() {
     ValueListenable<TimelineDragPreview?>? dragPreview,
     Object? cameraTrack,
     Map<LayerId, int> spillInLeadFrames = const {},
+    CutId? cutId,
     String? seClipMarkerTooltip,
     AudioPeaks? Function(String)? peaksFor,
     SoundCannotPlay? Function(String)? cannotPlay,
@@ -149,6 +151,7 @@ void main() {
         dragPreview: dragPreview ?? previewA,
         memoAux: TimelineRowMemoAux(cameraTrack: cameraTrack ?? trackA),
         spillInLeadFrames: spillInLeadFrames,
+        cutId: cutId,
         seClipMarkerTooltip: seClipMarkerTooltip,
         audioPeaksFor: peaksFor ?? landedA,
         soundCannotPlay: cannotPlay,
@@ -193,6 +196,7 @@ void main() {
       playbackFrameCount: 48,
       substrateGeneration: 'world-1',
       spillInLeadFrames: {const LayerId('other'): 3},
+      cutId: const CutId('cut-2'),
     );
     expect(facts(there), facts(here), reason: 'the shape is the same');
     expect(
@@ -278,6 +282,12 @@ void main() {
     'spillInLeadFrames': (
       told(),
       told(spillInLeadFrames: {const LayerId('drawing'): 3}),
+    ),
+    // F-496: an SE block writes the delivery it has in the cut it is seen
+    // in.
+    'cutId': (
+      told(row: se, cutId: const CutId('cut-1')),
+      told(row: se, cutId: const CutId('cut-2')),
     ),
     'seAudioPeaks': (
       told(row: se, peaksFor: landedA),

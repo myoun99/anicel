@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -152,6 +153,7 @@ class TimelineGridHooks {
     this.dragPreview,
     this.opacityDragPreview,
     this.spillInLeadFrames = const {},
+    this.cutId,
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
@@ -574,6 +576,10 @@ class TimelineGridHooks {
   /// block's start grip stands down, and an SE row draws `~` at the cut
   /// start; F-113: its waveform starts that far into the sound).
   final Map<LayerId, int> spillInLeadFrames;
+
+  /// The cut the rows are seen in — what an SE block's delivery is read in
+  /// ([SeLineTypes.inCut], F-386 · F-496). Null for a grid in no cut.
+  final CutId? cutId;
 
   /// End-line drag hooks (UI-R18 #14): the red cut-end boundary grows a
   /// grip that end-trims the ACTIVE cut through the session's trim

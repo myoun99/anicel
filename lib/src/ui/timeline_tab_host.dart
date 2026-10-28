@@ -877,6 +877,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the transition row's mark answers the same way.
             spillInLeadFrames:
                 _session.activeCutSpan.activeCutSpillInLeadFrames,
+            // Where a track SE block reads its delivery (F-496).
+            cutId: _session.activeCutId,
             // The rail legend's bulk sweeps + the section brackets' flyout —
             // all session-backed (R-toolbar round); the R2 filter/dim/opacity
             // facets ride the same struct.

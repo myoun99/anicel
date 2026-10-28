@@ -5,6 +5,7 @@ import '../panels/panel_collapsed_scope.dart';
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/cut_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
@@ -171,6 +172,7 @@ class TimelinePanel extends StatefulWidget {
     this.masterOpacityValue = 1.0,
     this.dragPreview,
     this.spillInLeadFrames = const {},
+    this.cutId,
     this.cutEndDrag,
     this.substrateGeneration = '',
     this.memoAux = const TimelineRowMemoAux(),
@@ -204,6 +206,9 @@ class TimelinePanel extends StatefulWidget {
   /// from an earlier cut, each with how far into it the cut starts — see
   /// [TimelineGridHooks.spillInLeadFrames].
   final Map<LayerId, int> spillInLeadFrames;
+
+  /// The cut the rows are seen in — [TimelineGridHooks.cutId].
+  final CutId? cutId;
 
   /// The frame cursor (editing playhead / playback position). Only the
   /// cursor-driven widgets subscribe — a tick never rebuilds the panel or
@@ -783,6 +788,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
       onToggleAttachGroup: widget.onToggleAttachGroup,
       opacityDragPreview: widget.opacityDragPreview,
       spillInLeadFrames: widget.spillInLeadFrames,
+      cutId: widget.cutId,
       cutEndDrag: widget.cutEndDrag,
       substrateGeneration: widget.substrateGeneration,
       memoAux: widget.memoAux,
