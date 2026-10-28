@@ -1,19 +1,23 @@
 #version 460 core
 
 // 🚨A CAMERA LENS BLUR'S IRIS, GATHERED OUT OF ITS ROW SUMS
-// (`IrisGatherPass`): every pixel the weighted mean of the pixels about it
-// whose centres the iris covers — of each row it covers, the sum between
-// two of that row's sums (`row_sum.frag`), so a row costs two reads
-// whatever the iris's width, and every shape is exact.
+// (`IrisGatherPass`): every pixel the mean of the pixels about it whose
+// centres the iris covers — of each row it covers, the sum between two of
+// that row's sums (`row_sum.frag`), so a row costs two reads whatever the
+// iris's width, and every shape is exact.
 //
-// The iris's rows are a table ([uTable], `IrisBlurShader`): the row
-// `uReach` above the pixel first, two texels each — its outline's left and
-// right column about the pixel, then its core's — in red and green, each
-// a whole number over [kTableScale] past [kTableOffset].
+// The iris's rows are a table ([uTable], `iris_table.frag`): its levels,
+// each [uLinesALevel] lines of [uRowsALine] rows from [uReachMost] above
+// the pixel down, two texels a row — its outline's left and right column
+// about the pixel, then its core's — and the level's reach in blue. A
+// pixel reads one level: the first, or — where a blur map is read
+// ([uMapped]) — the one its map's value names, through [uChannel].
 //
 // 📐THE FRINGE pushes [uFringe] of the core's light out to the edge: the
-// outline's sum less that much of the core's, over [uWeight] — what every
-// pixel's weights add up to.
+// outline's sum less that much of the core's, over what the pixels' weights
+// add up to — where the edge holds a pixel the core does not, or there is
+// nowhere to push it to. An iris that covers no centre at all, a blur
+// map's in focus, is the pixel itself.
 //
 // 📐THE EDGE. Past the raster there is nothing ([uRepeats] off), or —
 // AE's Repeat Edge Pixels, on the paper's edge — past the paper's columns
@@ -34,28 +38,31 @@ precision highp float;
 
 #include "lens_light.glsl"
 
-const float kTableOffset = 8192.0;
-const float kTableScale = 16384.0;
-
 uniform vec2 uSize;
 
-// The rows run from uReach above the pixel to uReach below it.
-uniform float uReach;
+// The rows of every level run from uReachMost above the pixel down.
+uniform float uReachMost;
 
-// How big the table is, and how many rows a line of it holds.
+// How big the table is, and how it is laid.
 uniform vec2 uTableSize;
-uniform float uTableRows;
+uniform float uRowsALine;
+uniform float uLinesALevel;
 
 uniform float uFringe;
-uniform float uWeight;
 uniform float uRepeats;
 uniform vec4 uPaper;
 uniform float uLights;
 uniform vec4 uLight;
 
+// Whether a blur map names each pixel's level, and what of its pixel it
+// reads: luma, or one channel.
+uniform float uMapped;
+uniform vec4 uChannel;
+
 uniform sampler2D uSums;
 uniform sampler2D uInput;
 uniform sampler2D uTable;
+uniform sampler2D uMap;
 
 out vec4 fragColor;
 
@@ -68,12 +75,13 @@ vec4 inputAt(float x, float y) {
   return uLights > 0.5 ? lit(texel, uLight) : texel;
 }
 
-// Row [row]'s outline (k 0) or core (k 1): its left and right column.
-vec2 spanOf(float row, float k) {
-  float line = floor(row / uTableRows);
-  float column = (row - line * uTableRows) * 2.0 + k;
-  vec2 kept = texture(uTable, (vec2(column, line) + 0.5) / uTableSize).rg;
-  return floor(kept * kTableScale + 0.5) - kTableOffset;
+// Level [level]'s row [row] from the top: its outline's (k 0) or core's
+// (k 1) left and right column, and the level's reach.
+vec3 rowOf(float level, float row, float k) {
+  float line = floor(row / uRowsALine);
+  float column = (row - line * uRowsALine) * 2.0 + k;
+  vec2 texel = vec2(column, level * uLinesALevel + line) + 0.5;
+  return texture(uTable, texel / uTableSize).rgb;
 }
 
 // Row [y]'s pixels from column [a] to [b] that lie in [from] … [to], summed.
@@ -103,32 +111,52 @@ vec4 spanSum(vec2 span, float y) {
 
 void main() {
   vec2 at = floor(FlutterFragCoord().xy);
-  vec4 sum = vec4(0.0);
-  float rows = 2.0 * uReach + 1.0;
+  float level = 0.0;
+  if (uMapped > 0.5) {
+    vec4 map = texture(uMap, (at + 0.5) / uSize);
+    level = clamp(floor(dot(map, uChannel) * 255.0 + 0.5), 0.0, 255.0);
+  }
+  float reach = rowOf(level, 0.0, 0.0).b;
+  vec4 outline = vec4(0.0);
+  vec4 core = vec4(0.0);
+  float outlineWeight = 0.0;
+  float coreWeight = 0.0;
   // A loop needs a constant bound here: `irisRowsAtMost`.
   for (int i = 0; i < 16385; i++) {
-    float row = float(i);
+    float dy = float(i) - reach;
     // ⛔NO EARLY RETURN (`colour_key.frag`, flutter#190809): a break ends
     // the loop, the shape the probes of 10-28 ran on the Surface Pro 11's
     // ANGLE.
-    if (row >= rows) {
+    if (dy > reach) {
       break;
     }
-    float y = at.y + row - uReach;
+    float row = dy + uReachMost;
+    vec2 span = rowOf(level, row, 0.0).rg;
+    outlineWeight += max(0.0, span.y - span.x + 1.0);
+    vec2 inner = vec2(1.0, 0.0);
+    if (uFringe > 0.0) {
+      inner = rowOf(level, row, 1.0).rg;
+      coreWeight += max(0.0, inner.y - inner.x + 1.0);
+    }
+    float y = at.y + dy;
     if (uRepeats > 0.5) {
       y = clamp(y, uPaper.y, uPaper.w);
     } else if (y < 0.0 || y >= uSize.y) {
       continue;
     }
-    sum += spanSum(at.x + spanOf(row, 0.0), y);
+    outline += spanSum(at.x + span, y);
     if (uFringe > 0.0) {
-      sum -= spanSum(at.x + spanOf(row, 1.0), y) * uFringe;
+      core += spanSum(at.x + inner, y);
     }
   }
+  float pushed = outlineWeight > coreWeight ? uFringe : 0.0;
+  float weight = outlineWeight - coreWeight * pushed;
+  vec4 mean = weight > 0.0
+      ? (outline - core * pushed) / weight
+      : inputAt(at.x, at.y);
   float onPaper = uRepeats < 0.5
       ? 1.0
       : step(uPaper.x, at.x) * step(at.x, uPaper.z) * step(uPaper.y, at.y) *
           step(at.y, uPaper.w);
-  vec4 mean = sum / uWeight;
   fragColor = (uLights > 0.5 ? stored(mean, uLight) : mean) * onPaper;
 }

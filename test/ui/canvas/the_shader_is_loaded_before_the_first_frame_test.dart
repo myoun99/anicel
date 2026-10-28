@@ -63,6 +63,7 @@ void main() {
         'shaders/layer_blend.frag',
         'shaders/directional_blur.frag',
         'shaders/row_sum.frag',
+        'shaders/iris_table.frag',
         'shaders/iris_gather.frag',
       ]),
     );

@@ -14,18 +14,22 @@ import 'package:anicel/src/services/camera_lens_blur_passes.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/services/shaded_passes.dart';
 import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
+import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
+
+import '../../helpers/iris_truth.dart';
 
 /// 🗣️I-132-Q3 (유저 2026-10-27): AE's Camera Lens Blur; 🗣️I-132-Q15 a
 /// (10-28): 「모든 모양을 정확히 — 행 누적합」 — every pixel the mean of the
 /// pixels about it its iris covers, read out of row sums laid in floats.
 ///
 /// The truth is the mean worked out on the CPU, pixel by pixel, over the
-/// pixels the iris covers ([irisSpans], held exact by
-/// `an_iris_covers_its_shape_test`) — of the light each gives where the
-/// blur reads it through its Highlight and Use Linear Working Space
-/// ([LensLight]). ⛔ON IMPELLER: a row sum runs past 1, and Skia rasters a
-/// float target as bytes.
+/// pixels the iris covers, asked point by point ([irisCoverOf] — the GPU's
+/// table is held to it by `an_iris_table_covers_its_shape_test`) — of the
+/// light each gives where the blur reads it through its Highlight and Use
+/// Linear Working Space ([LensLight]), at each pixel's own radius where a
+/// blur map names it. ⛔ON IMPELLER: a row sum runs past 1, and Skia
+/// rasters a float target as bytes.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -168,14 +172,40 @@ void main() {
     ];
   }
 
+  /// The radius [iris] blurs pixel [pixel] to: its own, or — where it reads
+  /// a blur map ([IrisGatherPass.map]) — its own times how far the level
+  /// [map]'s value there names lies from the focal distance, over 255.
+  double radiusAt(IrisGatherPass iris, Uint8List? map, int pixel) {
+    final named = iris.map;
+    if (named == null) {
+      return iris.radius;
+    }
+    final IrisMapChannel(:r, :g, :b, :a) = named.channel;
+    final at = pixel * 4;
+    final value =
+        r * map![at] + g * map[at + 1] + b * map[at + 2] + a * map[at + 3];
+    final level = value.round().clamp(0, 255);
+    final distance = named.inverts ? 255 - level : level;
+    return iris.radius * (distance - named.focal).abs() / 255;
+  }
+
   /// The mean [iris] makes of [input], a [width] wide raster, worked out
-  /// pixel by pixel: past the raster nothing, or — where the iris repeats
-  /// the paper's edge — the paper's edge pixel, and nothing drawn off it;
-  /// every pixel read through the iris's light, and put back as stored.
-  List<double> truth(Uint8List input, int width, IrisGatherPass iris) {
+  /// pixel by pixel, each at its own radius ([radiusAt]) where [map] names
+  /// it: past the raster nothing, or — where the iris repeats the paper's
+  /// edge — the paper's edge pixel, and nothing drawn off it; every pixel
+  /// read through the iris's light, and put back as stored. ⚠️A pixel
+  /// whose iris has a centre a hair from its edge
+  /// ([aCentreIsAHairFromTheEdge]) may read it either way: not a number.
+  List<double> truth(
+    Uint8List input,
+    int width,
+    IrisGatherPass iris, {
+    Uint8List? map,
+  }) {
     final height = input.length ~/ (4 * width);
     final paper = iris.paper;
     final light = iris.light;
+    final covers = <double, IrisCover?>{};
     final pixels = [
       for (var i = 0; i < input.length; i += 4)
         [for (var c = 0; c < 4; c += 1) input[i + c] / 255],
@@ -198,11 +228,23 @@ void main() {
             (x < left || x > right || y < top || y > bottom)) {
           continue;
         }
+        final radius = radiusAt(iris, map, y * width + x);
+        final cover = covers.putIfAbsent(
+          radius,
+          () => aCentreIsAHairFromTheEdge(radius, iris.iris)
+              ? null
+              : irisCoverOf(radius, iris.iris),
+        );
+        if (cover == null) {
+          final at = (y * width + x) * 4;
+          out.fillRange(at, at + 4, double.nan);
+          continue;
+        }
         final sum = List<double>.filled(4, 0);
-        void add(List<IrisSpan> rows, double weight) {
+        void add(List<IrisRow> rows, double weight) {
           for (var row = 0; row < rows.length; row += 1) {
             for (var dx = rows[row].left; dx <= rows[row].right; dx += 1) {
-              var (u, v) = (x + dx, y + row - iris.reach);
+              var (u, v) = (x + dx, y + row - cover.reach);
               if (paper != null) {
                 (u, v) = (u.clamp(left, right), v.clamp(top, bottom));
               } else if (u < 0 || v < 0 || u >= width || v >= height) {
@@ -215,11 +257,11 @@ void main() {
           }
         }
 
-        add(iris.outline, 1);
-        if (iris.fringe > 0) {
-          add(iris.core, -iris.fringe);
-        }
-        final mean = [for (final each in sum) each / iris.weight];
+        add(cover.outline, 1);
+        add(cover.core, -cover.pushed);
+        final mean = cover.weight > 0
+            ? [for (final each in sum) each / cover.weight]
+            : read[y * width + x];
         final pixel = light == null ? mean : storedPixelOf(mean, light);
         for (var c = 0; c < 4; c += 1) {
           out[(y * width + x) * 4 + c] = pixel[c] * 255;
@@ -229,10 +271,17 @@ void main() {
     return out;
   }
 
+  /// [got] within one of [want] wherever [want] is a number — and it is,
+  /// for all but a few pixels.
   void expectWithinOne(Uint8List got, List<double> want, {String? reason}) {
+    final unknown = want.where((each) => each.isNaN).length;
+    expect(unknown, lessThan(got.length / 4), reason: 'fixture: $reason');
     var worst = 0.0;
     var at = -1;
     for (var i = 0; i < got.length; i += 1) {
+      if (want[i].isNaN) {
+        continue;
+      }
       final off = (got[i] - want[i]).abs();
       if (off > worst) {
         (worst, at) = (off, i);
@@ -246,6 +295,14 @@ void main() {
     final at = (y * width + x) * 4;
     return Uint8List(width * height * 4)..fillRange(at, at + 4, 255);
   }
+
+  /// The pixels that read a dot at ([dotX], [dotY]) through [cover]: those
+  /// whose iris holds the dot — the iris turned a half turn about it.
+  Set<(int, int)> litBy(IrisCover cover, int dotX, int dotY) => {
+    for (final (row, span) in cover.outline.indexed)
+      for (var dx = span.left; dx <= span.right; dx += 1)
+        (dotX - dx, dotY - (row - cover.reach)),
+  };
 
   Uint8List randomPicture(int width, int height, {int seed = 7}) {
     final random = math.Random(seed);
@@ -277,27 +334,46 @@ void main() {
     );
     final got = await blurred(tester, source, effect);
     final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 80, 60));
+    final cover = irisCoverOf(iris.radius, iris.iris);
 
-    // A pixel reads the dot where the dot lies in its iris: the iris
-    // turned a half turn about the dot.
-    final lit = <(int, int)>{
-      for (final (row, span) in iris.outline.indexed)
-        for (var dx = span.left; dx <= span.right; dx += 1)
-          (dotX - dx, dotY - (row - iris.reach)),
-    };
+    final lit = litBy(cover, dotX, dotY);
     for (var y = 0; y < height; y += 1) {
       for (var x = 0; x < width; x += 1) {
         final alpha = got[(y * width + x) * 4 + 3];
         expect(
           alpha,
-          lit.contains((x, y))
-              ? closeTo(255 / iris.weight, 1)
-              : 0,
+          lit.contains((x, y)) ? closeTo(255 / cover.weight, 1) : 0,
           reason: '($x, $y)',
         );
       }
     }
-    expect(lit.length, iris.weight, reason: 'every pixel it covers, once');
+    expect(lit.length, cover.weight, reason: 'every pixel it covers, once');
+  });
+
+  testWidgets('a fringe with no edge to push the light out to leaves it '
+      'where it is: an iris whose core covers all it does blurs as one with '
+      'none', (tester) async {
+    final (width, height, dotX, dotY) = (9, 9, 4, 4);
+    final source = await imageOf(
+      tester,
+      dotPicture(width, height, dotX, dotY),
+      width,
+      height,
+    );
+    final pushing = lens(radius: 1.3, roundness: 100, fringe: 500);
+    final iris = irisOf(pushing, width, const Rect.fromLTWH(0, 0, 9, 9));
+    final cover = irisCoverOf(iris.radius, iris.iris);
+    expect(
+      (coveredBy(cover.outline), coveredBy(cover.core)),
+      (5, 5),
+      reason: 'fixture: its core covers all its outline does',
+    );
+    final got = await blurred(tester, source, pushing);
+    expect(got[(dotY * width + dotX) * 4 + 3], closeTo(255 / 5, 1));
+    expect(
+      got,
+      await blurred(tester, source, lens(radius: 1.3, roundness: 100)),
+    );
   });
 
   testWidgets('a picture blurs to the mean of each iris, pixel for pixel — '
@@ -420,15 +496,12 @@ void main() {
     );
     final effect = lens(radius: 5, shape: 1, gain: 100, threshold: 0);
     final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 40, 40));
+    final cover = irisCoverOf(iris.radius, iris.iris);
     // White past a threshold of 0 gains a hundred times its luma more.
-    expect(101 / iris.weight, greaterThan(1), reason: 'fixture: outshines');
+    expect(101 / cover.weight, greaterThan(1), reason: 'fixture: outshines');
     final got = await blurred(tester, source, effect);
 
-    final lit = <(int, int)>{
-      for (final (row, span) in iris.outline.indexed)
-        for (var dx = span.left; dx <= span.right; dx += 1)
-          (dotX - dx, dotY - (row - iris.reach)),
-    };
+    final lit = litBy(cover, dotX, dotY);
     for (var y = 0; y < height; y += 1) {
       for (var x = 0; x < width; x += 1) {
         final at = (y * width + x) * 4;
@@ -455,10 +528,11 @@ void main() {
 
     expect(got[(dotY * width + dotX) * 4 + 3], 0, reason: 'the core is dark');
     final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 60, 60));
-    final edge = iris.outline[iris.reach];
+    final cover = irisCoverOf(iris.radius, iris.iris);
+    final edge = cover.outline[cover.reach];
     expect(
       got[(dotY * width + dotX - edge.left) * 4 + 3],
-      closeTo(255 / iris.weight, 1),
+      closeTo(255 / cover.weight, 1),
       reason: 'the ring is lit',
     );
   });
@@ -486,6 +560,131 @@ void main() {
       await blurred(tester, source, effect),
       truth(input, width, irisOf(effect, width, paper)),
     );
+  });
+
+  /// [source] through [pass], each pixel at the radius [map] names
+  /// ([IrisGatherPass.map]): its rows summed as a camera lens blur sums
+  /// them ([rowSumPasses]), then its iris gathered out of the sums.
+  Future<Uint8List> blurredBy(
+    WidgetTester tester,
+    ui.Image source,
+    IrisGatherPass pass,
+    ui.Image map,
+  ) async {
+    final (width, height) = (source.width, source.height);
+    ui.Image drawn(ui.FragmentShader shader, {required bool inFloats}) {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        Rect.fromLTWH(0, 0, width * 1.0, height * 1.0),
+        Paint()
+          ..shader = shader
+          ..blendMode = BlendMode.src,
+      );
+      final image = rasterPicture(recorder, width, height, inFloats: inFloats);
+      shader.dispose();
+      addTearDown(image.dispose);
+      return image;
+    }
+
+    var sums = source;
+    for (final sum in rowSumPasses(width, light: pass.light)) {
+      sums = drawn(
+        IrisBlurShader.rowSumFor(source: sums, pass: sum),
+        inFloats: true,
+      );
+    }
+    return bytesOf(
+      tester,
+      drawn(
+        IrisBlurShader.gatherFor(
+          sums: sums,
+          input: source,
+          pass: pass,
+          map: map,
+        ),
+        inFloats: false,
+      ),
+    );
+  }
+
+  group('a blur map', () {
+    final (width, height) = (60, 30);
+
+    IrisGatherPass mappedBy(
+      IrisMapChannel channel, {
+      double radius = 60,
+      double focal = 128,
+      bool inverts = false,
+    }) => IrisGatherPass(
+      radius: radius,
+      iris: (
+        sides: 6,
+        roundness: 0.4,
+        aspect: 1.3,
+        rotation: 0.5,
+        fringe: 200,
+      ),
+      paper: null,
+      light: null,
+      map: (channel: channel, focal: focal, inverts: inverts),
+    );
+
+    testWidgets('names each pixel\'s radius: the blur\'s, times how far its '
+        'value lies from the focal distance over 255 — a pixel in focus is '
+        'itself', (tester) async {
+      final bytes = randomPicture(width, height, seed: 21);
+      final source = await imageOf(tester, bytes, width, height);
+      final input = await bytesOf(tester, source);
+      // Grey, a level a column from 98 on: the focal distance at column 30.
+      final levels = Uint8List(width * height * 4);
+      for (var i = 0; i < levels.length; i += 4) {
+        levels.fillRange(i, i + 3, 98 + (i ~/ 4) % width);
+        levels[i + 3] = 255;
+      }
+      final map = await imageOf(tester, levels, width, height);
+      for (final inverts in [false, true]) {
+        final pass = mappedBy(
+          IrisMapChannel.luminance,
+          focal: inverts ? 255 - 128 : 128,
+          inverts: inverts,
+        );
+        final got = await blurredBy(tester, source, pass, map);
+        expectWithinOne(
+          got,
+          truth(input, width, pass, map: levels),
+          reason: 'inverts $inverts',
+        );
+        for (var y = 0; y < height; y += 1) {
+          final at = (y * width + 30) * 4;
+          expect(
+            got.sublist(at, at + 4),
+            input.sublist(at, at + 4),
+            reason: 'in focus, row $y',
+          );
+        }
+      }
+    });
+
+    testWidgets('reads its level off the channel it is told to: the luma, '
+        'red, or alpha', (tester) async {
+      final bytes = randomPicture(width, height, seed: 23);
+      final source = await imageOf(tester, bytes, width, height);
+      final input = await bytesOf(tester, source);
+      final levels = randomPicture(width, height, seed: 29);
+      final map = await imageOf(tester, levels, width, height);
+      for (final channel in [
+        IrisMapChannel.luminance,
+        IrisMapChannel.red,
+        IrisMapChannel.alpha,
+      ]) {
+        final pass = mappedBy(channel, radius: 20, focal: 40);
+        expectWithinOne(
+          await blurredBy(tester, source, pass, map),
+          truth(input, width, pass, map: levels),
+          reason: channel.name,
+        );
+      }
+    });
   });
 
   group('the plan', () {

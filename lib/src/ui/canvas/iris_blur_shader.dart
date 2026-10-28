@@ -6,13 +6,9 @@ import '../../services/shaded_passes.dart';
 import 'loaded_fragment_program.dart';
 import 'raster_picture.dart';
 
-/// Where `iris_gather.frag` reads a column of its table from: a whole
-/// number over [irisTableScale] past [irisTableOffset] — its `kTable…`.
-const int irisTableOffset = 8192;
-const int irisTableScale = 16384;
-
 /// The fragment programs a camera lens blur's rasters run — its row sums
-/// (`shaders/row_sum.frag`, [RowSumPass]) and its iris gathered out of them
+/// (`shaders/row_sum.frag`, [RowSumPass]), the table of its iris's rows
+/// (`shaders/iris_table.frag`) and its iris gathered out of the sums by it
 /// (`shaders/iris_gather.frag`, [IrisGatherPass]) — each a raster of its
 /// own at the identity, as a directional blur's are ([applyEffectSteps],
 /// `ShadedEffect`).
@@ -29,18 +25,25 @@ class IrisBlurShader {
     whyAwaited: _whyAwaited,
   );
 
+  static final _table = LoadedFragmentProgram(
+    'shaders/iris_table.frag',
+    whyAwaited: _whyAwaited,
+  );
+
   static final _gather = LoadedFragmentProgram(
     'shaders/iris_gather.frag',
     whyAwaited: _whyAwaited,
   );
 
-  /// Whether [rowSumFor] and [gatherFor] can be called
+  /// Whether [rowSumFor], [tableFor] and [gatherFor] can be called
   /// ([LoadedFragmentProgram.isReady]).
-  static bool get isReady => _rowSum.isReady && _gather.isReady;
+  static bool get isReady =>
+      _rowSum.isReady && _table.isReady && _gather.isReady;
 
-  /// Loads both programs ([LoadedFragmentProgram.load]).
+  /// Loads the three programs ([LoadedFragmentProgram.load]).
   static Future<void> load() async {
     await _rowSum.load();
+    await _table.load();
     await _gather.load();
   }
 
@@ -67,7 +70,8 @@ class IrisBlurShader {
 
   /// A shader that draws [pass]'s iris over [sums] — the step's [input]
   /// summed along its rows ([RowSumPass]) — for every pixel of a draw
-  /// [input]'s size.
+  /// [input]'s size; each pixel's level read off [map] where the pass
+  /// reads one ([IrisGatherPass.map]), a raster on [input]'s grid.
   ///
   /// ⚠️The caller owns the returned shader and must `dispose()` it after the
   /// draw that used it is recorded.
@@ -75,27 +79,33 @@ class IrisBlurShader {
     required ui.Image sums,
     required ui.Image input,
     required IrisGatherPass pass,
+    ui.Image? map,
   }) {
     assert(
-      pass.outline.length <= irisRowsAtMost,
+      2 * pass.reach + 1 <= irisRowsAtMost,
       'iris_gather.frag walks $irisRowsAtMost rows at most',
     );
-    final table = _tableOf(pass);
-    final perLine = _rowsALine(pass.outline.length);
+    assert(
+      (map == null) == (pass.map == null),
+      'a pass that reads a blur map is drawn with one, and only it',
+    );
+    final layout = _layoutOf(pass);
+    final table = tableFor(pass);
     // The paper's pixels in the raster, first to last; where none is, the
     // first lies past the last and the cut draws nothing.
     final paper =
         pass.paper ??
         ui.Rect.fromLTWH(0, 0, input.width * 1.0, input.height * 1.0);
+    final channel = pass.map?.channel;
     final shader = _gather.shader()
       ..setFloat(0, input.width.toDouble())
       ..setFloat(1, input.height.toDouble())
       ..setFloat(2, pass.reach.toDouble())
       ..setFloat(3, table.width.toDouble())
       ..setFloat(4, table.height.toDouble())
-      ..setFloat(5, perLine.toDouble())
-      ..setFloat(6, pass.fringe)
-      ..setFloat(7, pass.weight)
+      ..setFloat(5, layout.rowsALine.toDouble())
+      ..setFloat(6, layout.linesALevel.toDouble())
+      ..setFloat(7, pass.iris.fringe / 500)
       ..setFloat(8, pass.paper == null ? 0 : 1)
       ..setFloat(9, math.max(paper.left, 0))
       ..setFloat(10, math.max(paper.top, 0))
@@ -103,11 +113,75 @@ class IrisBlurShader {
       ..setFloat(12, math.min(paper.bottom, input.height.toDouble()) - 1)
       ..setImageSampler(0, sums)
       ..setImageSampler(1, input)
-      ..setImageSampler(2, table);
+      ..setImageSampler(2, table)
+      // Read for nothing where there is no map: every sampler is bound.
+      ..setImageSampler(3, map ?? input);
     _setLight(shader, 13, pass.light);
+    shader
+      ..setFloat(18, channel == null ? 0 : 1)
+      ..setFloat(19, channel?.r ?? 0)
+      ..setFloat(20, channel?.g ?? 0)
+      ..setFloat(21, channel?.b ?? 0)
+      ..setFloat(22, channel?.a ?? 0);
     // ⚠️Safe once bound: the shader holds its own claim on the table.
     table.dispose();
     return shader;
+  }
+
+  /// [pass]'s rows as `iris_gather.frag` reads them, laid by
+  /// `iris_table.frag` in floats: each of its levels — one, or a blur
+  /// map's 256 — [_layoutOf]'s lines, two texels a row, each a span's left
+  /// and right column in red and green and its level's reach in blue.
+  ///
+  /// ⚠️The caller owns the returned image.
+  static ui.Image tableFor(IrisGatherPass pass) {
+    final layout = _layoutOf(pass);
+    final map = pass.map;
+    final iris = pass.iris;
+    final width = layout.rowsALine * 2;
+    final height = layout.levels * layout.linesALevel;
+    final shader = _table.shader()
+      ..setFloat(0, width.toDouble())
+      ..setFloat(1, height.toDouble())
+      ..setFloat(2, layout.rowsALine.toDouble())
+      ..setFloat(3, layout.linesALevel.toDouble())
+      ..setFloat(4, pass.reach.toDouble())
+      ..setFloat(5, pass.radius)
+      ..setFloat(6, layout.levels.toDouble())
+      ..setFloat(7, map?.focal ?? 0)
+      ..setFloat(8, (map?.inverts ?? false) ? 1 : 0)
+      ..setFloat(9, iris.sides.toDouble())
+      ..setFloat(10, iris.roundness)
+      ..setFloat(11, iris.aspect)
+      ..setFloat(12, iris.rotation);
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawRect(
+      ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      ui.Paint()
+        ..shader = shader
+        // What the shader gives, as it gives it — a column past 1.
+        ..blendMode = ui.BlendMode.src,
+    );
+    try {
+      return rasterPicture(recorder, width, height, inFloats: true);
+    } finally {
+      shader.dispose();
+    }
+  }
+
+  /// How [pass]'s table is laid: its levels, each [linesALevel] lines of
+  /// [rowsALine] rows — two texels a row, so a line is never wider than
+  /// 2048.
+  static ({int levels, int rowsALine, int linesALevel}) _layoutOf(
+    IrisGatherPass pass,
+  ) {
+    final rows = 2 * pass.reach + 1;
+    final rowsALine = math.min(rows, 1024);
+    return (
+      levels: pass.map == null ? 1 : 256,
+      rowsALine: rowsALine,
+      linesALevel: (rows / rowsALine).ceil(),
+    );
   }
 
   /// [light] on [shader] from its float [at] on, as `lens_light.glsl` takes
@@ -120,49 +194,5 @@ class IrisBlurShader {
       ..setFloat(at + 2, light?.threshold ?? 0)
       ..setFloat(at + 3, light?.saturation ?? 0)
       ..setFloat(at + 4, (light?.linear ?? false) ? 1 : 0);
-  }
-
-  /// How many of an iris's [rows] a line of its table holds — two texels
-  /// each, so a line is never wider than 2048.
-  static int _rowsALine(int rows) => math.min(rows, 1024);
-
-  /// [pass]'s rows as a table `iris_gather.frag` reads: the row `reach`
-  /// above the pixel first, two texels each — its outline's left and right
-  /// column, then its core's, in red and green.
-  ///
-  /// 🔬Each a whole number over [irisTableScale] past [irisTableOffset], in
-  /// floats: a colour drawn into an `rgbaFloat32` raster comes back as the
-  /// float it was given — 0 of 18,432 off under Impeller (10-28, a probe of
-  /// 2048×3 texels' red, green and blue).
-  static ui.Image _tableOf(IrisGatherPass pass) {
-    final rows = pass.outline.length;
-    final perLine = _rowsALine(rows);
-    final lines = (rows / perLine).ceil();
-    final recorder = ui.PictureRecorder();
-    final canvas = ui.Canvas(recorder);
-    void lay(int row, int k, IrisSpan span) => canvas.drawRect(
-      ui.Rect.fromLTWH(
-        ((row % perLine) * 2 + k).toDouble(),
-        (row ~/ perLine).toDouble(),
-        1,
-        1,
-      ),
-      ui.Paint()
-        ..isAntiAlias = false
-        ..blendMode = ui.BlendMode.src
-        ..color = ui.Color.from(
-          alpha: 1,
-          red: (span.left + irisTableOffset) / irisTableScale,
-          green: (span.right + irisTableOffset) / irisTableScale,
-          blue: 0,
-        ),
-    );
-    for (var row = 0; row < rows; row += 1) {
-      lay(row, 0, pass.outline[row]);
-      if (pass.core.isNotEmpty) {
-        lay(row, 1, pass.core[row]);
-      }
-    }
-    return rasterPicture(recorder, perLine * 2, lines, inFloats: true);
   }
 }

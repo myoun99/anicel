@@ -452,9 +452,9 @@ _PaintPart _radialBlurPart(
 
 /// A camera lens blur of no radius changes no pixel, whatever its iris —
 /// as [_directionalBlurPart]'s length. Its iris covers pixel centres within
-/// its radius ([irisSpans]): that is how far it reaches past its input. Its
-/// edge, repeated, is the paper's on whole pixels, as the Gaussian's is
-/// ([paperOnWholePixels]).
+/// its radius (`shaders/iris_table.frag`): that is how far it reaches past
+/// its input. Its edge, repeated, is the paper's on whole pixels, as the
+/// Gaussian's is ([paperOnWholePixels]).
 _PaintPart _cameraLensBlurPart(
   ResolvedLayerEffect effect,
   DrawSpace space,

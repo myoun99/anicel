@@ -2,8 +2,6 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show immutable;
 
-import '../core/collection_equality.dart';
-
 /// One raster of a step a fragment shader draws ([ShadedEffect]): the whole
 /// raster at the identity, over the picture the raster before it made
 /// (`applyEffectSteps`). A kind is drawn in these when it reads past the
@@ -107,19 +105,48 @@ final class RowSumPass extends ShadedPass {
   String toString() => 'RowSumPass($stride, $taps, light: $light)';
 }
 
-/// The columns about a pixel one row of an iris covers, [left] to [right]
-/// — none where [left] is past [right].
-typedef IrisSpan = ({int left, int right});
+/// A camera lens blur's Iris Properties, as Adobe's help names them (read
+/// 2026-10-28): its Shape's [sides], its [roundness] (0…1), its [aspect] —
+/// how wide it is to how tall — its [rotation], clockwise in radians, and
+/// its Diffraction [fringe] (0…500).
+typedef IrisProperties = ({
+  int sides,
+  double roundness,
+  double aspect,
+  double rotation,
+  double fringe,
+});
+
+/// What of a blur map's pixel a camera lens blur reads — AE's Channel:
+/// its luma, or one of its channels, as the weights [r], [g], [b] and [a]
+/// of its premultiplied red, green, blue and alpha.
+enum IrisMapChannel {
+  luminance(0.2126, 0.7152, 0.0722, 0),
+  red(1, 0, 0, 0),
+  green(0, 1, 0, 0),
+  blue(0, 0, 1, 0),
+  alpha(0, 0, 0, 1);
+
+  const IrisMapChannel(this.r, this.g, this.b, this.a);
+
+  final double r;
+  final double g;
+  final double b;
+  final double a;
+}
+
+/// How a camera lens blur reads a blur map: its [channel], and the value
+/// of it (0…255) that is in focus — its Blur Focal Distance. Each pixel's
+/// radius is the blur's times how far its map's value, or the inverse of
+/// it where it [inverts], lies from [focal], over 255.
+typedef IrisMap = ({IrisMapChannel channel, double focal, bool inverts});
 
 /// A camera lens blur's iris gathered out of its row sums
 /// (`shaders/iris_gather.frag`, after [RowSumPass]es): every pixel the
-/// weighted mean of the pixels the iris covers about it — the ones of each
-/// row two reads of its sums.
-///
-/// [outline] is the rows the iris covers, [core] the rows of the same iris
-/// drawn smaller — the inside a diffraction fringe pushes [fringe] of the
-/// light out of, to the edge — each `2 · reach + 1` rows from `-reach`
-/// down. [weight] is what every pixel's weights add up to.
+/// mean of the pixels the iris covers about it — the ones of each row two
+/// reads of its sums. Its rows are laid by the GPU (`iris_table.frag`):
+/// the iris [radius] raster pixels out, as its [iris] shapes it, at one
+/// level, or — where it reads a blur [map] — at each of the map's 256.
 ///
 /// [paper] is the paper on whole pixels where the iris repeats its edge
 /// pixels past it — read where it reads past the paper, and cut to it —
@@ -130,50 +157,36 @@ typedef IrisSpan = ({int left, int right});
 /// picture is stored. Null where the sums are of the picture as it is.
 final class IrisGatherPass extends ShadedPass {
   const IrisGatherPass({
-    required this.reach,
-    required this.outline,
-    required this.core,
-    required this.fringe,
-    required this.weight,
+    required this.radius,
+    required this.iris,
     required this.paper,
     required this.light,
+    this.map,
   });
 
-  final int reach;
-  final List<IrisSpan> outline;
-  final List<IrisSpan> core;
-
-  /// How much of its core's light an iris's edge takes, 0 to 1 — 0 where it
-  /// has no fringe, and [core] is then read for nothing.
-  final double fringe;
-  final double weight;
+  final double radius;
+  final IrisProperties iris;
   final ui.Rect? paper;
   final LensLight? light;
+  final IrisMap? map;
+
+  /// How many rows the iris spans either way of its pixel, at the most.
+  int get reach => radius.floor();
 
   @override
   bool operator ==(Object other) =>
       other is IrisGatherPass &&
-      other.reach == reach &&
-      listEquals(other.outline, outline) &&
-      listEquals(other.core, core) &&
-      other.fringe == fringe &&
-      other.weight == weight &&
+      other.radius == radius &&
+      other.iris == iris &&
       other.paper == paper &&
-      other.light == light;
+      other.light == light &&
+      other.map == map;
 
   @override
-  int get hashCode => Object.hash(
-    reach,
-    Object.hashAll(outline),
-    Object.hashAll(core),
-    fringe,
-    weight,
-    paper,
-    light,
-  );
+  int get hashCode => Object.hash(radius, iris, paper, light, map);
 
   @override
   String toString() =>
-      'IrisGatherPass(reach: $reach, fringe: $fringe, weight: $weight, '
-      'paper: $paper, light: $light)';
+      'IrisGatherPass(radius: $radius, iris: $iris, paper: $paper, '
+      'light: $light, map: $map)';
 }
