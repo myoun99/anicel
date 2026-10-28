@@ -209,6 +209,18 @@ void main() {
       final arc = math.pi / 2 * math.sqrt(64 * 64 * 2);
       final samples = best.fold<int>(1, (product, pass) => product * pass.taps);
       expect(samples, greaterThanOrEqualTo(arc.ceil()));
+      // And Zoom's: the ray of the pixel it draws out farthest — half the
+      // ray past the far corner — from that corner to as far again out.
+      final zoom = shadedPassesOf(
+        radial(amount: 50, zoom: true),
+        DrawSpace.canvas,
+        paper: paper,
+      );
+      final ray = math.sqrt(64 * 64 * 2) * (math.exp(0.5) - 1);
+      expect(
+        zoom.fold<int>(1, (product, pass) => product * pass.taps),
+        greaterThanOrEqualTo(ray.ceil()),
+      );
       expect(draft.single.taps, lineBoxTapsAPass);
       expect(
         {for (final pass in [...best, ...draft]) (pass.centerX, pass.centerY)},
