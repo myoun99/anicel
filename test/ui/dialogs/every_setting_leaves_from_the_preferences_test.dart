@@ -56,6 +56,12 @@ void main() {
     const scale = {'version': 1, 'scale': 1.25};
     putInTheRoom('ui_scale.json', scale);
     putInTheRoom('window.json', {'version': 1, 'width': 800});
+    // The room's first entry and its last — every one between them leaves
+    // too.
+    const first = {'version': 1, 'hue': 2};
+    putInTheRoom('accent_settings.json', first);
+    const last = {'version': 1, 'gap': 3};
+    putInTheRoom('workspace_layout.json', last);
     FolderPicker.debugOperatingSystem = 'windows';
     final asked = <String>[];
     FolderPicker.debugSaveDestinationPicker = ({
@@ -106,6 +112,8 @@ void main() {
     );
     final documents = readSettingsFile(written!)!.documents;
     expect(documents['ui_scale.json'], scale);
+    expect(documents['accent_settings.json'], first);
+    expect(documents['workspace_layout.json'], last);
     expect(documents, isNot(contains('window.json')));
     expect(
       tester.widget<AppConfirmDialog>(notice).message,

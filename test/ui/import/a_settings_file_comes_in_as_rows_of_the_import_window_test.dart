@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/settings_file.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
+import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/solid_png_fixture.dart';
@@ -24,12 +25,17 @@ import '../../helpers/wait_window.dart';
 void main() {
   late Directory tempDir;
   late List<({SettingsFile file, List<String> rows})> put;
-  StateError? refusal;
+  /// The entry a file holding it fails to be put in place for.
+  String? refused;
+
+  /// Whether the window said it was importing while the settings went in.
+  final saidWhilePutting = <String?>[];
 
   setUp(() {
     tempDir = Directory.systemTemp.createTempSync('anicel-settings-window');
     put = [];
-    refusal = null;
+    refused = null;
+    saidWhilePutting.clear();
   });
   tearDown(() => deleteTempQuietly(tempDir));
 
@@ -69,8 +75,17 @@ void main() {
                   initialPaths: paths,
                   putSettingsInPlace: puts
                       ? (file, rows) async {
-                          if (refusal case final error?) {
-                            throw error;
+                          saidWhilePutting.add(
+                            tester
+                                .widget<Text>(
+                                  find.byKey(
+                                    const ValueKey<String>('import-status'),
+                                  ),
+                                )
+                                .data,
+                          );
+                          if (file.documents.containsKey(refused)) {
+                            throw StateError('disk full');
                           }
                           put.add((
                             file: file,
@@ -171,6 +186,15 @@ void main() {
           .data,
       path,
     );
+    expect(
+      tester
+          .widget<ImportPreview>(
+            find.byKey(const ValueKey<String>('import-preview')),
+          )
+          .path,
+      isNull,
+      reason: 'a setting shows nothing',
+    );
   });
 
   testWidgets('Import puts in place what each row answered 「설정」 — not a '
@@ -222,26 +246,33 @@ void main() {
   });
 
   testWidgets('a put that fails is said of its file, and its rows stay to '
-      'be pressed again', (tester) async {
-    final path = aSettingsFile({'accent_settings.json': accent});
-    final session = await openOn(tester, [path]);
-    refusal = StateError('disk full');
+      'be pressed again — what went in leaves the list', (tester) async {
+    final kept = aSettingsFile({'accent_settings.json': accent});
+    final failing = aSettingsFile({
+      'language_settings.json': language,
+    }, name: 'Other.anisettings');
+    final session = await openOn(tester, [kept, failing]);
+    refused = 'language_settings.json';
 
     await importAll(tester, session);
 
-    expect(put, isEmpty);
+    expect([for (final done in put) done.rows], [
+      ['accent_settings.json'],
+    ]);
+    expect(saidWhilePutting, [
+      AppText.strings.imStatusImporting,
+      AppText.strings.imStatusImporting,
+    ], reason: 'the window says what it is doing, not what it will');
     expect(
       [for (final row in table(tester).rows) row.path],
-      ['$path#accent_settings.json'],
+      ['$failing#language_settings.json'],
     );
-    expect(
-      find.text(AppText.strings.imWarningCount(1)),
-      findsOneWidget,
-    );
+    expect(find.text(AppText.strings.imWarningCount(1)), findsOneWidget);
 
-    refusal = null;
+    refused = null;
     await importAll(tester, session);
-    expect(put.single.rows, ['accent_settings.json']);
+    expect(put.last.rows, ['language_settings.json']);
+    expect(put, hasLength(2), reason: 'what went in is not put again');
     expect(find.byType(ImportDialog), findsNothing);
   });
 
