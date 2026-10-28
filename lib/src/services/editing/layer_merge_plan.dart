@@ -1,6 +1,14 @@
 import '../../models/attached_layer_resolve.dart'
-    show attachedLayersOf, attachedMirrorCelId, isSyncedAttachedLayer;
+    show
+        attachedGroupEndIndex,
+        attachedGroupSlice,
+        attachedGroupStartIndex,
+        attachedLayersOf,
+        attachedMirrorCelId,
+        attachedRowAsShown,
+        isSyncedAttachedLayer;
 import '../../models/cut.dart';
+import '../../models/dirty_region.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -9,12 +17,14 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_section_defaults.dart' show firstUnusedName;
+import '../../models/pasteboard_bounds.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_run_behavior.dart';
 import '../cut_frame_composite_plan.dart'
     show clipBaseOf, clipsToLayerBelow, exposedCelIdAt;
+import '../layer_pose_matrix.dart' show picturePlacement, placedBounds;
 import '../playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_spans.dart';
 
@@ -32,6 +42,21 @@ enum LayerMergeChange {
   /// A row it took came from outside the folder the result stands in, and
   /// that folder lays a look of its own over what it holds.
   folder,
+
+  /// An attach row riding above a row it took is led over the result, and
+  /// covers a picture that stood above it (I-78-Q13 「위쪽 어태치 그대로 결과
+  /// 행 위에 붙는다 (+경고)」).
+  riderOver,
+
+  /// An attach row riding below a row it took is led under the result, and
+  /// goes under a picture that stood below it — Q13's other side, warned
+  /// of as Q1 warns of every change in how the rows look.
+  riderUnder,
+
+  /// A reference row it took lays its file past the wall, and the merge
+  /// draws the screen inside it (I-78-Q15 「참조도 그대로 병합한다」 — 「벽 밖
+  /// 부분이 잘리면 … 경고 창에 한 줄로 알린다」).
+  wall,
 }
 
 /// One picture a merge bakes: the cel of the row it lands on, and the cut
@@ -60,14 +85,24 @@ typedef LayerMergePicture = ({
 ///   everything under it, and the folder becomes the row.
 /// - Q7 「숨긴 행도 보이게 해서 합친다」 — every row taken is baked shown.
 /// - Q8 「결과 행의 어태치로 남는다」 — an attach row riding a row it takes,
-///   and not taken itself, rides [result] after ([riders]): its cels are
+///   and not taken itself, rides [result] after ([layers]): its cels are
 ///   baked anew as it showed, wearing what it wore of its base — the base's
 ///   pose, keys and fx short of the cel number (「어태치 레이어는 주인과 같이
 ///   굽는다」, 07-21) — and of the folders it leaves. A SYNCED row's
 ///   pictures part wherever the result's do (the answer's 「결과 행의 장이
 ///   나뉜 곳마다 어태치 그림도 같이 나뉨」), a FREE row's wherever its own
 ///   picture changes. What is its own stays on its row: its eye, its
-///   strength, its blend, its clip.
+///   strength, its blend, its clip. 🗣️I-78-Q13 (유저 10-28 「위쪽 어태치
+///   그대로 결과 행 위에 붙는다 (+경고)」): the base's group is led around
+///   the result — its rows riding below under it, those riding above over
+///   it — wherever the base stood among the rows taken.
+/// - 🗣️I-78-Q14 (유저 10-28 「보이던 그대로 같이 굽는다」): an attach row
+///   taken without its base is baked wearing it, and its row goes; taken
+///   topmost, the result stands just outside the base's group, on the side
+///   the row rode (the option's 「위쪽 어태치였으면 묶음 위, 아래쪽이었으면
+///   묶음 아래」).
+/// - 🗣️I-78-Q15 (유저 10-28 「참조도 그대로 병합한다」): a reference row is
+///   baked as it shows, as every row is.
 /// - Q10 「맨 위 레이어의 셀 이름 + 갈라진 곳은 꼬리 번호」 and Q11 「그 구간에
 ///   보이는 것 중 맨 위 행의 셀 이름」 — each picture takes the name of the
 ///   cel the topmost taken row shows there; a name another picture holds
@@ -84,10 +119,9 @@ class LayerMergePlan {
   const LayerMergePlan._({
     required this.cut,
     required this.result,
-    required this.riders,
     required this.pictures,
-    required this.removed,
     required this.changes,
+    required this.layers,
   });
 
   /// The cut it was planned of, as it was.
@@ -97,33 +131,17 @@ class LayerMergePlan {
   /// baked ([pictures]).
   final Layer result;
 
-  /// The attach rows the merge leaves riding [result], each with its new
-  /// cels — their pictures, too, still to be baked.
-  final List<Layer> riders;
-
   /// Every picture the merge's new cels are baked from: [result]'s, then
   /// each rider's.
   final List<LayerMergePicture> pictures;
 
-  /// The rows the merge takes away, bottom → top — every row it took but
-  /// the one [result] replaces.
-  final List<LayerId> removed;
-
   final Set<LayerMergeChange> changes;
 
-  /// The cut's rows after the merge: [removed] gone, and [result] and
-  /// [riders] where the rows they replace stood.
-  List<Layer> get layers {
-    final gone = removed.toSet();
-    final replaced = {
-      result.id: result,
-      for (final rider in riders) rider.id: rider,
-    };
-    return [
-      for (final row in cut.layers)
-        if (!gone.contains(row.id)) replaced[row.id] ?? row,
-    ];
-  }
+  /// The cut's rows after the merge ([_layersAfter]): every row it took but
+  /// the one [result] is gone, and the attach rows riding [result] stand
+  /// led around it with their new cels — their pictures, too, still to be
+  /// baked.
+  final List<Layer> layers;
 }
 
 /// The rows ONE press of MERGE takes of a cut — what lights its button and
@@ -165,8 +183,13 @@ final class LayerMergeTaking {
 ///
 /// A row that paints no drawing of its own is no part of a picture, and is
 /// passed over (Q4's memo: 「불가능한것들은 자연스럽게 무시」). So is a row
-/// this round does not merge yet ([_standsDown], [_goesWith]) — and a
-/// folder that holds one, whose rows cannot be taken apart from it.
+/// this round does not merge yet ([_standsDown]) — and a folder that holds
+/// one, whose rows cannot be taken apart from it.
+///
+/// ↩️Until I-78-Q13 · Q14 were answered (10-28) an attach row went only
+/// with its base, and a base whose rider stayed only as the topmost row
+/// chosen — each letting go of what it went with, until nothing more let
+/// go.
 ///
 /// A folder taken takes everything it holds: every row a folder can hold
 /// is laid into its picture — the camera row moves nowhere
@@ -197,30 +220,10 @@ LayerMergeTaking? takeRowsToMerge({
       if (selected.contains(row.id)) row.id: ?reachOf(row),
   };
   // Bottom → top: the last is the topmost.
-  var heads = [
+  final heads = [
     for (final row in cut.layers)
       if (reaches.containsKey(row.id)) row,
   ];
-  // A row that goes only with others ([_goesWith]) lets go of what took it,
-  // which can let go of what it went with: until nothing more lets go.
-  while (heads.isNotEmpty) {
-    final taken = {
-      for (final head in heads)
-        for (final row in reaches[head.id]!) row.id,
-    };
-    final anchor = heads.last;
-    final kept = [
-      for (final head in heads)
-        if (reaches[head.id]!.every(
-          (row) => _goesWith(row, cut.layers, taken: taken, anchor: anchor),
-        ))
-          head,
-    ];
-    if (kept.length == heads.length) {
-      break;
-    }
-    heads = kept;
-  }
   if (heads.isEmpty) {
     return null;
   }
@@ -237,11 +240,14 @@ LayerMergeTaking? takeRowsToMerge({
 /// What a press makes of [taking].
 ///
 /// [revisionOf] says what each cel holds as the composite signature reads
-/// it; [mintFrameId] names each new cel of a row.
+/// it; [mintFrameId] names each new cel of a row; [reach] is how far past
+/// the canvas the project's wall stands — the wall the pictures are drawn
+/// over.
 LayerMergePlan planLayerMerge(
   LayerMergeTaking taking, {
   required BrushFrameRevisionResolver revisionOf,
   required FrameId Function(LayerId row) mintFrameId,
+  required PasteboardReach reach,
 }) {
   final LayerMergeTaking(
     :cut,
@@ -250,20 +256,29 @@ LayerMergePlan planLayerMerge(
     _pictureRows: pictureRows,
     _riders: riders,
   ) = taking;
+  final standing = _standingFolderOf(taking);
   final over = {
-    for (final folder in taking._index.ancestryOf(anchor.folderId)) folder.id,
+    for (final folder in taking._index.ancestryOf(standing)) folder.id,
   };
   final takenRows = [
     for (final row in cut.layers)
       if (taken.contains(row.id)) _shown(row),
   ];
   final folders = _foldersLeft(taking, over, takenRows);
-  final baked = _cutWith(taking, folders, takenRows);
+  // The bases a row it takes rides without them, there to be worn (Q14).
+  final worn = [
+    for (final row in cut.layers)
+      if (!taken.contains(row.id) &&
+          takenRows.any((taken) => taken.attachedToLayerId == row.id))
+        row.copyWith(isVisible: false),
+  ];
+  final baked = _cutWith(taking, folders, [...takenRows, ...worn]);
   // The result parts wherever a synced rider's picture does too: each
   // rides the result's cels one for one.
   final runs = _runsByPicture(
     _cutWith(taking, folders, [
       ...takenRows,
+      ...worn,
       for (final rider in riders)
         if (isSyncedAttachedLayer(rider)) _riding(rider),
     ]),
@@ -271,7 +286,11 @@ LayerMergePlan planLayerMerge(
     revisionOf,
   );
   final cels = _celsOf(runs, baked, pictureRows, (_) => mintFrameId(anchor.id));
-  final result = (row: _resultRow(anchor, cels), runs: runs, cels: cels);
+  final result = (
+    row: _resultRow(anchor, cels, standing),
+    runs: runs,
+    cels: cels,
+  );
   final minting = (revisionOf: revisionOf, mintFrameId: mintFrameId);
   final ridden = [
     for (final rider in riders)
@@ -285,17 +304,97 @@ LayerMergePlan planLayerMerge(
   return LayerMergePlan._(
     cut: cut,
     result: result.row,
-    riders: [for (final rider in ridden) rider.row],
     pictures: [
       ..._picturesOf(result.row, cels, baked),
       for (final rider in ridden) ...rider.pictures,
     ],
-    removed: [
-      for (final row in cut.layers)
-        if (taken.contains(row.id) && row.id != anchor.id) row.id,
-    ],
-    changes: _changesOf(taking, over),
+    changes: _changesOf(taking, over, cut.canvasSize.pasteboardAt(reach)),
+    layers: _layersAfter(taking, result.row, {
+      for (final rider in ridden) rider.row.id: rider.row,
+    }),
   );
+}
+
+/// The folder the result stands in: the topmost row's — or, for an attach
+/// row taken without its base, its base's, the group's folder, where the
+/// result stands just outside the group (Q14).
+LayerId? _standingFolderOf(LayerMergeTaking taking) {
+  final anchor = taking._anchor;
+  return switch (_baseLeftBy(taking)) {
+    final base? => base.folderId,
+    null => anchor.folderId,
+  };
+}
+
+/// The base the topmost row taken rides, when it is not taken itself (Q14).
+Layer? _baseLeftBy(LayerMergeTaking taking) =>
+    switch (taking._anchor.attachedToLayerId) {
+      final baseId? when !taking._taken.contains(baseId) =>
+        taking.cut.layers.byId(baseId),
+      _ => null,
+    };
+
+/// The rows riding the rows [taking] takes that it does not take — each
+/// base's group but the base ([attachedGroupSlice]), organizer folders and
+/// all — by the side of the base they stand on: what is led around the
+/// result (Q8 · Q13).
+({List<Layer> below, List<Layer> above}) _ledAround(LayerMergeTaking taking) {
+  final LayerMergeTaking(:cut, _taken: taken) = taking;
+  final below = <Layer>[];
+  final above = <Layer>[];
+  for (final base in cut.layers) {
+    if (!taken.contains(base.id) || base.attachedToLayerId != null) {
+      continue;
+    }
+    var side = below;
+    for (final member in attachedGroupSlice(base.id, cut.layers)) {
+      if (member.id == base.id) {
+        side = above;
+      } else if (!taken.contains(member.id)) {
+        side.add(member);
+      }
+    }
+  }
+  return (below: below, above: above);
+}
+
+/// The cut's rows after [taking]'s merge: the rows it takes gone, and
+/// [result] standing where the topmost of them stood — or just outside the
+/// group of the base it rode without, on the side it rode (Q14) — with the
+/// rows [_ledAround] it, [ridden] where it bakes them anew: those of a
+/// base's folder in the result's.
+List<Layer> _layersAfter(
+  LayerMergeTaking taking,
+  Layer result,
+  Map<LayerId, Layer> ridden,
+) {
+  final LayerMergeTaking(:cut, _taken: taken, _anchor: anchor) = taking;
+  final led = _ledAround(taking);
+  final ledIds = {
+    for (final row in [...led.below, ...led.above]) row.id,
+  };
+  Layer seated(Layer row) => switch (ridden[row.id] ?? row) {
+    final rider when ledIds.contains(rider.folderId) => rider,
+    final rider => rider.copyWith(folderId: result.folderId),
+  };
+  final kept = [
+    for (final row in cut.layers)
+      if (!taken.contains(row.id) && !ledIds.contains(row.id)) row,
+  ];
+  final order = {for (final (index, row) in cut.layers.indexed) row.id: index};
+  final at = switch (_baseLeftBy(taking)) {
+    final base? when order[anchor.id]! < order[base.id]! =>
+      attachedGroupStartIndex(base.id, kept),
+    final base? => attachedGroupEndIndex(base.id, kept),
+    null => kept.where((row) => order[row.id]! < order[anchor.id]!).length,
+  };
+  return [
+    ...kept.take(at),
+    for (final row in led.below) seated(row),
+    result,
+    for (final row in led.above) seated(row),
+    ...kept.skip(at),
+  ];
 }
 
 /// A row whose cels hold artwork — "a real drawing row"
@@ -306,17 +405,16 @@ bool _isPicture(Layer row) => row.kind.isDrawingCel;
 /// the card's order (I-78, 10-28), not a law of the verb:
 /// - a 겸용 row and a conte row, whose cels or structure another cut shares
 ///   (round ④, Q9 · Q12),
-/// - a reference row, whose picture is its file's, laid whole past the
-///   wall (F-374-Q8) where no picture of the screen reaches — rasterized,
-///   it merges as every drawing does (my call, put to the user as
-///   I-78-Q15),
-/// - a direction block, whose direction is no picture to bake (my call,
-///   put to the user as I-78-Q16),
+/// - a direction block, whose direction is no picture to bake (🗣️I-78-Q16,
+///   유저 10-28: 「건너뛴다 (지금 동작 그대로)」),
 /// - and a row an attach row that stands down rides: the rider would ride
 ///   the result, its cels baked anew.
 ///
 /// ↩️Round ① passed over every attach row and every row one rides; round ②
-/// takes them (Q8), short of what [_goesWith] still holds back.
+/// takes them (Q8 · Q13 · Q14). ↩️A reference row was passed over too, its
+/// file laid whole past the wall (F-374-Q8) where no picture of the screen
+/// reaches, until 🗣️I-78-Q15 (유저 10-28 「참조도 그대로 병합한다」): what
+/// lies there is warned of instead ([LayerMergeChange.wall]).
 bool _standsDown(
   Layer row,
   List<Layer> layers,
@@ -324,38 +422,11 @@ bool _standsDown(
 ) =>
     isLinked(row) ||
     row.conteKey != null ||
-    row.mediaReference != null ||
     row.timeline.values.any((exposure) => exposure.instruction != null) ||
     attachedLayersOf(
       row.id,
       layers,
     ).any((rider) => _standsDown(rider, layers, isLinked));
-
-/// Whether [row] goes with the rows [taken] holds, [anchor] the topmost of
-/// those chosen — what round ② still holds back until the card's open
-/// questions are answered:
-/// - an attach row goes only with its base (I-78-Q14: one taken without it
-///   would be baked wearing a base the result does not hold, and stand
-///   where the result cannot when it is the topmost),
-/// - and a row an attach row rides that is not taken goes only as the
-///   topmost row chosen, its riders where they stand (I-78-Q13: under a
-///   row taken above its base, a rider on the upper side stands where no
-///   rider of the result can).
-bool _goesWith(
-  Layer row,
-  List<Layer> layers, {
-  required Set<LayerId> taken,
-  required Layer anchor,
-}) {
-  if (row.attachedToLayerId case final baseId?) {
-    return taken.contains(baseId);
-  }
-  return row.id == anchor.id ||
-      attachedLayersOf(
-        row.id,
-        layers,
-      ).every((rider) => taken.contains(rider.id));
-}
 
 /// The folders above [rows] that the result does not stand in ([over]):
 /// the looks the rows leave, baked into their pictures.
@@ -431,15 +502,20 @@ typedef _Cel = ({
   List<CutFrameCompositeSpan> spans,
 });
 
-/// The runs of [shown] over every frame a block of [rows] covers, gathered
-/// by the picture they show — one list per picture, in the order they
-/// first show. A run that shows nothing is none: the row is empty there.
+/// The runs of [shown] over every frame a block of [rows] covers — as the
+/// cut shows them ([attachedRowAsShown]: a synced attach row's are its
+/// base's) — gathered by the picture they show — one list per picture, in
+/// the order they first show. A run that shows nothing is none: the row is
+/// empty there.
 List<List<CutFrameCompositeSpan>> _runsByPicture(
   Cut shown,
   List<Layer> rows,
   BrushFrameRevisionResolver revisionOf,
 ) {
-  final blocks = [for (final row in rows) ...drawingBlocks(row.timeline)];
+  final blocks = [
+    for (final row in rows)
+      ...drawingBlocks(attachedRowAsShown(row, shown.layers).timeline),
+  ];
   if (blocks.isEmpty) {
     return const [];
   }
@@ -518,15 +594,16 @@ List<LayerMergePicture> _picturesOf(Layer row, List<_Cel> cels, Cut from) => [
     ),
 ];
 
-/// The merged row: [anchor]'s name, place and label over [cels], and
-/// nothing of the look it was baked with (Q6).
-Layer _resultRow(Layer anchor, List<_Cel> cels) => Layer(
+/// The merged row: [anchor]'s name and label over [cels], in the folder it
+/// stands in ([_standingFolderOf]), and nothing of the look it was baked
+/// with (Q6) — nor a base it rode (Q14).
+Layer _resultRow(Layer anchor, List<_Cel> cels, LayerId? folderId) => Layer(
   id: anchor.id,
   name: anchor.name,
   kind: _kindHolding(anchor.kind, cels),
   mark: anchor.mark,
   onTimesheet: anchor.onTimesheet,
-  folderId: anchor.folderId,
+  folderId: folderId,
   frames: _framesOf(cels),
   timeline: _timelineOf(cels),
 );
@@ -630,13 +707,16 @@ typedef _Minting = ({
 }
 
 /// Why the result may show otherwise than the rows [taking] takes did
-/// ([LayerMergeChange]) — [over] being the folders it stands in.
-Set<LayerMergeChange> _changesOf(LayerMergeTaking taking, Set<LayerId> over) {
+/// ([LayerMergeChange]) — [over] being the folders it stands in, and
+/// [wall] the one its pictures are drawn over.
+Set<LayerMergeChange> _changesOf(
+  LayerMergeTaking taking,
+  Set<LayerId> over,
+  PasteboardWall wall,
+) {
   final LayerMergeTaking(
     :cut,
-    _index: index,
     _taken: taken,
-    _anchor: anchor,
     _pictureRows: pictureRows,
   ) = taking;
   final takenRows = [
@@ -649,7 +729,12 @@ Set<LayerMergeChange> _changesOf(LayerMergeTaking taking, Set<LayerId> over) {
         final base? => taken.contains(row.id) != taken.contains(base.id),
         null => false,
       };
-  final looksOver = index.ancestryOf(anchor.folderId).any(_laysALook);
+  final looksOver = cut.layers.any(
+    (folder) => over.contains(folder.id) && _laysALook(folder),
+  );
+  final order = {for (final (index, row) in cut.layers.indexed) row.id: index};
+  final pictures = [for (final row in pictureRows) order[row.id]!];
+  final led = _ledAround(taking);
   return {
     if (takenRows.any((row) => _blendsItsOwnWay(row.blendMode)))
       LayerMergeChange.blend,
@@ -661,7 +746,35 @@ Set<LayerMergeChange> _changesOf(LayerMergeTaking taking, Set<LayerId> over) {
           ),
         ))
       LayerMergeChange.folder,
+    if (led.above.any(
+      (row) => _isPicture(row) && pictures.any((at) => at > order[row.id]!),
+    ))
+      LayerMergeChange.riderOver,
+    if (led.below.any(
+      (row) => _isPicture(row) && pictures.any((at) => at < order[row.id]!),
+    ))
+      LayerMergeChange.riderUnder,
+    if (takenRows.any((row) => _laidPastTheWall(row, wall)))
+      LayerMergeChange.wall,
   };
+}
+
+/// Whether [row]'s file is laid past [wall] — the part a merge, drawing
+/// the screen inside the wall, cuts off (F-374-Q8: a reference's file is
+/// laid whole, past it, on the whole pixels its cels keep as their
+/// `BitmapSurface.laidBounds`).
+bool _laidPastTheWall(Layer row, PasteboardWall wall) {
+  final reference = row.mediaReference;
+  if (reference == null) {
+    return false;
+  }
+  final laid = DirtyRegion.wholePixelsOf(
+    placedBounds(
+      picturePlacement(reference.laid, reference.pictureSize),
+      reference.pictureSize,
+    ),
+  ).rect;
+  return wall.rect.expandToInclude(laid) != wall.rect;
 }
 
 /// Whether [folder] lays anything over what it holds.
@@ -696,8 +809,10 @@ bool _blendsItsOwnWay(LayerBlendMode mode) =>
 ///   look — its keys, its fx — stays on the row, and lands on the one cel
 ///   as it landed on each.
 ///
-/// ⚠️My calls, put to the user (I-78-Q17 · Q18): the leftmost cel lies on
-/// top, as the topmost row's picture does in a merge of rows; the run's
+/// 🗣️I-78-Q17 · Q18 (유저 10-28 「제일 왼쪽 블록이 위 (레이어의 맨 위처럼)」 ·
+/// 「이대로 진행」), my calls put to the user and taken as they stood: the
+/// leftmost cel lies on top, as the topmost row's picture does in a merge
+/// of rows; the run's
 /// outer edges — a hold, a repeat — stay with it, while its blocks' marks
 /// and memos do not come along, as a merge of rows' do not; a cel only the
 /// run showed goes, as a delete takes it (F-136); and a synced attach row

@@ -92,6 +92,7 @@ class LayerMerging {
         _project.brushFrameKeyForCut(taking.cut, layerId, frameId),
       ),
       mintFrameId: _frameIds.mintFrameId,
+      reach: _project.repository.requireProject().pasteboardReach,
     );
   }
 

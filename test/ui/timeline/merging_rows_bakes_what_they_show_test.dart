@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -14,6 +15,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/property_track.dart';
@@ -26,9 +29,12 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart' show CelRead;
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/services/editing/layer_merge_plan.dart'
+    show LayerMergeChange;
 import 'package:anicel/src/services/import/raster_cel_import.dart'
     show bakeCelSurface;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/merge_layer_rows.dart';
 
 import '../../helpers/cel_text_fixture.dart' show pixelOf;
@@ -113,6 +119,36 @@ void main() {
   /// [aMoves], ridden by [rider] when [aRidden], and [parted] when
   /// [aParted], its second cel blue over its first's tile and the canvas's
   /// first of the second row.
+  /// A session over one cut of [layers] and the camera, its pasteboard
+  /// [pasteboardInUse].
+  EditorSessionManager sessionOf(
+    List<Layer> layers, {
+    bool pasteboardInUse = true,
+  }) => EditorSessionManager(
+    initialProject: Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      cameraSize: canvasSize,
+      pasteboardInUse: pasteboardInUse,
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            Cut(
+              id: cutId,
+              name: 'Cut',
+              duration: 2,
+              canvasSize: canvasSize,
+              layers: [...layers, createCameraLayer(cutId: cutId)],
+            ),
+          ],
+        ),
+      ],
+      createdAt: DateTime.utc(2026),
+    ),
+  );
+
   EditorSessionManager session({
     bool bShown = true,
     LayerBlendMode? aBlend,
@@ -121,34 +157,11 @@ void main() {
     bool aParted = false,
   }) {
     final a = row('a', blendMode: aBlend).copyWith(transformTrack: aMoves);
-    final s = EditorSessionManager(
-      initialProject: Project(
-        id: const ProjectId('project'),
-        name: 'Project',
-        cameraSize: canvasSize,
-        tracks: [
-          Track(
-            id: const TrackId('track'),
-            name: 'Track',
-            cuts: [
-              Cut(
-                id: cutId,
-                name: 'Cut',
-                duration: 2,
-                canvasSize: canvasSize,
-                layers: [
-                  row('b', isVisible: bShown),
-                  if (aParted) parted(a) else a,
-                  if (aRidden) rider,
-                  createCameraLayer(cutId: cutId),
-                ],
-              ),
-            ],
-          ),
-        ],
-        createdAt: DateTime.utc(2026),
-      ),
-    );
+    final s = sessionOf([
+      row('b', isVisible: bShown),
+      if (aParted) parted(a) else a,
+      if (aRidden) rider,
+    ]);
     final cut = s.requireActiveCut;
     final store = s.renderCaches.brushFrameStore;
     for (final (id, cel, coords, rgba) in [
@@ -372,6 +385,88 @@ void main() {
 
     expect(s.requireActiveCut.layers, before);
     s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  /// A synced attach row [id] riding `base` on its [placement] side.
+  Layer riding(String id, AttachedPlacement placement) => Layer(
+    id: LayerId(id),
+    name: id,
+    attachedToLayerId: const LayerId('base'),
+    attachedPlacement: placement,
+    frames: [Frame(id: FrameId('$id-1'), duration: 2, name: '1', strokes: [])],
+    baseFrameLinks: {const FrameId('base-1'): FrameId('$id-1')},
+    timeline: const {},
+  );
+
+  /// A reference row `still` laying a [width] × [height] file at the
+  /// canvas's centre.
+  Layer still(int width, int height) => row('still').copyWith(
+    kind: LayerKind.image,
+    mediaReference: MediaReference(
+      assetPath: 'paper.png',
+      pose: TransformPose(center: CanvasPoint(x: 32, y: 24)),
+      pictureSize: CanvasSize(width: width, height: height),
+    ),
+  );
+
+  testWidgets('the window names each change it warns of: a rider led over a '
+      'picture, one led under one, a reference cut at the wall '
+      '(Q13 · Q15)', (tester) async {
+    final s = sessionOf([
+      row('x'),
+      riding('u', AttachedPlacement.below),
+      row('base'),
+      riding('o', AttachedPlacement.above),
+      row('y'),
+      still(640, 480),
+    ]);
+    addTearDown(s.dispose);
+    s.rowSelection.value = const [
+      LayerRowAddress(LayerId('x')),
+      LayerRowAddress(LayerId('base')),
+      LayerRowAddress(LayerId('y')),
+      LayerRowAddress(LayerId('still')),
+    ];
+    final context = await hostedContext(tester);
+
+    unawaited(mergeLayerRows(context, s));
+    await tester.pumpAndSettle();
+
+    final strings = AppText.strings;
+    for (final (line, shown) in [
+      (strings.tlMergeChangeRiderOver, findsOneWidget),
+      (strings.tlMergeChangeRiderUnder, findsOneWidget),
+      (strings.tlMergeChangeWall, findsOneWidget),
+      (strings.tlMergeChangeBlend, findsNothing),
+    ]) {
+      expect(find.text(line), shown, reason: line);
+    }
+    await tester.tap(
+      find.byKey(const ValueKey<String>('layer-merge-changes-cancel-button')),
+    );
+    await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  test('the wall it warns at is the project\'s pasteboard (Q15)', () {
+    for (final (inUse, changes) in [
+      (true, <LayerMergeChange>{}),
+      (false, {LayerMergeChange.wall}),
+    ]) {
+      // Past the canvas, and inside a pasteboard three times its size.
+      final s = sessionOf([row('a'), still(96, 72)], pasteboardInUse: inUse);
+      addTearDown(s.dispose);
+      s.rowSelection.value = const [
+        LayerRowAddress(LayerId('a')),
+        LayerRowAddress(LayerId('still')),
+      ];
+
+      expect(
+        s.layerMerging.planOfSelection()!.changes,
+        changes,
+        reason: 'in use: $inUse',
+      );
+    }
   });
 
   test('one row alone lights nothing', () {
