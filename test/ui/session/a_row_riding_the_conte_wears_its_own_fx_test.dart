@@ -369,23 +369,26 @@ void main() {
       );
     });
 
-    test('the rider\'s animated opacity is its own, not the conte\'s', () {
+    test('the rider\'s animated opacity is its own, not the conte\'s — an '
+        'attach row of a drawing base shows its base\'s', () {
       final session = standingOn(
         'rider',
         layers: [
+          base().copyWith(transformTrack: opacityAt0(0.3)),
+          attach().copyWith(transformTrack: opacityAt0(0.8)),
+          organizer,
           conte(transform: opacityAt0(0.2)),
           rider(transform: opacityAt0(0.5)),
         ],
       );
       final layers = session.requireActiveCut.layers;
-      expect(
-        session.opacityVerbs.stackLayerOpacity(
-          rowOf(session, 'rider'),
-          layers,
-          0,
-        ),
-        closeTo(0.5, 1e-9),
+      double shown(String row) => session.opacityVerbs.stackLayerOpacity(
+        rowOf(session, row),
+        layers,
+        0,
       );
+      expect(shown('rider'), closeTo(0.5, 1e-9));
+      expect(shown('a1'), closeTo(0.3, 1e-9));
     });
 
     test('a ghost wears the chain the composite lays its row with', () {
