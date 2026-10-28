@@ -182,6 +182,13 @@ enum AppStrings {
   String get launchStageApp => _s('launchStageApp');
   String get launchStageFirstFrame => _s('launchStageFirstFrame');
 
+  /// The window the app opens at launch (유저 2026-10-28: 「앱 실행시 앱
+  /// 설명 넣고싶어. 다음부터 표시안함버튼있고」) — its words are the bundled
+  /// files' (`LaunchNoticeSection`); these are its frame.
+  String get launchNoticeTitle => _s('launchNoticeTitle');
+  String get launchNoticeDontShowAgain => _s('launchNoticeDontShowAgain');
+  String get launchNoticeSendFeedback => _s('launchNoticeSendFeedback');
+
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
@@ -2071,6 +2078,9 @@ enum AppStrings {
     'launchStagePlugins': 'Registering plugins',
     'launchStageApp': 'Preparing app',
     'launchStageFirstFrame': 'Drawing first screen',
+    'launchNoticeTitle': 'About this build',
+    'launchNoticeDontShowAgain': "Don't show again",
+    'launchNoticeSendFeedback': 'Send feedback',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -3379,6 +3389,9 @@ enum AppStrings {
     'launchStagePlugins': 'プラグイン登録',
     'launchStageApp': 'アプリ準備',
     'launchStageFirstFrame': '最初の画面を描画',
+    'launchNoticeTitle': 'ご案内',
+    'launchNoticeDontShowAgain': '次回から表示しない',
+    'launchNoticeSendFeedback': 'フィードバックを送る',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -5155,6 +5168,9 @@ enum AppStrings {
     'launchStagePlugins': '플러그인 등록',
     'launchStageApp': '앱 준비',
     'launchStageFirstFrame': '첫 화면 그리기',
+    'launchNoticeTitle': '안내',
+    'launchNoticeDontShowAgain': '다음부터 표시 안 함',
+    'launchNoticeSendFeedback': '피드백 보내기',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -6919,6 +6935,9 @@ enum AppStrings {
     'launchStagePlugins': 'Enregistrement des plugins',
     'launchStageApp': "Préparation de l'application",
     'launchStageFirstFrame': 'Affichage du premier écran',
+    'launchNoticeTitle': 'À propos de cette version',
+    'launchNoticeDontShowAgain': 'Ne plus afficher',
+    'launchNoticeSendFeedback': 'Envoyer un avis',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -8814,6 +8833,9 @@ enum AppStrings {
     'launchStagePlugins': '注册插件',
     'launchStageApp': '准备应用',
     'launchStageFirstFrame': '绘制首个画面',
+    'launchNoticeTitle': '本版本说明',
+    'launchNoticeDontShowAgain': '不再显示',
+    'launchNoticeSendFeedback': '发送反馈',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',

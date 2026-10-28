@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 
 import 'dialogs/app_confirm_dialog.dart';
 import 'dialogs/behind_the_wait_window.dart' show stepBehindTheWaitWindow;
+import 'dialogs/launch_notice_window.dart' show showLaunchNoticeIfDue;
 import '../services/flutter_test_run.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/frame.dart' show InbetweenMark;
@@ -21,6 +22,7 @@ import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
+import '../services/launch_notice.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/folder_grant.dart'
@@ -128,6 +130,7 @@ class HomePage extends StatefulWidget {
     this.tipLibraryService,
     this.fontLibraryService,
     this.languageSettingsStore,
+    this.launchNotice,
     this.battery,
     this.handedAtLaunch = const [],
   });
@@ -160,6 +163,11 @@ class HomePage extends StatefulWidget {
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
   final AppLanguageSettingsStore? languageSettingsStore;
+
+  /// What this build says at launch ([showLaunchNoticeIfDue]). Null opens
+  /// the bundled notice on the saved file outside tests, and nothing inside
+  /// them — a test that measures the launch hands one in.
+  final LaunchNotice? launchNotice;
 
   /// The device's battery for the top strip's end ([DeviceBattery.shown],
   /// which the app hands in) — null on a device without one, and in a test
@@ -580,6 +588,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // And what the platform hands the running app, while this window is
     // here — a second Anicel's files, another app's share ([HandedFiles]).
     HandedFiles.listen(_openHanded);
+    final launchNotice =
+        widget.launchNotice ?? _unlessTesting(LaunchNotice.new);
+    if (launchNotice != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _showLaunchNotice(launchNotice),
+      );
+    }
     // 🪦No tool-switch guard, and no hook to announce one.
     //
     // R26 #13 put one here: the transform tool refused to be SELECTED with
@@ -605,6 +620,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _appSettings.languageRestored.then(
       (_) => _workspaceDoor.openHanded(handed),
     ),
+  );
+
+  /// This build's notice, once per launch — after the first frame, and
+  /// once the saved language is back, for the reason [_openHanded] waits:
+  /// the window is written in the program language as it opens.
+  void _showLaunchNotice(LaunchNotice notice) => unawaited(
+    _appSettings.languageRestored.then((_) async {
+      if (mounted) {
+        await showLaunchNoticeIfDue(context, notice);
+      }
+    }),
   );
 
   /// R9-rest: this device's font library is about to let go of [files].
