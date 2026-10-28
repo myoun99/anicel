@@ -1161,7 +1161,17 @@ void main() {
     await keepImportSpan(tester, 3, 4);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final lines = watchTheLine(tester);
     await pumpPastTheWaitWindow(tester);
+    // 🗣️F-494: the cut named from its start — a page range's says nothing
+    // until it is done — then the piece's door, as a whole file's.
+    expect(lines, [
+      '',
+      AppText.strings.imStepWritingSpan,
+      AppText.strings.imStepCarrying,
+      AppText.strings.imStepRasterizing,
+      '',
+    ]);
     // The CUT lands before its pages are drawn — the structure is
     // committed first and the bakes follow — so waiting for the cut alone
     // would read the render log half-written.
