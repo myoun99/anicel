@@ -309,7 +309,7 @@ LayerMergePlan planLayerMerge(
       for (final rider in ridden) ...rider.pictures,
     ],
     changes: _changesOf(taking, over, cut.canvasSize.pasteboardAt(reach)),
-    layers: _layersAfter(taking, result.row, {
+    layers: _layersAfter(taking, over, result.row, {
       for (final rider in ridden) rider.row.id: rider.row,
     }),
   );
@@ -338,7 +338,14 @@ Layer? _baseLeftBy(LayerMergeTaking taking) =>
 /// base's group but the base ([attachedGroupSlice]), organizer folders and
 /// all — by the side of the base they stand on: what is led around the
 /// result (Q8 · Q13).
-({List<Layer> below, List<Layer> above}) _ledAround(LayerMergeTaking taking) {
+///
+/// A folder the result stands in ([over]) is none of them: the topmost row
+/// taken from inside a group's organizer folder stands in it after (Q2), so
+/// the folder holds the result, and is no organizer any more.
+({List<Layer> below, List<Layer> above}) _ledAround(
+  LayerMergeTaking taking,
+  Set<LayerId> over,
+) {
   final LayerMergeTaking(:cut, _taken: taken) = taking;
   final below = <Layer>[];
   final above = <Layer>[];
@@ -350,7 +357,7 @@ Layer? _baseLeftBy(LayerMergeTaking taking) =>
     for (final member in attachedGroupSlice(base.id, cut.layers)) {
       if (member.id == base.id) {
         side = above;
-      } else if (!taken.contains(member.id)) {
+      } else if (!taken.contains(member.id) && !over.contains(member.id)) {
         side.add(member);
       }
     }
@@ -360,16 +367,17 @@ Layer? _baseLeftBy(LayerMergeTaking taking) =>
 
 /// The cut's rows after [taking]'s merge: the rows it takes gone, and
 /// [result] standing where the topmost of them stood — or just outside the
-/// group of the base it rode without, on the side it rode (Q14) — with the
-/// rows [_ledAround] it, [ridden] where it bakes them anew: those of a
-/// base's folder in the result's.
+/// group of the base it rode without as the group stood, on the side it
+/// rode (Q14) — with the rows [_ledAround] it, [ridden] where it bakes them
+/// anew: those of a base's folder in the result's.
 List<Layer> _layersAfter(
   LayerMergeTaking taking,
+  Set<LayerId> over,
   Layer result,
   Map<LayerId, Layer> ridden,
 ) {
   final LayerMergeTaking(:cut, _taken: taken, _anchor: anchor) = taking;
-  final led = _ledAround(taking);
+  final led = _ledAround(taking, over);
   final ledIds = {
     for (final row in [...led.below, ...led.above]) row.id,
   };
@@ -382,12 +390,13 @@ List<Layer> _layersAfter(
       if (!taken.contains(row.id) && !ledIds.contains(row.id)) row,
   ];
   final order = {for (final (index, row) in cut.layers.indexed) row.id: index};
-  final at = switch (_baseLeftBy(taking)) {
+  final edge = switch (_baseLeftBy(taking)) {
     final base? when order[anchor.id]! < order[base.id]! =>
-      attachedGroupStartIndex(base.id, kept),
-    final base? => attachedGroupEndIndex(base.id, kept),
-    null => kept.where((row) => order[row.id]! < order[anchor.id]!).length,
+      attachedGroupStartIndex(base.id, cut.layers),
+    final base? => attachedGroupEndIndex(base.id, cut.layers),
+    null => order[anchor.id]!,
   };
+  final at = kept.where((row) => order[row.id]! < edge).length;
   return [
     ...kept.take(at),
     for (final row in led.below) seated(row),
@@ -734,7 +743,7 @@ Set<LayerMergeChange> _changesOf(
   );
   final order = {for (final (index, row) in cut.layers.indexed) row.id: index};
   final pictures = [for (final row in pictureRows) order[row.id]!];
-  final led = _ledAround(taking);
+  final led = _ledAround(taking, over);
   return {
     if (takenRows.any((row) => _blendsItsOwnWay(row.blendMode)))
       LayerMergeChange.blend,

@@ -610,6 +610,29 @@ void main() {
       expect(rowOf(plan.layers, 'r').folderId, const LayerId('O'));
     });
 
+    test('the topmost taken from inside that folder stands in it, as any '
+        'topmost row does, and the folder is the result\'s now', () {
+      final base = row('base', {0: '1'});
+      Layer gathered(String id) =>
+          synced(id, base).copyWith(folderId: const LayerId('O'));
+      final plan = merge(
+        cutOf([
+          base,
+          gathered('r'),
+          gathered('s'),
+          createFolderLayer(id: const LayerId('O'), name: 'O'),
+        ]),
+        ['base', 'r'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], ['r', 's', 'O']);
+      expect([for (final row in plan.layers) row.folderId?.value], [
+        'O',
+        'O',
+        null,
+      ]);
+    });
+
     /// 🗣️I-78-Q14 (유저 2026-10-28): 「보이던 그대로 같이 굽는다」.
     test('🎯one chosen without its base is baked wearing it, and stands just '
         'outside the group when it is the topmost', () {
@@ -658,6 +681,27 @@ void main() {
         's',
         'base',
       ]);
+    });
+
+    test('the folder that gathered it stays where it stood, and the result '
+        'stands past the group as it stood, in the base\'s folder', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          base,
+          synced('r', base).copyWith(folderId: const LayerId('O')),
+          createFolderLayer(id: const LayerId('O'), name: 'O'),
+        ]),
+        ['c', 'r'],
+      )!;
+
+      expect([for (final row in plan.layers) row.id.value], [
+        'base',
+        'O',
+        'r',
+      ]);
+      expect(plan.result.folderId, isNull);
     });
 
     test('one taken below the topmost row goes as any row does', () {
