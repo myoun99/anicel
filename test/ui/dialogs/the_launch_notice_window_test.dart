@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/markdown_subset.dart';
 import 'package:anicel/src/ui/widgets/settings_rows.dart';
 
 /// A dismissal kept in memory: one store, read by every launch of a test
@@ -238,6 +239,39 @@ void main() {
     );
     expect(_boldRuns(paragraph), ['bold words']);
     expect(_boldRuns(_richText(tester, 'First item')), ['item']);
+  });
+
+  testWidgets('every bundled section draws with no marker left over — the '
+      'release rewrites them, and a lone ** would print as it is', (
+    tester,
+  ) async {
+    final bundled = (await tester.runAsync(LaunchNoticeContent.bundled))!;
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final language in AppLanguage.values) {
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: LaunchNoticeWindow(content: bundled, onDontShowAgain: () {}),
+        ),
+      );
+      final drawn = [
+        for (final text in tester.widgetList<RichText>(
+          find.descendant(
+            of: find.byType(MarkdownSubset),
+            matching: find.byType(RichText),
+          ),
+        ))
+          text.text.toPlainText(),
+      ];
+      expect(drawn, isNotEmpty, reason: language.name);
+      expect(
+        drawn.where((text) => text.contains('**')),
+        isEmpty,
+        reason: language.name,
+      );
+    }
   });
 
   testWidgets('the feedback section\'s button is the ⚙ menu\'s 「의견 보내기」 '
