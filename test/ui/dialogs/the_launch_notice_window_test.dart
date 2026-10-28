@@ -207,7 +207,9 @@ void main() {
             '- Second item\n'
             '  carried on\n'
             '\n'
-            'A lone ** marker.',
+            'A lone ** marker.\n'
+            '## Then\n'
+            'Right under it.',
       ),
     );
     await launch(tester);
@@ -222,6 +224,9 @@ void main() {
     expect(find.text('•'), findsNWidgets(2));
     expect(find.text('Second item carried on'), findsOneWidget);
     expect(find.text('A lone ** marker.'), findsOneWidget);
+    // A heading ends the paragraph above it, blank line or not.
+    expect(find.text('Then'), findsOneWidget);
+    expect(find.text('Right under it.'), findsOneWidget);
 
     final paragraph = _richText(
       tester,
