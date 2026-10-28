@@ -101,6 +101,8 @@ import 'timeline/property_lane_model.dart'
         previewedLaneRow;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_edges.dart';
+import 'timeline/timeline_visible_range.dart';
+import 'timeline/held_row_pin.dart';
 import 'timeline/timeline_row_selection_bands.dart';
 import 'timeline/timeline_row_span_resolver.dart'
     show
@@ -286,6 +288,7 @@ part 'storyboard/storyboard_cut_starts.dart';
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
+part 'storyboard/storyboard_rows_window.dart';
 part 'storyboard/storyboard_rail_rows.dart';
 part 'storyboard/storyboard_rail_sweep.dart';
 part 'storyboard/storyboard_sheet.dart';
@@ -1586,7 +1589,7 @@ class _StoryboardBodyFrame {
   final double? availableRailWidth;
   final double railWindowExtent;
   final ColorScheme colorScheme;
-  final List<List<Widget>> trackGlobalStripRowsByTrack;
+  final List<List<List<Widget>>> trackGlobalStripRowsByTrack;
 }
 class _StoryboardPanelState extends State<StoryboardPanel> {
   /// The integer rate the grid COUNTS with — the ruler's second marks
@@ -1643,6 +1646,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   // A collaborator (storyboard/storyboard_scroll.dart, a part of this library). The
   // State keeps the entry points its build tree calls.
   late final _StoryboardScroll _scroll = _StoryboardScroll(this);
+
+  // ── the rows' window: its own object ────────────────────────────────
+  //
+  // A collaborator (storyboard/storyboard_rows_window.dart, a part of this
+  // library): the rows built where the view stands.
+  late final _StoryboardRowsWindow _rowsWindow = _StoryboardRowsWindow(this);
 
   /// The door a collaborator rebuilds through - setState is protected,
   /// and a collaborator is not a subclass.
@@ -1716,6 +1725,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     super.initState();
     _legendKeeper?.up(_legend);
     _horizontalController.addListener(_frameAxis.handleScroll);
+    _verticalController.addListener(_rowsWindow.handleScroll);
     _letGoOfKeptRows = followKeptAxis(
       _verticalController,
       _keptLayerAxis,
@@ -1833,6 +1843,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
+    _verticalController.removeListener(_rowsWindow.handleScroll);
+    _rowsWindow.dispose();
     _frameAxis.dispose();
     _letGoOfKeptRows();
     _standing.dispose();
@@ -2098,7 +2110,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Widget _buildBody(
     BuildContext context,
     Project project,
-    List<List<Widget>> trackGlobalStripRowsByTrack,
+    List<List<List<Widget>>> trackGlobalStripRowsByTrack,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(project);
@@ -2297,28 +2309,34 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   axis: Axis.vertical,
                                   columns: _sweep.columns(),
                                   rowsIn: _sweep.rowsIn,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    // One pass of the rail's keep: a row it
-                                    // stops drawing is let go of.
-                                    children: _rows.railPass(
-                                      () => [
-                                        // Track groups in TIMELINE order (R6
-                                        // B3): the S rows sit ABOVE their V
-                                        // track, slots bottom-up like the
-                                        // timeline (top-down S2, S1, V —
-                                        // R7-④).
-                                        for (
-                                          var index = 0;
-                                          index < frame.project.tracks.length;
-                                          index++
-                                        )
-                                          ..._railRows.railRowsForTrack(
-                                            frame.project.tracks[index],
-                                            index,
-                                          ),
-                                      ],
+                                  // Laid by the rows' window, as the strips.
+                                  child: ValueListenableBuilder<int>(
+                                    valueListenable: _rowsWindow.bucket,
+                                    builder: (context, _, _) => Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      // One pass of the rail's keep: a row
+                                      // it stops drawing is let go of.
+                                      children: _rows.railPass(
+                                        () => [
+                                          // Track groups in TIMELINE order
+                                          // (R6 B3): the S rows sit ABOVE
+                                          // their V track, slots bottom-up
+                                          // like the timeline (top-down S2,
+                                          // S1, V — R7-④).
+                                          for (
+                                            var index = 0;
+                                            index <
+                                                frame.project.tracks.length;
+                                            index++
+                                          )
+                                            ..._railRows.railRowsForTrack(
+                                              frame.project.tracks[index],
+                                              index,
+                                              _rowsWindow.rowsOf(index),
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
