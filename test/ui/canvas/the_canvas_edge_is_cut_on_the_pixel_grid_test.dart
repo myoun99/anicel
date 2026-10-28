@@ -514,6 +514,44 @@ void main() {
       );
     });
 
+    test('a grid whole in the canvas\'s space and not on the device\'s — '
+        'the ratio decides', () async {
+      // At 150% in logical pixels from a whole origin every coordinate's
+      // edge is whole there, and at a ratio of 1.25 a quarter in on the
+      // device: 6.25 · 10 · 13.75.
+      const ratio = 1.25;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder, Offset.zero & const Size(16, 16));
+      seamedInkSurface().paintContentInto(
+        _EveryEdgeBlended(canvas)
+          ..translate(5, 5)
+          ..scale(1.5),
+        pixelRatio: ratio,
+      );
+      final device = ui.PictureRecorder();
+      Canvas(device)
+        ..scale(ratio)
+        ..drawPicture(recorder.endRecording());
+      final image = await device.endRecording().toImage(20, 20);
+      final rgba = (await image.toByteData(
+        format: ui.ImageByteFormat.rawRgba,
+      ))!.buffer.asUint8List();
+      bool inked(int x, int y) =>
+          (x >= 6 && x <= 9 && y >= 6 && y <= 9) ||
+          (x >= 10 && x <= 13 && y >= 10 && y <= 13);
+      for (var y = 0; y < 20; y += 1) {
+        for (var x = 0; x < 20; x += 1) {
+          final at = (y * 20 + x) * 4;
+          expect(
+            rgba.sublist(at, at + 4),
+            inked(x, y) ? red : transparent,
+            reason: '($x,$y): a coordinate wholly, or nothing — cut on the '
+                'device\'s grid',
+          );
+        }
+      }
+    });
+
     test('a float\'s picture over the walk — a transform\'s, a text\'s '
         'landing', () async {
       final recorder = ui.PictureRecorder();
@@ -565,6 +603,21 @@ void main() {
         }
       }
     });
+  });
+
+  test('on the grid — into a raster at the canvas\'s own pixels, every '
+      'frame\'s picture and step\'s patch — each coordinate is one drawImage',
+      () {
+    // ⛔The cut's clip and shader are paid only where an edge falls inside
+    // a pixel: on the grid they are the same pixels at a coordinate's draw
+    // more, and a frame's picture lays thousands.
+    final canvas = _WholeRecordingCanvas(const Rect.fromLTWH(0, 0, 4, 4));
+    seamedInkSurface().paintContentInto(canvas, pixelRatio: 1);
+    final calls = [
+      for (final call in canvas.invocations) call.invocation.memberName,
+    ];
+    expect(calls.where((name) => name == #drawImage), hasLength(2));
+    expect(calls, isNot(contains(#drawPaint)));
   });
 
   test('the grid\'s blit lays the texels a nearest sample picks — only its '
@@ -711,6 +764,23 @@ void main() {
           'law leaked past the axis-aligned case',
     );
   });
+}
+
+/// A canvas that records its calls, its space the raster's own pixels and
+/// [bounds] its clip.
+class _WholeRecordingCanvas extends TestRecordingCanvas {
+  _WholeRecordingCanvas(this.bounds);
+
+  final Rect bounds;
+
+  @override
+  Rect getLocalClipBounds() => bounds;
+
+  @override
+  Rect getDestinationClipBounds() => bounds;
+
+  @override
+  Float64List getTransform() => Matrix4.identity().storage;
 }
 
 /// [inner], with every edge handed over anti-aliased: each paint's
