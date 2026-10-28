@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -188,5 +189,38 @@ void main() {
     ]);
     expect(moved.located, isTrue);
     expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+  });
+
+  // I-132-Q3: a spin reaches as far as the paper's farthest corner moves
+  // about its centre — the paper's middle, (12, 4): the corner 12.6 out,
+  // turned 45° each way, moves 9.7, and the texel past it.
+  testWidgets('a row in a spinning folder: grown by how far the paper\'s '
+      'corner moves', (tester) async {
+    final reach = 2 * math.sqrt(12 * 12 + 4 * 4) * math.sin(math.pi / 8) + 1;
+    final moved = await aDabUnder(tester, [
+      CompositeGroup<CanvasStackRow>(
+        children: [row()],
+        opacity: 1,
+        blendMode: LayerBlendMode.normal,
+        effects: [
+          ResolvedLayerEffect(
+            kind: EffectKind.radialBlur,
+            values: [90, 0, 0, 0],
+            points: {'center': null},
+          ),
+        ],
+      ),
+    ]);
+    expect(moved.located, isTrue);
+    final dirty = moved.dirty!;
+    // The tile, the reach on each side and the hairline.
+    for (final (side, was) in [
+      (dirty.left, -reach - 1),
+      (dirty.top, -reach - 1),
+      (dirty.right, 8 + reach + 1),
+      (dirty.bottom, 8 + reach + 1),
+    ]) {
+      expect(side, closeTo(was, 1e-9));
+    }
   });
 }

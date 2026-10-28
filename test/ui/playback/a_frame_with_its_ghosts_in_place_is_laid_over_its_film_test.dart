@@ -23,6 +23,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
+import 'package:anicel/src/ui/canvas/directional_blur_shader.dart';
 import 'package:anicel/src/ui/canvas/layer_blend_shader.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
@@ -43,6 +44,7 @@ import '../../helpers/draw_on_current_frame.dart';
 /// trees: one laid whole, one over the film laid first.
 void main() {
   setUpAll(LayerBlendShader.load);
+  setUpAll(DirectionalBlurShader.load);
 
   const canvasSize = CanvasSize(width: 128, height: 128);
   const pen = LayerId('pen');
@@ -339,6 +341,29 @@ void main() {
             name: 'F',
           ).copyWith(effects: [blur(48)]),
         ], ghostSize: 33),
+      ),
+    );
+  });
+
+  // I-132-Q3: so does a spin's, which turns the ghost about the paper's
+  // middle — as far as the paper's farthest corner moves.
+  testWidgets('a folder spinning its ghost about the paper\'s middle: laid '
+      'over its film, the frame is the frame laid whole', (tester) async {
+    await tester.runAsync(
+      () => expectOverItsFilmAsWhole(
+        inked([
+          drawing('under'),
+          theRowWithTheOnion(folder: 'f'),
+          createFolderLayer(id: const LayerId('f'), name: 'F').copyWith(
+            effects: [
+              LayerEffect(
+                id: const EffectId('spin'),
+                kind: EffectKind.radialBlur,
+                parameters: {'amount': EffectParameter(value: 40)},
+              ),
+            ],
+          ),
+        ]),
       ),
     );
   });
