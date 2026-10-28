@@ -11,6 +11,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_zoom_limits.dart';
 
 import 'ui/storyboard_cut_block_probe.dart';
+import 'ui/timeline/timeline_cell_probe.dart';
 import 'ui/timeline/timeline_row_chrome_probe.dart';
 
 import 'helpers/home_page_probes.dart';
@@ -48,7 +49,8 @@ void main() {
       find.named('timeline-row-cells-$secondCutRowId'),
       findsOneWidget,
     );
-    expectCellText(secondCutRowId, 0, 'X');
+    // Cut 2's row, born with its first cel (I-138).
+    expectCellMark(secondCutRowId, 0, unnamedDrawingMark);
     expect(await activeCutIdOf(tester), CutId(second));
 
     await tapStoryboardCutBlock(tester, 'default-cut-1');
@@ -132,15 +134,13 @@ void main() {
     await switchToCut(tester, second);
     await expectActiveCutName(tester, '2');
     expectActiveLayerName('A');
-    expectCellText(secondCutRowId, 0, 'X');
+    // Born with its first cel (I-138).
+    expectCellMark(secondCutRowId, 0, unnamedDrawingMark);
 
-    await tapHomeTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
-    );
+    await standOnSecondCutsFrameTwo(tester);
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
-    expectCellText(secondCutRowId, 0, 'X');
+    expectCellMark(secondCutRowId, 0, unnamedDrawingMark);
     expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
     expect(selectedCellStateLabel(tester), 'drawing start');
 
@@ -165,10 +165,7 @@ void main() {
       final second = await createSecondCutWithADrawingRow(tester);
 
       await switchToCut(tester, second);
-      await tapHomeTimelineCell(
-        tester,
-        const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
-      );
+      await standOnSecondCutsFrameTwo(tester);
       await tapToolbarButton(
         tester,
         const ValueKey<String>('new-frame-button'),
@@ -177,7 +174,9 @@ void main() {
 
       // Grow the block to [1,4) so a held cell can take the dot, cut the
       // hold back at 3, then dot the held cell at 2 (dots are block-owned).
-      await dragBlockEndGrip(tester, secondCutRowId, 0, 2);
+      // It is the row's second block: the first is the cel the row was
+      // born with (I-138).
+      await dragBlockEndGrip(tester, secondCutRowId, 1, 2);
       await tapHomeTimelineCell(
         tester,
         const ValueKey<String>('timeline-cell-$secondCutRowId-3'),
@@ -358,10 +357,7 @@ void main() {
         isFalse,
       );
 
-      await tapHomeTimelineCell(
-        tester,
-        const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
-      );
+      await standOnSecondCutsFrameTwo(tester);
 
       expect(
         await isActionButtonEnabled(
@@ -381,10 +377,7 @@ void main() {
     final second = await createSecondCutWithADrawingRow(tester);
 
     await switchToCut(tester, second);
-    await tapHomeTimelineCell(
-      tester,
-      const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
-    );
+    await standOnSecondCutsFrameTwo(tester);
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
 
@@ -399,4 +392,13 @@ void main() {
     await expectActiveCutName(tester, '2');
     expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
   });
+}
+
+/// Stands on Cut 2's frame 2 — beside the cel its row was born with
+/// (I-138), whose [+] and property tag stand on that cell's leading half
+/// (UI-R11 #13), so the press lands on the half they leave the cell.
+Future<void> standOnSecondCutsFrameTwo(WidgetTester tester) async {
+  final cell = timelineCellGlobalRect(tester, secondCutRowId, 1);
+  await tester.tapAt(cell.centerRight - Offset(cell.width / 4, 0));
+  await tester.pumpAndSettle();
 }
