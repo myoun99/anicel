@@ -1,4 +1,3 @@
-import '../../models/brush_group.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
@@ -42,45 +41,6 @@ List<BrushPreset> moveBrushPresetInLibrary({
   }
 
   return List<BrushPreset>.unmodifiable([
-    ...remaining.take(insertIndex),
-    moved,
-    ...remaining.skip(insertIndex),
-  ]);
-}
-
-/// Moves the group [movedId] before [insertBeforeId], or to the end of the
-/// list when no anchor is given.
-///
-/// Group order is the library's display order all by itself, so reordering
-/// groups never touches the preset list — the members ride along by id.
-/// Returns the original list when [movedId] is absent.
-List<BrushGroup> moveBrushGroupInLibrary({
-  required List<BrushGroup> groups,
-  required BrushGroupId movedId,
-  BrushGroupId? insertBeforeId,
-}) {
-  final movedIndex = groups.indexWhere((group) => group.id == movedId);
-  if (movedIndex < 0) {
-    return groups;
-  }
-
-  final moved = groups[movedIndex];
-  final remaining = [
-    for (final group in groups)
-      if (group.id != movedId) group,
-  ];
-
-  var insertIndex = remaining.length;
-  if (insertBeforeId != null) {
-    final anchorIndex = remaining.indexWhere(
-      (group) => group.id == insertBeforeId,
-    );
-    if (anchorIndex >= 0) {
-      insertIndex = anchorIndex;
-    }
-  }
-
-  return List<BrushGroup>.unmodifiable([
     ...remaining.take(insertIndex),
     moved,
     ...remaining.skip(insertIndex),

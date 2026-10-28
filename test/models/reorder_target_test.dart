@@ -81,4 +81,39 @@ void main() {
       expect(anchors.toSet().length, anchors.length);
     });
   });
+
+  group('movedBefore', () {
+    const abc = ['a', 'b', 'c'];
+
+    test('moves an entry before an anchor', () {
+      expect(movedBefore(abc, moved: 'c', anchor: 'a'), ['c', 'a', 'b']);
+    });
+
+    test('appends when no anchor is given', () {
+      expect(movedBefore(abc, moved: 'a', anchor: null), ['b', 'c', 'a']);
+    });
+
+    test('a missing anchor appends', () {
+      expect(movedBefore(abc, moved: 'a', anchor: 'z'), ['b', 'c', 'a']);
+    });
+
+    test('an entry not in the list returns the list unchanged', () {
+      expect(movedBefore(abc, moved: 'z', anchor: null), same(abc));
+    });
+
+    test('anchoring on itself appends — order changes, membership does '
+        'not', () {
+      expect(movedBefore(abc, moved: 'b', anchor: 'b'), ['a', 'c', 'b']);
+    });
+
+    test('with reorderAnchorAt, every target lands where it names', () {
+      for (var target = 0; target < abc.length; target += 1) {
+        final anchor = reorderAnchorAt(abc, movedIndex: 0, target: target);
+        expect(
+          movedBefore(abc, moved: 'a', anchor: anchor).indexOf('a'),
+          target,
+        );
+      }
+    });
+  });
 }

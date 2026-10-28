@@ -61,3 +61,30 @@ T? reorderAnchorAt<T>(
   final clamped = target.clamp(0, without.length);
   return clamped < without.length ? without[clamped] : null;
 }
+
+/// [ordered] with [moved] lifted out and put back before [anchor] — at the
+/// end where [anchor] is null (the APPEND [reorderAnchorAt] names) or not
+/// among the rest. [ordered] itself where [moved] is not in it.
+///
+/// The move every list whose entries ride whole makes — a brush group, a
+/// palette (I-131: 「브러시 그룹 이동하는 로직 법 통일/재사용」).
+List<T> movedBefore<T>(
+  List<T> ordered, {
+  required T moved,
+  required T? anchor,
+}) {
+  if (!ordered.contains(moved)) {
+    return ordered;
+  }
+  final remaining = [
+    for (final entry in ordered)
+      if (entry != moved) entry,
+  ];
+  final at = anchor == null ? -1 : remaining.indexOf(anchor);
+  final insertIndex = at < 0 ? remaining.length : at;
+  return List<T>.unmodifiable([
+    ...remaining.take(insertIndex),
+    moved,
+    ...remaining.skip(insertIndex),
+  ]);
+}

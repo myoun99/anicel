@@ -129,8 +129,9 @@ void main() {
         // 🗣️F-198 (유저 2026-09-27): 「그냥 브라시 그룹 동작하듯이 하라고.
         // 펜다운하면 선택되고 그런거 싹 다 통일하면 해결이잖아」 — the group
         // tab is stood on too (a press picks it), so it drags by the cell's
-        // rule instead of Flutter's slop.
-        'lib/src/ui/brush/brush_preset_panel.dart',
+        // rule instead of Flutter's slop — and every list of rows stood on
+        // so (the rail's groups, I-131's palettes) is this one list.
+        'lib/src/ui/widgets/stand_on_reorder_list.dart',
         'lib/src/ui/brush/brush_preset_reorder_grid.dart',
         // I-131: a palette's place is stood on too — a press picks its
         // colour, or fills it — and a drag moves it to another place.

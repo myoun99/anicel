@@ -1,4 +1,3 @@
-import '../widgets/app_tooltip.dart';
 import '../shortcuts/brush_actions.dart';
 import '../shortcuts/editor_action_registry.dart' show BrushLibraryActionIds;
 import '../shortcuts/editor_shortcut_scope.dart';
@@ -6,7 +5,6 @@ import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
-import 'package:flutter/gestures.dart' show MultiDragGestureRecognizer;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_group.dart';
@@ -23,11 +21,11 @@ import '../panels/editor_panel_frame.dart';
 import '../theme/app_theme.dart' show AppColors, AppCursors, AppShapes;
 import '../widgets/app_scrollbar_lane.dart';
 import '../widgets/app_window.dart';
-import '../widgets/axis_bar_gesture.dart' show OwningMultiDragGestureRecognizer;
 import '../widgets/content_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart' show DockSplitterEdges;
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/stand_on_reorder_list.dart';
 import 'brush_group_icon_glyph.dart';
 import '../shortcuts/panel_keys.dart';
 import 'brush_library_look.dart';
@@ -74,7 +72,7 @@ enum _BrushPresetMenuAction {
 //
 // ⚠️It was NOT the cause of R4 #11. Dropping it was tried as a fix first and
 // measured: the rail still went red. The crash is a live tooltip being
-// re-parented, and it is fixed separately in `_dismissTooltipsOnPress`.
+// re-parented, and it is fixed separately in `dismissTooltipsOnPress`.
 
 /// The brush library panel: a rail of group TABS down the left, and the open
 /// group's brushes beside it — one row per preset with a tip icon, a stroke
@@ -277,45 +275,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// by then (I-49).
   BrushPresetId? _carriedPreset;
 
-  /// True while a rail tab is being dragged.
-  ///
-  /// A `Tooltip` is an `OverlayPortal`, and reordering re-parents items
-  /// through the inactive list by global key. If autoscroll brings one back
-  /// while the panel's `LayoutBuilder` is mid-layout, the portal tries to
-  /// add itself to the overlay right then and trips
-  /// "a _RenderLayoutBuilder was mutated in performLayout" — which takes the
-  /// whole rail red. Dropping the tooltips for the duration of a drag leaves
-  /// nothing in the item that reaches for the overlay.
-  ///
-  /// 🚨유저, R4 #11: 브러시그룹을 드래그로 옮기면 2번째 버튼부터 끝까지
-  /// 빨간 에러 뜨고 콘솔에 무한 에러.
-  ///
-  /// ★This flag was only ever HALF the guard, and the missing half is
-  /// [_dismissTooltips]. It stops a tooltip from being BORN during a drag;
-  /// it does nothing about one that was ALREADY UP when the drag started —
-  /// which is the common case, because the hand that drags a tab has been
-  /// resting on it. That live overlay entry is what gets re-parented
-  /// mid-layout. Measured, not reasoned: dropping the ⋯ menu did not fix
-  /// it, and neither did keeping the tooltip widget mounted; only having no
-  /// LIVE tooltip at drag start did.
-  bool _railDragging = false;
-
-  /// Wraps a reorderable item so PRESSING it takes any open tooltip down.
-  ///
-  /// ⚠️Pointer DOWN, not `onReorderStart`. Measured: dismissing from
-  /// `onReorderStart` only changes which form of the assert fires — by then
-  /// the list is already inside the machinery that re-parents items, and
-  /// removing an overlay entry there is itself the illegal mutation. Pointer
-  /// down is a plain gesture callback with no layout in flight, and it is
-  /// also simply when a tooltip should go: the hand has stopped hovering and
-  /// started doing.
-  ///
-  /// A `Listener` consumes nothing, so the drag recogniser underneath is
-  /// untouched.
-  Widget _dismissTooltipsOnPress(Widget child) => Listener(
-    onPointerDown: (_) => AppTooltip.dismissAllToolTips(),
-    child: child,
-  );
   BrushGroupId? _springTarget;
   bool _springTargetIsRoot = false;
   Timer? _springTimer;
@@ -640,13 +599,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       movedIndex: oldIndex,
       target: newIndex,
     );
-    onReordered(
-      moveBrushGroupInLibrary(
-        groups: widget.groups,
-        movedId: moved.id,
-        insertBeforeId: anchor?.id,
-      ),
-    );
+    onReordered(movedBefore(widget.groups, moved: moved, anchor: anchor));
   }
 
   /// Puts the carried brush where it was dropped in the OPEN tab — a move
@@ -927,7 +880,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       widget.onGroupEdited != null,
       _railShowIcon,
       _railShowName,
-      _railDragging,
       widget.tool,
     ),
     _buildRailFresh,
@@ -950,47 +902,20 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           AppScrollbarLane.thin,
       child: ContentScrollbar(
         controller: _railController,
-        builder: (context, controller) => ReorderableListView.builder(
-          key: const ValueKey<String>('brush-preset-tab-rail'),
+        builder: (context, controller) => StandOnReorderList(
+          listKey: const ValueKey<String>('brush-preset-tab-rail'),
           scrollController: controller,
-          buildDefaultDragHandles: false,
           itemCount: tabs.length,
-          onReorderStart: (_) => setState(() => _railDragging = true),
-          // 🚨★★★THE FLAG OUTLIVES THE DROP BY A FRAME (유저 2026-09-01,
-          // F-60, with the recipe: 「3번째 브러시 그룹을 드래그해서 4번째랑
-          // 자리바꾸기 … 커밋될때? 끝날때 빨간화면떴어」).
-          //
-          // ⛔Clearing it here — synchronously — put the tooltips back in the
-          // SAME frame that `ReorderableListView` revives the dragged item
-          // from the inactive list by global key. Flutter named the collision
-          // itself:
-          //
-          //   A _RenderLayoutBuilder was mutated in performLayout.
-          //   _RenderTheater._addDeferredChild ← _OverlayEntryLocation._activate
-          //     ← _OverlayPortalElement.activate ← Element._activateRecursively
-          //   error-causing widget: ReorderableListView-[brush-preset-tab-rail]
-          //
-          // A `Tooltip` is an `OverlayPortal`; reviving one adds a deferred
-          // child to the theater, and that is illegal inside the panel's
-          // `LayoutBuilder` layout callback. Everything after it in 유저's log
-          // — the ink `referenceBox.attached` asserts, the semantics
-          // `traversalParentIdentifier` failure, buttons vanishing on hover
-          // across the whole app — is the wreckage of that one frame.
-          //
-          // ⚠️A post-frame callback, not a timer: the next frame is exactly
-          // when the revival is over and no more than that.
-          onReorderEnd: (_) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) {
-                return;
-              }
-              setState(() => _railDragging = false);
-            });
-          },
+          entryKeyOf: (index) => ValueKey<String>(
+            'brush-preset-tab-entry-${tabs[index]?.id.value ?? 'root'}',
+          ),
+          // The root section is not a group and always sorts last, so only
+          // real tabs drag.
+          canMove: (index) => reorderable && tabs[index] != null,
           onReorderItem: _handleTabReorder,
-          itemBuilder: (context, index) {
+          itemBuilder: (context, index, reordering) {
             final group = tabs[index];
-            final tab = _BrushGroupTab(
+            return _BrushGroupTab(
               keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
               label: group?.name ?? brushRootSectionLabel,
               shortcuts: [
@@ -999,7 +924,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               icon: group?.icon,
               showIcon: _railShowIcon,
               showName: _railShowName,
-              showTooltip: !_railDragging,
+              showTooltip: !reordering,
               onEdit: group == null || widget.onGroupEdited == null
                   ? null
                   : () => _editGroup(group),
@@ -1008,27 +933,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               preview: _firstPresetIn(group?.id),
               selected: group?.id == open,
               onTap: () => _enterTab(group?.id),
-            );
-            return KeyedSubtree(
-              key: ValueKey<String>(
-                'brush-preset-tab-entry-${group?.id.value ?? 'root'}',
-              ),
-              // The root section is not a group and always sorts last, so
-              // only real tabs drag.
-              child: reorderable && group != null
-                  ? _dismissTooltipsOnPress(
-                      // ⛔The Builder is here for its CONTEXT, as the brush
-                      // cell's is: the predicate needs the tab's own box.
-                      Builder(
-                        builder: (tabContext) => _StandOnDragStartListener(
-                          index: index,
-                          stillOnTheThing: (global) =>
-                              pointerIsStillOn(tabContext, global),
-                          child: tab,
-                        ),
-                      ),
-                    )
-                  : tab,
             );
           },
         ),
@@ -1117,7 +1021,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         final zone = RepaintBoundary(child: row);
         // The rows carry tooltips too, and a row drag re-parents them
         // exactly the same way (유저, R4 #11 — same defect, other list).
-        return reorderable ? _dismissTooltipsOnPress(zone) : zone;
+        return reorderable ? dismissTooltipsOnPress(zone) : zone;
       },
     );
   }
@@ -1256,34 +1160,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 /// A rotated label was the obvious alternative and a bad one — Korean and
 /// Japanese group names do not read sideways. The brush the group starts
 /// with says more anyway.
-/// A group tab's reorder, started by the brush cell's own recogniser.
-///
-/// 🗣️F-198 (유저 2026-09-27: 「그냥 브라시 그룹 동작하듯이 하라고. 펜다운하면
-/// 선택되고 그런거 싹 다 통일하면 해결이잖아」). The tab and the cell are both
-/// things you STAND on — pressing picks — so they take a drag by one rule,
-/// F-138-Q1's: the first move claims the pointer and leaving the thing
-/// starts the drag ([OwningMultiDragGestureRecognizer.stillOnTheThing]).
-/// ⛔Flutter's own listener waited for the device's slop — one pixel for a
-/// mouse, eighteen for a pen — the distance 유저 had struck out on
-/// 2026-08-30 (「1px 이동했는지 같은 px 이동으로 판단하는거 … 싹 깔끔하게
-/// 걷어내」); the tab kept it only because no one had asked it.
-class _StandOnDragStartListener extends ReorderableDragStartListener {
-  const _StandOnDragStartListener({
-    required super.index,
-    required super.child,
-    required this.stillOnTheThing,
-  });
-
-  final bool Function(Offset globalPosition) stillOnTheThing;
-
-  @override
-  MultiDragGestureRecognizer createRecognizer() =>
-      OwningMultiDragGestureRecognizer(
-        debugOwner: this,
-        stillOnTheThing: stillOnTheThing,
-      );
-}
-
 class _BrushGroupTab extends StatelessWidget {
   const _BrushGroupTab({
     required this.keyValue,
@@ -1375,7 +1251,7 @@ class _BrushGroupTab extends StatelessWidget {
   final bool showIcon;
   final bool showName;
 
-  /// False while the rail is being reordered — see `_railDragging`.
+  /// False while the rail is being reordered — see `StandOnReorderList`.
   final bool showTooltip;
 
   /// Opens the group's name/icon editor — a double tap, which cannot
