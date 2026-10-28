@@ -119,6 +119,11 @@ void main() {
         isNull,
       );
       expect(
+        palettesInSettingsFile(withDocument({...written, 'version': 'two'})),
+        isNull,
+        reason: 'a document the store would throw on is no palette either',
+      );
+      expect(
         palettesInSettingsFile(withDocument(written)),
         hasLength(1),
         reason: '⛔전제: the document as it was written is read',
@@ -193,25 +198,23 @@ void main() {
     });
 
     Finder byKey(String key) => find.byKey(ValueKey<String>(key));
+    final notice = find.byType(AppConfirmDialog);
 
-    Future<void> press(WidgetTester tester, Finder target) async {
-      await tester.tap(target, kind: PointerDeviceKind.mouse);
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('「내보내기」 asks where under the palette\'s name, writes '
-        'the file 「파일 열기」 reads back, and says so', (tester) async {
+    /// Sky's 「내보내기」 pressed, the save window answering [answer] for the
+    /// name it was asked under — every name it was asked under, and what
+    /// was said after (null: nothing).
+    Future<({List<String> asked, String? said})> exportSky(
+      WidgetTester tester,
+      Future<FolderGrant> Function(String suggestedName) answer,
+    ) async {
       FolderPicker.debugOperatingSystem = 'windows';
       final asked = <String>[];
       FolderPicker.debugSaveDestinationPicker = ({
         required String suggestedName,
         String? initialDirectory,
-      }) async {
+      }) {
         asked.add(suggestedName);
-        return FolderGrant.granted(
-          path: '${folder.path}/$suggestedName',
-          kind: GrantKind.file,
-        );
+        return answer(suggestedName);
       };
       await tester.pumpWidget(
         MaterialApp(
@@ -235,13 +238,31 @@ void main() {
       );
       await tester.pump();
 
-      await press(tester, byKey('palette-p2-more'));
+      await tester.tap(byKey('palette-p2-more'), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
       await tester.tap(byKey('palette-export'), kind: PointerDeviceKind.mouse);
-      final notice = find.byType(AppConfirmDialog);
       await settleAsync(
         tester,
         () => notice.evaluate().isNotEmpty,
+        patience: const Duration(seconds: 2),
         everyFrame: tester.pump,
+      );
+      return (
+        asked: asked,
+        said: notice.evaluate().isEmpty
+            ? null
+            : tester.widget<AppConfirmDialog>(notice).message,
+      );
+    }
+
+    testWidgets('「내보내기」 asks where under the palette\'s name, writes '
+        'the file 「파일 열기」 reads back, and says so', (tester) async {
+      final (:asked, :said) = await exportSky(
+        tester,
+        (name) async => FolderGrant.granted(
+          path: '${folder.path}/$name',
+          kind: GrantKind.file,
+        ),
       );
 
       expect(asked, ['Sky.$anicelPaletteExtension']);
@@ -252,9 +273,46 @@ void main() {
         )!)
           shapeOf(palette),
       ], [shapeOf(sky)]);
+      expect(said, AppText.strings.settingsExported('Sky'));
+    });
+
+    testWidgets('backed out of, nothing is written and nothing said', (
+      tester,
+    ) async {
+      final (:asked, :said) = await exportSky(
+        tester,
+        (_) async => const FolderGrant.cancelled(),
+      );
+
+      expect(asked, hasLength(1));
+      expect(said, isNull);
+      expect(folder.listSync(), isEmpty);
+    });
+
+    testWidgets('a place not chosen and a file not written are each said', (
+      tester,
+    ) async {
+      final unchosen = await exportSky(
+        tester,
+        (_) async => throw StateError('no window'),
+      );
       expect(
-        tester.widget<AppConfirmDialog>(notice).message,
-        AppText.strings.settingsExported('Sky'),
+        unchosen.said,
+        AppText.strings.fileExportPlaceUnchosen('Bad state: no window'),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('app-notice-close')));
+      await tester.pumpAndSettle();
+
+      final unwritten = await exportSky(
+        tester,
+        (name) async => FolderGrant.granted(
+          path: '${folder.path}/no/such/folder/$name',
+          kind: GrantKind.file,
+        ),
+      );
+      expect(
+        unwritten.said,
+        startsWith(AppText.strings.settingsExportNotWritten('')),
       );
     });
   });

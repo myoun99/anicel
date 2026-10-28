@@ -492,7 +492,11 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       context,
       name: name,
       type: FileTypeGroups.anicelShortcut,
-      contents: () => shortcutPresetSettingsFile(bindings.asOwn(preset, name)),
+      contents: () => shortcutPresetSettingsFile(
+        preset,
+        name: name,
+        keys: bindings.keysOf(preset),
+      ),
     );
   }
 

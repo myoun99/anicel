@@ -7,6 +7,7 @@ import '../brush/picked_file.dart' show PickedFile;
 import '../text/app_strings.dart';
 import 'editor_shortcut_bindings.dart';
 import 'shortcut_presets.dart';
+import 'shortcut_settings_store.dart' show shortcutPresetsInSettingsFile;
 
 /// Brings the shortcut files [files] into [bindings] (I-107) — what to say
 /// of them: a line for each new preset, and one for each file no keys could
@@ -58,8 +59,8 @@ List<String> importShortcutFiles(
 }
 
 /// Our own shortcut file [name] (I-142), holding [bytes]: each preset it
-/// holds a new one of the user's — a line for each, or one saying it could
-/// not be read.
+/// holds a new one of the user's, the last coming into use — a line for
+/// each, or one saying it could not be read.
 List<String> _presetsOfOurFile(
   EditorShortcutBindings bindings,
   String name,
@@ -71,11 +72,14 @@ List<String> _presetsOfOurFile(
   } on FormatException {
     return [AppText.strings.shortcutFileUnreadable(name)];
   }
-  final brought = bindings.presetsBroughtFrom(text);
-  return brought == null
-      ? [AppText.strings.shortcutFileUnreadable(name)]
-      : [
-          for (final preset in brought)
-            AppText.strings.shortcutPresetBrought(preset.name),
-        ];
+  final read = shortcutPresetsInSettingsFile(text, keeps: bindings.keeps);
+  if (read == null || read.isEmpty) {
+    return [AppText.strings.shortcutFileUnreadable(name)];
+  }
+  return [
+    for (final preset in read)
+      AppText.strings.shortcutPresetBrought(
+        bindings.duplicatePreset(preset, preset.name).name,
+      ),
+  ];
 }

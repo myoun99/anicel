@@ -142,7 +142,7 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   /// Whether a saved entry for [actionId] is kept: an action there is, or a
   /// brush the library — a panel the workspace — may yet tell of.
-  bool _keeps(String actionId) =>
+  bool keeps(String actionId) =>
       definitionFor(actionId) != null ||
       isBrushActionId(actionId) ||
       isPanelActionId(actionId);
@@ -387,33 +387,12 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// the layout in use by the ＋ of the window's list (I-107-Q1), any of the
   /// list's by its row's duplicate (I-107-Q3).
   UserShortcutPreset duplicatePreset(ShortcutLayout preset, String name) =>
-      _add(name, preset.base, _keysOf(preset));
-
-  /// [preset] as one of the user's named [name], for a settings file
-  /// (I-142): what a duplicate of it would hold.
-  UserShortcutPreset asOwn(ShortcutLayout preset, String name) =>
-      UserShortcutPreset(
-        id: preset.id,
-        name: name,
-        base: preset.base,
-        keys: _keysOf(preset),
-      );
-
-  /// The presets the settings file [source] holds (I-142), each brought in
-  /// as its duplicate under its own name — 「가져올땐 새 프리셋으로서
-  /// 등록」 (I-107-Q1) — the last one coming into use; null where it holds
-  /// none.
-  List<UserShortcutPreset>? presetsBroughtFrom(String source) {
-    final read = shortcutPresetsInSettingsFile(source, keeps: _keeps);
-    if (read == null || read.isEmpty) {
-      return null;
-    }
-    return [for (final preset in read) duplicatePreset(preset, preset.name)];
-  }
+      _add(name, preset.base, keysOf(preset));
 
   /// What [preset] presses over its base's: what it was made with, and
-  /// what was recorded over that.
-  Map<String, List<SingleActivator>> _keysOf(ShortcutLayout preset) => {
+  /// what was recorded over that — what a duplicate of it holds, and a
+  /// file of it (I-142).
+  Map<String, List<SingleActivator>> keysOf(ShortcutLayout preset) => {
     ...preset.ownKeys,
     ..._recordedUnder(preset),
   };
@@ -591,7 +570,7 @@ class EditorShortcutBindings extends ChangeNotifier {
     _userPresets = List.unmodifiable([
       if (payload?['presets'] case final List saved)
         for (final json in saved)
-          ?userPresetFromJson(json, recordedById: byPreset, keeps: _keeps),
+          ?userPresetFromJson(json, recordedById: byPreset, keeps: keeps),
     ]);
     final inUse = payload?['preset'];
     _preset =
@@ -601,11 +580,11 @@ class EditorShortcutBindings extends ChangeNotifier {
         in _overridesByPreset.entries) {
       overrides
         ..clear()
-        ..addAll(shortcutKeysFromJson(byPreset[preset.name], _keeps));
+        ..addAll(shortcutKeysFromJson(byPreset[preset.name], keeps));
     }
     _touchOverrides
       ..clear()
-      ..addAll(touchGesturesFromJson(payload?['touch'], _keeps));
+      ..addAll(touchGesturesFromJson(payload?['touch'], keeps));
     notifyListeners();
   }
 

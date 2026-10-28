@@ -89,18 +89,31 @@ Map<String, Object?> _presetJson(UserShortcutPreset preset) => {
   'keys': _keysToJson(preset.ownKeys),
 };
 
-/// [preset] alone as a settings file (I-142): the shortcut store's own
-/// document, holding just it — as one of the user's, the keys it presses
-/// over its [ShortcutLayout.base]'s all its own.
-String shortcutPresetSettingsFile(UserShortcutPreset preset) =>
-    encodeSettingsFile({
-      ShortcutSettingsStore.fileName: versionedSettingsDocument(
-        ShortcutSettingsStore.version,
-        {
-          'presets': [_presetJson(preset)],
-        },
-      ),
-    });
+/// [preset] alone as a settings file (I-142), named [name] and pressing
+/// [keys] over its [ShortcutLayout.base]'s: the shortcut store's own
+/// document, holding it as one of the user's — what was recorded over it
+/// among its own keys, so the file holds no overrides.
+String shortcutPresetSettingsFile(
+  ShortcutLayout preset, {
+  required String name,
+  required Map<String, List<SingleActivator>> keys,
+}) => encodeSettingsFile({
+  ShortcutSettingsStore.fileName: versionedSettingsDocument(
+    ShortcutSettingsStore.version,
+    {
+      'presets': [
+        _presetJson(
+          UserShortcutPreset(
+            id: preset.id,
+            name: name,
+            base: preset.base,
+            keys: keys,
+          ),
+        ),
+      ],
+    },
+  ),
+});
 
 /// The presets the settings file [source] holds, read as the shortcut store
 /// reads its own file — an action [keeps] declines dropped; null where it
@@ -116,23 +129,17 @@ List<UserShortcutPreset>? shortcutPresetsInSettingsFile(
     return null;
   }
   try {
-    final payload = liftVersionedSettingsDocument(
+    final listed = liftVersionedSettingsDocument(
       document,
       version: ShortcutSettingsStore.version,
       fromJson: ShortcutSettingsStore._inThisShape,
-    );
-    final listed = payload?['presets'];
-    final recorded = payload?['overrides'];
+    )?['presets'];
     if (listed is! List) {
       return null;
     }
     return [
       for (final json in listed)
-        ?userPresetFromJson(
-          json,
-          recordedById: recorded is Map ? recorded : const {},
-          keeps: keeps,
-        ),
+        ?userPresetFromJson(json, recordedById: const {}, keeps: keeps),
     ];
   } on Object {
     return null;

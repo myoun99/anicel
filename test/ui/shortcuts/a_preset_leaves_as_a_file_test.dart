@@ -50,9 +50,19 @@ void main() {
 
   /// [preset] of [bindings] as its row writes it, under [name].
   String fileOf(ShortcutLayout preset, String name) =>
-      shortcutPresetSettingsFile(bindings.asOwn(preset, name));
+      shortcutPresetSettingsFile(
+        preset,
+        name: name,
+        keys: bindings.keysOf(preset),
+      );
 
   Uint8List bytesOf(String text) => Uint8List.fromList(utf8.encode(text));
+
+  /// [file] handed to [into] by 「파일 열기」 — what it said.
+  List<String> bring(EditorShortcutBindings into, String file) =>
+      importShortcutFiles(into, [
+        (name: 'In.$anicelShortcutExtension', bytes: bytesOf(file)),
+      ]);
 
   group('the file', () {
     test('⛔fixture premise: what the TVPaint preset holds', () {
@@ -70,11 +80,10 @@ void main() {
         ..setActivators(EditorActionIds.cutNew, const [f9])
         ..setPreset(ShortcutPreset.anicel);
 
-      final brought = elsewhere.presetsBroughtFrom(
-        fileOf(ShortcutPreset.tvpaint, 'TVPaint'),
-      )!;
+      bring(elsewhere, fileOf(ShortcutPreset.tvpaint, 'TVPaint'));
 
-      expect(elsewhere.userPresets, brought);
+      final brought = elsewhere.userPresets;
+      expect(brought, hasLength(1));
       expect(elsewhere.preset, brought.single);
       expect((brought.single.name, brought.single.base), (
         'TVPaint',
@@ -97,7 +106,7 @@ void main() {
       final mine = bindings.duplicatePreset(bindings.preset, 'Mine');
       bindings.setActivators(EditorActionIds.undo, const [f2]);
 
-      elsewhere.presetsBroughtFrom(fileOf(mine, 'Mine'));
+      bring(elsewhere, fileOf(mine, 'Mine'));
 
       expect(elsewhere.preset.base, ShortcutPreset.tvpaint);
       expect(keysOf(EditorActionIds.cutNew, elsewhere), ['F9']);
@@ -109,10 +118,9 @@ void main() {
       final mine = bindings.duplicatePreset(ShortcutPreset.tvpaint, 'Mine');
       final file = fileOf(mine, 'Mine');
 
-      elsewhere
-        ..presetsBroughtFrom(file)
-        ..presetsBroughtFrom(file);
-      bindings.presetsBroughtFrom(file);
+      bring(elsewhere, file);
+      bring(elsewhere, file);
+      bring(bindings, file);
 
       expect([for (final preset in elsewhere.userPresets) preset.name], [
         'Mine',
@@ -155,23 +163,22 @@ void main() {
         },
       });
 
-      final brought = elsewhere.presetsBroughtFrom(file)!.single;
+      bring(elsewhere, file);
 
+      final brought = elsewhere.userPresets.single;
       expect(brought.ownKeys.keys, [EditorActionIds.cutNew]);
       expect(keysOf(EditorActionIds.cutNew, elsewhere), ['F2']);
     });
   });
 
   group('「파일 열기」', () {
-    test('says a line for each preset it brought', () {
+    test('says a line for each preset it brought — the name\'s extension '
+        'in any case, as every door tells a file', () {
       final mine = bindings.duplicatePreset(ShortcutPreset.tvpaint, 'Mine');
 
       expect(
         importShortcutFiles(elsewhere, [
-          (
-            name: 'Mine.$anicelShortcutExtension',
-            bytes: bytesOf(fileOf(mine, 'Mine')),
-          ),
+          (name: 'Mine.ANISHORTCUT', bytes: bytesOf(fileOf(mine, 'Mine'))),
         ]),
         [AppText.strings.shortcutPresetBrought('Mine')],
       );
@@ -270,10 +277,11 @@ void main() {
       );
 
       expect(asked, ['$shown.$anicelShortcutExtension']);
-      final brought = elsewhere.presetsBroughtFrom(
+      bring(
+        elsewhere,
         File('${folder.path}/${asked.single}').readAsStringSync(),
-      )!;
-      expect(brought.single.name, shown);
+      );
+      expect(elsewhere.userPresets.single.name, shown);
       expect(keysOf(EditorActionIds.cutNew, elsewhere), ['F9']);
       expect(bindings.preset, ShortcutPreset.anicel);
       expect(

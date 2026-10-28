@@ -69,6 +69,7 @@ const ledger = <String, Why>{
   // key take? (I-131)
   "color/color_palettes.dart | 'palette-delete'": Why.declined,
   "color/color_palettes.dart | 'palette-duplicate'": Why.declined,
+  "color/color_palettes.dart | 'palette-export'": Why.declined,
   "color/color_palettes.dart | 'palette-make-default'": Why.declined,
   "color/color_palettes.dart | 'palette-rename'": Why.declined,
   // 🗣️I-40-Q3 (유저 2026-10-09, two viewers — which one would a key take?):
