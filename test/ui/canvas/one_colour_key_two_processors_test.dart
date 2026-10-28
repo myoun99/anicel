@@ -492,6 +492,36 @@ void main() {
     expect(after, equals(before!.buffer.asUint8List()));
   });
 
+  test('a picture taller than wide is keyed where each pixel stands', () async {
+    // The sweeps are square: a shader that read its height off its width
+    // would key them all the same.
+    const width = 2;
+    const height = 64;
+    final straight = Uint8List(width * height * 4);
+    for (var i = 0; i < width * height; i++) {
+      final top = i < width * height ~/ 2;
+      straight[i * 4] = top ? 255 : 0;
+      straight[i * 4 + 2] = top ? 0 : 255;
+      straight[i * 4 + 3] = 255;
+    }
+    final source = await imageFromStraight(straight, width, height);
+    final after = await keyed(
+      source,
+      keyOf(red: 255, tolerance: 0, amount: 1),
+      width,
+      height,
+    );
+    source.dispose();
+    expect(
+      [for (var i = 3; i < after.length; i += 4) after[i]],
+      [
+        for (var i = 0; i < width * height; i++)
+          if (i < width * height ~/ 2) 0 else 255,
+      ],
+      reason: 'the red top keyed away, the blue bottom kept',
+    );
+  });
+
   test('an unloaded program refuses instead of dropping the effect', () {
     ColourKeyShader.debugUnload();
     addTearDown(ColourKeyShader.load);

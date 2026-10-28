@@ -182,6 +182,38 @@ void main() {
     expect(alphas[centre * side], 17);
   });
 
+  testWidgets('a picture taller than wide is blurred where its dot stands', (
+    tester,
+  ) async {
+    // Every other probe here is square: a step or a shader that read its
+    // height off its width would blur them all the same.
+    const width = 32;
+    const height = 128;
+    const row = 100;
+    final recorder = ui.PictureRecorder();
+    Canvas(recorder).drawRect(
+      Rect.fromLTWH(width / 2, row.toDouble(), 1, 1),
+      Paint()
+        ..color = const Color(0xFFFFFFFF)
+        ..isAntiAlias = false,
+    );
+    final picture = recorder.endRecording();
+    final source = picture.toImageSync(width, height);
+    picture.dispose();
+    addTearDown(source.dispose);
+    final out = steppedForChain(
+      image: source,
+      plan: resolveCompositeEffectPlan([directional(degrees: 90, length: 15)]),
+      canvasExtent: width.toDouble(),
+    );
+    addTearDown(out.dispose);
+    final alphas = await alphasOf(tester, out);
+    expect({
+      for (var i = 0; i < alphas.length; i += 1)
+        if (alphas[i] != 0) (i % width, i ~/ width),
+    }, {for (var x = width ~/ 2 - 7; x <= width ~/ 2 + 7; x += 1) (x, row)});
+  });
+
   testWidgets('a long blur is passes, and still one unbroken line', (
     tester,
   ) async {
