@@ -22,8 +22,10 @@ import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 ///
 /// The truth is the mean worked out on the CPU, pixel by pixel, over the
 /// pixels the iris covers ([irisSpans], held exact by
-/// `an_iris_covers_its_shape_test`). ⛔ON IMPELLER: a row sum runs past 1,
-/// and Skia rasters a float target as bytes.
+/// `an_iris_covers_its_shape_test`) — of the light each gives where the
+/// blur reads it through its Highlight and Use Linear Working Space
+/// ([LensLight]). ⛔ON IMPELLER: a row sum runs past 1, and Skia rasters a
+/// float target as bytes.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -36,7 +38,11 @@ void main() {
     double aspect = 1,
     double rotation = 0,
     double fringe = 0,
+    double gain = 0,
+    double threshold = 255,
+    double saturation = 0,
     bool repeats = false,
+    bool linear = false,
   }) => ResolvedLayerEffect(
     kind: EffectKind.cameraLensBlur,
     values: [
@@ -46,7 +52,11 @@ void main() {
       aspect,
       rotation,
       fringe,
+      gain,
+      threshold,
+      saturation,
       if (repeats) 1 else 0,
+      if (linear) 1 else 0,
     ],
   );
 
@@ -113,12 +123,66 @@ void main() {
     return bytesOf(tester, out);
   }
 
+  double linearOf(double stored) => stored < 0.04045
+      ? stored / 12.92
+      : math.pow((stored + 0.055) / 1.055, 2.4).toDouble();
+
+  double storedOf(double linear) {
+    final light = math.max(linear, 0.0);
+    return light < 0.0031308
+        ? light * 12.92
+        : 1.055 * math.pow(light, 1 / 2.4) - 0.055;
+  }
+
+  /// A premultiplied [pixel] (0…1) as the sums read it through [light]:
+  /// `lens_light.glsl`'s `lit`, worked out on the CPU.
+  List<double> litOf(List<double> pixel, LensLight light) {
+    final alpha = pixel[3];
+    var colour = [
+      for (var c = 0; c < 3; c += 1)
+        if (alpha > 0) pixel[c] / alpha else 0.0,
+    ];
+    if (light.linear) {
+      colour = [for (final c in colour) linearOf(c)];
+    }
+    final luma = 0.2126 * colour[0] + 0.7152 * colour[1] + 0.0722 * colour[2];
+    final boost = luma * light.gain * math.max(luma - light.threshold, 0);
+    return [
+      for (final c in colour)
+        (c + boost * (1 + (c / math.max(luma, 1e-6) - 1) * light.saturation)) *
+            alpha,
+      alpha,
+    ];
+  }
+
+  /// What the iris gathered, [mean], put back as stored: its `stored`.
+  List<double> storedPixelOf(List<double> mean, LensLight light) {
+    final rgb = [for (var c = 0; c < 3; c += 1) math.max(mean[c], 0.0)];
+    final alpha = math.max(mean[3], rgb.reduce(math.max)).clamp(0.0, 1.0);
+    return [
+      for (final c in rgb)
+        (alpha > 0 ? (light.linear ? storedOf(c / alpha) : c / alpha) : 0.0)
+                .clamp(0.0, 1.0) *
+            alpha,
+      alpha,
+    ];
+  }
+
   /// The mean [iris] makes of [input], a [width] wide raster, worked out
   /// pixel by pixel: past the raster nothing, or — where the iris repeats
-  /// the paper's edge — the paper's edge pixel, and nothing drawn off it.
+  /// the paper's edge — the paper's edge pixel, and nothing drawn off it;
+  /// every pixel read through the iris's light, and put back as stored.
   List<double> truth(Uint8List input, int width, IrisGatherPass iris) {
     final height = input.length ~/ (4 * width);
     final paper = iris.paper;
+    final light = iris.light;
+    final pixels = [
+      for (var i = 0; i < input.length; i += 4)
+        [for (var c = 0; c < 4; c += 1) input[i + c] / 255],
+    ];
+    final read = light == null
+        ? pixels
+        : [for (final pixel in pixels) litOf(pixel, light)];
     final (left, top, right, bottom) = paper == null
         ? (0, 0, width - 1, height - 1)
         : (
@@ -134,27 +198,31 @@ void main() {
             (x < left || x > right || y < top || y > bottom)) {
           continue;
         }
-        for (var c = 0; c < 4; c += 1) {
-          var sum = 0.0;
-          void add(List<IrisSpan> rows, double weight) {
-            for (var row = 0; row < rows.length; row += 1) {
-              for (var dx = rows[row].left; dx <= rows[row].right; dx += 1) {
-                var (u, v) = (x + dx, y + row - iris.reach);
-                if (paper != null) {
-                  (u, v) = (u.clamp(left, right), v.clamp(top, bottom));
-                } else if (u < 0 || v < 0 || u >= width || v >= height) {
-                  continue;
-                }
-                sum += input[(v * width + u) * 4 + c] * weight;
+        final sum = List<double>.filled(4, 0);
+        void add(List<IrisSpan> rows, double weight) {
+          for (var row = 0; row < rows.length; row += 1) {
+            for (var dx = rows[row].left; dx <= rows[row].right; dx += 1) {
+              var (u, v) = (x + dx, y + row - iris.reach);
+              if (paper != null) {
+                (u, v) = (u.clamp(left, right), v.clamp(top, bottom));
+              } else if (u < 0 || v < 0 || u >= width || v >= height) {
+                continue;
+              }
+              for (var c = 0; c < 4; c += 1) {
+                sum[c] += read[v * width + u][c] * weight;
               }
             }
           }
+        }
 
-          add(iris.outline, 1);
-          if (iris.fringe > 0) {
-            add(iris.core, -iris.fringe);
-          }
-          out[(y * width + x) * 4 + c] = sum / iris.weight;
+        add(iris.outline, 1);
+        if (iris.fringe > 0) {
+          add(iris.core, -iris.fringe);
+        }
+        final mean = [for (final each in sum) each / iris.weight];
+        final pixel = light == null ? mean : storedPixelOf(mean, light);
+        for (var c = 0; c < 4; c += 1) {
+          out[(y * width + x) * 4 + c] = pixel[c] * 255;
         }
       }
     }
@@ -269,12 +337,108 @@ void main() {
     final source = await imageOf(tester, bytes, width, height);
     final input = await bytesOf(tester, source);
     const paper = Rect.fromLTWH(20.4, 9.6, 70, 30);
-    final effect = lens(radius: 8, shape: 1, roundness: 20, repeats: true);
-    final iris = irisOf(effect, width, paper);
+    // As stored, and through a light: the edge pixels are read as the sums
+    // read every other.
+    for (final effect in [
+      lens(radius: 8, shape: 1, roundness: 20, repeats: true),
+      lens(radius: 8, shape: 1, gain: 50, threshold: 120, repeats: true),
+    ]) {
+      final iris = irisOf(effect, width, paper);
 
-    expect(iris.paper, const Rect.fromLTRB(20, 10, 90, 40), reason: 'whole');
-    final got = await blurred(tester, source, effect, paper: paper);
-    expectWithinOne(got, truth(input, width, iris));
+      expect(iris.paper, const Rect.fromLTRB(20, 10, 90, 40), reason: 'whole');
+      final got = await blurred(tester, source, effect, paper: paper);
+      expectWithinOne(got, truth(input, width, iris), reason: '$effect');
+    }
+  });
+
+  testWidgets('through its light — highlights boosted, in linear light or '
+      'as stored — a picture blurs to the mean of the light each pixel '
+      'gives, put back as stored', (tester) async {
+    final (width, height) = (150, 40);
+    final bytes = randomPicture(width, height, seed: 5);
+    final source = await imageOf(tester, bytes, width, height);
+    final input = await bytesOf(tester, source);
+    final paper = Rect.fromLTWH(0, 0, width * 1.0, height * 1.0);
+    for (final effect in [
+      lens(radius: 6, shape: 3, gain: 30, threshold: 150),
+      lens(
+        radius: 9,
+        shape: 5,
+        roundness: 40,
+        gain: 60,
+        threshold: 60,
+        saturation: 100,
+        linear: true,
+      ),
+      lens(radius: 7.5, linear: true),
+      lens(radius: 8, fringe: 250, gain: 20, threshold: 100, saturation: 50),
+    ]) {
+      final iris = irisOf(effect, width, paper);
+      expect(iris.light, isNotNull, reason: 'fixture: $effect has a light');
+      expectWithinOne(
+        await blurred(tester, source, effect),
+        truth(input, width, iris),
+        reason: '$effect',
+      );
+    }
+  });
+
+  testWidgets('in linear light an edge between white and black blurs as '
+      'sRGB\'s own curve has it', (tester) async {
+    final (width, height) = (40, 9);
+    final bytes = Uint8List(width * height * 4);
+    for (var i = 0; i < bytes.length; i += 4) {
+      final white = (i ~/ 4) % width < 20;
+      bytes.fillRange(i, i + 3, white ? 255 : 0);
+      bytes[i + 3] = 255;
+    }
+    final source = await imageOf(tester, bytes, width, height);
+    // A square of 5 × 5: at column 20 two of its five columns are white.
+    final at = (4 * width + 20) * 4;
+    final linear = await blurred(
+      tester,
+      source,
+      lens(radius: 3, shape: 1, linear: true),
+    );
+    expect(
+      linear[at],
+      closeTo(255 * (1.055 * math.pow(0.4, 1 / 2.4) - 0.055), 1),
+    );
+    expect(linear[at + 3], 255);
+    final stored = await blurred(tester, source, lens(radius: 3, shape: 1));
+    expect(stored[at], closeTo(255 * 0.4, 1));
+  });
+
+  testWidgets('a highlight spread over what is clear covers it: a lamp\'s '
+      'bokeh shows over a clear cel (I-132-Q20, asked)', (tester) async {
+    final (width, height, dotX, dotY) = (40, 40, 20, 20);
+    final source = await imageOf(
+      tester,
+      dotPicture(width, height, dotX, dotY),
+      width,
+      height,
+    );
+    final effect = lens(radius: 5, shape: 1, gain: 100, threshold: 0);
+    final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 40, 40));
+    // White past a threshold of 0 gains a hundred times its luma more.
+    expect(101 / iris.weight, greaterThan(1), reason: 'fixture: outshines');
+    final got = await blurred(tester, source, effect);
+
+    final lit = <(int, int)>{
+      for (final (row, span) in iris.outline.indexed)
+        for (var dx = span.left; dx <= span.right; dx += 1)
+          (dotX - dx, dotY - (row - iris.reach)),
+    };
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        final at = (y * width + x) * 4;
+        expect(
+          got.sublist(at, at + 4),
+          lit.contains((x, y)) ? [255, 255, 255, 255] : [0, 0, 0, 0],
+          reason: '($x, $y)',
+        );
+      }
+    }
   });
 
   testWidgets('a fringe of 500 pushes all the light out to the iris\'s '

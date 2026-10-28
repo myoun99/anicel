@@ -174,11 +174,20 @@ void main() {
     expect(rowSumPasses(4097), hasLength(3));
   });
 
+  /// Read as stored, nothing boosted.
+  const asStored = (
+    gain: 0.0,
+    threshold: 1.0,
+    saturation: 0.0,
+    linear: false,
+  );
+
   group('the gather', () {
     IrisGatherPass gather(double radius, {double fringe = 0}) =>
         cameraLensBlurPasses(
               radius: radius,
               iris: iris(6, roundness: 0.2, fringe: fringe),
+              light: asStored,
               rasterWidth: 100,
               paper: null,
             ).last
@@ -208,6 +217,64 @@ void main() {
     test('an iris with no edge to push the light to has no fringe', () {
       expect(gather(0.5, fringe: 500).fringe, 0);
       expect(gather(0.5, fringe: 500).weight, 1);
+    });
+  });
+
+  group('the light', () {
+    List<ShadedPass> passesOf(LensLight light) => cameraLensBlurPasses(
+      radius: 6,
+      iris: iris(5),
+      light: light,
+      rasterWidth: 300,
+      paper: null,
+    );
+
+    LensLight? lightOf(List<ShadedPass> passes) =>
+        (passes.last as IrisGatherPass).light;
+
+    test('is read by the first row sum, of the picture, and the iris — not '
+        'by the sums of sums', () {
+      const boosted = (
+        gain: 40.0,
+        threshold: 0.8,
+        saturation: 0.5,
+        linear: false,
+      );
+      final passes = passesOf(boosted);
+      final sums = passes.whereType<RowSumPass>().toList();
+      expect(sums, hasLength(2), reason: 'fixture: 300 wide is two passes');
+      expect(sums.first.stride, 1);
+      expect(sums.first.light, boosted);
+      expect(sums.last.light, isNull);
+      expect(lightOf(passes), boosted);
+    });
+
+    test('is none where it is read as stored and nothing is boosted', () {
+      expect(lightOf(passesOf(asStored)), isNull);
+      LensLight boost(double gain, double threshold) => (
+        gain: gain,
+        threshold: threshold,
+        saturation: 1,
+        linear: false,
+      );
+      expect(lightOf(passesOf(boost(0, 0))), isNull, reason: 'no gain');
+      expect(
+        lightOf(passesOf(boost(40, 1))),
+        isNull,
+        reason: 'past white, nothing is boosted',
+      );
+      expect(lightOf(passesOf(boost(40, 0.99))), isNotNull);
+      expect(
+        passesOf(asStored).whereType<RowSumPass>().map((pass) => pass.light),
+        everyElement(isNull),
+      );
+      const linear = (
+        gain: 0.0,
+        threshold: 1.0,
+        saturation: 0.0,
+        linear: true,
+      );
+      expect(lightOf(passesOf(linear)), linear, reason: 'linear light alone');
     });
   });
 
@@ -243,7 +310,15 @@ void main() {
         ],
       );
       for (var index = 0; index < shape.choices.length; index += 1) {
-        final pass = irisOf([12, index.toDouble(), 30, 1.4, 25, 200, 0]);
+        final pass = irisOf([
+          12,
+          index.toDouble(),
+          30,
+          1.4,
+          25,
+          200,
+          ...[0, 255, 0, 0, 0],
+        ]);
         expect(
           pass.outline,
           irisSpans(
@@ -260,24 +335,28 @@ void main() {
         );
         expect(pass.fringe, 0.4);
         expect(pass.paper, isNull, reason: 'its edge repeats only when on');
+        expect(pass.light, isNull, reason: 'no gain, read as stored');
       }
+    });
+
+    test('reads its Highlight lanes as the light: the threshold over 255, '
+        'the saturation a percent, the gain as it is', () {
+      expect(
+        irisOf([12, 3, 0, 1, 0, 0, 40, 204, 50, 0, 1]).light,
+        (gain: 40.0, threshold: 0.8, saturation: 0.5, linear: true),
+      );
+      expect(
+        irisOf([12, 3, 0, 1, 0, 0, 0, 255, 0, 0, 1]).light?.linear,
+        isTrue,
+        reason: 'Use Linear Working Space alone',
+      );
     });
 
     test('its radius is canvas pixels: a raster at twice the scale spans '
         'twice the rows', () {
-      expect(irisOf([12, 3, 0, 1, 0, 0, 0]).reach, 12);
-      expect(
-        irisOf([
-          12,
-          3,
-          0,
-          1,
-          0,
-          0,
-          0,
-        ], space: const DrawSpace.preScaled(2)).reach,
-        24,
-      );
+      const flat = <double>[12, 3, 0, 1, 0, 0, 0, 255, 0, 0, 0];
+      expect(irisOf(flat).reach, 12);
+      expect(irisOf(flat, space: const DrawSpace.preScaled(2)).reach, 24);
     });
 
     test('begins at the Square, and at no blur', () {
@@ -291,6 +370,30 @@ void main() {
         'square',
       );
       expect(effect.parameters['blurRadius']!.value, 0);
+    });
+
+    test('begins with no highlight, read as stored', () {
+      final effect = LayerEffect.defaults(
+        id: const EffectId('lens'),
+        kind: EffectKind.cameraLensBlur,
+      );
+      expect(
+        {
+          for (final id in [
+            'highlightGain',
+            'highlightThreshold',
+            'highlightSaturation',
+            'useLinearWorkingSpace',
+          ])
+            id: effect.parameters[id]!.value,
+        },
+        {
+          'highlightGain': 0,
+          'highlightThreshold': 255,
+          'highlightSaturation': 0,
+          'useLinearWorkingSpace': 0,
+        },
+      );
     });
   });
 }

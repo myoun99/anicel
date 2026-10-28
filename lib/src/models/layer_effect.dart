@@ -271,8 +271,17 @@ enum EffectKind {
   /// 모양을 정확히 — 행 누적합」. The iris's forms are ours (🗣️I-132-Q4 b),
   /// and so are the ranges the help does not give, and the shape's words
   /// (🗣️I-132-Q11 a). The Square begins it (🗣️I-132-Q19 a): AE's first
-  /// word is a Fast Rectangle, which drawn exact is the Square. Its
-  /// highlights and its blur map are lanes still to come.
+  /// word is a Fast Rectangle, which drawn exact is the Square.
+  ///
+  /// Its Highlight and Use Linear Working Space, as the help has them: the
+  /// gain boosts what lies past the threshold, the saturation keeps the
+  /// boost's colour, and the light is read linear (`lens_light.glsl`, the
+  /// forms ours). ⚠️The help gives no range or first value for the three:
+  /// a threshold of 0…255 that begins at 255 and a gain and saturation of
+  /// 0…100 that begin at 0 are the ones an Adobe community post's SDK code
+  /// reads them with (2026-10-28) — the help's own threshold of 1, which
+  /// leaves no highlight, is the 255 of an 8-bit picture. Its blur map is
+  /// a lane still to come.
   cameraLensBlur(
     'cameraLensBlur',
     label: 'Camera Lens Blur',
@@ -329,11 +338,36 @@ enum EffectKind {
         minimum: 0,
         maximum: 500,
       ),
+      EffectParameterSpec(
+        id: 'highlightGain',
+        label: 'Highlight Gain',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      EffectParameterSpec(
+        id: 'highlightThreshold',
+        label: 'Highlight Threshold',
+        defaultValue: 255,
+        minimum: 0,
+        maximum: 255,
+      ),
+      EffectParameterSpec(
+        id: 'highlightSaturation',
+        label: 'Highlight Saturation',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
       // The Gaussian's own (🗣️I-132-Q14 a): past the paper's edge the iris
       // reads the edge's pixels, and what it draws stays on the paper.
       EffectParameterSpec.flag(
         id: 'repeatEdgePixels',
         label: 'Repeat Edge Pixels',
+      ),
+      EffectParameterSpec.flag(
+        id: 'useLinearWorkingSpace',
+        label: 'Use Linear Working Space',
       ),
     ],
     spreadsPixels: true,

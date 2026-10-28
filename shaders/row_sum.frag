@@ -20,6 +20,8 @@
 
 precision highp float;
 
+#include "lens_light.glsl"
+
 uniform vec2 uSize;
 
 // How far apart, in this raster's pixels, two taps lie.
@@ -27,6 +29,11 @@ uniform float uStride;
 
 // How many taps, 1 … 64.
 uniform float uTaps;
+
+// Whether the texels are read through [uLight] (`lens_light.glsl`) — the
+// first pass's, of the step's own picture — or summed as they are.
+uniform float uLights;
+uniform vec4 uLight;
 
 uniform sampler2D uSource;
 
@@ -44,7 +51,8 @@ void main() {
     if (float(i) >= uTaps || x < 0.0) {
       break;
     }
-    sum += texture(uSource, (vec2(x, at.y) + 0.5) / uSize);
+    vec4 texel = texture(uSource, (vec2(x, at.y) + 0.5) / uSize);
+    sum += uLights > 0.5 ? lit(texel, uLight) : texel;
   }
   fragColor = sum;
 }

@@ -64,28 +64,47 @@ final class LineBoxPass extends ShadedPass {
       'about: ($centerX, $centerY), $taps)';
 }
 
+/// How a camera lens blur reads the light it spreads
+/// (`shaders/lens_light.glsl`): in [linear] light or as the picture is
+/// stored, and every pixel brighter than [threshold] (0…1) boosted by
+/// [gain] times how far past it it is, the boost [saturation] (0…1) its
+/// own colour and the rest white.
+typedef LensLight = ({
+  double gain,
+  double threshold,
+  double saturation,
+  bool linear,
+});
+
 /// One raster of a ROW SUM: every texel the sum of [taps] texels [stride]
 /// apart along its row — itself, then the ones to its left, none past the
 /// raster's edge (`shaders/row_sum.frag`). Strides 1, taps, taps², … make
 /// each texel the sum of its row up to it (`rowSumPasses`), as a box's
 /// passes make its average (`lineBoxPlan`).
 ///
+/// [light] is how the pass reads the texels it sums — the first pass's, of
+/// the step's own picture — and null where it sums them as they are.
+///
 /// 🚨LAID IN FLOATS: a sum runs past 1, and a byte would clamp it.
 final class RowSumPass extends ShadedPass {
-  const RowSumPass({required this.stride, required this.taps});
+  const RowSumPass({required this.stride, required this.taps, this.light});
 
   final int stride;
   final int taps;
+  final LensLight? light;
 
   @override
   bool operator ==(Object other) =>
-      other is RowSumPass && other.stride == stride && other.taps == taps;
+      other is RowSumPass &&
+      other.stride == stride &&
+      other.taps == taps &&
+      other.light == light;
 
   @override
-  int get hashCode => Object.hash(stride, taps);
+  int get hashCode => Object.hash(stride, taps, light);
 
   @override
-  String toString() => 'RowSumPass($stride, $taps)';
+  String toString() => 'RowSumPass($stride, $taps, light: $light)';
 }
 
 /// The columns about a pixel one row of an iris covers, [left] to [right]
@@ -105,6 +124,10 @@ typedef IrisSpan = ({int left, int right});
 /// [paper] is the paper on whole pixels where the iris repeats its edge
 /// pixels past it — read where it reads past the paper, and cut to it —
 /// and null where past the raster there is nothing to read.
+///
+/// [light] is how its sums read the light ([RowSumPass.light]): the edge
+/// pixels it reads are read so too, and what it draws is put back as a
+/// picture is stored. Null where the sums are of the picture as it is.
 final class IrisGatherPass extends ShadedPass {
   const IrisGatherPass({
     required this.reach,
@@ -113,6 +136,7 @@ final class IrisGatherPass extends ShadedPass {
     required this.fringe,
     required this.weight,
     required this.paper,
+    required this.light,
   });
 
   final int reach;
@@ -124,6 +148,7 @@ final class IrisGatherPass extends ShadedPass {
   final double fringe;
   final double weight;
   final ui.Rect? paper;
+  final LensLight? light;
 
   @override
   bool operator ==(Object other) =>
@@ -133,7 +158,8 @@ final class IrisGatherPass extends ShadedPass {
       listEquals(other.core, core) &&
       other.fringe == fringe &&
       other.weight == weight &&
-      other.paper == paper;
+      other.paper == paper &&
+      other.light == light;
 
   @override
   int get hashCode => Object.hash(
@@ -143,10 +169,11 @@ final class IrisGatherPass extends ShadedPass {
     fringe,
     weight,
     paper,
+    light,
   );
 
   @override
   String toString() =>
       'IrisGatherPass(reach: $reach, fringe: $fringe, weight: $weight, '
-      'paper: $paper)';
+      'paper: $paper, light: $light)';
 }

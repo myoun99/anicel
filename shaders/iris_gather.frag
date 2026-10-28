@@ -21,12 +21,18 @@
 // pixels, read from the step's input ([uInput]), and what is drawn is cut
 // to it.
 //
+// 📐THE LIGHT ([uLights], `lens_light.glsl`): where the sums read the
+// picture's light another way than as stored, so are the edge pixels read,
+// and what is drawn is put back as stored.
+//
 // 🔬A RASTER OF ITS OWN, AT THE IDENTITY (`applyEffectSteps`), as every
 // step's pass is (`directional_blur.frag`).
 
 #include <flutter/runtime_effect.glsl>
 
 precision highp float;
+
+#include "lens_light.glsl"
 
 const float kTableOffset = 8192.0;
 const float kTableScale = 16384.0;
@@ -44,6 +50,8 @@ uniform float uFringe;
 uniform float uWeight;
 uniform float uRepeats;
 uniform vec4 uPaper;
+uniform float uLights;
+uniform vec4 uLight;
 
 uniform sampler2D uSums;
 uniform sampler2D uInput;
@@ -56,7 +64,8 @@ vec4 sumAt(float x, float y) {
 }
 
 vec4 inputAt(float x, float y) {
-  return texture(uInput, (vec2(x, y) + 0.5) / uSize);
+  vec4 texel = texture(uInput, (vec2(x, y) + 0.5) / uSize);
+  return uLights > 0.5 ? lit(texel, uLight) : texel;
 }
 
 // Row [row]'s outline (k 0) or core (k 1): its left and right column.
@@ -120,5 +129,6 @@ void main() {
       ? 1.0
       : step(uPaper.x, at.x) * step(at.x, uPaper.z) * step(uPaper.y, at.y) *
           step(at.y, uPaper.w);
-  fragColor = sum / uWeight * onPaper;
+  vec4 mean = sum / uWeight;
+  fragColor = (uLights > 0.5 ? stored(mean, uLight) : mean) * onPaper;
 }

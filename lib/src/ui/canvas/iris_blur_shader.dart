@@ -52,15 +52,18 @@ class IrisBlurShader {
   static ui.FragmentShader rowSumFor({
     required ui.Image source,
     required RowSumPass pass,
-  }) =>
-      _rowSum.shader()
-        ..setFloat(0, source.width.toDouble())
-        ..setFloat(1, source.height.toDouble())
-        ..setFloat(2, pass.stride.toDouble())
-        ..setFloat(3, pass.taps.toDouble())
-        // On texel centres, as a sum reads whole pixels; ⚠️and a float
-        // raster is not linearly filtered on every GPU.
-        ..setImageSampler(0, source);
+  }) {
+    final shader = _rowSum.shader()
+      ..setFloat(0, source.width.toDouble())
+      ..setFloat(1, source.height.toDouble())
+      ..setFloat(2, pass.stride.toDouble())
+      ..setFloat(3, pass.taps.toDouble())
+      // On texel centres, as a sum reads whole pixels; ⚠️and a float
+      // raster is not linearly filtered on every GPU.
+      ..setImageSampler(0, source);
+    _setLight(shader, 4, pass.light);
+    return shader;
+  }
 
   /// A shader that draws [pass]'s iris over [sums] — the step's [input]
   /// summed along its rows ([RowSumPass]) — for every pixel of a draw
@@ -101,9 +104,22 @@ class IrisBlurShader {
       ..setImageSampler(0, sums)
       ..setImageSampler(1, input)
       ..setImageSampler(2, table);
+    _setLight(shader, 13, pass.light);
     // ⚠️Safe once bound: the shader holds its own claim on the table.
     table.dispose();
     return shader;
+  }
+
+  /// [light] on [shader] from its float [at] on, as `lens_light.glsl` takes
+  /// it: whether there is one, then its gain, threshold, saturation and
+  /// whether it reads in linear light.
+  static void _setLight(ui.FragmentShader shader, int at, LensLight? light) {
+    shader
+      ..setFloat(at, light == null ? 0 : 1)
+      ..setFloat(at + 1, light?.gain ?? 0)
+      ..setFloat(at + 2, light?.threshold ?? 0)
+      ..setFloat(at + 3, light?.saturation ?? 0)
+      ..setFloat(at + 4, (light?.linear ?? false) ? 1 : 0);
   }
 
   /// How many of an iris's [rows] a line of its table holds — two texels

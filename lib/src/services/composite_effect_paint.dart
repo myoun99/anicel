@@ -482,6 +482,12 @@ _PaintPart _cameraLensBlurPart(
               rotation: effect.parameter('irisRotation') * math.pi / 180,
               fringe: effect.parameter('irisDiffractionFringe'),
             ),
+            light: (
+              gain: effect.parameter('highlightGain'),
+              threshold: effect.parameter('highlightThreshold') / 255,
+              saturation: effect.parameter('highlightSaturation') / 100,
+              linear: effect.flag('useLinearWorkingSpace'),
+            ),
             rasterWidth: rasterWidth,
             paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
           ),

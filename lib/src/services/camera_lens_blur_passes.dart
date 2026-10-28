@@ -24,15 +24,20 @@ const double irisCoreScale = 0.8;
 
 /// The passes that make every texel of a raster [width] wide the sum of
 /// its row up to it ([RowSumPass]) — a one-sided box as long as the row,
-/// laid as a line's is ([lineBoxPlan]).
-List<RowSumPass> rowSumPasses(int width) {
+/// laid as a line's is ([lineBoxPlan]) — the first reading its picture's
+/// [light] as it sums it.
+List<RowSumPass> rowSumPasses(int width, {LensLight? light}) {
   final (:passes, :taps) = lineBoxPlan(
     width.toDouble(),
     tapsAPass: rowSumTapsAPass,
   );
   return [
     for (var pass = 0; pass < passes; pass += 1)
-      RowSumPass(stride: math.pow(taps, pass).toInt(), taps: taps),
+      RowSumPass(
+        stride: math.pow(taps, pass).toInt(),
+        taps: taps,
+        light: pass == 0 ? light : null,
+      ),
   ];
 }
 
@@ -59,12 +64,19 @@ typedef IrisProperties = ({
 /// edge: Adobe's help (read 2026-10-28) says 100 is a natural halo and 500
 /// all the blur's energy on the ring. Ours, the form (🗣️I-132-Q4 b): the
 /// core's pixels weigh `1 - fringe / 500`, the edge's 1.
+///
+/// Its [light] is how it reads what it spreads ([LensLight]) — none to
+/// work where it is read as stored and nothing is boosted.
 List<ShadedPass> cameraLensBlurPasses({
   required double radius,
   required IrisProperties iris,
+  required LensLight light,
   required int rasterWidth,
   required ui.Rect? paper,
 }) {
+  final read = light.linear || (light.gain > 0 && light.threshold < 1)
+      ? light
+      : null;
   final reach = radius.floor();
   List<IrisSpan> spans(double scale) =>
       irisSpans(radius: radius * scale, iris: iris, reach: reach);
@@ -79,7 +91,7 @@ List<ShadedPass> cameraLensBlurPasses({
   // same pixel — there is nowhere to push the light to.
   final pushed = covered(outline) > covered(core) ? fringe / 500 : 0.0;
   return [
-    ...rowSumPasses(rasterWidth),
+    ...rowSumPasses(rasterWidth, light: read),
     IrisGatherPass(
       reach: reach,
       outline: outline,
@@ -87,6 +99,7 @@ List<ShadedPass> cameraLensBlurPasses({
       fringe: pushed,
       weight: covered(outline) - covered(core) * pushed,
       paper: paper,
+      light: read,
     ),
   ];
 }
