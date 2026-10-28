@@ -68,7 +68,8 @@ class LayerMergePlan {
     required this.result,
     required this.baked,
     required this.pictures,
-    required this.layersAfter,
+    required this.removed,
+    required this.regrouped,
     required this.changes,
   });
 
@@ -82,8 +83,13 @@ class LayerMergePlan {
 
   final List<LayerMergePicture> pictures;
 
-  /// The cut's rows once the merge is done.
-  final List<Layer> layersAfter;
+  /// The rows the merge takes away, bottom → top — every row it took but
+  /// the one [result] replaces.
+  final List<LayerId> removed;
+
+  /// The rows a folder it took held and it did not take, each to the folder
+  /// above that it stands in now (null = out of every folder).
+  final Map<LayerId, LayerId?> regrouped;
 
   final Set<LayerMergeChange> changes;
 }
@@ -103,7 +109,7 @@ LayerMergePlan? planLayerMerge({
   required Cut cut,
   required Set<LayerId> selected,
   required BrushFrameRevisionResolver revisionOf,
-  required FrameId Function() mintFrameId,
+  required FrameId Function(LayerId row) mintFrameId,
   required bool Function(Layer row) isLinked,
 }) {
   final index = LayerFolderIndex(cut.layers);
@@ -142,6 +148,7 @@ LayerMergePlan? planLayerMerge({
   if (anchor == null || (foldersTaken.isEmpty && pictureRows.length < 2)) {
     return null;
   }
+  final anchorId = anchor.id;
   final over = {
     for (final folder in index.ancestryOf(anchor.folderId)) folder.id,
   };
@@ -151,7 +158,7 @@ LayerMergePlan? planLayerMerge({
     baked,
     pictureRows,
     revisionOf: revisionOf,
-    mintFrameId: mintFrameId,
+    mintFrameId: () => mintFrameId(anchorId),
   );
   final result = _resultRow(anchor, pictures);
   return LayerMergePlan._(
@@ -165,7 +172,11 @@ LayerMergePlan? planLayerMerge({
           frameIndex: picture.spans.first.start,
         ),
     ],
-    layersAfter: _layersAfter(cut, index, taken, foldersTaken, result),
+    removed: [
+      for (final row in cut.layers)
+        if (taken.contains(row.id) && row.id != anchor.id) row.id,
+    ],
+    regrouped: _regroupedOf(cut, index, taken, foldersTaken),
     changes: _changesOf(cut, index, taken, pictureRows, anchor, over),
   );
 }
@@ -344,15 +355,13 @@ Layer _resultRow(Layer anchor, List<_Picture> pictures) {
   );
 }
 
-/// [cut]'s rows once [result] stands where its row stood and the rest of
-/// what was [taken] is gone — a row a taken folder held that was not taken
-/// stands in the folder above it now.
-List<Layer> _layersAfter(
+/// The rows a folder in [foldersTaken] held that were not [taken] — a
+/// direction row in it, say — each to the nearest folder above that stays.
+Map<LayerId, LayerId?> _regroupedOf(
   Cut cut,
   LayerFolderIndex index,
   Set<LayerId> taken,
   Set<LayerId> foldersTaken,
-  Layer result,
 ) {
   LayerId? standingParent(LayerId? folderId) {
     for (final folder in index.ancestryOf(folderId)) {
@@ -363,19 +372,11 @@ List<Layer> _layersAfter(
     return null;
   }
 
-  // The very row where its folder stays: the stack's rows are compared by
-  // instance downstream, and a copy of one is a change to it.
-  Layer standing(Layer row) => foldersTaken.contains(row.folderId)
-      ? row.copyWith(folderId: standingParent(row.folderId))
-      : row;
-
-  return [
+  return {
     for (final row in cut.layers)
-      if (row.id == result.id)
-        result
-      else if (!taken.contains(row.id))
-        standing(row),
-  ];
+      if (!taken.contains(row.id) && foldersTaken.contains(row.folderId))
+        row.id: standingParent(row.folderId),
+  };
 }
 
 /// Why the result may show otherwise than the [taken] rows did

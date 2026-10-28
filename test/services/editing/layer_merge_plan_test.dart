@@ -77,7 +77,7 @@ void main() {
       cut: cut,
       selected: {for (final id in ids) LayerId(id)},
       revisionOf: (_, _) => 0,
-      mintFrameId: () => FrameId('m${minted++}'),
+      mintFrameId: (_) => FrameId('m${minted++}'),
       isLinked: (_) => false,
     );
   }
@@ -179,22 +179,20 @@ void main() {
 
   group('the row it makes', () {
     test('wears the topmost row\'s name and stands where it stood — the '
-        'rows it took are gone, the rest stay the very rows they were', () {
-      final under = row('under', {0: 'U1'});
+        'rows it took are gone, the rest stay where they were', () {
       final plan = merge(
         cutOf([
-          under,
+          row('under', {0: 'U1'}),
+          row('c', {0: 'C1'}),
           row('b', {0: 'B1'}),
           row('a', {0: 'A1'}, blendMode: LayerBlendMode.multiply),
         ]),
-        ['b', 'a'],
+        ['c', 'b', 'a'],
       )!;
 
-      expect([for (final layer in plan.layersAfter) layer.id.value], [
-        'under',
-        'a',
-      ]);
-      expect(identical(plan.layersAfter.first, under), isTrue);
+      expect(plan.result.id, const LayerId('a'));
+      expect(plan.removed, [const LayerId('c'), const LayerId('b')]);
+      expect(plan.regrouped, isEmpty);
       expect(
         [plan.result.name, plan.result.blendMode, plan.result.isVisible],
         ['a', LayerBlendMode.normal, true],
@@ -267,12 +265,39 @@ void main() {
         ['F'],
       )!;
 
-      expect([for (final layer in plan.layersAfter) layer.id.value], ['F']);
+      expect(plan.result.id, const LayerId('F'));
+      expect(plan.removed, [const LayerId('b'), const LayerId('a')]);
       expect(
         [plan.result.kind, plan.result.name, plan.result.folderId],
         [LayerKind.animation, 'Folder', null],
       );
       expect(blocksOf(plan.result), {0: (2, 'A1'), 2: (2, 'A1-2')});
+    });
+
+    test('a row it held that lays no picture stays, in the folder above',
+        () {
+      final plan = merge(
+        cutOf([
+          row('a', {0: 'A1'}, inside: 'F'),
+          Layer(
+            id: const LayerId('cam'),
+            name: 'cam',
+            kind: LayerKind.camera,
+            folderId: const LayerId('F'),
+            frames: const [],
+          ),
+          createFolderLayer(
+            id: const LayerId('F'),
+            name: 'F',
+            parentId: const LayerId('P'),
+          ),
+          createFolderLayer(id: const LayerId('P'), name: 'P'),
+        ]),
+        ['F'],
+      )!;
+
+      expect(plan.removed, [const LayerId('a')]);
+      expect(plan.regrouped, {const LayerId('cam'): const LayerId('P')});
     });
 
     test('the folder the result stands in lays its look over it after the '
@@ -338,10 +363,7 @@ void main() {
 
     final plan = merge(cut, ['a', 'b', 'base', 'rider'])!;
 
-    expect([for (final layer in plan.layersAfter) layer.id.value], [
-      'base',
-      'rider',
-      'a',
-    ]);
+    expect(plan.result.id, const LayerId('a'));
+    expect(plan.removed, [const LayerId('b')]);
   });
 }
