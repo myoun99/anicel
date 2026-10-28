@@ -263,16 +263,6 @@ class ImportLanding {
     );
   }
 
-  /// The row to stand on once an import made [made] in [cutId]: it — or,
-  /// where it went inside the folder you stand on, that folder still, as
-  /// Add Layer leaves you ([rowStoodOnAfterMaking], F-492).
-  LayerId rowStoodOnAfterLanding(CutId cutId, LayerId made) =>
-      rowStoodOnAfterMaking(
-        _project.cutById(cutId)?.layers ?? const [],
-        made: made,
-        standing: _selection.activeLayerId,
-      );
-
   /// Lands imported [layers] where [arrival] says: as rows in the cut
   /// that is already there, or as a NEW cut built from the default — and,
   /// when a drop chose the spot ([ImportArrival.spot]), directly above the

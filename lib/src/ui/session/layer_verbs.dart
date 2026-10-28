@@ -700,15 +700,11 @@ class LayerVerbs {
   /// Inserts a NEW ROW in the active cut where [placeIn] places it in the
   /// cut's stack — above the active layer ([placementAboveActive]), or at
   /// a cut's conte row's birthplace (`conteRowPlacement`, F-369).
-  ///
-  /// The new row is stood on — or, made inside the folder stood on, that
-  /// folder still ([rowStoodOnAfterMaking]).
   void addRow(
     Layer Function(Cut cut) build,
     ({int index, LayerId? folderId}) Function(List<Layer> stack) placeIn,
   ) {
     final cut = _project.requireActiveCut;
-    final standing = _controllers.layerController.activeLayerId;
     final placement = placeIn(cut.layers);
     final built = build(cut);
     _controllers.layerController.addLayer(
@@ -716,13 +712,6 @@ class LayerVerbs {
           ? built
           : built.copyWith(folderId: placement.folderId),
       insertionIndex: placement.index,
-    );
-    _controllers.layerController.selectLayer(
-      rowStoodOnAfterMaking(
-        _project.requireActiveCut.layers,
-        made: built.id,
-        standing: standing,
-      ),
     );
   }
 }

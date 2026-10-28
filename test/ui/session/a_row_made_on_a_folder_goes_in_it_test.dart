@@ -11,7 +11,9 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 ///
 /// Every kind Add Layer makes above the row you stand on — the ＋, its key
 /// and the ▾ menu all ask `addLayerOfKind` — goes INTO the folder you stand
-/// on, at the top of what it holds, and you stand on the folder still.
+/// on, at the top of what it holds, and you stand on the row you made, as
+/// after any new row (유저 2026-10-28 정정: 「폴더에 선 상태 유지가아니라 만든
+/// 레이어에 서지도록」).
 void main() {
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -45,7 +47,7 @@ void main() {
     LayerKind.folder,
   ]) {
     test('a ${kind.name} row made on a folder goes in it, right under the '
-        'folder row, and you stand on the folder still', () {
+        'folder row, and you stand on it', () {
       final s = session();
       final folder = standOnAFolder(s);
       final before = idsOf(s);
@@ -58,7 +60,7 @@ void main() {
       expect(added.folderId, folder);
       expect(stack[stack.indexOf(added) + 1].id, folder);
       expect(folderStructureProblem(stack), isNull);
-      expect(s.activeLayerId, folder);
+      expect(s.activeLayerId, added.id);
     });
   }
 
@@ -80,8 +82,7 @@ void main() {
     expect(folderStructureProblem(stack), isNull);
   });
 
-  test('↩️a row made on a plain row is still stood on — the folder is the '
-      'one place you keep standing', () {
+  test('a row made on a plain row is stood on too, by the same law', () {
     final s = session();
     final from = s.activeLayerId;
     final before = idsOf(s);

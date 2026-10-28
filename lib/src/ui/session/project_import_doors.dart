@@ -612,12 +612,7 @@ class ProjectImportDoors {
       (layer) => layer.kind != LayerKind.folder,
       orElse: () => expansion!.layers.last,
     );
-    _changes.refreshAfterCutCommand(
-      preferredActiveLayerId: _landing.rowStoodOnAfterLanding(
-        cutId,
-        picture.id,
-      ),
-    );
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: picture.id);
     _changes.notifyChanged();
     return expansion.warnings;
   }
@@ -1764,10 +1759,7 @@ class ProjectImportDoors {
         onProgress?.call(done, bakes.length);
       }
     }
-    _changes.refreshAfterCutCommand(
-      preferredActiveLayerId:
-          rowId ?? _landing.rowStoodOnAfterLanding(cutId, layer.id),
-    );
+    _changes.refreshAfterCutCommand(preferredActiveLayerId: rowId ?? layer.id);
     _changes.notifyChanged();
   }
 

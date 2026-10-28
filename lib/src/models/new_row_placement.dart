@@ -1,7 +1,6 @@
 import 'attached_layer_resolve.dart' show attachedGroupEndIndex;
 import 'layer.dart';
-import 'layer_folder.dart'
-    show LayerFolderQueries, attachOrganizerBaseOf, folderChainAbove;
+import 'layer_folder.dart' show attachOrganizerBaseOf;
 import 'layer_id.dart';
 
 /// Where a NEW row joins [stack] when it is aimed at [insertAt]: the model
@@ -53,6 +52,9 @@ import 'layer_id.dart';
 /// 🗣️F-492 (유저 2026-10-27): 「폴더위에 서서 레이어만들때 폴더 안에서
 /// 만들도록 서있는상태는 유지」. ↩️A folder stood on was a row like any
 /// other, and the new row went above it — out of it, into its parent.
+/// You stand on the row you made, as after any new row (유저 2026-10-28
+/// 정정: 「폴더에 선 상태 유지가아니라 만든 레이어에 서지도록」). ↩️Staying
+/// on the folder was read into 「서있는상태는 유지」 and is gone.
 ///
 /// ⛔Not an attach ORGANIZER: everything inside one rides its base (유저
 /// 2026-08-29: 「a레이어 어태치 안에 있는 모든거는 a에 대한 어태치여야해」),
@@ -73,28 +75,6 @@ import 'layer_id.dart';
     return (index: index, folderId: row.id);
   }
   return newRowPlacement(stack, index + 1);
-}
-
-/// The row you stand on once [made] joined [stack] while you stood on
-/// [standing]: the row you made — or, where it went inside the folder you
-/// stood on, that folder still (「서있는상태는 유지」, F-492 above).
-///
-/// ONE answer for every door that makes a row and stands on it — Add Layer,
-/// and a file let go on the canvas or between two rail rows.
-LayerId rowStoodOnAfterMaking(
-  List<Layer> stack, {
-  required LayerId made,
-  required LayerId? standing,
-}) {
-  final index = stack.indexWhere((layer) => layer.id == made);
-  if (standing == null || index == -1) {
-    return made;
-  }
-  final inside = folderChainAbove(
-    stack[index].folderId,
-    stack.folderById,
-  ).any((folder) => folder.id == standing);
-  return inside ? standing : made;
 }
 
 /// Where a cut's CONTE row is born in [stack]: at the bottom of ACTION —

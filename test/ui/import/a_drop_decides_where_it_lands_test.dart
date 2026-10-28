@@ -641,7 +641,7 @@ void main() {
       expect(added.folderId, folderId);
       expect(layers[layers.indexOf(added) + 1].id, folderId);
       expect(folderStructureProblem(layers), isNull);
-      expect(s.activeLayerId, folderId, reason: 'you still stand there');
+      expect(s.activeLayerId, added.id, reason: 'you stand on what it made');
       await tester.pumpAndSettle();
     });
 

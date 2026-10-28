@@ -203,12 +203,13 @@ void main() {
   });
 
   testWidgets('a PSD let go on the canvas standing on a folder goes INSIDE '
-      'it, and you stand on the folder still (F-492)', (tester) async {
+      'it, and you stand on what it made (F-492)', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.layerStack.addLayerOfKind(LayerKind.folder);
     final folder = s.activeLayer!;
     expect(folder.kind, LayerKind.folder, reason: 'the premise: on it');
+    final before = {for (final layer in s.activeCutOrNull!.layers) layer.id};
 
     await tester.runAsync(() async {
       final path = await writePsd();
@@ -223,7 +224,8 @@ void main() {
     final root = layers.firstWhere((layer) => layer.name == 'BG_a12');
     expect(root.folderId, folder.id);
     expect(folderStructureProblem(layers), isNull);
-    expect(s.activeLayerId, folder.id);
+    expect(before, isNot(contains(s.activeLayerId)));
+    expect(s.activeLayer!.kind, isNot(LayerKind.folder));
     await tester.pumpAndSettle();
   });
 }

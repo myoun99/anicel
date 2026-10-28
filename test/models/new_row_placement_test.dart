@@ -155,53 +155,6 @@ void main() {
     });
   });
 
-  group('the row you stand on after making one', () {
-    LayerId standAfter(List<Layer> stack, String made, String? standing) =>
-        rowStoodOnAfterMaking(
-          stack,
-          made: LayerId(made),
-          standing: standing == null ? null : LayerId(standing),
-        );
-
-    test('is the row you made', () {
-      final stack = [
-        row('a'),
-        row('new'),
-        row('m', folder: 'F'),
-        row('F', kind: LayerKind.folder),
-      ];
-      expect(standAfter(stack, 'new', 'a'), const LayerId('new'));
-      expect(standAfter(stack, 'new', null), const LayerId('new'));
-      expect(
-        standAfter(stack, 'm', 'a'),
-        const LayerId('m'),
-        reason: 'made in a folder you do not stand on',
-      );
-    });
-
-    test('is the folder you stood on, where you made it inside — at any '
-        'depth', () {
-      final stack = [
-        row('deep', folder: 'I'),
-        row('I', kind: LayerKind.folder, folder: 'O'),
-        row('new', folder: 'O'),
-        row('O', kind: LayerKind.folder),
-      ];
-      expect(standAfter(stack, 'new', 'O'), const LayerId('O'));
-      expect(standAfter(stack, 'deep', 'O'), const LayerId('O'));
-      expect(standAfter(stack, 'deep', 'I'), const LayerId('I'));
-      expect(
-        standAfter(stack, 'new', 'I'),
-        const LayerId('new'),
-        reason: 'beside the folder you stood on, not in it',
-      );
-    });
-
-    test('is the row you made where it is not in the stack', () {
-      expect(standAfter([row('F')], 'gone', 'F'), const LayerId('gone'));
-    });
-  });
-
   test('an aim past either end is the end', () {
     final stack = [row('A')];
 
