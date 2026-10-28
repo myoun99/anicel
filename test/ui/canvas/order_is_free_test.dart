@@ -332,6 +332,30 @@ void main() {
     );
   });
 
+  test('a KEYED chain below full mix crossfades too — no matrix keys', () {
+    // ↩️A chain of colour and a key folded into one matrix below full mix:
+    // the key went unpainted — keyed at 100 % and gone at 99.
+    ResolvedLayerEffect brighten() => ResolvedLayerEffect(
+      kind: EffectKind.brightnessContrast,
+      values: const [40, 0],
+    );
+    for (final effects in [
+      [brighten(), deleteWhite()],
+      [deleteWhite(), brighten()],
+      [deleteWhite()],
+    ]) {
+      final pass = resolveAdjustmentScopePass(
+        bounds: const Rect.fromLTWH(0, 0, 32, 32),
+        effects: effects,
+        mix: 0.5,
+        paper: const Rect.fromLTWH(0, 0, 32, 32),
+      );
+      final kinds = [for (final effect in effects) effect.kind.name];
+      expect(pass.crossfades, isTrue, reason: '$kinds');
+      expect(pass.preSteps, isNotEmpty, reason: '$kinds: the key is a step');
+    }
+  });
+
   test('the crossfade blits the RAW scope for its unfiltered pass', () {
     // 🚨THE MIX HAS TO BE ABLE TO FADE THE KEY. Both passes blitting the
     // keyed raster would key at full strength however low the mix went, and

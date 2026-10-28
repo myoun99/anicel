@@ -145,40 +145,30 @@ class CompositeEffectPaint {
 }
 
 /// The single folded matrix for a COLOUR-ONLY chain; null as soon as the
-/// chain contains anything spatial (a blur), because a matrix cannot say
-/// what a blur does.
+/// chain holds anything a matrix cannot say — a blur, which reads past the
+/// pixel, or a colour key, which rides the raster — and null for a chain
+/// with no colour in it at all.
 ///
 /// STRICT on purpose: a caller that gets a matrix may paint it INSTEAD of
-/// the chain, so answering "here is the colour part" for a chain with a
-/// blur in it would silently drop the blur. The adjustment scope relies on
-/// that to fold its MIX into the matrix ([lerpColorMatrixFromIdentity])
-/// and paint one pass. Readers that only want the colour part and know
-/// they cannot do spatial work at all — the eyedropper — ask
-/// [resolveColorMatrixIgnoringSpatial] instead.
+/// the chain, so answering "here is the colour part" for a chain with
+/// anything else in it would silently drop the rest. The adjustment scope
+/// relies on that to fold its MIX into the matrix
+/// ([lerpColorMatrixFromIdentity]) and paint one pass. ↩️It asked after a
+/// blur alone, so an adjustment's key went unpainted below full mix —
+/// keyed at 100 % and gone at 99.
 List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
+  List<double>? matrix;
   for (final effect in effects) {
     if (effect.kind.spreadsPixels) {
       return null;
     }
-  }
-  return resolveColorMatrixIgnoringSpatial(effects);
-}
-
-/// The folded matrix of the chain's COLOUR effects, with the spatial ones
-/// (a blur) skipped; null when there are no colour effects at all.
-///
-/// Only for readers that cannot do spatial work under any circumstances —
-/// the eyedropper answers "what colour is at this point" from one pixel, so
-/// a blur is out of reach either way and dropping the colour grade with it
-/// would be strictly worse. Never use this to PAINT: see
-/// [resolveColorOnlyMatrix].
-List<double>? resolveColorMatrixIgnoringSpatial(
-  List<ResolvedLayerEffect> effects,
-) {
-  List<double>? matrix;
-  for (final effect in effects) {
-    if (_paintPartOf(effect, DrawSpace.canvas) case _ColourPart(:final next)) {
-      matrix = matrix == null ? next : composeColorMatrices(next, matrix);
+    switch (_paintPartOf(effect, DrawSpace.canvas)) {
+      case _ColourPart(:final next):
+        matrix = matrix == null ? next : composeColorMatrices(next, matrix);
+      case _NoPart():
+        break;
+      case _:
+        return null;
     }
   }
   return matrix;
@@ -187,21 +177,26 @@ List<double>? resolveColorMatrixIgnoringSpatial(
 /// ONE straight pixel through [effects] IN THEIR ORDER — what the composite
 /// draws there, as the eyedropper reads it: a colour effect's matrix, a key
 /// over its run's input ([resolveCompositeEffectPlan]'s runs — the keys
-/// standing together), and the spatial ones skipped, since one pixel cannot
-/// reach its neighbours ([resolveColorMatrixIgnoringSpatial]'s reason).
+/// standing together), and the spatial ones skipped: one pixel cannot
+/// reach its neighbours, and dropping the colour with them would be
+/// strictly worse.
 ///
 /// ↩️The eyedropper ran every key first and every matrix after, which read
 /// a key under a colour effect as if it stood above it — and every key of
 /// the chain as one run.
+///
+/// The colour may come in between bytes — a stack an adjustment grades is
+/// laid up from many rows — and the alpha comes out a byte, as a raster
+/// holds it.
 ({double red, double green, double blue, int alpha}) pixelThroughChain(
   List<ResolvedLayerEffect> effects, {
-  required int red,
-  required int green,
-  required int blue,
-  required int alpha,
+  required num red,
+  required num green,
+  required num blue,
+  required num alpha,
 }) {
   var (r, g, b) = (red.toDouble(), green.toDouble(), blue.toDouble());
-  var a = alpha;
+  var a = _byte(alpha.toDouble());
   int? runInput;
   for (final effect in effects) {
     final key = CelColorKey.fromResolved(effect);
@@ -230,10 +225,11 @@ int _byte(double channel) => channel.round().clamp(0, 255);
 
 /// What ONE sampled effect is to a paint — the one place each kind's paint
 /// is written (I-132 「fx 하나 = 한 곳」): a colour matrix, a spatial filter, or
-/// nothing a paint can carry. Both readers of a chain — the painter
-/// ([resolveCompositeEffectPaint]) and the eyedropper's matrix
-/// ([resolveColorMatrixIgnoringSpatial]) — ask it, so a colour kind's matrix
-/// is spelled once. ↩️Each wrote its own switch, the matrices twice.
+/// nothing a paint can carry. Every reader of a chain — the painter
+/// ([resolveCompositeEffectPaint]), an adjustment's one pass
+/// ([resolveColorOnlyMatrix]) and the eyedropper ([pixelThroughChain]) —
+/// asks it, so a colour kind's matrix is spelled once. ↩️Each wrote its own
+/// switch, the matrices twice.
 sealed class _PaintPart {
   const _PaintPart();
 }
