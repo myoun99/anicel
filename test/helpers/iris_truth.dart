@@ -1,6 +1,11 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/services/shaded_passes.dart';
+import 'package:anicel/src/ui/canvas/iris_blur_shader.dart';
 
 /// `iris_table.frag`'s core: the iris drawn this much as big.
 const double irisCoreScale = 0.8;
@@ -51,30 +56,6 @@ double pastTheIris(int dx, int dy, double radius, IrisProperties iris) {
   return (inside ? -nearest : nearest) - rounding;
 }
 
-/// The rows [iris] covers [radius] out, `2 · reach + 1` of them from
-/// `-reach` down — its own reach unless one is given, as a core's rows are
-/// its iris's — in each, the columns whose centres lie within [edge] of
-/// it, `iris_table.frag`'s own reach of a centre on the edge. An iris of no
-/// radius covers no centre.
-List<IrisRow> irisRowsOf(
-  double radius,
-  IrisProperties iris, {
-  int? reach,
-  double edge = 1e-3,
-}) {
-  final rows = reach ?? radius.floor();
-  return [
-    for (var dy = -rows; dy <= rows; dy += 1)
-      if (radius <= 0)
-        (left: 1, right: 0)
-      else
-        _rowOf([
-          for (var dx = -rows - 1; dx <= rows + 1; dx += 1)
-            if (pastTheIris(dx, dy, radius, iris) <= edge) dx,
-        ]),
-  ];
-}
-
 /// What an iris covers, as `iris_gather.frag` weighs it: its outline's
 /// rows from `-reach` down, its core's over the same rows, the share of the
 /// core's light its fringe pushes out to the edge, and what its weights add
@@ -88,53 +69,72 @@ typedef IrisCover = ({
   double weight,
 });
 
-/// What [iris] covers [radius] out.
-IrisCover irisCoverOf(double radius, IrisProperties iris) {
-  final reach = radius.floor();
-  final outline = irisRowsOf(radius, iris);
-  final fringe = iris.fringe / 500;
+/// What [pass] covers at its level [level], as [table] — the table it lays
+/// — has it: its core's rows read where it has a fringe, and the light
+/// pushed to the edge only where the edge holds a pixel the core does not.
+IrisCover irisLaidCoverOf(
+  IrisTable table,
+  IrisGatherPass pass, {
+  int level = 0,
+}) {
+  final outline = irisLevelOf(table, pass.reach, level: level);
+  final fringe = pass.iris.fringe / 500;
   final core = fringe > 0
-      ? irisRowsOf(radius * irisCoreScale, iris, reach: reach)
+      ? irisLevelOf(table, pass.reach, level: level, k: 1).rows
       : const <IrisRow>[];
-  final (onOutline, onCore) = (coveredBy(outline), coveredBy(core));
+  final (onOutline, onCore) = (coveredBy(outline.rows), coveredBy(core));
   final pushed = onOutline > onCore ? fringe : 0.0;
   return (
-    reach: reach,
-    outline: outline,
+    reach: outline.reach,
+    outline: outline.rows,
     core: core,
     pushed: pushed,
     weight: onOutline - onCore * pushed,
   );
 }
 
-/// Whether a pixel centre lies a hair — less than [hair], yet not on it —
-/// from the edge of [iris] drawn [radius] out, or, where it has a fringe,
-/// from its core's: where `iris_table.frag`, which reaches [irisRowsOf]'s
-/// `edge` along a row, not square to the edge, may put it either way. A
-/// centre on the edge, as on a square's side, falls in on both. An iris of
-/// no radius has no edge.
-bool aCentreIsAHairFromTheEdge(
-  double radius,
-  IrisProperties iris, {
-  double hair = 2e-3,
-}) {
-  final reach = radius.floor();
-  for (final drawn in [radius, if (iris.fringe > 0) radius * irisCoreScale]) {
-    for (var dy = -reach; dy <= reach && drawn > 0; dy += 1) {
-      for (var dx = -reach - 1; dx <= reach + 1; dx += 1) {
-        final past = pastTheIris(dx, dy, drawn, iris).abs();
-        if (past > 1e-9 && past < hair) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+/// The table [pass] lays (`iris_table.frag`), as floats: red, green, blue
+/// and alpha a texel.
+typedef IrisTable = ({Float32List texels, int width});
+
+Future<IrisTable> irisTableOf(WidgetTester tester, IrisGatherPass pass) async {
+  final table = IrisBlurShader.tableFor(pass);
+  addTearDown(table.dispose);
+  final bytes = (await tester.runAsync(
+    () => table.toByteData(format: ui.ImageByteFormat.rawExtendedRgba128),
+  ))!;
+  return (texels: bytes.buffer.asFloat32List(), width: table.width);
 }
 
-IrisRow _rowOf(List<int> covered) => covered.isEmpty
-    ? (left: 1, right: 0)
-    : (left: covered.first, right: covered.last);
+/// Level [level]'s rows of the outline (k 0) or core (k 1), and its
+/// reach, out of [table] laid for a pass reaching [reachMost].
+({List<IrisRow> rows, int reach}) irisLevelOf(
+  IrisTable table,
+  int reachMost, {
+  int level = 0,
+  int k = 0,
+}) {
+  final rows = 2 * reachMost + 1;
+  final rowsALine = math.min(rows, 1024);
+  final linesALevel = (rows / rowsALine).ceil();
+  double at(int row, int channel) {
+    final line = level * linesALevel + row ~/ rowsALine;
+    final column = (row % rowsALine) * 2 + k;
+    return table.texels[(line * table.width + column) * 4 + channel];
+  }
+
+  final reach = at(0, 2).toInt();
+  return (
+    reach: reach,
+    rows: [
+      for (var dy = -reach; dy <= reach; dy += 1)
+        (
+          left: at(dy + reachMost, 0).toInt(),
+          right: at(dy + reachMost, 1).toInt(),
+        ),
+    ],
+  );
+}
 
 int coveredBy(List<IrisRow> rows) => rows.fold(
   0,

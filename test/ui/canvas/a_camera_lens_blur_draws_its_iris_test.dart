@@ -24,12 +24,12 @@ import '../../helpers/iris_truth.dart';
 /// pixels about it its iris covers, read out of row sums laid in floats.
 ///
 /// The truth is the mean worked out on the CPU, pixel by pixel, over the
-/// pixels the iris covers, asked point by point ([irisCoverOf] — the GPU's
-/// table is held to it by `an_iris_table_covers_its_shape_test`) — of the
-/// light each gives where the blur reads it through its Highlight and Use
-/// Linear Working Space ([LensLight]), at each pixel's own radius where a
-/// blur map names it. ⛔ON IMPELLER: a row sum runs past 1, and Skia
-/// rasters a float target as bytes.
+/// pixels the iris's table lays ([irisLaidCoverOf] — the table held to the
+/// shape by `an_iris_table_covers_its_shape_test`), at each pixel's level
+/// where a blur map names it — of the light each gives where the blur
+/// reads it through its Highlight and Use Linear Working Space
+/// ([LensLight]). ⛔ON IMPELLER: a row sum runs past 1, and Skia rasters a
+/// float target as bytes.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -172,40 +172,39 @@ void main() {
     ];
   }
 
-  /// The radius [iris] blurs pixel [pixel] to: its own, or — where it reads
-  /// a blur map ([IrisGatherPass.map]) — its own times how far the level
-  /// [map]'s value there names lies from the focal distance, over 255.
-  double radiusAt(IrisGatherPass iris, Uint8List? map, int pixel) {
+  /// The level of its table [iris] blurs pixel [pixel] at: the first, or —
+  /// where it reads a blur map ([IrisGatherPass.map]) — the one [map]'s
+  /// value there names through its channel.
+  int levelAt(IrisGatherPass iris, Uint8List? map, int pixel) {
     final named = iris.map;
     if (named == null) {
-      return iris.radius;
+      return 0;
     }
     final IrisMapChannel(:r, :g, :b, :a) = named.channel;
     final at = pixel * 4;
     final value =
         r * map![at] + g * map[at + 1] + b * map[at + 2] + a * map[at + 3];
-    final level = value.round().clamp(0, 255);
-    final distance = named.inverts ? 255 - level : level;
-    return iris.radius * (distance - named.focal).abs() / 255;
+    return value.round().clamp(0, 255);
   }
 
   /// The mean [iris] makes of [input], a [width] wide raster, worked out
-  /// pixel by pixel, each at its own radius ([radiusAt]) where [map] names
-  /// it: past the raster nothing, or — where the iris repeats the paper's
-  /// edge — the paper's edge pixel, and nothing drawn off it; every pixel
-  /// read through the iris's light, and put back as stored. ⚠️A pixel
-  /// whose iris has a centre a hair from its edge
-  /// ([aCentreIsAHairFromTheEdge]) may read it either way: not a number.
-  List<double> truth(
+  /// pixel by pixel over the rows its table lays, each at its own level
+  /// ([levelAt]) where [map] names it: past the raster nothing, or — where
+  /// the iris repeats the paper's edge — the paper's edge pixel, and
+  /// nothing drawn off it; every pixel read through the iris's light, and
+  /// put back as stored.
+  Future<List<double>> truth(
+    WidgetTester tester,
     Uint8List input,
     int width,
     IrisGatherPass iris, {
     Uint8List? map,
-  }) {
+  }) async {
+    final table = await irisTableOf(tester, iris);
     final height = input.length ~/ (4 * width);
     final paper = iris.paper;
     final light = iris.light;
-    final covers = <double, IrisCover?>{};
+    final covers = <int, IrisCover>{};
     final pixels = [
       for (var i = 0; i < input.length; i += 4)
         [for (var c = 0; c < 4; c += 1) input[i + c] / 255],
@@ -228,18 +227,11 @@ void main() {
             (x < left || x > right || y < top || y > bottom)) {
           continue;
         }
-        final radius = radiusAt(iris, map, y * width + x);
+        final level = levelAt(iris, map, y * width + x);
         final cover = covers.putIfAbsent(
-          radius,
-          () => aCentreIsAHairFromTheEdge(radius, iris.iris)
-              ? null
-              : irisCoverOf(radius, iris.iris),
+          level,
+          () => irisLaidCoverOf(table, iris, level: level),
         );
-        if (cover == null) {
-          final at = (y * width + x) * 4;
-          out.fillRange(at, at + 4, double.nan);
-          continue;
-        }
         final sum = List<double>.filled(4, 0);
         void add(List<IrisRow> rows, double weight) {
           for (var row = 0; row < rows.length; row += 1) {
@@ -271,17 +263,10 @@ void main() {
     return out;
   }
 
-  /// [got] within one of [want] wherever [want] is a number — and it is,
-  /// for all but a few pixels.
   void expectWithinOne(Uint8List got, List<double> want, {String? reason}) {
-    final unknown = want.where((each) => each.isNaN).length;
-    expect(unknown, lessThan(got.length / 4), reason: 'fixture: $reason');
     var worst = 0.0;
     var at = -1;
     for (var i = 0; i < got.length; i += 1) {
-      if (want[i].isNaN) {
-        continue;
-      }
       final off = (got[i] - want[i]).abs();
       if (off > worst) {
         (worst, at) = (off, i);
@@ -334,7 +319,7 @@ void main() {
     );
     final got = await blurred(tester, source, effect);
     final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 80, 60));
-    final cover = irisCoverOf(iris.radius, iris.iris);
+    final cover = irisLaidCoverOf(await irisTableOf(tester, iris), iris);
 
     final lit = litBy(cover, dotX, dotY);
     for (var y = 0; y < height; y += 1) {
@@ -362,7 +347,7 @@ void main() {
     );
     final pushing = lens(radius: 1.3, roundness: 100, fringe: 500);
     final iris = irisOf(pushing, width, const Rect.fromLTWH(0, 0, 9, 9));
-    final cover = irisCoverOf(iris.radius, iris.iris);
+    final cover = irisLaidCoverOf(await irisTableOf(tester, iris), iris);
     expect(
       (coveredBy(cover.outline), coveredBy(cover.core)),
       (5, 5),
@@ -400,7 +385,7 @@ void main() {
       );
       expectWithinOne(
         await blurred(tester, source, effect),
-        truth(input, width, irisOf(effect, width, paper)),
+        await truth(tester, input, width, irisOf(effect, width, paper)),
         reason: '$effect',
       );
     }
@@ -423,7 +408,11 @@ void main() {
 
       expect(iris.paper, const Rect.fromLTRB(20, 10, 90, 40), reason: 'whole');
       final got = await blurred(tester, source, effect, paper: paper);
-      expectWithinOne(got, truth(input, width, iris), reason: '$effect');
+      expectWithinOne(
+        got,
+        await truth(tester, input, width, iris),
+        reason: '$effect',
+      );
     }
   });
 
@@ -453,7 +442,7 @@ void main() {
       expect(iris.light, isNotNull, reason: 'fixture: $effect has a light');
       expectWithinOne(
         await blurred(tester, source, effect),
-        truth(input, width, iris),
+        await truth(tester, input, width, iris),
         reason: '$effect',
       );
     }
@@ -486,7 +475,7 @@ void main() {
   });
 
   testWidgets('a highlight spread over what is clear covers it: a lamp\'s '
-      'bokeh shows over a clear cel (I-132-Q20, asked)', (tester) async {
+      'bokeh shows over a clear cel (I-132-Q20 a)', (tester) async {
     final (width, height, dotX, dotY) = (40, 40, 20, 20);
     final source = await imageOf(
       tester,
@@ -496,7 +485,7 @@ void main() {
     );
     final effect = lens(radius: 5, shape: 1, gain: 100, threshold: 0);
     final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 40, 40));
-    final cover = irisCoverOf(iris.radius, iris.iris);
+    final cover = irisLaidCoverOf(await irisTableOf(tester, iris), iris);
     // White past a threshold of 0 gains a hundred times its luma more.
     expect(101 / cover.weight, greaterThan(1), reason: 'fixture: outshines');
     final got = await blurred(tester, source, effect);
@@ -528,7 +517,7 @@ void main() {
 
     expect(got[(dotY * width + dotX) * 4 + 3], 0, reason: 'the core is dark');
     final iris = irisOf(effect, width, const Rect.fromLTWH(0, 0, 60, 60));
-    final cover = irisCoverOf(iris.radius, iris.iris);
+    final cover = irisLaidCoverOf(await irisTableOf(tester, iris), iris);
     final edge = cover.outline[cover.reach];
     expect(
       got[(dotY * width + dotX - edge.left) * 4 + 3],
@@ -558,19 +547,21 @@ void main() {
     );
     expectWithinOne(
       await blurred(tester, source, effect),
-      truth(input, width, irisOf(effect, width, paper)),
+      await truth(tester, input, width, irisOf(effect, width, paper)),
     );
   });
 
   /// [source] through [pass], each pixel at the radius [map] names
   /// ([IrisGatherPass.map]): its rows summed as a camera lens blur sums
   /// them ([rowSumPasses]), then its iris gathered out of the sums.
+  /// [pass] drawn over [source] by the shaders themselves, reading [map]
+  /// where the pass reads one.
   Future<Uint8List> blurredBy(
     WidgetTester tester,
     ui.Image source,
-    IrisGatherPass pass,
-    ui.Image map,
-  ) async {
+    IrisGatherPass pass, {
+    ui.Image? map,
+  }) async {
     final (width, height) = (source.width, source.height);
     ui.Image drawn(ui.FragmentShader shader, {required bool inFloats}) {
       final recorder = ui.PictureRecorder();
@@ -648,10 +639,10 @@ void main() {
           focal: inverts ? 255 - 128 : 128,
           inverts: inverts,
         );
-        final got = await blurredBy(tester, source, pass, map);
+        final got = await blurredBy(tester, source, pass, map: map);
         expectWithinOne(
           got,
-          truth(input, width, pass, map: levels),
+          await truth(tester, input, width, pass, map: levels),
           reason: 'inverts $inverts',
         );
         for (var y = 0; y < height; y += 1) {
@@ -679,12 +670,53 @@ void main() {
       ]) {
         final pass = mappedBy(channel, radius: 20, focal: 40);
         expectWithinOne(
-          await blurredBy(tester, source, pass, map),
-          truth(input, width, pass, map: levels),
+          await blurredBy(tester, source, pass, map: map),
+          await truth(tester, input, width, pass, map: levels),
           reason: channel.name,
         );
       }
     });
+  });
+
+  // A level of more than 1024 rows takes two lines of the table: the rows
+  // from 424 below on lie on the second, which only a picture past 424
+  // tall reaches.
+  testWidgets('an iris of more than 1024 rows reads its rows off both '
+      'lines of its table, with a blur map or without', (tester) async {
+    final (width, height) = (4, 450);
+    final bytes = randomPicture(width, height, seed: 31);
+    final source = await imageOf(tester, bytes, width, height);
+    final input = await bytesOf(tester, source);
+    // Every level from 180 up: each past 424 at a focal distance of 0.
+    final random = math.Random(37);
+    final levels = Uint8List(width * height * 4);
+    for (var i = 0; i < levels.length; i += 4) {
+      levels.fillRange(i, i + 4, 180 + random.nextInt(76));
+    }
+    final map = await imageOf(tester, levels, width, height);
+    const shape = (
+      sides: 6,
+      roundness: 0.4,
+      aspect: 1.3,
+      rotation: 0.5,
+      fringe: 200.0,
+    );
+    for (final reads in [false, true]) {
+      final pass = IrisGatherPass(
+        radius: 600,
+        iris: shape,
+        paper: null,
+        light: null,
+        map: reads
+            ? (channel: IrisMapChannel.red, focal: 0, inverts: false)
+            : null,
+      );
+      expectWithinOne(
+        await blurredBy(tester, source, pass, map: reads ? map : null),
+        await truth(tester, input, width, pass, map: reads ? levels : null),
+        reason: 'a map $reads',
+      );
+    }
   });
 
   group('the plan', () {

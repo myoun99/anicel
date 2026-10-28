@@ -2,8 +2,6 @@
 library;
 
 import 'dart:math' as math;
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,49 +37,6 @@ void main() {
     rotation: rotation,
     fringe: 0,
   );
-
-  /// The table [pass] lays, as floats: red, green, blue and alpha a texel.
-  Future<({Float32List texels, int width})> tableOf(
-    WidgetTester tester,
-    IrisGatherPass pass,
-  ) async {
-    final table = IrisBlurShader.tableFor(pass);
-    addTearDown(table.dispose);
-    final bytes = (await tester.runAsync(
-      () => table.toByteData(format: ui.ImageByteFormat.rawExtendedRgba128),
-    ))!;
-    return (texels: bytes.buffer.asFloat32List(), width: table.width);
-  }
-
-  /// Level [level]'s rows of the outline (k 0) or core (k 1), and its
-  /// reach, out of [table] laid for a pass reaching [reachMost].
-  ({List<IrisRow> rows, int reach}) levelOf(
-    ({Float32List texels, int width}) table,
-    int reachMost, {
-    int level = 0,
-    int k = 0,
-  }) {
-    final rows = 2 * reachMost + 1;
-    final rowsALine = math.min(rows, 1024);
-    final linesALevel = (rows / rowsALine).ceil();
-    double at(int row, int channel) {
-      final line = level * linesALevel + row ~/ rowsALine;
-      final column = (row % rowsALine) * 2 + k;
-      return table.texels[(line * table.width + column) * 4 + channel];
-    }
-
-    final reach = at(0, 2).toInt();
-    return (
-      reach: reach,
-      rows: [
-        for (var dy = -reach; dy <= reach; dy += 1)
-          (
-            left: at(dy + reachMost, 0).toInt(),
-            right: at(dy + reachMost, 1).toInt(),
-          ),
-      ],
-    );
-  }
 
   void expectCovers(
     List<IrisRow> rows,
@@ -129,7 +84,7 @@ void main() {
         paper: null,
         light: null,
       );
-      final level = levelOf(await tableOf(tester, pass), pass.reach);
+      final level = irisLevelOf(await irisTableOf(tester, pass), pass.reach);
       expect(level.reach, radius.floor());
       expectCovers(level.rows, radius, shape);
     }
@@ -145,8 +100,8 @@ void main() {
       paper: null,
       light: null,
     );
-    final table = await tableOf(tester, pass);
-    final core = levelOf(table, pass.reach, k: 1).rows;
+    final table = await irisTableOf(tester, pass);
+    final core = irisLevelOf(table, pass.reach, k: 1).rows;
     expect(core, hasLength(35));
     for (var dy = -17; dy <= 17; dy += 1) {
       final row = core[dy + 17];
@@ -163,8 +118,8 @@ void main() {
   testWidgets('a triangle points up and lies flat along its bottom; a square '
       'stands square, an aspect of 2 is twice as wide as tall, and a quarter '
       'turn is clockwise', (tester) async {
-    Future<List<IrisRow>> rowsOf(IrisProperties shape) async => levelOf(
-      await tableOf(
+    Future<List<IrisRow>> rowsOf(IrisProperties shape) async => irisLevelOf(
+      await irisTableOf(
         tester,
         IrisGatherPass(radius: 20, iris: shape, paper: null, light: null),
       ),
@@ -210,22 +165,30 @@ void main() {
     tester,
   ) async {
     final shape = iris(5, roundness: 0.5);
-    for (final inverts in [false, true]) {
-      final pass = IrisGatherPass(
-        radius: 24,
-        iris: shape,
-        paper: null,
-        light: null,
-        map: (channel: IrisMapChannel.luminance, focal: 100.5, inverts: inverts),
-      );
-      final table = await tableOf(tester, pass);
-      expect(table.width, 2 * 49);
-      for (final level in [0, 60, 100, 101, 200, 255]) {
-        final value = inverts ? 255 - level : level;
-        final radius = 24 * (value - 100.5).abs() / 255;
-        final laid = levelOf(table, 24, level: level);
-        expect(laid.reach, radius.floor(), reason: 'level $level');
-        expectCovers(laid.rows, radius, shape, reason: 'level $level');
+    // At 600 a level's 1201 rows take two lines.
+    for (final (most, width) in [(24.0, 2 * 49), (600.0, 2048)]) {
+      for (final inverts in [false, true]) {
+        final pass = IrisGatherPass(
+          radius: most,
+          iris: shape,
+          paper: null,
+          light: null,
+          map: (
+            channel: IrisMapChannel.luminance,
+            focal: 100.5,
+            inverts: inverts,
+          ),
+        );
+        final table = await irisTableOf(tester, pass);
+        expect(table.width, width, reason: 'fixture');
+        for (final level in [0, 60, 100, 101, 200, 255]) {
+          final value = inverts ? 255 - level : level;
+          final radius = most * (value - 100.5).abs() / 255;
+          final laid = irisLevelOf(table, pass.reach, level: level);
+          final reason = 'level $level of $most, inverts $inverts';
+          expect(laid.reach, radius.floor(), reason: reason);
+          expectCovers(laid.rows, radius, shape, reason: reason);
+        }
       }
     }
   });
@@ -240,9 +203,9 @@ void main() {
       paper: null,
       light: null,
     );
-    final table = await tableOf(tester, pass);
+    final table = await irisTableOf(tester, pass);
     expect(table.width, 2048, reason: 'fixture: 1401 rows are two lines');
-    final rows = levelOf(table, pass.reach).rows;
+    final rows = irisLevelOf(table, pass.reach).rows;
     for (final dy in [-700, -400, 0, 323, 324, 699]) {
       final row = rows[dy + 700];
       for (final dx in [row.left - 1, row.left, row.right, row.right + 1]) {

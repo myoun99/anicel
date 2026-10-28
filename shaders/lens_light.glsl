@@ -49,7 +49,8 @@ vec4 lit(vec4 pixel, vec4 light) {
 // What the blur gathered, as a premultiplied pixel a picture stores: no
 // brighter than white, no colour past its alpha.
 //
-// ⚠️LIGHT PAST ITS ALPHA COVERS (I-132-Q20, asked — its recommendation):
+// ⚠️LIGHT PAST ITS ALPHA COVERS (🗣️I-132-Q20 a, 유저 2026-10-28: 「넘친 빛이
+// 덮임이 된다 — 투명한 셀 위에서도 보케가 보인다」):
 // a boost spread over what is clear is more light than its alpha holds,
 // so it is coverage up to the brightest channel's — a lamp's bokeh shows
 // over a clear cel as it does over a dark one. A gather of no boost holds

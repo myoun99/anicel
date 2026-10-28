@@ -140,6 +140,7 @@ class IrisBlurShader {
     final iris = pass.iris;
     final width = layout.rowsALine * 2;
     final height = layout.levels * layout.linesALevel;
+    final halfSide = math.pi / iris.sides;
     final shader = _table.shader()
       ..setFloat(0, width.toDouble())
       ..setFloat(1, height.toDouble())
@@ -153,7 +154,14 @@ class IrisBlurShader {
       ..setFloat(9, iris.sides.toDouble())
       ..setFloat(10, iris.roundness)
       ..setFloat(11, iris.aspect)
-      ..setFloat(12, iris.rotation);
+      // ⚠️Turned here, in doubles: a GPU's sin and cos miss by too much
+      // (the shader's uniforms say how much).
+      ..setFloat(12, math.cos(iris.rotation))
+      ..setFloat(13, math.sin(iris.rotation))
+      ..setFloat(14, math.cos(halfSide))
+      ..setFloat(15, math.sin(halfSide))
+      ..setFloat(16, math.cos(2 * halfSide))
+      ..setFloat(17, math.sin(2 * halfSide));
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawRect(
       ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),

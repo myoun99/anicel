@@ -38,7 +38,6 @@
 
 precision highp float;
 
-const float kPi = 3.14159265358979;
 const float kCoreScale = 0.8;
 const float kOnTheEdge = 1e-3;
 const float kFar = 1e30;
@@ -58,8 +57,17 @@ uniform float uLevels;
 uniform float uFocal;
 uniform float uInverts;
 
-// Its sides, roundness (0…1), aspect and rotation (radians, clockwise).
-uniform vec4 uIris;
+// Its sides, roundness (0…1) and aspect; then, as cosine and sine, its
+// rotation (clockwise), half a side's turn and a whole side's.
+// ⚠️THE TURNS ARE WORKED OUT ON THE CPU: a GPU's sin and cos may miss by
+// 2⁻¹¹ (Vulkan allows it), which a radius of 200 makes a twentieth of a
+// pixel — a column past the edge (`an_iris_table_covers_its_shape_test`).
+// The shader turns by them, a product and a sum, and misses by a float's
+// hair.
+uniform vec3 uIris;
+uniform vec2 uTurn;
+uniform vec2 uHalfSide;
+uniform vec2 uSide;
 
 out vec4 fragColor;
 
@@ -95,6 +103,11 @@ vec2 withinDisc(vec2 at, vec2 along, vec2 centre, float radius) {
   return span;
 }
 
+// [v] turned counterclockwise by the angle whose cosine and sine are [by].
+vec2 turned(vec2 v, vec2 by) {
+  return vec2(by.x * v.x - by.y * v.y, by.y * v.x + by.x * v.y);
+}
+
 vec2 joined(vec2 whole, vec2 span) {
   return span.x <= span.y
       ? vec2(min(whole.x, span.x), max(whole.y, span.y))
@@ -106,26 +119,25 @@ vec2 spanOf(float dy, float radius) {
   float sides = uIris.x;
   float roundness = uIris.y;
   float corner = (1.0 - roundness) * radius;
-  float halfTurn = kPi / sides;
-  float apothem = corner * cos(halfTurn);
-  float side = corner * sin(halfTurn);
+  float apothem = corner * uHalfSide.x;
+  float side = corner * uHalfSide.y;
   float rounding = roundness * radius;
   float across = min(uIris.z, 1.0);
   float upDown = min(1.0 / uIris.z, 1.0);
-  float c = cos(uIris.w);
-  float s = sin(uIris.w);
+  float c = uTurn.x;
+  float s = uTurn.y;
   // The row's line, in the iris's own unturned, unsqueezed space.
   vec2 at = vec2(s * dy / across, c * dy / upDown);
   vec2 along = vec2(c / across, -s / upDown);
   vec2 whole = vec2(kFar, -kFar);
   vec2 polygon = vec2(-kFar, kFar);
+  // The bottom edge's normal, a quarter turn; each next edge's a side on.
+  vec2 normal = vec2(0.0, 1.0);
   // A loop needs a constant bound here: a decagon's ten sides.
   for (int k = 0; k < 10; k++) {
     if (float(k) >= sides) {
       break;
     }
-    float turn = kPi / 2.0 + 2.0 * halfTurn * float(k);
-    vec2 normal = vec2(cos(turn), sin(turn));
     polygon = within(polygon, at, along, normal, apothem);
     if (rounding > 0.0) {
       vec2 tangent = vec2(-normal.y, normal.x);
@@ -135,10 +147,10 @@ vec2 spanOf(float dy, float radius) {
       strip = within(strip, at, along, tangent, side);
       strip = within(strip, at, along, -tangent, side);
       whole = joined(whole, strip);
-      float cornerTurn = kPi / 2.0 + halfTurn * (2.0 * float(k) + 1.0);
-      vec2 cornerAt = corner * vec2(cos(cornerTurn), sin(cornerTurn));
+      vec2 cornerAt = corner * turned(normal, uHalfSide);
       whole = joined(whole, withinDisc(at, along, cornerAt, rounding));
     }
+    normal = turned(normal, uSide);
   }
   if (apothem > 0.0) {
     whole = joined(whole, polygon);
