@@ -466,26 +466,25 @@ _PaintPart _cameraLensBlurPart(
     return const _NoPart();
   }
   final repeatsTheEdge = effect.flag('repeatEdgePixels');
-  // Asked by a reader that draws no raster: it reads how far the part
-  // reaches, or skips it, so nothing in its passes is read.
-  if (rasterWidth == null || (repeatsTheEdge && paper == null)) {
-    return _StepPart(const [], reach: radius);
-  }
   return _StepPart(
-    cameraLensBlurPasses(
-      radius: radius,
-      iris: (
-        // The words of Shape, in order: a triangle's three sides to a
-        // decagon's ten.
-        sides: effect.parameter('irisShape').round() + 3,
-        roundness: effect.parameter('irisRoundness') / 100,
-        aspect: effect.parameter('irisAspectRatio'),
-        rotation: effect.parameter('irisRotation') * math.pi / 180,
-        fringe: effect.parameter('irisDiffractionFringe'),
-      ),
-      rasterWidth: rasterWidth,
-      paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
-    ),
+    // Asked by a reader that draws no raster: it reads how far the part
+    // reaches, or skips it, so nothing in its passes is read.
+    rasterWidth == null || (repeatsTheEdge && paper == null)
+        ? const []
+        : cameraLensBlurPasses(
+            radius: radius,
+            iris: (
+              // The words of Shape, in order: a triangle's three sides to a
+              // decagon's ten.
+              sides: effect.parameter('irisShape').round() + 3,
+              roundness: effect.parameter('irisRoundness') / 100,
+              aspect: effect.parameter('irisAspectRatio'),
+              rotation: effect.parameter('irisRotation') * math.pi / 180,
+              fringe: effect.parameter('irisDiffractionFringe'),
+            ),
+            rasterWidth: rasterWidth,
+            paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
+          ),
     reach: radius,
   );
 }
