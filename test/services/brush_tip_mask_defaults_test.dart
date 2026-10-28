@@ -21,6 +21,7 @@ void main() {
     flakeBrushTipMask,
     ringBrushTipMask,
     leafBrushTipMask,
+    grassClumpBrushTipMask,
     paperGrainTextureMask,
     canvasWeaveTextureMask,
     coldPressTextureMask,
@@ -31,17 +32,19 @@ void main() {
   ];
 
   test('every bundled mask is 64 a side with an alpha per cell — but the '
-      'twenty-two that need 256', () {
+      'twenty-three that need 256', () {
     // Board F-218: a 64-texel tile scaled up to read as paper repeats every
     // couple of centimetres of a stroke (see `coldPressTextureMask`). F-433:
     // the lead's side is a hard edge at any dab size, the graphite tooth a
     // speck of a pixel or two, and the flecks a few texels long. F-451 and
-    // F-456: the lead's faces, whose edge is where a line breaks.
+    // F-456: the lead's faces, whose edge is where a line breaks. F-462: a
+    // grass blade a few texels wide.
     final wide = {
       'builtin-cold-press',
       'builtin-pencil-side',
       'builtin-graphite-tooth',
       'builtin-color-clumps',
+      'builtin-grass-clump',
       for (final lead in pencilLeadBrushTipMasks) lead.id,
     };
     for (final mask in masks) {
@@ -87,6 +90,8 @@ void main() {
       'builtin-graphite-tooth': 9601082,
       // Measured 2026-10-23 as it first shipped (F-449).
       'builtin-color-clumps': 807546,
+      // Measured 2026-10-29 as it first shipped (F-462).
+      'builtin-grass-clump': 2755464,
       // Measured 2026-10-23 as they first shipped (F-456-Q4).
       'builtin-pencil-face-0-0': 10835814,
       'builtin-pencil-face-0-1': 9796625,

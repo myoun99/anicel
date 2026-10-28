@@ -66,6 +66,13 @@ final BrushTipMask ringBrushTipMask = _generateRingMask();
 /// rather than as dots. The one non-round footprint here.
 final BrushTipMask leafBrushTipMask = _generateLeafMask();
 
+/// A tuft of grass: thin blades rising from the bottom, each from a place
+/// of its own, leaning its own way, as long as its own (F-462 ③, 유저
+/// 2026-10-25 「팁의 한 소재끼리 다른곳 바라보고 다른 위치에 있어야하지
+/// 않나」). ↩️Grass threw the leaf's lens five at a time across the stroke,
+/// and every dab stood as one column of blades end to end (「너무 일직선」).
+final BrushTipMask grassClumpBrushTipMask = _generateGrassClumpMask();
+
 /// Canvas-anchored PAPER texture (see `textureMask`): seamless two-octave
 /// noise. A texture mask is sampled with wrapping, so any discontinuity
 /// across the tile edge would print a visible grid over the artwork.
@@ -368,6 +375,81 @@ BrushTipMask _generateLeafMask() {
     }
   }
   return BrushTipMask(id: 'builtin-leaf', size: _maskSize, alpha: alpha);
+}
+
+/// Blades as bent strokes from a common ground: each a quadratic curve
+/// from its root at the bottom, as wide as [_bladeWidth] there and coming
+/// to a point at its tip, laid by the most of what covers a texel.
+///
+/// 256 a side: a blade a few texels wide at 64 stairs at any size a tuft
+/// is drawn at.
+BrushTipMask _generateGrassClumpMask() {
+  const side = 256;
+  final alpha = Uint8List(side * side);
+  // (root across, lean from upright in degrees, length, bend) — the root
+  // and the length as parts of the side, the bend as a part of the length
+  // to the blade's right at its middle.
+  const blades = <(double, double, double, double)>[
+    (0.40, -34, 0.56, -0.10),
+    (0.45, -18, 0.80, -0.06),
+    (0.49, -6, 0.62, 0.05),
+    (0.52, 4, 0.95, 0.04),
+    (0.56, 16, 0.74, 0.08),
+    (0.61, 30, 0.60, 0.12),
+  ];
+  for (final (root, lean, length, bend) in blades) {
+    final radians = lean * math.pi / 180;
+    final reach = length * side;
+    final fromX = root * side;
+    const fromY = side * 0.98;
+    final toX = fromX + math.sin(radians) * reach;
+    final toY = fromY - math.cos(radians) * reach;
+    // The bend pulls the middle off the chord, square to it.
+    final midX = (fromX + toX) / 2 + math.cos(radians) * bend * reach;
+    final midY = (fromY + toY) / 2 + math.sin(radians) * bend * reach;
+    final steps = reach.ceil() * 2;
+    for (var step = 0; step <= steps; step += 1) {
+      final t = step / steps;
+      final u = 1 - t;
+      final x = u * u * fromX + 2 * u * t * midX + t * t * toX;
+      final y = u * u * fromY + 2 * u * t * midY + t * t * toY;
+      _stampCovering(alpha, side, x, y, _bladeWidth * side * u / 2);
+    }
+  }
+  return BrushTipMask(id: 'builtin-grass-clump', size: side, alpha: alpha);
+}
+
+/// How wide a blade is at its root, as a part of the tuft's side.
+const double _bladeWidth = 0.08;
+
+/// A disc of [radius] at ([x], [y]) laid into [alpha] by the most of what
+/// covers each texel — solid inside, falling off over the texel at its
+/// edge.
+void _stampCovering(
+  Uint8List alpha,
+  int side,
+  double x,
+  double y,
+  double radius,
+) {
+  final reach = radius + 1;
+  final left = math.max(0, (x - reach).floor());
+  final right = math.min(side - 1, (x + reach).ceil());
+  final top = math.max(0, (y - reach).floor());
+  final bottom = math.min(side - 1, (y + reach).ceil());
+  for (var ty = top; ty <= bottom; ty += 1) {
+    for (var tx = left; tx <= right; tx += 1) {
+      final distance = math.sqrt(
+        (tx + 0.5 - x) * (tx + 0.5 - x) + (ty + 0.5 - y) * (ty + 0.5 - y),
+      );
+      final cover = (radius + 0.5 - distance).clamp(0.0, 1.0);
+      final value = (255 * cover).round();
+      final at = ty * side + tx;
+      if (value > alpha[at]) {
+        alpha[at] = value;
+      }
+    }
+  }
 }
 
 /// One round tip: [law] stamped once over the full [_discRadius] disc of a

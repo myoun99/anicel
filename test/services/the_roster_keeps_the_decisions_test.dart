@@ -486,24 +486,26 @@ void main() {
     }
   });
 
-  /// How wide and tall one dab of [settings] stands on a sideways sweep —
-  /// one heading at 0°, so the tip turns by its own angle.
+  /// One dab of [settings] on a sideways sweep — one heading at 0°, so the
+  /// tip turns by its own angle.
+  BrushDab sidewaysDabOf(BrushSettings settings) => BrushDab(
+    center: CanvasPoint(x: 64, y: 64),
+    color: 0xFF000000,
+    size: settings.size,
+    opacity: 1,
+    flow: 1,
+    hardness: settings.hardness,
+    pressure: 1,
+    sequence: 0,
+    roundness: settings.roundness,
+    angleDegrees: settings.angleDegrees,
+    tipMask: settings.tipMask,
+  );
+
+  /// How wide and tall one [sidewaysDabOf] [settings] stands.
   ({int wide, int tall}) standsOnASidewaysSweep(BrushSettings settings) {
-    final dab = BrushDab(
-      center: CanvasPoint(x: 64, y: 64),
-      color: 0xFF000000,
-      size: settings.size,
-      opacity: 1,
-      flow: 1,
-      hardness: settings.hardness,
-      pressure: 1,
-      sequence: 0,
-      roundness: settings.roundness,
-      angleDegrees: settings.angleDegrees,
-      tipMask: settings.tipMask,
-    );
     var (left, right, top, bottom) = (1 << 30, -1, 1 << 30, -1);
-    forEachBrushPixelCoverage(dab, (x, y, coverage, _) {
+    forEachBrushPixelCoverage(sidewaysDabOf(settings), (x, y, coverage, _) {
       if (coverage > 0.5) {
         (left, right) = (math.min(left, x), math.max(right, x));
         (top, bottom) = (math.min(top, y), math.max(bottom, y));
@@ -516,13 +518,27 @@ void main() {
       .firstWhere((preset) => preset.id.value == id)
       .settings;
 
-  test('🚨a grass blade stands up on a sideways sweep — taller than wide', () {
-    // Its own comment's law ("Blades stand UP"). ↩️It landed round dots:
+  test('🚨a grass tuft stands up on a sideways sweep and fans out', () {
+    // Its own comment's law ("Tufts stand UP"). ↩️It landed round dots:
     // a roundness that squeezed the leaf along its length (10-24).
-    final (:wide, :tall) = standsOnASidewaysSweep(
-      settingsOf('builtin-grass'),
-    );
-    expect(tall, greaterThan(wide * 1.5), reason: '$wide wide, $tall tall');
+    final grass = settingsOf('builtin-grass');
+    final (:wide, :tall) = standsOnASidewaysSweep(grass);
+    expect(tall, greaterThan(wide), reason: '$wide wide, $tall tall');
+    // F-462 ③ (유저 2026-10-25): 「팁이 너무 일직선 … 한 소재끼리 다른곳
+    // 바라보고 다른 위치에 있어야」 — the blades lean their own ways, so the
+    // tuft spreads across most of its height; and they rise from one foot,
+    // so it weighs below its middle. ↩️A leaf's lens stood one narrow
+    // column, as heavy above as below.
+    expect(wide, greaterThan(tall * 0.6), reason: '$wide wide, $tall tall');
+    var (above, below) = (0, 0);
+    forEachBrushPixelCoverage(sidewaysDabOf(grass), (x, y, coverage, _) {
+      if (coverage <= 0.5) return;
+      if (y < 64) above += 1;
+      if (y > 64) below += 1;
+    });
+    // Measured 2026-10-29: the tuft 24 wide, 27 tall, 19 above and 128
+    // below; the leaf it replaced 8 wide, 20 tall, 54 above and 46 below.
+    expect(below, greaterThan(above * 3), reason: '$above above, $below below');
   });
 
   // F-462 (유저 2026-10-25): 「우선 텍스처의 해칭 삭제. 거친 가장자리는
