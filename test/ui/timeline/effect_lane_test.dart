@@ -220,15 +220,44 @@ void main() {
 
     test('scrubbing moves the value in the form the editor parses', () {
       final spec = EffectKind.hueSaturation.parameters.first;
-      expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
+      // An angle: its degrees box hands its travel down, its turns box
+      // across ([scrubbedAngle]).
       expect(
-        scrubEffectLaneValue(spec, '10°', const Offset(-100, 0)),
-        '-40.00°',
+        scrubEffectLaneValue(spec, '0x+10°', const Offset(0, 20)),
+        '0x+20.00°',
       );
-      // Clamped at the spec edge, never past it.
       expect(
-        scrubEffectLaneValue(spec, '170°', const Offset(200, 0)),
-        '180.00°',
+        scrubEffectLaneValue(spec, '0x+10°', const Offset(0, -100)),
+        '0x-40.00°',
+      );
+      // Clamped at the spec edge, never past it — a whole turn too.
+      expect(
+        scrubEffectLaneValue(spec, '0x+170°', const Offset(0, 200)),
+        '0x+180.00°',
+      );
+      expect(
+        scrubEffectLaneValue(spec, '0x+10°', const Offset(2, 0)),
+        '0x+180.00°',
+      );
+      final strength = EffectKind.blur.parameters.first;
+      expect(
+        scrubEffectLaneValue(strength, '8.00 px', const Offset(4, 0)),
+        '10.00 px',
+        reason: 'a number that is no angle scrubs across, as it did',
+      );
+    });
+
+    test('an angle reads its turns and degrees, and takes them back '
+        '(I-132-Q17)', () {
+      final spec = EffectKind.hueSaturation.parameters.first;
+      expect(formatEffectLaneValue(spec, 90), '0x+90.00°');
+      expect(formatEffectLaneValue(spec, -90), '0x-90.00°');
+      expect(parseEffectLaneValue(spec, '0x-90.00°'), -90);
+      expect(parseEffectLaneValue(spec, '-30'), -30, reason: 'or bare');
+      expect(
+        parseEffectLaneValue(spec, '1x+0°'),
+        180,
+        reason: 'clamped to the spec',
       );
     });
   });

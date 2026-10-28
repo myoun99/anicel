@@ -216,7 +216,7 @@ void main() {
     expect([for (final lane in members) lane.valueLabel!(0)], [
       '1170.00, 827.00',
       '100.00, 100.00%',
-      '0.00°',
+      '0x+0.00°',
     ]);
     for (final lane in members) {
       expect(lane.keyedFrames, isEmpty, reason: 'unkeyed as it was placed');

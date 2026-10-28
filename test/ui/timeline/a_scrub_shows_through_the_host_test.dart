@@ -28,7 +28,8 @@ void main() {
     scrubValue: (label, delta) =>
         scrubTransformLaneValue('rotation', label, delta),
   );
-  const cell = ValueKey<String>('timeline-lane-value-sc-rotation');
+  // The degrees box: an angle's second, after its turns.
+  const cell = ValueKey<String>('timeline-lane-value-sc-rotation-1');
 
   testWidgets('each step is handed to the host, the label prints the lane it '
       'is given, and the release writes the last step once', (tester) async {
@@ -43,7 +44,7 @@ void main() {
             height: 40,
             child: TimelineLaneControlsRow(
               layer: layer,
-              lane: lane('0.00°'),
+              lane: lane('0x+0.00°'),
               metrics: TimelineGridMetrics.defaults,
               laneEdit: PropertyLaneEditCallbacks(
                 onToggleKeyAt: (_, _, _) {},
@@ -67,9 +68,9 @@ void main() {
     await gesture.moveBy(const Offset(20, 0));
     await tester.pump();
 
-    expect(previews, ['10.00°', '20.00°']);
+    expect(previews, ['0x+10.00°', '0x+20.00°']);
     expect(
-      find.descendant(of: find.byKey(cell), matching: find.text('0.00°')),
+      find.descendant(of: find.byKey(cell), matching: find.text('+0.00°')),
       findsOneWidget,
       reason: 'the label prints the lane it is handed — the host shows the '
           'step by handing a new one back, as every other panel does',
@@ -78,7 +79,7 @@ void main() {
 
     await gesture.up();
     await tester.pump();
-    expect(commits, ['20.00°'], reason: 'one write, of the last step');
+    expect(commits, ['0x+20.00°'], reason: 'one write, of the last step');
     expect(ends, 0, reason: 'the write drops the preview itself');
   });
 
@@ -94,7 +95,7 @@ void main() {
             height: 40,
             child: TimelineLaneControlsRow(
               layer: layer,
-              lane: lane('0.00°'),
+              lane: lane('0x+0.00°'),
               metrics: TimelineGridMetrics.defaults,
               laneEdit: PropertyLaneEditCallbacks(
                 onToggleKeyAt: (_, _, _) {},
@@ -120,7 +121,7 @@ void main() {
 
     expect(
       previews,
-      ['10.00°'],
+      ['0x+10.00°'],
       reason: 'rotation reads the horizontal only — a vertical move changes '
           'nothing to show, and a canvas redraw per nothing is the cost',
     );
@@ -142,7 +143,7 @@ void main() {
               child: visible
                   ? TimelineLaneControlsRow(
                       layer: layer,
-                      lane: lane('0.00°'),
+                      lane: lane('0x+0.00°'),
                       metrics: TimelineGridMetrics.defaults,
                       laneEdit: PropertyLaneEditCallbacks(
                         onToggleKeyAt: (_, _, _) {},

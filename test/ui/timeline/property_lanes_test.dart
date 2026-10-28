@@ -1483,9 +1483,14 @@ void main() {
         scrubTransformLaneValue('position', '12, -3', const Offset(10, 5)),
         '22.00, 2.00',
       );
+      // An angle's two: its turns across, its degrees down.
       expect(
-        scrubTransformLaneValue('rotation', '0°', const Offset(-10, 0)),
-        '-5.00°',
+        scrubTransformLaneValue('rotation', '0x+0°', const Offset(0, -10)),
+        '0x-5.00°',
+      );
+      expect(
+        scrubTransformLaneValue('rotation', '0x+0°', const Offset(-10, 0)),
+        '-5x+0.00°',
       );
       // The anchor lane scrubs like position; opacity clamps to 0–100.
       expect(

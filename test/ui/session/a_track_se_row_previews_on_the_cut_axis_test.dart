@@ -109,7 +109,7 @@ void main() {
     expect(rotation.keyedFrames, {7, 8});
     expect(
       rotation.valueLabel!(7),
-      '30.00°',
+      '0x+30.00°',
       reason: 'the value column reads the drag in its GLOBAL form',
     );
 

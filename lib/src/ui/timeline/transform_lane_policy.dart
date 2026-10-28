@@ -374,7 +374,7 @@ bool laneSelectionPicksKey(
 String formatTransformLaneValue(String laneId, TransformPose pose) {
   return switch (laneId) {
     'position' => '${columnValueText(pose.center.x)}, ${columnValueText(pose.center.y)}',
-    'rotation' => '${columnValueText(pose.rotationDegrees)}°',
+    'rotation' => turnsReadoutText(pose.rotationDegrees),
     _ => '',
   };
 }
@@ -402,7 +402,7 @@ String? scrubTransformLaneValue(
       if (degrees == null) {
         return null;
       }
-      return '${columnValueText(scrubbedNumber(degrees, dragDelta))}°';
+      return turnsReadoutText(scrubbedAngle(degrees, dragDelta));
     case 'opacity':
       final percent = columnValueOf(currentLabel);
       if (percent == null) {

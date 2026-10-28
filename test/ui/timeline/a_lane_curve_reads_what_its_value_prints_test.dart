@@ -97,10 +97,15 @@ void main() {
     for (final lane in drawn) {
       for (var frame = 0; frame <= 10; frame += 1) {
         final numbers = lane.curve!.at(frame.toDouble());
-        final printed = readoutParts(lane.valueLabel!(frame));
+        final label = lane.valueLabel!(frame);
+        final printed = readoutParts(label);
         expect(
           [for (final number in numbers) columnValueText(number)],
-          [for (final part in printed) part.number],
+          readsTurns(printed)
+              // An angle prints its turns and degrees: the number they
+              // come to.
+              ? [columnValueText(columnValueOf(label)!)]
+              : [for (final part in printed) part.number],
           reason: '${lane.laneId} at $frame',
         );
         expect(numbers, hasLength(lane.curve!.parts.length));
@@ -235,7 +240,7 @@ void main() {
     );
 
     expect(rotation.curve!.at(2.5).single, closeTo(25, 1e-9));
-    expect(rotation.valueLabel!(2), '20.00°');
+    expect(rotation.valueLabel!(2), '0x+20.00°');
   });
 
   test('each number is drawn in its own colour — a point across and down, '

@@ -69,6 +69,15 @@ String flagLaneWord(bool on) => on ? 'on' : 'off';
 double scrubbedNumber(double value, Offset dragDelta) =>
     value + dragDelta.dx * 0.5;
 
+/// An ANGLE scrubbed by a drag on one of its two boxes ([turnsReadoutText]):
+/// the turns box's travel (across) by whole turns, the degrees box's
+/// (down) by degrees — each at the one rate ([scrubbedNumber]), as a
+/// pair's boxes hand theirs.
+double scrubbedAngle(double degrees, Offset dragDelta) {
+  final turns = scrubbedNumber(0, Offset(dragDelta.dx, 0)).round();
+  return scrubbedNumber(degrees, Offset(dragDelta.dy, 0)) + turns * 360;
+}
+
 /// A lane colour written the way its own parser reads it back —
 /// `#RRGGBB`, or `none` where the lane allows absence.
 ///

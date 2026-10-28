@@ -66,7 +66,7 @@ void main() {
         'rotation',
         TransformPose(center: CanvasPoint(x: 0, y: 0), rotationDegrees: -3.5),
       ),
-      '-3.50°',
+      '0x-3.50°',
     );
     const tag = SeNameTag(
       style: TextCelStyle(fontSize: 12, letterSpacing: 0.1),
@@ -82,8 +82,9 @@ void main() {
       '1219.00, 0.00',
     );
     expect(
-      scrubTransformLaneValue('rotation', '10.00°', const Offset(1, 0)),
-      '10.50°',
+      // The degrees box hands its travel down, as a pair's second does.
+      scrubTransformLaneValue('rotation', '0x+10.00°', const Offset(0, 1)),
+      '0x+10.50°',
     );
   });
 
@@ -98,6 +99,15 @@ void main() {
     }
     expect(columnValueOf('bold'), isNull);
     expect(columnValueOf(''), isNull);
+    // An angle's turns and degrees, as the degrees they come to.
+    expect(
+      columnValueOf(turnsReadoutText(-1218.37)),
+      closeTo(-1218.37, 1e-9),
+    );
+    expect(columnValueOf('1x+90°'), 450);
+    expect(columnValueOf('1x30'), 390);
+    expect(columnValueOf('-1x-90.00°'), -450);
+    expect(columnValueOf('1.5x+90°'), isNull, reason: 'whole turns only');
 
     expect(columnPairOf('${columnValueText(120)}, 45.50%'), (120.0, 45.5));
     expect(columnPairOf('120'), isNull);

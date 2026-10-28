@@ -59,6 +59,61 @@ void main() {
     });
   });
 
+  group('an angle is its turns and its degrees (I-132-Q17)', () {
+    test('as After Effects writes one, every digit on the degrees', () {
+      expect(
+        [
+          for (final degrees in const [0.0, 90, 450, -90, -450, -360, 720])
+            turnsReadoutText(degrees.toDouble()),
+        ],
+        [
+          '0x+0.00°',
+          '0x+90.00°',
+          '1x+90.00°',
+          '0x-90.00°',
+          '-1x-90.00°',
+          '-1x+0.00°',
+          '2x+0.00°',
+        ],
+      );
+      expect(
+        turnsReadoutText(359.999),
+        '1x+0.00°',
+        reason: 'on the readout grid first, so a whole turn is one',
+      );
+    });
+
+    test('two boxes, rejoined as they were, with no comma', () {
+      final parts = readoutParts('1x+90.00°');
+      expect(parts, [
+        (number: '1', unit: 'x'),
+        (number: '+90.00', unit: '°'),
+      ]);
+      expect(readsTurns(parts), isTrue);
+      expect(joinReadoutParts(parts), '1x+90.00°');
+      expect(
+        columnValueOf(
+          joinReadoutParts([parts.first, (number: '-30', unit: '°')]),
+        ),
+        330,
+        reason: 'a box typed: the turns kept, the degrees its own',
+      );
+    });
+
+    test('⛔what is no angle is not read as one', () {
+      expect(readsTurns(readoutParts('120, 45')), isFalse);
+      expect(readoutParts('12 px'), [(number: '12', unit: ' px')]);
+      expect(readoutParts('2x'), [(number: '2', unit: 'x')]);
+      expect(readsTurns(readoutParts('2x')), isFalse);
+      expect(
+        readoutParts('1920x1080'),
+        [(number: '1920', unit: 'x1080')],
+        reason: 'a size: what follows its x is no angle',
+      );
+      expect(columnValueOf('12 px'), 12, reason: 'the x of px leads no turns');
+    });
+  });
+
   group('the split is reversible, for every label this app prints', () {
     /// 🚨The round trip is what lets the commit path stay untouched: what
     /// leaves the editor is the same text form every lane parser has always

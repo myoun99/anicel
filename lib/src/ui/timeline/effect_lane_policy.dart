@@ -258,7 +258,7 @@ List<String> effectLaneDisplayOrder(LayerEffect effect) => [
 String formatEffectLaneValue(EffectParameterSpec spec, double value) {
   return switch (spec.unit) {
     EffectParameterUnit.number => columnValueText(value),
-    EffectParameterUnit.degrees => '${columnValueText(value)}°',
+    EffectParameterUnit.degrees => turnsReadoutText(value),
     EffectParameterUnit.pixels => '${columnValueText(value)} px',
     EffectParameterUnit.choice =>
       spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
@@ -295,9 +295,10 @@ double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
   return spec.clamp(value);
 }
 
-/// AE-style value scrubbing: the horizontal drag drives the number, in the
-/// same text form the value editor parses (the release commits through the
-/// ordinary onSetValue path, so one drag is one undo).
+/// AE-style value scrubbing: the horizontal drag drives the number — an
+/// angle's two boxes their own ([scrubbedAngle]) — in the same text form
+/// the value editor parses (the release commits through the ordinary
+/// onSetValue path, so one drag is one undo).
 String? scrubEffectLaneValue(
   EffectParameterSpec spec,
   String currentLabel,
@@ -307,8 +308,8 @@ String? scrubEffectLaneValue(
   if (current == null) {
     return null;
   }
-  return formatEffectLaneValue(
-    spec,
-    spec.clamp(scrubbedNumber(current, dragDelta)),
-  );
+  final scrubbed = spec.unit == EffectParameterUnit.degrees
+      ? scrubbedAngle(current, dragDelta)
+      : scrubbedNumber(current, dragDelta);
+  return formatEffectLaneValue(spec, spec.clamp(scrubbed));
 }
