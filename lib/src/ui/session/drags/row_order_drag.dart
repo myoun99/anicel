@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../models/attached_layer_resolve.dart' show layerHasFxToLose;
+import '../../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite, layerHasFxToLose;
 import '../../../models/attached_mode.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_id.dart';
@@ -125,7 +126,8 @@ class RowOrderDrag {
   /// The rows this drop would MOUNT that carry fx of their own.
   ///
   /// 🚨An attach row authors no fx ([attachRowWearsBaseComposite] gates the
-  /// switch, the Transform group and the Effects groups), so mounting one
+  /// switch, the Transform group and the Effects groups — but a row riding
+  /// the conte authors its own, I-99), so mounting one
   /// that HAS fx throws it away. 유저 2026-08-29 asked to be told first —
   /// 「기존 fx가 사라집니다. 실행하겠습니까?」 — and only when there is
   /// something to lose, because a dialog nobody needed is a dialog people
@@ -144,7 +146,13 @@ class RowOrderDrag {
     return [
       for (final mount in plan.attach.mounts)
         if (byId[mount.layerId] case final layer?)
-          if (layerHasFxToLose(layer)) layer,
+          if (layerHasFxToLose(layer) &&
+              // A row mounted on the conte keeps wearing its own (I-99).
+              attachRowWearsBaseComposite(
+                layer.copyWith(attachedToLayerId: mount.baseId),
+                cut.layers,
+              ))
+            layer,
     ];
   }
 

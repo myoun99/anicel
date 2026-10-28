@@ -599,6 +599,35 @@ void main() {
     );
   });
 
+  test('a row riding the conte poses itself, so its own transform carries '
+      'the move (I-99)', () {
+    final row = paper(
+      laid: TransformPose(center: middle),
+      pose: TransformPose(center: CanvasPoint(x: 260, y: 150)),
+      attachedTo: const LayerId('conte'),
+    );
+    final carry = transformCarryingReferenceMove(
+      cut: Cut(
+        id: const CutId('cut'),
+        name: 'cut',
+        layers: [
+          Layer(
+            id: const LayerId('conte'),
+            name: 'Conte',
+            kind: LayerKind.storyboard,
+            frames: const [],
+          ),
+          row,
+        ],
+        duration: 48,
+        canvasSize: canvas,
+      ),
+      layer: row,
+      nameIsFree: (property, name) => true,
+    );
+    expect(carry, isA<ReferenceCarried>());
+  });
+
   test('a file laid other than 1:1 and upright has no move the row carries',
       () {
     final moved = TransformPose(center: CanvasPoint(x: 260, y: 150));

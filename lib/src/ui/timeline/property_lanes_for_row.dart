@@ -60,7 +60,8 @@ List<PropertyLaneRow> propertyLanesForRow({
 }) {
   final source = valueSourceAt;
   // Attach rows ride their BASE's transform/opacity lanes (W5 fx sharing)
-  // — no lanes of their own in v1. R9: the 공정 ORGANIZER folder joins
+  // — no lanes of their own; a row riding the conte authors its own fx and
+  // has them (I-99). R9: the 공정 ORGANIZER folder joins
   // them. It follows its base like its members do, so a transform or
   // effect chain here would be a second answer competing with the base's;
   // leaving the lanes up while the label has no fx switch would also let a

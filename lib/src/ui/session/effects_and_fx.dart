@@ -1,3 +1,5 @@
+import '../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite;
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
@@ -82,9 +84,14 @@ class EffectsAndFx {
     final layer = _selection.activeLayer;
     return layer != null &&
         layer.kind.hasLayerEffects &&
-        // Attach rows wear their BASE's FX (W5) and have no lanes of their
-        // own — the effect belongs on the base.
-        layer.attachedToLayerId == null &&
+        // A row that wears its BASE's fx has no lanes of its own — the
+        // effect belongs on the base. ↩️It asked `attachedToLayerId` alone,
+        // so a 공정 organizer folder took an effect no lane could reach
+        // (I-99).
+        !attachRowWearsBaseComposite(
+          layer,
+          _project.activeCutOrNull?.layers ?? const [],
+        ) &&
         (!kind.drawsItsOwnPicture || layer.kind.numbersItsDrawings);
   }
 

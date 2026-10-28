@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'drags/lane_range_move_drag.dart';
 import '../../models/key_range_shift.dart' show FrameStretch;
-import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../services/project_lookup.dart' show rowWearsBaseComposite;
 import '../timeline/property_lane_model.dart'
     show LaneKeyLandings, LaneKeyValues;
 import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
@@ -52,10 +52,11 @@ class LaneRangeMoveDragVerbs {
       return false;
     }
     final layer = _laneVerbs.laneVerbLayerFor(selection.layerId);
-    // An attach row's keys are its base's; a camera row's live on the open
-    // cut, and with no cut open there is nothing for them to live on.
+    // A row wearing its base's fx keys none of its own; a camera row's live
+    // on the open cut, and with no cut open there is nothing for them to
+    // live on.
     if (layer == null ||
-        isAttachedLayer(layer) ||
+        rowWearsBaseComposite(_project.repository.requireProject(), layer) ||
         (layer.kind == LayerKind.camera && _project.activeCutOrNull == null)) {
       return false;
     }

@@ -10,6 +10,7 @@ import '../../models/onion_skin_settings.dart';
 import '../../models/project.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/commands/link_mirror.dart' show conteHeadTargets;
+import '../../services/cut_frame_composite_plan.dart' show chainWornBy;
 import '../../services/onion_skin_plan.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/timeline_drag_preview.dart'
@@ -224,18 +225,6 @@ class OnionSkin {
   bool get canToggleOnionSkin =>
       _selection.activeLayer?.kind.takesOnionSkin ?? false;
 
-  /// Whose effect chain a ghost of [layer] wears: an ATTACH row wears its
-  /// BASE's (W5), everyone else their own.
-  ///
-  /// The same carrier rule the active-row node applies — named once so the
-  /// two cannot answer differently for the same row.
-  static Layer _onionFxCarrier(Layer layer, List<Layer> layers) {
-    if (!isAttachedLayer(layer)) {
-      return layer;
-    }
-    return attachedBaseOf(layer, layers) ?? layer;
-  }
-
   /// The ghost frames to composite over [committed]'s frame [frameIndex]:
   /// every onion-enabled VISIBLE drawing layer contributes its plan (unique
   /// drawings, peg opacities, side tints) in layer-stack order.
@@ -284,11 +273,12 @@ class OnionSkin {
               // tint owning the paint's one color-filter slot — the fold in
               // `resolveCompositeEffectPaint` retired that constraint.
               //
-              // Sampled at the GHOST's own frame, and read off the attach
-              // BASE where there is one — an attach row wears its base's fx
-              // (W5), the same carrier rule the active-row node uses.
+              // Sampled at the GHOST's own frame: the chain the composite
+              // lays the row with ([chainWornBy]). ↩️A carrier rule of its
+              // own read the attach BASE's whole chain — its cel number
+              // too, which the screen never shows on an attach row.
               effects: resolveLayerEffectsAt(
-                effects: _onionFxCarrier(layer, cut.layers).effects,
+                effects: chainWornBy(cut, layer),
                 frameIndex: plan.frameIndex,
               ),
             ),

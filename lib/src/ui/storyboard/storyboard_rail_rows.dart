@@ -501,7 +501,7 @@ class _StoryboardRailRows {
   /// The lanes [track]'s conte row at [seat] twirls down: those of its row
   /// in hand ([_inHand]) — valued in the cut the session stands in, or,
   /// where that cut holds none, the head's, with nothing to read their
-  /// values in. A row riding the conte has none, as on the timeline.
+  /// values in — the timeline's lanes of the row, a rider's own (I-99).
   List<PropertyLaneRow> _conteLanes(Track track, int seat) =>
       switch (_inHand(track, _conteRow(track, seat))) {
         (:final cut, :final layer, :final stood) => _conteRowLanes(

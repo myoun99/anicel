@@ -19,7 +19,8 @@ import '../../models/track_projection_row.dart' show projectionRowUnder;
 import '../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
-import '../../services/project_lookup.dart' show rowPoseSpace;
+import '../../services/project_lookup.dart'
+    show rowPoseSpace, rowWearsBaseComposite;
 import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../timeline/effect_lane_editing.dart'
     show
@@ -542,6 +543,12 @@ class LaneVerbs {
     }
     return _project.rowWrittenById(layerId);
   }
+
+  /// Whether [layer]'s fx are its base's — no lane of its own for a verb to
+  /// work ([rowWearsBaseComposite]). ↩️The verbs asked 「an attach row」,
+  /// which a row riding the conte is without wearing its base's (I-99).
+  bool _wearsBaseFx(Layer layer) =>
+      rowWearsBaseComposite(_project.repository.requireProject(), layer);
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
   /// [laneVerbLayerFor]. A track-SE row is on the global axis, so the
@@ -1503,7 +1510,7 @@ class LaneVerbs {
   /// each verb then worked the effect chain or the transform, never both.
   _SpanScope? _laneVerbScope(TimelineLaneSelection lane) {
     final layer = laneVerbLayerFor(lane.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    if (layer == null || _wearsBaseFx(layer)) {
       return null;
     }
     final targets = _laneVerbTargetsFor(
@@ -2381,7 +2388,7 @@ class LaneVerbs {
   /// fixed groups' headers the SE row's name tag and a reference row's fx.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
     final layer = laneVerbLayerFor(layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    if (layer == null || _wearsBaseFx(layer)) {
       return false;
     }
     final span = _selection.laneRangeSelection.value;
@@ -2615,7 +2622,7 @@ class LaneVerbs {
   List<BandLane> bandLanesRiding() => [
     for (final span in _bandLaneSpans())
       if (laneVerbLayerFor(span.layerId) case final row?
-          when !isAttachedLayer(row))
+          when !_wearsBaseFx(row))
         if (laneIdsAMoveCarries(
               laneEditSubjectOf(row),
               span,
@@ -2805,7 +2812,7 @@ class LaneVerbs {
     Iterable<String> laneIds,
   ) {
     final layer = laneVerbLayerFor(layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    if (layer == null || _wearsBaseFx(layer)) {
       return const [];
     }
     final ids = <EffectId>[];

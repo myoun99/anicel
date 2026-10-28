@@ -1,4 +1,5 @@
 import '../core/turn_trig.dart';
+import '../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
@@ -332,7 +333,7 @@ ReferenceCarry transformCarryingReferenceMove({
     );
   }
   final laid = reference.laid;
-  if (isAttachedLayer(layer)) {
+  if (attachRowWearsBaseComposite(layer, cut.layers)) {
     return const ReferenceUncarried(ReferenceWait.attached);
   }
   // A file is laid 1:1 and upright since F-374-Q1 (`placedReference`): the

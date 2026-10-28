@@ -754,10 +754,10 @@ LayerPlacement? layerReferenceSpaceAt({
   canvasSize: cut.canvasSize,
 );
 
-/// The row whose transform places [layer]: its base, for an attach row.
-Layer _fxCarrierOf(Cut cut, Layer layer) => isAttachedLayer(layer)
-    ? (attachedBaseOf(layer, cut.layers) ?? layer)
-    : layer;
+/// The row whose transform places [layer] ([fxCarrierOf]) — the row itself
+/// where its base is gone.
+Layer _fxCarrierOf(Cut cut, Layer layer) =>
+    fxCarrierOf(layer, cut.layers) ?? layer;
 
 /// The move [layer]'s REFERENCE FX makes at [frameIndex]: the file's
 /// picture from where its pixels are laid ([MediaReference.laid]) to where
@@ -858,8 +858,9 @@ LayerPlacement? placementUnderFolders({
 /// ATTACH LAYERS (W5) ride their base: the cel resolves through the base's
 /// exposure + the cell link, the POSE and the animated-opacity sample come
 /// from the BASE's transform track (fx shared — the base's fx switch
-/// governs both), while the eye, static opacity and cels stay the attach
-/// layer's own. VISIBILITY is fully independent (UI-R24 #5): hiding the
+/// governs both; a row riding the conte wears its own, [fxCarrierOf]),
+/// while the eye, static opacity and cels stay the attach layer's own.
+/// VISIBILITY is fully independent (UI-R24 #5): hiding the
 /// base hides ONLY the base's own picture — its attach rows keep
 /// compositing under their own eyes. Dangling links contribute nothing.
 /// The layer list keeps attach layers adjacent to their base, so plain
@@ -978,7 +979,7 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
       );
 
 /// [layer] as a row that paints a picture of its own: the row whose fx it
-/// wears — itself, or its base for an attach row — and that base. Null for
+/// wears ([fxCarrierOf]), and the base an attach row's cels ride. Null for
 /// a row that paints nothing of its own: a folder composites its MEMBERS,
 /// whose picture its eye, opacity, blend and FX reach through
 /// [resolveFolderChainAt] (flat) or a [CompositeGroup] (tree); an
@@ -988,11 +989,11 @@ Frame? _celOf(Layer layer, Layer? base, int frameIndex) =>
   if (!layer.kind.paintsArtwork) {
     return null;
   }
-  if (!isAttachedLayer(layer)) {
-    return (carrier: layer, base: null);
+  final carrier = fxCarrierOf(layer, cut.layers);
+  if (carrier == null) {
+    return null;
   }
-  final base = attachedBaseOf(layer, cut.layers);
-  return base == null ? null : (carrier: base, base: base);
+  return (carrier: carrier, base: attachedBaseOf(layer, cut.layers));
 }
 
 /// The effect chain [layer] wears in [cut]: its own — or, for an attach
