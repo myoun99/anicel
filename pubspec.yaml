@@ -121,6 +121,15 @@ flutter:
   assets:
     - assets/fonts/
     - assets/licenses/
+    # The window the app opens at launch (LaunchNoticeSection), one folder
+    # per language. ⚠️A folder entry takes the files IN it and no
+    # subfolder, so each language is listed — a language missing here is a
+    # notice that fails to load, which `launch_notice_test` asks.
+    - assets/launch/en/
+    - assets/launch/ja/
+    - assets/launch/ko/
+    - assets/launch/fr/
+    - assets/launch/zhHans/
     # 🚨A FILE A SHADER #includes, LISTED SO A CHANGE TO IT REBUILDS THEM.
     # Nothing loads it. flutter rebuilds the compiled shaders only when a
     # listed asset is newer than them (`flutter test`'s `_needsRebuild`,

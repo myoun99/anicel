@@ -108,6 +108,7 @@ const _builtOnlyOutsideTests = <String, String>{
   'frame_grid_settings.json': 'HomePage, _unlessTesting',
   'input_settings.json': 'HomePage, _unlessTesting',
   'language_settings.json': 'HomePage, _unlessTesting',
+  'launch_notice.json': 'HomePage, _unlessTesting',
   'memory_settings.json': 'HomePage, _unlessTesting',
   'onion_skin_settings.json': 'HomePage, _unlessTesting',
   'pixel_verb_settings.json': 'HomePage, _unlessTesting',
