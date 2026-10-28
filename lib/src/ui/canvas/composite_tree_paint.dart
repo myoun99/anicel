@@ -242,7 +242,10 @@ class _CompositeTreeWalk<L> {
     // back. R6: the folder's effect chain lands on the same buffer, in
     // CANVAS units (the camera projection is a canvas transform, so the
     // engine maps a blur's sigma through the CTM for us).
-    final groupPlan = resolveCompositeEffectPlan(effects);
+    final groupPlan = resolveCompositeEffectPlan(
+      effects,
+      paper: route.paper,
+    );
     final groupPaint = layerCompositePaint(
       opacity: opacity,
       blendMode: blendMode,
@@ -316,6 +319,7 @@ class _CompositeTreeWalk<L> {
       bounds: _bufferBoundsOf(node, within),
       effects: effects,
       mix: mix,
+      paper: route.paper,
     );
     // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
     // twice below full strength — a mix is a crossfade, not a

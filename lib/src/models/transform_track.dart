@@ -471,7 +471,8 @@ double resolveOpacityTrackAtTime(PropertyTrack<double> track, double time) {
       .toDouble();
 }
 
-/// Samples an anchor-point track; null while the track is empty (the
+/// Samples an anchor-point track — or any lane whose keys walk a path, an
+/// effect's point's (`effectPointAt`); null while the track is empty (the
 /// consumer supplies its default — the canvas center for layer poses).
 CanvasPoint? resolveAnchorTrackAt(
   PropertyTrack<CanvasPoint> track,

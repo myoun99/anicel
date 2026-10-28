@@ -164,18 +164,20 @@ List<PropertyLaneRow> propertyLanesForRow({
                 at.time,
               );
             },
-      // Where an effect stands its picture rests in the middle of the frame
-      // an unkeyed pose sits in, as the row's own transform does.
+      // Where an effect stands its picture, and a point, rests in the
+      // middle of the frame an unkeyed pose sits in, as the row's own
+      // transform does.
       standAt: centre == null || source == null
           ? null
-          : (effectId, time) {
+          : (effectId, lane, time) {
               final at = _sourceAtTime(source, time);
-              final stand = at.layer.effects
+              final keys = at.layer.effects
                   .where((effect) => effect.id == effectId)
                   .firstOrNull
-                  ?.stand;
+                  ?.transformLaneAt(lane)
+                  ?.keys;
               return effectStandPose(
-                effectStandAt(stand ?? TransformTrack.empty(), at.time),
+                effectStandAt(keys ?? TransformTrack.empty(), at.time),
                 centre,
               );
             },

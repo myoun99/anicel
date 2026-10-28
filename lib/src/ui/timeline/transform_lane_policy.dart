@@ -196,19 +196,11 @@ List<PropertyLaneRow> transformPropertyLanes(
             scrubTransformLaneValue('anchor-point', label, delta),
         walks: pathKeySpace,
       ),
-    _lane(
-      laneIdOf('position'),
-      AppText.strings.tlLanePosition,
-      track.position,
-      _reading(
-        poseAt,
-        (pose) => [pose.center.x, pose.center.y],
-        parts: point,
-        printed: (pose) => formatTransformLaneValue('position', pose),
-      ),
-      scrubValue: (label, delta) =>
-          scrubTransformLaneValue('position', label, delta),
-      walks: pathKeySpace,
+    transformPositionLane(
+      track,
+      laneId: laneIdOf('position'),
+      label: AppText.strings.tlLanePosition,
+      poseAt: poseAt,
     ),
     _lane(
       laneIdOf('scale'),
@@ -259,6 +251,29 @@ List<PropertyLaneRow> transformPropertyLanes(
       ),
   ];
 }
+
+/// [track]'s Position row, as [laneId] and named [label] — the transform's
+/// own, and an effect's point's (I-132-Q12 b: a Position of its own, named
+/// as its effect names it), valued where [poseAt] stands it.
+PropertyLaneRow transformPositionLane(
+  TransformTrack track, {
+  required String laneId,
+  required String label,
+  TransformPose Function(double time)? poseAt,
+}) => _lane(
+  laneId,
+  label,
+  track.position,
+  _reading(
+    poseAt,
+    (pose) => [pose.center.x, pose.center.y],
+    parts: const [LaneCurvePalette.across, LaneCurvePalette.down],
+    printed: (pose) => formatTransformLaneValue('position', pose),
+  ),
+  scrubValue: (label, delta) =>
+      scrubTransformLaneValue('position', label, delta),
+  walks: pathKeySpace,
+);
 
 String _itsOwnLaneId(String laneId) => laneId;
 

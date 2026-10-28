@@ -69,7 +69,10 @@ void main() {
       const paper = Rect.fromLTWH(0, 0, 32, 32);
       final out = steppedForChain(
         image: source,
-        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        plan: resolveCompositeEffectPlan(
+          [gaussian(repeats: true)],
+          paper: paper,
+        ),
         extent: paper,
         paper: paper,
       );
@@ -90,7 +93,10 @@ void main() {
       addTearDown(source.dispose);
       final out = steppedForChain(
         image: source,
-        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        plan: resolveCompositeEffectPlan(
+          [gaussian(repeats: true)],
+          paper: const Rect.fromLTWH(0, 0, 32, 32),
+        ),
         extent: const Rect.fromLTWH(-8, -8, 48, 48),
         paper: const Rect.fromLTWH(0, 0, 32, 32),
       );
@@ -115,13 +121,19 @@ void main() {
       const paper = Rect.fromLTWH(0, 0, 32, 32);
       final on = steppedForChain(
         image: source,
-        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        plan: resolveCompositeEffectPlan(
+          [gaussian(repeats: true)],
+          paper: paper,
+        ),
         extent: paper,
         paper: paper,
       );
       addTearDown(on.dispose);
       // Off, the blur rides the draw.
-      final off = resolveCompositeEffectPlan([gaussian(repeats: false)]);
+      final off = resolveCompositeEffectPlan(
+        [gaussian(repeats: false)],
+        paper: paper,
+      );
       expect(off.isSingleDraw, isTrue, reason: '⛔전제');
       final recorder = ui.PictureRecorder();
       final paint = Paint();
@@ -152,7 +164,10 @@ void main() {
       addTearDown(source.dispose);
       final out = steppedForChain(
         image: source,
-        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        plan: resolveCompositeEffectPlan(
+          [gaussian(repeats: true)],
+          paper: const Rect.fromLTWH(0, 0, 16, 16),
+        ),
         extent: const Rect.fromLTWH(-4, -4, 32, 32),
         paper: const Rect.fromLTWH(0, 0, 16, 16),
       );
@@ -176,7 +191,10 @@ void main() {
       addTearDown(source.dispose);
       final out = steppedForChain(
         image: source,
-        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        plan: resolveCompositeEffectPlan(
+          [gaussian(repeats: true)],
+          paper: const Rect.fromLTWH(0, 0, 32, 32),
+        ),
         extent: const Rect.fromLTWH(-8, -8, 48, 48),
         paper: const Rect.fromLTWH(0, 0, 32, 32),
       );
@@ -201,7 +219,10 @@ void main() {
       addTearDown(source.dispose);
       final out = steppedForChain(
         image: source,
-        plan: resolveCompositeEffectPlan([gaussian(repeats: true)]),
+        plan: resolveCompositeEffectPlan(
+          [gaussian(repeats: true)],
+          paper: const Rect.fromLTWH(0, 0, 100, 100),
+        ),
         extent: const Rect.fromLTWH(-8, -8, 48, 48),
         paper: const Rect.fromLTWH(0, 0, 100, 100),
       );
@@ -233,7 +254,7 @@ void main() {
           kind: EffectKind.colorKey,
           values: const [0, 0xFF000000, 0, 100],
         ),
-      ]);
+      ], paper: const Rect.fromLTWH(0, 0, 32, 32));
       expect(
         plan.preSteps.first.lead,
         isA<PaperEdgeEffect>(),

@@ -46,7 +46,7 @@ void main() {
   /// — the only shape that puts painted state inside a step rather than on
   /// the final draw.
   CompositeEffectPlan chainWithABlurInsideAStep() =>
-      resolveCompositeEffectPlan([key(), blur(), key()]);
+      resolveCompositeEffectPlan([key(), blur(), key()], paper: Rect.zero);
 
   ui.Image dot(int side) {
     final recorder = ui.PictureRecorder();
@@ -140,7 +140,10 @@ void main() {
   test('a single-draw chain hands the image straight back', () {
     // ⛔IDENTITY, not equality: the caller disposes only what differs, so a
     // copy here would leak the caller into disposing the cache's image.
-    final plan = resolveCompositeEffectPlan([blur()]);
+    final plan = resolveCompositeEffectPlan(
+      [blur()],
+      paper: const Rect.fromLTWH(0, 0, 8, 8),
+    );
     expect(plan.isSingleDraw, isTrue, reason: 'fixture: no key, no step');
     final source = dot(8);
     addTearDown(source.dispose);

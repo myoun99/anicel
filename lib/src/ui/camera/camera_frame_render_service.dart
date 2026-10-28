@@ -232,6 +232,7 @@ class CameraFrameRenderService {
                           inkCropDrawsTheSame(
                             placement: layer.placement,
                             effects: layer.effects,
+                            paper: canvasSize.canvasRect,
                           )
                       ? surfaceInkWorldRect(layer.surface)
                       : null,

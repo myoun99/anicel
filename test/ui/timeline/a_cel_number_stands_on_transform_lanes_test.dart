@@ -70,7 +70,7 @@ void main() {
       final rows = effectPropertyLanes(
         [number()],
         isExpanded: (_) => true,
-        standAt: (_, time) => pose(time),
+        standAt: (_, _, time) => pose(time),
       );
       final layers = transformPropertyLanes(
         TransformTrack.empty(),

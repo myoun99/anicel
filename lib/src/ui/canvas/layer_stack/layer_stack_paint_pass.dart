@@ -525,6 +525,7 @@ class _LayerStackPaintPass {
         inkCropDrawsTheSame(
           placement: paint.placement,
           effects: paint.effects,
+          paper: _canvasRect,
         )
         ? drawn
         : drawn.expandToInclude(_canvasRect);
@@ -745,7 +746,11 @@ class _LayerStackPaintPass {
     // fades the whole ghost. Folded into the same matrix as the row's colour
     // effects (I-8-Q5: the ghost shows what the screen shows), as
     // [drawPosedLayerImage] folds it for a row's image.
-    final activePlan = resolveCompositeEffectPlan(effects, tint: tint);
+    final activePlan = resolveCompositeEffectPlan(
+      effects,
+      tint: tint,
+      paper: _canvasRect,
+    );
     final activeEffects = activePlan.finalPaint;
     final activePaint = layerCompositePaint(
       opacity: opacity,

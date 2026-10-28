@@ -689,6 +689,7 @@ void main() {
         ResolvedLayerEffect(kind: EffectKind.blur, values: const [3, 0]),
       ],
       mix: 0.5,
+      paper: rect,
     );
     // ⛔Prove the scene is the case this test is named for. A chain that did
     // not crossfade would compare one blit against one saveLayer and pass

@@ -44,7 +44,7 @@ void main() {
 
   group('the plan follows the chain', () {
     test('a chain with no keys is still ONE draw', () {
-      final plan = resolveCompositeEffectPlan([blur(3)]);
+      final plan = resolveCompositeEffectPlan([blur(3)], paper: Rect.zero);
       expect(plan.isSingleDraw, isTrue);
       expect(plan.preSteps, isEmpty);
       expect(plan.finalPaint.isNotEmpty, isTrue);
@@ -53,7 +53,10 @@ void main() {
     test('key then blur is ONE step — a paint carries both', () {
       // A `ui.Paint` applies its shader, then its colour filter, then its
       // image filter, so the key can lead the same draw the blur rides.
-      final plan = resolveCompositeEffectPlan([deleteWhite(), blur(3)]);
+      final plan = resolveCompositeEffectPlan(
+        [deleteWhite(), blur(3)],
+        paper: Rect.zero,
+      );
       expect(plan.preSteps.length, 1);
       expect(_keysOf(plan.preSteps.single), hasLength(1));
       expect(plan.preSteps.single.then, isEmpty);
@@ -63,7 +66,10 @@ void main() {
     });
 
     test('blur then key is TWO steps, and the first has no key', () {
-      final plan = resolveCompositeEffectPlan([blur(3), deleteWhite()]);
+      final plan = resolveCompositeEffectPlan(
+        [blur(3), deleteWhite()],
+        paper: Rect.zero,
+      );
       expect(plan.preSteps.length, 2);
       expect(plan.preSteps.first.lead, isNull);
       expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
@@ -80,7 +86,10 @@ void main() {
         kind: EffectKind.colorKey,
         values: const [0, 0xFFFFFFFF, 0, 0],
       );
-      final plan = resolveCompositeEffectPlan([fresh, blur(3)]);
+      final plan = resolveCompositeEffectPlan(
+        [fresh, blur(3)],
+        paper: Rect.zero,
+      );
       expect(plan.isSingleDraw, isTrue);
     });
   });
@@ -101,7 +110,10 @@ void main() {
       straight[i * 4 + 3] = 255;
     }
     final source = await _imageFrom(straight, side, side);
-    final plan = resolveCompositeEffectPlan([deleteWhite(), deleteRed()]);
+    final plan = resolveCompositeEffectPlan(
+      [deleteWhite(), deleteRed()],
+      paper: Rect.zero,
+    );
     expect(
       _keysOf(plan.preSteps.single),
       hasLength(2),
@@ -137,7 +149,7 @@ void main() {
       deleteWhite(),
       blur(3),
       deleteRed(),
-    ]);
+    ], paper: Rect.zero);
     expect(plan.preSteps, hasLength(2));
     expect(_keysOf(plan.preSteps.first), hasLength(1));
     expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
@@ -166,7 +178,7 @@ void main() {
         kind: EffectKind.colorKey,
         values: const [0, 0xFF00FF00, 0, 100],
       ),
-    ]);
+    ], paper: Rect.zero);
     expect(_keysOf(plan.preSteps.first), hasLength(2), reason: 'fixture');
     expect(plan.preSteps.first.then.map((e) => e.kind), [EffectKind.blur]);
     final source = await _imageFrom(straight, side, side);
@@ -215,7 +227,10 @@ void main() {
     final source = await _imageFrom(straight, side, side);
     final stepped = applyEffectSteps(
       source: source,
-      steps: resolveCompositeEffectPlan(chain).preSteps,
+      steps: resolveCompositeEffectPlan(
+        chain,
+        paper: _whole(source),
+      ).preSteps,
       imageScale: 1,
       paper: _whole(source),
     );
@@ -326,6 +341,7 @@ void main() {
       bounds: const Rect.fromLTWH(0, 0, 32, 32),
       effects: [blur(3), deleteWhite()],
       mix: 0.5,
+      paper: const Rect.fromLTWH(0, 0, 32, 32),
     );
     expect(pass.crossfades, isTrue, reason: 'fixture: a spatial chain below 1');
     expect(pass.preSteps, isNotEmpty, reason: 'fixture: the key is a step');
@@ -366,7 +382,7 @@ void main() {
     }
     Future<Uint8List> render(List<ResolvedLayerEffect> chain) async {
       final source = await _imageFrom(straight, side, side);
-      final plan = resolveCompositeEffectPlan(chain);
+      final plan = resolveCompositeEffectPlan(chain, paper: _whole(source));
       final stepped = applyEffectSteps(
         source: source,
         steps: plan.preSteps,

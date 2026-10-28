@@ -10,7 +10,8 @@ import '../theme/lane_curve_palette.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
 import 'se_name_tag_lane_editing.dart' show parseBoolInput;
-import 'transform_lane_policy.dart' show transformPropertyLanes;
+import 'transform_lane_policy.dart'
+    show transformPositionLane, transformPropertyLanes;
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
 //
@@ -61,44 +62,58 @@ String effectLaneId(EffectId effectId, String parameterId) =>
 }
 
 /// Whether the keys of effect lane [laneId] walk a path: where an effect
-/// stands its picture, as a transform's Position does ([laneWalksAPath]);
-/// a parameter's never do. Asked of the id alone, as a copy's lanes and a
-/// range's are — no parameter is named as such a lane is
-/// ([effectStandLanes]).
+/// stands its picture, and a point — a Position of its own — as a
+/// transform's Position does ([laneWalksAPath]); a parameter's never do.
+/// Asked of the id alone, as a copy's lanes and a range's are — no
+/// parameter is named as such a lane is ([effectStandLanes],
+/// [effectPointParameters]).
 bool effectLaneWalksAPath(String laneId) =>
     switch (parseEffectLaneId(laneId)) {
       (effectId: _, parameterId: final lane?)
           when effectStandLanes.contains(lane) =>
         laneWalksAPath(lane),
+      (effectId: _, parameterId: final lane?)
+          when effectPointParameters.contains(lane) =>
+        laneWalksAPath('position'),
       _ => false,
     };
 
-/// The effect of [effects] whose picture the CANVAS's box drives while
-/// [laneId] is stood on — R5 #10, 「an fx declares its own manipulators」
-/// (`canvasManipulatorsForLane`): an effect that draws its own picture, on
-/// and drawing, declares the box over it on its header and on the lanes of
-/// where it stands ([effectStandLanes]), as a transform's header and its
-/// Position and Scale declare the row's. Its colour, and every lane of any
-/// other effect, declare none. Null for every other lane.
+/// The effect of [effects] the CANVAS's box drives while [laneId] is stood
+/// on, and the [lane] of it whose keys the box moves — R5 #10, 「an fx
+/// declares its own manipulators」 (`canvasManipulatorsForLane`): an
+/// effect on and drawing declares, on its header and on the lanes its
+/// keys keep as a transform's ([LayerEffect.transformLaneAt]), the box
+/// over the picture it draws — where it stands — as a transform's header
+/// and its Position and Scale declare the row's; or a point's cross — on
+/// its header, its first point's. Its colours and numbers, and every lane
+/// of any other effect, declare none. Null for every other lane.
 ///
 /// 🗣️F-477 (유저 2026-10-26): 「fx헤더에 서있으면 트랜스폼처럼 조작할수있는거
 /// 캔버스에 뜨고 조작가능하고, 키에 서도 해당 키 조작가능한거면 가능할수
 /// 있게」. ↩️Only the transform's lanes declared one, so a cel number's
 /// header and its Position and Scale drew nothing on the canvas.
-LayerEffect? effectBoxedOn(List<LayerEffect> effects, String? laneId) {
+({LayerEffect effect, String lane})? effectBoxedOn(
+  List<LayerEffect> effects,
+  String? laneId,
+) {
   final address = laneId == null ? null : parseEffectLaneId(laneId);
   if (address == null) {
     return null;
   }
-  final lane = address.parameterId;
   for (final effect in effects) {
-    if (effect.id == address.effectId) {
-      return effect.kind.drawsItsOwnPicture &&
-              effect.enabled &&
-              (lane == null || effect.standLaneOf(lane) != null)
-          ? effect
-          : null;
+    if (effect.id != address.effectId) {
+      continue;
     }
+    final lane =
+        address.parameterId ??
+        (effect.kind.drawsItsOwnPicture
+            ? effectStandLanes.first
+            : effect.points.keys.firstOrNull);
+    return effect.enabled &&
+            lane != null &&
+            effect.transformLaneAt(lane) != null
+        ? (effect: effect, lane: lane)
+        : null;
   }
   return null;
 }
@@ -111,16 +126,18 @@ LayerEffect? effectBoxedOn(List<LayerEffect> effects, String? laneId) {
 /// [valueAt] resolves a parameter's value at a time — the blue value
 /// column's at its frame, a header graph's curve between frames too (I-89
 /// ③); the caller owns it because the sample must come from the same
-/// resolver the composite uses. [standAt] is where an effect stands its
-/// picture at a time ([effectStandPose]) — the caller knows the paper.
-/// Null for either leaves its lanes unvalued: a rail with no cut to read
-/// them in.
+/// resolver the composite uses. [standAt] is where the keys a lane of an
+/// effect keeps as a transform's ([LayerEffect.transformLaneAt]) stand at
+/// a time — where it stands its picture, a point ([effectStandPose]) —
+/// the caller knows the paper. Null for either leaves its lanes unvalued:
+/// a rail with no cut to read them in.
 List<PropertyLaneRow> effectPropertyLanes(
   List<LayerEffect> effects, {
   required bool Function(EffectId effectId) isExpanded,
   double Function(EffectId effectId, String parameterId, double time)?
   valueAt,
-  TransformPose Function(EffectId effectId, double time)? standAt,
+  TransformPose Function(EffectId effectId, String lane, double time)?
+  standAt,
 }) {
   if (effects.isEmpty) {
     return const [];
@@ -160,6 +177,21 @@ List<PropertyLaneRow> effectPropertyLanes(
       rows.addAll(_standLanes(effect, standAt));
     }
     for (final (index, spec) in effect.kind.parameters.indexed) {
+      // A point is a Position of its own: the transform's row of it.
+      if (effect.points[spec.id] case final point?) {
+        final lane = spec.id;
+        rows.add(
+          transformPositionLane(
+            point,
+            laneId: effectLaneId(effect.id, lane),
+            label: spec.labelFor(AppText.language),
+            poseAt: standAt == null
+                ? null
+                : (time) => standAt(effect.id, lane, time),
+          ),
+        );
+        continue;
+      }
       // A colour's keys are its own ([LayerEffect.colors]); a number's its
       // parameter's.
       final keys = effect.laneTrack(spec.id)!;
@@ -223,7 +255,8 @@ const ScaleLaneForm effectStandScaleForm = TwoScales();
 /// 키. 공용화된거 사용하면서」.
 List<PropertyLaneRow> _standLanes(
   LayerEffect effect,
-  TransformPose Function(EffectId effectId, double time)? standAt,
+  TransformPose Function(EffectId effectId, String lane, double time)?
+  standAt,
 ) {
   final ids = {
     for (final lane in effectStandLanes) effectLaneId(effect.id, lane),
@@ -232,7 +265,10 @@ List<PropertyLaneRow> _standLanes(
     for (final row in transformPropertyLanes(
       effect.stand,
       scaleForm: effectStandScaleForm,
-      poseAt: standAt == null ? null : (time) => standAt(effect.id, time),
+      // Any lane of the stand names its keys.
+      poseAt: standAt == null
+          ? null
+          : (time) => standAt(effect.id, effectStandLanes.first, time),
       laneIdOf: (lane) => effectLaneId(effect.id, lane),
     ))
       if (ids.contains(row.laneId)) row,
@@ -264,6 +300,9 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
       spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
     EffectParameterUnit.color => formatLaneColorValue(value.toInt()),
     EffectParameterUnit.flag => flagLaneWord(effectFlagIsOn(value)),
+    // A point prints as the transform's Position does, on its own row
+    // ([transformPositionLane]) — it is no number to print here.
+    EffectParameterUnit.point => '',
   };
 }
 

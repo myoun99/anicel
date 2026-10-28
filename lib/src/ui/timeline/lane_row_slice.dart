@@ -62,9 +62,10 @@ Object laneRowSlice(Layer layer, String laneId) {
       if (parameterId == null) {
         return effect;
       }
-      // Where the effect stands its picture is a transform's lane of its
-      // own, and its colours lanes of their own too.
-      return effect.standLaneOf(parameterId) == null &&
+      // Where the effect stands its picture and its points are a
+      // transform's lanes of their own, and its colours lanes of their own
+      // too.
+      return effect.transformLaneAt(parameterId) == null &&
               effect.colors[parameterId] == null
           ? effect.parameters[parameterId] ?? effect
           : effect.laneTrack(parameterId)!;

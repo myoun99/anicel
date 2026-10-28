@@ -11,7 +11,7 @@ import '../models/layer_effect.dart';
 import '../services/cel_numbered_row.dart' show celNumberLettersOf;
 import 'text/cel_number_paint.dart' show celNumberBox;
 import 'timeline/effect_lane_policy.dart'
-    show effectBoxedOn, effectGroupLaneId;
+    show effectBoxedOn, effectLaneId;
 import '../models/camera_path_settings.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
@@ -1389,14 +1389,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  /// The box of an effect that draws its own picture — a cel number's
-  /// letters (F-477) — while its header or where it stands is stood on
-  /// ([effectBoxedOn]): the inside moves the letters, a corner or an edge's
-  /// middle scales them, as a row's box moves and scales its picture; no
-  /// turn, the effect keys none (I-65-Q2 「위치/비율 두개 키」). What each
-  /// writes is where the effect stands — ONE key at the playhead, one undo,
-  /// as the row's box writes its transform's. It frames the letters where
-  /// the canvas shows them: on the row's paper, laid where the row is.
+  /// The box an effect declares while the lane [_HostFrame.effectBox]
+  /// names is stood on ([effectBoxedOn]) — over the picture it draws
+  /// ([_effectPictureBox]) or a point's cross ([_effectPointBox]) — on the
+  /// row whose value the lanes show: a track-SE row's at the global frame
+  /// (F-102). Each grab writes ONE key at the playhead, one undo, through
+  /// the lane's own keys ([LaneVerbs.editEffectKeysAtPlayhead]), as the
+  /// row's box writes its transform's.
   Widget _effectBox(
     _HostFrame frame,
     CanvasViewport viewport,
@@ -1408,15 +1407,78 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       session.currentFrameIndex,
     );
     final row = at.layer;
-    final effectId = frame.effectBox!.id;
-    final effect = effectBoxedOn(row.effects, effectGroupLaneId(effectId));
-    if (effect == null) {
+    final (:effect, :lane) = frame.effectBox!;
+    final laneId = effectLaneId(effect.id, lane);
+    final boxed = effectBoxedOn(row.effects, laneId);
+    if (boxed == null) {
       return const SizedBox.shrink();
     }
-    final number = resolveLayerEffectsAt(
-      effects: [effect],
+    final verbs = session.laneVerbs;
+    RowBoxLanding<T> landing<T>(
+      _TrackEdit Function(T value) editOf, {
+      required String description,
+    }) => _landedThrough(
+      editOf,
+      preview: (edit) => verbs.previewEffectKeysAtPlayhead(row.id, laneId, edit),
+      write: (edit) => verbs.editEffectKeysAtPlayhead(
+        row.id,
+        laneId,
+        edit,
+        description: description,
+      ),
+    );
+    final space = _shownThrough(
+      session.frameVerbs.layerCanvasPoseSample(row.id),
+    );
+    final resolved = resolveLayerEffectsAt(
+      effects: [boxed.effect],
       frameIndex: at.frame,
     ).single;
+    final name = '${row.name} ${boxed.effect.kind.label}';
+    return boxed.effect.kind.drawsItsOwnPicture
+        ? _effectPictureBox(
+            frame,
+            viewport,
+            canvasSize,
+            row: row,
+            number: resolved,
+            space: space,
+            name: name,
+            landing: landing,
+          )
+        : _effectPointBox(
+            frame,
+            viewport,
+            canvasSize,
+            point: effectPointOnPaper(resolved.points[lane], canvasSize),
+            space: space,
+            name: name,
+            landing: landing,
+          );
+  }
+
+  /// The box of an effect that draws its own picture — a cel number's
+  /// letters (F-477) — while its header or where it stands is stood on
+  /// ([effectBoxedOn]): the inside moves the letters, a corner or an edge's
+  /// middle scales them, as a row's box moves and scales its picture; no
+  /// turn, the effect keys none (I-65-Q2 「위치/비율 두개 키」). What each
+  /// writes is where the effect stands. It frames the letters where the
+  /// canvas shows them: on the row's paper, laid where the row is.
+  Widget _effectPictureBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize, {
+    required Layer row,
+    required ResolvedLayerEffect number,
+    required _ShownSpace space,
+    required String name,
+    required RowBoxLanding<T> Function<T>(
+      _TrackEdit Function(T value) editOf, {
+      required String description,
+    })
+    landing,
+  }) {
+    final session = frame.session;
     final letters = celNumberLettersOf(
       number,
       text: celNumberText(
@@ -1427,26 +1489,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       paper: canvasSize,
     );
     final stand = effectStandPose(number.stand!, canvasSize);
-    final space = _shownThrough(
-      session.frameVerbs.layerCanvasPoseSample(row.id),
-    );
     final box = celNumberBox(letters);
-    final name = row.name;
-    final verbs = session.laneVerbs;
-    RowBoxLanding<T> landing<T>(
-      _TrackEdit Function(T value) editOf, {
-      required String description,
-    }) => _landedThrough(
-      editOf,
-      preview: (edit) =>
-          verbs.previewEffectStandAtPlayhead(row.id, effectId, edit),
-      write: (edit) => verbs.editEffectStandAtPlayhead(
-        row.id,
-        effectId,
-        edit,
-        description: description,
-      ),
-    );
     return RowTransformBox(
       corners: [
         for (final corner in [
@@ -1464,12 +1507,49 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       onCancelled: session.laneVerbs.endLaneEditPreview,
       move: landing<CanvasPoint>(
         (dropped) => _movedTo(space.fromCanvas(dropped)),
-        description: 'Move $name ${effect.kind.label}',
+        description: 'Move $name',
       ),
       scale: RowBoxTwoScales(
-        landing<CanvasPoint>(
-          _scaledTo,
-          description: 'Scale $name ${effect.kind.label}',
+        landing<CanvasPoint>(_scaledTo, description: 'Scale $name'),
+      ),
+    );
+  }
+
+  /// A point's cross (I-132-Q12 b) — a radial blur's centre — while its
+  /// lane or its effect's header is stood on ([effectBoxedOn]): the cross a
+  /// row's anchor point is placed with, where the canvas shows [point] — on
+  /// the row's paper, laid where the row is — and a drag keys the point
+  /// where it lets go, as Position's key is laid ([_movedTo]).
+  Widget _effectPointBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize, {
+    required CanvasPoint point,
+    required _ShownSpace space,
+    required String name,
+    required RowBoxLanding<T> Function<T>(
+      _TrackEdit Function(T value) editOf, {
+      required String description,
+    })
+    landing,
+  }) {
+    final session = frame.session;
+    final shown = space.toCanvas(point);
+    return RowTransformBox(
+      // A point frames nothing: the cross alone, as a row's anchor stands
+      // over a row with nothing drawn.
+      corners: const [],
+      pose: TransformPose(center: shown),
+      pasteboard: session.pasteboardOf(canvasSize),
+      viewport: viewport,
+      presses: frame.boxPresses,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      cross: (
+        at: shown,
+        value: shown,
+        landing: landing<CanvasPoint>(
+          (dropped) => _movedTo(space.fromCanvas(dropped)),
+          description: 'Move $name',
         ),
       ),
     );

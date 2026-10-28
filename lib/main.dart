@@ -98,8 +98,8 @@ Future<void> main(List<String> handedAtLaunch) async {
   // composed over its backdrop by a shader, and drawing it in any other
   // blend because the program was late would be the same lie.
   await LayerBlendShader.load();
-  // 🚨The same, for a directional blur (I-132-Q3): a raster of a chain's
-  // step, as a key is.
+  // 🚨The same, for a directional or a radial blur (I-132-Q3): a raster of
+  // a chain's step, as a key is.
   await DirectionalBlurShader.load();
   // 🚨AWAITED, BEFORE THE FIRST FRAME, too (I-103-Q1): the top strip keeps
   // a place for the battery on a device that has one and never on one that

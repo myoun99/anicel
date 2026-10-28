@@ -31,9 +31,9 @@ import '../timeline/effect_lane_editing.dart'
         effectsWithLaneKeysWritten,
         effectsWithLaneValueEdited,
         effectsWithRemoved,
-        effectsWithStandEdited;
+        effectsWithTransformKeysEdited;
 import '../timeline/effect_lane_policy.dart'
-    show effectGroupLaneId, effectLaneDisplayOrder, parseEffectLaneId;
+    show effectLaneDisplayOrder, parseEffectLaneId;
 import '../timeline/reference_lane_policy.dart'
     show
         laneIsReference,
@@ -907,45 +907,47 @@ class LaneVerbs {
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
   ) => _previewAtPlayhead(layerId, edit, reference: true);
 
-  /// A canvas box's drag landing where [effectId] of [layerId] stands its
-  /// picture (F-477): the same ONE key at the playhead a transform's box
-  /// writes, on the effect's own Position and Scale — one undo.
-  void editEffectStandAtPlayhead(
+  /// A canvas box's drag landing on the keys effect lane [laneId] of
+  /// [layerId] keeps as a transform's — where its effect stands its
+  /// picture (F-477), or a point (I-132-Q12 b): the same ONE key at the
+  /// playhead a transform's box writes, on the effect's own Position and
+  /// Scale — one undo.
+  void editEffectKeysAtPlayhead(
     LayerId layerId,
-    EffectId effectId,
+    String laneId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit, {
     required String description,
   }) => _commitLaneEdit(
-    _effectStandEditAtPlayhead(layerId, effectId, edit),
+    _effectKeysEditAtPlayhead(layerId, laneId, edit),
     description: description,
   );
 
-  /// The effect's box mid-drag: the edit [editEffectStandAtPlayhead] would
+  /// The effect's box mid-drag: the edit [editEffectKeysAtPlayhead] would
   /// write at the release, shown on the preview channel.
-  void previewEffectStandAtPlayhead(
+  void previewEffectKeysAtPlayhead(
     LayerId layerId,
-    EffectId effectId,
+    String laneId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
-  ) => _previewLaneEdit(_effectStandEditAtPlayhead(layerId, effectId, edit));
+  ) => _previewLaneEdit(_effectKeysEditAtPlayhead(layerId, laneId, edit));
 
-  /// [edit] of where [effectId] stands, at the playhead on [layerId]'s own
-  /// axis — through the one dispatch every lane verb takes ([_laneEditAt]),
-  /// on the effect's header.
-  ({Layer layer, LaneEdit edit})? _effectStandEditAtPlayhead(
+  /// [edit] of the keys effect lane [laneId] keeps as a transform's, at
+  /// the playhead on [layerId]'s own axis — through the one dispatch every
+  /// lane verb takes ([_laneEditAt]).
+  ({Layer layer, LaneEdit edit})? _effectKeysEditAtPlayhead(
     LayerId layerId,
-    EffectId effectId,
+    String laneId,
     TransformTrack Function(TransformTrack track, int frameIndex) edit,
   ) => _laneEditAt(
     layerId,
-    effectGroupLaneId(effectId),
+    laneId,
     _controllers.timelineController.currentFrameIndex,
     frameIsGlobal: false,
     edits: (
       nameTag: (_, _) => null,
-      effects: (_, effects, frame) => effectsWithStandEdited(
+      effects: (_, effects, frame) => effectsWithTransformKeysEdited(
         effects,
-        effectId,
-        (stand) => edit(stand, frame),
+        laneId,
+        (keys) => edit(keys, frame),
       ),
       transform: (_, _, _, {required reference}) => null,
     ),

@@ -1,4 +1,5 @@
 import '../core/collection_equality.dart';
+import 'canvas_point.dart';
 import 'canvas_size.dart';
 import 'property_track.dart';
 import 'string_id.dart';
@@ -6,12 +7,12 @@ import 'transform_track.dart'
     show
         TransformNamedChanges,
         TransformPose,
-        TransformPropertyId,
         TransformTrack,
         argbKeySpace,
         doubleKeySpace,
         layerIdentityPose,
         menuKeySpace,
+        resolveAnchorTrackAtTime,
         transformLaneOf,
         transformNamedKeyChanges,
         transformPropertyOfLaneId,
@@ -198,6 +199,55 @@ enum EffectKind {
         minimum: 0,
         maximum: 500,
         unit: EffectParameterUnit.pixels,
+      ),
+    ],
+    spreadsPixels: true,
+    runsOnSourcePixels: false,
+    drawsItsOwnPicture: false,
+    isBasic: false,
+    staysOnItsRow: false,
+  ),
+
+  /// Every pixel the average of the arc through it about its `center`
+  /// (Spin) or of the ray through it from there (Zoom) — AE's Radial Blur
+  /// (`radialBlurPasses`).
+  ///
+  /// 🗣️I-132-Q3 (유저 2026-10-27): 「가우시안 · 방향 · 방사형 · 카메라 렌즈」,
+  /// AE's items: Amount, Center, Type, and the antialiasing menu
+  /// (🗣️I-132-Q13 a: 「메뉴를 둔다 — 드래프트는 표본을 줄여 빠르게」). The
+  /// centre is a point of its own (🗣️I-132-Q12 b: 「효과 매개변수에 「점」
+  /// 종류를 새로」). Adobe's help says Spin's Amount is degrees and Zoom's a
+  /// length; the length's form is ours (🗣️I-132-Q4 「식은 지금대로」) — the
+  /// streak a percent of the pixel's way from the centre — and so is the
+  /// range: no help page gives AE's. The menu's words are ours
+  /// (🗣️I-132-Q11 a), as the card asked them.
+  radialBlur(
+    'radialBlur',
+    label: 'Radial Blur',
+    parameters: [
+      EffectParameterSpec(
+        id: 'amount',
+        label: 'Amount',
+        defaultValue: 0,
+        minimum: 0,
+        maximum: 100,
+      ),
+      EffectParameterSpec.point(id: 'center', label: 'Center'),
+      EffectParameterSpec.choice(
+        id: 'type',
+        label: 'Type',
+        choices: [
+          EffectChoice(id: 'spin', label: 'Spin'),
+          EffectChoice(id: 'zoom', label: 'Zoom'),
+        ],
+      ),
+      EffectParameterSpec.choice(
+        id: 'antialiasing',
+        label: 'Antialiasing',
+        choices: [
+          EffectChoice(id: 'best', label: 'Best'),
+          EffectChoice(id: 'draft', label: 'Draft'),
+        ],
       ),
     ],
     spreadsPixels: true,
@@ -411,6 +461,17 @@ enum EffectParameterUnit {
   /// a number's when pasted, as a menu's do. The lane is a flag's ring —
   /// the value cell IS the control, a tap flips it (F-22).
   flag,
+
+  /// A point on the row's paper — keyed as a transform's Position is, in
+  /// its lane's own words: its keys are [LayerEffect.points]', a track
+  /// whose Position alone is keyed, so it keys, walks a path, takes a
+  /// value, resets and names as Position does, and the canvas places it
+  /// with a cross. Unkeyed it rests where a row does: the paper's middle.
+  ///
+  /// 🗣️I-132-Q12 b (유저 2026-10-28): 「효과 매개변수에 「점」 종류를 새로」 —
+  /// a point of each effect's own (a radial blur's centre, a lens flare's
+  /// later), where a cel number's stand is the picture it draws.
+  point,
 }
 
 /// One word of a menu parameter ([EffectParameterUnit.choice]).
@@ -439,10 +500,11 @@ class EffectParameterSpec {
   }) : assert(
          unit != EffectParameterUnit.choice &&
              unit != EffectParameterUnit.color &&
-             unit != EffectParameterUnit.flag,
+             unit != EffectParameterUnit.flag &&
+             unit != EffectParameterUnit.point,
          'A menu is EffectParameterSpec.choice, a colour '
-         'EffectParameterSpec.color and a flag EffectParameterSpec.flag — '
-         'none has a range of its own.',
+         'EffectParameterSpec.color, a flag EffectParameterSpec.flag and a '
+         'point EffectParameterSpec.point — none has a range of its own.',
        ),
        _maximum = maximum,
        choices = const [];
@@ -479,6 +541,15 @@ class EffectParameterSpec {
       unit = EffectParameterUnit.flag,
       choices = const [];
 
+  /// A point ([EffectParameterUnit.point]): no number at all — its keys
+  /// are [LayerEffect.points]'.
+  const EffectParameterSpec.point({required this.id, required this.label})
+    : defaultValue = 0,
+      minimum = 0,
+      _maximum = 0,
+      unit = EffectParameterUnit.point,
+      choices = const [];
+
   final String id;
   final String label;
   final double defaultValue;
@@ -501,8 +572,9 @@ class EffectParameterSpec {
   /// lerps. A colour's keys are not numbers, and walk in [argbKeySpace].
   KeyValueSpace<double> get keySpace {
     assert(
-      unit != EffectParameterUnit.color,
-      'A colour keys in argbKeySpace, over LayerEffect.colors.',
+      unit != EffectParameterUnit.color && unit != EffectParameterUnit.point,
+      'A colour keys in argbKeySpace, over LayerEffect.colors, and a point '
+      'as a Position does, over LayerEffect.points.',
     );
     return _steps ? menuKeySpace : doubleKeySpace;
   }
@@ -526,6 +598,14 @@ final Set<String> effectColorParameters = {
   for (final kind in EffectKind.values)
     for (final spec in kind.parameters)
       if (spec.unit == EffectParameterUnit.color) spec.id,
+};
+
+/// The ids of every kind's points ([EffectParameterUnit.point]) — what a
+/// lane read off its id alone holds, as [effectColorParameters] is.
+final Set<String> effectPointParameters = {
+  for (final kind in EffectKind.values)
+    for (final spec in kind.parameters)
+      if (spec.unit == EffectParameterUnit.point) spec.id,
 };
 
 /// The colour key's parameters ([EffectKind.colorKey]).
@@ -678,19 +758,22 @@ class LayerEffect {
   /// composite cache key, the autosave dirty check and the thumbnail
   /// signature.
   ///
-  /// [colors] and [stand] are normalized the same way: a colour the kind
-  /// declares is materialized (unkeyed where it was missing), and a kind
-  /// that draws no picture of its own stands none, whatever it was handed.
+  /// [colors], [points] and [stand] are normalized the same way: a colour
+  /// or a point the kind declares is materialized (unkeyed where it was
+  /// missing), and a kind that draws no picture of its own stands none,
+  /// whatever it was handed.
   LayerEffect({
     required this.id,
     required this.kind,
     this.enabled = true,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
+    Map<String, TransformTrack>? points,
     TransformTrack? stand,
   }) : parameters = Map.unmodifiable({
          for (final spec in kind.parameters)
-           if (spec.unit != EffectParameterUnit.color)
+           if (spec.unit != EffectParameterUnit.color &&
+               spec.unit != EffectParameterUnit.point)
              spec.id:
                  parameters?[spec.id] ??
                  EffectParameter(value: spec.defaultValue),
@@ -699,6 +782,11 @@ class LayerEffect {
          for (final spec in kind.parameters)
            if (spec.unit == EffectParameterUnit.color)
              spec.id: colors?[spec.id] ?? PropertyTrack<int>.empty(),
+       }),
+       points = Map.unmodifiable({
+         for (final spec in kind.parameters)
+           if (spec.unit == EffectParameterUnit.point)
+             spec.id: points?[spec.id] ?? TransformTrack.empty(),
        }),
        stand = kind.drawsItsOwnPicture && stand != null
            ? stand
@@ -732,6 +820,13 @@ class LayerEffect {
   /// ([argbKeySpace]) and type. Unkeyed, the spec's default ([effectColorAt]).
   final Map<String, PropertyTrack<int>> colors;
 
+  /// Point id → the KEYS of that point's ONE lane ([EffectParameterUnit
+  /// .point]), every point the kind declares: a transform's track whose
+  /// Position alone is keyed — so the transform's own verbs key it, walk
+  /// it and name it, as they do [stand]'s ([transformLaneAt]). Unkeyed,
+  /// the paper's middle ([effectPointOnPaper]).
+  final Map<String, TransformTrack> points;
+
   /// Where the picture a kind that draws its own ([EffectKind
   /// .drawsItsOwnPicture]) stands on the row's paper, and how big — the KEYS
   /// of its Position and Scale, in the transform lanes' own words, as the
@@ -763,6 +858,7 @@ class LayerEffect {
     bool? enabled,
     Map<String, EffectParameter>? parameters,
     Map<String, PropertyTrack<int>>? colors,
+    Map<String, TransformTrack>? points,
     TransformTrack? stand,
   }) {
     return LayerEffect(
@@ -771,6 +867,7 @@ class LayerEffect {
       enabled: enabled ?? this.enabled,
       parameters: parameters ?? this.parameters,
       colors: colors ?? this.colors,
+      points: points ?? this.points,
       stand: stand ?? this.stand,
     );
   }
@@ -786,21 +883,45 @@ class LayerEffect {
     return copyWith(colors: {...colors, colorId: keys});
   }
 
-  /// The property of [stand] lane [lane] is — a stand lane, by the transform
-  /// lane's id ([effectStandLanes]) — on a kind that draws its own picture;
-  /// null for every other lane: a parameter's.
-  TransformPropertyId? standLaneOf(String lane) =>
-      kind.drawsItsOwnPicture && effectStandLanes.contains(lane)
-      ? transformPropertyOfLaneId(lane)
-      : null;
+  /// The keys lane [lane] keeps as a transform's lane, and which lane of
+  /// theirs it is, by the transform lane's id: where a kind that draws its
+  /// own picture stands it — a stand lane, by that id ([effectStandLanes])
+  /// — or one of its [points], their Position; null for every other lane:
+  /// a parameter's or a colour's.
+  ///
+  /// ⛔ONE QUESTION for both: every verb that keys, values, resets, walks
+  /// or names such a lane asks it here and hands the answer to the
+  /// transform's own verbs — 🗣️I-65-Q2 「공용화된거 사용하면서」.
+  ({TransformTrack keys, String lane})? transformLaneAt(String lane) {
+    if (points[lane] case final keys?) {
+      return (keys: keys, lane: 'position');
+    }
+    if (kind.drawsItsOwnPicture && effectStandLanes.contains(lane)) {
+      return (keys: stand, lane: lane);
+    }
+    return null;
+  }
+
+  /// [keys] put back where lane [lane] keeps them ([transformLaneAt]) —
+  /// [stand] or the point's; this effect as it is for any other lane.
+  LayerEffect withTransformKeysAt(String lane, TransformTrack keys) =>
+      points.containsKey(lane)
+      ? copyWith(points: {...points, lane: keys})
+      : transformLaneAt(lane) == null
+      ? this
+      : copyWith(stand: keys);
 
   /// The keys lane [lane] of this effect holds — a parameter's or a
-  /// colour's by its id, a stand lane's ([standLaneOf]) — read without
-  /// knowing their value type; null for a lane the effect has not.
-  PropertyTrack<Object?>? laneTrack(String lane) => switch (standLaneOf(lane)) {
-    final property? => transformLaneOf(stand, property),
-    null => colors[lane] ?? parameters[lane]?.track,
-  };
+  /// colour's by its id, a transform's lane ([transformLaneAt]) — read
+  /// without knowing their value type; null for a lane the effect has not.
+  PropertyTrack<Object?>? laneTrack(String lane) =>
+      switch (transformLaneAt(lane)) {
+        (:final keys, lane: final kept) => transformLaneOf(
+          keys,
+          transformPropertyOfLaneId(kept)!,
+        ),
+        null => colors[lane] ?? parameters[lane]?.track,
+      };
 
   /// Every lane of this effect, in the order its rows show them: where it
   /// stands first ([effectStandLanes]), as a transform's lanes lead, then
@@ -827,6 +948,11 @@ class LayerEffect {
           if (entry.value.isNotEmpty)
             entry.key: entry.value.toJson((value) => value),
       },
+    if (points.values.any((keys) => keys.isNotEmpty))
+      'points': {
+        for (final entry in points.entries)
+          if (entry.value.isNotEmpty) entry.key: entry.value.toJson(),
+      },
     if (stand.isNotEmpty) 'stand': stand.toJson(),
   };
 
@@ -834,6 +960,7 @@ class LayerEffect {
     final kind = EffectKind.fromJson(json['kind']);
     final rawParameters = json['parameters'] as Map<String, dynamic>? ?? {};
     final rawColors = json['colors'] as Map<String, dynamic>? ?? {};
+    final rawPoints = json['points'] as Map<String, dynamic>? ?? {};
     final stand = json['stand'] as Map<String, dynamic>?;
     // The constructor fills whatever the file left out.
     return LayerEffect(
@@ -853,6 +980,12 @@ class LayerEffect {
             (value) => (value! as num).toInt(),
           ),
       },
+      points: {
+        for (final entry in rawPoints.entries)
+          entry.key: TransformTrack.fromJson(
+            entry.value as Map<String, dynamic>,
+          ),
+      },
       stand: stand == null ? null : TransformTrack.fromJson(stand),
     );
   }
@@ -866,6 +999,7 @@ class LayerEffect {
           other.enabled == enabled &&
           mapEquals(other.parameters, parameters) &&
           mapEquals(other.colors, colors) &&
+          mapEquals(other.points, points) &&
           other.stand == stand;
 
   @override
@@ -879,6 +1013,9 @@ class LayerEffect {
     ]),
     Object.hashAll([
       for (final entry in colors.entries) Object.hash(entry.key, entry.value),
+    ]),
+    Object.hashAll([
+      for (final entry in points.entries) Object.hash(entry.key, entry.value),
     ]),
     stand,
   );
@@ -900,14 +1037,23 @@ class ResolvedLayerEffect {
     required this.kind,
     required List<double> values,
     this.stand,
-  }) : values = List.unmodifiable(values);
+    Map<String, CanvasPoint?> points = const {},
+  }) : values = List.unmodifiable(values),
+       points = Map.unmodifiable(points);
 
   final EffectKind kind;
+
+  /// A point's is its spec's 0: a point is no number ([points]).
   final List<double> values;
 
   /// Where a kind that draws its own picture stands it at this frame
   /// ([LayerEffect.stand] sampled); null for every other kind.
   final EffectStand? stand;
+
+  /// Where each of the kind's points stands at this frame
+  /// ([LayerEffect.points] sampled, [effectPointAt]) — null for one at
+  /// rest, the paper's middle, which the paper says ([effectPointOnPaper]).
+  final Map<String, CanvasPoint?> points;
 
   double parameter(String id) {
     final specs = kind.parameters;
@@ -952,14 +1098,38 @@ class ResolvedLayerEffect {
       other is ResolvedLayerEffect &&
           other.kind == kind &&
           listEquals(other.values, values) &&
-          other.stand == stand;
+          other.stand == stand &&
+          mapEquals(other.points, points);
 
   @override
-  int get hashCode => Object.hash(kind, Object.hashAll(values), stand);
+  int get hashCode => Object.hash(
+    kind,
+    Object.hashAll(values),
+    stand,
+    Object.hashAll([
+      for (final entry in points.entries) Object.hash(entry.key, entry.value),
+    ]),
+  );
 
   @override
-  String toString() => 'ResolvedLayerEffect($kind, $values, $stand)';
+  String toString() => 'ResolvedLayerEffect($kind, $values, $stand, $points)';
 }
+
+/// Where point [keys] ([LayerEffect.points]) stand at [time], a frame or
+/// between two — their Position walked as a transform's is — null while
+/// unkeyed: then the point rests where a row does, which only the paper
+/// says ([effectPointOnPaper]).
+CanvasPoint? effectPointAt(TransformTrack keys, double time) =>
+    resolveAnchorTrackAtTime(keys.position, time);
+
+/// Where [point] — one sampled ([effectPointAt]) — stands on [paper]: where
+/// its keys put it, or at rest where a row does ([layerIdentityPose]), the
+/// paper's middle.
+///
+/// 🗣️08-07: 「위치는 기본값으로 — 기본 트랜스폼 fx 의 위치 기준, 늘 하던 대로
+/// 공통된 거 사용」.
+CanvasPoint effectPointOnPaper(CanvasPoint? point, CanvasSize paper) =>
+    point ?? layerIdentityPose(paper).center;
 
 /// Where the picture of an effect that draws its own stands at one time:
 /// [LayerEffect.stand]'s keys and the time to read them at — a frame, or
@@ -997,7 +1167,8 @@ int effectColorAt(PropertyTrack<int> keys, double time, {required int rest}) =>
 
 /// What lane [spec] of [effect] holds at [time], a frame or between two, as
 /// the number [ResolvedLayerEffect.values] carries: a colour its ARGB
-/// ([effectColorAt]), any other its parameter's walk.
+/// ([effectColorAt]), a point its spec's 0 — it is no number
+/// ([ResolvedLayerEffect.points]) — any other its parameter's walk.
 double effectValueAt(
   LayerEffect effect,
   EffectParameterSpec spec,
@@ -1008,6 +1179,7 @@ double effectValueAt(
     time,
     rest: spec.defaultValue.toInt(),
   ).toDouble(),
+  null when spec.unit == EffectParameterUnit.point => spec.defaultValue,
   null => effect
       .parameterOf(spec.id)
       .resolveAtTime(time, space: spec.keySpace),
@@ -1038,6 +1210,10 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
       stand: effect.kind.drawsItsOwnPicture
           ? effectStandAt(effect.stand, frameIndex.toDouble())
           : null,
+      points: {
+        for (final MapEntry(key: id, value: keys) in effect.points.entries)
+          id: effectPointAt(keys, frameIndex.toDouble()),
+      },
     );
     if (sample.isNoOp) {
       continue;
@@ -1125,11 +1301,16 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
         moved(lane, movedNamedKeys(oldKeys, keys));
       }
     }
-    // Where it stands is read as a transform's keys are, by the
-    // transform's own reading of them.
+    // Where it stands and its points are read as a transform's keys are,
+    // by the transform's own reading of them.
     final stand = transformNamedKeyChanges(old.stand, effect.stand);
     moved('position', stand.position);
     moved('scale', stand.scale);
+    for (final MapEntry(key: lane, value: keys) in effect.points.entries) {
+      if (old.points[lane] case final oldKeys?) {
+        moved(lane, transformNamedKeyChanges(oldKeys, keys).position);
+      }
+    }
   }
   return changes;
 }
@@ -1225,18 +1406,20 @@ LayerEffect? _withNamedValue(
   NamedEffectKeyChange change,
 ) {
   final named = {change.name: change.held};
-  switch (effect.standLaneOf(change.lane)) {
-    case TransformPropertyId.position:
-      return effect.copyWith(
-        stand: transformTrackWithNamedKeys(
-          effect.stand,
+  switch (effect.transformLaneAt(change.lane)) {
+    case (:final keys, lane: 'position'):
+      return effect.withTransformKeysAt(
+        change.lane,
+        transformTrackWithNamedKeys(
+          keys,
           TransformNamedChanges(position: named.cast()),
         ),
       );
-    case TransformPropertyId.scale:
-      return effect.copyWith(
-        stand: transformTrackWithNamedKeys(
-          effect.stand,
+    case (:final keys, lane: 'scale'):
+      return effect.withTransformKeysAt(
+        change.lane,
+        transformTrackWithNamedKeys(
+          keys,
           TransformNamedChanges(scale: named.cast()),
         ),
       );

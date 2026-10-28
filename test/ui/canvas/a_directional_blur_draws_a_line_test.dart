@@ -78,7 +78,7 @@ void main() {
     final canvas = Rect.fromLTWH(0, 0, canvasExtent, canvasExtent);
     final out = steppedForChain(
       image: source,
-      plan: resolveCompositeEffectPlan(chain),
+      plan: resolveCompositeEffectPlan(chain, paper: canvas),
       extent: canvas,
       paper: canvas,
     );
@@ -175,7 +175,10 @@ void main() {
     addTearDown(source.dispose);
     final out = steppedForChain(
       image: source,
-      plan: resolveCompositeEffectPlan([directional(degrees: 90, length: 15)]),
+      plan: resolveCompositeEffectPlan(
+        [directional(degrees: 90, length: 15)],
+        paper: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
+      ),
       extent: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
       paper: Rect.fromLTWH(0, 0, side.toDouble(), side.toDouble()),
     );
@@ -207,7 +210,10 @@ void main() {
     addTearDown(source.dispose);
     final out = steppedForChain(
       image: source,
-      plan: resolveCompositeEffectPlan([directional(degrees: 90, length: 15)]),
+      plan: resolveCompositeEffectPlan(
+        [directional(degrees: 90, length: 15)],
+        paper: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      ),
       extent: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
       paper: Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
     );
@@ -286,7 +292,7 @@ void main() {
     test('a blur of no length is no step, whichever way it points', () {
       final plan = resolveCompositeEffectPlan([
         directional(degrees: 37, length: 0),
-      ]);
+      ], paper: Rect.zero);
       expect(plan.isSingleDraw, isTrue);
       expect(plan.finalPaint.isEmpty, isTrue);
     });
@@ -295,7 +301,7 @@ void main() {
         'way', () {
       final plan = resolveCompositeEffectPlan([
         directional(degrees: 90, length: 40),
-      ]);
+      ], paper: Rect.zero);
       expect(plan.preSteps, hasLength(1));
       expect(plan.preSteps.single.lead, isA<ShadedEffect>());
       expect(plan.preSteps.single.then, isEmpty);
@@ -313,7 +319,7 @@ void main() {
         blur,
         directional(degrees: 90, length: 40),
         blur,
-      ]);
+      ], paper: Rect.zero);
       expect([for (final step in plan.preSteps) step.lead.runtimeType], [
         Null,
         ShadedEffect,

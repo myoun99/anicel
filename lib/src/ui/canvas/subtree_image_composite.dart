@@ -1082,7 +1082,7 @@ List<_StepDraw> _stepDraws(
       ];
     }
   }
-  final shaded = _leadDraws(lead, space: space);
+  final shaded = _leadDraws(lead, space: space, paper: paper);
   return [
     if (shaded.isEmpty)
       (image, input, then) =>
@@ -1097,11 +1097,13 @@ List<_StepDraw> _stepDraws(
 /// the step's input.
 typedef _LeadDraw = ui.FragmentShader Function(ui.Image image, ui.Image input);
 
-/// The shaders [lead] draws at [space] — none for a step that only paints,
-/// nor for a blur on the paper ([_paperEdgeDraw]).
+/// The shaders [lead] draws at [space], with [paper] where the paper lies
+/// there — none for a step that only paints, nor for a blur on the paper
+/// ([_paperEdgeDraw]).
 List<_LeadDraw> _leadDraws(
   EffectStepLead? lead, {
   required DrawSpace space,
+  required Rect paper,
 }) => switch (lead) {
   null || PaperEdgeEffect() => const [],
   KeyRun(:final keys) => [
@@ -1113,7 +1115,7 @@ List<_LeadDraw> _leadDraws(
       ),
   ],
   ShadedEffect(:final effect) => [
-    for (final pass in shadedPassesOf(effect, space))
+    for (final pass in shadedPassesOf(effect, space, paper: paper))
       (image, _) => DirectionalBlurShader.shaderFor(source: image, pass: pass),
   ],
 };

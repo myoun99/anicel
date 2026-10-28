@@ -961,7 +961,12 @@ final class _LayerStackPainter {
     if (dirty == null) {
       return (located: true, dirty: null, now: now);
     }
-    final shows = _whereAChangeShows(nodes, dirty, _isTheLiveRow);
+    final shows = _whereAChangeShows(
+      nodes,
+      dirty,
+      _isTheLiveRow,
+      paper: canvasSize.canvasRect,
+    );
     return (located: shows != null, dirty: shows, now: now);
   }
 
@@ -1004,8 +1009,9 @@ final class _LayerStackPainter {
   static Rect? _whereAChangeShows(
     List<CompositeNode<_PaintRow>> list,
     Rect rect,
-    bool Function(_PaintRow row) isRow,
-  ) => _whereTheRowShows(list, rect, isRow)?.inflate(1);
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) => _whereTheRowShows(list, rect, isRow, paper: paper)?.inflate(1);
 
   /// Where [rect] of the row [isRow] picks shows in the composite of [list]
   /// — or null where that cannot be told, or the row is not in it.
@@ -1017,12 +1023,14 @@ final class _LayerStackPainter {
   /// ([effectBufferBounds]). ↩️It drew the frame as it stands, whole, at
   /// every step, until the cost of a frame drawn as it stands was cut on
   /// the canvas's own resolution (one-picture-per-frame, 유저 2026-10-25
-  /// 「원본 기준 위에서 푼다」).
+  /// 「원본 기준 위에서 푼다」). [paper] is where the paper lies, which a
+  /// radial blur's reach is read from ([resolveCompositeEffectPlan]).
   static Rect? _whereTheRowShows(
     List<CompositeNode<_PaintRow>> list,
     Rect rect,
-    bool Function(_PaintRow row) isRow,
-  ) {
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) {
     for (final node in list) {
       if (node case CompositeLeaf(
         payload: final _SurfaceRow row,
@@ -1045,40 +1053,55 @@ final class _LayerStackPainter {
         // 2026-10-27): its blur rode a `saveLayer` the patch's clip cut,
         // and at 200% the patch came apart from the frame along the
         // stroke's tile by a band 2.5 canvas pixels wide.
-        return row.placement == null ? _spreadBy(row.effects, rect) : null;
+        return row.placement == null
+            ? _spreadBy(row.effects, rect, paper)
+            : null;
       }
       if (node is CompositeGroup<_PaintRow> &&
           holdsRow(node, isRow)) {
-        final inside = _whereTheRowShows(node.children, rect, isRow);
-        return inside == null ? null : _spreadBy(node.effects, inside);
+        final inside = _whereTheRowShows(
+          node.children,
+          rect,
+          isRow,
+          paper: paper,
+        );
+        return inside == null ? null : _spreadBy(node.effects, inside, paper);
       }
       if (node is CompositeAdjustment<_PaintRow> &&
           holdsRow(node, isRow)) {
-        final inside = _whereTheRowShows(node.children, rect, isRow);
-        return inside == null ? null : _spreadBy(node.effects, inside);
+        final inside = _whereTheRowShows(
+          node.children,
+          rect,
+          isRow,
+          paper: paper,
+        );
+        return inside == null ? null : _spreadBy(node.effects, inside, paper);
       }
       // A blend composes pixel by pixel: a dab moves the composite where it
       // lands and nowhere else, so only what the row passes through decides.
       if (node is CompositeBackdropBlend<_PaintRow> &&
           holdsRow(node, isRow)) {
-        return _whereTheRowShows(node.children, rect, isRow);
+        return _whereTheRowShows(node.children, rect, isRow, paper: paper);
       }
       // So does a clip: the base's alpha cuts pixel by pixel, and the base
       // made opaque is the base's own pixels.
       if (node is CompositeClip<_PaintRow> &&
           holdsRow(node, isRow)) {
-        return _whereTheRowShows(node.children, rect, isRow);
+        return _whereTheRowShows(node.children, rect, isRow, paper: paper);
       }
     }
     return null;
   }
 
-  /// [rect] grown by as far as [effects] read past a pixel.
-  static Rect _spreadBy(List<ResolvedLayerEffect> effects, Rect rect) =>
-      effectBufferBounds(
-        rect,
-        resolveCompositeEffectPlan(effects).outsetPixels,
-      );
+  /// [rect] grown by as far as [effects] read past a pixel, on [paper].
+  static Rect _spreadBy(
+    List<ResolvedLayerEffect> effects,
+    Rect rect,
+    Rect paper,
+  ) => effectBufferBounds(
+    rect,
+    resolveCompositeEffectPlan(effects, paper: paper).outsetPixels,
+  );
 
   /// Whether [row] is the live surface ([holdsRow]) — not a lifted row:
   /// that only shows, and nothing draws into it.
@@ -1100,6 +1123,7 @@ final class _LayerStackPainter {
           nodes,
           ink,
           (row) => identical(row, ghost),
+          paper: canvasSize.canvasRect,
         );
         if (where == null) {
           return null;

@@ -186,7 +186,7 @@ void main() {
       final chain = trackEffectsAt([_deleteWhite()], 0);
       expect(chain, hasLength(1), reason: 'fixture: the key survived');
 
-      final plan = resolveCompositeEffectPlan(chain);
+      final plan = resolveCompositeEffectPlan(chain, paper: ui.Rect.zero);
       expect(
         plan.preSteps, hasLength(1),
         reason: 'the key rides its own raster, like a group or a layer image',
@@ -202,6 +202,7 @@ void main() {
     test('a key UNDER a painted effect keeps both, in that order', () {
       final plan = resolveCompositeEffectPlan(
         trackEffectsAt([_brightness(), _deleteWhite()], 0),
+        paper: ui.Rect.zero,
       );
       expect(plan.preSteps, hasLength(2));
       expect(

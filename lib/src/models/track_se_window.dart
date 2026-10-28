@@ -202,6 +202,10 @@ class TrackSeWindow {
             for (final entry in effect.colors.entries)
               entry.key: _shift(entry.value),
           },
+          points: {
+            for (final entry in effect.points.entries)
+              entry.key: _rebasedTrack(entry.value),
+          },
           stand: _rebasedTrack(effect.stand),
         ),
     ];

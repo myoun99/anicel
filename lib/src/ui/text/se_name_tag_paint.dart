@@ -81,7 +81,10 @@ void _composite(
     into.restore();
   }
 
-  final effects = resolveCompositeEffectPlan(tag.effects);
+  final effects = resolveCompositeEffectPlan(
+    tag.effects,
+    paper: canvasSize.canvasRect,
+  );
   if (tag.opacity >= 1 &&
       effects.isSingleDraw &&
       effects.finalPaint.isEmpty) {

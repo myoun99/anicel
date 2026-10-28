@@ -290,9 +290,9 @@ class _InteractiveCanvasBuild {
             session.currentFrameIndex,
           )
         : null;
-    // An effect that draws its own picture declares ITS box (F-477) — on
-    // its own switch, as the transform's box is on the transform's
-    // ([effectBoxedOn]).
+    // An effect that draws its own picture declares ITS box (F-477), and a
+    // point its cross (I-132-Q12 b) — on its own switch, as the
+    // transform's box is on the transform's ([effectBoxedOn]).
     final effectBox =
         activeLayer != null &&
             standing is LaneRowAddress &&
@@ -1237,10 +1237,12 @@ class _HostFrame {
   /// file it shows, where its reference says (`_referenceBoxShown`).
   final bool referenceBox;
 
-  /// The effect of the active row whose own picture the canvas's box
-  /// drives — a cel number's letters, while its header or where it stands
-  /// is stood on (F-477, [effectBoxedOn]); null on every other lane.
-  final LayerEffect? effectBox;
+  /// The effect of the active row the canvas's box drives, and the lane
+  /// whose keys it moves — a cel number's letters, while its header or
+  /// where it stands is stood on (F-477), a point's cross while its lane
+  /// or its header is (I-132-Q12 b) — [effectBoxedOn]; null on every other
+  /// lane.
+  final ({LayerEffect effect, String lane})? effectBox;
 
   /// The active layer's ink at the playhead, while [boxGrabbable] or
   /// [crossGrabbable] — null on a cel that shows nothing.
