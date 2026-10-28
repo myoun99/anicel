@@ -252,22 +252,25 @@ void main() {
               )
               .onChanged !=
           null;
-      bool meterLive() => tester
+      // The row's words dim with its control — a picker's and a bar's as
+      // a switch row's do.
+      bool wordsLive(String key) => tester
           .widget<SettingsRow>(
-            find.ancestor(
-              of: byKey('settings-input-meter'),
-              matching: find.byType(SettingsRow),
-            ),
+            find.ancestor(of: byKey(key), matching: find.byType(SettingsRow)),
           )
           .enabled;
       List<bool> inputRows() => [
         pickerLive('settings-audio-input-device'),
-        meterLive(),
+        wordsLive('settings-audio-input-device'),
+        wordsLive('settings-input-meter'),
         barLive('settings-mic-gain-slider'),
+        wordsLive('settings-mic-gain-slider'),
         pickerLive('settings-input-channel-mode'),
+        wordsLive('settings-input-channel-mode'),
         switchLive('settings-denoise-voice'),
         switchLive('settings-clipping-notice'),
         barLive('settings-count-in-slider'),
+        wordsLive('settings-count-in-slider'),
         switchLive('settings-cue-beeps'),
         switchLive('settings-streamer'),
       ];
@@ -275,6 +278,7 @@ void main() {
       expect(allowedIn(session), isFalse, reason: 'the premise');
       expect(inputRows(), everyElement(isFalse));
       expect(pickerLive('settings-audio-output-device'), isTrue);
+      expect(wordsLive('settings-audio-output-device'), isTrue);
 
       session.appSettings.setAudioSyncSettings(
         session.appSettings.audioSyncSettings.value.copyWith(
