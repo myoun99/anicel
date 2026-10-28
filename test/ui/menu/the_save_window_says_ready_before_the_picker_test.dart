@@ -16,7 +16,9 @@ import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🚨★★★**「READY」 BEFORE THE PICKER, 「SAVED」 ONLY AFTER IT** (F-57).
 ///
@@ -237,6 +239,39 @@ void main() {
     }
     await tester.pump(appProgressDoneLinger * 2);
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('🗣️F-494: the app\'s own writer tells the window before the '
+      'picker the stretches it writes', (tester) async {
+    drawOnCurrentFrame(session);
+    final placed = '${placedFolder.path}/scene.anicel';
+    FolderPicker.debugFileExporter =
+        ({required String sourcePath, String? suggestedName}) async =>
+            FolderGrant.granted(path: placed, kind: GrantKind.file);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => promptSaveProjectAs(context, session),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('go'));
+    final lines = watchTheLine(tester);
+    await settleBehindTheWaitWindow(
+      tester,
+      () => session.projectFile.path == placed,
+    );
+    await tester.pump(appProgressDoneLinger * 2);
+    await tester.pumpAndSettle();
+
+    expect(session.projectFile.path, placed, reason: 'fixture: it saved');
+    expect(lines, contains(AppText.strings.saveStepCels));
   });
 
   testWidgets('🚨a Save As the picker PLACED says what the staged copy could '

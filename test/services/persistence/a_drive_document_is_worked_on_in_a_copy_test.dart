@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/opened_session.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart' show expectOneBar;
 
 /// PICK-7: a project in a document with no filesystem path — Google Drive
 /// on Android — opens through a WORKING COPY in this run's room, saves
@@ -261,20 +262,29 @@ void main() {
       final session = await openedSession(source.path);
       addTearDown(session.dispose);
       session.cutVerbs.createCut();
-      final stretches = <SaveStretch>[];
+      final told = <Object>[];
 
       await session.projectDoor.saveProjectToFile(
         source.path,
         asked: SaveAsked.byAPerson,
-        onStretch: stretches.add,
+        onProgress: told.add,
+        onStretch: told.add,
       );
 
+      final stretches = told.whereType<SaveStretch>();
       expect(stretches, isNotEmpty);
       expect(stretches.last, SaveStretch.handingBack);
       expect(
         stretches.where((stretch) => stretch == SaveStretch.handingBack),
         hasLength(1),
       );
+      final handingBack = told.indexOf(SaveStretch.handingBack);
+      expect(
+        told.take(handingBack).whereType<double>(),
+        everyElement(lessThanOrEqualTo(0.5)),
+        reason: 'the write is the first half of the bar: $told',
+      );
+      expectOneBar(told.whereType<double>().toList(), [0.5, 1]);
     });
 
     test('🚨a hand-back the provider refuses leaves the session UNSAVED, '

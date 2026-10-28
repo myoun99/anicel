@@ -28,6 +28,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/carried_media_fixture.dart' show noise;
 import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart' show expectOneBar;
 import '../../helpers/whole_carry.dart';
 
 /// Everything a save told, in order: a [SaveStretch] as it moved on, a
@@ -300,6 +301,23 @@ void main() {
         [SaveStretch.keepingLeftBehind, SaveStretch.compacting],
       );
       expectEachStretchCounted(told);
+      // The copy its share of the bar, the write the rest — one bar.
+      expectOneBar(told.whereType<double>().toList(), [1]);
+    });
+
+    test('a copy written for a Save As names its stretches as a save '
+        'does', () async {
+      final s = session();
+      drawOnCurrentFrame(s);
+      final stretches = <SaveStretch>[];
+
+      await s.projectDoor.writeArchiveCopy(
+        inTemp('copy.anicel'),
+        asked: SaveAsked.byAPerson,
+        onStretch: stretches.add,
+      );
+
+      expect(stretches, [SaveStretch.cels]);
     });
   });
 

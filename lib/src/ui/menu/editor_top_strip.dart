@@ -1770,19 +1770,18 @@ Future<bool> saveProjectShowingProgress(
 class _SaveLine extends ValueNotifier<String> {
   _SaveLine(super.gathering);
 
-  bool _gathering = true;
+  bool _named = false;
 
   /// The save counted.
   void counted() {
-    if (_gathering) {
-      _gathering = false;
+    if (!_named) {
       value = '';
     }
   }
 
   /// The save is in [stretch] now.
   void say(SaveStretch stretch) {
-    _gathering = false;
+    _named = true;
     value = AppText.strings.saveStep(stretch);
   }
 }

@@ -23,6 +23,7 @@ import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/wait_window.dart';
+import '../../helpers/import_span.dart';
 import '../../helpers/number_pad_keyboard.dart';
 
 void main() {
@@ -78,22 +79,6 @@ void main() {
     );
     await settleLoadedPages(tester);
     return s;
-  }
-
-  /// Stands the preview's IN on [from] and its OUT on [to] — one-based, as
-  /// the transport shows them.
-  Future<void> span(WidgetTester tester, int from, int to) async {
-    for (final (end, at) in [('in', from), ('out', to)]) {
-      await tester.tap(find.byKey(ValueKey<String>('transport-$end-edit')));
-      await tester.pump();
-      await openThePadsKeyboard(tester);
-      await tester.enterText(
-        find.byKey(ValueKey<String>('transport-$end-input')),
-        '$at',
-      );
-      await tester.testTextInput.receiveAction(TextInputAction.done);
-      await settleLoadedPages(tester);
-    }
   }
 
   final rateDialog = find.byKey(
@@ -165,7 +150,7 @@ void main() {
     final s = await open(tester, [movie]);
     // One-based on screen: IN at frame 500, OUT at 1600 — on the 24 clock
     // they show the movie's pictures 499 and 1598.
-    await span(tester, 501, 1601);
+    await keepImportSpan(tester, 501, 1601);
     expect((range(tester).inFrame, range(tester).outFrame), (500, 1600));
 
     await pressImport(tester);
@@ -193,7 +178,7 @@ void main() {
       'OUT stay where they were', (tester) async {
     final movie = await write(tester, 'take.mp4');
     final s = await open(tester, [movie]);
-    await span(tester, 501, 1601);
+    await keepImportSpan(tester, 501, 1601);
 
     await pressImport(tester);
     await tester.tap(
@@ -342,7 +327,7 @@ void main() {
       ),
     );
     await settleLoadedPages(tester);
-    await span(tester, 501, 1601);
+    await keepImportSpan(tester, 501, 1601);
     expect((range(tester).inFrame, range(tester).outFrame), (500, 1600));
 
     await pressImport(tester);

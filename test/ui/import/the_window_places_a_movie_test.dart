@@ -22,6 +22,9 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 import '../../helpers/fake_video_backend.dart';
+import '../../helpers/grey_movie.dart';
+import '../../helpers/import_span.dart';
+import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
@@ -46,13 +49,15 @@ void main() {
         return file.path;
       }))!;
 
-  /// The window on [paths], placing, over a session whose conform answers
-  /// every file as a second of sound, reading movies through [backend].
+  /// The window on [paths], placing — or registering, [poolOnly] — over a
+  /// session whose conform answers every file as a second of sound, reading
+  /// movies through [backend].
   Future<EditorSessionManager> open(
     WidgetTester tester,
     List<String> paths, {
     FakeVideoBackend? backend,
     ImportLayerSpot Function(EditorSessionManager session)? droppedOn,
+    bool poolOnly = false,
   }) async {
     debugVideoDecodeBackend = backend ?? FakeVideoBackend();
     tester.view.physicalSize = const Size(1400, 1600);
@@ -70,6 +75,7 @@ void main() {
             session: s,
             initialPaths: paths,
             spot: droppedOn?.call(s),
+            poolOnly: poolOnly,
           ),
         ),
       ),
@@ -506,10 +512,16 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    final lines = watchTheLine(tester);
     await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
     await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
+    expect(
+      lines,
+      ['', AppText.strings.imStepCarrying, ''],
+      reason: '🗣️F-494: the movie its sound reads, carried',
+    );
     final key = normalizedMediaPath(movie);
     expect(
       s.requireActiveCut.layers.any(
@@ -610,5 +622,83 @@ void main() {
     expect(option('sound').onTap, isNull);
     expect(option('picture').onTap, isNotNull);
     expect(option('pictureAndSound').onTap, isNotNull);
+  });
+
+  // 🗣️F-494 (유저 2026-10-28): 「3.4gb의 동영상 … 중간의 2분만 인/아웃으로
+  // 설정하고 미디어에 품기로 임포트 누르니, 계속 0%에서 안늘어남」 — the span
+  // is encoded again into a piece of its own, a minute for those two, and
+  // that encode is what the window now names and counts frame by frame.
+  group('a movie carried as a span is cut into its piece', () {
+    final skip = nativeEngineLibraryPathOrNull() == null;
+
+    /// Six real frames — the cut reads the file through the engine — while
+    /// the preview reads them through [FakeVideoBackend].
+    Future<String> sixFrames(WidgetTester tester) async =>
+        (await tester.runAsync(() async {
+          final path = '${tempDir.path}${Platform.pathSeparator}take.mp4';
+          expect(writeGreyMovie(path, frames: 6), isTrue);
+          return path;
+        }))!;
+
+    testWidgets('🎯registered, the window names the encode and counts its '
+        'frames, then the piece\'s holding', (tester) async {
+      final movie = await sixFrames(tester);
+      final s = await open(
+        tester,
+        [movie],
+        backend: FakeVideoBackend(frameCount: 6),
+        poolOnly: true,
+      );
+      await keepImportSpan(tester, 2, 4);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      final lines = watchTheLine(tester);
+      final counted = watchTheBar(tester);
+      await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+      await pumpPastTheWaitWindow(tester);
+
+      expect(lines, [
+        '',
+        AppText.strings.imStepRecoding,
+        '',
+        AppText.strings.imStepCarrying,
+        '',
+      ]);
+      // The cut the first half of the file's share, its three frames
+      // each a third of it; the holding the rest.
+      expectOneBar(counted, [1 / 6, 1 / 3, 0.5, 1]);
+      s.playbackRig.prerenderScheduler.cancel();
+    }, skip: skip);
+
+    testWidgets('🎯placed, the window names the encode and counts its frames '
+        'before it holds the piece', (tester) async {
+      final movie = await sixFrames(tester);
+      final s = await open(
+        tester,
+        [movie],
+        backend: FakeVideoBackend(frameCount: 6),
+      );
+      await keepImportSpan(tester, 2, 4);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      final lines = watchTheLine(tester);
+      final counted = watchTheBar(tester);
+      await settleAsync(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
+      await pumpPastTheWaitWindow(tester);
+
+      expect(lines, [
+        '',
+        AppText.strings.imStepRecoding,
+        AppText.strings.imStepCarrying,
+        '',
+      ]);
+      // The cut the first of a placed file's three stretches.
+      expectOneBar(counted, [1 / 9, 2 / 9, 1 / 3, 1]);
+      s.playbackRig.prerenderScheduler.cancel();
+    }, skip: skip);
   });
 }
