@@ -100,14 +100,15 @@ final class _SettingsRowsOfTheWindow {
       if (answerOf(key) is _IntoTheSettings) key,
   ];
 
-  /// [key]'s row as the table lists it: the setting by its name, from the
+  /// [key]'s row as the table lists it: the setting by its name — a row of
+  /// the file, as a folder's are, so no extension of its own — from the
   /// file of its [modified] day.
   ImportFileRow tableRow(String key, String modified) {
     final held = _rows[key]!;
     return ImportFileRow(
       path: key,
       name: held.row.label(AppText.strings),
-      extension: anicelSettingsExtension,
+      extension: '',
       modified: modified,
       size: '',
       resolution: '',
@@ -146,14 +147,12 @@ final class _SettingsRowsOfTheWindow {
       enabledFor: (key, value) =>
           holds(key) ? answers(key).contains(value) : column.enabledFor(key, value),
       onPick: (keys, value) {
-        // An answer the files are never asked — the settings — is not theirs
-        // to take.
-        if (column.values.contains(value)) {
-          column.onPick([
-            for (final key in keys)
-              if (!holds(key)) key,
-          ], value);
-        }
+        // What the other rows take of the answer is [column]'s to say — a
+        // folder's correction takes its ride, which no file is asked.
+        column.onPick([
+          for (final key in keys)
+            if (!holds(key)) key,
+        ], value);
         pick([
           for (final key in keys)
             if (holds(key) && answers(key).contains(value)) key,

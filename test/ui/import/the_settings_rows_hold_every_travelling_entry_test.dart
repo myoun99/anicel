@@ -6,6 +6,7 @@ import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/services/persistence/settings_file.dart';
 import 'package:anicel/src/services/persistence/settings_room_file.dart';
+import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/import/settings_rows.dart';
 
 /// I-142 (유저 2026-10-29): a settings file comes in as the import window's
@@ -115,6 +116,13 @@ void main() {
         'brush_hand_settings.json': {'version': 'one'},
       }),
       isFalse,
+    );
+    expect(
+      reads({
+        'brush_hand_settings.json': {'version': BrushHandSettingsStore.version},
+      }),
+      isTrue,
+      reason: 'a file of the hand settings alone holds no library in the way',
     );
   });
 }

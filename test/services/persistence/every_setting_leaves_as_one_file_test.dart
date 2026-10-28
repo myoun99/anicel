@@ -66,6 +66,7 @@ void main() {
       put('ui_scale.json', jsonEncode({'version': 1, 'scale': 1.25}));
       put('brush_tips/index.json', jsonEncode({'version': 1, 'tips': []}));
       put('brush_tips/t1.png', tip);
+      put('brush_tips/a0.png', tip);
 
       final read = readSettingsFile(
         await settingsFileOfTheRoom([
@@ -78,8 +79,11 @@ void main() {
         'ui_scale.json': {'version': 1, 'scale': 1.25},
         'brush_tips/index.json': {'version': 1, 'tips': <Object?>[]},
       });
-      expect(read.files.keys, ['brush_tips/t1.png']);
-      expect(read.files.values.single, tip);
+      expect(read.files.keys, [
+        'brush_tips/a0.png',
+        'brush_tips/t1.png',
+      ], reason: 'by name: the same room reads the same on every machine');
+      expect(read.files.values.first, tip);
     });
 
     test('leaves out an entry no store has written, one it was not asked '
@@ -155,6 +159,10 @@ void main() {
           },
           files: {
             'brush_tips/../escaped.png': tip,
+            r'brush_tips/..\escaped.png': tip,
+            'brush_tips/..': tip,
+            'brush_tips/.': tip,
+            'brush_tips/': tip,
             'brush_tips/deeper/t2.png': tip,
             'brush_tips/t1.png': tip,
           },
@@ -168,9 +176,14 @@ void main() {
         {'version': 1, 'kept': true},
         reason: 'the file holds it, but it was not asked for',
       );
-      expect(File(at('brush_tips/t1.png')).existsSync(), isTrue);
+      expect(
+        [
+          for (final entity in Directory(at('brush_tips')).listSync())
+            entity.uri.pathSegments.last,
+        ],
+        ['t1.png'],
+      );
       expect(File(at('escaped.png')).existsSync(), isFalse);
-      expect(Directory(at('brush_tips/deeper')).existsSync(), isFalse);
     });
 
     test('leaves an entry the file does not hold as it stands', () async {

@@ -55,29 +55,49 @@ void main() {
     tester.view.physicalSize = const Size(1800, 1000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
+    // Over a route of its own, as the workspace opens it — so that a run
+    // that lands closes it.
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportDialog(
-            session: session,
-            initialPaths: paths,
-            putSettingsInPlace: puts
-                ? (file, rows) async {
-                    if (refusal case final error?) {
-                      throw error;
-                    }
-                    put.add((
-                      file: file,
-                      rows: [for (final row in rows) row.id],
-                    ));
-                  }
-                : null,
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => ImportDialog(
+                  session: session,
+                  initialPaths: paths,
+                  putSettingsInPlace: puts
+                      ? (file, rows) async {
+                          if (refusal case final error?) {
+                            throw error;
+                          }
+                          put.add((
+                            file: file,
+                            rows: [for (final row in rows) row.id],
+                          ));
+                        }
+                      : null,
+                ),
+              ),
+              child: const Text('open'),
+            ),
           ),
         ),
       ),
     );
+    await tester.tap(find.text('open'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     return session;
+  }
+
+  /// [row]'s 「넣을 곳」 answered [option], by its cell.
+  Future<void> answer(WidgetTester tester, String row, String option) async {
+    await tester.tap(find.byKey(ValueKey<String>('import-cell-into-$row')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey<String>('import-option-into-$option')));
+    await tester.pumpAndSettle();
   }
 
   ImportFileTable table(WidgetTester tester) =>
@@ -90,15 +110,8 @@ void main() {
       .widget<Text>(find.byKey(const ValueKey<String>('import-status')))
       .data!;
 
-  /// [row]'s 「넣을 곳」 answered 「제외」, by its cell.
-  Future<void> leaveOut(WidgetTester tester, String row) async {
-    await tester.tap(find.byKey(ValueKey<String>('import-cell-into-$row')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('import-option-into-left-out')),
-    );
-    await tester.pumpAndSettle();
-  }
+  Future<void> leaveOut(WidgetTester tester, String row) =>
+      answer(tester, row, 'left-out');
 
   Future<void> importAll(
     WidgetTester tester,
@@ -107,6 +120,8 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await pumpPastTheWaitWindow(tester);
     session.playbackRig.prerenderScheduler.cancel();
+    // The window's own way out, where the run closed it.
+    await tester.pump(const Duration(milliseconds: 400));
   }
 
   final accent = {'version': AppAccentSettingsStore.version, 'hue': 1};
@@ -139,6 +154,11 @@ void main() {
     for (final row in rows) {
       expect(into.cellWordOf(row.path), AppText.strings.imIntoSettings);
     }
+    expect(
+      [for (final value in into.values) into.labelOf(value)],
+      contains(AppText.strings.imIntoSettings),
+      reason: 'the header speaks for the settings rows too',
+    );
     for (final other in table(tester).columns.skip(1)) {
       expect(other.appliesTo(rows.first.path), isFalse, reason: other.id);
     }
@@ -179,15 +199,20 @@ void main() {
     expect(put, hasLength(1));
     expect(put.single.rows, ['accent_settings.json']);
     expect(put.single.file.documents['accent_settings.json'], accent);
+    expect(find.byType(ImportDialog), findsNothing, reason: 'it landed');
   });
 
   testWidgets('every row left out, nothing goes in place — and nothing is '
       'warned of', (tester) async {
     final path = aSettingsFile({'accent_settings.json': accent});
     final session = await openOn(tester, [path]);
+    final row = '$path#accent_settings.json';
 
-    await leaveOut(tester, '$path#accent_settings.json');
+    await leaveOut(tester, row);
     expect(statusLine(tester), isEmpty);
+    await answer(tester, row, 'settings');
+    expect(statusLine(tester), AppText.strings.imSettingsGoInPlace);
+    await leaveOut(tester, row);
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await tester.pump();
     session.playbackRig.prerenderScheduler.cancel();
@@ -217,6 +242,30 @@ void main() {
     refusal = null;
     await importAll(tester, session);
     expect(put.single.rows, ['accent_settings.json']);
+    expect(find.byType(ImportDialog), findsNothing);
+  });
+
+  testWidgets('a press on a setting\'s row speaks for the settings of the '
+      'selection — a file\'s answer stays as it was', (tester) async {
+    final picture = (await tester.runAsync(
+      () => writeSolidPng(tempDir, 'A1.png'),
+    ))!;
+    final path = aSettingsFile({'accent_settings.json': accent});
+    await openOn(tester, [picture, path]);
+    final row = '$path#accent_settings.json';
+    var into = column(tester, 'into');
+    into.onPick([picture], into.answersFor(picture).last);
+    await tester.pump();
+    into = column(tester, 'into');
+    final filesWord = into.cellWordOf(picture);
+    expect(filesWord, AppText.strings.panelMedia, reason: 'premise');
+
+    into.onPick([picture, row], into.answersFor(row).last);
+    await tester.pump();
+
+    into = column(tester, 'into');
+    expect(into.cellWordOf(row), AppText.strings.imExcluded);
+    expect(into.cellWordOf(picture), filesWord);
   });
 
   testWidgets('a file that brings no setting this build reads is named, and '
