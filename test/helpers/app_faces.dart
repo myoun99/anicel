@@ -14,14 +14,24 @@ import 'package:flutter/services.dart' show FontLoader, rootBundle;
 /// box). Three tests loaded a face by hand before this one existed.
 Future<void> loadTheAppFaces() async {
   for (final (family, files) in _faces) {
-    final loader = FontLoader(family);
-    for (final path in [files.regular, files.bold]) {
-      final bytes = File(path).readAsBytesSync();
-      loader.addFont(Future.value(ByteData.view(bytes.buffer)));
-    }
-    await loader.load();
+    await loadFace(family, weightsOf(files));
   }
 }
+
+/// [weights] — one face's files, read whole — under the name [family].
+Future<void> loadFace(String family, List<ByteData> weights) async {
+  final loader = FontLoader(family);
+  for (final weight in weights) {
+    loader.addFont(Future.value(weight));
+  }
+  await loader.load();
+}
+
+/// The two weights `AppTypography` names a bundled face's files by, read.
+List<ByteData> weightsOf(({String regular, String bold}) files) => [
+  for (final path in [files.regular, files.bold])
+    ByteData.view(File(path).readAsBytesSync().buffer),
+];
 
 final _faces = [
   (AppTypography.bundledFamily, AppTypography.bundledFiles),
