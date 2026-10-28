@@ -109,6 +109,7 @@ void main() {
   ) async {
     await openWindow(tester, TimesheetInfo.empty, (_) {});
     await toggle(tester, 'work-settings-staff');
+    await toggle(tester, 'work-settings-process-conte');
 
     for (final mark in everyLayerMark()) {
       final process = mark.process;
@@ -132,18 +133,24 @@ void main() {
     }
   });
 
-  testWidgets('the conte\'s fold folds on its own', (tester) async {
+  // 🗣️F-291 (유저 2026-10-28): 「항목들 기본적으로 접힌상태이도록. 디폴트가.
+  // 러프원화만 열린상태로」 — the staff's folds are 컷 설정's, one code.
+  testWidgets('the conte\'s fold is folded at first, as every staff fold '
+      'but the rough key\'s, and opens and folds on its own', (tester) async {
     await openWindow(tester, TimesheetInfo.empty, (_) {});
     await toggle(tester, 'work-settings-staff');
-
-    await toggle(tester, 'work-settings-process-conte');
-
     expect(rowOf(conte), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('work-settings-process-conte')),
       findsOneWidget,
       reason: 'folded, not gone',
     );
+
+    await toggle(tester, 'work-settings-process-conte');
+    expect(rowOf(conte), findsOneWidget);
+
+    await toggle(tester, 'work-settings-process-conte');
+    expect(rowOf(conte), findsNothing);
   });
 
   testWidgets('what is typed is saved under the labels, a stage and its '
@@ -159,6 +166,7 @@ void main() {
       '#3',
     );
     await toggle(tester, 'work-settings-staff');
+    await toggle(tester, 'work-settings-process-conte');
     await tester.ensureVisible(rowOf(conte));
     await tester.enterText(rowOf(conte), '大川');
     await tester.ensureVisible(rowOf(conteDirector));

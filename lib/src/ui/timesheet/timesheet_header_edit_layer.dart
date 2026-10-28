@@ -14,7 +14,8 @@ import 'timesheet_document_painter.dart';
 /// 화수는 이제 타임시트패널같은곳에서 편집안하게. 작업자든 뭐든. 해당 설정은
 /// 프로젝트 설정쪽에」 — the title and the episode are the work's, set in its
 /// settings; the scene is the pen's until the conte groups cuts into
-/// scenes.
+/// scenes. ↩️The scene is the cut's since (유저 2026-10-28, F-291:
+/// 「타임시트용지패널에서 신 눌러서 편집할수있게하고 … 즉 컷마다 개별적임」).
 ///
 /// 🗣️I-112 (유저 2026-10-19): 「타임시트 용지패널, 원화 이름 클릭해서
 /// 변경가능하게. 변경한게 러프원화 스태프 이름에 연동? 아무튼 결과적으로

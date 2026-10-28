@@ -32,7 +32,6 @@ String buildXdtsContent({
   /// cut's 1-based position, so reordering cuts silently renumbered every
   /// sheet that had already been exported.
   required String cutLabel,
-  String scene = '1',
   CameraInstructionDef? Function(String instructionId)? instructionDefById,
 
   /// The owning track's SE lanes (GLOBAL frame axis) and this cut's start
@@ -128,7 +127,10 @@ String buildXdtsContent({
   ];
 
   final json = <String, dynamic>{
-    'header': {'cut': cutLabel, 'scene': scene},
+    // The cut's scene, as its timesheet prints it — 🗣️F-291-Q7 (유저
+    // 2026-10-28): 「컷의 신을 쓴다」, empty where none is written.
+    // ↩️It was always '1', a default nobody asked for (07-08).
+    'header': {'cut': cutLabel, 'scene': cut.metadata.scene},
     'timeTables': [
       {
         'duration': duration,

@@ -154,14 +154,16 @@ class TimesheetPaper extends StatelessWidget {
   }
 
   /// Where each header box edited in place lands (I-112): the work's
-  /// episode and title — the values its settings show — the cut's name,
-  /// and its sheet worker ([TimesheetHeaderEditLayer]) — on the cut the
+  /// episode and title — the values its settings show — the cut's scene
+  /// (F-291), its name, and its sheet worker ([TimesheetHeaderEditLayer]) —
+  /// on the cut the
   /// sheet prints (I-127), by the roads every paper writes by.
   Map<TimesheetHeaderField, ValueChanged<String>> _headerCommits() {
     final writes = PaperWrites(session);
     return {
       TimesheetHeaderField.episode: writes.episode,
       TimesheetHeaderField.title: writes.title,
+      TimesheetHeaderField.scene: (scene) => writes.scene(cutId, scene),
       TimesheetHeaderField.cut: (name) => writes.cutName(cutId, name),
       TimesheetHeaderField.name: (name) =>
           writes.staffName(cutId, sheetArtistMark, name),

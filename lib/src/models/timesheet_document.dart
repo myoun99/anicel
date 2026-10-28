@@ -344,6 +344,7 @@ class TimesheetDocument {
     required this.cellExposureBarThreshold,
     required this.seEmptyFill,
     required this.cutName,
+    required this.scene,
     required this.fps,
     required this.playbackFrameCount,
     this.transitionHandles = CutTransitionHandles.none,
@@ -502,6 +503,7 @@ class TimesheetDocument {
       cellExposureBarThreshold: info.cellExposureBarThreshold,
       seEmptyFill: info.seEmptyFill,
       cutName: cut.name,
+      scene: cut.metadata.scene,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
       transitionHandles: sources.handles,
@@ -613,7 +615,7 @@ class TimesheetDocument {
 
   /// Sheet-header text: the work's title (the project's name while it has
   /// none) and episode from [TimesheetInfo], and the sheet's 作業者 — the
-  /// cut's 원화 worker ([sheetArtistMark]).
+  /// cut's 러프원화 worker ([sheetArtistMark]).
   final String title;
   final String episode;
   final String artist;
@@ -653,6 +655,9 @@ class TimesheetDocument {
   final List<TimesheetHeaderField> visibleHeaderFields;
 
   final String cutName;
+
+  /// The cut's scene, empty where none is written (`CutMetadata.scene`).
+  final String scene;
   final int fps;
 
   /// The cut's playback length — its CONTE 尺. Rows beyond

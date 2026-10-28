@@ -20,6 +20,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/layer_process.dart';
 import '../../models/timeline_repeat.dart' show rederiveRunBehaviors;
 import '../../models/media_asset.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardSize;
@@ -75,6 +76,8 @@ import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
 import 'update_cut_sheet_kind_command.dart';
+import 'update_cut_scene_command.dart';
+import 'update_cut_staff_folds_command.dart';
 import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
@@ -220,9 +223,11 @@ class CutCommandCoordinator {
     contentOffset: contentOffset,
     report: report,
   );
-  void renameCut({required CutId cutId, required String newName}) =>
-      _cuts.renameCut(cutId: cutId, newName: newName);
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);
+  void setCutScene({required CutId cutId, required String scene}) =>
+      _cuts.setCutScene(cutId: cutId, scene: scene);
+  void nameCut({required CutId cutId, required String name, String? scene}) =>
+      _cuts.nameCut(cutId: cutId, name: name, scene: scene);
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
@@ -242,7 +247,12 @@ class CutCommandCoordinator {
   void setCutStaffNames({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
-  }) => _cuts.setCutStaffNames(cutIds: cutIds, names: names);
+    Set<LayerProcess>? openFolds,
+  }) => _cuts.setCutStaffNames(
+    cutIds: cutIds,
+    names: names,
+    openFolds: openFolds,
+  );
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
       _cuts.setCutMark(cutIds: cutIds, mark: mark);
   void setTimesheetFormat({

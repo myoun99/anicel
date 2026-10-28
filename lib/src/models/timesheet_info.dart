@@ -17,7 +17,8 @@ enum TimesheetHeaderField { episode, title, scene, cut, time, name, sheet }
 ///
 /// ⛔No scene: 유저 09-25 「씬은 작품설정에선 필요없어. 1500컷을 작업한다치면
 /// 콘티패널 내에서 컷들을 하나로 묶어서 씬/파트 이렇게 묶게할예정」 — a scene
-/// belongs to a group of cuts, not to the work.
+/// belongs to a group of cuts, not to the work: for now to each cut
+/// (`CutMetadata.scene`, 유저 2026-10-28 F-291 「즉 컷마다 개별적임」).
 /// ⛔No artist of its own: a sheet's 作業者 is a stage's worker on the CUT
 /// (`sheetArtistMark`). ↩️It was the 원화 worker in the work's [staff]
 /// (유저 09-25 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의

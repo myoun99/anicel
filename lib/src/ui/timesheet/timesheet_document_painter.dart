@@ -390,15 +390,16 @@ class TimesheetDocumentLayout {
   }
 
   /// What a header box prints that someone TYPED — the work's title and
-  /// episode, the cut's name, its sheet worker — or null for a box the
-  /// sheet counts itself (the length, the page). Shared by the painter and
-  /// the tap-to-edit layer, so the field opens on the printed words.
+  /// episode, the cut's name and scene, its sheet worker — or null for a
+  /// box the sheet counts itself (the length, the page). Shared by the
+  /// painter and the tap-to-edit layer, so the field opens on the printed
+  /// words.
   String? typedHeaderValue(TimesheetHeaderField field) => switch (field) {
     TimesheetHeaderField.episode => document.episode,
     TimesheetHeaderField.title => document.title,
-    // Written by hand: a scene belongs to a group of cuts, which the
-    // conte will make (유저 09-25), not to the work.
-    TimesheetHeaderField.scene => '',
+    // The cut's own (유저 2026-10-28, F-291: 「즉 컷마다 개별적임」), not the
+    // work's (유저 09-25). ↩️It printed blank, written by hand.
+    TimesheetHeaderField.scene => document.scene,
     TimesheetHeaderField.cut => document.cutName,
     TimesheetHeaderField.name => document.artist,
     TimesheetHeaderField.time || TimesheetHeaderField.sheet => null,

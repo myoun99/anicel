@@ -8,10 +8,12 @@ import '../../models/conte/conte_ink_keys.dart'
 import '../../models/cut.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/cut_id.dart';
+import '../../models/cut_metadata.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart'
     show envelopeInkKeyOfCut;
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
+import '../../models/layer_process.dart';
 import '../../models/track_id.dart';
 import '../../models/timesheet_document.dart' show sheetArtistMark;
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
@@ -281,6 +283,13 @@ class CutVerbs {
         ),
       );
 
+  /// [cutId]'s scene, typed into the box a paper prints it in (F-291).
+  void setCutScene(CutId cutId, String scene) => _activeCut.onCutQuietly(
+    cutId,
+    (cutId) =>
+        _project.cutCommandCoordinator.setCutScene(cutId: cutId, scene: scene),
+  );
+
   void updateActiveCutNote({required int page, required String note}) =>
       _activeCut.onActiveCut((cutId) => _writeNote(cutId, page, note));
 
@@ -332,37 +341,44 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
-  /// The first addressed cut's own staff names — what 컷 설정 shows, as the
-  /// cut button shows the first addressed cut's 색 라벨 — or null with no
-  /// cut to address, so the window stands down (the gap state).
-  Map<String, String>? get addressedCutStaff {
+  /// The first addressed cut's metadata — its own staff names and the folds
+  /// 컷 설정 opens on, what that window shows, as the cut button shows the
+  /// first addressed cut's 색 라벨 — or null with no cut to address, so the
+  /// window stands down (the gap state).
+  CutMetadata? get addressedCutMetadata {
     final cutIds = addressedCutIds;
-    return cutIds.isEmpty
-        ? null
-        : _project.cutById(cutIds.first)?.metadata.staff;
+    return cutIds.isEmpty ? null : _project.cutById(cutIds.first)?.metadata;
   }
 
   /// Names each stage of [names] on every addressed cut — and on each one's
-  /// 겸용 siblings — as ONE undo step; every other stage keeps each cut's
-  /// own (컷 설정).
-  void setAddressedCutStaffNames(Map<LayerMark, String> names) {
+  /// 겸용 siblings — and opens [openFolds] on every addressed cut's own, as
+  /// ONE undo step; every other stage keeps each cut's own (컷 설정's save).
+  void setAddressedCutStaff(
+    Map<LayerMark, String> names, {
+    Set<LayerProcess>? openFolds,
+  }) {
     final cutIds = addressedCutIds;
-    if (cutIds.isEmpty || names.isEmpty) {
+    if (cutIds.isEmpty) {
       return;
     }
     _project.cutCommandCoordinator.setCutStaffNames(
       cutIds: cutIds,
       names: names,
+      openFolds: openFolds,
     );
     _changes.notifyChanged();
   }
 
-  void renameActiveCut(String newName) => _activeCut.onActiveCut(
-    (cutId) => _project.cutCommandCoordinator.renameCut(
-      cutId: cutId,
-      newName: newName,
-    ),
-  );
+  /// The active cut named [newName] — and put in [scene] where one is given,
+  /// as the cut rename window gives it (F-291) — as ONE undo step.
+  void renameActiveCut(String newName, {String? scene}) =>
+      _activeCut.onActiveCut(
+        (cutId) => _project.cutCommandCoordinator.nameCut(
+          cutId: cutId,
+          name: newName,
+          scene: scene,
+        ),
+      );
 
   /// Names each cut of [names] — ONE undo step. 자동 이름 지정's cuts (I-18,
   /// targets-Q4 「컷마다 따로 연번」): every cut takes a number of its own, a

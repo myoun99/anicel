@@ -88,6 +88,23 @@ Cut _cut() {
 }
 
 void main() {
+  test('the header writes the cut\'s own scene — 🗣️F-291-Q7 「컷의 신을 '
+      '쓴다」', () {
+    final cut = _cut();
+    final inScene = cut.copyWith(
+      metadata: cut.metadata.copyWith(scene: '12'),
+    );
+    final json =
+        jsonDecode(
+              buildXdtsContent(
+                cut: inScene,
+                cutLabel: '3',
+              ).split('\n').skip(1).join('\n'),
+            )
+            as Map<String, dynamic>;
+    expect(json['header'], {'cut': '3', 'scene': '12'});
+  });
+
   test('XDTS content: identifier line + spec-shaped JSON with CELL/DIALOG/'
       'CAMERAWORK fields', () {
     final content = buildXdtsContent(
@@ -101,7 +118,10 @@ void main() {
 
     final json = jsonDecode(lines.skip(1).join('\n')) as Map<String, dynamic>;
     expect(json['version'], 5);
-    expect(json['header'], {'cut': '3', 'scene': '1'});
+    expect(json['header'], {
+      'cut': '3',
+      'scene': '',
+    }, reason: 'no scene written');
 
     final timeTable =
         (json['timeTables'] as List<dynamic>).single as Map<String, dynamic>;

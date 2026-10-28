@@ -301,9 +301,6 @@ class _CutCommands {
     }
   }
 
-  void renameCut({required CutId cutId, required String newName}) =>
-      renameCuts({cutId: newName});
-
   /// Names each cut of [names] as ONE undo step — the rename's one body,
   /// which 자동 이름 지정 (I-18) hands a whole run of cuts. A cut already
   /// wearing its name adds nothing, and a press that changes nothing adds
@@ -311,13 +308,40 @@ class _CutCommands {
   void renameCuts(Map<CutId, String> names) =>
       _coordinator.historyManager.executeAsOneStep('Rename cuts', [
         for (final MapEntry(key: cutId, value: name) in names.entries)
-          if (_coordinator._requireCut(cutId).name != name)
-            RenameCutCommand(
-              repository: _coordinator.repository,
-              cutId: cutId,
-              newName: name,
-            ),
+          ?_renameOf(cutId, name),
       ]);
+
+  /// [cutId]'s scene, as ONE undo step — none where it is already that.
+  void setCutScene({required CutId cutId, required String scene}) =>
+      _coordinator.historyManager.executeAsOneStep('Set cut scene', [
+        ?_sceneOf(cutId, scene),
+      ]);
+
+  /// [cutId] named [name] — and, from the cut rename window (F-291), put in
+  /// scene [scene] — as ONE undo step, each only where it changed.
+  void nameCut({required CutId cutId, required String name, String? scene}) =>
+      _coordinator.historyManager.executeAsOneStep('Name cut', [
+        ?_renameOf(cutId, name),
+        if (scene != null) ?_sceneOf(cutId, scene),
+      ]);
+
+  Command? _renameOf(CutId cutId, String name) =>
+      _coordinator._requireCut(cutId).name == name
+      ? null
+      : RenameCutCommand(
+          repository: _coordinator.repository,
+          cutId: cutId,
+          newName: name,
+        );
+
+  Command? _sceneOf(CutId cutId, String scene) =>
+      _coordinator._requireCut(cutId).metadata.scene == scene
+      ? null
+      : UpdateCutSceneCommand(
+          repository: _coordinator.repository,
+          cutId: cutId,
+          scene: scene,
+        );
 
   /// Commits a storyboard edge drag as one undoable step: durations (end
   /// trims) and leading gaps (start slides / gap consumption) together.
@@ -360,10 +384,13 @@ class _CutCommands {
 
   /// 컷 설정: each stage of [names] named on [cutIds] and their 겸용
   /// siblings, as ONE undo step — the stages it does not name keep each
-  /// cut's own, and a stage every cut already has so is no step at all.
+  /// cut's own, and a stage every cut already has so is no step at all —
+  /// with, where the window was saved with them, the folds it opens on
+  /// ([openFolds], F-291-Q4: each of [cutIds]' own).
   void setCutStaffNames({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,
+    Set<LayerProcess>? openFolds,
   }) {
     final project = _coordinator.repository.requireProject();
     final cuts = [
@@ -379,6 +406,18 @@ class _CutCommands {
             mark: mark,
             name: name,
           ),
+      if (openFolds != null &&
+          cutIds.any(
+            (cutId) => !setEquals(
+              requireCut(project, cutId).metadata.openStaffFolds,
+              openFolds,
+            ),
+          ))
+        UpdateCutStaffFoldsCommand(
+          repository: _coordinator.repository,
+          cutIds: cutIds,
+          open: openFolds,
+        ),
     ]);
   }
 

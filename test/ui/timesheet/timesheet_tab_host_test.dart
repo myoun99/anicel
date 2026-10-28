@@ -211,7 +211,7 @@ void main() {
         '大川',
       );
       expect(
-        session.cutVerbs.addressedCutStaff?[sheetArtistMark.keySlug],
+        session.cutVerbs.addressedCutMetadata?.staffNameFor(sheetArtistMark),
         '大川',
         reason: 'one name — the one 컷 설정 shows',
       );
@@ -252,6 +252,29 @@ void main() {
 
       expect(find.byKey(_editorKey), findsNothing);
       expect(session.requireActiveCut.name, name);
+    });
+
+    // 🗣️F-291 (유저 2026-10-28): 「타임시트용지패널에서 신 눌러서
+    // 편집할수있게하고 … 즉 컷마다 개별적임 … 신은 그리고 이름 비울수있음」.
+    testWidgets('🎯the scene box types the cut\'s own scene, opens on what '
+        'it prints, and empties', (tester) async {
+      await pumpHost(tester, brushAllowed: false);
+
+      await typeInto(tester, 'scene', 'S3');
+      expect(session.requireActiveCut.metadata.scene, 'S3');
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-scene-edit-p0')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byKey(_editorKey)).controller!.text,
+        'S3',
+      );
+      await tester.enterText(find.byKey(_editorKey), '');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(session.requireActiveCut.metadata.scene, isEmpty);
     });
   });
 }
