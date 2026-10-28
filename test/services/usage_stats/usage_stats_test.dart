@@ -194,13 +194,16 @@ void main() {
         'app_started', () async {
       final stats = run(_MemoryStore([]));
       await stats.reportLaunch();
+      // A run that crosses midnight UTC, and its new day.
+      nextDay();
       await stats.reportResume();
       stats.setEnabled(false);
       stats.setEnabled(true);
       await pumpEventQueue();
-      expect(sent, hasLength(2));
-      expect(sent[1], [
-        'day days=new',
+      expect(sent, [
+        ['app_started', 'day days=new'],
+        ['day days=1-2'],
+        ['day days=new'],
       ]);
     });
 

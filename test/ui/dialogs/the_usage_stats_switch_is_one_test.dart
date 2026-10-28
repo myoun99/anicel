@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/dialogs/launch_notice_window.dart';
 import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
 import 'package:anicel/src/ui/dialogs/usage_stats_switch_row.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/editor_app_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_tooltip.dart';
@@ -127,5 +128,14 @@ void main() {
     await tester.tap(find.text('launch'));
     await tester.pumpAndSettle();
     expect(tester.booleanDotIn(_switchIn(_notice)).value, isFalse);
+  });
+
+  test('the switch goes with the app\'s settings', () {
+    final settings = EditorAppSettings();
+    settings.dispose();
+    expect(
+      () => settings.usageStats.enabled.addListener(() {}),
+      throwsFlutterError,
+    );
   });
 }

@@ -254,6 +254,12 @@ void main() {
       received.single.headers.value('Content-Type'),
       'application/json',
     );
+    // Its length said up front, as the SDKs' HTTP clients say it — not
+    // chunked.
+    expect(
+      received.single.headers.contentLength,
+      utf8.encode('[{"props":{"days":"1-2"},"locale":"한국어"}]').length,
+    );
     expect(
       received.single.body,
       '[{"props":{"days":"1-2"},"locale":"한국어"}]',
