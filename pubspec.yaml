@@ -117,6 +117,13 @@ flutter:
   assets:
     - assets/fonts/
     - assets/licenses/
+    # 🚨A FILE A SHADER #includes, LISTED SO A CHANGE TO IT REBUILDS THEM.
+    # Nothing loads it. flutter rebuilds the compiled shaders only when a
+    # listed asset is newer than them (`flutter test`'s `_needsRebuild`,
+    # the build's asset depfile) — and an include is no shader of its own.
+    # 🔬10-28: nine mutants of this file lived, every test drawing with the
+    # shaders compiled before them.
+    - shaders/lens_light.glsl
 
   # 🚨THE APP UI's OWN FACE (유저 확정 2026-08-28). The app used to have no
   # font of its own and wore whatever the OS handed it, so the same screen
