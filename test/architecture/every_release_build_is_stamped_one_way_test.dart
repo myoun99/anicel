@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anicel/src/core/build_stamp.dart';
+import 'package:anicel/src/services/usage_stats/aptabase_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/dart_sources.dart';
@@ -49,6 +50,24 @@ void main() {
     expect(script, contains('--dart-define=$buildNumberDefine='));
     expect(script, contains('--dart-define=$buildCommitDefine='));
     expect(script, contains('--build-number='));
+  });
+
+  test('and passes the usage statistics\' key the app reads — a build made '
+      'anywhere else has none, and sends nothing (I-70)', () {
+    final script = File('tool/release_build.sh').readAsStringSync();
+    expect(script, contains('--dart-define=$aptabaseKeyDefine='));
+    // A key that names no region would ship builds that never send.
+    final key = RegExp(
+      r"^aptabase_app_key='([^']*)'\r?$",
+      multiLine: true,
+    ).firstMatch(script)?.group(1);
+    expect(key, isNotNull, reason: 'the script names its key on one line');
+    expect(AptabaseClient.endpointFor(key!), isNotNull, reason: key);
+    expect(
+      AptabaseClient().canSend,
+      isFalse,
+      reason: '시험은 키를 받지 않은 빌드다',
+    );
   });
 
   test('a stamped build says its number and commit; an unstamped one, dev',

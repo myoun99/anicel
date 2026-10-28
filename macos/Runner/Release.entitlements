@@ -6,6 +6,9 @@
 	<true/>
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- I-70: the usage statistics' send, once the person turns them on. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 	<!-- PICK-1: see DebugProfile.entitlements. These two must match across
 	     both files - a release build missing them would open panels that
 	     silently cannot read their own result. -->

@@ -11,15 +11,18 @@
 library;
 
 /// The defines `tool/release_build.sh` passes, spelled again there;
-/// `every_release_build_is_stamped_one_way_test.dart` reads both.
+/// `every_release_build_is_stamped_one_way_test.dart` reads both (and the
+/// usage statistics' key, `aptabaseKeyDefine`, beside them).
 const String buildNumberDefine = 'ANICEL_BUILD';
 const String buildCommitDefine = 'ANICEL_COMMIT';
 
-const String _number = String.fromEnvironment(buildNumberDefine);
+/// The round's number alone — empty in a build nobody stamped. The usage
+/// statistics name the app's version by it (I-70).
+const String buildNumber = String.fromEnvironment(buildNumberDefine);
 const String _commit = String.fromEnvironment(buildCommitDefine);
 
 /// This build's stamp — see [stampOf].
-String get buildStamp => stampOf(number: _number, commit: _commit);
+String get buildStamp => stampOf(number: buildNumber, commit: _commit);
 
 /// `<number> (<commit>)`, or `dev` when no number was stamped.
 String stampOf({required String number, required String commit}) =>

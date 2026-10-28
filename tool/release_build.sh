@@ -14,6 +14,14 @@
 #
 # ⚠️No `set -u`: the Mac's bash 3.2 calls an empty "$@" unbound.
 
+# The usage statistics' Aptabase App Key (I-70), `A-EU-…` or `A-US-…`. It
+# ships inside every build that sends, as any analytics key does, so it is
+# written here rather than kept secret (the user made the app, EU region,
+# 2026-10-29). The app reads it back in
+# lib/src/services/usage_stats/aptabase_client.dart; a build made anywhere
+# but here (the IDE, Android Studio, a test) has none, and sends nothing.
+aptabase_app_key='A-EU-1462843916'
+
 platform=$1
 number=$2
 shift 2
@@ -31,4 +39,5 @@ exec flutter build "$platform" --release \
   --build-number="$number" \
   --dart-define=ANICEL_BUILD="$number" \
   --dart-define=ANICEL_COMMIT="$commit" \
+  --dart-define=ANICEL_APTABASE_KEY="$aptabase_app_key" \
   "$@"

@@ -115,6 +115,7 @@ const _builtOnlyOutsideTests = <String, String>{
   'save_settings.json': 'HomePage, _unlessTesting',
   'shortcut_overrides.json': 'HomePage, _unlessTesting',
   'ui_scale.json': 'HomePage, _unlessTesting — and the two main()s',
+  'usage_stats.json': 'HomePage, _unlessTesting',
   'window.json':
       'main(), WindowPlace and WindowFullScreen.restore — a test names its '
       'file',
