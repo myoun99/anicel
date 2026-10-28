@@ -30,8 +30,8 @@ void main() {
       ),
     ],
     cels: [
-      CutEnvelopeCelCount(name: 'A', genga: 16, dougaEstimate: 23),
-      CutEnvelopeCelCount(name: 'B', genga: 11, dougaEstimate: 14),
+      CutEnvelopeCelCount(name: 'A', genga: 16, douga: 23, shiage: 9),
+      CutEnvelopeCelCount(name: 'B', genga: 11, douga: 14, shiage: 0),
     ],
     staff: {'key': '大川', 'inbetween': '山田'},
     logoAssetPath: 'logos/studio.png',
@@ -64,6 +64,34 @@ void main() {
       expect(resolveEnvelopeText('{cel[1].douga}', source), '14');
       expect(resolveEnvelopeText('{total.genga}', source), '27');
       expect(resolveEnvelopeText('{total.douga}', source), '37');
+      expect(resolveEnvelopeText('{cel[0].shiage}', source), '9');
+      expect(resolveEnvelopeText('{total.shiage}', source), '9');
+    });
+
+    test('🗣️F-498: each 担当 column prints its own stage\'s count', () {
+      final analog = CutEnvelopePresets.analog;
+      String? bound(String id) => analog.boxById(id)!.binding;
+
+      expect(bound('cel-0-原画'), '{cel[0].genga}');
+      expect(bound('cel-0-動画'), '{cel[0].douga}');
+      expect(bound('cel-0-トレス・ペイント'), '{cel[0].shiage}');
+      expect(bound('cel-total-トレス・ペイント'), '{total.shiage}');
+      expect(bound('cel-0-色指定'), isNull, reason: 'the pen fills it');
+      expect(bound('cel-0-スキャン'), isNull, reason: 'the pen fills it');
+    });
+
+    test('🗣️F-498: a CUT line\'s seconds and frames sit centred', () {
+      final analog = CutEnvelopePresets.analog;
+
+      for (var index = 0; index < 4; index += 1) {
+        for (final part in ['seconds', 'frames']) {
+          expect(
+            analog.boxById('cut-$index-$part')!.contentAlign,
+            EnvelopeAlign.center,
+            reason: '「각 위치 중앙정렬」 — cut-$index-$part',
+          );
+        }
+      }
     });
 
     test('staff names resolve; an unheld role prints nothing', () {
@@ -274,7 +302,7 @@ bool _isAddressable(String binding) {
     ],
     cels: [
       for (var i = 0; i < 32; i += 1)
-        const CutEnvelopeCelCount(name: 'x', genga: 0, dougaEstimate: 0),
+        const CutEnvelopeCelCount(name: 'x', genga: 0, douga: 0, shiage: 0),
     ],
     staff: const {'probe': 'x'},
     logoAssetPath: 'x',

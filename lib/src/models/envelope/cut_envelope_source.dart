@@ -88,8 +88,8 @@ final RegExp _indexed = RegExp(r'^(\w+)\[(\d+)\]\.(\w+)$');
 /// Grammar:
 /// `{title}` `{episode}` `{note}`
 /// `{cut[i].name|seconds|frames|length}`
-/// `{cel[i].name|genga|douga}`
-/// `{total.genga|douga}`
+/// `{cel[i].name|genga|douga|shiage}`
+/// `{total.genga|douga|shiage}`
 /// `{staff.<label>.name}` — a colour label's [LayerMark.keySlug]
 /// `{canvas.width|height}` `{camera.width|height}`
 String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
@@ -125,7 +125,8 @@ String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
         return switch (field) {
           'name' => cel.name,
           'genga' => '${cel.genga}',
-          'douga' => '${cel.dougaEstimate}',
+          'douga' => '${cel.douga}',
+          'shiage' => '${cel.shiage}',
           _ => null,
         };
       default:
@@ -145,7 +146,8 @@ String? resolveEnvelopeText(String binding, CutEnvelopeSource source) {
   if (parts.length == 2) {
     return switch (parts) {
       ['total', 'genga'] => '${source.total.genga}',
-      ['total', 'douga'] => '${source.total.dougaEstimate}',
+      ['total', 'douga'] => '${source.total.douga}',
+      ['total', 'shiage'] => '${source.total.shiage}',
       ['canvas', 'width'] => _size(source.canvasWidth),
       ['canvas', 'height'] => _size(source.canvasHeight),
       ['camera', 'width'] => _size(source.cameraWidth),

@@ -751,9 +751,25 @@ bool layerTakesSheetCelColumn(Layer layer) =>
 /// 타임시트용지패널의 CELL란에 표시하도록. 액션란에는 표시안함. 동화의 어떤
 /// 수정공정이던 CELL란표시」 · 10-21, F-431: 「시아게 공정쪽 레이어도
 /// 동일하게 CELL란에 등록」).
-bool layerTakesTheCelBlock(Layer layer) => switch (layer.mark.process) {
-  LayerProcess.inbetween || LayerProcess.finish => true,
-  _ => false,
+bool layerTakesTheCelBlock(Layer layer) =>
+    celStageOf(layer) != LayerProcess.key;
+
+/// The stage a cel row's drawings are counted under on paper, by its
+/// colour label whatever its revise: 動画 ([LayerProcess.inbetween]) and
+/// 仕上げ ([LayerProcess.finish]) — the CELL block's rows — and 原画
+/// ([LayerProcess.key]) for every other: the ACTION block's.
+///
+/// 🗣️F-498 (유저 2026-10-29): 「원화 세는건 타임시트용지패널이랑 맞추고
+/// (액션란이 원화), 동화도 그거 맞추고(셀란. 이 경우는 색라벨이 동화쪽일때만.
+/// 어떤 수정이던.). 시아게도 색라벨 맞춰서. 이런 법 하나로 통일. 뭐가 원화,
+/// 뭐가 동화로 인식되는지 라는 법」 — the sheet's two blocks
+/// ([layerTakesTheCelBlock]) and the cut envelope's counts
+/// (`cutEnvelopeCelCounts`) read this one answer. ↩️The envelope counted
+/// every cel row's drawings as 原画 and estimated its 動画 off them.
+LayerProcess celStageOf(Layer layer) => switch (layer.mark.process) {
+  LayerProcess.inbetween => LayerProcess.inbetween,
+  LayerProcess.finish => LayerProcess.finish,
+  _ => LayerProcess.key,
 };
 
 /// D24 후반: whether this layer marks a BOOK on the sheet — an image row
