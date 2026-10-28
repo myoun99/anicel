@@ -31,17 +31,19 @@ ui.Image chainedPictureOf(ui.Image image, {ui.Rect? source}) {
   if (source == null && carriesChain(image)) {
     return image;
   }
+  final from =
+      source ??
+      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
   final recorder = ui.PictureRecorder();
-  final canvas = ui.Canvas(recorder);
-  final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   // 1:1 — the same bytes; what the render adds is the engine's chain.
-  if (source == null) {
-    canvas.drawImage(image, ui.Offset.zero, paint);
-  } else {
-    canvas.drawImageRect(image, source, ui.Offset.zero & source.size, paint);
-  }
-  final width = source?.width.round() ?? image.width;
-  final height = source?.height.round() ?? image.height;
+  ui.Canvas(recorder).drawImageRect(
+    image,
+    from,
+    ui.Offset.zero & from.size,
+    ui.Paint()..filterQuality = ui.FilterQuality.none,
+  );
+  final width = from.width.round();
+  final height = from.height.round();
   final picture = recorder.endRecording();
   try {
     final chained = picture.toImageSync(width, height);
