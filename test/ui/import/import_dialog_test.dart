@@ -174,6 +174,39 @@ void main() {
     s.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('🗣️F-494: the window\'s line names what a file is going '
+      'through — a carried file\'s bytes held — and lets go once it is '
+      'through (「하고있는 과정을 투명하게」)', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final path = await tester.runAsync(() => writePng('ref.png'));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    await tester.pump();
+    final window = find.byType(AppProgressDialog);
+    final line = tester.widget<AppProgressDialog>(window).runningStatus!;
+    final lines = <String>[];
+    line.addListener(() => lines.add(line.value));
+    await pumpPastTheWaitWindow(tester);
+
+    expect(
+      lines,
+      [AppText.strings.imStepCarrying, ''],
+      reason: 'a row carries its file at first (seedImportSettings), so the '
+          'one long thing this file goes through is its bytes being held',
+    );
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('single files import with destination/fit defaults filled — '
       'the simple case is one press', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());

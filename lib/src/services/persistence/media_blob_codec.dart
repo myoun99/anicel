@@ -104,6 +104,7 @@ import 'dart:io';
 import 'dart:math' show Random;
 import 'dart:typed_data';
 
+import '../../core/progress_share.dart';
 import '../../native/qa_cel_compressor.dart';
 import 'anicel_payload_codec.dart';
 
@@ -268,11 +269,18 @@ class MediaBlobHeader {
 /// [readInto] is `MediaByteSource.readIntoSync`'s shape — the one the
 /// archive writer already streams through — so a caller holding an open
 /// handle passes it straight in rather than reopening once a block.
+///
+/// [onProgress] hears the bytes gone through as 0–1: the framing tries in
+/// the first half, the verbatim copy fills the second — each a road over
+/// the whole file, and which one ends it is not known until framing's last
+/// block (above) — and 1 once the blob stands, whichever did. 🔬F-494: a
+/// carried 3.4GB movie took 56 s here, behind 0%.
 ({String path, bool framed}) writeMediaBlob({
   required String basePath,
   required int length,
   required int Function(Uint8List buffer, int position, int size) readInto,
   int blockBytes = mediaBlockBytes,
+  void Function(double fraction)? onProgress,
 }) {
   // ⛔Written to a neighbour and renamed, and here that is not only about
   // torn files: framedness is not known until the last block, so the bytes
@@ -282,11 +290,23 @@ class MediaBlobHeader {
   final out = part.openSync(mode: FileMode.write);
   bool framed;
   try {
-    framed = _writeFramedBlocks(out, length, readInto, blockBytes);
+    framed = _writeFramedBlocks(
+      out,
+      length,
+      readInto,
+      blockBytes,
+      (done) => onProgress?.call(pieceShare(done, index: 0, count: 2)),
+    );
     if (!framed) {
       out.setPositionSync(0);
       out.truncateSync(0);
-      _writeVerbatim(out, length, readInto, blockBytes);
+      _writeVerbatim(
+        out,
+        length,
+        readInto,
+        blockBytes,
+        (done) => onProgress?.call(pieceShare(done, index: 1, count: 2)),
+      );
     }
   } finally {
     out.closeSync();
@@ -308,6 +328,7 @@ class MediaBlobHeader {
     }
     part.deleteSync();
   }
+  onProgress?.call(1);
   return (path: path, framed: framed);
 }
 
@@ -377,6 +398,7 @@ bool _writeFramedBlocks(
   int length,
   int Function(Uint8List, int, int) readInto,
   int blockBytes,
+  void Function(double fraction) told,
 ) {
   final compressor = QaCelCompressor.instance;
   if (compressor == null || !compressor.isSupported || length <= 0) {
@@ -414,6 +436,7 @@ bool _writeFramedBlocks(
     out.writeFromSync(block);
     blockLengths.add(block.length);
     at += want;
+    told(at / length);
   }
   out.setPositionSync(0);
   out.writeFromSync(
@@ -441,6 +464,7 @@ void _writeVerbatim(
   int length,
   int Function(Uint8List, int, int) readInto,
   int chunkBytes,
+  void Function(double fraction) told,
 ) {
   final buffer = Uint8List(chunkBytes);
   var at = 0;
@@ -452,5 +476,6 @@ void _writeVerbatim(
     }
     out.writeFromSync(buffer, 0, got);
     at += got;
+    told(at / length);
   }
 }

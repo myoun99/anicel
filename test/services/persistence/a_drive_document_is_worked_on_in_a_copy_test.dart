@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/services/persistence/save_failure.dart';
+import 'package:anicel/src/services/persistence/save_stretch.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
@@ -247,6 +248,33 @@ void main() {
       );
       expect(session.projectFile.hasUnsavedChanges, isFalse);
       expect(progress.last, 1);
+    });
+
+    test('🗣️F-494: the hand-back names itself once the write is done — the '
+        'window says the file is going back to its document', () async {
+      final uri = await projectDocument('Back.anicel');
+      final source = await FolderPicker.materializeOpenedFile(
+        uri,
+        within: null,
+        isCancelled: () => false,
+      );
+      final session = await openedSession(source.path);
+      addTearDown(session.dispose);
+      session.cutVerbs.createCut();
+      final stretches = <SaveStretch>[];
+
+      await session.projectDoor.saveProjectToFile(
+        source.path,
+        asked: SaveAsked.byAPerson,
+        onStretch: stretches.add,
+      );
+
+      expect(stretches, isNotEmpty);
+      expect(stretches.last, SaveStretch.handingBack);
+      expect(
+        stretches.where((stretch) => stretch == SaveStretch.handingBack),
+        hasLength(1),
+      );
     });
 
     test('🚨a hand-back the provider refuses leaves the session UNSAVED, '

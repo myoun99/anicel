@@ -185,6 +185,60 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('🗣️F-494: past its first count the window names what the save '
+      'is writing — the cels, then the media (「저장중 말고 … 하고있는 과정을 '
+      '보여주는식으로」)', (tester) async {
+    final s = session();
+    drawOnCurrentFrame(s);
+    final sound = '${directory.path.replaceAll('\\', '/')}/대사.wav';
+    await tester.runAsync(() async {
+      File(sound).writeAsBytesSync(List<int>.generate(300 * 1024, (i) => i));
+      await s.mediaPool.importMediaFiles([sound], copyIntoProject: true);
+    });
+    final path = '${directory.path.replaceAll('\\', '/')}/scene.anicel';
+    final lines = <String>[];
+    var listening = false;
+    var done = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                await saveProjectShowingProgress(context, s, path);
+                done = true;
+              },
+              child: const Text('go'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('go'));
+    await tester.pump();
+    await settleBehindTheWaitWindow(tester, () {
+      final window = find.byType(AppProgressDialog);
+      if (!listening && window.evaluate().isNotEmpty) {
+        listening = true;
+        final line = tester.widget<AppProgressDialog>(window).runningStatus!;
+        line.addListener(() => lines.add(line.value));
+      }
+      return done;
+    });
+    await tester.pump();
+    await tester.pump();
+
+    expect(done, isTrue, reason: 'the save never came back');
+    expect(
+      lines.where((line) => line.isNotEmpty),
+      [AppText.strings.saveStepCels, AppText.strings.saveStepMedia],
+      reason: 'each stretch of the write, as it moved on: $lines',
+    );
+    s.dispose();
+    await tester.pump();
+  });
+
   testWidgets('🗣️I-19: THE Save — File menu, Ctrl+S and the exit prompt ask '
       'one function — goes back to the bound file through the same window', (
     tester,

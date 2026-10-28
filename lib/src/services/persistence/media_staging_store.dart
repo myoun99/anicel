@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show immutable;
 
 import '../../core/on_a_worker.dart';
 import '../../core/path_names.dart';
+import '../../core/progress_share.dart';
 import '../../models/media_asset.dart'
     show MediaCarry, isOneStoredName, mediaCarryName, mediaNameParts;
 import '../media/media_byte_source.dart'
@@ -252,9 +253,14 @@ class MediaStagingStore {
   /// a one-line forwarder in the session — so the file that decided an
   /// asset carried and the file that held the bytes were two hops apart,
   /// and the scan could only see the hop.
+  ///
+  /// [onProgress] hears the copying as 0–1 the way a save's entries are
+  /// told: each file to copy an even share, filled as its bytes go through
+  /// (F-494 — a 3.4GB file took 56 s behind a bar at 0%).
   Future<List<StagedMedia>> stageCarriedBytes(
-    Iterable<MediaCarry> carries,
-  ) async {
+    Iterable<MediaCarry> carries, {
+    void Function(double fraction)? onProgress,
+  }) async {
     final todo = <MediaCarry>[];
     final done = <StagedMedia>[];
     for (final carry in carries) {
@@ -276,7 +282,10 @@ class MediaStagingStore {
     // way — so the ORDER a caller sees is identical, which is what the
     // entrances' invariant actually rests on.
     final directory = directoryPath;
-    final written = await onAWorker(() => _stageBytes(todo, directory));
+    final written = await onAWorkerReporting(
+      onProgress,
+      (report) => _stageBytes(todo, directory, report),
+    );
     for (final one in written) {
       done.add(
         StagedMedia(
@@ -641,17 +650,6 @@ typedef MediaLeftBehind = ({String name, int offset, int length});
 String? _pathInTheRoom(String directoryPath, String name) =>
     isOneStoredName(name) ? '$directoryPath/$name' : null;
 
-/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so
-/// the isolate closure captures the carries — records of two strings — and
-/// the folder, and nothing else.
-///
-/// ONE handle per file: `MediaFileBytes.readIntoSync` opens and closes per
-/// call, which a 4GB asset at 512KB blocks would pay eight thousand times.
-///
-/// ⚠️A file that cannot be opened is SKIPPED, not thrown for. The batch may
-/// be a whole folder, and one unreadable asset must not cost the rest their
-/// bytes — the pool then simply has no staged copy for it, which is the
-/// same state as never having asked.
 /// [MediaStagingStore.stageCarriedBytesFrom]'s work: [_stageBytes] with the
 /// bytes read from another project's [MediaByteSource] — plain data, so it
 /// crosses the isolate as the carries do — through a reader that keeps its
@@ -691,12 +689,24 @@ _stageBytesFrom(List<(MediaCarry, MediaByteSource, String)> todo) {
   return out;
 }
 
+/// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so
+/// the isolate closure captures the carries — records of two strings — and
+/// the folder, and nothing else.
+///
+/// ONE handle per file: `MediaFileBytes.readIntoSync` opens and closes per
+/// call, which a 4GB asset at 512KB blocks would pay eight thousand times.
+///
+/// ⚠️A file that cannot be opened is SKIPPED, not thrown for. The batch may
+/// be a whole folder, and one unreadable asset must not cost the rest their
+/// bytes — the pool then simply has no staged copy for it, which is the
+/// same state as never having asked.
 List<({String path, bool framed, int storedLength})> _stageBytes(
   List<MediaCarry> carries,
   String directoryPath,
+  void Function(double fraction) report,
 ) {
   final out = <({String path, bool framed, int storedLength})>[];
-  for (final carry in carries) {
+  for (final (index, carry) in carries.indexed) {
     final basePath = _pathInTheRoom(directoryPath, mediaCarryName(carry));
     if (basePath == null) {
       continue;
@@ -715,6 +725,8 @@ List<({String path, bool framed, int storedLength})> _stageBytes(
           handle.setPositionSync(position);
           return handle.readIntoSync(buffer, 0, size);
         },
+        onProgress: (done) =>
+            report(pieceShare(done, index: index, count: carries.length)),
       );
       out.add((
         path: written.path,

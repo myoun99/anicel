@@ -679,5 +679,94 @@ void main() {
         expect(File(one.path).existsSync(), isTrue);
       }
     });
+
+    test('🗣️F-494: a batch tells how far it is held, each file an even '
+        'share filled as its bytes go through — and the end once', () async {
+      final paths = [
+        noiseFile('a.wav', length: 2 * 1024 * 1024),
+        noiseFile('b.wav', length: 2 * 1024 * 1024),
+      ];
+      final heard = <double>[];
+
+      await store.stageCarriedBytes([
+        for (final path in paths) carry(path),
+      ], onProgress: heard.add);
+
+      expect(heard.last, 1);
+      expect(
+        heard.where((told) => told >= 1),
+        hasLength(1),
+        reason: 'the first file ended its OWN share, not the bar: $heard',
+      );
+      expect(
+        heard.where((told) => told > 0 && told < 0.5),
+        isNotEmpty,
+        reason: 'the first file, on its way: $heard',
+      );
+      expect(
+        heard.where((told) => told > 0.5 && told < 1),
+        isNotEmpty,
+        reason: 'the second file, on its way: $heard',
+      );
+    });
+  });
+
+  group('🗣️F-494: holding one file tells how far it is', () {
+    /// [path] written as a blob a block at a time, with what it told.
+    ({List<double> heard, bool framed}) held(String path) {
+      final length = File(path).lengthSync();
+      final handle = File(path).openSync();
+      addTearDown(handle.closeSync);
+      final heard = <double>[];
+      final written = writeMediaBlob(
+        basePath: '$path.held',
+        length: length,
+        readInto: (buffer, position, size) {
+          handle.setPositionSync(position);
+          return handle.readIntoSync(buffer, 0, size);
+        },
+        blockBytes: 64 * 1024,
+        onProgress: heard.add,
+      );
+      return (heard: heard, framed: written.framed);
+    }
+
+    test('a file that will not frame: the framing tries fill the first '
+        'half, the verbatim copy the second, and the end is said', () {
+      final (:heard, :framed) = held(noiseFile('noise.wav', length: 1 << 20));
+
+      expect(framed, isFalse, reason: 'fixture: noise does not compress');
+      expect(heard.last, 1);
+      expect(
+        heard.where((told) => told > 0.5 && told < 1),
+        isNotEmpty,
+        reason: 'the copy is counted on its way: $heard',
+      );
+      if (engineHere()) {
+        expect(
+          heard.where((told) => told > 0 && told <= 0.5),
+          isNotEmpty,
+          reason: 'and the framing tries before it: $heard',
+        );
+      }
+    });
+
+    test('a file that frames ends where its framing ends, at half, and '
+        'then says the end', () {
+      if (!engineHere()) {
+        markTestSkipped('no compressor here — nothing frames');
+        return;
+      }
+      final (:heard, :framed) = held(sourceFile('take.wav', length: 1 << 20));
+
+      expect(framed, isTrue, reason: 'fixture: the source compresses');
+      expect(heard.last, 1);
+      expect(
+        heard.sublist(0, heard.length - 1),
+        everyElement(lessThanOrEqualTo(0.5)),
+        reason: 'no copy ran, so nothing past half until the end: $heard',
+      );
+      expect(heard, contains(0.5), reason: 'the framing went all the way');
+    });
   });
 }

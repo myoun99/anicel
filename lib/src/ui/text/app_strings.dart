@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/timesheet_info.dart' show WorkPicture;
 import '../../models/timesheet_sheet_kind.dart';
+import '../../services/persistence/save_stretch.dart';
 import '../audio/sound_cannot_play.dart' show SoundCannotPlay;
 
 /// The LIVE program/notation languages, app-wide — the same shape
@@ -532,6 +533,31 @@ enum AppStrings {
   String get saveProgressDone => _s('saveProgressDone');
   String get savePrepareRunning => _s('savePrepareRunning');
   String get savePrepareDone => _s('savePrepareDone');
+
+  /// The stretch of a save the wait window's line names while it runs
+  /// (F-494, [SaveStretch]): the media taken out set aside, the cels, the
+  /// carried files checked, the media, the sounds converted for playback,
+  /// the fonts, the file's gaps closed, the file handed back to its document.
+  String get saveStepKeepingLeftBehind => _s('saveStepKeepingLeftBehind');
+  String get saveStepCels => _s('saveStepCels');
+  String get saveStepChecking => _s('saveStepChecking');
+  String get saveStepMedia => _s('saveStepMedia');
+  String get saveStepConforms => _s('saveStepConforms');
+  String get saveStepFonts => _s('saveStepFonts');
+  String get saveStepCompacting => _s('saveStepCompacting');
+  String get saveStepHandingBack => _s('saveStepHandingBack');
+
+  /// What a save's window says while it is in [stretch].
+  String saveStep(SaveStretch stretch) => switch (stretch) {
+    SaveStretch.keepingLeftBehind => saveStepKeepingLeftBehind,
+    SaveStretch.cels => saveStepCels,
+    SaveStretch.checking => saveStepChecking,
+    SaveStretch.media => saveStepMedia,
+    SaveStretch.conforms => saveStepConforms,
+    SaveStretch.fonts => saveStepFonts,
+    SaveStretch.compacting => saveStepCompacting,
+    SaveStretch.handingBack => saveStepHandingBack,
+  };
   String get openProgressRunning => _s('openProgressRunning');
   String get openProgressDone => _s('openProgressDone');
 
@@ -1556,6 +1582,14 @@ enum AppStrings {
   String get imStatusImporting => _s('imStatusImporting');
   String get imStatusNothing => _s('imStatusNothing');
   String get imStatusDone => _s('imStatusDone');
+
+  /// The stretch of a run the wait window's line names while it reports
+  /// (F-494): a trimmed movie's piece encoded again, another kind's span
+  /// written out, a file's bytes carried in, its cels rasterized.
+  String get imStepRecoding => _s('imStepRecoding');
+  String get imStepWritingSpan => _s('imStepWritingSpan');
+  String get imStepCarrying => _s('imStepCarrying');
+  String get imStepRasterizing => _s('imStepRasterizing');
   String get imFolderGone => _s('imFolderGone');
   String imFolderUnreadable(String reason) =>
       _s('imFolderUnreadableTemplate').replaceAll('{reason}', reason);
@@ -2229,6 +2263,14 @@ enum AppStrings {
     'saveProgressDone': 'Saved',
     'savePrepareRunning': 'Preparing…',
     'savePrepareDone': 'Ready',
+    'saveStepKeepingLeftBehind': 'Setting aside the media taken out…',
+    'saveStepCels': 'Writing cels…',
+    'saveStepChecking': 'Checking the files to carry…',
+    'saveStepMedia': 'Writing media…',
+    'saveStepConforms': 'Writing the sound converted for playback…',
+    'saveStepFonts': 'Writing fonts…',
+    'saveStepCompacting': 'Closing up the gaps in the file…',
+    'saveStepHandingBack': 'Handing the file back to its document…',
     'openProgressRunning': 'Opening…',
     'openProgressDone': 'Opened',
     'openWaitingCloudTemplate': 'Downloading from the cloud · {sec}s',
@@ -2847,6 +2889,10 @@ enum AppStrings {
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
     'imStatusDone': 'Imported',
+    'imStepRecoding': 'Re-encoding the trimmed movie…',
+    'imStepWritingSpan': 'Writing the trimmed span to a file…',
+    'imStepCarrying': 'Keeping the file inside the project…',
+    'imStepRasterizing': 'Rasterizing into cels…',
     'imFolderGone': 'That folder is gone.',
     'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
     'imCutFolderUnreadable': 'Could not read that folder.',
@@ -3517,6 +3563,14 @@ enum AppStrings {
     'saveProgressDone': '保存しました',
     'savePrepareRunning': '準備中…',
     'savePrepareDone': '準備完了',
+    'saveStepKeepingLeftBehind': '外したメディアを退避中…',
+    'saveStepCels': 'セルを書き込み中…',
+    'saveStepChecking': '格納するファイルを確認中…',
+    'saveStepMedia': 'メディアを書き込み中…',
+    'saveStepConforms': '再生用に変換した音声を書き込み中…',
+    'saveStepFonts': 'フォントを書き込み中…',
+    'saveStepCompacting': 'ファイルの空きを詰めています…',
+    'saveStepHandingBack': '元の書類にファイルを渡しています…',
     'openProgressRunning': '読み込み中…',
     'openProgressDone': '読み込みました',
     'openWaitingCloudTemplate': 'クラウドから受信中 · {sec}秒',
@@ -4475,6 +4529,10 @@ enum AppStrings {
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
     'imStatusDone': 'インポートしました',
+    'imStepRecoding': 'トリミングした動画を再エンコード中…',
+    'imStepWritingSpan': '切り出した範囲をファイルに書き出し中…',
+    'imStepCarrying': 'ファイルをプロジェクトに埋め込み中…',
+    'imStepRasterizing': 'セルにラスタライズ中…',
     'imFolderGone': 'そのフォルダーは見つかりません。',
     'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
     'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
@@ -5272,6 +5330,14 @@ enum AppStrings {
     'saveProgressDone': '저장 완료',
     'savePrepareRunning': '준비 중…',
     'savePrepareDone': '준비 완료',
+    'saveStepKeepingLeftBehind': '빠진 미디어를 옮겨 두는 중…',
+    'saveStepCels': '셀을 쓰는 중…',
+    'saveStepChecking': '품을 파일을 확인하는 중…',
+    'saveStepMedia': '미디어를 쓰는 중…',
+    'saveStepConforms': '재생용으로 변환한 소리를 쓰는 중…',
+    'saveStepFonts': '글꼴을 쓰는 중…',
+    'saveStepCompacting': '파일의 빈 자리를 메우는 중…',
+    'saveStepHandingBack': '원래 문서로 파일을 넘기는 중…',
     'openProgressRunning': '여는 중…',
     'openProgressDone': '열기 완료',
     'openWaitingCloudTemplate': '클라우드에서 내려받는 중 · {sec}초',
@@ -6221,6 +6287,10 @@ enum AppStrings {
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
     'imStatusDone': '임포트 완료',
+    'imStepRecoding': '잘라 낸 동영상을 다시 인코딩하는 중…',
+    'imStepWritingSpan': '잘라 낸 구간을 파일로 쓰는 중…',
+    'imStepCarrying': '파일을 프로젝트에 품는 중…',
+    'imStepRasterizing': '셀로 래스터라이즈하는 중…',
     'imFolderGone': '그 폴더가 없어졌습니다.',
     'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
     'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
@@ -7029,6 +7099,14 @@ enum AppStrings {
     'saveProgressDone': 'Enregistré',
     'savePrepareRunning': 'Préparation…',
     'savePrepareDone': 'Prêt',
+    'saveStepKeepingLeftBehind': 'Mise de côté des médias retirés…',
+    'saveStepCels': 'Écriture des cellulos…',
+    'saveStepChecking': 'Vérification des fichiers à intégrer…',
+    'saveStepMedia': 'Écriture des médias…',
+    'saveStepConforms': 'Écriture du son converti pour la lecture…',
+    'saveStepFonts': 'Écriture des polices…',
+    'saveStepCompacting': 'Comblement des vides du fichier…',
+    'saveStepHandingBack': 'Remise du fichier à son document…',
     'resizeProgressRunning': 'Redimensionnement…',
     'resizeProgressDone': 'Redimensionné',
     'bakeProgressRunning': 'Pixellisation…',
@@ -8090,6 +8168,10 @@ enum AppStrings {
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
     'imStatusDone': 'Importé',
+    'imStepRecoding': 'Réencodage de la vidéo découpée…',
+    'imStepWritingSpan': 'Écriture de la plage découpée dans un fichier…',
+    'imStepCarrying': 'Intégration du fichier au projet…',
+    'imStepRasterizing': 'Pixellisation en cellulos…',
     'imFolderGone': 'Ce dossier n’existe plus.',
     'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
     'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
@@ -8879,6 +8961,14 @@ enum AppStrings {
     'saveProgressDone': '已保存',
     'savePrepareRunning': '正在准备…',
     'savePrepareDone': '准备完成',
+    'saveStepKeepingLeftBehind': '正在暂存移除的媒体…',
+    'saveStepCels': '正在写入赛璐珞…',
+    'saveStepChecking': '正在校验要内嵌的文件…',
+    'saveStepMedia': '正在写入媒体…',
+    'saveStepConforms': '正在写入为播放转换的音频…',
+    'saveStepFonts': '正在写入字体…',
+    'saveStepCompacting': '正在填补文件中的空隙…',
+    'saveStepHandingBack': '正在将文件交还给原文档…',
     'resizeProgressRunning': '正在调整尺寸…',
     'resizeProgressDone': '已调整尺寸',
     'bakeProgressRunning': '正在栅格化…',
@@ -9777,6 +9867,10 @@ enum AppStrings {
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
     'imStatusDone': '已导入',
+    'imStepRecoding': '正在重新编码裁剪后的视频…',
+    'imStepWritingSpan': '正在将裁剪的范围写入文件…',
+    'imStepCarrying': '正在将文件内嵌到项目…',
+    'imStepRasterizing': '正在栅格化为赛璐珞…',
     'imFolderGone': '该文件夹已不存在。',
     'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
     'imCutFolderUnreadable': '无法读取该文件夹。',

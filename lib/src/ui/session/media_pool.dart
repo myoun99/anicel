@@ -141,7 +141,13 @@ class MediaPool {
   /// staging landed until 2026-09-24, while [addMediaAssets] beside it held
   /// them (card `a-registered-carry-holds-its-bytes`). Two ways in, and only
   /// one of them kept 「품은 순간 데이터를 가지고있고 불변」 (유저 08-30).
-  Future<void> _admit(List<MediaAsset> entries) async {
+  ///
+  /// [onCarrying] hears the holding as 0–1
+  /// ([MediaStagingStore.stageCarriedBytes]), and only when there is some.
+  Future<void> _admit(
+    List<MediaAsset> entries, {
+    void Function(double fraction)? onCarrying,
+  }) async {
     final seen = {for (final asset in mediaAssets) asset.path};
     final fresh = [
       for (final entry in entries)
@@ -155,7 +161,7 @@ class MediaPool {
     // behind the clip, onto the undo the clip should have had
     // (`audio_import_test`).
     if (toHold.isNotEmpty) {
-      await _staging.stageCarriedBytes(toHold);
+      await _staging.stageCarriedBytes(toHold, onProgress: onCarrying);
     }
     // Read after the wait: what landed meanwhile is kept, not written over.
     final pool = mediaAssets;
@@ -198,8 +204,15 @@ class MediaPool {
   /// file on disk may have moved on since. 🪦So placing a carried file from
   /// the pool copied its original AGAIN once a save had absorbed the first
   /// copy — the edited original, when it had been edited.
-  Future<void> holdCarriedBytes(Iterable<MediaAsset> arriving) =>
-      _staging.stageCarriedBytes(_carriesToHold(arriving));
+  ///
+  /// [onProgress] hears the holding as 0–1, as [_admit]'s does.
+  Future<void> holdCarriedBytes(
+    Iterable<MediaAsset> arriving, {
+    void Function(double fraction)? onProgress,
+  }) => _staging.stageCarriedBytes(
+    _carriesToHold(arriving),
+    onProgress: onProgress,
+  );
 
   /// The carries among [arriving] whose bytes a landing needs held — the
   /// question [holdCarriedBytes] and [_admit] both ask.
@@ -683,10 +696,13 @@ class MediaPool {
   /// A path [cutFrom] names is a trimmed file's PIECE ([TrimmedPieces]),
   /// and the file it names is where the piece was cut from: provenance
   /// only, as a placed piece's is.
+  ///
+  /// [onCarrying] hears the carried ones held, as 0–1 ([_admit]).
   Future<void> importMediaFiles(
     List<String> paths, {
     required bool copyIntoProject,
     Map<String, String> cutFrom = const {},
+    void Function(double fraction)? onCarrying,
   }) {
     final known = {for (final asset in mediaAssets) asset.path};
     final entries = <MediaAsset>[];
@@ -724,6 +740,6 @@ class MediaPool {
         ),
       );
     }
-    return _admit(entries);
+    return _admit(entries, onCarrying: onCarrying);
   }
 }

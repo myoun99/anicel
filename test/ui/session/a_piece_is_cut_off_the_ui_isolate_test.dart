@@ -114,14 +114,19 @@ void main() {
       }
       expect(encoder.finish(), isTrue, reason: encoder.lastError);
 
+      final heard = <double>[];
       final cut = await session().trimmedPieces.cut(
         movie,
         MediaAssetKind.video,
         inFrame: 1,
         outFrame: 3,
+        onProgress: heard.add,
       );
 
       expect(cut?.frames, 3);
+      // 🗣️F-494: the encode is the wait — a minute for two minutes of a
+      // big movie — and the window hears it frame by frame from the worker.
+      expect(heard, [closeTo(1 / 3, 1e-9), closeTo(2 / 3, 1e-9), 1]);
     }, skip: skip);
   });
 }

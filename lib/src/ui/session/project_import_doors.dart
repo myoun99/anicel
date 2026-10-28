@@ -243,6 +243,11 @@ class ProjectImportDoors {
     /// Where [path] was cut from — a trimmed file's piece carries its
     /// original here, as provenance only ([TrimmedPieces]).
     String? sourcePath,
+
+    /// Hears the carried bytes held, as 0–1 ([MediaPool.holdCarriedBytes])
+    /// — a big file's copy is the long wait of a carried placement
+    /// (F-494).
+    void Function(double fraction)? onCarrying,
   }) async {
     // The destination gate runs BEFORE any decode: a refused import must
     // not have images to leak.
@@ -347,7 +352,7 @@ class ProjectImportDoors {
       assets = plan.assets;
     }
 
-    await _pool.holdCarriedBytes(assets);
+    await _pool.holdCarriedBytes(assets, onProgress: onCarrying);
     final landed = _landing.land(
       [layer],
       arrival: arrival,
@@ -640,6 +645,9 @@ class ProjectImportDoors {
 
     /// Where [path] was cut from — see [importImageFile]'s.
     String? sourcePath,
+
+    /// See [importImageFile]'s.
+    void Function(double fraction)? onCarrying,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
@@ -740,7 +748,7 @@ class ProjectImportDoors {
         assets = plan.assets;
       }
 
-      await _pool.holdCarriedBytes(assets);
+      await _pool.holdCarriedBytes(assets, onProgress: onCarrying);
       final landed = _landing.land(
         [layer],
         arrival: arrival,
@@ -815,9 +823,25 @@ class ProjectImportDoors {
 
     /// Where [path] was cut from — see [importImageFile]'s.
     String? sourcePath,
+
+    /// See [importImageFile]'s.
+    void Function(double fraction)? onCarrying,
   }) async {
     if (settings.movieParts == MovieParts.sound) {
-      return _movieSoundAlone(path, settings, spot, sourcePath);
+      // A movie that brings its sound ALONE (🗣️유저 2026-09-27: 「소리만
+      // 임포트 … 고를수있게」) lands the way a sound does, through the
+      // sound's own door: its SE rows, its trim, and the ONE pool entry the
+      // pair shares (the door keeps a movie's kind for it). Asked here, so
+      // every caller of the movie's door gets the same answer.
+      return importSoundFile(
+        path: path,
+        copyIntoProject: settings.mode == ImportFileMode.keepInside,
+        inFrame: settings.inFrame,
+        outFrame: settings.outFrame,
+        spot: spot,
+        sourcePath: sourcePath,
+        onCarrying: onCarrying,
+      );
     }
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
@@ -851,7 +875,7 @@ class ProjectImportDoors {
         if (placementRegisters(baked: baked, soundReadsIt: withMovieSound))
           _movieAsset(source, info, settings, sourcePath),
       ];
-      await _pool.holdCarriedBytes(assets);
+      await _pool.holdCarriedBytes(assets, onProgress: onCarrying);
       if (!_landMovieWithSound(planned, assets, withSound: withMovieSound)) {
         return false;
       }
@@ -872,25 +896,6 @@ class ProjectImportDoors {
       await opened.close();
     }
   }
-
-  /// A movie that brings its sound ALONE (🗣️유저 2026-09-27: 「소리만 임포트
-  /// … 고를수있게」) lands the way a sound does, through the sound's own
-  /// door: its SE rows, its trim, and the ONE pool entry the pair shares
-  /// (the door keeps a movie's kind for it). Asked in [importVideoFile], so
-  /// every caller of the movie's door gets the same answer.
-  Future<bool> _movieSoundAlone(
-    String path,
-    ImportFileSettings settings,
-    ImportLayerSpot? spot,
-    String? sourcePath,
-  ) => importSoundFile(
-    path: path,
-    copyIntoProject: settings.mode == ImportFileMode.keepInside,
-    inFrame: settings.inFrame,
-    outFrame: settings.outFrame,
-    spot: spot,
-    sourcePath: sourcePath,
-  );
 
   /// What a placed movie LANDS AS: the span it covers on the sound's clock,
   /// the cut it arrives in — a NEW one is made at the movie's own size,
@@ -1826,6 +1831,9 @@ class ProjectImportDoors {
 
     /// Where [path] was cut from — see [importImageFile]'s.
     String? sourcePath,
+
+    /// See [importImageFile]'s.
+    void Function(double fraction)? onCarrying,
   }) async {
     final gate = _landing.arriveOnSeRows(path: path, spot: spot);
     if (gate == null) {
@@ -1854,7 +1862,7 @@ class ProjectImportDoors {
         carried: copyIntoProject,
       ),
     ];
-    await _pool.holdCarriedBytes(assets);
+    await _pool.holdCarriedBytes(assets, onProgress: onCarrying);
     final landed = _landing.landSound(
       arrival: gate,
       offsetFrames: kept.first,

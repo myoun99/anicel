@@ -2,6 +2,7 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../text/app_strings.dart';
@@ -167,19 +168,86 @@ final class _Warnings extends _Said {
   final List<WarningLine> lines;
 }
 
-/// What one file's door tells back while it runs: how far it is, and the
-/// pages or frames it could not render. The two go down the same doors
-/// together, so they are handed down as one.
+/// What one file's door tells back while it runs: how far it is, what it is
+/// doing, and the pages or frames it could not render. They go down the
+/// same doors together, so they are handed down as one.
+///
+/// 🗣️F-494 (유저 2026-10-28: 「하고있는 과정을 투명하게 … 퍼센테이지에
+/// 반영하면서」): the file's share is split among the [_Stretch]es it goes
+/// through, in the order they run, each named on the window's line while
+/// it reports. Which of them a file goes through is its door's to find out
+/// — a pool that already holds the file carries nothing — so each takes an
+/// even share of what is left among the stretches that can still come
+/// ([pieceShare]'s law, for pieces not known ahead), and one that never
+/// starts leaves its share to the next.
 class _FileReport {
-  _FileReport(this._within);
+  _FileReport(this._within, this._say);
 
   final void Function(double) _within;
+  final void Function(String step) _say;
 
   /// The pages (a PDF) or frames (a movie) that would not render.
   final List<int> failed = [];
 
-  /// [done] of the file's [total] pieces rendered.
-  void rendered(int done, int total) => _within(doneShare(done, total));
+  _Stretch? _now;
+  double _from = 0;
+  double _to = 0;
+
+  /// [fraction] of the file's piece cut ([TrimmedPieces.cut]).
+  void cutting(double fraction, MediaAssetKind kind) =>
+      _in(_Stretch.cut, _cuttingStep(kind), fraction);
+
+  /// [fraction] of the file's bytes held ([MediaPool.holdCarriedBytes]).
+  void carrying(double fraction) =>
+      _in(_Stretch.carry, AppText.strings.imStepCarrying, fraction);
+
+  /// [done] of the file's [total] cels rasterized.
+  void rendered(int done, int total) => _in(
+    _Stretch.rasterize,
+    AppText.strings.imStepRasterizing,
+    doneShare(done, total),
+  );
+
+  void _in(_Stretch stretch, String step, double fraction) {
+    if (stretch != _now) {
+      _now = stretch;
+      _from = _to;
+      _to = _from + (1 - _from) / (_Stretch.values.length - stretch.index);
+      _say(step);
+    }
+    _within(runShare(fraction, from: _from, to: _to));
+  }
+}
+
+/// What a placed file goes through that takes long enough to name, in the
+/// order its door runs them ([_FileReport]).
+enum _Stretch { cut, carry, rasterize }
+
+/// What cutting a [kind]'s piece is called ([TrimmedPieces.cut]): a movie's
+/// encoded again, another kind's span written out.
+String _cuttingStep(MediaAssetKind kind) => kind == MediaAssetKind.video
+    ? AppText.strings.imStepRecoding
+    : AppText.strings.imStepWritingSpan;
+
+/// The wait window's running line for a run: the cloud's word while a file
+/// is on its way ([CloudWait]), the stretch under way's otherwise.
+class _RunningLine implements ValueListenable<String> {
+  _RunningLine(this._cloud, this._step)
+    : _either = Listenable.merge([_cloud, _step]);
+
+  final ValueListenable<String> _cloud;
+  final ValueListenable<String> _step;
+  final Listenable _either;
+
+  @override
+  String get value => _cloud.value.isEmpty ? _step.value : _cloud.value;
+
+  @override
+  void addListener(VoidCallback listener) => _either.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      _either.removeListener(listener);
 }
 
 /// Which question the 「옵션」 column asks a row.
@@ -818,6 +886,7 @@ class _ImportDialogState extends State<ImportDialog> {
     _wait.status.removeListener(_waitChanged);
     _wait.waiting.removeListener(_waitChanged);
     _wait.dispose();
+    _step.dispose();
     _cutName.dispose();
     _intakeCopies.forEach(ProviderDocuments.letGo);
     super.dispose();
@@ -1016,6 +1085,11 @@ class _ImportDialogState extends State<ImportDialog> {
   /// honestly be stopped, and a stop gives up the one file waited for.
   final CloudWait _wait = CloudWait();
 
+  /// The stretch of the run under way, as the wait window's line names it
+  /// (🗣️F-494, 유저 2026-10-28: 「하고있는 과정을 투명하게 보여줬으면함」) —
+  /// empty between stretches, where the window says 「임포트하는 중」.
+  final ValueNotifier<String> _step = ValueNotifier<String>('');
+
   void _waitChanged() {
     if (mounted) {
       setState(() {});
@@ -1154,7 +1228,7 @@ class _ImportDialogState extends State<ImportDialog> {
         runningLabel: AppText.strings.imStatusImporting,
         doneLabel: AppText.strings.imStatusDone,
         windowKey: const ValueKey<String>('import-progress-dialog'),
-        runningStatus: _wait.status,
+        runningStatus: _RunningLine(_wait.status, _step),
         onCancel: _wait.cancel,
         cancelLive: _wait.waiting,
         task: (report) => _importAll(tally, report),
@@ -1465,13 +1539,15 @@ class _ImportDialogState extends State<ImportDialog> {
     _ImportTally tally,
     void Function(double) within,
   ) async {
-    final fileReport = _FileReport(within);
+    final fileReport = _FileReport(within, (step) => _step.value = step);
     final bool ok;
     try {
       ok = await _placeCarryingOnlyTheSpan(path, kind, tally, fileReport);
     } on Object {
       _warnOf(tally, path, AppText.strings.imCorrupt);
       return;
+    } finally {
+      _step.value = '';
     }
     final failed = fileReport.failed.length;
     if (failed > 0) {
@@ -1550,6 +1626,7 @@ class _ImportDialogState extends State<ImportDialog> {
       kind,
       inFrame: settings.inFrame,
       outFrame: settings.outFrame,
+      onProgress: (fraction) => fileReport.cutting(fraction, kind),
     );
     if (piece == null) {
       return false;
@@ -1595,6 +1672,7 @@ class _ImportDialogState extends State<ImportDialog> {
         outFrame: settings.outFrame,
         spot: widget.spot,
         sourcePath: sourcePath,
+        onCarrying: fileReport.carrying,
       );
     }
     if (kind == MediaAssetKind.video) {
@@ -1621,16 +1699,18 @@ class _ImportDialogState extends State<ImportDialog> {
         onPageRenderFailed: fileReport.failed.add,
         spot: widget.spot,
         sourcePath: sourcePath,
+        onCarrying: fileReport.carrying,
       );
     }
-    return _placePicture(path, settings, sourcePath: sourcePath);
+    return _placePicture(path, settings, fileReport, sourcePath: sourcePath);
   }
 
   /// A picture through a picture's door, as its row answers — the ordinary
   /// image path, and a run's span that keeps one picture ([_placeRun]).
   Future<bool> _placePicture(
     String picture,
-    ImportFileSettings settings, {
+    ImportFileSettings settings,
+    _FileReport fileReport, {
     String? sourcePath,
   }) => widget.session.importDoors.importImageFile(
     path: picture,
@@ -1642,6 +1722,7 @@ class _ImportDialogState extends State<ImportDialog> {
     outFrame: settings.outFrame,
     spot: widget.spot,
     sourcePath: sourcePath,
+    onCarrying: fileReport.carrying,
   );
 
   /// [path]'s numbered run as its span keeps it ([_runKeptOf]): two
@@ -1674,7 +1755,7 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     final settings = _settingsFor(path);
     if (files.length == 1) {
-      return _placePicture(files.single.path, settings);
+      return _placePicture(files.single.path, settings, fileReport);
     }
     return widget.session.importDoors.importPictureRun(
       files: files,
@@ -1707,6 +1788,7 @@ class _ImportDialogState extends State<ImportDialog> {
     onFrameRenderFailed: fileReport.failed.add,
     spot: widget.spot,
     sourcePath: sourcePath,
+    onCarrying: fileReport.carrying,
   );
 
   /// Why a placement of the file [name] that ran and answered `false` did
@@ -1730,7 +1812,10 @@ class _ImportDialogState extends State<ImportDialog> {
   /// 품기」) and waited for a trimmer, which the placements got on
   /// 2026-09-23.
   ///
-  /// [report] counts the files the batches have landed.
+  /// [report] counts the files the batches have landed, the kept ones as
+  /// they go: each piece cut, then the holding, named on the window's line
+  /// while it reports (F-494: a trimmed movie's two minutes stood a minute
+  /// at 0% here).
   Future<void> _registerFiles(
     List<String> paths,
     _ImportTally tally,
@@ -1739,6 +1824,33 @@ class _ImportDialogState extends State<ImportDialog> {
     final pool = widget.session.mediaPool;
     final pieces = widget.session.trimmedPieces;
     report(0);
+    // The files the pool keeps, and those of them cut into a piece first.
+    final keeping = [
+      for (final path in paths)
+        if (_settingsFor(path).mode == ImportFileMode.keepInside) path,
+    ];
+    final cutting = [
+      for (final path in keeping)
+        if (mediaAssetKindForPath(path) != null &&
+            _comesInAsAPiece(path, _settingsFor(path)))
+          path,
+    ];
+    // F-282-Q1 (유저 2026-10-08: 「파일 수와 각 파일의 진행 … 으로 %를
+    // 센다」): the kept files hold their count's share of the pool's, the
+    // linked ones the rest; within the kept share, each piece cut and then
+    // the holding are even stretches, each named while it reports (F-494).
+    final keptShare = doneShare(keeping.length, paths.length);
+    final stretches = cutting.length + 1;
+    void Function(double) saying(String step, int index) => (fraction) {
+      _step.value = step;
+      report(
+        runShare(
+          pieceShare(fraction, index: index, count: stretches),
+          from: 0,
+          to: keptShare,
+        ),
+      );
+    };
     // What the pool is handed — a piece in place of the file it was cut
     // from — and the picked file each one stands for.
     final carried = <String, String>{};
@@ -1746,19 +1858,21 @@ class _ImportDialogState extends State<ImportDialog> {
     for (final path in paths) {
       final settings = _settingsFor(path);
       final kind = mediaAssetKindForPath(path);
-      if (kind != null && _comesInAsAPiece(path, settings)) {
+      if (kind != null && cutting.contains(path)) {
         final piece = await pieces.cut(
           path,
           kind,
           inFrame: settings.inFrame,
           outFrame: settings.outFrame,
+          onProgress: saying(_cuttingStep(kind), cutting.indexOf(path)),
         );
+        _step.value = '';
         if (piece == null) {
           _warnOf(tally, path, (name) => _placementFailure(name, kind));
         } else {
           carried[piece.path] = path;
         }
-      } else if (settings.mode == ImportFileMode.keepInside) {
+      } else if (keeping.contains(path)) {
         carried[path] = path;
       } else {
         referenced.add(path);
@@ -1774,9 +1888,11 @@ class _ImportDialogState extends State<ImportDialog> {
         carried.keys.toList(),
         copyIntoProject: true,
         cutFrom: cutFrom,
+        onCarrying: saying(AppText.strings.imStepCarrying, cutting.length),
       );
       held = true;
     } finally {
+      _step.value = '';
       for (final piece in cutFrom.keys) {
         held ? pieces.secure(piece) : pieces.discard(piece);
       }
@@ -1784,7 +1900,7 @@ class _ImportDialogState extends State<ImportDialog> {
     tally
       ..imported += carried.length
       ..done.addAll(carried.values);
-    report(doneShare(carried.length, paths.length));
+    report(keptShare);
     await pool.importMediaFiles(referenced, copyIntoProject: false);
     tally
       ..imported += referenced.length

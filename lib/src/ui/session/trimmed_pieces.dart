@@ -78,11 +78,16 @@ class TrimmedPieces {
   /// ⚠️[frames] is what places it. A sound's length is otherwise read off
   /// its waveform, a bucket at a time, which can come out a frame long — and
   /// the block is exactly the span that was kept.
+  ///
+  /// [onProgress] hears how far a movie's piece is ([writeMovieSpan]) — the
+  /// one kind whose cut takes long enough to stand behind a wait at 0%
+  /// (F-494). The other kinds cut in one call and say nothing until done.
   Future<({String path, int frames})?> cut(
     String source,
     MediaAssetKind kind, {
     int inFrame = 0,
     int? outFrame,
+    void Function(double fraction)? onProgress,
   }) async {
     // ⚠️Named with the piece's extension already: the OS encoder picks its
     // container from it, and refuses a name that has none.
@@ -93,7 +98,7 @@ class TrimmedPieces {
     final trim = (inFrame: inFrame, outFrame: outFrame);
     try {
       final kept = switch (kind) {
-        MediaAssetKind.video => await _movie(source, work, trim),
+        MediaAssetKind.video => await _movie(source, work, trim, onProgress),
         MediaAssetKind.audio => await _sound(source, work, trim),
         MediaAssetKind.pdf => await _pages(source, work, trim),
         MediaAssetKind.image => await _frames(source, work, trim),
@@ -141,10 +146,22 @@ class TrimmedPieces {
   /// Lets go of a piece whose import did not land.
   void discard(String piece) => _deleteIfThere(piece);
 
-  Future<KeptSpan?> _movie(String source, String work, _Trim trim) async {
+  Future<KeptSpan?> _movie(
+    String source,
+    String work,
+    _Trim trim,
+    void Function(double fraction)? onProgress,
+  ) async {
     final clock = _clock();
-    final written = await onAWorkerWithThisEngine(
-      () => writeMovieSpan(source, work, trim: trim, clock: clock),
+    final written = await onAWorkerWithThisEngineReporting(
+      onProgress,
+      (report) => writeMovieSpan(
+        source,
+        work,
+        trim: trim,
+        clock: clock,
+        onProgress: report,
+      ),
     );
     return written.kept;
   }

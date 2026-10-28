@@ -392,6 +392,9 @@ void main() {
         counted.add(fraction);
       }
     });
+    final line = tester.widget<AppProgressDialog>(window).runningStatus!;
+    final lines = <String>[];
+    line.addListener(() => lines.add(line.value));
     await pumpPastTheWaitWindow(tester);
 
     expect(
@@ -399,6 +402,13 @@ void main() {
       isNotEmpty,
       reason: 'the frames it baked were counted on the way, not only its end',
     );
+    // 🗣️F-494: and the window says what it is doing, in the order the door
+    // does it — the file its sound reads held, then the frames baked.
+    expect(lines, [
+      AppText.strings.imStepCarrying,
+      AppText.strings.imStepRasterizing,
+      '',
+    ]);
     s.playbackRig.prerenderScheduler.cancel();
   });
 

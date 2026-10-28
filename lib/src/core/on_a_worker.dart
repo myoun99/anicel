@@ -9,6 +9,68 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 Future<T> onAWorker<T>(FutureOr<T> Function() job) =>
     debugWorkersRunHere ? Future<T>.sync(job) : Isolate.run(job);
 
+/// [job] on a worker ([onAWorker]), handed a `report` that tells
+/// [onProgress] — on THIS isolate — how far it is, as 0–1.
+///
+/// 🗣️F-494 (유저 2026-10-28: 「하고있는 과정을 투명하게 … 퍼센테이지에
+/// 반영하면서」): a worker's job hands back one value at its end and nothing
+/// before, so a long one stood behind the wait window at 0% — a trimmed
+/// movie's piece re-encoding (61 s of a 3.4GB file's two minutes), a
+/// carried file's copy (56 s for that file whole). The closure crosses with
+/// a [SendPort] in it, which is sendable, and the job reports into it.
+///
+/// A message that lands after the answer is not heard — the port closes
+/// with the answer, and the bar's next word is the caller's.
+///
+/// ⚠️The save's `_reportingProgress` talks the same way, with a second
+/// kind of message beside the fraction, and its `_SaveProgress` holds the
+/// bar back as [_whenTheBarMoves] does; two, so not yet one (3의 규칙).
+Future<T> onAWorkerReporting<T>(
+  void Function(double fraction)? onProgress,
+  FutureOr<T> Function(void Function(double fraction) report) job,
+) async {
+  if (onProgress == null) {
+    return onAWorker(() => job(_heardByNobody));
+  }
+  if (debugWorkersRunHere) {
+    return Future<T>.sync(() => job(_whenTheBarMoves(onProgress)));
+  }
+  final heard = ReceivePort();
+  heard.listen((message) {
+    if (message is double) {
+      onProgress(message);
+    }
+  });
+  final told = heard.sendPort;
+  try {
+    return await Isolate.run(() => job(_whenTheBarMoves(told.send)));
+  } finally {
+    heard.close();
+  }
+}
+
+void _heardByNobody(double fraction) {}
+
+/// [report], told only when the bar moves by half a percent or reaches its
+/// end: a 3.4GB copy at 512KB blocks reports thirteen thousand times, to
+/// move the label by less than a digit each.
+///
+/// ⚠️The end is told ONCE: a job's last block lands on it and the job then
+/// says it again (`writeMediaBlob`), and an end heard twice is what an end
+/// announced early looks like from outside.
+void Function(double fraction) _whenTheBarMoves(
+  void Function(double fraction) report,
+) {
+  var told = -1.0;
+  return (fraction) {
+    if (told >= 1 || (fraction - told < 0.005 && fraction < 1)) {
+      return;
+    }
+    told = fraction;
+    report(fraction);
+  };
+}
+
 /// Test seam: run every [onAWorker] job HERE instead of on a worker.
 ///
 /// 🚨★★★**A `testWidgets` CLOCK NEVER LETS A REAL ISOLATE FINISH.** The

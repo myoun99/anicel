@@ -332,11 +332,19 @@ String? debugQaEngineLibraryPathOverride;
 /// ⚠️Written down once when opening the output ahead became the THIRD job to
 /// carry the path (play-press-first-frame-stall, 10-16): a trimmed movie's
 /// span and a trimmed sound's had each spelled the same two lines out.
-Future<T> onAWorkerWithThisEngine<T>(FutureOr<T> Function() job) {
+Future<T> onAWorkerWithThisEngine<T>(FutureOr<T> Function() job) =>
+    onAWorkerWithThisEngineReporting(null, (_) => job());
+
+/// [onAWorkerWithThisEngine] for a job that says how far it is
+/// ([onAWorkerReporting]).
+Future<T> onAWorkerWithThisEngineReporting<T>(
+  void Function(double fraction)? onProgress,
+  FutureOr<T> Function(void Function(double fraction) report) job,
+) {
   final library = debugQaEngineLibraryPathOverride;
-  return onAWorker(() {
+  return onAWorkerReporting(onProgress, (report) {
     debugQaEngineLibraryPathOverride ??= library;
-    return job();
+    return job(report);
   });
 }
 

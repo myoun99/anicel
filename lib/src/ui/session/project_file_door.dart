@@ -48,6 +48,7 @@ import '../../services/persistence/folder_grant.dart'
 import '../../services/persistence/media_staging_store.dart';
 import '../../services/persistence/provider_documents.dart';
 import '../../services/persistence/save_failure.dart';
+import '../../services/persistence/save_stretch.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../../services/persistence/open_project_file.dart';
 import '../../services/persistence/same_file.dart';
@@ -75,7 +76,8 @@ import 'live_stroke_landing.dart';
 /// What every road of a save carries besides its path: THE PROJECT IT IS
 /// WRITING, the media the archive stores, the conforms beside them, the
 /// fonts registered with it, and
-/// the reporter the UI gave it. Made once per save — by
+/// the reporters the UI gave it — how far, and in which stretch
+/// ([SaveStretch]). Made once per save — by
 /// [ProjectFileDoor._carryFor], the only place that reads either — and
 /// handed whole, so the four roads cannot disagree about what a save is.
 typedef _SaveCarry = ({
@@ -84,6 +86,7 @@ typedef _SaveCarry = ({
   ProjectConforms conforms,
   ProjectFontsToStore fonts,
   void Function(double)? onProgress,
+  void Function(SaveStretch stretch)? onStretch,
 });
 
 /// What [ProjectFileDoor.writeArchiveCopy] wrote, and everything
@@ -305,6 +308,7 @@ class ProjectFileDoor {
     String filePath, {
     required SaveAsked asked,
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) async {
     if (asked == SaveAsked.byTheClock && _file.failedCopyIsCurrent) {
       // The failed copy already holds every edit: nothing to write, and no
@@ -336,6 +340,7 @@ class ProjectFileDoor {
         onProgress: !handsBack || onProgress == null
             ? onProgress
             : (done) => onProgress(done / 2),
+        onStretch: onStretch,
       );
       if (handsBack) {
         await _handBackToItsDocument(
@@ -343,6 +348,7 @@ class ProjectFileDoor {
           onProgress: onProgress == null
               ? null
               : (done) => onProgress(0.5 + done / 2),
+          onStretch: onStretch,
         );
       }
     } finally {
@@ -369,11 +375,13 @@ class ProjectFileDoor {
   Future<void> _handBackToItsDocument(
     String workingCopy, {
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) async {
     if (_file.failedCopy != null) {
       // The save went to a failed copy, not here: nothing new to hand on.
       return;
     }
+    onStretch?.call(SaveStretch.handingBack);
     try {
       await ProviderDocuments.publish(workingCopy, onProgress: onProgress);
     } on Object catch (error) {
@@ -422,11 +430,17 @@ class ProjectFileDoor {
     String filePath, {
     required SaveAsked asked,
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) async {
     final failedCopy = _file.failedCopy;
     if (failedCopy != null && asked == SaveAsked.byTheClock) {
       try {
-        await _writeFailedCopy(failedCopy, filePath, onProgress: onProgress);
+        await _writeFailedCopy(
+          failedCopy,
+          filePath,
+          onProgress: onProgress,
+          onStretch: onStretch,
+        );
       } on Object catch (error) {
         throw SaveFailure(
           cause: saveFailureCauseOf(error, projectPath: failedCopy),
@@ -445,6 +459,7 @@ class ProjectFileDoor {
         filePath,
         asked: asked,
         onProgress: onProgress,
+        onStretch: onStretch,
         leftBehind: leftBehind,
       );
     } on Object catch (error) {
@@ -455,6 +470,7 @@ class ProjectFileDoor {
         error,
         filePath,
         onProgress,
+        onStretch,
         leftBehind,
       );
     }
@@ -474,12 +490,18 @@ class ProjectFileDoor {
     Object error,
     String filePath,
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
     List<String> leftBehind,
   ) async {
     final cause = saveFailureCauseOf(error, projectPath: filePath);
     final copy = _file.failedCopy ?? FailedSaveCopies.addressFor(filePath);
     try {
-      await _writeFailedCopy(copy, filePath, onProgress: onProgress);
+      await _writeFailedCopy(
+        copy,
+        filePath,
+        onProgress: onProgress,
+        onStretch: onStretch,
+      );
     } on Object catch (copyError) {
       // Whatever the refused save wrote stays where it is: it may be the
       // only complete copy of this work left.
@@ -504,11 +526,12 @@ class ProjectFileDoor {
     String copy,
     String projectPath, {
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) async {
     final asOf = _file.editCount;
     await _saveArchive(
       copy,
-      _carryFor(projectPath, onProgress: onProgress),
+      _carryFor(projectPath, onProgress: onProgress, onStretch: onStretch),
     );
     _file.keptInFailedCopy(copy, asOf: asOf);
     _failedCopies.record(copy, projectPath);
@@ -569,10 +592,11 @@ class ProjectFileDoor {
     String path, {
     required SaveAsked asked,
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
     final carry = await _keepWhatItLeavesBehind(
-      _carryFor(path, onProgress: onProgress),
+      _carryFor(path, onProgress: onProgress, onStretch: onStretch),
     );
     celsLostToAMissingFile = await _saveArchive(path, carry, adoptRefs: false);
     return (
@@ -735,6 +759,7 @@ class ProjectFileDoor {
   _SaveCarry _carryFor(
     String namedAfter, {
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) {
     final saved = _solo.projectAsSavedWithoutSolo(
       _project.repository.requireProject(),
@@ -758,6 +783,7 @@ class ProjectFileDoor {
       conforms: _file.conformsToStore(),
       fonts: _file.fontsToStore(project),
       onProgress: onProgress,
+      onStretch: onStretch,
     );
   }
 
@@ -806,6 +832,7 @@ class ProjectFileDoor {
     final whole = File(boundFile).lengthSync();
     final share = copying / (whole > copying ? whole : copying);
     final report = carry.onProgress;
+    carry.onStretch?.call(SaveStretch.keepingLeftBehind);
     await _staging.keepLeftBehind(
       boundFile,
       left,
@@ -819,6 +846,7 @@ class ProjectFileDoor {
       onProgress: report == null
           ? null
           : (done) => report(share + (1 - share) * done),
+      onStretch: carry.onStretch,
     );
   }
 
@@ -853,6 +881,7 @@ class ProjectFileDoor {
       resume: _whereTheWorkStands().toJson(),
     ),
     onProgress: carry.onProgress,
+    onStretch: carry.onStretch,
     heldEntries: _file.heldArchiveEntries,
     adoptRefs: adoptRefs,
     rewriteWhole: rewriteWhole,
@@ -933,6 +962,7 @@ class ProjectFileDoor {
     required SaveAsked asked,
     required List<String> leftBehind,
     void Function(double)? onProgress,
+    void Function(SaveStretch stretch)? onStretch,
   }) async {
     final cleanAsOf = await _settleWorkInFlight(asked);
     // Captured BEFORE the save moves the project path — it is what tells a
@@ -942,7 +972,7 @@ class ProjectFileDoor {
     // capture stayed, for the reason further down.
     final previousPath = _file.path;
     final carry = await _keepWhatItLeavesBehind(
-      _carryFor(filePath, onProgress: onProgress),
+      _carryFor(filePath, onProgress: onProgress, onStretch: onStretch),
     );
     final mediaToStore = carry.mediaToStore;
     // 🚨A Save As is「writing somewhere else」and nothing more subtle: the
