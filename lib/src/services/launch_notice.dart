@@ -66,11 +66,11 @@ class LaunchNoticeContent {
   /// What a person who dismissed this notice dismissed: one hash over every
   /// section in every language.
   ///
-  /// ⚠️THE CONTENT, NOT A BUILD NUMBER: the app carries none at run time
-  /// (`--build-number` goes to the platform bundle alone), and a build made
-  /// from master in Android Studio says `0.1.0+1` for ever. A build whose
-  /// notice says the same thing is the same notice; one that says anything
-  /// else is new, and is shown once.
+  /// ⚠️THE CONTENT, NOT THE BUILD'S STAMP: `buildStamp` names a release
+  /// build alone, and a build made from master in Android Studio — what the
+  /// user runs every day — says `dev` for ever. A build whose notice says
+  /// the same thing is the same notice; one that says anything else is new,
+  /// and is shown once.
   ///
   /// ★EVERY LANGUAGE, NOT THE ONE ON SCREEN: 「빌드당 한번」 is once per
   /// BUILD. A key over the program language alone would bring a dismissed

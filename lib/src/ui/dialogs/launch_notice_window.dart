@@ -3,27 +3,23 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../../services/launch_notice.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/content_scrollbar.dart';
 import '../widgets/markdown_subset.dart';
+import 'feedback_window.dart' show showFeedbackWindow;
 
 /// Opens this build's launch notice — unless it was dismissed already
 /// ([LaunchNotice.due]).
 ///
 /// 🗣️유저 2026-10-28: 「앱 실행시 앱 설명 넣고싶어. 다음부터 표시안함버튼
 /// 있고. 빌드당 한번기억」.
-///
-/// [onSendFeedback] is the feedback section's button. 🔜Null today, and the
-/// button is not built: where feedback goes is still being decided (card
-/// I-139), and a button with nothing behind it would be a dead one. The
-/// absence is the BUILD's, never a moment's — a window never grows it while
-/// it is open.
 Future<void> showLaunchNoticeIfDue(
   BuildContext context,
-  LaunchNotice notice, {
-  VoidCallback? onSendFeedback,
-}) async {
+  LaunchNotice notice,
+) async {
   final content = await notice.due();
   if (content == null || !context.mounted) {
     return;
@@ -33,7 +29,6 @@ Future<void> showLaunchNoticeIfDue(
     builder: (context) => LaunchNoticeWindow(
       content: content,
       onDontShowAgain: () => unawaited(notice.dismiss(content)),
-      onSendFeedback: onSendFeedback,
     ),
   );
 }
@@ -41,12 +36,14 @@ Future<void> showLaunchNoticeIfDue(
 /// The launch notice: the pre-release notice, what changed in this build
 /// and where feedback goes, in the program language — each section the
 /// bundled file's words ([LaunchNoticeSection]).
+///
+/// The feedback section's button is the ⚙ menu's 「의견 보내기」 row: its
+/// window and its name (I-139), one action wherever it is pressed.
 class LaunchNoticeWindow extends StatelessWidget {
   const LaunchNoticeWindow({
     super.key,
     required this.content,
     required this.onDontShowAgain,
-    this.onSendFeedback,
   });
 
   final LaunchNoticeContent content;
@@ -54,13 +51,9 @@ class LaunchNoticeWindow extends StatelessWidget {
   /// 「다음부터 표시 안 함」 — the window closes either way.
   final VoidCallback onDontShowAgain;
 
-  /// See [showLaunchNoticeIfDue].
-  final VoidCallback? onSendFeedback;
-
   @override
   Widget build(BuildContext context) {
     final strings = AppText.strings;
-    final onSendFeedback = this.onSendFeedback;
     void close() => Navigator.of(context).pop();
     Widget section(LaunchNoticeSection section) =>
         MarkdownSubset(content.textOf(AppText.language, section));
@@ -87,21 +80,19 @@ class LaunchNoticeWindow extends StatelessWidget {
               section(LaunchNoticeSection.whatsNew),
               const Divider(height: 24),
               section(LaunchNoticeSection.feedback),
-              if (onSendFeedback != null) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: AppWindowActionButton(
-                    AppWindowAction(
-                      label: strings.launchNoticeSendFeedback,
-                      actionKey: const ValueKey<String>(
-                        'launch-notice-send-feedback',
-                      ),
-                      onPressed: onSendFeedback,
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AppWindowActionButton(
+                  AppWindowAction(
+                    label: editorActionLabel(EditorActionIds.sendFeedback),
+                    actionKey: const ValueKey<String>(
+                      'launch-notice-send-feedback',
                     ),
+                    onPressed: () => showFeedbackWindow(context),
                   ),
                 ),
-              ],
+              ),
             ],
           ),
         ),

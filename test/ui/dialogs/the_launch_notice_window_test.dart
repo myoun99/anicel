@@ -5,6 +5,10 @@ import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/launch_notice.dart';
 import 'package:anicel/src/services/persistence/launch_notice_store.dart';
 import 'package:anicel/src/ui/dialogs/launch_notice_window.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
+    show editorActionLabel;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
@@ -44,6 +48,7 @@ final _close = find.byKey(const ValueKey<String>('launch-notice-close'));
 final _sendFeedback = find.byKey(
   const ValueKey<String>('launch-notice-send-feedback'),
 );
+final _feedbackWindow = find.byKey(const ValueKey<String>('feedback-window'));
 
 /// 🗣️유저 2026-10-28: 「앱 실행시 앱 설명 넣고싶어. 다음부터 표시안함버튼
 /// 있고. 빌드당 한번기억」.
@@ -59,7 +64,6 @@ void main() {
     WidgetTester tester,
     _MemoryStore store, {
     LaunchNoticeContent Function()? content,
-    VoidCallback? onSendFeedback,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -75,7 +79,6 @@ void main() {
                   store: store,
                   content: () async => (content ?? _content)(),
                 ),
-                onSendFeedback: onSendFeedback,
               ),
               child: const Text('launch'),
             ),
@@ -103,6 +106,7 @@ void main() {
     expect(find.text('About this build'), findsOneWidget);
     expect(_dontShowAgain, findsOneWidget);
     expect(_close, findsOneWidget);
+    expect(_sendFeedback, findsOneWidget);
     // The content scrolls in its own lane, there whether it overflows or
     // not (CLAUDE.md: 스크롤바를 자동으로 숨기지 않는다).
     expect(
@@ -236,22 +240,38 @@ void main() {
     expect(_boldRuns(_richText(tester, 'First item')), ['item']);
   });
 
-  testWidgets('the feedback button is there only when something sends it', (
-    tester,
-  ) async {
-    await pumpHost(tester, _MemoryStore());
-    await launch(tester);
-    expect(_sendFeedback, findsNothing);
-    await tester.tap(_close);
-    await tester.pumpAndSettle();
+  testWidgets('the feedback section\'s button is the ⚙ menu\'s 「의견 보내기」 '
+      '— its name and its window (I-139)', (tester) async {
+    for (final language in [AppLanguage.ko, AppLanguage.en]) {
+      AppText.settings.value = AppLanguageSettings(programLanguage: language);
+      await pumpHost(tester, _MemoryStore());
+      await launch(tester);
+      expect(
+        find.descendant(
+          of: _sendFeedback,
+          matching: find.text(editorActionLabel(EditorActionIds.sendFeedback)),
+        ),
+        findsOneWidget,
+        reason: language.name,
+      );
 
-    var sent = 0;
-    await pumpHost(tester, _MemoryStore(), onSendFeedback: () => sent++);
-    await launch(tester);
-    await tester.tap(_sendFeedback);
-    await tester.pumpAndSettle();
-    expect(sent, 1);
-    expect(find.text('Send feedback'), findsOneWidget);
+      await tester.tap(_sendFeedback);
+      await tester.pumpAndSettle();
+      expect(_feedbackWindow, findsOneWidget, reason: language.name);
+      // Over the notice, which is still there when it closes.
+      expect(_window, findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: _feedbackWindow,
+          matching: find.byKey(const ValueKey<String>('app-window-close')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_feedbackWindow, findsNothing);
+      expect(_window, findsOneWidget);
+      await tester.tap(_close);
+      await tester.pumpAndSettle();
+    }
   });
 }
 
