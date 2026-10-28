@@ -213,25 +213,29 @@ class TimelineRowEdges {
     return first <= last ? (first: first, last: last) : null;
   }
 
-  /// The rows a viewport of [viewportExtent] at [scrollOffset] shows, with
-  /// [overscanBefore] and [overscanAfter] rows more on each side, grown to
-  /// whole units — for rows of one extent, exactly the uniform division the
-  /// grids made before ([calculateVisibleIndexRange]).
+  /// The rows a viewport of [viewportExtent] at [scrollOffset] shows, grown
+  /// to whole units — for rows of one extent, exactly the uniform division
+  /// ([calculateVisibleIndexRange]) with no rows past the viewport.
+  ///
+  /// 🪶No rows are built past the viewport (card frame-panels-build-in-one-
+  /// frame, 2026-10-28): two more on each side were made again every time a
+  /// tab opened — 412 of the timeline tab's 2,787 elements — for nobody to
+  /// see. A row that scrolls in is built in the frame it arrives, as the
+  /// rows past those two always were; a row a drag holds is kept apart
+  /// (A5). ↩️The two came with the first range calculator (4524ab0c1,
+  /// 2026-06-15) as its default and were carried here with it (d52e0df72);
+  /// no decision is recorded for them.
   TimelineVisibleRange window({
     required double scrollOffset,
     required double viewportExtent,
-    int overscanBefore = 2,
-    int overscanAfter = 2,
   }) {
     if (count == 0) {
       return const TimelineVisibleRange(startIndex: 0, endIndexExclusive: 0);
     }
     final from = math.max(0.0, scrollOffset);
     final to = from + math.max(0.0, viewportExtent);
-    final before = math.max<int>(0, overscanBefore);
-    final after = math.max<int>(0, overscanAfter);
-    var start = (_lastStartingAtOrBefore(from) - before).clamp(0, count);
-    var end = (_startingBefore(to) + after).clamp(start, count);
+    var start = _lastStartingAtOrBefore(from).clamp(0, count);
+    var end = _startingBefore(to).clamp(start, count);
     if (start < count) {
       start = _unitFirst[start];
     }

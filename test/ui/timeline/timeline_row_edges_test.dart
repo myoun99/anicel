@@ -35,27 +35,21 @@ void main() {
           final edges = TimelineRowEdges.uniform(count, extent);
           final total = count * extent;
           for (final viewport in [0.0, 50.0, 196.0, 1000.0]) {
-            for (final overscan in [0, 2, 3]) {
-              for (var at = 0.0; at < total; at += extent / 3) {
-                expect(
-                  edges.window(
-                    scrollOffset: at,
-                    viewportExtent: viewport,
-                    overscanBefore: overscan,
-                    overscanAfter: overscan,
-                  ),
-                  calculateVisibleIndexRange(
-                    scrollOffset: at,
-                    viewportExtent: viewport,
-                    itemExtent: extent,
-                    itemCount: count,
-                    overscanBefore: overscan,
-                    overscanAfter: overscan,
-                  ),
-                  reason: 'extent $extent, $count rows, viewport $viewport, '
-                      'overscan $overscan, at $at',
-                );
-              }
+            for (var at = 0.0; at < total; at += extent / 3) {
+              // No rows past the viewport (2026-10-28).
+              expect(
+                edges.window(scrollOffset: at, viewportExtent: viewport),
+                calculateVisibleIndexRange(
+                  scrollOffset: at,
+                  viewportExtent: viewport,
+                  itemExtent: extent,
+                  itemCount: count,
+                  overscanBefore: 0,
+                  overscanAfter: 0,
+                ),
+                reason: 'extent $extent, $count rows, viewport $viewport, '
+                    'at $at',
+              );
             }
           }
         }
@@ -175,8 +169,6 @@ void main() {
         edges.window(
           scrollOffset: 100,
           viewportExtent: 50,
-          overscanBefore: 0,
-          overscanAfter: 0,
         ),
         const TimelineVisibleRange(startIndex: 1, endIndexExclusive: 3),
         reason: 'only the room is in view, and its unit is built whole',
@@ -185,8 +177,6 @@ void main() {
         edges.window(
           scrollOffset: 30,
           viewportExtent: 10,
-          overscanBefore: 0,
-          overscanAfter: 0,
         ),
         const TimelineVisibleRange(startIndex: 1, endIndexExclusive: 3),
         reason: 'one lane in view builds the graph',
@@ -195,8 +185,6 @@ void main() {
         edges.window(
           scrollOffset: 0,
           viewportExtent: 10,
-          overscanBefore: 0,
-          overscanAfter: 0,
         ),
         const TimelineVisibleRange(startIndex: 0, endIndexExclusive: 1),
       );
