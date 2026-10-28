@@ -64,13 +64,16 @@ typedef LayerMergePicture = ({FrameId frameId, String? name, int frameIndex});
 /// part of what the rows showed.
 class LayerMergePlan {
   const LayerMergePlan._({
+    required this.cut,
     required this.result,
     required this.baked,
     required this.pictures,
     required this.removed,
-    required this.regrouped,
     required this.changes,
   });
+
+  /// The cut it was planned of, as it was.
+  final Cut cut;
 
   /// The row the merge leaves — its cels named, their pictures still to be
   /// baked from [baked] at each picture's frame.
@@ -86,47 +89,108 @@ class LayerMergePlan {
   /// the one [result] replaces.
   final List<LayerId> removed;
 
-  /// The rows a folder it took held and it did not take, each to the folder
-  /// above that it stands in now (null = out of every folder).
-  final Map<LayerId, LayerId?> regrouped;
-
   final Set<LayerMergeChange> changes;
 }
 
-/// [cut]'s rows a press of MERGE takes from [selected], as the plan of
-/// what it makes of them — or null when it takes nothing it can merge
-/// ([layerMergeTakesAny]).
+/// The rows ONE press of MERGE takes of a cut — what lights its button and
+/// what the press plans from ([planLayerMerge]): one taking for both, so
+/// the button cannot light where the press would merge nothing.
+final class LayerMergeTaking {
+  LayerMergeTaking._(this.cut, this._index, this._taken, this._anchor)
+    : _pictureRows = [
+        for (final row in cut.layers)
+          if (_taken.contains(row.id) && _isPicture(row)) row,
+      ];
+
+  /// The cut it was taken of.
+  final Cut cut;
+  final LayerFolderIndex _index;
+
+  /// Every row it takes — a folder with everything it holds.
+  final Set<LayerId> _taken;
+
+  /// The topmost row it takes: the row the result is (Q2).
+  final Layer _anchor;
+
+  /// The rows it takes that hold pictures, bottom → top.
+  final List<Layer> _pictureRows;
+}
+
+/// What a press of MERGE takes of [cut]'s [selected] rows — null for
+/// nothing it can merge: one picture row alone, and no folder.
 ///
-/// [revisionOf] says what each cel holds as the composite signature reads
-/// it; [mintFrameId] names each new cel of the result.
-LayerMergePlan? planLayerMerge({
+/// A row that paints no drawing of its own is no part of a picture, and is
+/// passed over (Q4's memo: 「불가능한것들은 자연스럽게 무시」). So is a row
+/// this round does not merge yet ([_standsDown]) — and a folder that holds
+/// one, whose rows cannot be taken apart from it.
+///
+/// A folder taken takes everything it holds: every row a folder can hold
+/// is laid into its picture — the camera row moves nowhere
+/// ([LayerKind.reordersInCut]), and a transition row is its track's.
+/// ↩️It took only those that composite, and re-placed the rest in the
+/// folder above, for rows no folder can hold.
+LayerMergeTaking? takeRowsToMerge({
   required Cut cut,
   required Set<LayerId> selected,
-  required BrushFrameRevisionResolver revisionOf,
-  required FrameId Function(LayerId row) mintFrameId,
   required bool Function(Layer row) isLinked,
 }) {
   final index = LayerFolderIndex(cut.layers);
-  final taking = _takingOf(cut, index, selected, isLinked);
-  if (taking == null) {
+  bool standsDown(Layer row) => _standsDown(row, cut.layers, isLinked);
+  final taken = <LayerId>{};
+  var takesAFolder = false;
+  Layer? anchor;
+  for (final row in cut.layers) {
+    if (!selected.contains(row.id) || taken.contains(row.id)) {
+      continue;
+    }
+    if (row.kind.groupsLayers) {
+      final under = index.subtreeMembersOf(row.id);
+      if (!under.any(_isPicture) || under.any(standsDown)) {
+        continue;
+      }
+      takesAFolder = true;
+      taken
+        ..add(row.id)
+        ..addAll([for (final member in under) member.id]);
+    } else if (_isPicture(row) && !standsDown(row)) {
+      taken.add(row.id);
+    } else {
+      continue;
+    }
+    // The stack runs bottom → top: the last row taken is the topmost.
+    anchor = row;
+  }
+  if (anchor == null) {
     return null;
   }
-  final (:taken, :foldersTaken, :anchor, :pictureRows) = taking;
-  final anchorId = anchor.id;
+  final taking = LayerMergeTaking._(cut, index, taken, anchor);
+  return takesAFolder || taking._pictureRows.length > 1 ? taking : null;
+}
+
+/// What a press makes of [taking].
+///
+/// [revisionOf] says what each cel holds as the composite signature reads
+/// it; [mintFrameId] names each new cel of the result.
+LayerMergePlan planLayerMerge(
+  LayerMergeTaking taking, {
+  required BrushFrameRevisionResolver revisionOf,
+  required FrameId Function(LayerId row) mintFrameId,
+}) {
+  final cut = taking.cut;
+  final anchor = taking._anchor;
   final over = {
-    for (final folder in index.ancestryOf(anchor.folderId)) folder.id,
+    for (final folder in taking._index.ancestryOf(anchor.folderId)) folder.id,
   };
-  final baked = _bakedCut(cut, index, taken, over);
+  final baked = _bakedCut(taking, over);
   final pictures = _picturesOf(
-    cut,
+    taking,
     baked,
-    pictureRows,
     revisionOf: revisionOf,
-    mintFrameId: () => mintFrameId(anchorId),
+    mintFrameId: () => mintFrameId(anchor.id),
   );
-  final result = _resultRow(anchor, pictures);
   return LayerMergePlan._(
-    result: result,
+    cut: cut,
+    result: _resultRow(anchor, pictures),
     baked: baked,
     pictures: [
       for (final picture in pictures)
@@ -138,85 +202,9 @@ LayerMergePlan? planLayerMerge({
     ],
     removed: [
       for (final row in cut.layers)
-        if (taken.contains(row.id) && row.id != anchor.id) row.id,
+        if (taking._taken.contains(row.id) && row.id != anchor.id) row.id,
     ],
-    regrouped: _regroupedOf(cut, index, taken, foldersTaken),
-    changes: _changesOf(cut, index, taken, pictureRows, anchor, over),
-  );
-}
-
-/// Whether a press of MERGE takes anything of [selected] it can merge —
-/// what lights its button, from the very taking the press plans by
-/// ([planLayerMerge]); the pictures are left unasked.
-bool layerMergeTakesAny({
-  required Cut cut,
-  required Set<LayerId> selected,
-  required bool Function(Layer row) isLinked,
-}) =>
-    _takingOf(cut, LayerFolderIndex(cut.layers), selected, isLinked) != null;
-
-/// The rows a press takes: every one of them, the folders among them, the
-/// topmost, and the ones that hold pictures, bottom → top.
-typedef _Taking = ({
-  Set<LayerId> taken,
-  Set<LayerId> foldersTaken,
-  Layer anchor,
-  List<Layer> pictureRows,
-});
-
-/// What a press takes of [selected] — null for nothing it can merge: one
-/// picture row alone, and no folder.
-///
-/// A row that paints no drawing of its own is no part of a picture, and is
-/// passed over (Q4's memo: 「불가능한것들은 자연스럽게 무시」). So is a row
-/// this round does not merge yet ([_standsDown]) — and a folder that holds
-/// one, whose rows cannot be taken apart from it.
-_Taking? _takingOf(
-  Cut cut,
-  LayerFolderIndex index,
-  Set<LayerId> selected,
-  bool Function(Layer row) isLinked,
-) {
-  bool standsDown(Layer row) => _standsDown(row, cut.layers, isLinked);
-  final taken = <LayerId>{};
-  final foldersTaken = <LayerId>{};
-  Layer? anchor;
-  for (final row in cut.layers) {
-    if (!selected.contains(row.id) || taken.contains(row.id)) {
-      continue;
-    }
-    if (row.kind.groupsLayers) {
-      final under = index.subtreeMembersOf(row.id);
-      if (!under.any(_isPicture) || under.any(standsDown)) {
-        continue;
-      }
-      foldersTaken.add(row.id);
-      taken
-        ..add(row.id)
-        ..addAll([
-          for (final member in under)
-            if (member.kind.composites) member.id,
-        ]);
-    } else if (_isPicture(row) && !standsDown(row)) {
-      taken.add(row.id);
-    } else {
-      continue;
-    }
-    // The stack runs bottom → top: the last row taken is the topmost.
-    anchor = row;
-  }
-  final pictureRows = [
-    for (final row in cut.layers)
-      if (taken.contains(row.id) && _isPicture(row)) row,
-  ];
-  if (anchor == null || (foldersTaken.isEmpty && pictureRows.length < 2)) {
-    return null;
-  }
-  return (
-    taken: taken,
-    foldersTaken: foldersTaken,
-    anchor: anchor,
-    pictureRows: pictureRows,
+    changes: _changesOf(taking, over),
   );
 }
 
@@ -245,16 +233,12 @@ bool _standsDown(
     row.mediaReference != null ||
     row.timeline.values.any((exposure) => exposure.instruction != null);
 
-/// [cut] as each picture is baked from it: the [taken] rows and the
+/// The cut each picture is baked from: the rows [taking] takes and the
 /// folders above them that the result does not stand in ([over] are the
 /// ones it does), every one of them shown (Q7), each pointing at the
 /// nearest folder kept above it.
-Cut _bakedCut(
-  Cut cut,
-  LayerFolderIndex index,
-  Set<LayerId> taken,
-  Set<LayerId> over,
-) {
+Cut _bakedCut(LayerMergeTaking taking, Set<LayerId> over) {
+  final LayerMergeTaking(:cut, _index: index, _taken: taken) = taking;
   final above = <LayerId>{
     for (final row in cut.layers)
       if (taken.contains(row.id))
@@ -288,16 +272,17 @@ typedef _Picture = ({
   List<CutFrameCompositeSpan> spans,
 });
 
-/// The pictures [baked] shows over every frame a [pictureRows] block covers
-/// — one per signature, in the order they first show — each named after
-/// the cel the topmost row shows where it first shows (Q10 · Q11).
+/// The pictures [baked] shows over every frame a block of [taking]'s
+/// picture rows covers — one per signature, in the order they first show —
+/// each named after the cel the topmost row shows where it first shows
+/// (Q10 · Q11).
 List<_Picture> _picturesOf(
-  Cut cut,
-  Cut baked,
-  List<Layer> pictureRows, {
+  LayerMergeTaking taking,
+  Cut baked, {
   required BrushFrameRevisionResolver revisionOf,
   required FrameId Function() mintFrameId,
 }) {
+  final LayerMergeTaking(:cut, _pictureRows: pictureRows) = taking;
   final blocks = [
     for (final row in pictureRows) ...drawingBlocks(row.timeline),
   ];
@@ -396,40 +381,16 @@ Layer _resultRow(Layer anchor, List<_Picture> pictures) {
   );
 }
 
-/// The rows a folder in [foldersTaken] held that were not [taken] — a
-/// direction row in it, say — each to the nearest folder above that stays.
-Map<LayerId, LayerId?> _regroupedOf(
-  Cut cut,
-  LayerFolderIndex index,
-  Set<LayerId> taken,
-  Set<LayerId> foldersTaken,
-) {
-  LayerId? standingParent(LayerId? folderId) {
-    for (final folder in index.ancestryOf(folderId)) {
-      if (!foldersTaken.contains(folder.id)) {
-        return folder.id;
-      }
-    }
-    return null;
-  }
-
-  return {
-    for (final row in cut.layers)
-      if (!taken.contains(row.id) && foldersTaken.contains(row.folderId))
-        row.id: standingParent(row.folderId),
-  };
-}
-
-/// Why the result may show otherwise than the [taken] rows did
-/// ([LayerMergeChange]).
-Set<LayerMergeChange> _changesOf(
-  Cut cut,
-  LayerFolderIndex index,
-  Set<LayerId> taken,
-  List<Layer> pictureRows,
-  Layer anchor,
-  Set<LayerId> over,
-) {
+/// Why the result may show otherwise than the rows [taking] takes did
+/// ([LayerMergeChange]) — [over] being the folders it stands in.
+Set<LayerMergeChange> _changesOf(LayerMergeTaking taking, Set<LayerId> over) {
+  final LayerMergeTaking(
+    :cut,
+    _index: index,
+    _taken: taken,
+    _anchor: anchor,
+    _pictureRows: pictureRows,
+  ) = taking;
   final takenRows = [
     for (final row in cut.layers)
       if (taken.contains(row.id)) row,

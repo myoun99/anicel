@@ -73,14 +73,19 @@ void main() {
   );
 
   LayerMergePlan? merge(Cut cut, List<String> ids) {
-    var minted = 0;
-    return planLayerMerge(
+    final taking = takeRowsToMerge(
       cut: cut,
       selected: {for (final id in ids) LayerId(id)},
-      revisionOf: (_, _) => 0,
-      mintFrameId: (_) => FrameId('m${minted++}'),
       isLinked: (_) => false,
     );
+    var minted = 0;
+    return taking == null
+        ? null
+        : planLayerMerge(
+            taking,
+            revisionOf: (_, _) => 0,
+            mintFrameId: (_) => FrameId('m${minted++}'),
+          );
   }
 
   /// `start: (length, cel name)` of every block [layer] stands.
@@ -193,7 +198,6 @@ void main() {
 
       expect(plan.result.id, const LayerId('a'));
       expect(plan.removed, [const LayerId('c'), const LayerId('b')]);
-      expect(plan.regrouped, isEmpty);
       expect(
         [plan.result.name, plan.result.blendMode, plan.result.isVisible],
         ['a', LayerBlendMode.normal, true],
@@ -275,30 +279,28 @@ void main() {
       expect(blocksOf(plan.result), {0: (2, 'A1'), 2: (2, 'A1-2')});
     });
 
-    test('a row it held that lays no picture stays, in the folder above',
-        () {
+    test('taken, it takes everything it holds — a folder inside it and that '
+        'folder\'s rows with the rest', () {
       final plan = merge(
         cutOf([
-          row('a', {0: 'A1'}, inside: 'F'),
-          Layer(
-            id: const LayerId('cam'),
-            name: 'cam',
-            kind: LayerKind.camera,
-            folderId: const LayerId('F'),
-            frames: const [],
-          ),
+          row('b', {0: 'B1'}, inside: 'G'),
           createFolderLayer(
-            id: const LayerId('F'),
-            name: 'F',
-            parentId: const LayerId('P'),
+            id: const LayerId('G'),
+            name: 'G',
+            parentId: const LayerId('F'),
           ),
-          createFolderLayer(id: const LayerId('P'), name: 'P'),
+          row('a', {0: 'A1'}, inside: 'F'),
+          createFolderLayer(id: const LayerId('F'), name: 'F'),
         ]),
         ['F'],
       )!;
 
-      expect(plan.removed, [const LayerId('a')]);
-      expect(plan.regrouped, {const LayerId('cam'): const LayerId('P')});
+      expect(plan.result.id, const LayerId('F'));
+      expect(plan.removed, [
+        const LayerId('b'),
+        const LayerId('G'),
+        const LayerId('a'),
+      ]);
     });
 
     test('the folder the result stands in lays its look over it after the '

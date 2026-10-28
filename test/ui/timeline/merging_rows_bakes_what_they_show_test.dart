@@ -153,8 +153,13 @@ void main() {
     y % cel.tileSize,
   );
 
+  /// Whether the press has made the rows one and its window has gone.
   bool merged(EditorSessionManager s) =>
-      s.requireActiveCut.layers.byId(const LayerId('b')) == null;
+      s.requireActiveCut.layers.byId(const LayerId('b')) == null &&
+      find
+          .byKey(const ValueKey<String>('layer-merge-progress'))
+          .evaluate()
+          .isEmpty;
 
   testWidgets('🎯the rows become one row whose cel is what they showed '
       'together — a hidden row baked shown (Q7) — and one undo gives both '

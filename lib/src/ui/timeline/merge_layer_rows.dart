@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/progress_share.dart';
-import '../../models/cut.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/guide_geometry.dart' show GuideTransform;
 import '../../services/import/cel_picture.dart' show EnginePicture;
@@ -25,11 +24,10 @@ Future<void> mergeLayerRows(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  final asked = session.layerMerging.planOfSelection();
-  if (asked == null) {
+  final plan = session.layerMerging.planOfSelection();
+  if (plan == null) {
     return;
   }
-  final (:cut, :plan) = asked;
   if (plan.changes.isNotEmpty &&
       await _accepts(context, plan.changes) != true) {
     return;
@@ -46,8 +44,8 @@ Future<void> mergeLayerRows(
     doneLabel: strings.bakeProgressDone,
     windowKey: const ValueKey<String>('layer-merge-progress'),
     task: (report) async {
-      await _layPictures(session, cut, plan, report);
-      session.layerMerging.land(cut, plan);
+      await _layPictures(session, plan, report);
+      session.layerMerging.land(plan);
     },
   );
 }
@@ -84,11 +82,11 @@ Future<bool?> _accepts(BuildContext context, Set<LayerMergeChange> changes) {
 /// laid on its new cel where it lies.
 Future<void> _layPictures(
   EditorSessionManager session,
-  Cut cut,
   LayerMergePlan plan,
   void Function(double) report,
 ) async {
-  final wall = session.pasteboardOf(cut.canvasSize);
+  final canvas = plan.cut.canvasSize;
+  final wall = session.pasteboardOf(canvas);
   final renderer = ExportFrameRenderer(
     session: session,
     background: const ui.Color(0x00000000),
@@ -105,12 +103,11 @@ Future<void> _layPictures(
       );
       try {
         session.layerMerging.layPicture(
-          cut,
           plan,
           picture,
           await layCelPicture(
             picture: drawn,
-            canvas: cut.canvasSize,
+            canvas: canvas,
             placement: GuideTransform(
               1,
               0,
