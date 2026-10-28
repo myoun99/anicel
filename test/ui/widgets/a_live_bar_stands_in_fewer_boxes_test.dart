@@ -172,6 +172,42 @@ void main() {
       }
     }
 
+    // The box the shapes switch in is the one that placed the writing a
+    // moment ago: over two inks it gives the place up to the box inside the
+    // layout builder, and takes it back over one.
+    testWidgets('a writing that changes shape or place stands where a new '
+        'one would', (tester) async {
+      final steps = <(List<GroundInkRun>, Alignment?)>[
+        (oneInk, Alignment.center),
+        (twoInks, Alignment.center),
+        (oneInk, Alignment.center),
+        (oneInk, Alignment.centerRight),
+        (twoInks, null),
+        (twoInks, Alignment.centerRight),
+      ];
+      Widget at(int step) =>
+          host(hosts['tight']!(placed(steps[step].$1, steps[step].$2)));
+      for (var step = 1; step < steps.length; step += 1) {
+        await tester.pumpWidget(at(step - 1));
+        await tester.pumpWidget(at(step));
+        final moved = await answersOf(
+          tester,
+          GroundInkWriting,
+          asksNeeds: false,
+        );
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpWidget(at(step));
+        final fresh = await answersOf(
+          tester,
+          GroundInkWriting,
+          asksNeeds: false,
+        );
+        for (final key in fresh.keys) {
+          expect(moved[key], fresh[key], reason: 'step $step: $key');
+        }
+      }
+    });
+
     testWidgets('the writing has no box of its own round it — the one above '
         'it places it', (tester) async {
       await tester.pumpWidget(
@@ -252,6 +288,26 @@ void main() {
         semantics.dispose();
       });
     }
+
+    testWidgets('its node says the value the bar takes', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(
+        host(
+          ValueListenableBuilder<double>(
+            valueListenable: value,
+            builder: (context, v, _) =>
+                FieldSlider.opacity(value: v, onChanged: (_) {}),
+          ),
+        ),
+      );
+      value.value = 0.7;
+      await tester.pump();
+      final node = tester.getSemantics(find.byType(FieldSliderTrack));
+      expect(node.getSemanticsData().value, '70');
+      semantics.dispose();
+    });
 
     Future<MouseCursor?> cursorOver(WidgetTester tester, Widget bar) async {
       await tester.pumpWidget(host(bar));
