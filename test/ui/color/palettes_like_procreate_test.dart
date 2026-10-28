@@ -406,13 +406,26 @@ void main() {
         start,
         kind: PointerDeviceKind.mouse,
       );
+      bool tooltipsOn() => tester
+          .widget<TooltipVisibility>(
+            find
+                .ancestor(
+                  of: _key('palette-p1-lock'),
+                  matching: find.byType(TooltipVisibility),
+                )
+                .first,
+          )
+          .visible;
+      expect(tooltipsOn(), isTrue, reason: 'the premise');
       for (var step = 1; step <= 10; step += 1) {
         await gesture.moveTo(start - Offset(0, rise * step / 10));
         await tester.pump();
       }
+      expect(tooltipsOn(), isFalse, reason: 'no tooltip while one is carried');
       await gesture.up();
       await tester.pumpAndSettle();
       expect(order(), ['p2', 'p1']);
+      expect(tooltipsOn(), isTrue, reason: 'back a frame past the drop');
       expect(
         desk.palettes.palettes.first.folded,
         isFalse,

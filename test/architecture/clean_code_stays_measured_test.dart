@@ -767,7 +767,13 @@ void main() {
   /// pose and picks the filter, the ratio is the canvas's past every
   /// transform and picks the grid — one value of the two would answer two
   /// questions.
-  const wideSignatures = 434;
+  ///
+  /// ⚠️434 → 435 on 2026-10-28, one named as the rule above asks (I-131,
+  /// the palette's fold and lock): `NamedPalette._with` (five) is a
+  /// palette's copy — every field it has, the folded and the locked among
+  /// them — the copyWith idiom the rule leaves out, under a private name.
+  /// ⛔Not split to fit: a copy that takes half the fields is two copies.
+  const wideSignatures = 435;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

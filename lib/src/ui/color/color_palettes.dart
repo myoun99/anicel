@@ -20,6 +20,7 @@ library;
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 
 import '../../models/reorder_target.dart';
@@ -354,9 +355,9 @@ class _Place extends StatefulWidget {
   /// left is handed over.
   final void Function(int from)? onTraded;
 
-  /// A double click: the colour's own window, anchored on the place. It
-  /// does not delay the press — that fires from the raw lift
-  /// ([ControlPressClaim]), as the brush group tab's does.
+  /// A double click: the colour's own window, anchored on the place —
+  /// the second of two presses ([_PlaceState._secondPressWindow]); the
+  /// first picks, as any press does.
   final void Function(BuildContext anchor)? onEdit;
 
   @override
@@ -373,10 +374,34 @@ class _PlaceState extends State<_Place> {
   /// first), so this still says so then.
   bool _carried = false;
 
+  /// A press while the previous one's [kDoubleTapTimeout] still runs IS
+  /// the second click of a double click — the dock splitter's reading
+  /// (`dock_edge_splitter.dart`). ⛔Not a double tap on the ink: under the
+  /// claim, a live tap is rejected the moment the hand moves, and on a
+  /// press that does not move it fires a second time
+  /// (`every_button_claims_its_press_test`).
+  Timer? _secondPressWindow;
+
   void _press() {
-    if (!_carried) {
-      widget.onPressed?.call();
+    if (_carried) {
+      return;
     }
+    final onEdit = widget.onEdit;
+    if (onEdit != null && (_secondPressWindow?.isActive ?? false)) {
+      _secondPressWindow!.cancel();
+      onEdit(context);
+      return;
+    }
+    widget.onPressed?.call();
+    if (onEdit != null) {
+      _secondPressWindow = Timer(kDoubleTapTimeout, () {});
+    }
+  }
+
+  @override
+  void dispose() {
+    _secondPressWindow?.cancel();
+    super.dispose();
   }
 
   /// [color]'s circle — dimmed, as the place its colour was carried out
@@ -410,7 +435,6 @@ class _PlaceState extends State<_Place> {
     }
     final at = widget.at;
     final color = widget.color;
-    final onEdit = widget.onEdit;
     // ⚠️The carry sits INSIDE the claim, and the order is the point: the
     // deeper recogniser is offered the first move first, and both take
     // the pointer on it — a claim outside wins it and the carry never
@@ -422,7 +446,6 @@ class _PlaceState extends State<_Place> {
         mouseCursor: AppCursors.press,
         customBorder: const CircleBorder(),
         onTap: silentPress(_press),
-        onDoubleTap: onEdit == null ? null : () => onEdit(context),
         child: at == null || color == null
             ? circle
             : _carrying(circle, color, at),

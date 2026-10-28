@@ -471,6 +471,7 @@ void main() {
     'paletteDuplicate': (s) => s.paletteDuplicate,
     'paletteDeleteTitle': (s) => s.paletteDeleteTitle,
     'paletteRemoveCurrent': (s) => s.paletteRemoveCurrent,
+    'paletteLock': (s) => s.paletteLock,
     'paletteMore': (s) => s.paletteMore,
     'penPressureTitle': (s) => s.penPressureTitle,
     'brushDynamicsTitle': (s) => s.brushDynamicsTitle,
