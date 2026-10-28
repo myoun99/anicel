@@ -233,27 +233,37 @@ void main() {
           () => irisLaidCoverOf(table, iris, level: level),
         );
         final sum = List<double>.filled(4, 0);
+        void take(int u, int v, double weight) {
+          for (var c = 0; c < 4; c += 1) {
+            sum[c] += read[v * width + u][c] * weight;
+          }
+        }
+
         void add(List<IrisRow> rows, double weight) {
           for (var row = 0; row < rows.length; row += 1) {
-            var (left: from, right: to) = rows[row];
-            if (paper == null) {
-              // Past the raster nothing: only the columns on it.
-              final v = y + row - cover.reach;
-              if (v < 0 || v >= height) {
-                continue;
-              }
-              (from, to) = (math.max(from, -x), math.min(to, width - 1 - x));
+            final (left: from, right: to) = rows[row];
+            var v = y + row - cover.reach;
+            if (paper != null) {
+              v = v.clamp(top, bottom);
+            } else if (v < 0 || v >= height) {
+              continue;
             }
-            for (var dx = from; dx <= to; dx += 1) {
-              var (u, v) = (x + dx, y + row - cover.reach);
-              if (paper != null) {
-                (u, v) = (u.clamp(left, right), v.clamp(top, bottom));
-              } else if (u < 0 || v < 0 || u >= width || v >= height) {
-                continue;
+            // Each column past the paper's edge reads the edge pixel: so
+            // many of them, counted rather than walked.
+            final (first, last) = (x + from, x + to);
+            if (paper != null) {
+              final before = math.min(last, left - 1) - first + 1;
+              final after = last - math.max(first, right + 1) + 1;
+              if (before > 0) {
+                take(left, v, weight * before);
               }
-              for (var c = 0; c < 4; c += 1) {
-                sum[c] += read[v * width + u][c] * weight;
+              if (after > 0) {
+                take(right, v, weight * after);
               }
+            }
+            final (start, end) = (math.max(first, left), math.min(last, right));
+            for (var u = start; u <= end; u += 1) {
+              take(u, v, weight);
             }
           }
         }
@@ -689,12 +699,16 @@ void main() {
 
   // A level of more than 1024 rows takes two lines of the table: the rows
   // from 424 below on lie on the second. A triangle turned to point down
-  // lays its narrowest rows there, by its tip — narrower than the picture,
-  // so a row read off the wrong line sums to something else.
+  // lays its tip there. ⚠️The edge repeated, and the picture white from
+  // row 424 down, clear above: a pixel of the top row is then what the
+  // tip covers over what the whole iris does — past the raster nothing, a
+  // picture this small would be a hair of so wide an iris, and any rows
+  // would mean the same.
   testWidgets('an iris of more than 1024 rows reads its rows off both '
       'lines of its table, with a blur map or without', (tester) async {
-    final (width, height) = (16, 620);
-    final bytes = randomPicture(width, height, seed: 31);
+    final (width, height) = (12, 620);
+    final bytes = Uint8List(width * height * 4)
+      ..fillRange(424 * width * 4, width * height * 4, 255);
     final source = await imageOf(tester, bytes, width, height);
     final input = await bytesOf(tester, source);
     // Every level from 230 up: each past 540 at a focal distance of 0.
@@ -715,15 +729,23 @@ void main() {
       final pass = IrisGatherPass(
         radius: 600,
         iris: shape,
-        paper: null,
+        paper: Rect.fromLTWH(0, 0, width * 1.0, height * 1.0),
         light: null,
         map: reads
             ? (channel: IrisMapChannel.red, focal: 0, inverts: false)
             : null,
       );
+      final want = await truth(
+        tester,
+        input,
+        width,
+        pass,
+        map: reads ? levels : null,
+      );
+      expect(want[3], greaterThan(5), reason: 'fixture: the tip shows');
       expectWithinOne(
         await blurredBy(tester, source, pass, map: reads ? map : null),
-        await truth(tester, input, width, pass, map: reads ? levels : null),
+        want,
         reason: 'a map $reads',
       );
     }
