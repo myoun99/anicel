@@ -12,11 +12,19 @@ import 'versioned_settings_file.dart';
 /// 🗣️I-142-Q2 (유저 2026-10-29): 「기계에 묶인 넷은 넣지 않는다」 — the
 /// recent projects (paths on this disk), the window (this screen), the
 /// memory budget (this machine's memory) and the fonts (installed here).
+///
+/// ⚖️Two more that came after Q2, each this device's own by what it holds
+/// (관제 2026-10-29, the user away — 「판단필요한건 알아서 판단해서
+/// 진행해줘」): the launch notice's dismissal (what THIS install was shown)
+/// and the usage statistics (I-70: a consent given on this device, and the
+/// days THIS device was used, which the privacy policy keeps on it).
 const Set<String> settingsBoundToThisMachine = {
   'recent_projects.json',
   'window.json',
   'memory_settings.json',
   'fonts',
+  'launch_notice.json',
+  'usage_stats.json',
 };
 
 /// The settings room's entries that leave in the whole-settings file —

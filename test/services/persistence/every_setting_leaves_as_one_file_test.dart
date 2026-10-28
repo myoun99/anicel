@@ -12,15 +12,18 @@ import '../../helpers/temp_dir.dart';
 /// I-142 (유저 2026-10-29): every setting leaves as one file — the settings
 /// room as it stands, each store's document as its store wrote it (Q5), but
 /// for the four bound to this machine (Q2: 「기계에 묶인 넷은 넣지
-/// 않는다」).
+/// 않는다」) and the two that are this device's own — the launch notice's
+/// dismissal and the usage statistics (I-70).
 void main() {
   test('what travels is the room but the recent projects, the window, the '
-      'memory and the fonts', () {
+      'memory, the fonts, the launch notice and the usage statistics', () {
     expect(settingsBoundToThisMachine, {
       'recent_projects.json',
       'window.json',
       'memory_settings.json',
       'fonts',
+      'launch_notice.json',
+      'usage_stats.json',
     });
     expect(travellingSettingsEntries, [
       for (final entry in appSettingsEntries)
