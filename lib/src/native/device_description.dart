@@ -221,7 +221,9 @@ abstract final class DeviceDescriptions {
   }
 
   /// `HKEY_LOCAL_MACHINE`: `(HKEY)(LONG)0x80000002`, sign-extended to the
-  /// handle's width as the C headers have it.
+  /// handle's width as the C headers have it. 🧪The zero-extended handle
+  /// reads the same on the main PC (a surviving mutant, 2026-10-28) — the
+  /// headers' spelling is kept, not because the other fails.
   static final _hklm = Pointer<Void>.fromAddress(0x80000002 - 0x100000000);
   static const int _rrfRtRegSz = 0x2;
   static const int _rrfRtRegDword = 0x10;
