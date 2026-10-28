@@ -886,7 +886,7 @@ class _LayerStackPaintPass {
     // each pixel of a pan, and another way than the frame's picture
     // (🔬Windows app: 3–4/255 pan to pan, 4–6/255 from the picture). On
     // the grid the row's step is told as a folder's is
-    // (`_whereTheLiveRowShows`), so a stroke patches the frame's picture
+    // (`_whereAChangeShows`), so a stroke patches the frame's picture
     // as far as its spread reaches and a pan draws the picture — where the
     // row drawn on had the whole view drawn as it stands at every paint.
     final spreads = activePlan.outsetPixels > 0;

@@ -97,17 +97,18 @@ void main() {
   LayerEffect blur(double radius) => LayerEffect(
     id: const EffectId('blur'),
     kind: EffectKind.blur,
-    parameters: {
-      'blurX': EffectParameter(value: radius),
-      'blurY': EffectParameter(value: radius),
-    },
+    parameters: {'blurriness': EffectParameter(value: radius)},
   );
 
   /// A session on [layers], the onion on the pen's row at frame 1, laid in
   /// place — each row's cels inked: the pen's where its frame puts them
-  /// (the cel before at [ghostAt]), every other row over the ghost before
-  /// and in a band through the page.
-  EditorSessionManager inked(List<Layer> layers, {CanvasPoint? ghostAt}) {
+  /// (the cel before at [ghostAt], [ghostSize] across), every other row
+  /// over the ghost before and in a band through the page.
+  EditorSessionManager inked(
+    List<Layer> layers, {
+    CanvasPoint? ghostAt,
+    double ghostSize = 9,
+  }) {
     final app = EditorAppSettings();
     addTearDown(app.dispose);
     app.onionSkinSettings.value = app.onionSkinSettings.value.copyWith(
@@ -155,7 +156,7 @@ void main() {
         continue;
       }
       if (row.id == pen) {
-        ink(row, 'pen-0', ghostAt ?? before, 9, 0xFF000000);
+        ink(row, 'pen-0', ghostAt ?? before, ghostSize, 0xFF000000);
         ink(row, 'pen-1', current, 9, 0xFF000000);
         ink(row, 'pen-2', after, 9, 0xFF000000);
         continue;
@@ -216,18 +217,51 @@ void main() {
   }
 
   ({DemandedPicture inPlace, DemandedPicture film}) atTheHead(
-    EditorSessionManager session,
-  ) {
+    EditorSessionManager session, {
+    bool paper = true,
+  }) {
     final cut = session.requireActiveCut;
     return (
-      inPlace: standingPicturesOf(cut, 1, OnionSkinPlacement.inPlace).frame,
+      inPlace: standingPicturesOf(
+        cut,
+        1,
+        OnionSkinPlacement.inPlace,
+        paintPaper: paper,
+      ).frame,
       film: (
         cut: cut,
         frameIndex: 1,
-        paintPaper: true,
+        paintPaper: paper,
         ghosts: FrameGhosts.none,
       ),
     );
+  }
+
+  /// Lays [session]'s frame at the head with its ghosts in place twice —
+  /// whole, and over its film laid first — on its paper or on none, and
+  /// asks the two for one picture.
+  Future<void> expectOverItsFilmAsWhole(
+    EditorSessionManager session, {
+    bool paper = true,
+  }) async {
+    final (:inPlace, :film) = atTheHead(session, paper: paper);
+
+    final whole = besideThe(session);
+    await make(whole, inPlace);
+
+    final over = besideThe(session);
+    await make(over, film);
+    await make(over, inPlace);
+
+    expect(
+      over.keyOf(inPlace),
+      isNot(over.keyOf(film)),
+      reason: '⛔premise: the ghosts are in the frame',
+    );
+    final (extent, bytes) = await bytesOf(over, inPlace);
+    final (wholeExtent, wholeBytes) = await bytesOf(whole, inPlace);
+    expect(extent, wholeExtent);
+    expect(bytes, wholeBytes);
   }
 
   final shapes = <String, List<Layer> Function()>{
@@ -268,29 +302,79 @@ void main() {
   for (final MapEntry(key: shape, value: layersOf) in shapes.entries) {
     testWidgets('$shape: laid over its film, the frame is the frame laid '
         'whole, byte for byte', (tester) async {
-      await tester.runAsync(() async {
-        final session = inked(layersOf());
-        final (:inPlace, :film) = atTheHead(session);
-
-        final whole = besideThe(session);
-        await make(whole, inPlace);
-
-        final over = besideThe(session);
-        await make(over, film);
-        await make(over, inPlace);
-
-        expect(
-          over.keyOf(inPlace),
-          isNot(over.keyOf(film)),
-          reason: '⛔premise: the ghosts are in the frame',
-        );
-        final (extent, bytes) = await bytesOf(over, inPlace);
-        final (wholeExtent, wholeBytes) = await bytesOf(whole, inPlace);
-        expect(extent, wholeExtent);
-        expect(bytes, wholeBytes);
-      });
+      await tester.runAsync(
+        () => expectOverItsFilmAsWhole(inked(layersOf())),
+      );
     });
   }
+
+  // On no paper what lies over the ghosts can let the film's texels through
+  // where they show: taken in their stead, not laid over them.
+  testWidgets('on no paper, a row at half strength over it: laid over its '
+      'film, the frame is the frame laid whole', (tester) async {
+    await tester.runAsync(
+      () => expectOverItsFilmAsWhole(
+        inked([
+          theRowWithTheOnion(),
+          drawing('over').copyWith(opacity: 0.5),
+        ]),
+        paper: false,
+      ),
+    );
+  });
+
+  // A spread of the folder the ghost is in reaches past the cells round its
+  // ink, and is told by the folder, not by the row under it.
+  testWidgets('a folder blurring its ghost far past its cells, a row under '
+      'the folder: laid over its film, the frame is the frame laid whole', (
+    tester,
+  ) async {
+    await tester.runAsync(
+      () => expectOverItsFilmAsWhole(
+        inked([
+          drawing('under'),
+          theRowWithTheOnion(folder: 'f'),
+          createFolderLayer(
+            id: const LayerId('f'),
+            name: 'F',
+          ).copyWith(effects: [blur(48)]),
+        ], ghostSize: 33),
+      ),
+    );
+  });
+
+  // Over its film a frame draws its nodes only where its ghosts show; a
+  // canvas that draws on it holds them in a turn of their own
+  // (`FramePictures.holdNodesOf`).
+  testWidgets('laid over its film for a canvas that draws on it, the frame '
+      'keeps none of its nodes', (tester) async {
+    await tester.runAsync(() async {
+      final session = inked(shapes['rows over and under it']!());
+      final (:inPlace, :film) = atTheHead(session);
+      Future<bool> keptLaidForAPen(FramePictures pictures) async {
+        expect(
+          await pictures.makeShown(
+            pictures.stackOf(inPlace),
+            inPlace,
+            shouldAbort: () => false,
+            keepsNodes: true,
+          ),
+          isTrue,
+          reason: '⛔premise: the frame is laid',
+        );
+        return pictures.heldNodes.holdsAllOf(pictures.keyOf(inPlace));
+      }
+
+      expect(
+        await keptLaidForAPen(besideThe(session)),
+        isTrue,
+        reason: '⛔premise: laid whole for a pen, it keeps them',
+      );
+      final over = besideThe(session);
+      await make(over, film);
+      expect(await keptLaidForAPen(over), isFalse);
+    });
+  });
 
   // A frame covers its page and every row's buffer: past the film's, the
   // frame holds its ghosts alone.

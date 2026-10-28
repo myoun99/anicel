@@ -452,7 +452,7 @@ final class StackedFrame {
   /// it, in world coordinates — all a frame laid with its ghosts in place
   /// differs by from the same frame laid without them: each ghost's ink,
   /// told as a stroke's change of the live row is
-  /// ([_LayerStackPainter._whereTheRowShows]). Empty where none has ink;
+  /// ([_LayerStackPainter._whereAChangeShows]). Empty where none has ink;
   /// null where that cannot be told.
   Rect? get whereTheGhostsShow => _painter._whereTheGhostsShow();
 }
@@ -920,7 +920,7 @@ final class _LayerStackPainter {
 
   /// Where the LIVE surface changed since [since] — what it looked like
   /// when the picture it is patched into last took it in — in canvas space
-  /// ([_whereTheRowShows]), plus what it looks like now, for the next
+  /// ([_whereAChangeShows]), plus what it looks like now, for the next
   /// measure.
   ///
   /// 🎯[since] IS WHAT THE PICTURE HOLDS, not what the last paint drew.
@@ -931,13 +931,6 @@ final class _LayerStackPainter {
   /// 🚨`located: false` is the safe answer, and it costs only drawing the
   /// frame as it stands. It is the answer whenever the change cannot be
   /// located ([_liveSurfaceTokens]).
-  ///
-  /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
-  /// composite around it does not have to land on them — a posed sibling or
-  /// a rounded edge can put ink a fraction over the line, and a patch that
-  /// trusted the exact rect would leave a hairline of the previous frame.
-  /// One pixel is cheap and the alternative is a class of bug that only
-  /// shows on some zoom levels.
   ({bool located, Rect? dirty, LiveSurfaceTokens? now})
   _liveDirtyCanvasRect({required LiveSurfaceTokens since}) {
     final now = _liveSurfaceTokens();
@@ -968,8 +961,8 @@ final class _LayerStackPainter {
     if (dirty == null) {
       return (located: true, dirty: null, now: now);
     }
-    final shows = _whereTheRowShows(nodes, dirty, _isTheLiveRow);
-    return (located: shows != null, dirty: shows?.inflate(1), now: now);
+    final shows = _whereAChangeShows(nodes, dirty, _isTheLiveRow);
+    return (located: shows != null, dirty: shows, now: now);
   }
 
   /// Whether what the live rows draw can change only where their tokens
@@ -997,10 +990,25 @@ final class _LayerStackPainter {
   bool get _liveCanBeTold => floatOverlay?.value == null && liftedRows.isEmpty;
 
   /// Where a change at [rect] of the pixels of the row [isRow] picks shows
-  /// in the composite of [list] — or null where that cannot be told, or
-  /// the row is not in it. The live surface a stroke's step changes
+  /// in the composite of [list] ([_whereTheRowShows]) — or null where that
+  /// cannot be told. The live surface a stroke's step changes
   /// ([_isTheLiveRow]), or an onion ghost a frame laid over its film adds
   /// ([_whereTheGhostsShow]): one question, one answer.
+  ///
+  /// ⛔The rect is INFLATED by one pixel. A dab writes whole texels, but the
+  /// composite around it does not have to land on them — a posed sibling or
+  /// a rounded edge can put ink a fraction over the line, and a patch that
+  /// trusted the exact rect would leave a hairline of the previous frame.
+  /// One pixel is cheap and the alternative is a class of bug that only
+  /// shows on some zoom levels.
+  static Rect? _whereAChangeShows(
+    List<CompositeNode<_PaintRow>> list,
+    Rect rect,
+    bool Function(_PaintRow row) isRow,
+  ) => _whereTheRowShows(list, rect, isRow)?.inflate(1);
+
+  /// Where [rect] of the row [isRow] picks shows in the composite of [list]
+  /// — or null where that cannot be told, or the row is not in it.
   ///
   /// An effect that SPREADS on a folder or an adjustment enclosing the
   /// surface — the stroke's pixels pass through its buffer — smears a dab
@@ -1077,8 +1085,7 @@ final class _LayerStackPainter {
   static bool _isTheLiveRow(_PaintRow row) => row is _PaintActiveSurface;
 
   /// [StackedFrame.whereTheGhostsShow]: where each ghost's ink shows
-  /// ([_whereTheRowShows]), together — inflated by a pixel as a step's
-  /// change is ([_liveDirtyCanvasRect]).
+  /// ([_whereAChangeShows]), together.
   Rect? _whereTheGhostsShow() {
     var shows = Rect.zero;
     for (final node in preorderNodes(nodes)) {
@@ -1089,7 +1096,7 @@ final class _LayerStackPainter {
         if (ink.isEmpty) {
           continue;
         }
-        final where = _whereTheRowShows(
+        final where = _whereAChangeShows(
           nodes,
           ink,
           (row) => identical(row, ghost),
@@ -1097,9 +1104,7 @@ final class _LayerStackPainter {
         if (where == null) {
           return null;
         }
-        shows = shows.isEmpty
-            ? where.inflate(1)
-            : shows.expandToInclude(where.inflate(1));
+        shows = shows.isEmpty ? where : shows.expandToInclude(where);
       }
     }
     return shows;
