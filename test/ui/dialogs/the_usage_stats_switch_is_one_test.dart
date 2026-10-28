@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/dialogs/usage_stats_switch_row.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 
 import '../../helpers/boolean_dot_probe.dart';
 
@@ -92,6 +93,17 @@ void main() {
     );
     // What it sends is the tooltip — no caption under the control.
     expect(find.text(AppText.strings.usageStatsHelp), findsNothing);
+    expect(
+      find.descendant(
+        of: _notice,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is AppTooltip &&
+              widget.message == AppText.strings.usageStatsHelp,
+        ),
+      ),
+      findsOneWidget,
+    );
 
     await tester.pressRingIn(_switchIn(_notice));
     await tester.pumpAndSettle();

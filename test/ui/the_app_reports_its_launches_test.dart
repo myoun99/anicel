@@ -23,13 +23,15 @@ class _OnStore extends UsageStatsStore {
   Future<void> save(List<int>? activeDays) async {}
 }
 
-/// A saved Korean.
+/// A saved Korean, back a moment after the usage statistics' answer.
 class _Korean extends AppLanguageSettingsStore {
   _Korean() : super(filePath: 'unused');
 
   @override
-  Future<AppLanguageSettings?> load() async =>
-      const AppLanguageSettings(programLanguage: AppLanguage.ko);
+  Future<AppLanguageSettings?> load() async {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    return const AppLanguageSettings(programLanguage: AppLanguage.ko);
+  }
 
   @override
   Future<void> save(AppLanguageSettings settings) async {}

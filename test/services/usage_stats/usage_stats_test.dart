@@ -187,6 +187,7 @@ void main() {
         ],
         ['app_started'],
       ]);
+      expect(store.days, [today], reason: 'a launch with no day writes none');
     });
 
     test('a run is counted once — turned off and on again it sends no second '
