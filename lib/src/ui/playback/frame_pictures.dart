@@ -10,7 +10,9 @@ import '../../models/rgba_image_bytes.dart';
 import '../../services/cel_content_notes.dart';
 import '../../services/playback/frame_demand.dart';
 import '../canvas/canvas_layer_stack_view.dart';
-import '../canvas/subtree_image_composite.dart' show HeldSubtreeRasters;
+import '../canvas/display_resample.dart' show rectOutwardOnGrid;
+import '../canvas/subtree_image_composite.dart'
+    show HeldSubtreeRasters, blurReductionCell;
 import '../quiet_turns.dart';
 import 'frame_picture_store.dart';
 import 'layer_frame_image_cache.dart';
@@ -71,7 +73,8 @@ class FramePictures implements PlaybackPictures {
   final LayerFrameImageCache layerImages;
 
   /// The tree a screen stacks for [Cut]'s frame — the canvas's own, no row
-  /// live (`EditingCanvas.playedStackAt`) — or its ghosts' (`ghostsAt`).
+  /// live (`EditingCanvas.playedStackAt`), with its ghosts in place or
+  /// without — or its ghosts' alone (`EditingCanvas.ghostsOverAt`).
   final List<CompositeNode<CanvasStackRow>> Function(
     DemandedPicture picture,
   )
@@ -465,15 +468,23 @@ class FramePictures implements PlaybackPictures {
       return false;
     }
     final nodes = nodesOf();
-    final made = drawingNow(nodes, picture, keepsNodes: keepsNodes);
+    // Laid over its film, a frame draws its nodes only where its ghosts
+    // show, and keeps none: a canvas that shows it holds them then
+    // ([holdNodesOf]).
+    final overTheFilm =
+        picture.ghosts == FrameGhosts.inPlace &&
+        store.holds(_filmOf(nodes, picture));
+    final keeps = keepsNodes && !overTheFilm;
+    final made = drawingNow(nodes, picture, keepsNodes: keeps);
     // Asked once the drawing is: a cel it was made without is noted now.
     final key = keyOfStack(nodes, picture);
+    final drawing = overTheFilm
+        ? _overTheFilm(made.frame, _filmOf(nodes, picture))
+        : made.frame.drawing;
     if ((keepsNodes || !drawsOnlyItsPage(key)) &&
         !await _lay(
           key,
-          keepsNodes
-              ? _thenHeldAllOf(heldNodes, key, made.frame.drawing)
-              : made.frame.drawing,
+          keeps ? _thenHeldAllOf(heldNodes, key, drawing) : drawing,
           shouldAbort,
           due,
           shownNow: shownNow,
@@ -484,6 +495,75 @@ class FramePictures implements PlaybackPictures {
       Error.throwWithStackTrace(error, stack);
     }
     return true;
+  }
+
+  /// The key of the frame [nodes] stack for [picture] — one with its
+  /// ghosts in place — as a run plays it: the same tree without them
+  /// ([CanvasGhostImageRequest]).
+  FramePictureKey _filmOf(
+    List<CompositeNode<CanvasStackRow>> nodes,
+    DemandedPicture picture,
+  ) => keyOfStack(
+    mapCompositeLeaves<CanvasStackRow, CanvasStackRow>(
+      nodes,
+      (row) => row is CanvasGhostImageRequest ? null : row,
+    ),
+    (
+      cut: picture.cut,
+      frameIndex: picture.frameIndex,
+      paintPaper: picture.paintPaper,
+      ghosts: FrameGhosts.none,
+    ),
+  );
+
+  /// 🚨A FRAME WITH ITS GHOSTS IN PLACE IS LAID OVER ITS FILM
+  /// (onion-ghosts-in-place ②, 유저 2026-10-26 「보통 합성이 아닌 경우라도
+  /// 최대한 극한으로 개선해보자」): [frame]'s picture made of the picture of
+  /// [film] — the frame as a run plays it ([_filmOf]), held when its turn
+  /// comes — those texels as they are, and where the ghosts show
+  /// ([StackedFrame.whereTheGhostsShow]) a picture of that place alone,
+  /// drawn on nothing by the frame's own body, in their stead: what a
+  /// stroke's step writes into the picture it patches
+  /// ([FramePictureStore.patch]). So any blend, adjustment, folder or clip
+  /// over the ghosts alike — nothing is laid over a texel. Drawn whole where
+  /// the film is gone by then, or the ghosts cannot be told.
+  ///
+  /// Past the film's picture the frame holds nothing but its ghosts: a
+  /// frame covers its page and every row's buffer, spread and all
+  /// (`_LayerStackPaintPass._compositeExtent`), and the ghosts' place
+  /// covers theirs.
+  ///
+  /// 🔬Laid whole, S5_BA cut 352 (67 rows, 2436×1524, 10-28, Windows,
+  /// profile): the standing order warmed in 444–523 ms against 132–166 ms
+  /// with the ghosts on top — on the Surface Pro 11 3,635–3,759 ms against
+  /// 691–816 ms.
+  FrameDrawing _overTheFilm(StackedFrame frame, FramePictureKey film) {
+    final whole = frame.drawing;
+    return (
+      extent: whole.extent,
+      outside: whole.outside,
+      draw: (canvas) {
+        final under = store.peek(film);
+        final ghosts = frame.whereTheGhostsShow;
+        if (under == null || ghosts == null) {
+          whole.draw(canvas);
+          return;
+        }
+        canvas.drawImage(under.image, under.extent.topLeft, _inStead);
+        final place = _onTheCells(ghosts, pictureExtentOf(whole.extent));
+        if (place.isEmpty) {
+          return;
+        }
+        final alone = recordedOver(place, whole.draw);
+        final image = alone.toImageSync(
+          place.width.toInt(),
+          place.height.toInt(),
+        );
+        alone.dispose();
+        canvas.drawImage(image, place.topLeft, _inStead);
+        image.dispose();
+      },
+    );
   }
 
   /// Lays [key]'s picture of [drawing] in its turn ([make]); false where
@@ -647,6 +727,31 @@ class FramePictures implements PlaybackPictures {
     }
     return soonest;
   }
+}
+
+/// Texels taken as they are, one to a pixel — a picture laid over its film
+/// ([FramePictures._overTheFilm]), as a patch's take the place of the
+/// picture's.
+final ui.Paint _inStead = ui.Paint()
+  ..blendMode = ui.BlendMode.src
+  ..filterQuality = ui.FilterQuality.none;
+
+/// [place] out to the cells a blur reduces what it reads by
+/// ([blurReductionCell]), counted from [extent]'s corner — so a chain that
+/// spreads reads the place's raster as it reads the picture laid whole —
+/// inside [extent]; empty where nothing of it is.
+///
+/// 🔬On whole pixels alone, a blurred folder over the ghosts came out 1/255
+/// apart from the frame laid whole at 17 pixels (Impeller tester, 10-28).
+ui.Rect _onTheCells(ui.Rect place, ui.Rect extent) {
+  if (place.intersect(extent).isEmpty) {
+    return ui.Rect.zero;
+  }
+  return rectOutwardOnGrid(
+    place,
+    1 / blurReductionCell,
+    origin: extent.topLeft,
+  ).intersect(extent);
 }
 
 /// [drawing], noting once it is drawn that [key]'s nodes are held

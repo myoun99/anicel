@@ -163,7 +163,7 @@ class FramePictureStore<K extends Object> {
   /// it is.
   ///
   /// 🚨★★★IN PLACE, NEVER OVER — the display buffer's two lessons. The
-  /// patch is drawn on nothing, a picture of [rect] alone ([_recorded]),
+  /// patch is drawn on nothing, a picture of [rect] alone ([recordedOver]),
   /// and its texels replace the picture's. ↩️The buffer recomposed a
   /// region OVER the pixels it carried: ink not fully opaque blended with
   /// its own previous frame unless the region was cleared first, and where
@@ -204,7 +204,7 @@ class FramePictureStore<K extends Object> {
       _letGo(entry);
       return false;
     }
-    final asked = _Patch<K>(from, to, widened, _recorded(widened, draw));
+    final asked = _Patch<K>(from, to, widened, recordedOver(widened, draw));
     _becoming[to] = (entry: entry, patch: asked);
     entry.renders = entry.renders.then((_) => _renderPatch(entry, asked));
     return true;
@@ -337,7 +337,7 @@ class FramePictureStore<K extends Object> {
       return null;
     }
     final image = await _rendered(
-      _recorded(extent, lay.frame.draw),
+      recordedOver(extent, lay.frame.draw),
       extent.width.toInt(),
       extent.height.toInt(),
     );
@@ -724,7 +724,7 @@ Iterable<_PictureRead> _rowsOf(
 
 /// A picture of what [draw] draws over [rect] in world coordinates, with
 /// [rect]'s top left at its origin.
-ui.Picture _recorded(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
+ui.Picture recordedOver(ui.Rect rect, void Function(ui.Canvas canvas) draw) {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder)
     ..translate(-rect.left, -rect.top)

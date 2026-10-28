@@ -87,9 +87,9 @@ class EditingStackMap {
   /// An onion ghost, from its cel where a drag shows its pixels
   /// ([celPixelsOf]) — whether the plan laid it in place or the canvas lays
   /// it over the frame (`OnionSkin.ghostsAt`).
-  CanvasLayerImageRequest _ghost(CutFrameCompositeGhost ghost) {
+  CanvasGhostImageRequest _ghost(CutFrameCompositeGhost ghost) {
     final pixels = celPixelsOf(dragPreview, ghost.layer.id, ghost.frameId);
-    return CanvasLayerImageRequest(
+    return CanvasGhostImageRequest(
       frameKey: _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel),
       opacity: ghost.opacity,
       blendMode: ghost.blendMode,
