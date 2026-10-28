@@ -9,6 +9,9 @@ import 'package:anicel/src/ui/widgets/row_plate.dart';
 
 import '../../helpers/named_finders.dart';
 
+/// One plate as a row may become: its ground, its padding, its width.
+typedef _Shape = (String ground, EdgeInsets padding, double width);
+
 /// A row's plate stands in ONE BOX (card frame-panels-build-in-one-frame,
 /// 2026-10-28): [RowPlate] is laid out, painted, hit and read as the
 /// `Container` and the `Semantics` under it were.
@@ -39,7 +42,12 @@ void main() {
     ),
     'none': null,
   };
-  const paddings = <EdgeInsets>[EdgeInsets.only(right: 8), EdgeInsets.zero];
+  // The rail row's, a column's, and one that stands the contents down too.
+  const paddings = <EdgeInsets>[
+    EdgeInsets.only(right: 8),
+    EdgeInsets.zero,
+    EdgeInsets.fromLTRB(2, 3, 8, 0),
+  ];
   const contentsKey = ValueKey<String>('contents');
   const hostKey = ValueKey<String>('host');
 
@@ -49,12 +57,17 @@ void main() {
     direction: Axis.horizontal,
     children: [
       const SizedBox(width: 6),
+      // ⚠️Writing, not a coloured box: a box that paints a colour cannot
+      // answer a dry baseline.
       Semantics(
         label: 'eye',
         button: true,
-        child: const ColoredBox(
-          color: Color(0xFFEEDD00),
-          child: SizedBox(width: 12, height: 12),
+        child: const SizedBox(
+          width: 12,
+          child: Text(
+            '◉',
+            style: TextStyle(fontSize: 10, color: Color(0xFFEEDD00)),
+          ),
         ),
       ),
       const Expanded(
@@ -190,10 +203,14 @@ void main() {
     ];
   }
 
+  // ⚠️The dry baseline is asked of a plate with no ground only: the
+  // decorated box a Container builds cannot answer one, where the plate
+  // can — the same answer as with no ground, its borders added in.
   Future<Map<String, Object?>> answersOf(
     WidgetTester tester,
-    Finder subject,
-  ) async {
+    Finder subject, {
+    required bool asksBaseline,
+  }) async {
     final box = tester.renderObject<RenderBox>(subject);
     final constraints = box.constraints;
     return {
@@ -203,10 +220,11 @@ void main() {
       'hits': hitsOf(tester, box),
       'nodes': nodesOf(tester),
       'dry': box.getDryLayout(constraints),
-      'dry baseline': box.getDryBaseline(
-        constraints,
-        TextBaseline.alphabetic,
-      ),
+      if (asksBaseline)
+        'dry baseline': box.getDryBaseline(
+          constraints,
+          TextBaseline.alphabetic,
+        ),
       'intrinsics': [
         box.getMinIntrinsicWidth(24),
         box.getMaxIntrinsicWidth(24),
@@ -226,11 +244,20 @@ void main() {
           await tester.pumpWidget(
             host(shape, old(decoration, padding, 'layer')),
           );
-          final before = await answersOf(tester, find.byType(Container));
+          final asksBaseline = decoration == null;
+          final before = await answersOf(
+            tester,
+            find.byType(Container),
+            asksBaseline: asksBaseline,
+          );
           await tester.pumpWidget(
             host(shape, plate(decoration, padding, 'layer')),
           );
-          final after = await answersOf(tester, find.byType(RowPlate));
+          final after = await answersOf(
+            tester,
+            find.byType(RowPlate),
+            asksBaseline: asksBaseline,
+          );
           for (final key in before.keys) {
             expect(after[key], before[key], reason: key);
           }
@@ -240,30 +267,64 @@ void main() {
     }
   }
 
-  testWidgets('a plate that changes its ground paints the new one', (
-    tester,
-  ) async {
-    Future<Uint8List> drawn(BoxDecoration? decoration) async {
+  testWidgets('a plate with a ground answers the dry baseline a plate with '
+      'none would, its borders added to the room', (tester) async {
+    Future<double?> baselineOf(
+      BoxDecoration? decoration,
+      EdgeInsets padding,
+    ) async {
       await tester.pumpWidget(
-        host(
-          hosts['tight']!,
-          plate(decoration, paddings.first, 'layer'),
-        ),
+        host(hosts['tight']!, plate(decoration, padding, 'layer')),
       );
-      return pixels(tester);
+      final box = tester.renderObject<RenderBox>(find.byType(RowPlate));
+      return box.getDryBaseline(box.constraints, TextBaseline.alphabetic);
     }
 
-    final orders = [
-      ['row', 'column'],
-      ['none', 'row'],
-      ['column', 'none'],
+    final grounded = await baselineOf(decorations['column'], paddings.last);
+    final bare = await baselineOf(
+      null,
+      paddings.last + const EdgeInsets.only(top: 1, right: 1, bottom: 1),
+    );
+    expect(grounded, isNotNull);
+    expect(grounded, bare);
+  });
+
+  testWidgets('a plate that changes its ground, its room or its size stands '
+      'as a new one would', (tester) async {
+    Future<List<Object>> drawn(_Shape shape) async {
+      final (ground, padding, width) = shape;
+      await tester.pumpWidget(
+        host(
+          (subject) => Center(child: subject),
+          RowPlate(
+            width: width,
+            height: 24,
+            padding: padding,
+            decoration: decorations[ground],
+            label: 'layer',
+            child: contents(),
+          ),
+        ),
+      );
+      return [
+        await pixels(tester),
+        tester.getRect(find.byType(RowPlate)),
+        tester.getRect(find.byKey(contentsKey)),
+      ];
+    }
+
+    const end = EdgeInsets.only(right: 8);
+    const changes = <(_Shape, _Shape)>[
+      (('row', end, 160), ('column', EdgeInsets.zero, 160)),
+      (('none', EdgeInsets.zero, 160), ('row', end, 120)),
+      (('column', EdgeInsets.zero, 120), ('none', end, 160)),
     ];
-    for (final [from, to] in orders) {
+    for (final (from, to) in changes) {
       await tester.pumpWidget(const SizedBox());
-      final fresh = await drawn(decorations[to]);
+      final fresh = await drawn(to);
       await tester.pumpWidget(const SizedBox());
-      await drawn(decorations[from]);
-      expect(await drawn(decorations[to]), fresh, reason: '$from → $to');
+      await drawn(from);
+      expect(await drawn(to), fresh, reason: '$from → $to');
     }
   });
 

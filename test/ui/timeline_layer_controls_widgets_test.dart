@@ -294,16 +294,22 @@ void main() {
         return parent;
       }
 
-      // Where a screen reader is told the node stands — up to the view,
-      // whose own transform is the device's pixel ratio.
+      // Where a screen reader is told the node stands, in the view's
+      // pixels — so in logical ones, divided by the pixel ratio.
       Rect placeOf(SemanticsNode node) {
         var rect = node.rect;
-        for (var at = node; at.parent != null; at = at.parent!) {
+        for (SemanticsNode? at = node; at != null; at = at.parent) {
           if (at.transform case final transform?) {
             rect = MatrixUtils.transformRect(transform, rect);
           }
         }
-        return rect;
+        final ratio = tester.view.devicePixelRatio;
+        return Rect.fromLTRB(
+          rect.left / ratio,
+          rect.top / ratio,
+          rect.right / ratio,
+          rect.bottom / ratio,
+        );
       }
 
       await tester.pumpWidget(_row(layer: layer));
