@@ -193,6 +193,31 @@ void main() {
       expect(parseEffectLaneValue(spec, '1'), isNull);
     });
 
+    test('a FLAG lane is a ring that reads on and off, takes them back, and '
+        'is no number (I-132-Q14)', () {
+      final rows = effectPropertyLanes(
+        [blur()],
+        isExpanded: (_) => true,
+        valueAt: (effectId, parameterId, frameIndex) =>
+            parameterId == 'repeatEdgePixels' ? frameIndex : 0.0,
+      );
+      final lane = rows.firstWhere(
+        (row) => row.label == 'Repeat Edge Pixels',
+      );
+      expect(lane.valueKind, PropertyLaneValueKind.boolean);
+      expect(lane.valueLabel!(0), flagLaneWord(false));
+      expect(lane.valueLabel!(1), flagLaneWord(true));
+      expect(lane.scrubValue, isNull, reason: 'nothing between on and off');
+      expect(lane.curve, isNull);
+      final spec = EffectKind.blur.parameterSpec('repeatEdgePixels')!;
+      expect(parseEffectLaneValue(spec, flagLaneWord(true)), 1);
+      expect(parseEffectLaneValue(spec, flagLaneWord(false)), 0);
+      expect(parseEffectLaneValue(spec, 'wide'), isNull);
+      // A number pasted on reads as the nearer of the two.
+      expect(formatEffectLaneValue(spec, 0.4), flagLaneWord(false));
+      expect(formatEffectLaneValue(spec, 0.6), flagLaneWord(true));
+    });
+
     test('scrubbing moves the value in the form the editor parses', () {
       final spec = EffectKind.hueSaturation.parameters.first;
       expect(scrubEffectLaneValue(spec, '10°', const Offset(20, 0)), '20.00°');
@@ -342,53 +367,80 @@ void main() {
       expect(edited.single.parameterOf('blurriness').track.keyAt(5)!.value, 9);
     });
 
-    test('a MENU lane\'s keys are steps — by its space, whatever sides a key '
-        'wears (I-132-Q6 「키프레임은 계단」)', () {
-      // Plain linear keys, as a paste from a number lane would bring them.
-      LayerEffect keyed(String parameterId) => LayerEffect(
-        id: const EffectId('k'),
-        kind: EffectKind.colorKey,
-        parameters: {
-          'amount': EffectParameter(value: 100),
-          parameterId: EffectParameter(
-            track: PropertyTrack<double>(
-              keys: {
-                0: const PropertyKey<double>(0),
-                10: const PropertyKey<double>(1),
-              },
-            ),
-          ),
-        },
+    // Every parameter whose value steps — a menu's word (I-132-Q6
+    // 「키프레임은 계단」), a flag's on and off (I-132-Q14) — one law.
+    final stepping = [
+      for (final kind in EffectKind.values)
+        for (final spec in kind.parameters)
+          if (spec.unit == EffectParameterUnit.choice ||
+              spec.unit == EffectParameterUnit.flag)
+            (kind: kind, spec: spec),
+    ];
+    // The word its value cell writes for 1: a menu's second word, the ring's
+    // `on`.
+    String wordForOne(EffectParameterSpec spec) =>
+        spec.unit == EffectParameterUnit.flag
+        ? flagLaneWord(true)
+        : spec.choices[1].label;
+
+    test('⛔전제: both a menu and a flag step', () {
+      expect(
+        {for (final (:spec, kind: _) in stepping) spec.unit},
+        {EffectParameterUnit.choice, EffectParameterUnit.flag},
       );
-      double at(String parameterId, int frame) => resolveLayerEffectsAt(
-        effects: [keyed(parameterId)],
-        frameIndex: frame,
-      ).single.parameter(parameterId);
-
-      expect(at('keyOperation', 9), 0);
-      expect(at('keyOperation', 10), 1);
-      // ⛔The control: the same keys on a number lane pass between.
-      expect(at('tolerance', 5), closeTo(0.5, 1e-9));
     });
 
-    test('a pick on a MENU lane keys its word, leaving the key a hold', () {
-      final laneId = effectLaneId(const EffectId('k'), 'keyOperation');
-      final edited = effectsWithLaneValueEdited(
-        [
-          LayerEffect.defaults(
-            id: const EffectId('k'),
-            kind: EffectKind.colorKey,
-          ),
-        ],
-        laneId: laneId,
-        frameIndex: 4,
-        input: 'Keep Colors',
-        scaleLinked: false,
-      )!;
-      final key = edited.single.parameterOf('keyOperation').track.keyAt(4)!;
-      expect(key.value, 1);
-      expect(key.outgoing, KeyExit.hold);
-    });
+    for (final (:kind, :spec) in stepping) {
+      test('${kind.name}.${spec.id}: its keys are steps — by its space, '
+          'whatever sides a key wears', () {
+        // Plain linear keys, as a paste from a number lane would bring them.
+        LayerEffect keyed(String parameterId) => LayerEffect(
+          id: const EffectId('k'),
+          kind: kind,
+          parameters: {
+            parameterId: EffectParameter(
+              track: PropertyTrack<double>(
+                keys: {
+                  0: const PropertyKey<double>(0),
+                  10: const PropertyKey<double>(1),
+                },
+              ),
+            ),
+          },
+        );
+        double at(String parameterId, int frame) => effectParameterValueAt(
+          [keyed(parameterId)],
+          const EffectId('k'),
+          parameterId,
+          frame,
+        );
+
+        expect(at(spec.id, 9), 0);
+        expect(at(spec.id, 10), 1);
+        // ⛔The control: the same keys on a number lane of the kind pass
+        // between.
+        final number = kind.parameters.firstWhere(
+          (other) => other.unit == EffectParameterUnit.number ||
+              other.unit == EffectParameterUnit.pixels,
+        );
+        expect(at(number.id, 5), closeTo(0.5, 1e-9));
+      });
+
+      test('${kind.name}.${spec.id}: a pick keys its word, leaving the key '
+          'a hold', () {
+        final laneId = effectLaneId(const EffectId('k'), spec.id);
+        final edited = effectsWithLaneValueEdited(
+          [LayerEffect.defaults(id: const EffectId('k'), kind: kind)],
+          laneId: laneId,
+          frameIndex: 4,
+          input: wordForOne(spec),
+          scaleLinked: false,
+        )!;
+        final key = edited.single.parameterOf(spec.id).track.keyAt(4)!;
+        expect(key.value, 1);
+        expect(key.outgoing, KeyExit.hold);
+      });
+    }
 
     test('the toggle keys and unkeys like the transform lanes', () {
       // The single-key MOVE left with the key marker's private drag

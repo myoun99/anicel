@@ -9,6 +9,7 @@ import '../text/readout_text.dart';
 import '../theme/lane_curve_palette.dart';
 import 'property_lane_model.dart';
 import 'scale_lane_form.dart';
+import 'se_name_tag_lane_editing.dart' show parseBoolInput;
 import 'transform_lane_policy.dart' show transformPropertyLanes;
 
 // EFFECT LANES (R6) on the same lane substrate the Transform group uses.
@@ -166,11 +167,14 @@ List<PropertyLaneRow> effectPropertyLanes(
         EffectParameterUnit.choice => PropertyLaneValueKind.choice,
         // As an SE name tag's inks are: the shared colour swatch.
         EffectParameterUnit.color => PropertyLaneValueKind.color,
+        // As a name tag's Bold is: a ring a tap flips.
+        EffectParameterUnit.flag => PropertyLaneValueKind.boolean,
         _ => PropertyLaneValueKind.number,
       };
       // A menu has nothing between its words to scrub through, nor a line
       // to lay on a header graph — a flag's lane, with words for a ring.
-      // Nor has a colour: its line would be a number no one reads.
+      // Nor has a colour: its line would be a number no one reads. Nor, of
+      // course, a flag.
       final numbered = valueKind == PropertyLaneValueKind.number;
       rows.add(
         PropertyLaneRow(
@@ -259,13 +263,15 @@ String formatEffectLaneValue(EffectParameterSpec spec, double value) {
     EffectParameterUnit.choice =>
       spec.choices[spec.clamp(value).round()].labelFor(AppText.language),
     EffectParameterUnit.color => formatLaneColorValue(value.toInt()),
+    EffectParameterUnit.flag => flagLaneWord(effectFlagIsOn(value)),
   };
 }
 
 /// Parses what the value editor accepts for [spec]: the bare number, with
 /// or without its unit suffix, clamped to the parameter's range — or, on a
 /// menu, one of its words, in the program's language or the model's
-/// English. Null on a parse failure (the editor then ignores the input,
+/// English — on a flag, `on` or `off` as its ring writes them. Null on a
+/// parse failure (the editor then ignores the input,
 /// like the transform lanes).
 double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
   if (spec.unit == EffectParameterUnit.choice) {
@@ -275,6 +281,12 @@ double? parseEffectLaneValue(EffectParameterSpec spec, String input) {
           choice.labelFor(AppText.language) == word || choice.label == word,
     );
     return index < 0 ? null : index.toDouble();
+  }
+  if (spec.unit == EffectParameterUnit.flag) {
+    return switch (parseBoolInput(input)) {
+      final on? => on ? 1 : 0,
+      null => null,
+    };
   }
   final value = columnValueOf(input);
   if (value == null) {

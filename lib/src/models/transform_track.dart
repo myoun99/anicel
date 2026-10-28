@@ -537,7 +537,8 @@ const KeyValueSpace<bool> boolHoldKeySpace = KeyValueSpace(
 /// A menu's [KeyValueSpace]: the number of the word it holds, which never
 /// tweens either ([lerpHold]) — 🗣️I-132-Q6 (유저 2026-10-27): 「값이 메뉴,
 /// 키프레임은 계단」. In the space, not in the keys' sides, so keys pasted
-/// in from a number lane step all the same.
+/// in from a number lane step all the same. An effect's flag, 1 or 0, walks
+/// in it too (`EffectParameterUnit.flag`).
 const KeyValueSpace<double> menuKeySpace = KeyValueSpace(
   lerp: lerpHold,
   inverseLerp: _nothingBetween,

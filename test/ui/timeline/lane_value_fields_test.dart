@@ -118,6 +118,10 @@ void main() {
             ),
             0xFFC80A1E.toDouble(),
           ),
+          EffectParameterUnit.flag => (
+            const EffectParameterSpec.flag(id: 'p', label: 'P'),
+            1.0,
+          ),
           _ => (
             EffectParameterSpec(
               id: 'p',

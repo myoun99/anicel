@@ -153,6 +153,15 @@ enum EffectKind {
           EffectChoice(id: 'vertical', label: 'Vertical'),
         ],
       ),
+      // Past the paper's edge the blur reads the edge's own pixels, and
+      // what it draws stays on the paper — 🗣️I-132-Q14 (유저 2026-10-28):
+      // the edge is the paper's (canvas's), on a layer and a folder alike,
+      // AE's comp-sized solid and precomp; artwork on the pasteboard stays
+      // out of sight while it is on. Off, as AE's is.
+      EffectParameterSpec.flag(
+        id: 'repeatEdgePixels',
+        label: 'Repeat Edge Pixels',
+      ),
     ],
     spreadsPixels: true,
     runsOnSourcePixels: false,
@@ -395,6 +404,13 @@ enum EffectParameterUnit {
   /// F-477 (10-26) before it, for the cel number's: 「쓸데없이 빨강파랑초록
   /// 나누지말고」.
   color,
+
+  /// On or off — AE's checkbox, whose value is 1 or 0 to a script (Adobe's
+  /// community, read 2026-10-28) as a menu's is the number of its word. So
+  /// it is a number here too: its keys step ([menuKeySpace]) and pair with
+  /// a number's when pasted, as a menu's do. The lane is a flag's ring —
+  /// the value cell IS the control, a tap flips it (F-22).
+  flag,
 }
 
 /// One word of a menu parameter ([EffectParameterUnit.choice]).
@@ -422,9 +438,11 @@ class EffectParameterSpec {
     this.unit = EffectParameterUnit.number,
   }) : assert(
          unit != EffectParameterUnit.choice &&
-             unit != EffectParameterUnit.color,
-         'A menu is EffectParameterSpec.choice and a colour '
-         'EffectParameterSpec.color — neither has a range of its own.',
+             unit != EffectParameterUnit.color &&
+             unit != EffectParameterUnit.flag,
+         'A menu is EffectParameterSpec.choice, a colour '
+         'EffectParameterSpec.color and a flag EffectParameterSpec.flag — '
+         'none has a range of its own.',
        ),
        _maximum = maximum,
        choices = const [];
@@ -452,6 +470,15 @@ class EffectParameterSpec {
        unit = EffectParameterUnit.color,
        choices = const [];
 
+  /// A flag ([EffectParameterUnit.flag]), off until a key or a value says
+  /// otherwise.
+  const EffectParameterSpec.flag({required this.id, required this.label})
+    : defaultValue = 0,
+      minimum = 0,
+      _maximum = 1,
+      unit = EffectParameterUnit.flag,
+      choices = const [];
+
   final String id;
   final String label;
   final double defaultValue;
@@ -465,23 +492,32 @@ class EffectParameterSpec {
   /// The largest value — a menu's last word.
   double get maximum => _maximum ?? (choices.length - 1).toDouble();
 
-  /// How the value walks between two keys: a menu steps, a number lerps. A
-  /// colour's keys are not numbers, and walk in [argbKeySpace].
+  /// Whether the value steps from key to key: nothing lies between two of a
+  /// menu's words, nor between on and off.
+  bool get _steps =>
+      unit == EffectParameterUnit.choice || unit == EffectParameterUnit.flag;
+
+  /// How the value walks between two keys: a menu and a flag step, a number
+  /// lerps. A colour's keys are not numbers, and walk in [argbKeySpace].
   KeyValueSpace<double> get keySpace {
     assert(
       unit != EffectParameterUnit.color,
       'A colour keys in argbKeySpace, over LayerEffect.colors.',
     );
-    return unit == EffectParameterUnit.choice ? menuKeySpace : doubleKeySpace;
+    return _steps ? menuKeySpace : doubleKeySpace;
   }
 
-  /// How a key made on this lane leaves — a menu's holds, so its mark says
+  /// How a key made on this lane leaves — a step's holds, so its mark says
   /// the step [keySpace] takes; null where a key leaves as it always has.
-  KeyExit? get keyExit =>
-      unit == EffectParameterUnit.choice ? KeyExit.hold : null;
+  KeyExit? get keyExit => _steps ? KeyExit.hold : null;
 
   double clamp(double value) => value.clamp(minimum, maximum).toDouble();
 }
+
+/// Whether a flag's [value] is on ([EffectParameterUnit.flag]): the nearer
+/// of 0 and 1, as a menu reads the nearer of its words — a number pasted on
+/// is either.
+bool effectFlagIsOn(double value) => value >= 0.5;
 
 /// The ids of every kind's colour parameters ([EffectParameterUnit.color])
 /// — what a lane read off its id alone holds, as a copy's off another row
@@ -884,6 +920,9 @@ class ResolvedLayerEffect {
 
   /// The ARGB colour parameter [id] holds ([EffectParameterUnit.color]).
   int color(String id) => parameter(id).toInt();
+
+  /// Whether the flag parameter [id] is on ([EffectParameterUnit.flag]).
+  bool flag(String id) => effectFlagIsOn(parameter(id));
 
   /// Whether this sample changes any pixel. An effect resolved to its
   /// defaults is dropped by the resolver, so nothing downstream ever pays
