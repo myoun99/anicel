@@ -475,20 +475,32 @@ final class SubtreeHold {
     }
   }
 
+  /// Whether a picture of [bounds] at [rasterScale] is held to be cut from.
+  bool finds(Rect bounds, double rasterScale) {
+    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
+    return plan != null && covering(plan) != null;
+  }
+
   /// Whether a picture of [bounds] at [rasterScale] is held to be cut from,
   /// or one drawn of it now — with no steps on it — would be kept: where
   /// neither, a picture of what could be drawn in place is drawn for
   /// nothing.
   bool findsOrKeeps(Rect bounds, double rasterScale) {
     final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
-    return plan != null &&
-        (covering(plan) != null ||
-            keeps &&
-                !plan.magnifies &&
-                _shelf._fits(
-                  estimatedImageBytes(plan.pixelWidth, plan.pixelHeight),
-                ));
+    return plan != null && (covering(plan) != null || _wouldKeep(plan));
   }
+
+  /// Whether no picture of [bounds] at [rasterScale] is held to be cut
+  /// from, and one drawn of it now — with no steps on it — would be kept.
+  bool keepsAnew(Rect bounds, double rasterScale) {
+    final plan = _planSubtreeRaster(bounds: bounds, rasterScale: rasterScale);
+    return plan != null && covering(plan) == null && _wouldKeep(plan);
+  }
+
+  bool _wouldKeep(SubtreeRasterPlan plan) =>
+      keeps &&
+      !plan.magnifies &&
+      _shelf._fits(estimatedImageBytes(plan.pixelWidth, plan.pixelHeight));
 }
 
 /// 🚨★A NODE THAT DREW THE SAME PICTURE DOES NOT DRAW IT AGAIN — a folder, a
@@ -568,6 +580,12 @@ final class HeldSubtreeRasters {
       _drawn = null;
     }
   }
+
+  /// Counts what is held below a pen whose key [test] answers as found by
+  /// the drawing [holdOnly] draws — what it leaves as it is held, undrawn
+  /// (`BelowThePen.asHeld`).
+  void keepHeldWhere(bool Function(Object key) test) =>
+      _drawn?.addAll(_below._held.keys.where(test));
 
   /// Lets go of the least recently used rasters past each shelf's bound as
   /// it stands now — the line under it moved.

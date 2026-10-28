@@ -21,6 +21,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/canvas/composite_tree_paint.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
@@ -126,7 +127,11 @@ void main() {
     live: live,
     held: switch (keeps) {
       final keeps? => (
-        pictures: (rasters: held, keeps: keeps),
+        pictures: (
+          rasters: held,
+          keeps: keeps,
+          below: keeps ? BelowThePen.whole : BelowThePen.inCells,
+        ),
         revisionOf: (cel) => revisions[cel.layerId.value] ?? 1,
       ),
       null => null,

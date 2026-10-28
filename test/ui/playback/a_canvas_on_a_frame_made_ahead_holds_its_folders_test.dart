@@ -21,11 +21,15 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
+    show PromotedStrokeTile;
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/subtree_image_composite.dart';
 import 'package:anicel/src/ui/playback/frame_picture_store.dart';
 import 'package:anicel/src/ui/playback/frame_picture_view.dart';
+import 'package:anicel/src/ui/playback/frame_pictures.dart' show HeldNodesLine;
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/stacked_frame_picture.dart';
 import 'package:anicel/src/ui/quiet_turns.dart';
@@ -34,15 +38,18 @@ import '../../helpers/cels_kept_in_a_file.dart';
 import '../../helpers/settle_async.dart';
 
 /// 🚨A CANVAS STANDING ON A FRAME MADE AHEAD OF IT HOLDS THAT FRAME'S
-/// FOLDERS (`FramePictures.holdNodesOf`; card
+/// FOLDERS OVER ITS PEN (`FramePictures.holdNodesOf`; card
 /// paint-walk-redoes-the-same-work-each-step): the warmer lays every frame
 /// but the one a cut opens on, keeping none of their nodes, so a canvas
 /// that stands on one draws them whole once, in a turn of their own — and
 /// its strokes' steps are cut from them. A screen that draws nothing live
-/// — a run — holds none.
+/// — a run — holds none. ↩️What lies below the pen it does not draw since
+/// 2026-10-28 (card a-scrub-prepares-every-frame-it-crosses).
 void main() {
   const tileSize = 16;
-  const canvasSize = CanvasSize(width: 32, height: 32);
+  // Past a cell of what lies below a pen ([belowCellSide]) at two pages:
+  // a step keeps the cell it lands in.
+  const canvasSize = CanvasSize(width: 400, height: 400);
   final view = CanvasViewport(panX: 8, panY: 4);
 
   BrushFrameKey celOf(String layer) => BrushFrameKey(
@@ -87,10 +94,10 @@ void main() {
     },
   );
 
-  /// Two rows in a folder at half strength — one picture of its own — under
-  /// the row a pen is on, over an empty cel.
-  List<CompositeNode<CanvasStackRow>> treeOf() => [
-    CompositeGroup<CanvasStackRow>(
+  /// Two rows in a folder at half strength — one picture of its own — over
+  /// the row a pen is on, an empty cel; [under] it, where it says so.
+  List<CompositeNode<CanvasStackRow>> treeOf({bool under = false}) {
+    final folder = CompositeGroup<CanvasStackRow>(
       children: [
         CompositeLeaf(CanvasLayerImageRequest(frameKey: a, opacity: 1)),
         CompositeLeaf(CanvasLayerImageRequest(frameKey: b, opacity: 0.6)),
@@ -98,11 +105,12 @@ void main() {
       opacity: 0.5,
       blendMode: LayerBlendMode.normal,
       effects: const [],
-    ),
-    CompositeLeaf<CanvasStackRow>(
+    );
+    final row = CompositeLeaf<CanvasStackRow>(
       CanvasActiveLayerRow(opacity: 1, frameKey: pen),
-    ),
-  ];
+    );
+    return under ? [folder, row] : [row, folder];
+  }
 
   Widget onScreen(Widget view) => onAScreen(
     GlobalKey(),
@@ -112,7 +120,11 @@ void main() {
   );
 
   /// The run over the frame, nothing of it made yet.
-  StackRun runOverTheFrame({QuietTurns? turns}) {
+  StackRun runOverTheFrame({
+    QuietTurns? turns,
+    bool under = false,
+    HeldNodesLine? line,
+  }) {
     final cels = BrushFrameStore();
     keepInAFile(cels, {
       a: filled(const [0x30, 0x60, 0x90, 0xFF]),
@@ -126,21 +138,27 @@ void main() {
       images,
       store,
       canvasSize: canvasSize,
-      stackOf: (_) => treeOf(),
+      stackOf: (_) => treeOf(under: under),
       quietTurns: turns,
+      line: line,
     );
   }
 
   /// The run over the frame, its picture made ahead of any screen — its
   /// background work taking its turns in [turns] where a test names them.
-  Future<StackRun> madeAhead(WidgetTester tester, {QuietTurns? turns}) async {
-    final run = runOverTheFrame(turns: turns);
+  Future<StackRun> madeAhead(
+    WidgetTester tester, {
+    QuietTurns? turns,
+    bool under = false,
+    HeldNodesLine? line,
+  }) async {
+    final run = runOverTheFrame(turns: turns, under: under, line: line);
     final store = run.pictures.store;
     await tester.runAsync(
       () => run.pictures.make(frame, shouldAbort: () => false),
     );
     expect(
-      store.bytesOf(run.pictures.keyOfStack(treeOf(), frame)),
+      store.bytesOf(run.pictures.keyOfStack(treeOf(under: under), frame)),
       isNotNull,
       reason: '⛔premise: the frame is made',
     );
@@ -152,10 +170,12 @@ void main() {
     return run;
   }
 
-  /// The rows a canvas that stands holds live: the pen's, nothing on it.
-  LiveRows liveRows() => (
+  /// The rows a canvas that stands holds live: the pen's, nothing on it
+  /// but what [overlay] shows of a stroke.
+  LiveRows liveRows({ActiveStrokeOverlayModel? overlay}) => (
     activeSurfacePainter: BitmapSurfacePainter(
       surface: BitmapSurface(canvasSize: canvasSize, tileSize: tileSize),
+      overlayModel: overlay,
       showTransparentBackground: false,
     ),
     floatOverlay: null,
@@ -210,6 +230,84 @@ void main() {
       0,
       reason: 'held once, it is not drawn again',
     );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  // 🚨★★★Card a-scrub-prepares-every-frame-it-crosses (유저 2026-10-28
+  // 「최대한 근본적인 해결쪽으로」): a stroke's steps draw the cells of it
+  // they land in ([BelowThePen.inCells]).
+  testWidgets('🚨what lies below the pen is not drawn as a canvas comes to '
+      'it — nothing of it is held', (tester) async {
+    final run = await madeAhead(tester, under: true);
+    debugSubtreeRasterCount = 0;
+    await tester.runAsync(
+      () => run.pictures.holdNodesOf(
+        treeOf(under: true),
+        frame,
+        shouldAbort: () => false,
+      ),
+    );
+    expect(
+      run.pictures.heldNodes.holdsAllOf(
+        run.pictures.keyOfStack(treeOf(under: true), frame),
+      ),
+      isTrue,
+      reason: '⛔premise: its turn came',
+    );
+    expect(debugSubtreeRasterCount, 0);
+    expect(run.pictures.heldNodes, hasLength(0));
+  });
+
+  testWidgets('🚨a step that keeps the cell of what lies below it lands in '
+      'has the frames\' pictures give way to it on the line', (tester) async {
+    final line = _CountedLine();
+    final run = await madeAhead(tester, under: true, line: line);
+    final overlay = ActiveStrokeOverlayModel(tileSize: tileSize);
+    addTearDown(overlay.dispose);
+    final live = liveRows(overlay: overlay);
+    await tester.pumpWidget(
+      onScreen(
+        standingOn(
+          run,
+          picture: frame,
+          nodes: treeOf(under: true),
+          viewport: view,
+          live: live,
+        ),
+      ),
+    );
+    final key = run.pictures.keyOfStack(treeOf(under: true), frame);
+    expect(
+      await settleAsync(tester, () => run.pictures.heldNodes.holdsAllOf(key)),
+      isTrue,
+      reason: '⛔premise: held as the canvas came to it',
+    );
+    expect(run.pictures.heldNodes, hasLength(0), reason: '⛔premise');
+    final before = line.gaveWay;
+
+    overlay.showResultTiles([
+      PromotedStrokeTile(
+        TileCoord(x: 0, y: 0),
+        BitmapTile(
+          size: tileSize,
+          pixels: Uint8List.fromList([
+            for (var at = 0; at < tileSize * tileSize; at += 1)
+              ...const [0x10, 0x10, 0x10, 0xFF],
+          ]),
+        ),
+        1,
+      ),
+    ]);
+    await tester.pump();
+    expect(
+      run.pictures.heldNodes,
+      hasLength(1),
+      reason: '⛔premise: the step kept its cell',
+    );
+    expect(line.gaveWay, before + 1);
+
+    await tester.pump();
+    expect(line.gaveWay, before + 1, reason: 'nothing more kept since');
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -331,4 +429,16 @@ void main() {
     );
     expect(run.pictures.heldNodes, hasLength(0));
   });
+}
+
+/// The playback line the nodes stand on, counting the times the frames'
+/// pictures give way to them.
+final class _CountedLine implements HeldNodesLine {
+  int gaveWay = 0;
+
+  @override
+  int get bytesForNodes => 1 << 30;
+
+  @override
+  void giveWayToNodes() => gaveWay += 1;
 }

@@ -273,10 +273,15 @@ typedef StoredRow = ({
 });
 
 /// Where a frame's picture keeps the pictures its nodes are drawn into
-/// ([HeldSubtreeRasters]) — and whether the frame drawn here keeps the ones
-/// it draws whole: the frame laid for a screen that stands on it, every row
-/// in hand. A stroke's step patched into it only finds them.
-typedef HeldNodePictures = ({HeldSubtreeRasters rasters, bool keeps});
+/// ([HeldSubtreeRasters]) — whether the frame drawn here keeps the ones it
+/// draws whole: the frame laid for a screen that stands on it, every row
+/// in hand; a stroke's step patched into it only finds them — and what it
+/// does with what lies below its pen ([below]).
+typedef HeldNodePictures = ({
+  HeldSubtreeRasters rasters,
+  bool keeps,
+  BelowThePen below,
+});
 
 /// 🚨★★★A FRAME'S ONE PICTURE IS DRAWN BY THE CANVAS'S OWN BODY
 /// (one-picture-per-frame, D7-2-Q3=a — 「합성기는 하나」): [nodes], the

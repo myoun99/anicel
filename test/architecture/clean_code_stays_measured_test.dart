@@ -1452,7 +1452,15 @@ void main() {
   /// against the lane's base (`84a5c6197`) names this one and no other
   /// class. ⛔Not split to fit: it is the one keeper of a frame's picture
   /// and the key it is kept under.
-  const longClasses = 77;
+  ///
+  /// ⚠️77 → 78 on 2026-10-28, ONE name: `_FramePictureViewState` crossed
+  /// (600 → 601) when a stroke's step came to keep the cells of what lies
+  /// below its pen (card a-scrub-prepares-every-frame-it-crosses): once a
+  /// step is patched in, the frames' pictures give way to what it kept
+  /// (`FramePictures.giveWayToSteps`). 🔬`clean_code_diff` against the
+  /// lane's base (`95cd93423`) names this one and no other class. ⛔Not
+  /// split to fit: the step is patched in here, and so is told here.
+  const longClasses = 78;
 
   late CleanCodeScan scan;
   setUpAll(() {

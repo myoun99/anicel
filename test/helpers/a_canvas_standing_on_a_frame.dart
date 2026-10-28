@@ -29,7 +29,8 @@ typedef Shot = ({Uint8List rgba, int width});
 
 /// The pictures of the frames [stackOf] stacks, of [images]' cels, kept by
 /// [store] — on a page of [canvasSize] with no wall — their background work
-/// taking its turns in [quietTurns] where a test names them.
+/// taking its turns in [quietTurns] where a test names them, the nodes it
+/// holds on [line] where one is named.
 StackRun runOver(
   LayerFrameImageCache images,
   FramePictureStore<FramePictureKey> store, {
@@ -38,6 +39,7 @@ StackRun runOver(
   stackOf,
   ProjectBackground paper = ProjectBackground.defaultBackground,
   QuietTurns? quietTurns,
+  HeldNodesLine? line,
 }) {
   final landings = ValueNotifier<int>(0);
   addTearDown(landings.dispose);
@@ -54,6 +56,7 @@ StackRun runOver(
         paperBackground: paper,
       ),
       quietTurns: quietTurns,
+      line: line,
     ),
   );
 }

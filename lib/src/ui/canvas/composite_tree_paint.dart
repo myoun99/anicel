@@ -1,7 +1,9 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import '../../core/collection_equality.dart';
 import '../../models/composite_tree.dart';
+import '../../models/layer_effect.dart' show ResolvedLayerEffect;
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/cel_number_paint.dart';
@@ -29,15 +31,129 @@ typedef CompositeRoute<L> = ({
 
 /// Where a route holds the pictures of its nodes ([HeldSubtreeRasters]):
 /// what a node draws ([keyOf] — null for one drawn afresh each time), the
-/// row a pen draws on ([drawnOn]) — what lies below it is held as one
-/// picture ([_CompositeTreeWalk._belowThePen]) — and whether one drawn
-/// whole here is kept ([keeps]).
+/// row a pen draws on ([drawnOn]) — what lies below it held as one picture
+/// or in cells, as [below] says ([_CompositeTreeWalk._belowThePen]) — and
+/// whether a node over it drawn whole here is kept ([keeps]). [cells] is
+/// what [BelowThePen.cellsOnly] draws: the cells under a rect, each read
+/// as far past it as the frame's chains read ([readsPastOf]).
 typedef SubtreeHolding<L> = ({
   HeldSubtreeRasters rasters,
   Object? Function(CompositeNode<L> node) keyOf,
   bool Function(L row) drawnOn,
   bool keeps,
+  BelowThePen below,
+  ({Rect over, double readsPast})? cells,
 });
+
+/// What a frame's drawing does with what lies below the row a pen draws
+/// on ([_CompositeTreeWalk._belowThePen]).
+///
+/// 🚨★★★WHAT LIES BELOW A PEN IS HELD IN CELLS, WHERE A STEP NEEDS IT
+/// (card a-scrub-prepares-every-frame-it-crosses, 유저 2026-10-28 「최대한
+/// 근본적인 해결쪽으로」): its one picture was the frame's size, so a canvas
+/// come to a frame laid ahead drew all of it again before a stroke could
+/// cut from it — 🔬on the Surface Pro 11, S5_BA cut 352, a ruler scrub's
+/// step reached the screen p50 200–267 ms with it and 49–50 ms without
+/// it, and a stroke begun 0.05 s after one frame on drew its first ink p50
+/// 109 ms against 25–33 ms once a stroke is going (10-28). A cell
+/// ([belowCellSide]) is drawn the first time a step lands in it, and only
+/// it; a frame come to draws none.
+enum BelowThePen {
+  /// Cut from its one picture where one is held, or is kept here
+  /// ([SubtreeHolding.keeps]: the frame laid for a canvas that stands on
+  /// it, which composes it anyway) — else from its cells, where each under
+  /// the draw is held — else drawn in place.
+  whole,
+
+  /// Not drawn: what is held of it, whole or in cells, stays held as the
+  /// frame is drawn ([HeldSubtreeRasters.holdOnly]) — the frame a canvas
+  /// comes to, drawn for the nodes over its pen alone.
+  asHeld,
+
+  /// As [whole], each cell under the draw that is not held drawn first and
+  /// kept ([cellsOnly]): a stroke's step.
+  inCells,
+
+  /// The cells under [SubtreeHolding.cells] that are not held drawn and
+  /// kept, and nothing else drawn — [inCells]' first walk.
+  cellsOnly,
+}
+
+/// The side, in canvas pixels, of a cell what lies below a pen is held in
+/// ([BelowThePen]) — a step's patch no wider cuts from one to four.
+///
+/// ⛔Only at a raster pixel a canvas pixel, where a frame's picture is
+/// drawn: a cell's edge at any other scale is no edge of the raster's grid
+/// (`rectOutwardOnGrid` snaps it outward), and two cells side by side would
+/// lay the pixel between them twice.
+const int belowCellSide = 256;
+
+/// The cells ([belowCellSide]) [rect] lies in, as one rect.
+Rect belowCellsCovering(Rect rect) => rect.isEmpty
+    ? Rect.zero
+    : Rect.fromLTRB(
+        (rect.left / belowCellSide).floorToDouble() * belowCellSide,
+        (rect.top / belowCellSide).floorToDouble() * belowCellSide,
+        (rect.right / belowCellSide).ceilToDouble() * belowCellSide,
+        (rect.bottom / belowCellSide).ceilToDouble() * belowCellSide,
+      );
+
+/// The cells ([belowCellSide]) [rect] lies in, a row at a time.
+Iterable<({int column, int row, Rect rect})> _cellsOver(Rect rect) sync* {
+  if (rect.isEmpty) {
+    return;
+  }
+  const side = belowCellSide;
+  for (var row = (rect.top / side).floor(); row * side < rect.bottom; row++) {
+    for (
+      var column = (rect.left / side).floor();
+      column * side < rect.right;
+      column++
+    ) {
+      yield (
+        column: column,
+        row: row,
+        rect: Rect.fromLTWH(
+          (column * side).toDouble(),
+          (row * side).toDouble(),
+          side.toDouble(),
+          side.toDouble(),
+        ),
+      );
+    }
+  }
+}
+
+/// How far past a pixel [nodes] read to draw it, at the most: the spreads
+/// of the folders and adjustments over each row, added down the tree — a
+/// pixel of a folder's picture reads its rows that far off, and a row's own
+/// buffer grows by its own spread past what it is asked for.
+double readsPastOf<L>(List<CompositeNode<L>> nodes, {required Rect paper}) {
+  double spreadOf(List<ResolvedLayerEffect> effects) =>
+      resolveCompositeEffectPlan(effects, paper: paper).outsetPixels;
+  var most = 0.0;
+  for (final node in nodes) {
+    final reads = switch (node) {
+      CompositeLeaf() || CompositeCelNumber() => 0.0,
+      CompositeGroup(:final children, :final effects) ||
+      CompositeAdjustment(
+        :final children,
+        :final effects,
+      ) => spreadOf(effects) + readsPastOf(children, paper: paper),
+      CompositeBackdropBlend(:final backdrop, :final source) => math.max(
+        readsPastOf(backdrop, paper: paper),
+        readsPastOf([source], paper: paper),
+      ),
+      CompositeClip(:final base, :final scope) => math.max(
+        readsPastOf([base], paper: paper),
+        readsPastOf(scope, paper: paper),
+      ),
+      CompositeOpaque(:final of) => readsPastOf([of], paper: paper),
+    };
+    most = math.max(most, reads);
+  }
+  return most;
+}
 
 /// Paints [nodes] onto [canvas] at [rasterScale] — the scale the CTM this
 /// walk draws under is at: a group that rasterises ITSELF needs it, and a
@@ -55,7 +171,15 @@ void paintCompositeTree<L>(
   required double rasterScale,
   required Rect within,
   required CompositeRoute<L> route,
-}) => _CompositeTreeWalk(route).paint(canvas, nodes, rasterScale, within);
+}) {
+  final walk = _CompositeTreeWalk(route);
+  switch (route.held?.below) {
+    case BelowThePen.asHeld || BelowThePen.cellsOnly:
+      walk._alongThePen(canvas, nodes, rasterScale, within);
+    case _:
+      walk.paint(canvas, nodes, rasterScale, within);
+  }
+}
 
 class _CompositeTreeWalk<L> {
   _CompositeTreeWalk(this.route, {this.keeps = true});
@@ -73,11 +197,91 @@ class _CompositeTreeWalk<L> {
     double rasterScale,
     Rect within,
   ) {
-    final pen = nodes.indexWhere(_holdsThePen);
-    final below = pen < 0 ? 0 : pen;
-    _belowThePen(canvas, nodes.sublist(0, below), rasterScale, within);
-    for (final node in nodes.skip(below)) {
+    final (:below, :over) = _atThePen(nodes);
+    _belowThePen(canvas, below, rasterScale, within);
+    for (final node in over) {
       _paintNode(canvas, node, rasterScale, within);
+    }
+  }
+
+  /// [nodes] walked as [paint] walks them for what a frame holds alone
+  /// ([BelowThePen.asHeld], [BelowThePen.cellsOnly]): what lies below the
+  /// pen as [_belowThePen] has it, the nodes that hold the pen entered
+  /// ([_intoThePen]) — and the nodes over it drawn to be held, where the
+  /// frame holds them ([BelowThePen.asHeld]); there is no cell of them.
+  void _alongThePen(
+    Canvas canvas,
+    List<CompositeNode<L>> nodes,
+    double rasterScale,
+    Rect within,
+  ) {
+    final (:below, :over) = _atThePen(nodes);
+    _belowThePen(canvas, below, rasterScale, within);
+    for (final node in over) {
+      if (_holdsThePen(node)) {
+        _intoThePen(canvas, node, rasterScale, within);
+      } else if (route.held?.below == BelowThePen.asHeld) {
+        _paintNode(canvas, node, rasterScale, within);
+      }
+    }
+  }
+
+  /// [nodes] parted where the pen is: those laid before the one it is in
+  /// — all below it — and the rest; none below where no node holds it.
+  ({List<CompositeNode<L>> below, Iterable<CompositeNode<L>> over})
+  _atThePen(List<CompositeNode<L>> nodes) {
+    final pen = math.max(nodes.indexWhere(_holdsThePen), 0);
+    return (below: nodes.sublist(0, pen), over: nodes.skip(pen));
+  }
+
+  /// [node], which holds the row a pen draws on, entered as [_alongThePen]
+  /// walks a list — and not drawn as itself: no step cuts from a picture
+  /// of it ([_holdOf]). Each list in it is read [within] what the node
+  /// reads it in, as [_paintNode] draws it.
+  void _intoThePen(
+    Canvas canvas,
+    CompositeNode<L> node,
+    double rasterScale,
+    Rect within,
+  ) {
+    switch (node) {
+      case CompositeLeaf() || CompositeCelNumber():
+        return;
+      case final CompositeGroup<L> group:
+        _alongThePen(
+          canvas,
+          group.children,
+          rasterScale,
+          _groupRectOf(
+            group,
+            within,
+            resolveCompositeEffectPlan(group.effects, paper: route.paper),
+          ),
+        );
+      case final CompositeAdjustment<L> adjustment:
+        _alongThePen(
+          canvas,
+          adjustment.children,
+          rasterScale,
+          _adjustmentPassOf(adjustment, within).bufferBounds,
+        );
+      case CompositeBackdropBlend(:final backdrop, :final source):
+        final bounds = _bufferBoundsOf(node, within);
+        // Under a row a pen draws on, its backdrop is all below the pen
+        // ([_backdropBlend]).
+        if (_holdsThePen(source)) {
+          _belowThePen(canvas, backdrop, rasterScale, bounds);
+          _intoThePen(canvas, source, rasterScale, bounds);
+        } else {
+          _alongThePen(canvas, backdrop, rasterScale, bounds);
+          _alongThePen(canvas, [source], rasterScale, bounds);
+        }
+      case CompositeClip(:final base, :final scope):
+        final bounds = _bufferBoundsOf(node, within);
+        _alongThePen(canvas, [base], rasterScale, bounds);
+        _alongThePen(canvas, scope, rasterScale, bounds);
+      case CompositeOpaque(:final of):
+        _alongThePen(canvas, [of], rasterScale, within);
     }
   }
 
@@ -136,46 +340,166 @@ class _CompositeTreeWalk<L> {
   /// a page of the canvas was the paper's alone under a pen on the bottom
   /// row (1920×1080, 8.3 MB, the whole app on Windows, 2026-10-27), and a
   /// step over rows with no folder among them was the same either way.
+  ///
+  /// ↩️HELD IN CELLS TOO ([BelowThePen]): each the same pixels as the one
+  /// picture holds there ([_fillCells]), and a draw cut from them where it
+  /// is not ([_cutFromCells]) — a frame a canvas came to drew its one
+  /// picture whole for the steps to come until 2026-10-28.
   void _belowThePen(
     Canvas canvas,
-    List<CompositeNode<L>> run,
+    List<CompositeNode<L>> nodes,
     double rasterScale,
     Rect within,
   ) {
     final held = route.held;
-    final keys = [for (final node in run) held?.keyOf(node)];
+    final keys = [for (final node in nodes) held?.keyOf(node)];
     final bounds = within.intersect(canvas.getLocalClipBounds());
-    final hold = held == null || !run.any(_isAPicture) || keys.contains(null)
-        ? null
-        : SubtreeHold(
-            held.rasters,
-            key: _Below(keys),
-            keeps:
-                held.keeps &&
-                keeps &&
-                run.every((node) => _isWhole(node, within)),
-            below: true,
-          );
-    if (hold == null || !hold.findsOrKeeps(bounds, rasterScale)) {
-      for (final node in run) {
-        _paintNode(canvas, node, rasterScale, within);
+    if (held == null || !nodes.any(_isAPicture) || keys.contains(null)) {
+      // There is no cell of what is drawn in place.
+      if (held?.below != BelowThePen.cellsOnly) {
+        _inPlace(canvas, nodes, rasterScale, within);
       }
       return;
     }
-    final inside = _CompositeTreeWalk(route, keeps: false);
-    drawSubtreeAsImage(
-      canvas: canvas,
-      bounds: bounds,
+    final run = (
+      nodes: nodes,
+      key: _Below(keys),
       rasterScale: rasterScale,
-      paper: route.paper,
-      paintSubtree: (into, scale) {
-        for (final node in run) {
-          inside._paintNode(into, node, scale, within);
-        }
-      },
-      compose: (blit) => blit(Paint()),
-      held: hold,
+      within: within,
     );
+    final whole = SubtreeHold(
+      held.rasters,
+      key: run.key,
+      keeps:
+          held.keeps && keeps && nodes.every((node) => _isWhole(node, within)),
+      below: true,
+    );
+    switch (held.below) {
+      case BelowThePen.asHeld:
+        held.rasters.keepHeldWhere(
+          (key) => key == run.key || key is _BelowCell && key.below == run.key,
+        );
+      case BelowThePen.cellsOnly:
+        final under = held.cells!.over.intersect(bounds);
+        if (!whole.finds(under, rasterScale)) {
+          _fillCells(canvas, run, under);
+        }
+      case BelowThePen.whole || BelowThePen.inCells:
+        if (whole.findsOrKeeps(bounds, rasterScale)) {
+          _cutFrom(canvas, run, bounds, whole);
+        } else if (!_cutFromCells(canvas, run, bounds)) {
+          _inPlace(canvas, nodes, rasterScale, within);
+        }
+    }
+  }
+
+  /// [nodes] drawn in place, each node held as it was ([_holdOf]).
+  void _inPlace(
+    Canvas canvas,
+    List<CompositeNode<L>> nodes,
+    double rasterScale,
+    Rect within,
+  ) {
+    for (final node in nodes) {
+      _paintNode(canvas, node, rasterScale, within);
+    }
+  }
+
+  /// [run]'s picture over [bounds], cut from [hold] — drawn there first
+  /// where it is not held.
+  void _cutFrom(Canvas canvas, _Run<L> run, Rect bounds, SubtreeHold hold) =>
+      drawSubtreeAsImage(
+        canvas: canvas,
+        bounds: bounds,
+        rasterScale: run.rasterScale,
+        paper: route.paper,
+        paintSubtree: _ontoNothing(run.nodes, run.within),
+        compose: (blit) => blit(Paint()),
+        held: hold,
+      );
+
+  /// [nodes] laid onto nothing, [within] what reads them — as their one
+  /// picture lays them: none of them is kept on its own in it.
+  void Function(Canvas into, double scale) _ontoNothing(
+    List<CompositeNode<L>> nodes,
+    Rect within,
+  ) {
+    final inside = _CompositeTreeWalk(route, keeps: false);
+    return (into, scale) {
+      for (final node in nodes) {
+        inside._paintNode(into, node, scale, within);
+      }
+    };
+  }
+
+  /// Draws and keeps each cell under [under] of [run]'s picture that is not
+  /// held, where it can be kept: [run] laid onto nothing, as its one
+  /// picture is, within what reads it and as far past the cell as the
+  /// frame's chains read ([SubtreeHolding.cells]) — the walk that draws the
+  /// cells stands in the world that far past them too
+  /// (`_LayerStackPaintPass`) — so it is the pixels its one picture holds
+  /// in the cell.
+  void _fillCells(Canvas canvas, _Run<L> run, Rect under) {
+    if (run.rasterScale != 1) {
+      return;
+    }
+    final held = route.held!;
+    for (final (:column, :row, :rect) in _cellsOver(under)) {
+      final bounds = rect.intersect(run.within);
+      final hold = SubtreeHold(
+        held.rasters,
+        key: _BelowCell(run.key, column, row),
+        keeps: true,
+        below: true,
+      );
+      if (!hold.keepsAnew(bounds, run.rasterScale)) {
+        continue;
+      }
+      drawSubtreeAsImage(
+        canvas: canvas,
+        bounds: bounds,
+        rasterScale: run.rasterScale,
+        paper: route.paper,
+        paintSubtree: _ontoNothing(
+          run.nodes,
+          rect.inflate(held.cells!.readsPast).intersect(run.within),
+        ),
+        // Kept, and laid nowhere: the walk that draws the cells draws
+        // nothing else.
+        compose: (_) {},
+        held: hold,
+      );
+    }
+  }
+
+  /// [run]'s picture under [bounds] cut from its cells ([_fillCells]) where
+  /// each is held; false, and nothing drawn, where one is not.
+  bool _cutFromCells(Canvas canvas, _Run<L> run, Rect bounds) {
+    if (run.rasterScale != 1) {
+      return false;
+    }
+    final pieces = [
+      for (final (:column, :row, :rect) in _cellsOver(bounds))
+        (
+          bounds: rect.intersect(bounds),
+          hold: SubtreeHold(
+            route.held!.rasters,
+            key: _BelowCell(run.key, column, row),
+            keeps: false,
+            below: true,
+          ),
+        ),
+    ];
+    if (pieces.isEmpty ||
+        !pieces.every(
+          (piece) => piece.hold.finds(piece.bounds, run.rasterScale),
+        )) {
+      return false;
+    }
+    for (final piece in pieces) {
+      _cutFrom(canvas, run, piece.bounds, piece.hold);
+    }
+    return true;
   }
 
   /// Whether [node] is drawn as a picture of its own — a buffer the walk
@@ -251,34 +575,7 @@ class _CompositeTreeWalk<L> {
       blendMode: blendMode,
       effects: groupPlan.finalPaint,
     );
-    // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
-    // Bounded by the view, a folder asked Skia for the whole
-    // pasteboard (9× the page) at far zoom-out — an offscreen
-    // that the enclosing canvas-resolution buffer then clipped
-    // away. Content bounds keep it inside by construction, and
-    // this says so where it can fail.
-    //
-    // ⚠️It is the CONTENT that must sit inside, before the effect
-    // grows it. The spread the size hint adds below is deliberate
-    // — artwork just outside the view has to reach the blur at the
-    // view's edge — so there the buffer lies past what reads it by
-    // exactly that spread, off screen. ↩️This asserted the grown
-    // rect, and a blurred folder whose ink crossed the view's edge
-    // stopped every debug build at any zoom (board
-    // `a-blurred-folder-outgrows-the-composite`). ↩️And it asserted
-    // the display buffer, which a folder inside a blurred one lies
-    // past by the outer one's spread (card
-    // nested-folder-buffers-read-past-the-view).
-    final contentRect = _bufferBoundsOf(node, within);
-    assert(
-      within.expandToInclude(contentRect) == within,
-      'a group buffer must sit inside the buffer that reads it: '
-      '$contentRect is not within $within',
-    );
-    final groupRect = effectBufferBounds(
-      contentRect,
-      groupPlan.outsetPixels,
-    );
+    final groupRect = _groupRectOf(node, within, groupPlan);
     // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
     // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
     // the reason, and the test that certifies it against the
@@ -304,6 +601,40 @@ class _CompositeTreeWalk<L> {
     );
   }
 
+  /// The rect [node]'s buffer covers — what of it lies [within] what reads
+  /// it, grown by the spread of its chain ([plan]).
+  Rect _groupRectOf(
+    CompositeGroup<L> node,
+    Rect within,
+    CompositeEffectPlan plan,
+  ) {
+    // 🚨A GROUP'S BUFFER CANNOT EXCEED THE ONE THAT HOLDS IT.
+    // Bounded by the view, a folder asked Skia for the whole
+    // pasteboard (9× the page) at far zoom-out — an offscreen
+    // that the enclosing canvas-resolution buffer then clipped
+    // away. Content bounds keep it inside by construction, and
+    // this says so where it can fail.
+    //
+    // ⚠️It is the CONTENT that must sit inside, before the effect
+    // grows it. The spread the size hint adds below is deliberate
+    // — artwork just outside the view has to reach the blur at the
+    // view's edge — so there the buffer lies past what reads it by
+    // exactly that spread, off screen. ↩️This asserted the grown
+    // rect, and a blurred folder whose ink crossed the view's edge
+    // stopped every debug build at any zoom (board
+    // `a-blurred-folder-outgrows-the-composite`). ↩️And it asserted
+    // the display buffer, which a folder inside a blurred one lies
+    // past by the outer one's spread (card
+    // nested-folder-buffers-read-past-the-view).
+    final contentRect = _bufferBoundsOf(node, within);
+    assert(
+      within.expandToInclude(contentRect) == within,
+      'a group buffer must sit inside the buffer that reads it: '
+      '$contentRect is not within $within',
+    );
+    return effectBufferBounds(contentRect, plan.outsetPixels);
+  }
+
   /// An adjustment scope: the rows under it buffered and graded as one.
   void _adjustment(
     Canvas canvas,
@@ -311,16 +642,8 @@ class _CompositeTreeWalk<L> {
     double rasterScale,
     Rect within,
   ) {
-    final CompositeAdjustment<L>(:children, :effects, :mix) = node;
-    // R6b: the scope into one buffer, the row's chain onto it —
-    // which is what lets a stroke drawn UNDER an adjustment read
-    // through the grade while you draw it.
-    final pass = resolveAdjustmentScopePass(
-      bounds: _bufferBoundsOf(node, within),
-      effects: effects,
-      mix: mix,
-      paper: route.paper,
-    );
+    final children = node.children;
+    final pass = _adjustmentPassOf(node, within);
     // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
     // twice below full strength — a mix is a crossfade, not a
     // fade-out — and it is the same picture both times. The
@@ -342,6 +665,22 @@ class _CompositeTreeWalk<L> {
       cell: rasterCellFor(pass.outsetPixels),
     );
   }
+
+  /// How [node]'s scope is buffered and graded, what of it lies [within]
+  /// what reads it.
+  ///
+  /// R6b: the scope into one buffer, the row's chain onto it — which is
+  /// what lets a stroke drawn UNDER an adjustment read through the grade
+  /// while you draw it.
+  AdjustmentScopePass _adjustmentPassOf(
+    CompositeAdjustment<L> node,
+    Rect within,
+  ) => resolveAdjustmentScopePass(
+    bounds: _bufferBoundsOf(node, within),
+    effects: node.effects,
+    mix: node.mix,
+    paper: route.paper,
+  );
 
   /// A row in an advanced blend, composed over a picture of what lies
   /// below it in its scope ([drawBlendOverBackdrop], brush-fidelity-Q4).
@@ -395,6 +734,16 @@ class _CompositeTreeWalk<L> {
   }
 }
 
+/// What lies below a pen in one list ([_CompositeTreeWalk._belowThePen]):
+/// its [nodes], laid onto nothing at [rasterScale] [within] what reads
+/// them, and what they draw ([key]).
+typedef _Run<L> = ({
+  List<CompositeNode<L>> nodes,
+  _Below key,
+  double rasterScale,
+  Rect within,
+});
+
 /// What the nodes below a pen draw, in their order ([SubtreeHolding.keyOf])
 /// — the key of their one picture.
 final class _Below {
@@ -408,4 +757,24 @@ final class _Below {
 
   @override
   int get hashCode => Object.hashAll(keys);
+}
+
+/// One cell ([belowCellSide]) of what the nodes below a pen draw ([below])
+/// — the key of its picture.
+final class _BelowCell {
+  _BelowCell(this.below, this.column, this.row);
+
+  final _Below below;
+  final int column;
+  final int row;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _BelowCell &&
+      other.below == below &&
+      other.column == column &&
+      other.row == row;
+
+  @override
+  int get hashCode => Object.hash(below, column, row);
 }

@@ -697,6 +697,7 @@ class _FramePictureViewState extends State<FramePictureView> {
       _standing.whole = true;
       return;
     }
+    _pictures.giveWayToSteps();
     _keepAs(to);
     // Shown once its texels are in the picture, at every level.
     unawaited(

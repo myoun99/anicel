@@ -416,8 +416,9 @@ void main() {
   testWidgets('⚖️what lies below the pen held is no room for the nodes over '
       'it', (tester) async {
     await tester.runAsync(() async {
-      /// The bytes held below the pen and in all, standing on a frame with
-      /// a folder under the pen and one over it, on a line of [line].
+      /// The bytes held below the pen and in all, the frame laid for a
+      /// canvas that stands on it with a folder under the pen and one over
+      /// it, on a line of [line].
       Future<({int below, int all})> heldOn({int? line}) async {
         final s = session(count: 2, withPen: true);
         addTearDown(s.dispose);
@@ -439,7 +440,12 @@ void main() {
               _ => node,
             },
         ];
-        await pictures.holdNodesOf(nodes, stood, shouldAbort: () => false);
+        await pictures.makeShown(
+          nodes,
+          stood,
+          shouldAbort: () => false,
+          keepsNodes: true,
+        );
         return (
           below: pictures.heldNodes.heldBelowBytes,
           all: pictures.heldNodes.heldBytes,

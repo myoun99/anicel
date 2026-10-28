@@ -338,7 +338,7 @@ class _LayerStackPaintPass {
   /// ([HeldSubtreeRasters.holdOnly]).
   void paintFrame(Canvas into) {
     switch (_painter.held) {
-      case (:final rasters, keeps: true):
+      case (:final rasters, keeps: true, below: _):
         rasters.holdOnly(() => _paintFrame(into));
       case _:
         _paintFrame(into);
@@ -346,21 +346,56 @@ class _LayerStackPaintPass {
   }
 
   void _paintFrame(Canvas into) {
-    _standInTheWorld(within: _reachOf(into, Rect.largest));
+    final reach = _reachOf(into, Rect.largest);
+    _standInTheWorld(within: reach);
     final extent = wholeLevelPixelsOutward(_contentExtent, 0);
     if (extent.isEmpty) {
       return;
     }
-    _held = switch (_painter.held) {
-      (:final rasters, :final keeps) => (
+    final held = _painter.held;
+    if (held?.below == BelowThePen.inCells) {
+      _LayerStackPaintPass(_painter)._paintCells(held!.rasters, under: reach);
+    }
+    _held = switch (held) {
+      (:final rasters, :final keeps, :final below) => (
         rasters: rasters,
         keyOf: _drawsOf,
         drawnOn: _drawnOn,
         keeps: keeps,
+        below: below,
+        cells: null,
       ),
       null => null,
     };
     _paintCutWhereItEnds(into, extent, shownWithin: extent);
+  }
+
+  /// Draws the cells under [under] of what lies below the pen that are
+  /// not held, and keeps them ([BelowThePen.cellsOnly]) — and nothing
+  /// else: the frame stood in the world as far past them as its chains
+  /// read ([readsPastOf]), so each is the pixels the frame's one picture of
+  /// it holds there, wherever a step cut it.
+  void _paintCells(HeldSubtreeRasters rasters, {required Rect under}) {
+    final readsPast = readsPastOf(
+      _rootNodes,
+      paper: _painter.canvasSize.canvasRect,
+    );
+    _standInTheWorld(within: belowCellsCovering(under).inflate(readsPast));
+    final extent = wholeLevelPixelsOutward(_contentExtent, 0);
+    if (extent.isEmpty) {
+      return;
+    }
+    _held = (
+      rasters: rasters,
+      keyOf: _drawsOf,
+      drawnOn: _drawnOn,
+      keeps: false,
+      below: BelowThePen.cellsOnly,
+      cells: (over: under, readsPast: readsPast),
+    );
+    final recorder = ui.PictureRecorder();
+    _paintCutWhereItEnds(Canvas(recorder), extent, shownWithin: extent);
+    recorder.endRecording().dispose();
   }
 
   /// The frame composed into [into] and cut where it ends — at [edge], the
