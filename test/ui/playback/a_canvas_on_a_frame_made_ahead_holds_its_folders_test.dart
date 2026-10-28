@@ -285,20 +285,24 @@ void main() {
     expect(run.pictures.heldNodes, hasLength(0), reason: '⛔premise');
     final before = line.gaveWay;
 
-    overlay.showResultTiles([
-      PromotedStrokeTile(
-        TileCoord(x: 0, y: 0),
-        BitmapTile(
-          size: tileSize,
-          pixels: Uint8List.fromList([
-            for (var at = 0; at < tileSize * tileSize; at += 1)
-              ...const [0x10, 0x10, 0x10, 0xFF],
-          ]),
+    Future<void> aStepIn(int grey) async {
+      overlay.showResultTiles([
+        PromotedStrokeTile(
+          TileCoord(x: 0, y: 0),
+          BitmapTile(
+            size: tileSize,
+            pixels: Uint8List.fromList([
+              for (var at = 0; at < tileSize * tileSize; at += 1)
+                ...[grey, grey, grey, 0xFF],
+            ]),
+          ),
+          1,
         ),
-        1,
-      ),
-    ]);
-    await tester.pump();
+      ]);
+      await tester.pump();
+    }
+
+    await aStepIn(0x10);
     expect(
       run.pictures.heldNodes,
       hasLength(1),
@@ -306,7 +310,8 @@ void main() {
     );
     expect(line.gaveWay, before + 1);
 
-    await tester.pump();
+    await aStepIn(0x20);
+    expect(run.pictures.heldNodes, hasLength(1), reason: '⛔premise');
     expect(line.gaveWay, before + 1, reason: 'nothing more kept since');
     await tester.pumpWidget(const SizedBox());
   });

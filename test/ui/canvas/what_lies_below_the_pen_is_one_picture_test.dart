@@ -639,7 +639,12 @@ void main() {
     final stroke = penOn(
       inkAt([TileCoord(x: 33, y: 12)], [0x10, 0x10, 0x10, 0xFF]),
     );
-    final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [8, 0])];
+    // Wide enough that a cell read only as far past it as the blur's own
+    // spread is 1/255 off the one picture — at 8 it was not, and the walk
+    // that draws the cells could stand in the cells alone (mutants,
+    // 2026-10-28). Read beside the one picture alone: a step drawn with
+    // nothing held is that 1/255 off too.
+    final blur = [ResolvedLayerEffect(kind: EffectKind.blur, values: [30, 0])];
     List<CompositeNode<CanvasStackRow>> blurred() => [
       rowOf('far'),
       folder([rowOf('below')], effects: blur),
@@ -664,10 +669,10 @@ void main() {
       ]);
     }
 
-    for (final (name, at) in [
-      ('beside the edge the blur spills over', const Rect.fromLTWH(258, 84, 13, 11)),
-      ('across that edge', const Rect.fromLTWH(249, 70, 14, 40)),
-      ('across a cell edge left of the page', const Rect.fromLTWH(-7, 18, 13, 9)),
+    for (final (name, at, cells) in [
+      ('beside the edge the blur spills over', const Rect.fromLTWH(258, 84, 13, 11), 1),
+      ('across that edge', const Rect.fromLTWH(249, 70, 14, 40), 2),
+      ('across a cell edge left of the page', const Rect.fromLTWH(-7, 18, 13, 9), 2),
     ]) {
       test(name, () async {
         final stepped = await aStep(
@@ -677,8 +682,11 @@ void main() {
           page: page,
           cels: cels,
         );
-        expect(held.length, greaterThan(0), reason: '⛔premise: in cells');
-        expect(stepped.pixels, stepped.fresh);
+        expect(
+          held,
+          hasLength(cells),
+          reason: 'the cells it lands in — not those the blur reads past it',
+        );
         expect(stepped.pixels, await laidWhole(at));
 
         final again = await aStep(
@@ -689,7 +697,7 @@ void main() {
           cels: cels,
         );
         expect(again.rasters, 0);
-        expect(again.pixels, stepped.fresh);
+        expect(again.pixels, stepped.pixels);
       });
     }
   });
