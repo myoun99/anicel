@@ -55,8 +55,6 @@ class LaunchNoticeWindow extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     void close() => Navigator.of(context).pop();
-    Widget section(LaunchNoticeSection section) =>
-        MarkdownSubset(content.textOf(AppText.language, section));
     return AppWindow(
       windowKey: const ValueKey<String>('launch-notice'),
       title: strings.launchNoticeTitle,
@@ -71,30 +69,7 @@ class LaunchNoticeWindow extends StatelessWidget {
           controller: controller,
           primary: false,
           padding: AppWindow.defaultBodyPadding,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              section(LaunchNoticeSection.notice),
-              const Divider(height: 24),
-              section(LaunchNoticeSection.whatsNew),
-              const Divider(height: 24),
-              section(LaunchNoticeSection.feedback),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: AppWindowActionButton(
-                  AppWindowAction(
-                    label: editorActionLabel(EditorActionIds.sendFeedback),
-                    actionKey: const ValueKey<String>(
-                      'launch-notice-send-feedback',
-                    ),
-                    onPressed: () => showFeedbackWindow(context),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          child: _sections(context),
         ),
       ),
       actions: [
@@ -111,6 +86,35 @@ class LaunchNoticeWindow extends StatelessWidget {
           actionKey: const ValueKey<String>('launch-notice-close'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: close,
+        ),
+      ],
+    );
+  }
+
+  /// What the window says: its sections one under another, and the
+  /// feedback section's button under that section's words.
+  Widget _sections(BuildContext context) {
+    Widget section(LaunchNoticeSection section) =>
+        MarkdownSubset(content.textOf(AppText.language, section));
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        section(LaunchNoticeSection.notice),
+        const Divider(height: 24),
+        section(LaunchNoticeSection.whatsNew),
+        const Divider(height: 24),
+        section(LaunchNoticeSection.feedback),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: AppWindowActionButton(
+            AppWindowAction(
+              label: editorActionLabel(EditorActionIds.sendFeedback),
+              actionKey: const ValueKey<String>('launch-notice-send-feedback'),
+              onPressed: () => showFeedbackWindow(context),
+            ),
+          ),
         ),
       ],
     );
