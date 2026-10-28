@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
+import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/settle_async.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -296,7 +297,7 @@ void main() {
     test('the shortcut store\'s own file reads by the same law — what the '
         'whole-settings file carries', () async {
       final directory = Directory.systemTemp.createTempSync('qa_command_');
-      addTearDown(() => deleteTempQuietly(directory));
+      deleteAfterSessionEnds(directory);
       final path = '${directory.path}/overrides.json';
       EditorShortcutBindings saving() {
         final opened = EditorShortcutBindings(
