@@ -411,6 +411,54 @@ void main() {
       expect(off.left, closeTo(40 + seNameBoxExtent, 1e-6));
       expect((await look(tester, chip)).tinted, isTrue);
       expect((await look(tester, off)).tinted, isFalse);
+      expect(
+        (await look(tester, Rect.fromLTRB(0, 0, chip.left, row))).tinted,
+        isFalse,
+        reason: 'nor over the frames an earlier cut holds',
+      );
+    });
+
+    testWidgets('the same span seen from another head, or named no more, '
+        'lays its words and tint again', (tester) async {
+      Widget at({required int shownFrom, String? name = 'ドア'}) =>
+          MaterialApp(
+            home: Scaffold(
+              backgroundColor: rowGround,
+              body: RepaintBoundary(
+                key: shot,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: 100,
+                    height: row,
+                    child: SeSpanVisual(
+                      layer: anSeRow(),
+                      axis: Axis.horizontal,
+                      frames: 10,
+                      dialogue: 'あい',
+                      seName: name,
+                      delivery: SeLineType.off,
+                      shownFrom: shownFrom,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+      final off = said(SeLineType.off);
+      await tester.pumpWidget(at(shownFrom: 0));
+      expect(tester.getRect(name()).left, closeTo(0, 1e-6), reason: '⛔전제');
+
+      await tester.pumpWidget(at(shownFrom: 4));
+      expect(tester.getRect(name()).left, closeTo(40, 1e-6));
+      expect(tester.getRect(off).left, closeTo(40 + seNameBoxExtent, 1e-6));
+      const head = Rect.fromLTWH(0, 0, seNameBoxExtent, row);
+      expect((await look(tester, head)).tinted, isFalse, reason: 'moved');
+
+      await tester.pumpWidget(at(shownFrom: 4, name: null));
+      expect(tester.getRect(off).left, closeTo(40, 1e-6));
+      final there = await look(tester, tester.getRect(off));
+      expect(there.tinted, isFalse, reason: 'no name, no tint');
     });
   });
 

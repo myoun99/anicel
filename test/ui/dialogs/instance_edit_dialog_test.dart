@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/inbetween_mark.dart';
 import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
@@ -148,6 +151,41 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(result!.seTypes.own, SeLineType.off);
+  });
+
+  // 🗣️F-496 (유저 2026-10-28): 「OFF랑 MONO도 se블록에 표시」 — and the
+  // preview is the block, in the cut the pills set (F-386).
+  testWidgets('SE dialog: the preview writes the delivery of the cut the '
+      'pills set, and nothing for ON', (tester) async {
+    Cut cut(String id) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: 4,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: const [],
+    );
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      SeInstanceDialog(
+        initialSeName: 'A',
+        initialSeTypes: SeLineTypes(
+          byCut: {const CutId('cut-2'): SeLineType.mono},
+        ),
+        cuts: [cut('cut-1'), cut('cut-2')],
+        initialCutId: const CutId('cut-2'),
+      ),
+      (_) {},
+    );
+    final said = find.bySemanticsLabel(RegExp('^SE delivery'));
+    expect(find.bySemanticsLabel('SE delivery MONO'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('se-type-on')));
+    await tester.pump();
+    expect(said, findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey<String>('se-type-off')));
+    await tester.pump();
+    expect(find.bySemanticsLabel('SE delivery OFF'), findsOneWidget);
   });
 
   testWidgets('SE dialog cancel pops nothing', (tester) async {
