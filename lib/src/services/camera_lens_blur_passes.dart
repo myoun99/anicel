@@ -53,27 +53,34 @@ typedef IrisProperties = ({
   double fringe,
 });
 
-/// A camera lens blur [radius] raster pixels out over a raster
-/// [rasterWidth] wide, as the passes that make it: the row sums, then the
-/// [iris] gathered out of them ([IrisGatherPass]) — every pixel the mean of
-/// the pixels about it whose centres it covers ([irisSpans]). [paper], on
-/// whole pixels, is where it repeats its edge pixels past the paper and is
-/// cut to it; null where it reads nothing past its raster.
+/// A camera lens blur as its lanes give it: its [radius] in raster pixels,
+/// its [iris], and how it reads the [light] it spreads ([LensLight]).
+typedef CameraLensBlur = ({
+  double radius,
+  IrisProperties iris,
+  LensLight light,
+});
+
+/// [lens] over a raster [rasterWidth] wide, as the passes that make it:
+/// the row sums, then the iris gathered out of them ([IrisGatherPass]) —
+/// every pixel the mean of the pixels about it whose centres it covers
+/// ([irisSpans]). [paper], on whole pixels, is where it repeats its edge
+/// pixels past the paper and is cut to it; null where it reads nothing
+/// past its raster.
 ///
 /// Its fringe, 0 to 500, pushes the light out of the iris's core to its
 /// edge: Adobe's help (read 2026-10-28) says 100 is a natural halo and 500
 /// all the blur's energy on the ring. Ours, the form (🗣️I-132-Q4 b): the
 /// core's pixels weigh `1 - fringe / 500`, the edge's 1.
 ///
-/// Its [light] is how it reads what it spreads ([LensLight]) — none to
-/// work where it is read as stored and nothing is boosted.
-List<ShadedPass> cameraLensBlurPasses({
-  required double radius,
-  required IrisProperties iris,
-  required LensLight light,
+/// Its light is none to work where it is read as stored and nothing is
+/// boosted.
+List<ShadedPass> cameraLensBlurPasses(
+  CameraLensBlur lens, {
   required int rasterWidth,
   required ui.Rect? paper,
 }) {
+  final (:radius, :iris, :light) = lens;
   final read = light.linear || (light.gain > 0 && light.threshold < 1)
       ? light
       : null;

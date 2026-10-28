@@ -472,21 +472,23 @@ _PaintPart _cameraLensBlurPart(
     rasterWidth == null || (repeatsTheEdge && paper == null)
         ? const []
         : cameraLensBlurPasses(
-            radius: radius,
-            iris: (
-              // The words of Shape, in order: a triangle's three sides to a
-              // decagon's ten.
-              sides: effect.parameter('irisShape').round() + 3,
-              roundness: effect.parameter('irisRoundness') / 100,
-              aspect: effect.parameter('irisAspectRatio'),
-              rotation: effect.parameter('irisRotation') * math.pi / 180,
-              fringe: effect.parameter('irisDiffractionFringe'),
-            ),
-            light: (
-              gain: effect.parameter('highlightGain'),
-              threshold: effect.parameter('highlightThreshold') / 255,
-              saturation: effect.parameter('highlightSaturation') / 100,
-              linear: effect.flag('useLinearWorkingSpace'),
+            (
+              radius: radius,
+              iris: (
+                // The words of Shape, in order: a triangle's three sides to
+                // a decagon's ten.
+                sides: effect.parameter('irisShape').round() + 3,
+                roundness: effect.parameter('irisRoundness') / 100,
+                aspect: effect.parameter('irisAspectRatio'),
+                rotation: effect.parameter('irisRotation') * math.pi / 180,
+                fringe: effect.parameter('irisDiffractionFringe'),
+              ),
+              light: (
+                gain: effect.parameter('highlightGain'),
+                threshold: effect.parameter('highlightThreshold') / 255,
+                saturation: effect.parameter('highlightSaturation') / 100,
+                linear: effect.flag('useLinearWorkingSpace'),
+              ),
             ),
             rasterWidth: rasterWidth,
             paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,

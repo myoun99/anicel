@@ -185,9 +185,11 @@ void main() {
   group('the gather', () {
     IrisGatherPass gather(double radius, {double fringe = 0}) =>
         cameraLensBlurPasses(
-              radius: radius,
-              iris: iris(6, roundness: 0.2, fringe: fringe),
-              light: asStored,
+              (
+                radius: radius,
+                iris: iris(6, roundness: 0.2, fringe: fringe),
+                light: asStored,
+              ),
               rasterWidth: 100,
               paper: null,
             ).last
@@ -222,9 +224,7 @@ void main() {
 
   group('the light', () {
     List<ShadedPass> passesOf(LensLight light) => cameraLensBlurPasses(
-      radius: 6,
-      iris: iris(5),
-      light: light,
+      (radius: 6, iris: iris(5), light: light),
       rasterWidth: 300,
       paper: null,
     );
