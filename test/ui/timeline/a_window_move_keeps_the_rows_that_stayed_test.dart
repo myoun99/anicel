@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -7,6 +8,10 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart'
+    show laneGroupKey;
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane;
 
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/named_finders.dart';
@@ -31,12 +36,14 @@ void main() {
       .position;
 
   /// [rows] — a host's rows, top first — through a move of its window
-  /// that keeps a row in view, then through a build of the [host].
+  /// that keeps a row in view, then through a build of the [host]. The row
+  /// watched is the one a third down the view, else [probe].
   Future<void> expectKeptThroughAMove(
     WidgetTester tester, {
     required String viewport,
     required List<Finder> rows,
     required Finder host,
+    Finder? probe,
   }) async {
     final position = rowsIn(tester, viewport);
     position.jumpTo(0);
@@ -49,11 +56,14 @@ void main() {
     final before = built();
     // The probe stands a third down the view: a move of a quarter of it
     // brings rows in below and leaves the probe in view.
-    final probe = before.firstWhere(
-      (index) =>
-          tester.getRect(rows[index].first).top >= view.top + view.height / 3,
-    );
-    final widgetBefore = tester.widgetList(rows[probe]).first;
+    final watched =
+        probe ??
+        rows[before.firstWhere(
+          (index) =>
+              tester.getRect(rows[index].first).top >=
+              view.top + view.height / 3,
+        )];
+    final widgetBefore = tester.widgetList(watched).first;
 
     position.jumpTo(view.height / 4);
     await tester.pumpAndSettle();
@@ -63,18 +73,25 @@ void main() {
       reason: '⛔전제: the move carries the window to other rows',
     );
     expect(
-      tester.widgetList(rows[probe]).first,
+      tester.widgetList(watched).first,
       same(widgetBefore),
-      reason: 'row $probe stayed in the window: it is the widget it was',
+      reason: '$watched stayed in the window: it is the widget it was',
     );
 
     tester.element(host).markNeedsBuild();
     await tester.pumpAndSettle();
     expect(
-      tester.widgetList(rows[probe]).first,
+      tester.widgetList(watched).first,
       isNot(same(widgetBefore)),
-      reason: 'a build of the host lays row $probe afresh',
+      reason: 'a build of the host lays $watched afresh',
     );
+  }
+
+  Future<void> tapNamed(WidgetTester tester, String name) async {
+    await tester.ensureVisible(find.named(name));
+    await tester.pumpAndSettle();
+    await tester.tap(find.named(name));
+    await tester.pumpAndSettle();
   }
 
   Future<EditorSessionManager> pumpRows(
@@ -126,6 +143,40 @@ void main() {
         host: find.byType(LayerTimelineGrid),
       );
     });
+
+    testWidgets('a graph, drawn whole across its lanes', (tester) async {
+      final ids = await pumpTimeline(tester);
+      final view = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-vertical-scroll-viewport')),
+      );
+      final rail = [
+        for (final id in ids) find.named('timeline-rail-row-$id-row'),
+      ];
+      // The layer first below a third of the view: its graph opens below it.
+      final below = [
+        for (var index = 0; index < ids.length; index += 1)
+          if (rail[index].evaluate().isNotEmpty &&
+              tester.getRect(rail[index]).top >= view.top + view.height / 3)
+            index,
+      ];
+      double topOf(int index) => tester.getRect(rail[index]).top;
+      final id = ids[below.reduce((a, b) => topOf(a) <= topOf(b) ? a : b)];
+      final lane = transformGroupHeaderLane.laneId;
+      await tapNamed(tester, 'timeline-lane-toggle-$id');
+      await tapNamed(tester, 'timeline-lane-group-toggle-$id-$lane');
+      await tapNamed(tester, 'timeline-lane-group-graph-$id-$lane');
+      await expectKeptThroughAMove(
+        tester,
+        viewport: 'timeline-vertical-scroll-viewport',
+        rows: rail,
+        host: find.byType(LayerTimelineGrid),
+        probe: find.byKey(
+          ValueKey<String>(
+            'timeline-lane-graph-${laneGroupKey(LayerId(id), lane)}',
+          ),
+        ),
+      );
+    });
   });
 
   group('the storyboard', () {
@@ -159,6 +210,37 @@ void main() {
         ],
         host: find.byType(StoryboardPanel),
       );
+    });
+
+    testWidgets('rail: a label that stayed through a move is still the '
+        'rail\'s own across a build (I-57), and one the window left is let '
+        'go of', (tester) async {
+      final track = await pumpStoryboard(tester);
+      Finder label(int slot) =>
+          find.byKey(ValueKey<String>('storyboard-se-label-$track-$slot'));
+      const viewport = 'storyboard-vertical-viewport';
+      final position = rowsIn(tester, viewport)..jumpTo(0);
+      await tester.pumpAndSettle();
+      final view = tester.getRect(find.byKey(const ValueKey(viewport)));
+      final top = tester.widget(label(_rows));
+      // Two thirds down: a move of half the view leaves it in view.
+      var slot = _rows;
+      while (tester.getRect(label(slot)).top <
+          view.top + view.height * 2 / 3) {
+        slot -= 1;
+      }
+      final stayed = tester.widget(label(slot));
+
+      position.jumpTo(view.height / 2);
+      await tester.pumpAndSettle();
+      expect(label(_rows), findsNothing, reason: '⛔전제: the top row left');
+      tester.element(find.byType(StoryboardPanel)).markNeedsBuild();
+      await tester.pumpAndSettle();
+      expect(tester.widget(label(slot)), same(stayed));
+
+      position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(tester.widget(label(_rows)), isNot(same(top)));
     });
 
     testWidgets('strips', (tester) async {
