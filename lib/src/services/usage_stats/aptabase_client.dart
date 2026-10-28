@@ -146,12 +146,19 @@ final class AptabaseClient {
     final device = _describe();
     final timestamp = now.toUtc().toIso8601String();
     final sessionId = _sessionAt(now);
-    // ⛔No device model and no id beyond the session's: the forms of I-139
-    // ask for the model, these statistics do not.
+    // ⛔No id beyond the session's.
+    //
+    // ↩️THE DEVICE MODEL GOES (유저 2026-10-29 09:0x): the product model the
+    // feedback forms already read — `Microsoft Corporation Surface Pro,
+    // 11th Edition`, `iPad13,4`, `samsung SM-X710`, or `Unknown` — under
+    // the SDKs' own key; never the name the person gave the device. It
+    // stayed out at first because the forms of I-139 asked for it and these
+    // statistics did not.
     final systemProps = <String, Object>{
       'isDebug': kDebugMode,
       'osName': device.os.choice,
       'osVersion': device.osVersion,
+      'deviceModel': device.model,
       'locale': locale,
       'appVersion': build,
       'appBuildNumber': build,

@@ -136,6 +136,7 @@ void main() {
           'isDebug': true,
           'osName': 'Windows',
           'osVersion': '11 25H2 (26200.6899)',
+          'deviceModel': 'Surface Pro, 11th Edition',
           'locale': 'ko',
           'appVersion': '1081',
           'appBuildNumber': '1081',
@@ -146,8 +147,26 @@ void main() {
       expect(events[0]['props'], isEmpty);
       expect(events[1]['eventName'], 'day');
       expect(events[1]['props'], {'days': '3+'});
-      // ⛔No device model, anywhere in it.
-      expect(posts.single.body, isNot(contains('Surface')));
+    });
+
+    test('the device model is the product\'s, as the feedback forms read it '
+        '— and one that could not be read says so (유저 2026-10-29 09:0x)',
+        () async {
+      final unread = AptabaseClient(
+        appKey: 'A-EU-1462843916',
+        post: (endpoint, appKey, body) async {
+          posts.add((endpoint: endpoint, appKey: appKey, body: body));
+          return 200;
+        },
+        describe: () =>
+            (model: 'Unknown', os: FeedbackOs.android, osVersion: '14'),
+        build: '1081',
+      );
+      await unread.send([started], now: now, locale: 'ko');
+      expect(
+        (sent(0).single['systemProps'] as Map<String, dynamic>)['deviceModel'],
+        'Unknown',
+      );
     });
 
     test('the timestamp is UTC whatever clock the moment was read '
