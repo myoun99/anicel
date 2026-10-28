@@ -97,10 +97,6 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
   /// panel was shown (measured: ~1ms of the reopen frame).
   @override
   void paint(Canvas canvas, Size size) {
-    final starts = cutStarts();
-    if (starts.isEmpty) {
-      return;
-    }
     final dash = Paint()
       ..color = colorScheme.outline
       ..strokeWidth = 1
@@ -114,7 +110,7 @@ class StoryboardCutStartsPainter extends CustomPainter with RepaintOnProps {
     )) {
       line.addPath(piece, Offset.zero);
     }
-    for (final x in starts) {
+    for (final x in cutStarts()) {
       canvas
         ..save()
         ..translate(x, 0)
