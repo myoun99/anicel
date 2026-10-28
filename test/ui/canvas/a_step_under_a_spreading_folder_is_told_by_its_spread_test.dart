@@ -10,6 +10,12 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
@@ -72,7 +78,8 @@ void main() {
         paintPaper: true,
         paperBackground: const ProjectBackground.color(0xFF00FF00),
       ),
-      surfaceOf: (_) => null,
+      // A row another reads a blur map by is drawn from a cel of its own.
+      surfaceOf: (_) => BitmapSurface(canvasSize: canvasSize, tileSize: 8),
       live: (
         rows: (
           activeSurfacePainter: BitmapSurfacePainter(
@@ -222,5 +229,79 @@ void main() {
     ]) {
       expect(side, closeTo(was, 1e-9));
     }
+  });
+
+  // 🗣️I-132-Q21 a: a camera lens blur reads its blur map's row where it
+  // shows, pixel for pixel — so a step on that row moves the row that reads
+  // it there, and as far past as that row's chain reads past a pixel.
+  group('a step on a blur map\'s row', () {
+    const map = LayerId('map');
+    const cel = BrushFrameKey(
+      projectId: ProjectId('p'),
+      trackId: TrackId('t'),
+      cutId: CutId('c'),
+      layerId: LayerId('reader'),
+      frameId: FrameId('f'),
+    );
+    final lens = ResolvedLayerEffect(
+      kind: EffectKind.cameraLensBlur,
+      values: [
+        for (final spec in EffectKind.cameraLensBlur.parameters)
+          if (spec.id == 'blurRadius') 4 else spec.defaultValue,
+      ],
+      layers: {'blurMapLayer': map},
+    );
+
+    /// A row whose lens blur reads the live row as its map.
+    CompositeNode<CanvasStackRow> reading({
+      GuideTransform? placement,
+      List<ResolvedLayerEffect> after = const [],
+    }) => CompositeReadsRows<CanvasStackRow>(
+      node: CompositeLeaf(
+        CanvasLayerImageRequest(
+          frameKey: cel,
+          opacity: 1,
+          placement: placement,
+          effects: [lens, ...after],
+        ),
+      ),
+      rows: {
+        map: [row()],
+      },
+    );
+
+    testWidgets('its eye off: told where it is read, grown by the reading '
+        'row\'s chain', (tester) async {
+      final moved = await aDabUnder(tester, [reading()]);
+      expect(moved.located, isTrue);
+      expect(moved.dirty, const Rect.fromLTRB(-5, -5, 13, 13));
+      final blurred = await aDabUnder(tester, [reading(after: blur)]);
+      expect(blurred.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+    });
+
+    testWidgets('shown as well: told where it stands and where it is read, '
+        'both', (tester) async {
+      final moved = await aDabUnder(tester, [row(), reading(after: blur)]);
+      expect(moved.located, isTrue);
+      expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+    });
+
+    testWidgets('read by a row in a blurred folder: grown by both', (
+      tester,
+    ) async {
+      final moved = await aDabUnder(tester, [
+        blurredFolder([reading()]),
+      ]);
+      expect(moved.dirty, const Rect.fromLTRB(-9, -9, 17, 17));
+    });
+
+    testWidgets('⛔read by a posed row: not told, as the posed row itself', (
+      tester,
+    ) async {
+      final moved = await aDabUnder(tester, [
+        reading(placement: const GuideTransform(1, 0, 0, 1, 3, 0)),
+      ]);
+      expect(moved.located, isFalse);
+    });
   });
 }

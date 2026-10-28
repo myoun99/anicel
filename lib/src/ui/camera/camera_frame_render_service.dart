@@ -24,6 +24,7 @@ import '../canvas/display_resample.dart';
 import '../canvas/image_pieces.dart';
 import '../canvas/layer_image_draw.dart';
 import '../canvas/paper_background.dart' show paintProjectPaper;
+import '../canvas/subtree_image_composite.dart' show RowPainter;
 import '../canvas/tiled_surface_compose.dart';
 import '../playback/camera_shot.dart' show outlineThrough, shotClipOnScreen;
 
@@ -251,6 +252,8 @@ class CameraFrameRenderService {
           case CompositeAdjustment(:final children):
           case CompositeBackdropBlend(:final children):
           case CompositeClip(:final children):
+          // And the rows it reads, each a picture of its own.
+          case CompositeReadsRows(:final children):
             await composeImages(children);
           // The base it paints again is composed with its clip.
           case CompositeOpaque():
@@ -333,7 +336,12 @@ class CameraFrameRenderService {
 
     // A row of this render: the ground, or a layer's image posed, faded,
     // blended and filtered where it lies.
-    void paintRow(Canvas canvas, _CameraRow row, double rasterScale) {
+    void paintRow(
+      Canvas canvas,
+      _CameraRow row,
+      double rasterScale,
+      RowPainter? rows,
+    ) {
       switch (row) {
         case _CameraGround():
           layGround(canvas);
@@ -377,6 +385,7 @@ class CameraFrameRenderService {
                 worldRect.top == 0 &&
                 worldRect.width == ownCanvas.width &&
                 worldRect.height == ownCanvas.height,
+            rows: rows,
           );
       }
     }

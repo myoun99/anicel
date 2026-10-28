@@ -267,6 +267,7 @@ class OnionSkin {
               CutFrameCompositeGhost(
                 layer: layer,
                 frameId: plan.frameId,
+                frameIndex: plan.frameIndex,
                 opacity: plan.opacity,
                 tint: plan.tint,
                 // ✅유저 2026-08-27 (I-8-Q5): a ghost shows the pixels the

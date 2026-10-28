@@ -67,6 +67,31 @@ T withLayerPlacement<T>(
   }
 }
 
+/// [rows] — painting rows where a walk draws them — as a row placed by
+/// [placement] reads them: in its own space, before its pose, so a row
+/// read is read where it shows (🗣️I-132-Q21 a). [rasterScale] as
+/// [withLayerPlacement]'s. Null for a placement that collapses its row,
+/// which shows nothing and so reads nothing.
+RowPainter? rowsUnderPlacement(
+  RowPainter? rows,
+  LayerPlacement? placement, {
+  double rasterScale = 1,
+}) {
+  if (rows == null || placement == null) {
+    return rows;
+  }
+  final back = canvasToArtwork(placement);
+  if (back == null) {
+    return null;
+  }
+  return (into, row, scale) => withLayerPlacement(
+    into,
+    placement: back,
+    rasterScale: rasterScale,
+    body: () => rows(into, row, scale),
+  );
+}
+
 /// One layer's image, posed, faded, blended, filtered and drawn.
 ///
 /// [pieces] are the image and where its pixels belong in canvas space — one
@@ -94,6 +119,9 @@ T withLayerPlacement<T>(
 /// [paper] is where the row's paper lies in canvas space — the edge a blur
 /// of its chain that repeats it reads past ([PaperEdgeEffect]): the
 /// canvas, as on every route (I-132-Q14 a).
+///
+/// [rows] paint the rows its chain reads where the [canvas] lies, before
+/// the pose ([rowsUnderPlacement]); null for none.
 ///
 /// [texelScale] is how many target pixels one canvas unit is on [canvas]
 /// when [canvas] is a pixel raster whose grid is aligned to canvas space —
@@ -127,7 +155,13 @@ void drawPosedLayerImage(
   required ui.Rect paper,
   int? tint,
   bool Function(ui.Rect worldRect, ui.Image image)? drawAtOriginWhen,
+  RowPainter? rows,
 }) {
+  final read = rowsUnderPlacement(
+    rows,
+    placement,
+    rasterScale: rasterScale,
+  );
   withLayerPlacement(
     canvas,
     placement: placement,
@@ -180,6 +214,7 @@ void drawPosedLayerImage(
           plan: plan,
           extent: laid.worldRect,
           paper: paper,
+          rows: read,
         );
         // 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
         // 2026-09-24 「통일해서」). The law the 1:1 blits beside it already keep

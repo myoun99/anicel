@@ -2,6 +2,7 @@ import '../core/tree_nodes.dart';
 import 'cel_number_letters.dart';
 import 'layer_blend_mode.dart';
 import 'layer_effect.dart';
+import 'layer_id.dart';
 
 /// One node of a composite TREE, bottom → top: something that PAINTS
 /// (whatever [L] is on this route), a FOLDER's group buffer, an
@@ -218,6 +219,37 @@ final class CompositeCelNumber<L> extends CompositeNode<L> {
   List<CompositeNode<L>> get children => const [];
 }
 
+/// [node], whose chain reads other rows' pictures — a camera lens blur's
+/// blur map ([ResolvedLayerEffect.layers], 🗣️I-132-Q16 a): [rows] holds
+/// each row of the cut its effects name, as the nodes that draw it.
+///
+/// A row is read as it shows by itself — 🗣️I-132-Q21 a where it lies,
+/// 🗣️I-132-Q23 a with its eye not asked and 🗣️I-132-Q24 b at its own
+/// strength — and 🗣️I-132-Q22 a reads no row of its own: what [rows] draw
+/// holds no node of this kind. A row the effects name that [rows] does not
+/// hold is no row of the cut, and reads as none.
+///
+/// Its [children] are [node] and every node [rows] draw: a walk over the
+/// rows it paints ([preorderNodes]) meets them — what is drawn on, what is
+/// read in and what is signed of a node that reads a row is that row too.
+final class CompositeReadsRows<L> extends CompositeNode<L> {
+  const CompositeReadsRows({required this.node, required this.rows});
+
+  /// The node — a row, a folder's buffer or an adjustment's scope — whose
+  /// chain reads [rows].
+  final CompositeNode<L> node;
+
+  /// Row id → the nodes that draw it, bottom → top; empty where it draws
+  /// nothing at this frame, which reads as a picture with nothing on it.
+  final Map<LayerId, List<CompositeNode<L>>> rows;
+
+  @override
+  List<CompositeNode<L>> get children => [
+    node,
+    for (final drawn in rows.values) ...drawn,
+  ];
+}
+
 /// THE CLIP LAW (I-92): [clipped] joined to the clipping group [standing]
 /// is the base of, or that [standing] — a row, or a folder's buffer —
 /// becomes the base of ([CompositeClip]).
@@ -245,7 +277,8 @@ CompositeNode<L> clippedOnto<L>(
         CompositeBackdropBlend<L>() ||
         CompositeClip<L>() ||
         CompositeOpaque<L>() ||
-        CompositeCelNumber<L>() => throw StateError(
+        CompositeCelNumber<L>() ||
+        CompositeReadsRows<L>() => throw StateError(
           'only a row or a folder clips to the layer below, not $clipped',
         ),
       } !=
@@ -296,7 +329,8 @@ CompositeNode<L> clippedOnto<L>(
     CompositeBackdropBlend<L>() ||
     CompositeClip<L>() ||
     CompositeOpaque<L>() ||
-    CompositeCelNumber<L>() => throw StateError(
+    CompositeCelNumber<L>() ||
+    CompositeReadsRows<L>() => throw StateError(
       'only a row or a folder is clipped to, not $standing',
     ),
   };
@@ -403,6 +437,11 @@ List<CompositeNode<L>> _composeOverTheirBackdrops<L>(
       // gives any other blend to their group), which this fold hands on as
       // the very node it was — the one [CompositeCelNumber.on] names.
       CompositeCelNumber<L>() => (node, null),
+      // ⛔Rows are read once every other law has laid the tree
+      // (`resolveCutFrameCompositeTree`): a blend never meets one.
+      CompositeReadsRows<L>() => throw StateError(
+        'the rows a chain reads are laid after its blend, not before: $node',
+      ),
     };
     if (blend == null || !blend.needsItsBackdrop) {
       out.add(composed);
@@ -476,6 +515,91 @@ List<CompositeNode<L>> onUnderlay<L>(
     ],
   _ => [CompositeLeaf<L>(underlay), ...nodes],
 };
+
+/// [nodes] with each node whose own chain reads rows — a row's
+/// ([effectsOf]), a folder's or an adjustment's — standing in a
+/// [CompositeReadsRows] with each row its chain names as [drawnOf] draws
+/// it: asked with the row whose chain reads it, null for a folder's or an
+/// adjustment's, and answering null for no row there, which reads as none.
+///
+/// Laid once every other law has laid the tree: the node that reads stands
+/// where it stood — in its clip, over its backdrop — and what points back
+/// at it ([CompositeOpaque.of]) points at it still. A cel number's row
+/// ([CompositeCelNumber.on]) stays the leaf: the letters lie where it does.
+List<CompositeNode<L>> withTheRowsTheyRead<L>(
+  List<CompositeNode<L>> nodes, {
+  required List<ResolvedLayerEffect> Function(L row) effectsOf,
+  required List<CompositeNode<L>>? Function(LayerId row, L? by) drawnOf,
+}) {
+  final laid = Map<CompositeNode<L>, CompositeNode<L>>.identity();
+  CompositeNode<L> reading(
+    CompositeNode<L> node,
+    List<ResolvedLayerEffect> effects,
+    L? by,
+  ) {
+    final named = {
+      for (final effect in effects) ...effect.layers.values.nonNulls,
+    };
+    final rows = <LayerId, List<CompositeNode<L>>>{
+      for (final row in named)
+        if (drawnOf(row, by) case final drawn?) row: List.unmodifiable(drawn),
+    };
+    return rows.isEmpty
+        ? node
+        : CompositeReadsRows<L>(node: node, rows: Map.unmodifiable(rows));
+  }
+
+  CompositeNode<L> lay(CompositeNode<L> node) => laid[node] ??= switch (node) {
+    CompositeLeaf<L>(:final payload) => reading(
+      node,
+      effectsOf(payload),
+      payload,
+    ),
+    CompositeGroup<L>(
+      :final children,
+      :final opacity,
+      :final blendMode,
+      :final effects,
+    ) =>
+      reading(
+        CompositeGroup<L>(
+          children: List.unmodifiable(children.map(lay)),
+          opacity: opacity,
+          blendMode: blendMode,
+          effects: effects,
+        ),
+        effects,
+        null,
+      ),
+    CompositeAdjustment<L>(:final children, :final effects, :final mix) =>
+      reading(
+        CompositeAdjustment<L>(
+          children: List.unmodifiable(children.map(lay)),
+          effects: effects,
+          mix: mix,
+        ),
+        effects,
+        null,
+      ),
+    CompositeBackdropBlend<L>(:final backdrop, :final source, :final blendMode) =>
+      CompositeBackdropBlend<L>(
+        backdrop: List.unmodifiable(backdrop.map(lay)),
+        source: lay(source),
+        blendMode: blendMode,
+      ),
+    CompositeClip<L>(:final base, :final scope, :final opacity, :final blendMode) =>
+      CompositeClip<L>(
+        base: lay(base),
+        scope: List.unmodifiable(scope.map(lay)),
+        opacity: opacity,
+        blendMode: blendMode,
+      ),
+    CompositeOpaque<L>(:final of) => CompositeOpaque<L>(lay(of)),
+    // Already laid: what it reads is beside it.
+    CompositeCelNumber<L>() || CompositeReadsRows<L>() => node,
+  };
+  return List.unmodifiable(nodes.map(lay));
+}
 
 /// THE FOLD: [nodes] with every leaf run through [map], keeping the
 /// structure around them.
@@ -615,6 +739,20 @@ List<CompositeNode<M>> _mapCompositeLeaves<L, M>(
       case CompositeCelNumber<L>(:final on, :final letters):
         if (keptOf(on) ?? bareOf(on) case final CompositeLeaf<M> row) {
           out.add(CompositeCelNumber<M>(on: row, letters: letters));
+        }
+      // A row read that draws nothing here is read as a picture with
+      // nothing on it — still a row of the cut, not none.
+      case CompositeReadsRows<L>(node: final reader, :final rows):
+        if (fold([reader]).singleOrNull case final mapped?) {
+          out.add(
+            CompositeReadsRows<M>(
+              node: mapped,
+              rows: {
+                for (final MapEntry(key: row, value: drawn) in rows.entries)
+                  row: List.unmodifiable(fold(drawn)),
+              },
+            ),
+          );
         }
     }
   }

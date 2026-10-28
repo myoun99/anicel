@@ -63,6 +63,7 @@ void main() {
             CutFrameCompositeGhost(
               layer: row,
               frameId: FrameId('ghost-${row.id.value}-$peg'),
+              frameIndex: peg,
               opacity: 0.4,
             ),
       ],
@@ -179,4 +180,7 @@ String _shapeOf(CompositeNode<CutFrameCompositeRow> node) => switch (node) {
     'clip(${_shapeOf(base)} | ${shapes(scope)})',
   CompositeOpaque(:final of) => 'opaque(${_shapeOf(of)})',
   CompositeCelNumber(:final on) => _shapeOf(on),
+  CompositeReadsRows(:final node, :final rows) =>
+    'reads(${_shapeOf(node)} | '
+        '${rows.keys.map((row) => row.value).join(' ')})',
 };

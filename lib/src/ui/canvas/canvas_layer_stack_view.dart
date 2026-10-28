@@ -1030,16 +1030,37 @@ final class _LayerStackPainter {
   /// the canvas's own resolution (one-picture-per-frame, 유저 2026-10-25
   /// 「원본 기준 위에서 푼다」). [paper] is where the paper lies, which a
   /// radial blur's reach is read from ([resolveCompositeEffectPlan]).
+  ///
+  /// Each node it stands in: a row read by another's chain stands where it
+  /// lies and in the node that reads it ([CompositeReadsRows]).
   static Rect? _whereTheRowShows(
     List<CompositeNode<_PaintRow>> list,
     Rect rect,
     bool Function(_PaintRow row) isRow, {
     required Rect paper,
   }) {
-    for (final node in list) {
-      if (node case CompositeLeaf(
-        payload: final _SurfaceRow row,
-      ) when isRow(row)) {
+    Rect? shows;
+    for (final node in list.where((node) => holdsRow(node, isRow))) {
+      final here = _whereItShowsIn(node, rect, isRow, paper: paper);
+      if (here == null) {
+        return null;
+      }
+      shows = shows?.expandToInclude(here) ?? here;
+    }
+    return shows;
+  }
+
+  /// [_whereTheRowShows] in [node], which holds the row.
+  static Rect? _whereItShowsIn(
+    CompositeNode<_PaintRow> node,
+    Rect rect,
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) {
+    Rect? inside() =>
+        _whereTheRowShows(node.children, rect, isRow, paper: paper);
+    switch (node) {
+      case CompositeLeaf(payload: final _SurfaceRow row):
         // ⛔A POSE is not told. 🔬Told through it, the step's patch came
         // apart from the frame drawn as it stands (Impeller tester,
         // 2026-10-27): the row turned by 30° and enlarged 2.5×, a few
@@ -1061,42 +1082,76 @@ final class _LayerStackPainter {
         return row.placement == null
             ? _spreadBy(row.effects, rect, paper)
             : null;
-      }
-      if (node is CompositeGroup<_PaintRow> &&
-          holdsRow(node, isRow)) {
-        final inside = _whereTheRowShows(
-          node.children,
-          rect,
-          isRow,
-          paper: paper,
-        );
-        return inside == null ? null : _spreadBy(node.effects, inside, paper);
-      }
-      if (node is CompositeAdjustment<_PaintRow> &&
-          holdsRow(node, isRow)) {
-        final inside = _whereTheRowShows(
-          node.children,
-          rect,
-          isRow,
-          paper: paper,
-        );
-        return inside == null ? null : _spreadBy(node.effects, inside, paper);
-      }
+      case CompositeGroup(:final effects):
+      case CompositeAdjustment(:final effects):
+        return switch (inside()) {
+          final at? => _spreadBy(effects, at, paper),
+          null => null,
+        };
       // A blend composes pixel by pixel: a dab moves the composite where it
       // lands and nowhere else, so only what the row passes through decides.
-      if (node is CompositeBackdropBlend<_PaintRow> &&
-          holdsRow(node, isRow)) {
-        return _whereTheRowShows(node.children, rect, isRow, paper: paper);
-      }
+      case CompositeBackdropBlend():
       // So does a clip: the base's alpha cuts pixel by pixel, and the base
       // made opaque is the base's own pixels.
-      if (node is CompositeClip<_PaintRow> &&
-          holdsRow(node, isRow)) {
-        return _whereTheRowShows(node.children, rect, isRow, paper: paper);
-      }
+      case CompositeClip():
+        return inside();
+      case final CompositeReadsRows<_PaintRow> reads:
+        return _whereReadShows(reads, rect, isRow, paper: paper);
+      // Holding no row: nothing of theirs is told here.
+      case CompositeLeaf():
+      case CompositeOpaque():
+      case CompositeCelNumber():
+        return null;
     }
-    return null;
   }
+
+  /// Where [rect] of the row [isRow] picks shows through [node]: in the
+  /// node that reads, where it stands in it, and where the rows it reads
+  /// hold it — read where it shows, pixel for pixel (🗣️I-132-Q21 a), so
+  /// changed there and as far past as the reader's chain reads past a
+  /// pixel ([_readerSpreads]).
+  static Rect? _whereReadShows(
+    CompositeReadsRows<_PaintRow> node,
+    Rect rect,
+    bool Function(_PaintRow row) isRow, {
+    required Rect paper,
+  }) {
+    final CompositeReadsRows(node: reader, :rows) = node;
+    final read = [for (final drawn in rows.values) ...drawn];
+    final parts = [
+      if (holdsRow(reader, isRow))
+        _whereItShowsIn(reader, rect, isRow, paper: paper),
+      if (read.any((drawn) => holdsRow(drawn, isRow)))
+        switch (_whereTheRowShows(read, rect, isRow, paper: paper)) {
+          final at? => _readerSpreads(reader, at, paper),
+          null => null,
+        },
+    ];
+    return parts.contains(null)
+        ? null
+        : parts.nonNulls.reduce((all, part) => all.expandToInclude(part));
+  }
+
+  /// [at] — where what [reader]'s chain reads changed — as far past as that
+  /// chain reads past a pixel; null where that cannot be told: a posed
+  /// row's, as for the row itself ([_whereItShowsIn]).
+  static Rect? _readerSpreads(
+    CompositeNode<_PaintRow> reader,
+    Rect at,
+    Rect paper,
+  ) => switch (reader) {
+    CompositeLeaf(payload: final _SurfaceRow row) =>
+      row.placement == null ? _spreadBy(row.effects, at, paper) : null,
+    CompositeGroup(:final effects) ||
+    CompositeAdjustment(:final effects) => _spreadBy(effects, at, paper),
+    // Only a row, a folder or an adjustment reads rows.
+    CompositeLeaf() ||
+    CompositeBackdropBlend() ||
+    CompositeClip() ||
+    CompositeOpaque() ||
+    CompositeCelNumber() ||
+    CompositeReadsRows() => null,
+  };
 
   /// [rect] grown by as far as [effects] read past a pixel, on [paper].
   static Rect _spreadBy(

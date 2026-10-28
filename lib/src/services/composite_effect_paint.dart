@@ -9,6 +9,7 @@ import '../core/draw_space.dart';
 import '../models/canvas_size.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart';
+import '../models/layer_id.dart';
 import 'camera_lens_blur_passes.dart';
 import 'cel_source_effect_pass.dart';
 import 'directional_blur_passes.dart';
@@ -450,6 +451,11 @@ _PaintPart _radialBlurPart(
   );
 }
 
+/// The row of its cut whose picture a step of [effect] reads — a camera
+/// lens blur's blur map (🗣️I-132-Q16 a) — null where it reads none.
+LayerId? effectReadsRow(ResolvedLayerEffect effect) =>
+    effect.layers.values.nonNulls.firstOrNull;
+
 /// A camera lens blur of no radius changes no pixel, whatever its iris —
 /// as [_directionalBlurPart]'s length. Its iris covers pixel centres within
 /// its radius (`shaders/iris_table.frag`): that is how far it reaches past
@@ -492,6 +498,15 @@ _PaintPart _cameraLensBlurPart(
             ),
             rasterWidth: rasterWidth,
             paper: repeatsTheEdge ? paperOnWholePixels(paper!) : null,
+            map: effectReadsRow(effect) == null
+                ? null
+                : (
+                    // The words of Blur Map Channel, in order.
+                    channel: IrisMapChannel
+                        .values[effect.parameter('blurMapChannel').round()],
+                    focal: effect.parameter('blurFocalDistance'),
+                    inverts: effect.flag('invertBlurMap'),
+                  ),
           ),
     reach: radius,
   );

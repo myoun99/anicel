@@ -57,11 +57,13 @@ typedef CameraLensBlur = ({
 /// (`shaders/iris_gather.frag`).
 ///
 /// Its light is none to work where it is read as stored and nothing is
-/// boosted.
+/// boosted. [map] is how it reads its blur map where it reads one
+/// ([IrisGatherPass.map]).
 List<ShadedPass> cameraLensBlurPasses(
   CameraLensBlur lens, {
   required int rasterWidth,
   required ui.Rect? paper,
+  IrisMap? map,
 }) {
   final (:radius, :iris, :light) = lens;
   final read = light.linear || (light.gain > 0 && light.threshold < 1)
@@ -69,6 +71,12 @@ List<ShadedPass> cameraLensBlurPasses(
       : null;
   return [
     ...rowSumPasses(rasterWidth, light: read),
-    IrisGatherPass(radius: radius, iris: iris, paper: paper, light: read),
+    IrisGatherPass(
+      radius: radius,
+      iris: iris,
+      paper: paper,
+      light: read,
+      map: map,
+    ),
   ];
 }

@@ -40,6 +40,7 @@ void main() {
         case CompositeClip<CanvasStackRow>(:final children):
         case CompositeOpaque<CanvasStackRow>(:final children):
         case CompositeCelNumber<CanvasStackRow>(:final children):
+        case CompositeReadsRows<CanvasStackRow>(:final children):
           final inner = stackEffectsOf(children);
           if (inner.isNotEmpty) {
             return inner;

@@ -347,6 +347,7 @@ final class CutFrameCompositeGhost extends CutFrameCompositeRow {
   const CutFrameCompositeGhost({
     required this.layer,
     required this.frameId,
+    required this.frameIndex,
     required this.opacity,
     this.tint,
     this.blendMode = LayerBlendMode.normal,
@@ -358,6 +359,10 @@ final class CutFrameCompositeGhost extends CutFrameCompositeRow {
 
   /// The cel it shows, of the frame its peg reaches.
   final FrameId frameId;
+
+  /// The frame its peg reaches — where its chain is sampled, and the rows
+  /// that chain reads are read ([readingTheirRows]).
+  final int frameIndex;
 
   @override
   final double opacity;
@@ -377,6 +382,7 @@ final class CutFrameCompositeGhost extends CutFrameCompositeRow {
   CutFrameCompositeGhost withPaint(RowPaint paint) => CutFrameCompositeGhost(
     layer: layer,
     frameId: frameId,
+    frameIndex: frameIndex,
     opacity: paint.opacity,
     tint: tint,
     blendMode: paint.blendMode,
@@ -387,6 +393,7 @@ final class CutFrameCompositeGhost extends CutFrameCompositeRow {
   CutFrameCompositeGhost paintedNormal() => CutFrameCompositeGhost(
     layer: layer,
     frameId: frameId,
+    frameIndex: frameIndex,
     opacity: opacity,
     tint: tint,
     effects: effects,
@@ -396,6 +403,7 @@ final class CutFrameCompositeGhost extends CutFrameCompositeRow {
   CutFrameCompositeGhost paintedAsClipBase() => CutFrameCompositeGhost(
     layer: layer,
     frameId: frameId,
+    frameIndex: frameIndex,
     opacity: 1,
     tint: tint,
     effects: effects,
@@ -1470,27 +1478,10 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       liveLayerId: liveLayerId,
     ));
     if (row != null) {
-      final [standing, ...over] = celNumberedRow(
-        paint: (
-          opacity: row.opacity,
-          blendMode: row.blendMode,
-          effects: row.effects,
-        ),
-        rowOf: row.withPaint,
-        text: celNumberText(
-          rowName: layer.name,
-          drawingName: switch (row) {
-            CutFrameCompositeEntry(:final frame) => frame.name,
-            // Drawn on where nothing is exposed yet: the drawing the pen
-            // makes, which is born unnamed.
-            CutFrameCompositeLiveRow() => null,
-            CutFrameCompositeGhost() => throw StateError(
-              'a row resolves to its own node, never to a ghost',
-            ),
-          },
-          kind: layer.kind,
-        ),
-        paper: cut.canvasSize,
+      final [standing, ...over] = _rowNodes(
+        cut,
+        layer,
+        row,
         asOnePicture: meetsAClip(cut, layer),
       );
       place(layer, standing);
@@ -1503,14 +1494,121 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   }
   // A row in an advanced blend goes over a picture of its scope — once
   // the tree is whole, because a scope is then simply a list (the law's own
-  // doc says why).
-  return List.unmodifiable(
+  // doc says why) — and the rows a chain reads beside it, once that is.
+  return readingTheirRows(
     composeOverTheirBackdrops(
       childrenOf[null] ?? const <CompositeNode<CutFrameCompositeRow>>[],
       blendOf: (row) => row.blendMode,
       paintedNormal: (row) => row.paintedNormal(),
     ),
+    cut: cut,
+    frameIndex: frameIndex,
+    liveLayerId: liveLayerId,
   );
+}
+
+/// [row] — [layer]'s, at a frame — as its nodes in a tree, bottom → top:
+/// its picture, and the letters of a cel number its chain writes
+/// ([celNumberedRow]).
+List<CompositeNode<CutFrameCompositeRow>> _rowNodes(
+  Cut cut,
+  Layer layer,
+  CutFrameCompositeRow row, {
+  required bool asOnePicture,
+}) => celNumberedRow(
+  paint: (opacity: row.opacity, blendMode: row.blendMode, effects: row.effects),
+  rowOf: row.withPaint,
+  text: celNumberText(
+    rowName: layer.name,
+    drawingName: switch (row) {
+      CutFrameCompositeEntry(:final frame) => frame.name,
+      // Drawn on where nothing is exposed yet: the drawing the pen
+      // makes, which is born unnamed.
+      CutFrameCompositeLiveRow() => null,
+      CutFrameCompositeGhost() => throw StateError(
+        'a row resolves to its own node, never to a ghost',
+      ),
+    },
+    kind: layer.kind,
+  ),
+  paper: cut.canvasSize,
+  asOnePicture: asOnePicture,
+);
+
+/// [nodes] of [cut]'s frame [frameIndex] with each whose own chain reads
+/// rows of the cut — a camera lens blur's blur map (🗣️I-132-Q16 a) —
+/// reading them ([withTheRowsTheyRead]): each as it draws there by itself
+/// ([_rowAsRead]), a ghost's at the frame its peg reaches — a ghost shows
+/// what the screen shows there (I-8-Q5). [liveLayerId] as
+/// [resolveCutFrameCompositeTree]'s.
+List<CompositeNode<CutFrameCompositeRow>> readingTheirRows(
+  List<CompositeNode<CutFrameCompositeRow>> nodes, {
+  required Cut cut,
+  required int frameIndex,
+  required LayerId? liveLayerId,
+}) => withTheRowsTheyRead(
+  nodes,
+  effectsOf: (row) => row.effects,
+  drawnOf: (row, by) => switch (by) {
+    CutFrameCompositeGhost(frameIndex: final at) => _rowAsRead(
+      cut,
+      row,
+      frameIndex: at,
+      liveLayerId: null,
+    ),
+    _ => _rowAsRead(
+      cut,
+      row,
+      frameIndex: frameIndex,
+      liveLayerId: liveLayerId,
+    ),
+  },
+);
+
+/// Row [id] of [cut] at [frameIndex] as a chain that reads it reads it: as
+/// it draws there by itself ([layerDrawingAt]) — where it lies
+/// (🗣️I-132-Q21 a), its eye not asked (🗣️I-132-Q23 a), at its own strength
+/// (🗣️I-132-Q24 b), on nothing, so in no blend — and naming no row of its
+/// own (🗣️I-132-Q22 a). Nothing where it exposes no cel, save the row
+/// drawn on ([liveLayerId]); null for no row of the cut or one that paints
+/// nothing of its own, which reads as none.
+List<CompositeNode<CutFrameCompositeRow>>? _rowAsRead(
+  Cut cut,
+  LayerId id, {
+  required int frameIndex,
+  required LayerId? liveLayerId,
+}) {
+  final layer = cut.layers.byId(id);
+  final drawing = layer == null
+      ? null
+      : layerDrawingAt(cut: cut, layer: layer, frameIndex: frameIndex);
+  if (layer == null || drawing == null) {
+    return null;
+  }
+  final (:frame, :render) = drawing;
+  final effects = [for (final effect in render.effects) effect.namingNoRow];
+  final row = switch (frame) {
+    final frame? => CutFrameCompositeEntry(
+      layer: layer,
+      frame: frame,
+      opacity: render.opacity,
+      placement: render.placement,
+      effects: effects,
+    ),
+    null when layer.id == liveLayerId => CutFrameCompositeLiveRow(
+      layer: layer,
+      render: (
+        opacity: render.opacity,
+        blendMode: LayerBlendMode.normal,
+        placement: render.placement,
+        effects: effects,
+      ),
+    ),
+    null => null,
+  };
+  return row == null
+      ? const []
+      : _rowNodes(cut, layer, row, asOnePicture: false);
 }
 
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;

@@ -6,6 +6,7 @@ import '../../core/draw_space.dart';
 import '../../core/lru.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/layer_id.dart';
 import '../../models/rgba_image_bytes.dart';
 import 'colour_key_shader.dart';
 import 'directional_blur_shader.dart';
@@ -97,6 +98,8 @@ Rect _subtreeExtent<T>(
     // What clips is cut to the base: the base's rect is all of it.
     case CompositeClip(base: final of):
     case CompositeOpaque(:final of):
+    // What it reads of a row is read, not drawn: its own rect is all.
+    case CompositeReadsRows(node: final of):
       return _subtreeExtent(of, extentOf, placementOf);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
@@ -170,6 +173,24 @@ class SubtreeRasterPlan {
         )
         ..scale(scale)
         ..translate(-destination.left, -destination.top);
+}
+
+/// Paints row [row] of the cut — one a chain reads, a camera lens blur's
+/// blur map (🗣️I-132-Q16 a) — onto [into], in the space the raster that
+/// reads it is recorded in, [rasterScale] of its pixels a unit there.
+/// False, and nothing painted, for a row it does not hold: none.
+typedef RowPainter =
+    bool Function(Canvas into, LayerId row, double rasterScale);
+
+/// Row [row] as [rows] paint it on [plan]'s grid — what a step rastered on
+/// that grid reads of it; null where [rows] hold no such row.
+ui.Image? _rowOnTheGrid(RowPainter rows, LayerId row, SubtreeRasterPlan plan) {
+  final recorder = ui.PictureRecorder();
+  if (!rows(plan.recordInto(recorder), row, plan.scale)) {
+    recorder.endRecording().dispose();
+    return null;
+  }
+  return rasterPicture(recorder, plan.pixelWidth, plan.pixelHeight);
 }
 
 /// What the last blit actually did, so a test can read the GEOMETRY rather
@@ -374,6 +395,7 @@ void drawSubtreeAsImage({
   required Rect paper,
   SubtreeHold? held,
   int cell = 1,
+  RowPainter? rows,
 }) {
   final plan = _planSubtreeRaster(
     bounds: bounds,
@@ -416,6 +438,7 @@ void drawSubtreeAsImage({
     steps: steps,
     paper: paper,
     held: held,
+    rows: rows,
   );
 }
 
@@ -1039,12 +1062,15 @@ void _composeInTheFrame({
 /// is [source]'s size.
 ///
 /// [paper] is where the paper lies in [source]'s pixels — the edge a blur
-/// that repeats it reads past ([PaperEdgeEffect]).
+/// that repeats it reads past ([PaperEdgeEffect]). [rowOf] lays a row a
+/// step reads ([effectReadsRow]) on [source]'s grid — null for none, and
+/// none for every row where it is null: such a step reads no row.
 ui.Image applyEffectSteps({
   required ui.Image source,
   required List<CompositeEffectStep> steps,
   required double imageScale,
   required Rect paper,
+  ui.Image? Function(LayerId row)? rowOf,
 }) {
   // ⛔The IMAGE's own space. A step rasters at the identity — there is no
   // CTM to map a sigma or a length through — so the chain arrives
@@ -1057,24 +1083,35 @@ ui.Image applyEffectSteps({
     // What every key of a run reads its colours from and a restore gives
     // back to ([KeyRun]) — alive until the step is done.
     final input = image;
-    final draws = _stepDraws(
-      step.lead,
-      space: space,
-      paper: paper,
-      rasterWidth: source.width,
-    );
-    for (var index = 0; index < draws.length; index += 1) {
-      final next = draws[index](
-        image,
-        input,
-        index == draws.length - 1
-            ? resolveCompositeEffectPaint(step.then, space: space)
-            : CompositeEffectPaint.none,
+    // And the row its lead reads, on the step's grid — as long.
+    final read = switch (step.lead) {
+      ShadedEffect(:final effect) => effectReadsRow(effect),
+      _ => null,
+    };
+    final row = read == null ? null : rowOf?.call(read);
+    try {
+      final draws = _stepDraws(
+        step.lead,
+        space: space,
+        paper: paper,
+        rasterWidth: source.width,
+        row: row,
       );
-      if (!identical(image, source) && !identical(image, input)) {
-        image.dispose();
+      for (var index = 0; index < draws.length; index += 1) {
+        final next = draws[index](
+          image,
+          input,
+          index == draws.length - 1
+              ? resolveCompositeEffectPaint(step.then, space: space)
+              : CompositeEffectPaint.none,
+        );
+        if (!identical(image, source) && !identical(image, input)) {
+          image.dispose();
+        }
+        image = next;
       }
-      image = next;
+    } finally {
+      row?.dispose();
     }
     if (!identical(input, source)) {
       input.dispose();
@@ -1099,6 +1136,7 @@ List<_StepDraw> _stepDraws(
   required DrawSpace space,
   required Rect paper,
   required int rasterWidth,
+  required ui.Image? row,
 }) {
   if (lead case PaperEdgeEffect(:final effect)) {
     if (paperEdgeBlurOf(effect, space) case final blur?) {
@@ -1113,6 +1151,7 @@ List<_StepDraw> _stepDraws(
     space: space,
     paper: paper,
     rasterWidth: rasterWidth,
+    row: row,
   );
   return [
     if (shaded.isEmpty)
@@ -1134,12 +1173,14 @@ typedef _LeadDraw = ({
 
 /// The shaders [lead] draws at [space], with [paper] where the paper lies
 /// there, over rasters [rasterWidth] wide — none for a step that only
-/// paints, nor for a blur on the paper ([_paperEdgeDraw]).
+/// paints, nor for a blur on the paper ([_paperEdgeDraw]) — [row] the
+/// row it reads on their grid, null for none.
 List<_LeadDraw> _leadDraws(
   EffectStepLead? lead, {
   required DrawSpace space,
   required Rect paper,
   required int rasterWidth,
+  required ui.Image? row,
 }) => switch (lead) {
   null || PaperEdgeEffect() => const [],
   KeyRun(:final keys) => [
@@ -1160,12 +1201,13 @@ List<_LeadDraw> _leadDraws(
       paper: paper,
       rasterWidth: rasterWidth,
     ))
-      _passDraw(pass),
+      _passDraw(pass, row: row),
   ],
 };
 
-/// The draw [pass] is.
-_LeadDraw _passDraw(ShadedPass pass) => switch (pass) {
+/// The draw [pass] is, reading [row] where it reads a row.
+_LeadDraw _passDraw(ShadedPass pass, {required ui.Image? row}) =>
+    switch (pass) {
   LineBoxPass() => (
     shade: (image, _) =>
         DirectionalBlurShader.shaderFor(source: image, pass: pass),
@@ -1176,8 +1218,13 @@ _LeadDraw _passDraw(ShadedPass pass) => switch (pass) {
     inFloats: true,
   ),
   IrisGatherPass() => (
-    shade: (image, input) =>
-        IrisBlurShader.gatherFor(sums: image, input: input, pass: pass),
+    shade: (image, input) => IrisBlurShader.gatherFor(
+      sums: image,
+      input: input,
+      // A blur map that is none here: the blur at its whole radius.
+      pass: row == null ? pass.unmapped : pass,
+      map: row,
+    ),
     inFloats: false,
   ),
 };
@@ -1322,6 +1369,7 @@ void _finishSubtreeRaster({
   List<CompositeEffectStep> steps = const [],
   required Rect paper,
   SubtreeHold? held,
+  RowPainter? rows,
 }) {
   assert(() {
     debugSubtreeRasterCount += 1;
@@ -1344,6 +1392,7 @@ void _finishSubtreeRaster({
       origin: plan.destination.topLeft,
       scale: plan.scale,
     ),
+    rowOf: rows == null ? null : (row) => _rowOnTheGrid(rows, row, plan),
   );
   try {
     compose(
@@ -1405,22 +1454,33 @@ void _finishSubtreeRaster({
 ///
 /// [extent] is the rect of canvas space [image] stands for, and [paper]
 /// where the paper lies there — what a blur repeating its edge reads past
-/// ([PaperEdgeEffect]).
+/// ([PaperEdgeEffect]) — and [rows] paint the rows a step reads in it.
 ui.Image steppedForChain({
   required ui.Image image,
   required CompositeEffectPlan plan,
   required Rect extent,
   required Rect paper,
+  RowPainter? rows,
 }) {
   if (plan.isSingleDraw) {
     return image;
   }
   final imageScale = extent.width <= 0 ? 1.0 : image.width / extent.width;
+  // [image]'s grid, as a raster the walk plans lies on its own.
+  final grid = SubtreeRasterPlan(
+    bounds: extent,
+    destination: extent,
+    pixelWidth: image.width,
+    pixelHeight: image.height,
+    scale: imageScale,
+    rasterScale: imageScale,
+  );
   return applyEffectSteps(
     source: image,
     steps: plan.preSteps,
     imageScale: imageScale,
     paper: _rectInPixels(paper, origin: extent.topLeft, scale: imageScale),
+    rowOf: rows == null ? null : (row) => _rowOnTheGrid(rows, row, grid),
   );
 }
 

@@ -579,6 +579,10 @@ class _LayerStackPaintPass {
         CompositeAdjustment(:final children) => _activeRowIn(children),
         CompositeBackdropBlend(:final children) => _activeRowIn(children),
         CompositeClip(:final children) => _activeRowIn(children),
+        // The row drawn on, read by another's chain, is the same row
+        // there — its keys, where it lies — and the one place it stands
+        // where its eye is off (🗣️I-132-Q23 a).
+        CompositeReadsRows(:final children) => _activeRowIn(children),
         // The base it paints again stands in the clip already, and the row
         // a cel number is written on as its own leaf.
         CompositeOpaque() || CompositeCelNumber() => null,
@@ -728,30 +732,42 @@ class _LayerStackPaintPass {
   /// the same picture playback composes (route parity). The wrap straddles
   /// the live-surface node too, which HAS a placement and no image — that
   /// is why the wrap and the draw are separate helpers rather than one.
-  void _paintRow(Canvas canvas, _PaintRow row, double rasterScale) =>
-      withLayerPlacement(
-        canvas,
-        placement: _placementOf(row),
-        body: () {
-          switch (row) {
-            case _PaintPaper():
-              _paintPaperInto(canvas);
-            case final _SurfaceRow row:
-              _paintSurfaceRow(canvas, _slotOf(row), row.paint, rasterScale);
-          }
-        },
-      );
+  void _paintRow(
+    Canvas canvas,
+    _PaintRow row,
+    double rasterScale,
+    RowPainter? rows,
+  ) => withLayerPlacement(
+    canvas,
+    placement: _placementOf(row),
+    body: () {
+      switch (row) {
+        case _PaintPaper():
+          _paintPaperInto(canvas);
+        case final _SurfaceRow row:
+          _paintSurfaceRow(
+            canvas,
+            _slotOf(row),
+            row.paint,
+            rasterScale,
+            rows: rowsUnderPlacement(rows, row.placement),
+          );
+      }
+    },
+  );
 
   /// A surface layer — the live one, or one a lift holds beside it (I-37 ·
   /// F-329): drawn straight onto the canvas when its paint can ride the
   /// draws, through one buffer when it cannot (an outset effect,
-  /// overlapping coverage, a float overlay, or pre-steps).
+  /// overlapping coverage, a float overlay, or pre-steps) — [rows] what
+  /// paints the rows its chain reads in the slot, null for none.
   void _paintSurfaceRow(
     Canvas canvas,
     _SurfaceSlot slot,
     _SurfaceRowPaint paint,
-    double rasterScale,
-  ) {
+    double rasterScale, {
+    RowPainter? rows,
+  }) {
     final (:opacity, :blendMode, :effects, :tint, placement: _) = paint;
     // The live surface, drawn by the SAME painter the standalone
     // interactive view uses — the canvas is already
@@ -946,6 +962,7 @@ class _LayerStackPaintPass {
         // row before its pose.
         paper: _canvasRect,
         cell: rasterCellFor(activePlan.outsetPixels),
+        rows: rows,
       );
     } else {
       if (needsBuffer) {

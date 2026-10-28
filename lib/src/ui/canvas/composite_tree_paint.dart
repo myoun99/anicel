@@ -4,6 +4,7 @@ import 'dart:ui';
 import '../../core/collection_equality.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_effect.dart' show ResolvedLayerEffect;
+import '../../models/layer_id.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../text/cel_number_paint.dart';
@@ -19,9 +20,12 @@ import 'subtree_image_composite.dart';
 /// ([drawBlendOverBackdrop]'s `shownWithin`) — and where the pictures its
 /// nodes are drawn into are held ([held]) — and where the canvas the rows
 /// are laid on lies ([paper]), the edge a folder's blur that repeats it
-/// reads past (I-132-Q14 a).
+/// reads past (I-132-Q14 a). A row's own chain may read rows of the cut
+/// ([CompositeReadsRows]): [paintRow] is handed what paints them in the
+/// walk's space, null where it reads none.
 typedef CompositeRoute<L> = ({
-  void Function(Canvas canvas, L row, double rasterScale) paintRow,
+  void Function(Canvas canvas, L row, double rasterScale, RowPainter? rows)
+  paintRow,
   Rect Function(L row) extentOf,
   LayerPlacement? Function(L row) placementOf,
   Rect? shownWithin,
@@ -149,6 +153,9 @@ double readsPastOf<L>(List<CompositeNode<L>> nodes, {required Rect paper}) {
         readsPastOf(scope, paper: paper),
       ),
       CompositeOpaque(:final of) => readsPastOf([of], paper: paper),
+      // The rows it reads are drawn over all its raster reads
+      // ([_CompositeTreeWalk._painterOf]): it reads as far as it does.
+      CompositeReadsRows(:final node) => readsPastOf([node], paper: paper),
     };
     most = math.max(most, reads);
   }
@@ -282,6 +289,12 @@ class _CompositeTreeWalk<L> {
         _alongThePen(canvas, scope, rasterScale, bounds);
       case CompositeOpaque(:final of):
         _alongThePen(canvas, [of], rasterScale, within);
+      // A pen on a row it reads alone is no pen in it: it is drawn afresh,
+      // as what it reads changes.
+      case CompositeReadsRows(:final node):
+        if (_holdsThePen(node)) {
+          _intoThePen(canvas, node, rasterScale, within);
+        }
     }
   }
 
@@ -293,7 +306,7 @@ class _CompositeTreeWalk<L> {
   ) {
     switch (node) {
       case CompositeLeaf(:final payload):
-        route.paintRow(canvas, payload, rasterScale);
+        route.paintRow(canvas, payload, rasterScale, null);
       // A row's letters lie where the row does (I-65).
       case CompositeCelNumber(
         on: CompositeLeaf(:final payload),
@@ -318,8 +331,66 @@ class _CompositeTreeWalk<L> {
           bounds: _bufferBoundsOf(node, within),
           paintOf: (into) => paint(into, [of], rasterScale, within),
         );
+      case CompositeReadsRows(node: final reader, :final rows):
+        _reading(
+          canvas,
+          reader,
+          rasterScale,
+          within,
+          rows: _painterOf(rows),
+          heldAs: node,
+        );
     }
   }
+
+  /// [reader] — a row, a folder's buffer or an adjustment's scope — its
+  /// own steps reading the rows [rows] paint, its picture held as
+  /// [heldAs]'s: what it draws is the rows it reads too.
+  void _reading(
+    Canvas canvas,
+    CompositeNode<L> reader,
+    double rasterScale,
+    Rect within, {
+    required RowPainter rows,
+    required CompositeNode<L> heldAs,
+  }) {
+    switch (reader) {
+      case CompositeLeaf(:final payload):
+        route.paintRow(canvas, payload, rasterScale, rows);
+      case final CompositeGroup<L> group:
+        _group(canvas, group, rasterScale, within, rows: rows, heldAs: heldAs);
+      case final CompositeAdjustment<L> adjustment:
+        _adjustment(
+          canvas,
+          adjustment,
+          rasterScale,
+          within,
+          rows: rows,
+          heldAs: heldAs,
+        );
+      case _:
+        throw StateError(
+          'only a row, a folder or an adjustment reads rows, not $reader',
+        );
+    }
+  }
+
+  /// What paints [rows] in this walk's space, where they show by
+  /// themselves (🗣️I-132-Q21 a) — each drawn afresh, and kept nowhere: a
+  /// raster a step reads is no picture of the frame — over all the raster
+  /// that reads them: a folder's reaches past what reads the folder.
+  RowPainter _painterOf(Map<LayerId, List<CompositeNode<L>>> rows) =>
+      (into, row, scale) {
+        final drawn = rows[row];
+        if (drawn == null) {
+          return false;
+        }
+        _CompositeTreeWalk(
+          route,
+          keeps: false,
+        ).paint(into, drawn, scale, into.getLocalClipBounds());
+        return true;
+      };
 
   /// 🚨★WHAT LIES BELOW THE ROW A PEN DRAWS ON IS ONE PICTURE (card
   /// paint-walk-redoes-the-same-work-each-step, 🗣️유저 2026-10-27, Q2 = c
@@ -506,6 +577,7 @@ class _CompositeTreeWalk<L> {
   /// rasters — rather than straight onto what it lies on.
   static bool _isAPicture(CompositeNode<Object?> node) => switch (node) {
     CompositeLeaf() || CompositeCelNumber() => false,
+    CompositeReadsRows(:final node) => _isAPicture(node),
     CompositeGroup() ||
     CompositeAdjustment() ||
     CompositeBackdropBlend() ||
@@ -557,8 +629,10 @@ class _CompositeTreeWalk<L> {
     Canvas canvas,
     CompositeGroup<L> node,
     double rasterScale,
-    Rect within,
-  ) {
+    Rect within, {
+    RowPainter? rows,
+    CompositeNode<L>? heldAs,
+  }) {
     final CompositeGroup<L>(:children, :opacity, :blendMode, :effects) = node;
     // R27 #29: one buffer for the group, one blend on it — and
     // because the ACTIVE layer is a node in here, a stroke drawn
@@ -596,8 +670,9 @@ class _CompositeTreeWalk<L> {
       paintSubtree: (into, scale) => paint(into, children, scale, groupRect),
       compose: (blit) => blit(groupPaint),
       steps: groupPlan.preSteps,
-      held: _holdOf(node, within),
+      held: _holdOf(heldAs ?? node, within),
       cell: rasterCellFor(groupPlan.outsetPixels),
+      rows: rows,
     );
   }
 
@@ -640,8 +715,10 @@ class _CompositeTreeWalk<L> {
     Canvas canvas,
     CompositeAdjustment<L> node,
     double rasterScale,
-    Rect within,
-  ) {
+    Rect within, {
+    RowPainter? rows,
+    CompositeNode<L>? heldAs,
+  }) {
     final children = node.children;
     final pass = _adjustmentPassOf(node, within);
     // 🚨★★★ONE RASTER, TWO BLITS. The scope used to be PAINTED
@@ -661,8 +738,9 @@ class _CompositeTreeWalk<L> {
           paint(into, children, scale, pass.bufferBounds),
       compose: composeAdjustmentScope(canvas, pass),
       steps: pass.preSteps,
-      held: _holdOf(node, within),
+      held: _holdOf(heldAs ?? node, within),
       cell: rasterCellFor(pass.outsetPixels),
+      rows: rows,
     );
   }
 

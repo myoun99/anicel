@@ -833,6 +833,8 @@ void main() {
               walk(children);
             case CompositeClip(:final children):
               walk(children);
+            case CompositeReadsRows(:final children):
+              walk(children);
             case CompositeLeaf():
             case CompositeOpaque():
             case CompositeCelNumber():

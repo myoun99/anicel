@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/core/draw_space.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/services/camera_lens_blur_passes.dart';
 import 'package:anicel/src/services/composite_effect_paint.dart';
 import 'package:anicel/src/services/shaded_passes.dart';
@@ -124,7 +125,11 @@ void main() {
 
     /// The iris of a lens blur whose [lanes] are as they say, by id — the
     /// rest at their first values.
-    IrisGatherPass irisOf(Map<String, double> lanes, {DrawSpace? space}) =>
+    IrisGatherPass irisOf(
+      Map<String, double> lanes, {
+      DrawSpace? space,
+      Map<String, LayerId?> layers = const {},
+    }) =>
         shadedPassesOf(
               ResolvedLayerEffect(
                 kind: EffectKind.cameraLensBlur,
@@ -132,6 +137,7 @@ void main() {
                   for (final spec in EffectKind.cameraLensBlur.parameters)
                     lanes[spec.id] ?? spec.defaultValue,
                 ],
+                layers: layers,
               ),
               space ?? DrawSpace.canvas,
               paper: paper,
@@ -201,6 +207,34 @@ void main() {
         }).light?.linear,
         isTrue,
         reason: 'Use Linear Working Space alone',
+      );
+    });
+
+    test('reads its blur map\'s lanes where it names a row: the channel its '
+        'menu says, the focal distance as it is, the inversion', () {
+      final channel = EffectKind.cameraLensBlur.parameterSpec(
+        'blurMapChannel',
+      )!;
+      for (var index = 0; index < channel.choices.length; index += 1) {
+        for (final inverts in [false, true]) {
+          final pass = irisOf(
+            {
+              'blurRadius': 12,
+              'blurMapChannel': index.toDouble(),
+              'blurFocalDistance': 40,
+              'invertBlurMap': inverts ? 1 : 0,
+            },
+            layers: {'blurMapLayer': const LayerId('map')},
+          );
+          final map = pass.map!;
+          expect(map.channel.name, channel.choices[index].id);
+          expect((map.focal, map.inverts), (40, inverts));
+        }
+      }
+      expect(
+        irisOf({'blurRadius': 12, 'blurFocalDistance': 40}).map,
+        isNull,
+        reason: 'no row named, no map',
       );
     });
 

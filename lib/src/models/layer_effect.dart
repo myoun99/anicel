@@ -1297,6 +1297,19 @@ class ResolvedLayerEffect {
   /// Whether the flag parameter [id] is on ([EffectParameterUnit.flag]).
   bool flag(String id) => effectFlagIsOn(parameter(id));
 
+  /// This sample naming no row ([layers]) — as a row a chain reads wears
+  /// its own: 🗣️I-132-Q22 a, a blur map's own blur map is not read.
+  ResolvedLayerEffect get namingNoRow =>
+      layers.values.every((row) => row == null)
+      ? this
+      : ResolvedLayerEffect(
+          kind: kind,
+          values: values,
+          stand: stand,
+          points: points,
+          layers: {for (final parameter in layers.keys) parameter: null},
+        );
+
   /// Whether this sample changes any pixel. An effect resolved to its
   /// defaults is dropped by the resolver, so nothing downstream ever pays
   /// for a filter that does nothing.

@@ -100,6 +100,9 @@ void main() {
       case CompositeOpaque<CutFrameCompositeRow>(:final children):
       case CompositeCelNumber<CutFrameCompositeRow>(:final children):
         return [for (final child in children) ...idsUnder(child)];
+      // The rows it reads stand where they stand, not under it.
+      case CompositeReadsRows<CutFrameCompositeRow>(:final node):
+        return idsUnder(node);
     }
   }
 

@@ -144,10 +144,18 @@ class EditingCanvas {
       frameIndex: frameIndex,
       activeLayerId: null,
       movieLaidAt: _movieLaidAt,
-    ).mapTree([
-      for (final ghosts in _ghostsAt(cut, frameIndex, dragPreview).values)
-        for (final ghost in ghosts) CompositeLeaf<CutFrameCompositeRow>(ghost),
-    ]);
+    ).mapTree(
+      readingTheirRows(
+        [
+          for (final ghosts in _ghostsAt(cut, frameIndex, dragPreview).values)
+            for (final ghost in ghosts)
+              CompositeLeaf<CutFrameCompositeRow>(ghost),
+        ],
+        cut: cut,
+        frameIndex: frameIndex,
+        liveLayerId: null,
+      ),
+    );
   }
 
   /// [stack] as a RUN shows it: the same tree with no row standing live. A

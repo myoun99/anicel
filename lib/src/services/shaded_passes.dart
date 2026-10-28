@@ -173,6 +173,12 @@ final class IrisGatherPass extends ShadedPass {
   /// How many rows the iris spans either way of its pixel, at the most.
   int get reach => radius.floor();
 
+  /// This pass reading no blur map: every pixel at the whole [radius] —
+  /// where the row it reads is none to what draws it.
+  IrisGatherPass get unmapped => map == null
+      ? this
+      : IrisGatherPass(radius: radius, iris: iris, paper: paper, light: light);
+
   @override
   bool operator ==(Object other) =>
       other is IrisGatherPass &&
