@@ -102,18 +102,24 @@ void main() {
       );
   CompositeLeaf<CanvasStackRow> pen() =>
       CompositeLeaf(CanvasActiveLayerRow(opacity: 1, frameKey: cel('pen')));
+  // ⛔Not at half strength: a folder at 0.5 over whole pixels lands on exact
+  // halves (57 · 0.5 + 64 · 0.5 = 60.5), which a rasterizer rounds by its
+  // last bit — the Surface Pro 11's tester rounded the one picture's and a
+  // fresh draw's apart, this PC's alike (2026-10-29). At 0.6 a folder's
+  // pixel over another lands on fifths, never on a half, so the two ways
+  // are compared and not the rasterizer's tie.
   CompositeGroup<CanvasStackRow> folder(
     List<CompositeNode<CanvasStackRow>> of, {
     List<ResolvedLayerEffect> effects = const [],
   }) => CompositeGroup(
     children: of,
-    opacity: 0.5,
+    opacity: 0.6,
     blendMode: LayerBlendMode.normal,
     effects: effects,
   );
 
-  /// A row and a folder at half strength — one picture of its own — under
-  /// the row a pen is on.
+  /// A row and a folder at 0.6 — one picture of its own — under the row a
+  /// pen is on.
   List<CompositeNode<CanvasStackRow>> underThePen() => [
     rowOf('below'),
     folder([rowOf('ramp'), rowOf('other')]),
