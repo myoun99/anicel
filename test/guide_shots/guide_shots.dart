@@ -778,14 +778,31 @@ Rect keyed(WidgetTester tester, List<String> prefixes) {
   return all!;
 }
 
+/// The widgets keyed or named exactly [handle].
+Finder byHandle(String handle) => find.byElementPredicate((e) {
+  final key = e.widget.key;
+  return (key is ValueKey<String> && key.value == handle) ||
+      nameOf(e) == handle;
+});
+
 /// Where the one widget keyed or named exactly [handle] stands.
-Rect handleRect(WidgetTester tester, String handle) {
-  final found = find.byElementPredicate((e) {
-    final key = e.widget.key;
-    return (key is ValueKey<String> && key.value == handle) ||
-        nameOf(e) == handle;
-  });
-  return tester.getRect(found.first);
+Rect handleRect(WidgetTester tester, String handle) =>
+    tester.getRect(byHandle(handle).first);
+
+/// [target] scrolled in as far as it takes and no further: the timeline's
+/// command bar runs past the dock in a longer language, and what lies past
+/// either edge comes in at that edge — what is on screen does not move.
+Future<void> bringIn(WidgetTester tester, Finder target) async {
+  for (final policy in [
+    ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+  ]) {
+    await Scrollable.ensureVisible(
+      tester.element(target.first),
+      alignmentPolicy: policy,
+    );
+  }
+  await tester.pump();
 }
 
 /// Each of [handles] as a picture of its own, `icon-<handle>.png` — a
@@ -794,6 +811,7 @@ Rect handleRect(WidgetTester tester, String handle) {
 /// 첨부해서 설명하면 알기쉬우니까 최대한 스샷으로」).
 Future<void> iconShots(WidgetTester tester, List<String> handles) async {
   for (final handle in handles) {
+    await bringIn(tester, byHandle(handle));
     await shot(
       tester,
       'icon-$handle',
@@ -1038,6 +1056,7 @@ const viewButtons = [
 /// beside them.
 Future<void> timelineShots(WidgetTester tester) async {
   for (final pill in ['layer', 'frame', 'shared']) {
+    await bringIn(tester, byHandle('timeline-toolbar-$pill-group'));
     await shot(
       tester,
       'pill-$pill',
@@ -1051,6 +1070,7 @@ Future<void> timelineShots(WidgetTester tester) async {
     ...sharedPillButtons,
     ...transportButtons,
   ]);
+  await barToItsStart(tester);
   await tester.tap(byKey('timeline-layer-menu-button'));
   await settleReal(tester, 4);
   await shot(
@@ -1176,6 +1196,7 @@ Future<void> effectsShots(WidgetTester tester) async {
   // An effect added shows itself: the row's lanes open with it.
   await tester.tap(byKey('add-effect-blur'));
   await settleReal(tester, 4);
+  await barToItsStart(tester);
   final lanes = find.named('timeline-lane-toggle-$layer');
   final twirl = find.named('timeline-lane-group-toggle-$layer-transform-group');
   if (twirl.evaluate().isEmpty) {
@@ -1256,8 +1277,7 @@ Future<void> effectsShots(WidgetTester tester) async {
 /// past the dock, as it does in a longer language.
 Future<void> openEffectsMenu(WidgetTester tester) async {
   final fx = byKey('timeline-effects-button');
-  await tester.ensureVisible(fx);
-  await settleReal(tester, 4);
+  await bringIn(tester, fx);
   await tester.tap(fx);
   await settleReal(tester, 4);
 }
