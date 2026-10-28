@@ -138,7 +138,8 @@ void main() {
   });
 
   testWidgets('a row stands at one place in the rows whatever the scroll, '
-      'its lanes twirled open under it or not', (tester) async {
+      'its lanes twirled open under it or not, and every row the view '
+      'shows is built', (tester) async {
     await pumpManyRows(tester);
     final session = sessionOf(tester);
     // Every third S row twirled open: units of a row and its lanes among
@@ -155,6 +156,9 @@ void main() {
     );
 
     final placed = <int, double>{};
+    final tall = <int, double>{};
+    final views =
+        <({double offset, double top, double bottom, Set<int> built})>[];
     final position = rows(tester);
     expect(
       position.maxScrollExtent,
@@ -164,31 +168,50 @@ void main() {
     for (
       var offset = 0.0;
       offset <= position.maxScrollExtent;
-      offset += position.viewportDimension / 3
+      offset += _step
     ) {
       position.jumpTo(offset);
       await tester.pumpAndSettle();
       final top = tester.getRect(rail).top;
-      for (final MapEntry(key: slot, value: row)
-          in builtSeRows(tester).entries) {
+      final shown = tester.getRect(viewport);
+      final built = builtSeRows(tester);
+      for (final MapEntry(key: slot, value: row) in built.entries) {
         final at = row.label.top - top;
         expect(
           at,
           moreOrLessEquals(placed.putIfAbsent(slot, () => at)),
           reason: 'S$slot at scroll $offset stands where it stood before',
         );
+        tall[slot] = row.label.height;
         expect(
           row.strip?.top,
           row.label.top,
           reason: 'S$slot\'s strip stands on its label\'s line',
         );
       }
+      views.add((
+        offset: offset,
+        top: shown.top - top,
+        bottom: shown.bottom - top,
+        built: built.keys.toSet(),
+      ));
     }
     expect(
       placed.length,
       _seRows,
       reason: '⛔전제: the scroll passed every S row',
     );
+    for (final view in views) {
+      for (final MapEntry(key: slot, value: at) in placed.entries) {
+        if (at < view.bottom && at + tall[slot]! > view.top) {
+          expect(
+            view.built,
+            contains(slot),
+            reason: 'at scroll ${view.offset} the view shows S$slot',
+          );
+        }
+      }
+    }
   });
 
   testWidgets('a row a pointer holds stays built while the rows scroll it '
@@ -231,3 +254,7 @@ void main() {
 
 /// The S rows the track holds — more than the view shows.
 const int _seRows = 30;
+
+/// One scroll step, less than a row: a row comes into the view at one end
+/// while the other end's row stays, so the window's ends move one at a time.
+const double _step = 13;
