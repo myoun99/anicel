@@ -35,6 +35,10 @@ class _SurfacePaintPass {
   /// pixel grid rather than where it falls ([_drawImageAtTile]).
   late final bool _tilesCutOnTheGrid;
 
+  /// Whether the layer's paint goes around the cut coordinates as one layer
+  /// rather than riding each of them ([paintContentInto]).
+  late final bool _layerAroundTheCut;
+
   /// The float the caller handed in — a selection's, from the row's slot.
   late final RowFloat? _float;
 
@@ -135,17 +139,7 @@ class _SurfacePaintPass {
     // until one-picture-per-frame ②-5b-2 — a reduced one from level tiles
     // at the level's residual, and between 50% and 100% the tiles
     // themselves, nearest.
-    _tileImagePaint = Paint()
-      ..filterQuality = filterQualityForDisplayScale(_scale)
-      ..isAntiAlias = false;
-    if (_layerPaint != null) {
-      // The layer rides every draw instead of a buffer around them.
-      _tileImagePaint
-        ..color = _layerPaint.color
-        ..blendMode = _layerPaint.blendMode
-        ..colorFilter = _layerPaint.colorFilter
-        ..imageFilter = _layerPaint.imageFilter;
-    }
+    final filterQuality = filterQualityForDisplayScale(_scale);
     // 🚨★★★A COORDINATE'S EDGE IS ONE MORE TEXEL BOUNDARY
     // (the-walk-draws-off-the-grid-on-impeller, 2026-10-28). Under nearest
     // sampling on an axis-aligned space the boundary between two
@@ -162,12 +156,33 @@ class _SurfacePaintPass {
     // every step's patch — the grid lands whole and `drawImage` is the
     // same pixels.
     _tilesCutOnTheGrid =
-        _tileImagePaint.filterQuality == FilterQuality.none &&
+        filterQuality == FilterQuality.none &&
         cellsFallOffThePixelGrid(
           _canvas,
           _painter.surface.tileSize.toDouble(),
           pixelRatio,
         );
+    // 🚨A COLOUR MATRIX DOES NOT RIDE A CUT (10-28). A coordinate cut on
+    // the grid is laid through a shader, and Impeller applies a paint's
+    // colour matrix to a shader's colours not as it does to an image's:
+    // 🔬a ghost's tint and a brighten, 3,264–3,736 of 4,096 pixels apart up
+    // to 223/255, where the same matrix on a layer around the shader is 0
+    // apart (`--enable-impeller`). There the layer's paint goes around the
+    // coordinates as one layer — the buffer a ride stands for, the same
+    // pixels by their disjoint coverage (`the_layer_rides_the_draws_test`).
+    _layerAroundTheCut =
+        _tilesCutOnTheGrid && _layerPaint?.colorFilter != null;
+    _tileImagePaint = Paint()
+      ..filterQuality = filterQuality
+      ..isAntiAlias = false;
+    if (_layerPaint != null && !_layerAroundTheCut) {
+      // The layer rides every draw instead of a buffer around them.
+      _tileImagePaint
+        ..color = _layerPaint.color
+        ..blendMode = _layerPaint.blendMode
+        ..colorFilter = _layerPaint.colorFilter
+        ..imageFilter = _layerPaint.imageFilter;
+    }
     // R27 #2: the walk below is visible-only, so every coordinate it
     // reaches already shows — no separate visibility test is needed.
     _visibleRect = _painter._visibleCanvasRect(_canvas, _storableRect);
@@ -197,10 +212,16 @@ class _SurfacePaintPass {
         doAntiAlias: false,
       );
     }
+    if (_layerAroundTheCut) {
+      _canvas.saveLayer(_visibleRect, _layerPaint!);
+    }
     _paintVisibleTiles();
 
     _paintOverlay();
 
+    if (_layerAroundTheCut) {
+      _canvas.restore();
+    }
     if (landing != null) {
       _canvas.restore();
     }

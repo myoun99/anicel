@@ -1,3 +1,6 @@
+@Tags(['impeller'])
+library;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'dart:async';
 import 'dart:typed_data';
@@ -271,6 +274,23 @@ void main() {
       await expectSamePixels('scale 0.63', addHalf, scale: 0.63, phase: 0.17);
       await expectSamePixels('scale 2', addHalf, scale: 2);
       await expectSamePixels('phase 0.5', addHalf, phase: 0.5);
+      // 🚨A colour matrix rides as one layer where the tiles are cut on the
+      // grid (10-28): through each tile's shader Impeller took it otherwise,
+      // up to 223/255.
+      Paint brightenHalf() => Paint()
+        ..color = const Color(0x80000000)
+        ..colorFilter = const ColorFilter.matrix(<double>[
+          1.2, 0, 0, 0, 10, //
+          0, 1.1, 0, 0, 5,
+          0, 0, 0.9, 0, 0,
+          0, 0, 0, 1, 0,
+        ]);
+      await expectSamePixels(
+        'a colour matrix at 1.37',
+        brightenHalf,
+        scale: 1.37,
+        phase: 0.42,
+      );
     });
   });
 

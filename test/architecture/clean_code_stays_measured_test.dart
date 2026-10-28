@@ -753,7 +753,21 @@ void main() {
   /// against master (`2dc3430ce`, at 428) named those four added and
   /// nothing gone. ⛔Not bundled to fit: each is handed on at the one call
   /// it is read at, so a value of them would be taken apart there.
-  const wideSignatures = 432;
+  ///
+  /// ⚠️432 → 434 on 2026-10-28, two named as the rule above asks
+  /// (the-walk-draws-off-the-grid-on-impeller): `BitmapSurfacePainter
+  /// .paintContentInto` and `_SurfacePaintPass.paintContentInto` (five
+  /// each) take `pixelRatio`, the device pixels a unit of the canvas's space
+  /// lands on past its transform — the grid a coordinate's edge is cut on
+  /// where its grid falls off the pixels, which no caller may leave to a
+  /// default (a wrong one cuts on the logical grid). 🔬`clean_code_diff`
+  /// against master (`d36fa35ba`, at 432) named those two added and
+  /// nothing gone.
+  /// ⛔Not bundled with `scale` to fit: the scale is the row's before its
+  /// pose and picks the filter, the ratio is the canvas's past every
+  /// transform and picks the grid — one value of the two would answer two
+  /// questions.
+  const wideSignatures = 434;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

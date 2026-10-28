@@ -338,7 +338,12 @@ void main() {
 /// drawn alone, each taken as they are in place of the canvas's
 /// (`BlendMode.src`), one texel to a pixel (`_inStead`). The 1:1 blit
 /// class, owning `FilterQuality.none` on its own Paint.
-const int _knownRawDraws = 29;
+/// **27** on 2026-10-28 (the-walk-draws-off-the-grid-on-impeller): −1 in
+/// canvas/selection_float_overlay, −1 in canvas/text/cel_text_float — a
+/// transform's preview and a text's landing are laid with their edges cut
+/// on the pixel grid (`drawImageRectOnThePixelGrid`), as the coordinates
+/// they float over are.
+const int _knownRawDraws = 27;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',
