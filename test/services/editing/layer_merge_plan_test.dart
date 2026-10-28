@@ -560,21 +560,21 @@ void main() {
     test('one riding below is led under it, warned of where it goes under '
         'a picture', () {
       final base = row('base', {0: '1'});
-      final plan = merge(
-        cutOf([
-          row('c', {0: 'C1'}),
-          synced(
-            'r',
-            base,
-          ).copyWith(attachedPlacement: AttachedPlacement.below),
-          base,
-          row('a', {0: 'A1'}),
-        ]),
-        ['a', 'base', 'c'],
-      )!;
+      final cut = cutOf([
+        row('c', {0: 'C1'}),
+        synced('r', base).copyWith(attachedPlacement: AttachedPlacement.below),
+        base,
+        row('a', {0: 'A1'}),
+      ]);
+      final plan = merge(cut, ['a', 'base', 'c'])!;
 
       expect([for (final row in plan.layers) row.id.value], ['r', 'a']);
       expect(plan.changes, {LayerMergeChange.riderUnder});
+      expect(
+        merge(cut, ['a', 'base'])!.changes,
+        isEmpty,
+        reason: 'no picture it took stood under it',
+      );
     });
 
     test('one led out of its base\'s folder stands in the result\'s', () {

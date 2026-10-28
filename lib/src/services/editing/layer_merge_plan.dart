@@ -355,7 +355,7 @@ Layer? _baseLeftBy(LayerMergeTaking taking) =>
   final below = <Layer>[];
   final above = <Layer>[];
   for (final base in cut.layers) {
-    if (!taken.contains(base.id) || base.attachedToLayerId != null) {
+    if (!taken.contains(base.id)) {
       continue;
     }
     var side = below;
@@ -760,13 +760,9 @@ Set<LayerMergeChange> _changesOf(
           ),
         ))
       LayerMergeChange.folder,
-    if (led.above.any(
-      (row) => _isPicture(row) && pictures.any((at) => at > order[row.id]!),
-    ))
+    if (led.above.any((row) => pictures.any((at) => at > order[row.id]!)))
       LayerMergeChange.riderOver,
-    if (led.below.any(
-      (row) => _isPicture(row) && pictures.any((at) => at < order[row.id]!),
-    ))
+    if (led.below.any((row) => pictures.any((at) => at < order[row.id]!)))
       LayerMergeChange.riderUnder,
     if (takenRows.any((row) => _laidPastTheWall(row, wall)))
       LayerMergeChange.wall,
