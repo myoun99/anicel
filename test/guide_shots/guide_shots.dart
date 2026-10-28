@@ -29,6 +29,7 @@ import 'package:flutter/rendering.dart' show RenderBox, RenderRepaintBoundary;
 import 'package:flutter/services.dart' show FontLoader, LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
@@ -61,6 +62,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart' show AppWindow;
+import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/widgets/empty_state_text.dart';
 
 import '../helpers/app_faces.dart';
@@ -171,6 +173,12 @@ Future<void> pumpApp(
   AppText.settings.value = AppLanguageSettings(
     programLanguage: language,
     notationLanguage: language,
+  );
+  // The app's own defaults, not the test corpus's touch-as-pen: the guide
+  // shows Preferences as a new install opens them.
+  AppInput.settings.value = const AppInputSettings();
+  addTearDown(
+    () => AppInput.settings.value = AppInputSettings.testCorpusBaseline,
   );
   scratch = Directory.systemTemp.createTempSync('anicel_guide_');
   deleteAfterSessionEnds(scratch);
@@ -1082,6 +1090,387 @@ Future<void> rowAndMenuShots(WidgetTester tester) async {
   }
 }
 
+/// The settings menu with each of its drawers open over it, as
+/// `menu-<drawer>.png`; the work settings window as `work-settings.png`;
+/// and each tab of Preferences as `prefs-<tab>.png`, as tall as it is.
+Future<void> settingsShots(WidgetTester tester) async {
+  for (final (drawer, rows) in [
+    ('project-settings', 'project-settings-'),
+    ('window-panels', 'panels-menu-item-'),
+  ]) {
+    await tester.tap(byKey('top-strip-settings-button'));
+    await settleReal(tester, 4);
+    await tester.tap(byKey('menu-$drawer'));
+    await settleReal(tester, 4);
+    await shot(
+      tester,
+      'menu-$drawer',
+      rect: keyed(tester, ['top-strip-settings-button', 'menu-', rows])
+          .inflate(8),
+      ratio: 2,
+    );
+    await _closeMenus(tester);
+  }
+
+  await tester.tap(byKey('top-strip-settings-button'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('menu-work-settings'));
+  await settle(tester, 10);
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'work-settings',
+    rect: windowBody(tester, byKey('work-settings-window')),
+    ratio: 2,
+  );
+  await closeWindow(tester);
+
+  await tester.tap(byKey('top-strip-settings-button'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('menu-edit-preferences'));
+  await settle(tester, 10);
+  await settleReal(tester, 4);
+  for (final tab in [
+    'input',
+    'autosave',
+    'audio',
+    'language',
+    'display',
+    'memory',
+  ]) {
+    final key = byKey('preferences-section-$tab');
+    if (key.evaluate().isEmpty) continue;
+    await tester.tap(key);
+    await settleReal(tester, 4);
+    await scrolledWindowShot(
+      tester,
+      'prefs-$tab',
+      byKey('preferences-dialog'),
+    );
+  }
+  await tester.tap(byKey('preferences-close'));
+  await settleReal(tester, 4);
+}
+
+/// The effects button's menu as `menu-effects.png`; then the ball layer
+/// with a blur and two position keys, its lanes open (`lanes.png`), the
+/// second key's edit window (`key-edit.png`) and the transform graph
+/// (`lane-graph.png`) — and all of it taken away again.
+Future<void> effectsShots(WidgetTester tester) async {
+  final s = sessionOf(tester);
+  final history = s.historyManager;
+  final before = history.undoCount;
+  final layer = ballLayer.value;
+  s.selectLayer(ballLayer);
+  await settleReal(tester, 4);
+  await openEffectsMenu(tester);
+  await shot(
+    tester,
+    'menu-effects',
+    rect: keyed(
+      tester,
+      ['timeline-effects-button', 'add-effect-'],
+    ).inflate(12),
+    ratio: 2,
+  );
+  // An effect added shows itself: the row's lanes open with it.
+  await tester.tap(byKey('add-effect-blur'));
+  await settleReal(tester, 4);
+  final lanes = find.named('timeline-lane-toggle-$layer');
+  final twirl = find.named('timeline-lane-group-toggle-$layer-transform-group');
+  if (twirl.evaluate().isEmpty) {
+    await tester.tap(lanes);
+    await settleReal(tester, 4);
+  }
+  // The Transform group opens folded. Its rows are built as they scroll
+  // in, so each is brought in first.
+  await tester.ensureVisible(twirl);
+  await settleReal(tester, 4);
+  await tester.tap(twirl);
+  await settleReal(tester, 4);
+  final position = byKey('timeline-lane-key-toggle-$layer-position');
+  await tester.ensureVisible(position);
+  await settleReal(tester, 4);
+  // The first key by its ◆, the second by a value typed where the lane has
+  // keys — elsewhere, so the graph has a slope to show.
+  s.selectFrameIndex(4);
+  await settleReal(tester, 4);
+  await tester.tap(position);
+  await settleReal(tester, 4);
+  s.selectFrameIndex(16);
+  s.laneVerbs.setLaneValueAt(
+    ballLayer,
+    'position',
+    16,
+    '1300, 540',
+    frameIsGlobal: false,
+    description: 'Set Position at frame 17',
+    scaleLinked: false,
+  );
+  await settleReal(tester, 4);
+  await shot(tester, 'lanes', rect: bottomDock(tester), ratio: 2);
+
+  final second = byKey('timeline-lane-key-$layer-position-16');
+  await tester.ensureVisible(second);
+  await settleReal(tester, 4);
+  await tester.tap(second);
+  await settleReal(tester, 4);
+  await tester.tap(byKey('shared-edit-button'));
+  await settle(tester, 10);
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'key-edit',
+    rect: windowBody(tester, find.byType(AppWindow).last),
+    ratio: 2,
+  );
+  await closeWindow(tester);
+
+  final graph = find.named('timeline-lane-group-graph-$layer-transform-group');
+  await tester.ensureVisible(graph);
+  await settleReal(tester, 4);
+  await tester.tap(graph);
+  await settleReal(tester, 4);
+  await shot(tester, 'lane-graph', rect: bottomDock(tester), ratio: 2);
+  await tester.tap(graph);
+  await settleReal(tester, 4);
+
+  // Back to before the blur: what opened the lanes went with it, or they
+  // are shut by hand.
+  while (history.undoCount > before) {
+    await tester.tap(byKey('undo-button'));
+    await settleReal(tester, 4);
+  }
+  if (twirl.evaluate().isNotEmpty) {
+    await tester.ensureVisible(lanes);
+    await settleReal(tester, 4);
+    await tester.tap(lanes);
+    await settleReal(tester, 4);
+  }
+  s.selectFrameIndex(9);
+  await settleReal(tester, 4);
+  await barToItsStart(tester);
+}
+
+/// The bar's Fx button brought in and pressed: the bar scrolls once it runs
+/// past the dock, as it does in a longer language.
+Future<void> openEffectsMenu(WidgetTester tester) async {
+  final fx = byKey('timeline-effects-button');
+  await tester.ensureVisible(fx);
+  await settleReal(tester, 4);
+  await tester.tap(fx);
+  await settleReal(tester, 4);
+}
+
+/// The command bar scrolled back to its start, where it opens.
+Future<void> barToItsStart(WidgetTester tester) async {
+  final bar = find
+      .ancestor(of: byKey('cut-menu-button'), matching: find.byType(Scrollable))
+      .evaluate()
+      .map((e) => (e as StatefulElement).state as ScrollableState)
+      .firstWhere((s) => s.position.axis == Axis.horizontal);
+  bar.position.jumpTo(0);
+  await settleReal(tester, 4);
+}
+
+/// The ball in a folder (`folder.png`); an adjustment layer with a blur over
+/// it (`adjustment-layer.png`); the cut pill's menu (`menu-cut.png`); and a
+/// linked cut made from cut 1, beside it on the storyboard
+/// (`linked-cut.png`) — each taken away again before the next.
+Future<void> layerKindShots(WidgetTester tester) async {
+  final s = sessionOf(tester);
+  final history = s.historyManager;
+  final before = history.undoCount;
+  Future<void> undoAll() async {
+    while (history.undoCount > before) {
+      await tester.tap(byKey('undo-button'));
+      await settleReal(tester, 4);
+    }
+    s.selectLayer(ballLayer);
+    s.selectFrameIndex(9);
+    await settleReal(tester, 4);
+  }
+
+  s.selectLayer(ballLayer);
+  await settleReal(tester, 4);
+  s.folders.groupActiveLayerIntoFolder();
+  await settleReal(tester, 4);
+  await shot(tester, 'folder', rect: timelineRows(tester), ratio: 2);
+  await undoAll();
+
+  await tester.tap(byKey('timeline-toolbar-add-layer-menu'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('add-layer-kind-adjustment'));
+  await settleReal(tester, 4);
+  await openEffectsMenu(tester);
+  await tester.tap(byKey('add-effect-blur'));
+  await settleReal(tester, 4);
+  await barToItsStart(tester);
+  await shot(tester, 'adjustment-layer', rect: timelineRows(tester), ratio: 2);
+  await undoAll();
+
+  await tester.tap(byKey('cut-menu-button'));
+  await settleReal(tester, 4);
+  await shot(
+    tester,
+    'menu-cut',
+    rect: menuShot(tester, [
+      'cut-menu-button',
+      'edit-cut-note-button',
+      'cut-mark-button',
+      'cut-settings-button',
+      'resize-cut-canvas-button',
+      'add-cut-create-linked',
+      'convert-cut-to-linked-button',
+    ], 0),
+    ratio: 2,
+  );
+  await tester.tap(byKey('add-cut-create-linked'));
+  await settleReal(tester, 4);
+  await tester.tap(byKey('timeline-mode-storyboard-button'));
+  await settleReal(tester);
+  final board = bottomDock(tester);
+  await shot(
+    tester,
+    'linked-cut',
+    rect: Rect.fromLTRB(
+      board.left,
+      board.top,
+      board.right,
+      keyed(tester, ['storyboard-track-label-row-']).bottom + 16,
+    ),
+    ratio: 2,
+  );
+  await tester.tap(byKey('timeline-mode-timeline-button'));
+  await settleReal(tester);
+  s.selectCut(cut1);
+  await undoAll();
+}
+
+/// Escape until no menu is left open: a drawer shuts before its menu.
+Future<void> _closeMenus(WidgetTester tester) async {
+  for (var i = 0; i < 3 && _openMenuRows().isNotEmpty; i++) {
+    await closeWindow(tester);
+  }
+}
+
+Iterable<Element> _openMenuRows() => find.byElementPredicate((e) {
+  final key = e.widget.key;
+  return key is ValueKey<String> && key.value.startsWith('menu-');
+}).evaluate();
+
+/// An open window's body as `<name>.png`, what its scroller hides below
+/// pieced on under it: the content as tall as it is. Its scrollbar's lane is
+/// left empty — nothing is left to scroll in the picture.
+Future<void> scrolledWindowShot(
+  WidgetTester tester,
+  String name,
+  Finder window,
+) async {
+  const ratio = 2.0;
+  final body = windowBody(tester, window);
+  final bar = find
+      .descendant(of: window, matching: find.byType(ContentScrollbar))
+      .first;
+  final scroller = find
+      .descendant(of: bar, matching: find.byType(Scrollable))
+      .first;
+  final position = tester.state<ScrollableState>(scroller).position;
+  final hidden = position.maxScrollExtent;
+  if (hidden == 0) {
+    // Down to the content and its padding: a short tab left the window's
+    // fixed height empty below it.
+    final scroll = tester.widget<SingleChildScrollView>(
+      find.descendant(of: bar, matching: find.byType(SingleChildScrollView))
+          .first,
+    );
+    final content = tester.getRect(find.byWidget(scroll.child!));
+    final padding = scroll.padding?.resolve(TextDirection.ltr).bottom ?? 0;
+    await shot(
+      tester,
+      name,
+      rect: Rect.fromLTRB(
+        body.left,
+        body.top,
+        body.right,
+        math.min(body.bottom, content.bottom + padding),
+      ),
+      ratio: ratio,
+    );
+    return;
+  }
+  final view = tester.getRect(scroller);
+  final lane = Rect.fromLTRB(
+    view.right,
+    view.top,
+    tester.getRect(bar).right,
+    view.bottom,
+  );
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder);
+  // [from]'s [src] (screen) drawn into [dst] (the picture), both logical.
+  void put(ui.Image from, Rect src, Rect dst) => canvas.drawImageRect(
+    from,
+    Rect.fromLTRB(
+      src.left * ratio,
+      src.top * ratio,
+      src.right * ratio,
+      src.bottom * ratio,
+    ),
+    Rect.fromLTRB(
+      (dst.left - body.left) * ratio,
+      (dst.top - body.top) * ratio,
+      (dst.right - body.left) * ratio,
+      (dst.bottom - body.top) * ratio,
+    ),
+    Paint(),
+  );
+  var last = (await tester.runAsync(() => _capture(tester, ratio: ratio)))!;
+  // [r]'s columns between [top] and [bottom].
+  Rect band(Rect r, double top, double bottom) =>
+      Rect.fromLTRB(r.left, top, r.right, bottom);
+  final above = band(body, body.top, view.bottom);
+  put(last, above, above);
+  // The window's sides down the hidden part, and the lane empty top to
+  // bottom: the last row of each, stretched — the thumb never reaches it.
+  final edge = band(body, view.bottom - 1 / ratio, view.bottom);
+  put(last, edge, band(body, view.bottom, view.bottom + hidden));
+  put(
+    last,
+    band(lane, edge.top, edge.bottom),
+    band(lane, view.top, view.bottom + hidden),
+  );
+  var shown = view.height;
+  while (shown < view.height + hidden) {
+    final offset = math.min(shown, hidden);
+    position.jumpTo(offset);
+    await settleReal(tester, 4);
+    last = (await tester.runAsync(() => _capture(tester, ratio: ratio)))!;
+    put(
+      last,
+      band(view, view.top + shown - offset, view.bottom),
+      band(view, view.top + shown, view.top + offset + view.height),
+    );
+    shown = offset + view.height;
+  }
+  if (body.bottom > view.bottom) {
+    put(
+      last,
+      band(body, view.bottom, body.bottom),
+      band(body, view.bottom + hidden, body.bottom + hidden),
+    );
+  }
+  position.jumpTo(0);
+  await settleReal(tester, 4);
+  await tester.runAsync(() async {
+    final picture = await recorder.endRecording().toImage(
+      (body.width * ratio).round(),
+      ((body.height + hidden) * ratio).round(),
+    );
+    await _write(picture, name);
+  });
+}
+
 /// The frame pill's buttons, left to right.
 const framePillButtons = [
   'new-frame-button',
@@ -1234,6 +1623,9 @@ void guideShots(AppLanguage language) {
       await shot(tester, 'timeline', rect: timelineRows(tester), ratio: 2);
       await timelineShots(tester);
       await rowAndMenuShots(tester);
+      await settingsShots(tester);
+      await effectsShots(tester);
+      await layerKindShots(tester);
 
       // The conte layer: its row stood on, in its second panel.
       s.selectLayer(conte1);
