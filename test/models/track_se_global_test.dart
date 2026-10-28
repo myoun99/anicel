@@ -330,6 +330,13 @@ void main() {
             position: at40(CanvasPoint(x: 1, y: 1)),
             scale: at40(CanvasPoint(x: 1, y: 1)),
           ),
+          // I-132-Q12 b: and a point, kept as a Position is.
+          points: {
+            for (final spec in kind.parameters)
+              spec.id: TransformTrack.empty().copyWith(
+                position: at40(CanvasPoint(x: 1, y: 1)),
+              ),
+          },
         );
         final rebased = window.displayLayer(withEffect(effect)).effects;
         for (final lane in effect.lanes) {

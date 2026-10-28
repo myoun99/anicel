@@ -736,7 +736,24 @@ void main() {
   /// (`7111911e6`) named that one added and nothing gone. ⛔Not bundled to
   /// fit: the clip, the file key, the mint and the mark are each the
   /// door's own, at the one call.
-  const wideSignatures = 428;
+  ///
+  /// ⚠️428 → 432 on 2026-10-28, four named as the rule above asks (I-132-Q3
+  /// — AE's Radial Blur, its centre a point of its own, Q12 b).
+  /// `_effectPictureBox` (eight) and `_effectPointBox` (seven) are the two
+  /// boxes an effect declares — a cel number's letters, a point's cross —
+  /// the halves of `_effectBox`, which went under sixty lines with them:
+  /// each takes what every box of the host takes (its frame, view and
+  /// canvas size), where the row shows, the effect's name and its landing
+  /// (`_EffectLanding`), and its own — the row and the number sampled, or
+  /// the point. `radialBlurPasses` (six) takes the centre as the pass's
+  /// own two fields, which way it blurs, how far, how finely (the farthest
+  /// a pixel lies) and Draft. `resolveAdjustmentScopePass` (five) gained the
+  /// paper, as every plan did: how far a radial blur reaches is how far the
+  /// paper's farthest corner lies from its centre. 🔬`clean_code_diff`
+  /// against master (`2dc3430ce`, at 428) named those four added and
+  /// nothing gone. ⛔Not bundled to fit: each is handed on at the one call
+  /// it is read at, so a value of them would be taken apart there.
+  const wideSignatures = 432;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -1062,7 +1079,11 @@ void main() {
   /// (the Display section's grows none: its two grid rows read the one
   /// setting under one listener). ⛔Not split to fit: each is the one
   /// table of what a cell writes, and of what a row is drawn by.
-  const longBodies = 415;
+  ///
+  /// ⚠️415 → 414 on 2026-10-28, following one down (I-132-Q12 b):
+  /// `_effectBox` went under the line as a point's cross came beside a cel
+  /// number's box — the wide signatures' note names the two halves.
+  const longBodies = 414;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

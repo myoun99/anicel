@@ -164,6 +164,15 @@ typedef _RowPicture = ({Rect? drawn, Rect space});
 typedef _TrackEdit =
     TransformTrack Function(TransformTrack track, int frameIndex);
 
+/// How an effect's box hands what a handle's drag makes of the lane's keys
+/// to the lane ([_EditorCanvasAreaState._effectBox]) — one for every handle
+/// of whichever box the effect declares.
+typedef _EffectLanding =
+    RowBoxLanding<T> Function<T>(
+      _TrackEdit Function(T value) editOf, {
+      required String description,
+    });
+
 /// A row's [lane] — its transform [property] — whose keys walk a path, as
 /// the canvas shows it: its frames [axisOffset] ahead of the cut's, its
 /// points shown through [space].
@@ -1472,11 +1481,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required ResolvedLayerEffect number,
     required _ShownSpace space,
     required String name,
-    required RowBoxLanding<T> Function<T>(
-      _TrackEdit Function(T value) editOf, {
-      required String description,
-    })
-    landing,
+    required _EffectLanding landing,
   }) {
     final session = frame.session;
     final letters = celNumberLettersOf(
@@ -1527,11 +1532,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     required CanvasPoint point,
     required _ShownSpace space,
     required String name,
-    required RowBoxLanding<T> Function<T>(
-      _TrackEdit Function(T value) editOf, {
-      required String description,
-    })
-    landing,
+    required _EffectLanding landing,
   }) {
     final session = frame.session;
     final shown = space.toCanvas(point);

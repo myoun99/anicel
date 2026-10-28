@@ -51,6 +51,13 @@ void main() {
           position: placeNamedAtThree(),
           scale: placeNamedAtThree(),
         ),
+        // I-132-Q12 b: and a point, kept as a Position is.
+        points: {
+          for (final spec in kind.parameters)
+            spec.id: TransformTrack.empty().copyWith(
+              position: placeNamedAtThree(),
+            ),
+        },
       );
       final lanes = effectPropertyLanes([effect], isExpanded: (_) => true);
       expect(lanes.first.isGroupHeader, isTrue, reason: '⛔전제');

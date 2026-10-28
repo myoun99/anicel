@@ -153,6 +153,20 @@ void main() {
 
     test('effect lanes, every unit', () {
       for (final unit in EffectParameterUnit.values) {
+        // I-132-Q12 b: a point is no number — its row prints it as a
+        // Position's does.
+        if (unit == EffectParameterUnit.point) {
+          roundTrips(
+            transformPositionLane(
+              TransformTrack.empty(),
+              laneId: 'p',
+              label: 'P',
+              poseAt: (_) =>
+                  TransformPose(center: CanvasPoint(x: 120, y: 45.5)),
+            ).valueLabel!(0),
+          );
+          continue;
+        }
         final (spec, value) = switch (unit) {
           EffectParameterUnit.choice => (
             const EffectParameterSpec.choice(
