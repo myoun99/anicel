@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -311,7 +312,7 @@ void main() {
                 cut: cut,
                 frameIndex: 0,
                 paintPaper: true,
-                ghosts: false,
+                ghosts: FrameGhosts.none,
               ),
               nodes: const [],
               viewport: view,

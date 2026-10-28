@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -75,7 +76,7 @@ void main() {
     ],
   );
   // No paper: what lies under the ink is the screen's own.
-  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: false, ghosts: FrameGhosts.none);
   final screen = GlobalKey();
 
   BitmapSurface filled(List<int> colour) => BitmapSurface(

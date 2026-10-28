@@ -3,6 +3,7 @@ import 'dart:ui' show Picture;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -70,7 +71,7 @@ void main() {
       canvasSize: canvasSize,
       stackOf: (_) => const [],
     );
-    final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
+    final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
     final LiveRows live = (
       activeSurfacePainter: BitmapSurfacePainter(
         surface: BitmapSurface(canvasSize: canvasSize, tileSize: 16),

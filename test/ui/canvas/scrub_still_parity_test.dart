@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -238,7 +239,7 @@ void main() {
       cut: cut(),
       frameIndex: 0,
       paintPaper: true,
-      ghosts: false,
+      ghosts: FrameGhosts.none,
     );
     await tester.pumpWidget(
       MaterialApp(

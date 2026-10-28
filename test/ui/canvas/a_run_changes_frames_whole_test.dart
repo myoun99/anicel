@@ -117,7 +117,7 @@ void main() {
         cut: cut,
         frameIndex: cels.indexOf(cel),
         paintPaper: paintPaper,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       );
 
   /// What a run's maker does for a frame: its one picture.

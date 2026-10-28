@@ -80,8 +80,23 @@ class EditingStackMap {
     (row) => switch (row) {
       CutFrameCompositeLiveRow() => _live(row),
       CutFrameCompositeEntry() => _leaf(row),
+      CutFrameCompositeGhost() => _ghost(row),
     },
   );
+
+  /// An onion ghost, from its cel where a drag shows its pixels
+  /// ([celPixelsOf]) — whether the plan laid it in place or the canvas lays
+  /// it over the frame (`OnionSkin.ghostsAt`).
+  CanvasLayerImageRequest _ghost(CutFrameCompositeGhost ghost) {
+    final pixels = celPixelsOf(dragPreview, ghost.layer.id, ghost.frameId);
+    return CanvasLayerImageRequest(
+      frameKey: _project.brushFrameKeyForCut(cut, pixels.row, pixels.cel),
+      opacity: ghost.opacity,
+      blendMode: ghost.blendMode,
+      tint: ghost.tint,
+      effects: ghost.effects,
+    );
+  }
 
   /// The cel the brush holds on the row being drawn on: the one [cut] — as
   /// COMMITTED — exposes at [frameIndex]. A drag moves the picture

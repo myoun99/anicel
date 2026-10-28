@@ -429,6 +429,11 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
       CutFrameCompositeLiveRow() => throw StateError(
         'The composite signature has no key for a live row.',
       ),
+      // Nor for a ghost: the film has none, and only the editing canvas
+      // lays one.
+      CutFrameCompositeGhost() => throw StateError(
+        'The composite signature has no key for an onion ghost.',
+      ),
       final CutFrameCompositeEntry entry => CompositeLayerSignature(
         layerId: entry.layer.id,
         frameId: entry.frame.id,

@@ -1,3 +1,4 @@
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -53,7 +54,7 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false),
     );
     expect(

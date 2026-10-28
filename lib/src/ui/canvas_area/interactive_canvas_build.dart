@@ -771,33 +771,48 @@ class _InteractiveCanvasBuild {
     }
     final rig = session.playbackRig;
     final standing = !_canvasPlays;
+    // R16-⑥: no cut in a gap — no paper (per-cut papers make anything else
+    // confusing; the void is the truth). Standing, the pictures the warmer
+    // lays ahead of it: the frame with its ghosts in place, or the frame and
+    // the ghosts over it. No ghosts in a run: a ghost is editing
+    // scaffolding, as a guide is, and the film has none.
+    final shown = standingPicturesOf(
+      cut,
+      session.currentFrameIndex,
+      session.onionSkin.settings.value.placement,
+      paintPaper: !_inGap,
+    );
+    final frameShown = standing
+        ? shown.frame
+        : (
+            cut: cut,
+            frameIndex: session.currentFrameIndex,
+            paintPaper: !_inGap,
+            ghosts: FrameGhosts.none,
+          );
     // MERGED: the whole tree, active layer included, so a folder's group
     // buffer encloses the layer being drawn on — asked afresh at each
     // build: a drag in flight, a run's step ([_followingDragAndRun]).
     final nodes = _inGap
         ? const <CompositeNode<CanvasStackRow>>[]
-        : standing
-        ? session.editingCanvas.stack.nodes
-        : session.editingCanvas.playingStack.nodes;
+        : !standing
+        ? session.editingCanvas.playingStack.nodes
+        : frameShown.ghosts == FrameGhosts.inPlace
+        ? session.editingCanvas.stackWithItsGhosts.nodes
+        : session.editingCanvas.stack.nodes;
     // 🚨ONE VIEW, STANDING AND PLAYING (one-picture-per-frame ②-3): the
     // canvas standing on a frame and a run playing it show the frame's one
     // picture, through the same view — pressing Play changes nothing on the
     // screen and makes nothing again. The paper-stays-put split under a cut
     // pose went with the V row's transform: nothing poses the whole cut on
     // the editing canvas, so the layers draw straight.
+    final drawnLive = _celsDrawnLive(nodes);
     final picture = FramePictureView(
       run: (
         landings: rig.prerenderScheduler.landings,
         pictures: rig.framePictures,
       ),
-      // R16-⑥: no cut in a gap — no paper (per-cut papers make anything
-      // else confusing; the void is the truth).
-      picture: (
-        cut: cut,
-        frameIndex: session.currentFrameIndex,
-        paintPaper: !_inGap,
-        ghosts: false,
-      ),
+      picture: frameShown,
       nodes: nodes,
       viewport: viewport,
       // Standing, the canvas draws the row a pen is on live — TS1: the
@@ -815,16 +830,11 @@ class _InteractiveCanvasBuild {
           : null,
       laysWhatItMisses: standing,
       wholeFrames: !standing,
+      // The cel you were drawing is a ghost in this picture on the frame you
+      // step to, where the ghosts lie in place.
+      drawnLive: drawnLive,
     );
-    // No ghosts in a run: a ghost is editing scaffolding, as a guide is, and
-    // the film has none. A gap parking shows the VOID (R16-⑥): no ghosts
-    // either.
-    final ghosts = (
-      cut: cut,
-      frameIndex: session.currentFrameIndex,
-      paintPaper: false,
-      ghosts: true,
-    );
+    final over = shown.over;
     return DeviceGridProbe(
       child: Stack(
         fit: StackFit.expand,
@@ -837,13 +847,13 @@ class _InteractiveCanvasBuild {
           // nothing drawn live, while the ghosts were stacked from their
           // rows' images, which a stack of none made nothing of; a picture
           // view is asked its frame at every step of the run.
-          if (standing)
+          if (standing && over != null)
             _ghostsOver(
               session,
-              ghosts,
-              _inGap ? const [] : rig.framePictures.stackOf(ghosts),
+              over,
+              _inGap ? const [] : rig.framePictures.stackOf(over),
               viewport,
-              drawnLive: _celsDrawnLive(nodes),
+              drawnLive: drawnLive,
             ),
         ],
       ),
@@ -861,10 +871,12 @@ class _InteractiveCanvasBuild {
         cel,
   };
 
-  /// 🚨THE ONION GHOSTS LIE OVER THE FRAME'S ONE PICTURE — over its paper
-  /// and every row, at their tint and opacity as before
-  /// (one-picture-per-frame-Q1 = a, 유저 2026-10-24 「한 장 위에 얹는다」),
-  /// and a scrub shows them as it crosses frames.
+  /// 🚨WHERE THEY LIE ON TOP (`OnionSkinPlacement.onTop`), THE ONION GHOSTS
+  /// LIE OVER THE FRAME'S ONE PICTURE — over its paper and every row, at
+  /// their tint and opacity as before (one-picture-per-frame-Q1 = a, 유저
+  /// 2026-10-24 「한 장 위에 얹는다」), and a scrub shows them as it crosses
+  /// frames. In place, they are in the frame's picture itself
+  /// (`EditingCanvas.stackWithItsGhosts`, onion-ghosts-in-place).
   ///
   /// 🚨THE GHOSTS ARE ONE PICTURE TOO, made and drawn as the frame's is
   /// ([FramePictureView]): composed once at the canvas's own resolution,

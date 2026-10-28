@@ -331,6 +331,77 @@ final class CutFrameCompositeLiveRow extends CutFrameCompositeRow {
   );
 }
 
+/// An onion GHOST of [layer]: its cel [frameId] of another frame, at a
+/// peg's [opacity] and [tint] (`planOnionSkin`).
+///
+/// 🚨THE PLAN PLACES IT, as it places the live row: directly under the
+/// row's own drawing, in its folder and cut by its clip, whether or not the
+/// row shows a cel here (onion-ghosts-in-place-Q1 = a, 유저 2026-10-26 —
+/// [resolveCutFrameCompositeTree]'s `ghostsOf`). ↩️The canvas slid the
+/// ghosts in under the row a pen was on by hand (`stackNodesWithGhosts`,
+/// retired 2026-10-25), so it had no place for a row that showed no cel.
+///
+/// ⚠️ONLY THE EDITING CANVAS ASKS FOR ONE. Playback, export and the cache
+/// signature pass no ghosts, but they switch over it, as over a live row.
+final class CutFrameCompositeGhost extends CutFrameCompositeRow {
+  const CutFrameCompositeGhost({
+    required this.layer,
+    required this.frameId,
+    required this.opacity,
+    this.tint,
+    this.blendMode = LayerBlendMode.normal,
+    this.effects = const [],
+  });
+
+  /// The onion row the ghost is of.
+  final Layer layer;
+
+  /// The cel it shows, of the frame its peg reaches.
+  final FrameId frameId;
+
+  @override
+  final double opacity;
+
+  /// The side's tint (onion-skin Colors mode); null shows the artwork's own
+  /// colours.
+  final int? tint;
+
+  @override
+  final LayerBlendMode blendMode;
+
+  /// The chain the row's pixels wear, sampled at the ghost's own frame.
+  @override
+  final List<ResolvedLayerEffect> effects;
+
+  @override
+  CutFrameCompositeGhost withPaint(RowPaint paint) => CutFrameCompositeGhost(
+    layer: layer,
+    frameId: frameId,
+    opacity: paint.opacity,
+    tint: tint,
+    blendMode: paint.blendMode,
+    effects: paint.effects,
+  );
+
+  @override
+  CutFrameCompositeGhost paintedNormal() => CutFrameCompositeGhost(
+    layer: layer,
+    frameId: frameId,
+    opacity: opacity,
+    tint: tint,
+    effects: effects,
+  );
+
+  @override
+  CutFrameCompositeGhost paintedAsClipBase() => CutFrameCompositeGhost(
+    layer: layer,
+    frameId: frameId,
+    opacity: 1,
+    tint: tint,
+    effects: effects,
+  );
+}
+
 /// Whether [folder] must compose into its own buffer at [frameIndex].
 ///
 /// Three things, and only three, fail to distribute over compositing:
@@ -428,6 +499,18 @@ bool _isClipBase(Cut cut, Layer row) {
     }
   }
   return false;
+}
+
+/// The outermost folder around [row] that a row clips to ([_isClipBase]),
+/// or null where none is.
+Layer? _clipBaseAround(Cut cut, Layer row) {
+  Layer? outermost;
+  for (final folder in cut.layers.ancestryOf(row.folderId)) {
+    if (_isClipBase(cut, folder)) {
+      outermost = folder;
+    }
+  }
+  return outermost;
 }
 
 /// [row]'s place in [cut]'s stack — by id, as a row's identity is.
@@ -1273,6 +1356,11 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
   /// — see that class for why the plan and not the canvas places it. Null
   /// for every route that composites stored pixels only.
   LayerId? liveLayerId,
+
+  /// Each row's onion ghosts where a canvas lays them IN PLACE
+  /// ([CutFrameCompositeGhost]), bottom → top. Null for every route that
+  /// composites the film.
+  List<CutFrameCompositeGhost> Function(Layer row)? ghostsOf,
 }) {
   // folder id (null = top level) → the nodes gathered under it so far.
   final childrenOf = <LayerId?, List<CompositeNode<CutFrameCompositeRow>>>{};
@@ -1353,6 +1441,29 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
       );
       continue;
     }
+    // A row's ghosts go first, so its drawing lies over them — never in what
+    // a clip cuts by, which they would widen: under the outermost folder
+    // around the row that is a clip base, else by themselves where the row
+    // stands alone (under a clip it is the base of), or onto the base it
+    // clips to, cut as it is. ↩️As I-92 had `stackNodesWithGhosts` place
+    // them.
+    final ghosts = ghostsOf?.call(layer) ?? const <CutFrameCompositeGhost>[];
+    final baseAround = ghosts.isEmpty ? null : _clipBaseAround(cut, layer);
+    for (final ghost in ghosts) {
+      final node = CompositeLeaf<CutFrameCompositeRow>(ghost);
+      if (baseAround != null) {
+        addTo(baseAround.folderId, node);
+        continue;
+      }
+      switch (clipTargetOf(cut, layer).placed) {
+        case ClipPlaced.alone:
+          addTo(layer.folderId, node);
+        case ClipPlaced.clipped:
+          place(layer, node);
+        case ClipPlaced.nowhere:
+          break;
+      }
+    }
     final row = _resolveLayerNode(cut, layer, (
       frameIndex: frameIndex,
       foldBufferedFolders: false,
@@ -1373,6 +1484,9 @@ List<CompositeNode<CutFrameCompositeRow>> resolveCutFrameCompositeTree({
             // Drawn on where nothing is exposed yet: the drawing the pen
             // makes, which is born unnamed.
             CutFrameCompositeLiveRow() => null,
+            CutFrameCompositeGhost() => throw StateError(
+              'a row resolves to its own node, never to a ghost',
+            ),
           },
           kind: layer.kind,
         ),
@@ -1417,7 +1531,8 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
     // with; every other route resolves surfaces from stored frames.
     // Reached here it would be a caller handing a live row to a route
     // that cannot draw it, so it contributes nothing rather than guessing.
-    CutFrameCompositeLiveRow() => null,
+    // Nor has the film a ghost: only the editing canvas lays one.
+    CutFrameCompositeLiveRow() || CutFrameCompositeGhost() => null,
     CutFrameCompositeEntry() => switch (surfaceOf(row)) {
       final surface? => CutFrameCompositeLayer(
         surface: surface,

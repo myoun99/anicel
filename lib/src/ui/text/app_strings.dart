@@ -1193,6 +1193,7 @@ enum AppStrings {
   String get onionAfterTint => _s('onionAfterTint');
   String get onionGhostColorHelp => _s('onionGhostColorHelp');
   String get onionPegCountHelp => _s('onionPegCountHelp');
+  String get onionPlacementHelp => _s('onionPlacementHelp');
 
   // --- The shortcut editor ---
   String get shortcutTitle => _s('shortcutTitle');
@@ -2602,6 +2603,7 @@ enum AppStrings {
     'onionAfterTint': 'After tint',
     'onionGhostColorHelp': 'How the ghosts are colored',
     'onionPegCountHelp': 'What one peg counts',
+    'onionPlacementHelp': 'Where the ghosts lie',
     'shortcutTitle': 'Keyboard shortcuts',
     'shortcutResetAll': 'Reset all',
     'shortcutFileImportedTemplate':
@@ -4101,6 +4103,7 @@ enum AppStrings {
     'onionAfterTint': '後の色',
     'onionGhostColorHelp': 'ゴーストの色付け方',
     'onionPegCountHelp': '1段が数えるもの',
+    'onionPlacementHelp': 'ゴーストの置き場所',
     'shortcutTitle': 'キーボードショートカット',
     'shortcutResetAll': 'すべてリセット',
     'shortcutFileImportedTemplate':
@@ -5803,6 +5806,7 @@ enum AppStrings {
     'onionAfterTint': '이후 색',
     'onionGhostColorHelp': '고스트에 색을 입히는 방식',
     'onionPegCountHelp': '한 칸이 세는 단위',
+    'onionPlacementHelp': '고스트가 놓이는 자리',
     'shortcutTitle': '키보드 단축키',
     'shortcutResetAll': '모두 초기화',
     'shortcutFileImportedTemplate':
@@ -7550,6 +7554,7 @@ enum AppStrings {
     'onionAfterTint': 'Teinte après',
     'onionGhostColorHelp': 'Comment les fantômes sont colorés',
     'onionPegCountHelp': 'Ce que compte un cran',
+    'onionPlacementHelp': 'Où se placent les fantômes',
     'shortcutTitle': 'Raccourcis clavier',
     'shortcutResetAll': 'Tout réinitialiser',
     'shortcutFileImportedTemplate':
@@ -9277,6 +9282,7 @@ enum AppStrings {
     'onionAfterTint': '之后色调',
     'onionGhostColorHelp': '残影的着色方式',
     'onionPegCountHelp': '一格所计的单位',
+    'onionPlacementHelp': '残影的位置',
     'shortcutTitle': '键盘快捷键',
     'shortcutResetAll': '全部重置',
     'shortcutFileImportedTemplate':

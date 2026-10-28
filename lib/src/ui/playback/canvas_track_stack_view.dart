@@ -12,6 +12,7 @@ import '../../models/pasteboard_bounds.dart'
     show PasteboardBounds, PasteboardReach;
 import '../../models/project_background.dart';
 import '../../services/camera_projection_matrix.dart';
+import '../../services/playback/frame_demand.dart' show FrameGhosts;
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
@@ -332,7 +333,7 @@ class CanvasTrackStackView extends StatelessWidget {
                 cut: cut,
                 frameIndex: localFrame,
                 paintPaper: isStage,
-                ghosts: false,
+                ghosts: FrameGhosts.none,
               ),
               nodes: stackOf(cut, localFrame),
               viewport: shot?.frameView ?? view,

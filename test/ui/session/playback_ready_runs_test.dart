@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -132,7 +133,7 @@ void main() {
         cut: held,
         frameIndex: 0,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false);
       expect(budget.playbackReadyRuns(0, 30), [
         (startIndex: 0, endIndexExclusive: 30, unreadable: false),
@@ -173,7 +174,7 @@ void main() {
         cut: held,
         frameIndex: 0,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(3, 30), [
@@ -215,7 +216,7 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false);
 
       expect(budget.playbackReadyRuns(0, 24), [
@@ -246,7 +247,12 @@ void main() {
         );
       }
       final budget = budgetOf(s);
-      final frame = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
+      final frame = (
+        cut: cut,
+        frameIndex: 0,
+        paintPaper: true,
+        ghosts: FrameGhosts.none,
+      );
 
       s.playbackRig.framePictures.noteFailure(frame);
       expect(

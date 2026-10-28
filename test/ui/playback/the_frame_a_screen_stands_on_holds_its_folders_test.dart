@@ -135,7 +135,7 @@ void main() {
       cut: s.requireActiveCut,
       frameIndex: 0,
       paintPaper: true,
-      ghosts: false,
+      ghosts: FrameGhosts.none,
     );
   }
 
@@ -358,7 +358,7 @@ void main() {
         cut: stood.cut,
         frameIndex: 0,
         paintPaper: false,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       );
       await pictures.make(ahead, shouldAbort: () => false);
       await shown(s, stood);
@@ -495,7 +495,7 @@ void main() {
         cut: picture.cut,
         frameIndex: 0,
         paintPaper: false,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ));
       expect(pictures.heldNodes, hasLength(1), reason: '⛔premise');
       s.dispose();

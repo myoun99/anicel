@@ -30,7 +30,8 @@ import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/camera_path.dart' show CameraPath;
 import '../services/canvas_selection_shape.dart' show CanvasSelectionShape;
 import '../services/cut_piece_slot.dart';
-import '../services/playback/frame_demand.dart' show DemandedPicture;
+import '../services/playback/frame_demand.dart'
+    show DemandedPicture, FrameGhosts, standingPicturesOf;
 import '../services/playback/playback_frame_mapping.dart'
     show TrackStackContribution;
 import '../services/last_stroke_slot.dart';

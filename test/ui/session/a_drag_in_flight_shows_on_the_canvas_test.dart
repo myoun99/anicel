@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../helpers/onion_ghosts.dart';
 import '../../helpers/placement_reading.dart';
 
 /// canvas-follows-block-moves — 유저 2026-09-28: 「따라가게 — 끄는 동안
@@ -234,10 +235,7 @@ void main() {
     session.onionSkin.toggleLayerOnionSkin(a);
     session.selectFrameIndex(2);
     List<(FrameId, int?, double)> ghosts() => [
-      for (final request in session.onionSkin.ghostsAt(
-        session.requireActiveCut,
-        session.currentFrameIndex,
-      ))
+      for (final request in ghostRequestsAt(session))
         (request.frameKey.frameId, request.tint, request.opacity),
     ];
     final before = ghosts();
@@ -656,10 +654,7 @@ void main() {
 
       expect(
         [
-          for (final ghost in session.onionSkin.ghostsAt(
-            session.requireActiveCut,
-            session.currentFrameIndex,
-          ))
+          for (final ghost in ghostRequestsAt(session))
             if (ghost.frameKey.frameId == cel) drawn(session, ghost.frameKey),
         ],
         [true],

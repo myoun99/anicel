@@ -17,7 +17,6 @@ import '../services/persistence/app_memory_settings.dart';
 import '../models/app_input_settings.dart';
 import 'session/drags/media_placement_drag.dart';
 import 'canvas/after_frame_once.dart';
-import 'canvas/canvas_layer_stack_view.dart' show CanvasStackRow;
 import 'session/attach_fx_confirm.dart';
 import 'session/canvas_adjust.dart';
 import 'session/sheet_photo_hold.dart';
@@ -32,7 +31,6 @@ import '../models/brush_frame_key.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
-import '../models/composite_tree.dart' show CompositeLeaf;
 import '../models/conte_group.dart' show conteHeadFamiliesOf;
 import '../models/cut.dart';
 import '../models/transform_track.dart';
@@ -538,15 +536,21 @@ class EditorSessionManager extends ChangeNotifier
     // as the rig is made, and the canvas's own making reaches the rig
     // (opacity verbs → transitions → camera → the scrub) — a stack overflow
     // the moment any part of the session is first asked for.
-    stackOf: (picture) => picture.ghosts
-        ? [
-            for (final ghost in onionSkin.ghostsAt(
-              picture.cut,
-              picture.frameIndex,
-            ))
-              CompositeLeaf<CanvasStackRow>(ghost),
-          ]
-        : editingCanvas.playedStackAt(picture.cut, picture.frameIndex),
+    stackOf: (picture) => switch (picture.ghosts) {
+      FrameGhosts.none => editingCanvas.playedStackAt(
+        picture.cut,
+        picture.frameIndex,
+      ),
+      FrameGhosts.alone => editingCanvas.ghostsOverAt(
+        picture.cut,
+        picture.frameIndex,
+      ),
+      FrameGhosts.inPlace => editingCanvas.playedStackAt(
+        picture.cut,
+        picture.frameIndex,
+        ghostsInPlace: true,
+      ),
+    },
   );
 
   /// ⚠️`void` and `async`: the playback controller does not wait for this,
@@ -690,7 +694,7 @@ class EditorSessionManager extends ChangeNotifier
                       cut: position.cut,
                       frameIndex: position.localFrameIndex,
                       paintPaper: true,
-                      ghosts: false,
+                      ghosts: FrameGhosts.none,
                     ),
                 ];
               }
@@ -703,7 +707,7 @@ class EditorSessionManager extends ChangeNotifier
                     // is on its paper; a track over it is not
                     // (`CanvasTrackStackView`).
                     paintPaper: shown.isBottomTrack,
-                    ghosts: false,
+                    ghosts: FrameGhosts.none,
                   ),
               ],
         playlistFrameOf: alone
@@ -1877,6 +1881,8 @@ class EditorSessionManager extends ChangeNotifier
       enabled: effectsAndFx.isCutFxEnabled(cutId),
     ),
     movieLaidAt: (key) => movieCels.laidAt(key),
+    ghostsAt: (cut, frameIndex, dragPreview) =>
+        onionSkin.ghostsAt(cut, frameIndex, dragPreview),
   );
 
   // ── the opacity verbs: their own object, in their own file ──────────
@@ -3609,7 +3615,6 @@ class EditorSessionManager extends ChangeNotifier
     project: this,
     selection: this,
     changes: this,
-    dragPreview: dragPreview,
   );
 
   // ── the pool's content fingerprints: their own object ────────────────

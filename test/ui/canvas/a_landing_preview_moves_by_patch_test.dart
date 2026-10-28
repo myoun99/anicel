@@ -39,6 +39,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_dab.dart';
@@ -98,7 +99,7 @@ void main() {
     ),
     frameIndex: 0,
     paintPaper: true,
-    ghosts: false,
+    ghosts: FrameGhosts.none,
   );
 
   /// One tile of [colour] at the pixels [inked] says, clear elsewhere.

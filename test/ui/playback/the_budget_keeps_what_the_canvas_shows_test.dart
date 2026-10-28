@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -98,7 +99,7 @@ void main() {
         cut: cut,
         frameIndex: names.indexOf(name),
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ));
 
   Future<void> makePictures(FramePictures pictures) async {
@@ -107,7 +108,7 @@ void main() {
         cut: cut,
         frameIndex: frame,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false);
     }
   }

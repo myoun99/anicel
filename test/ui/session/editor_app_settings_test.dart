@@ -179,6 +179,8 @@ void main() {
         tintAfter: 0xFF0000FF,
         mode: OnionSkinMode.images,
         step: OnionSkinStep.frames,
+        // Not the default (in place, onion-ghosts-in-place-Q2 pending).
+        placement: OnionSkinPlacement.onTop,
       ),
     );
     first.setUiScale(1.25);
@@ -320,6 +322,10 @@ void main() {
     expect(second.onionSkin.settings.value.beforePegs[1].opacity, 0.5);
     expect(second.onionSkin.settings.value.tintAfter, 0xFF0000FF);
     expect(second.onionSkin.settings.value.step, OnionSkinStep.frames);
+    expect(
+      second.onionSkin.settings.value.placement,
+      OnionSkinPlacement.onTop,
+    );
     expect(
       second.onionSkin.settings.value.beforePegs.length,
       OnionSkinSettings.maxPegs,

@@ -180,6 +180,7 @@ class PlaybackRig implements PlaybackRun {
             : const Duration(milliseconds: 1200),
         // A movie kept as a reference decodes before its frame composes.
         beforeCompose: _movieCels.hydrate,
+        onionPlacement: () => _appSettings.onionSkinSettings.value.placement,
       );
 
   @override

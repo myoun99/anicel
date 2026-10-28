@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/onion_skin_settings.dart';
 import 'package:anicel/src/services/playback/frame_demand.dart';
 
 /// THE ORDER FRAMES ARE WANTED IN — the one order the warmer makes pictures
@@ -27,7 +28,8 @@ void main() {
   List<String> wanted(FrameDemand demand) => [
     for (var step = 0; step < demand.length; step += 1)
       for (final picture in demand.picturesAt(step)!)
-        if (!picture.ghosts) '${picture.cut.id.value}:${picture.frameIndex}',
+        if (picture.ghosts == FrameGhosts.none)
+          '${picture.cut.id.value}:${picture.frameIndex}',
   ];
 
   group('while nothing plays', () {
@@ -36,6 +38,7 @@ void main() {
       int around = 1,
       CutId? next = b,
       int nextFrameCount = 3,
+      OnionSkinPlacement placement = OnionSkinPlacement.onTop,
     }) => StandingDemand(
       cutId: a,
       frameCount: frameCount,
@@ -43,6 +46,7 @@ void main() {
       nextCutId: next,
       nextFrameCount: nextFrameCount,
       resolveCut: cutOf,
+      placement: placement,
     );
 
     test('the cut is wanted from the playhead outwards, and then the cut '
@@ -74,15 +78,39 @@ void main() {
       expect(demand.stepOf(const CutId('elsewhere'), 0), isNull);
     });
 
-    test('each frame is wanted with the ghosts a canvas standing on it lays '
-        'over it — the frame on its paper, then its ghosts off it', () {
-      final demand = standing();
-      for (var step = 0; step < demand.length; step += 1) {
-        final [frame, ghosts] = demand.picturesAt(step)!;
-        expect((frame.paintPaper, frame.ghosts), (true, false));
-        expect((ghosts.paintPaper, ghosts.ghosts), (false, true));
-        expect(identical(ghosts.cut, frame.cut), isTrue);
-        expect(ghosts.frameIndex, frame.frameIndex);
+    test('each frame is wanted as a run plays it — on its paper — and with '
+        'the ghosts of a canvas standing on it: off it, over the frame, or '
+        'in the frame on its paper (onion-ghosts-in-place)', () {
+      for (final placement in OnionSkinPlacement.values) {
+        final demand = standing(placement: placement);
+        for (var step = 0; step < demand.length; step += 1) {
+          final [frame, onion] = demand.picturesAt(step)!;
+          expect((frame.paintPaper, frame.ghosts), (true, FrameGhosts.none));
+          expect(
+            (onion.paintPaper, onion.ghosts),
+            switch (placement) {
+              OnionSkinPlacement.onTop => (false, FrameGhosts.alone),
+              OnionSkinPlacement.inPlace => (true, FrameGhosts.inPlace),
+            },
+            reason: placement.name,
+          );
+          expect(identical(onion.cut, frame.cut), isTrue);
+          expect(onion.frameIndex, frame.frameIndex);
+        }
+      }
+    });
+
+    test('the pictures it wants are the ones a canvas standing on the frame '
+        'shows ([standingPicturesOf])', () {
+      for (final placement in OnionSkinPlacement.values) {
+        final demand = standing(placement: placement);
+        final [_, onion] = demand.picturesAt(0)!;
+        final shown = standingPicturesOf(
+          onion.cut,
+          onion.frameIndex,
+          placement,
+        );
+        expect(onion, shown.over ?? shown.frame, reason: placement.name);
       }
     });
 
@@ -187,7 +215,7 @@ void main() {
         cut: cutOf(a),
         frameIndex: frame,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       )],
       playlistFrameOf: (cutId, frameIndex) => cutId == a ? frameIndex : null,
       lead: lead,

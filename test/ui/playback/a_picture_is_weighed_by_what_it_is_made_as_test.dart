@@ -61,7 +61,7 @@ void main() {
     layerId: const LayerId('l'),
     frameId: const FrameId('a'),
   );
-  final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
+  final picture = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
 
   BitmapTile red() => BitmapTile(
     size: 4,
@@ -180,7 +180,7 @@ void main() {
         cut: cut,
         frameIndex: 1,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ));
 
       expect(images.read, [other]);
@@ -212,7 +212,7 @@ void main() {
             cut: cut,
             frameIndex: frame,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )],
           playlistFrameOf: (_, frame) => frame,
         ),
@@ -253,7 +253,7 @@ void main() {
             cut: cut,
             frameIndex: frame,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )],
           playlistFrameOf: (_, frame) => frame,
         ),

@@ -127,7 +127,7 @@ void main() {
         cut: s.activeCutOrNull!,
         frameIndex: frameIndex,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ));
 
   test('the transport is ATTACHED: the controller holds an audio clock to '
@@ -543,7 +543,7 @@ void main() {
                   cut: s.requireActiveCut,
                   frameIndex: frame,
                   paintPaper: true,
-                  ghosts: false,
+                  ghosts: FrameGhosts.none,
                 ),
               ),
             )!,
@@ -588,7 +588,7 @@ void main() {
             cut: s.requireActiveCut,
             frameIndex: 0,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           ),
           shouldAbort: () => false,
         );
@@ -597,7 +597,7 @@ void main() {
             cut: s.requireActiveCut,
             frameIndex: 0,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           ),
         );
         s.renderCaches.framePictureStore.retainPin(shown);

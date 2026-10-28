@@ -508,6 +508,7 @@ void main() {
     'onionAfterTint': (s) => s.onionAfterTint,
     'onionGhostColorHelp': (s) => s.onionGhostColorHelp,
     'onionPegCountHelp': (s) => s.onionPegCountHelp,
+    'onionPlacementHelp': (s) => s.onionPlacementHelp,
     'shortcutTitle': (s) => s.shortcutTitle,
     'shortcutResetAll': (s) => s.shortcutResetAll,
     'shortcutResetToDefault': (s) => s.shortcutResetToDefault,

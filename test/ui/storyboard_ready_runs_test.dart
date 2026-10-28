@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -184,7 +185,7 @@ void main() {
         cut: cut,
         frameIndex: 0,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ), shouldAbort: () => false);
       expect(
         s.playbackRig.playbackCache.playbackReadyRuns(0, 4),

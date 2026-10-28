@@ -88,7 +88,7 @@ void main() {
           cut: cut,
           frameIndex: frame,
           paintPaper: true,
-          ghosts: false,
+          ghosts: FrameGhosts.none,
         )],
         playlistFrameOf: (_, frame) => frame,
       ),

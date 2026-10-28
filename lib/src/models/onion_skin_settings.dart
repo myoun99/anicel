@@ -40,9 +40,21 @@ enum OnionSkinStep {
   frames,
 }
 
+/// Where a row's ghosts lie in the frame (card onion-ghosts-in-place).
+enum OnionSkinPlacement {
+  /// Over the frame's every row and its paper, as one picture of their own
+  /// (one-picture-per-frame-Q1 = a, 유저 2026-10-24 「한 장 위에 얹는다」).
+  onTop,
+
+  /// Directly under the row's own drawing, inside its folder, so the rows
+  /// above it cover them — TVPaint's and Clip Studio's light table
+  /// (onion-ghosts-in-place-Q1 = a, 유저 2026-10-26 「제자리는 a말한거야」).
+  inPlace,
+}
+
 /// The editor's onion-skin state (session view state, not project data):
 /// [maxPegs] pegs per side, each with its own opacity, the side tints, the
-/// Colors/Images mode and what a peg step counts.
+/// Colors/Images mode, what a peg step counts and where the ghosts lie.
 ///
 /// UI-R17 #5: there is NO master enable — onion application is PER LAYER
 /// (TVPaint style: the session's onion layer-id set), these settings only
@@ -55,6 +67,7 @@ class OnionSkinSettings {
     this.tintAfter = 0xFF43A047,
     this.mode = OnionSkinMode.colors,
     this.step = OnionSkinStep.blocks,
+    this.placement = OnionSkinPlacement.inPlace,
   });
 
   static const int maxPegs = 8;
@@ -95,6 +108,10 @@ class OnionSkinSettings {
   final OnionSkinMode mode;
   final OnionSkinStep step;
 
+  /// Where the ghosts lie ([OnionSkinPlacement]) — ❓in place until 유저
+  /// answers onion-ghosts-in-place-Q2.
+  final OnionSkinPlacement placement;
+
 
   /// 🚨★★★**F-150 — 어니언 값은 유저 설정이다.** 유저 2026-09-16: 「어니언
   /// 패널에서 세팅한 값이 **세션으로서 저장안됨. 세션이라기보다 유저설정?**」.
@@ -115,6 +132,7 @@ class OnionSkinSettings {
     'tintAfter': tintAfter,
     'mode': mode.name,
     'step': step.name,
+    'placement': placement.name,
   };
 
   static OnionSkinSettings fromJson(Map<String, dynamic> json) {
@@ -130,6 +148,11 @@ class OnionSkinSettings {
           : fallback.tintAfter,
       mode: _enumFrom(OnionSkinMode.values, json['mode'], fallback.mode),
       step: _enumFrom(OnionSkinStep.values, json['step'], fallback.step),
+      placement: _enumFrom(
+        OnionSkinPlacement.values,
+        json['placement'],
+        fallback.placement,
+      ),
     );
   }
 
@@ -163,6 +186,7 @@ class OnionSkinSettings {
     int? tintAfter,
     OnionSkinMode? mode,
     OnionSkinStep? step,
+    OnionSkinPlacement? placement,
   }) {
     return OnionSkinSettings(
       beforePegs: beforePegs ?? this.beforePegs,
@@ -171,6 +195,7 @@ class OnionSkinSettings {
       tintAfter: tintAfter ?? this.tintAfter,
       mode: mode ?? this.mode,
       step: step ?? this.step,
+      placement: placement ?? this.placement,
     );
   }
 
@@ -183,7 +208,8 @@ class OnionSkinSettings {
           other.tintBefore == tintBefore &&
           other.tintAfter == tintAfter &&
           other.mode == mode &&
-          other.step == step;
+          other.step == step &&
+          other.placement == placement;
 
   @override
   int get hashCode => Object.hash(
@@ -193,5 +219,6 @@ class OnionSkinSettings {
     tintAfter,
     mode,
     step,
+    placement,
   );
 }

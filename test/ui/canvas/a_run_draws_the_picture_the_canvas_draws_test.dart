@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -215,7 +216,7 @@ void main() {
 
   /// The frame's picture as the canvas and the film ask for it — the paper
   /// under the ink, as every cut has, white unless it is absent.
-  final frame = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
+  final frame = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
 
   /// The editing canvas, as the canvas area mounts it: the frame's one
   /// picture — the cel [live] in it standing still, made by the view itself;

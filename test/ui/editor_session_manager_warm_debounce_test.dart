@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -117,13 +118,13 @@ void main() {
       cut: activeCut,
       frameIndex: 0,
       paintPaper: true,
-      ghosts: false,
+      ghosts: FrameGhosts.none,
     ), shouldAbort: () => false);
     expect(pictures.has((
       cut: activeCut,
       frameIndex: 0,
       paintPaper: true,
-      ghosts: false,
+      ghosts: FrameGhosts.none,
     )), isTrue);
 
     // Let any open-time warm restart land before counting.
@@ -157,7 +158,7 @@ void main() {
         cut: activeCut,
         frameIndex: 0,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       )),
       isFalse,
       reason: 'only the RESTART is deferred — a stale picture must be '

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -120,7 +121,7 @@ void main() {
         cut: s.activeCutOrNull!,
         frameIndex: frameIndex,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       ));
 
   int heldBytes(EditorSessionManager s) =>
@@ -135,7 +136,7 @@ void main() {
       cut: s.activeCutOrNull!,
       frameIndex: 0,
       paintPaper: true,
-      ghosts: false,
+      ghosts: FrameGhosts.none,
     );
     await s.playbackRig.framePictures.make(frame, shouldAbort: () => false);
     return s.renderCaches.framePictureStore.bytesOf(
@@ -208,7 +209,7 @@ void main() {
           cut: s.activeCutOrNull!,
           frameIndex: 5,
           paintPaper: true,
-          ghosts: false,
+          ghosts: FrameGhosts.none,
         ),
         shouldAbort: () => false,
       );
@@ -302,7 +303,7 @@ void main() {
       );
 
       await s.playbackRig.framePictures.make(
-        (cut: activeCut, frameIndex: 5, paintPaper: true, ghosts: false),
+        (cut: activeCut, frameIndex: 5, paintPaper: true, ghosts: FrameGhosts.none),
         shouldAbort: () => false,
       );
       expect(ready(5), isTrue);

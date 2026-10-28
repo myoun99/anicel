@@ -97,7 +97,7 @@ void main() {
       store: store,
       layerImages: layerImages,
       stackOf: (picture) => [
-        if (!picture.ghosts)
+        if (picture.ghosts == FrameGhosts.none)
           for (final row in rowsOf(picture.cut, picture.frameIndex))
             CompositeLeaf<CanvasStackRow>(row),
       ],
@@ -119,7 +119,7 @@ void main() {
               cut: cut,
               frameIndex: frameIndex,
               paintPaper: true,
-              ghosts: false,
+              ghosts: FrameGhosts.none,
             )),
           )
           ?.image;
@@ -226,7 +226,7 @@ void main() {
           cut: runwayCut(),
           frameIndex: 6,
           paintPaper: true,
-          ghosts: false,
+          ghosts: FrameGhosts.none,
         )),
         isFalse,
         reason: '⛔premise: the runway has a picture to make',
@@ -312,7 +312,7 @@ void main() {
           cut: cut(),
           frameIndex: 0,
           paintPaper: true,
-          ghosts: false,
+          ghosts: FrameGhosts.none,
         )),
         isFalse,
         reason: '⛔premise: frame 0 has a picture to make',
@@ -329,7 +329,7 @@ void main() {
             cut: cut(),
             frameIndex: index,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )),
           isTrue,
           reason: 'frame $index should be warmed — 1..3 show no cel: their '
@@ -590,7 +590,7 @@ void main() {
             cut: nextCut(),
             frameIndex: 3,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )),
           isFalse,
           reason: '⛔premise: the runway has a picture to make',
@@ -617,7 +617,7 @@ void main() {
               cut: nextCut(),
               frameIndex: index,
               paintPaper: true,
-              ghosts: false,
+              ghosts: FrameGhosts.none,
             )),
             isTrue,
             reason: 'next-cut frame $index warms on the same run — index 3 '
@@ -727,7 +727,7 @@ void main() {
         cut: four(),
         frameIndex: frame,
         paintPaper: true,
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       )],
       playlistFrameOf: (cutId, frameIndex) =>
           cutId == const CutId('cut') ? frameIndex : null,
@@ -740,7 +740,7 @@ void main() {
           cut: four(),
           frameIndex: frame,
           paintPaper: true,
-          ghosts: false,
+          ghosts: FrameGhosts.none,
         )),
     ];
 
@@ -940,7 +940,7 @@ void main() {
               cut: six(),
               frameIndex: frame,
               paintPaper: true,
-              ghosts: false,
+              ghosts: FrameGhosts.none,
             )],
             playlistFrameOf: (cutId, frameIndex) =>
                 cutId == const CutId('cut') ? frameIndex : null,
@@ -1132,7 +1132,7 @@ void main() {
               cut: four(),
               frameIndex: frame,
               paintPaper: true,
-              ghosts: false,
+              ghosts: FrameGhosts.none,
             )],
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
@@ -1291,7 +1291,7 @@ void main() {
           cut: four(),
           frameIndex: 2,
           paintPaper: true,
-          ghosts: false,
+          ghosts: FrameGhosts.none,
         ), shouldAbort: () => false);
         final room = _Room(f.pictures, 3 * pictureBytes);
         final scheduler = PlaybackPrerenderScheduler(
@@ -1400,7 +1400,7 @@ void main() {
                 cut: cut(duration: 40),
                 frameIndex: frame,
                 paintPaper: true,
-                ghosts: false,
+                ghosts: FrameGhosts.none,
               )];
             },
             playlistFrameOf: (_, frameIndex) => frameIndex,
@@ -1467,7 +1467,12 @@ void main() {
         f.layerImages.dispose();
       });
       final shown = [
-        (cut: four(), frameIndex: 1, paintPaper: true, ghosts: false),
+        (
+          cut: four(),
+          frameIndex: 1,
+          paintPaper: true,
+          ghosts: FrameGhosts.none,
+        ),
       ];
       expect(scheduler.has(shown), isFalse, reason: 'still to come');
 
@@ -1503,7 +1508,7 @@ void main() {
             cut: four(),
             frameIndex: 1,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )])),
         );
 
@@ -1524,7 +1529,7 @@ void main() {
             cut: four(),
             frameIndex: 1,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )).cannotRead,
           isTrue,
         );
@@ -1549,7 +1554,7 @@ void main() {
             cut: four(),
             frameIndex: 1,
             paintPaper: true,
-            ghosts: false,
+            ghosts: FrameGhosts.none,
           )]),
           isTrue,
           reason: 'nothing waits for a picture that cannot be made',

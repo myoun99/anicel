@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart' show FrameGhosts;
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -61,7 +62,7 @@ void main() {
     canvasSize: canvasSize,
     layers: [],
   );
-  final page = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: false);
+  final page = (cut: cut, frameIndex: 0, paintPaper: true, ghosts: FrameGhosts.none);
   final view = CanvasViewport(panX: 8, panY: 4);
   final screen = GlobalKey();
 

@@ -247,7 +247,7 @@ class PlaybackCacheBudget implements PictureRoom, HeldNodesLine {
         frameIndex: span.start,
         paintPaper: paintPaper,
         // A run shows no ghosts.
-        ghosts: false,
+        ghosts: FrameGhosts.none,
       );
       final (:state, cannotRead: unreadable) = pictures.standingOf(picture);
       if (state == PictureState.toCome ||
