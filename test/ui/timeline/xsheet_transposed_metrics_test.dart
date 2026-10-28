@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/widgets/row_plate.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
@@ -769,18 +770,15 @@ void main() {
       tester.element(find.byType(Scaffold).first),
     ).colorScheme;
 
-    BoxDecoration decoOf(String id) =>
-        tester
-                .widget<Container>(
-                  find
-                      .descendant(
-                        of: find.named('xsheet-layer-row-$id'),
-                        matching: find.byType(Container),
-                      )
-                      .first,
-                )
-                .decoration!
-            as BoxDecoration;
+    // The column's plate is one box (2026-10-28).
+    BoxDecoration decoOf(String id) => tester
+        .widget<RowPlate>(
+          find.descendant(
+            of: find.named('xsheet-layer-row-$id'),
+            matching: find.byType(RowPlate),
+          ),
+        )
+        .decoration!;
 
     final active = decoOf('layer-1');
     final resting = decoOf('layer-2');
