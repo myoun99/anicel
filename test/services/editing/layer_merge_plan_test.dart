@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -97,6 +98,11 @@ void main() {
     for (final MapEntry(:key, :value) in layer.timeline.entries)
       key: (value.length!, layer.frameById(value.frameId!)?.name),
   };
+
+  /// The cut the result's pictures are drawn from.
+  Cut bakedOf(LayerMergePlan plan) => plan.pictures
+      .firstWhere((picture) => picture.rowId == plan.result.id)
+      .from;
 
   group('a picture wherever what the rows show changes', () {
     test('the topmost row\'s cel names it, and where the topmost shows '
@@ -218,7 +224,7 @@ void main() {
         ['a', 'b'],
       )!;
 
-      expect([for (final layer in plan.baked.layers) layer.isVisible], [
+      expect([for (final layer in bakedOf(plan).layers) layer.isVisible], [
         true,
         true,
       ]);
@@ -330,7 +336,7 @@ void main() {
 
       expect(
         [
-          for (final layer in plan.baked.layers)
+          for (final layer in bakedOf(plan).layers)
             (layer.id.value, layer.folderId?.value),
         ],
         [('b', 'G'), ('G', null), ('a', null)],
@@ -357,21 +363,161 @@ void main() {
     });
   });
 
-  test('a row this round does not merge yet is passed over — an attach '
-      'row, and the base it rides', () {
-    final base = row('base', {0: 'X1'});
-    final rider = Layer(
-      id: const LayerId('rider'),
-      name: 'rider',
-      attachedToLayerId: const LayerId('base'),
-      frames: const [],
+  group('an attach row the merge does not take rides the result (Q8)', () {
+    /// A SYNCED attach row named [id] riding [base], its cel `R<n>` showing
+    /// wherever [base]'s cel `<n>` does.
+    Layer synced(String id, Layer base) => Layer(
+      id: LayerId(id),
+      name: id,
+      attachedToLayerId: base.id,
+      timeline: const {},
+      frames: [
+        for (final cel in base.frames)
+          Frame(
+            id: FrameId('$id-${cel.name}'),
+            duration: 1,
+            name: 'R${cel.name}',
+            strokes: const [],
+          ),
+      ],
+      baseFrameLinks: {
+        for (final cel in base.frames) cel.id: FrameId('$id-${cel.name}'),
+      },
     );
-    final cut = cutOf([row('b', {0: 'B1'}), base, rider, row('a', {0: 'A1'})]);
 
-    final plan = merge(cut, ['a', 'b', 'base', 'rider'])!;
+    test('🎯a synced one takes a cel for each of the result\'s — named by '
+        'the cel it showed there — and is drawn alone, wearing its base, '
+        'the base itself hidden', () {
+      final base = row('a', {0: '1', 4: '2'}, lastLength: 4);
+      final plan = merge(
+        cutOf([
+          row('b', {0: 'B1', 2: 'B2'}, lastLength: 6),
+          base,
+          synced('r', base),
+        ]),
+        ['a', 'b'],
+      )!;
 
-    expect(plan.result.id, const LayerId('a'));
-    expect(plan.removed, [const LayerId('b')]);
+      expect(blocksOf(plan.result), {
+        0: (2, '1'),
+        2: (2, '1-2'),
+        4: (4, '2'),
+      });
+      final rider = plan.riders.single;
+      expect(rider.attachedToLayerId, const LayerId('a'));
+      expect(rider.timeline, isEmpty, reason: 'it rides the result');
+      expect(
+        [for (final cel in rider.frames) (cel.id.value, cel.name)],
+        [
+          ('attach-mirror-r-m0', 'R1'),
+          ('attach-mirror-r-m1', 'R1-2'),
+          ('attach-mirror-r-m2', 'R2'),
+        ],
+      );
+      expect(rider.baseFrameLinks, {
+        for (final cel in plan.result.frames)
+          cel.id: FrameId('attach-mirror-r-${cel.id.value}'),
+      });
+      expect([for (final row in plan.layers) row.id.value], ['a', 'r']);
+      final drawn = [
+        for (final picture in plan.pictures)
+          if (picture.rowId == rider.id) picture,
+      ];
+      expect([for (final picture in drawn) picture.frameIndex], [0, 2, 4]);
+      expect(
+        [
+          for (final row in drawn.first.from.layers)
+            (row.id.value, row.isVisible),
+        ],
+        [('a', false), ('r', true)],
+      );
+    });
+
+    test('a free one keeps its own timing, its cels parted wherever what '
+        'it wore of its base changes', () {
+      final moving = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty()
+            .withKey(1, CanvasPoint(x: 32, y: 18))
+            .withKey(2, CanvasPoint(x: 40, y: 18)),
+      );
+      final base = row('a', {0: '1'}, lastLength: 4, transformTrack: moving);
+      final free = row('r', {1: 'R1'}).copyWith(
+        attachedToLayerId: base.id,
+        attachedMode: AttachedMode.free,
+      );
+      final plan = merge(
+        cutOf([row('b', {0: 'B1'}, lastLength: 4), base, free]),
+        ['a', 'b'],
+      )!;
+
+      final rider = plan.riders.single;
+      expect(rider.attachedMode, AttachedMode.free);
+      expect(rider.attachedToLayerId, const LayerId('a'));
+      expect(blocksOf(rider), {1: (1, 'R1'), 2: (1, 'R1-2')});
+    });
+
+    test('one taken with its base is merged, and the other rides', () {
+      final base = row('a', {0: '1'});
+      final plan = merge(
+        cutOf([synced('under', base), base, synced('over', base)]),
+        ['a', 'under'],
+      )!;
+
+      expect(plan.removed, [const LayerId('under')]);
+      expect([for (final rider in plan.riders) rider.id.value], ['over']);
+    });
+
+    test('until I-78-Q14 is answered, one chosen without its base is passed '
+        'over', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          row('b', {0: 'B1'}),
+          base,
+          synced('r', base),
+        ]),
+        ['b', 'c', 'r'],
+      )!;
+
+      expect(plan.result.id, const LayerId('b'));
+      expect(plan.removed, [const LayerId('c')]);
+    });
+
+    test('until I-78-Q13 is answered, a base whose rider is not taken goes '
+        'only as the topmost row chosen', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          base,
+          synced('r', base),
+          row('a', {0: 'A1'}),
+        ]),
+        ['a', 'base', 'c'],
+      )!;
+
+      expect(plan.removed, [const LayerId('c')]);
+      expect(plan.riders, isEmpty);
+    });
+
+    test('a base one of whose riders this round passes over is passed over '
+        'too: the rider would be baked anew', () {
+      final base = row('base', {0: '1'});
+      final plan = merge(
+        cutOf([
+          row('c', {0: 'C1'}),
+          row('b', {0: 'B1'}),
+          base,
+          synced('r', base),
+        ]),
+        ['base', 'b', 'c'],
+        linked: {'r'},
+      )!;
+
+      expect(plan.result.id, const LayerId('b'));
+      expect(plan.removed, [const LayerId('c')]);
+    });
   });
 
   test('a 겸용 row is passed over: another cut shows its cels', () {
@@ -400,7 +546,7 @@ void main() {
     final plan = merge(cut, ['a', 'b', 'still'])!;
 
     expect(plan.removed, [const LayerId('b')]);
-    expect([for (final layer in plan.baked.layers) layer.id.value], [
+    expect([for (final layer in bakedOf(plan).layers) layer.id.value], [
       'b',
       'a',
     ]);

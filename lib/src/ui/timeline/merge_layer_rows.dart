@@ -77,9 +77,9 @@ Future<bool?> _accepts(BuildContext context, Set<LayerMergeChange> changes) {
   );
 }
 
-/// Each of [plan]'s pictures drawn from its rows over the whole pasteboard
-/// — what lies past the canvas is the rows' too (a pan's background) — and
-/// laid on its new cel where it lies.
+/// Each of [plan]'s pictures drawn of the cut it is made from over the
+/// whole pasteboard — what lies past the canvas is the rows' too (a pan's
+/// background) — and laid on its new cel where it lies.
 Future<void> _layPictures(
   EditorSessionManager session,
   LayerMergePlan plan,
@@ -95,7 +95,7 @@ Future<void> _layPictures(
     for (final (index, picture) in plan.pictures.indexed) {
       final drawn = EnginePicture(
         await renderer.renderPicture(
-          plan.baked,
+          picture.from,
           picture.frameIndex,
           width: wall.rect.width.round(),
           region: wall.rect,

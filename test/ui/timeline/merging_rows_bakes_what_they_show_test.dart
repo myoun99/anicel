@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -15,8 +16,10 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -40,6 +43,7 @@ void main() {
   const cutId = CutId('cut');
   const red = [200, 0, 0, 255];
   const green = [0, 200, 0, 255];
+  const blue = [0, 0, 200, 255];
 
   /// Opaque tiles of [rgba] at [coords], 16 pixels a side.
   BitmapSurface inkAt(List<TileCoord> coords, List<int> rgba) {
@@ -69,11 +73,27 @@ void main() {
         timeline: {0: TimelineExposure.drawing(FrameId('$id-1'), length: 2)},
       );
 
+  /// A synced attach row `r` riding `a` — its ink blue in the canvas's first
+  /// tile of the second row.
+  final rider = Layer(
+    id: const LayerId('r'),
+    name: 'r',
+    attachedToLayerId: const LayerId('a'),
+    frames: [
+      Frame(id: const FrameId('r-1'), duration: 2, name: '1', strokes: []),
+    ],
+    baseFrameLinks: {const FrameId('a-1'): const FrameId('r-1')},
+    timeline: const {},
+  );
+
   /// A cut of `b` under `a`, `b`'s ink red in the canvas's second column of
-  /// tiles and `a`'s green in its third, both rows selected.
+  /// tiles and `a`'s green in its third, both rows selected — `a` moved by
+  /// [aMoves] and ridden by [rider] when [aRidden].
   EditorSessionManager session({
     bool bShown = true,
     LayerBlendMode? aBlend,
+    TransformTrack? aMoves,
+    bool aRidden = false,
   }) {
     final s = EditorSessionManager(
       initialProject: Project(
@@ -92,7 +112,8 @@ void main() {
                 canvasSize: canvasSize,
                 layers: [
                   row('b', isVisible: bShown),
-                  row('a', blendMode: aBlend),
+                  row('a', blendMode: aBlend).copyWith(transformTrack: aMoves),
+                  if (aRidden) rider,
                   createCameraLayer(cutId: cutId),
                 ],
               ),
@@ -108,6 +129,7 @@ void main() {
       // A tile of b's past the canvas's left edge — a pan's background.
       ('b', [TileCoord(x: 1, y: 0), TileCoord(x: -1, y: 0)], red),
       ('a', [TileCoord(x: 2, y: 0)], green),
+      if (aRidden) ('r', [TileCoord(x: 0, y: 1)], blue),
     ]) {
       bakeCelSurface(
         store,
@@ -139,10 +161,11 @@ void main() {
     return hosted;
   }
 
-  /// The one cel the merged row `a` shows, as its picture.
-  BitmapSurface mergedCel(EditorSessionManager s) {
+  /// The one cel the row [id] holds — the merged row `a` by default — as
+  /// its picture.
+  BitmapSurface mergedCel(EditorSessionManager s, [String id = 'a']) {
     final cut = s.requireActiveCut;
-    final merged = cut.layers.byId(const LayerId('a'))!;
+    final merged = cut.layers.byId(LayerId(id))!;
     return s.renderCaches.brushFrameStore.bakedSurfaceOrNull(
       s.brushFrameKeyForCut(cut, merged.id, merged.frames.single.id),
       read: CelRead.look,
@@ -206,6 +229,53 @@ void main() {
     expect(s.requireActiveCut.layers, before);
     s.redo();
     expect([at(mergedCel(s), 20, 5), at(mergedCel(s), 36, 5)], [red, green]);
+    s.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🎯an attach row the merge does not take rides the result, its '
+      'cel baked wearing what it wore of its base — the result moves '
+      'nowhere now — and one undo gives every row back (Q8)', (tester) async {
+    final s = session(
+      // 16 pixels to the right of the canvas's centre.
+      aMoves: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 48, y: 24),
+        ),
+      ),
+      aRidden: true,
+    );
+    addTearDown(s.dispose);
+    final before = s.requireActiveCut.layers;
+    final context = await hostedContext(tester);
+
+    unawaited(mergeLayerRows(context, s));
+    await settleBehindTheWaitWindow(tester, () => merged(s));
+
+    final cut = s.requireActiveCut;
+    expect([for (final layer in cut.layers) layer.id], [
+      const LayerId('a'),
+      const LayerId('r'),
+      cameraLayerIdForCut(cutId),
+    ]);
+    final result = cut.layers.first;
+    expect(result.transformTrack.isEmpty, isTrue);
+    final cel = mergedCel(s);
+    expect([at(cel, 20, 5), at(cel, 52, 5)], [red, green]);
+    expect(at(cel, 36, 5)?[3] ?? 0, 0, reason: 'a was drawn moved');
+    final ridden = cut.layers.byId(const LayerId('r'))!;
+    expect(ridden.attachedToLayerId, result.id);
+    expect(ridden.baseFrameLinks, {
+      result.frames.single.id: ridden.frames.single.id,
+    });
+    final riderCel = mergedCel(s, 'r');
+    expect(at(riderCel, 20, 20), blue, reason: 'it wore a\'s move');
+    expect(at(riderCel, 5, 20)?[3] ?? 0, 0);
+
+    s.undo();
+    expect(s.requireActiveCut.layers, before);
+    s.redo();
+    expect(at(mergedCel(s, 'r'), 20, 20), blue);
     s.playbackRig.prerenderScheduler.cancel();
   });
 

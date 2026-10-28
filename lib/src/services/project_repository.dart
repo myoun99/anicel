@@ -905,6 +905,13 @@ class ProjectRepository {
     });
   }
 
+  /// Writes [cutId]'s rows whole, as ONE write — for an edit whose rows
+  /// change together, which the invariants above would settle otherwise
+  /// between two writes of them (`SetCutLayersCommand`).
+  void setCutLayers({required CutId cutId, required List<Layer> layers}) {
+    _mutate(_cut, cutId, (cut) => cut.copyWith(layers: layers));
+  }
+
   /// Resequences [trackId]'s SE rows to exactly [order] — the S-rows'
   /// counterpart of [setLayerPlacement]. They carry no folder membership
   /// (the track owns them flat), so order is the whole placement.

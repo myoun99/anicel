@@ -1,7 +1,5 @@
 import '../../models/bitmap_surface.dart';
-import '../../models/layer.dart';
-import '../../services/commands/delete_layer_command.dart';
-import '../../services/commands/update_layer_timeline_command.dart';
+import '../../services/commands/set_cut_layers_command.dart';
 import '../../services/editing/layer_merge_plan.dart';
 import '../../services/import/raster_cel_import.dart' show bakeCelSurface;
 import 'layer_verbs.dart';
@@ -70,47 +68,38 @@ class LayerMerging {
     );
   }
 
-  /// [surface] laid as [picture]'s cel of [plan]'s row — as every door
-  /// lays a cel it makes ([bakeCelSurface]), ahead of the row that shows
-  /// it: the cel is new, so nothing shows it until the merge lands, and a
-  /// merge undone leaves it to nobody.
+
+  /// [surface] laid as [picture]'s cel — as every door lays a cel it makes
+  /// ([bakeCelSurface]), ahead of the row that shows it: the cel is new,
+  /// so nothing shows it until the merge lands, and a merge undone leaves
+  /// it to nobody.
   void layPicture(
     LayerMergePlan plan,
     LayerMergePicture picture,
     BitmapSurface surface,
   ) => bakeCelSurface(
     _renderCaches.brushFrameStore,
-    _project.brushFrameKeyForCut(plan.cut, plan.result.id, picture.frameId),
+    _project.brushFrameKeyForCut(plan.cut, picture.rowId, picture.frameId),
     surface,
   );
 
-  /// The rows [plan] takes made its one row, as ONE undo step, standing on
-  /// it — or nothing, when its cut has changed since it was planned.
+  /// The rows [plan] takes made its one row, and the rows riding it with
+  /// their new cels, as ONE write and ONE undo step ([SetCutLayersCommand])
+  /// — standing on it after; or nothing, when its cut has changed since it
+  /// was planned.
   bool land(LayerMergePlan plan) {
     final cut = plan.cut;
     if (_project.cutById(cut.id) != cut) {
       return false;
     }
-    final history = _project.historyManager;
-    final repository = _project.repository;
-    history.runAsOneStep(_step, () {
-      for (final layerId in plan.removed) {
-        history.execute(
-          DeleteLayerCommand(
-            repository: repository,
-            cutId: cut.id,
-            layerId: layerId,
-          ),
-        );
-      }
-      history.execute(
-        UpdateLayerTimelineCommand(
-          repository: repository,
-          before: cut.layers.byId(plan.result.id)!,
-          after: plan.result,
-        ),
-      );
-    });
+    _project.historyManager.execute(
+      SetCutLayersCommand(
+        repository: _project.repository,
+        cutId: cut.id,
+        layers: plan.layers,
+        description: _step,
+      ),
+    );
     _rowSelection.clearRowSelection();
     _changes.refreshAfterCutCommand(preferredActiveLayerId: plan.result.id);
     _changes.notifyChanged();
