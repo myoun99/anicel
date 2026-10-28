@@ -289,6 +289,86 @@ void main() {
       });
     }
 
+    // A bar whose number stands in a readout writes nothing, so nothing
+    // under its node says which way its words read: the node says it.
+    testWidgets('a bar that writes nothing: its node', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 24,
+                height: 120,
+                child: FieldSlider.opacity(
+                  value: 0.5,
+                  axis: Axis.vertical,
+                  readout: FieldSliderReadout(),
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final data = tester
+          .getSemantics(find.byType(FieldSliderTrack))
+          .getSemanticsData();
+      expect(data.label, '');
+      expect(data.value, '50');
+      expect(data.textDirection, TextDirection.ltr);
+      expect(data.rect, const Rect.fromLTWH(0, 0, 24, 120));
+      expect(data.flagsCollection.isSlider, isTrue);
+      semantics.dispose();
+    });
+
+    // Where each bar's words stood in its track while a Padding and an
+    // Align (or Center) placed them — read off master `86d178146`.
+    final words = <String, (Widget, List<Rect>)>{
+      'micro': (
+        FieldSlider.opacity(value: 0.5, onChanged: (_) {}),
+        const [Rect.fromLTRB(89, 4, 111, 20)],
+      ),
+      'named': (
+        FieldSlider(
+          value: 0.5,
+          min: 0,
+          max: 1,
+          label: 'Size',
+          unit: '%',
+          onChanged: (_) {},
+        ),
+        const [Rect.fromLTRB(8, 4, 110, 20), Rect.fromLTRB(110, 4, 154, 20)],
+      ),
+      'cell': (
+        FieldSlider.cell(
+          value: 0.5,
+          min: 0,
+          max: 1,
+          label: 'Size',
+          unit: '%',
+          onChanged: (_) {},
+        ),
+        const [Rect.fromLTRB(110, 4, 154, 20)],
+      ),
+    };
+    for (final MapEntry(key: name, value: (bar, places)) in words.entries) {
+      testWidgets('$name: its words stand where they stood', (tester) async {
+        await tester.pumpWidget(host(bar));
+        final track = tester.getRect(find.byType(FieldSliderTrack));
+        expect([
+          for (final words in find
+              .descendant(
+                of: find.byType(FieldSliderTrack),
+                matching: find.byType(RichText),
+              )
+              .evaluate())
+            tester.getRect(find.byWidget(words.widget)).shift(-track.topLeft),
+        ], places);
+      });
+    }
+
     testWidgets('its node says the value the bar takes', (tester) async {
       final semantics = tester.ensureSemantics();
       final value = ValueNotifier<double>(0.5);
