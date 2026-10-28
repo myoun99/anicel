@@ -174,6 +174,14 @@ void main() {
       'back', (tester) async {
     final s = session(bShown: false);
     addTearDown(s.dispose);
+    // Standing on a row the merge does not take: it stands on the merged
+    // row after, as it would on any row it made.
+    s.selectLayer(cameraLayerIdForCut(cutId));
+    s.rowSelection.value = const [
+      LayerRowAddress(LayerId('a')),
+      LayerRowAddress(LayerId('b')),
+    ];
+    expect(s.activeLayer?.id, cameraLayerIdForCut(cutId), reason: 'premise');
     final before = s.requireActiveCut.layers;
     expect(s.layerMerging.mergesSelection, isTrue, reason: 'the button lit');
     final context = await hostedContext(tester);
