@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/session/independent_clip_mint.dart';
 import '../../helpers/reference_to.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🗣️I-71 (유저 2026-10-05):
 ///
@@ -113,7 +114,7 @@ void main() {
       paint(s, mirror, rowOf(s, mirror).baseFrameLinks[baseCel]!, shade);
     }
     s.selectLayer(base);
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     final other = s.activeLayer!.id;
     expect(rowOf(s, mirror).timeline, isEmpty, reason: '⛔전제: stores none');
     return (s: s, base: base, mirror: mirror, other: other);
@@ -359,7 +360,7 @@ void main() {
       final from = s.activeLayer!.id;
       s.selectFrameIndex(0);
       s.createDrawingAtCurrentFrame();
-      s.layerStack.addLayerOfKind(LayerKind.animation);
+      addAnEmptyDrawingRow(s);
       final to = s.activeLayer!.id;
       standOn(s, from, 0);
       clipboardOf(s).copyFrameAtCurrentFrame();

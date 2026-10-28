@@ -12,8 +12,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/session/layer_merging.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
+import '../../helpers/an_empty_drawing_row.dart';
 import '../../helpers/app_shortcuts.dart';
 import '../../helpers/home_page_probes.dart';
 import '../../helpers/wait_window.dart';
@@ -74,7 +74,7 @@ void main() {
     final s = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    TimelineToolbarPanelContext(s).addLayer();
+    addAnEmptyDrawingRow(s);
     final rows = animationRowsOf(s);
     expect(rows, hasLength(2), reason: '⛔premise: two animation rows');
     s.rowSelection.value = [

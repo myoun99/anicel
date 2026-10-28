@@ -18,6 +18,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../helpers/an_empty_drawing_row.dart';
 
 void main() {
   Layer layerOf(EditorSessionManager s, LayerId id) =>
@@ -29,11 +30,11 @@ void main() {
     addTearDown(s.dispose);
     s.createDrawingAtCurrentFrame();
     final aId = s.activeLayer!.id;
-    s.layerStack.addLayer();
+    addAnEmptyDrawingRow(s);
     final bId = s.activeLayer!.id;
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.layerStack.addLayer();
+    addAnEmptyDrawingRow(s);
     final cId = s.activeLayer!.id;
     return (s, aId, bId, cId);
   }

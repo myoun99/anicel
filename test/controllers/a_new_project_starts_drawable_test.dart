@@ -137,8 +137,8 @@ void main() {
     });
 
     test('the row ＋ layer makes in it is the row a project starts with — '
-        'its name, its kind, its label, and no cel', () {
-      final session = sessionOn(createDefaultProject());
+        'its name, its kind, its label, and its first cel (I-138)', () {
+      final session = sessionOn(newUntitledProject());
       final projects = drawingRows(session.requireActiveCut).single;
 
       session.cutVerbs.createCut();
@@ -156,8 +156,28 @@ void main() {
         reason: 'LIVENESS — its kind\'s label (F-76), not two bare rows '
             'agreeing',
       );
-      expect(added.frames, isEmpty);
-      expect(added.timeline, isEmpty);
+      expect(added.frames, hasLength(1));
+      expect(
+        added.frames.single.id,
+        isNot(projects.frames.single.id),
+        reason: 'a cel of its own',
+      );
+      expect(
+        (added.frames.single.name, added.frames.single.duration),
+        (projects.frames.single.name, projects.frames.single.duration),
+      );
+      expect(added.frames.single.strokes, isEmpty);
+      expect(
+        [
+          for (final entry in added.timeline.entries)
+            (entry.key, entry.value.length, entry.value.ghost),
+        ],
+        [
+          for (final entry in projects.timeline.entries)
+            (entry.key, entry.value.length, entry.value.ghost),
+        ],
+        reason: 'where the cel stands and for how long — layer A\'s',
+      );
     });
 
     test('one undo takes it back', () {
@@ -168,6 +188,53 @@ void main() {
       session.undo();
 
       expect(session.activeTrack.cuts, hasLength(cuts));
+    });
+  });
+
+  // 🗣️I-138 (유저 2026-10-28): 「애니메이션 레이어 생성시 기본값을 프레임
+  // 없는 상태에서 프레임 1개 생성되는걸로 변경. 프로젝트 생성시에만 지금
+  // 그렇게 되있으니 법 통일」.
+  group('an animation row Add Layer makes', () {
+    test('is born with ONE cel on the cut\'s first frame, one comma — '
+        'where layer A\'s is, wherever the playhead stands', () {
+      final session = sessionOn(newUntitledProject());
+      session.selectFrameIndex(5);
+      final before = {
+        for (final layer in session.requireActiveCut.layers) layer.id,
+      };
+
+      session.layerStack.addLayer();
+
+      final added = session.requireActiveCut.layers.singleWhere(
+        (layer) => !before.contains(layer.id),
+      );
+      expect(added.kind, LayerKind.animation, reason: '⛔전제');
+      final cel = added.frames.single;
+      expect(cel.strokes, isEmpty);
+      expect(cel.name, isNull, reason: 'an unnamed drawing, as ＋ makes one');
+      expect(
+        [
+          for (final entry in added.timeline.entries)
+            if (!entry.value.ghost) (entry.key, entry.value.length),
+        ],
+        [(0, 1)],
+      );
+      expect(added.timeline[0]!.frameId, cel.id);
+    });
+
+    test('one undo takes the row and its cel back, and a redo brings the '
+        'same cel', () {
+      final session = sessionOn(newUntitledProject());
+      final layers = session.requireActiveCut.layers.length;
+
+      session.layerStack.addLayerOfKind(LayerKind.animation);
+      final cel = session.activeLayer!.frames.single.id;
+      session.undo();
+
+      expect(session.requireActiveCut.layers, hasLength(layers));
+
+      session.redo();
+      expect(session.activeLayer!.frames.single.id, cel);
     });
   });
 }

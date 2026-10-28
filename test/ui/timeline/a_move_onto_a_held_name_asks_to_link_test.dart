@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/range_move_asking_first.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🚨F-413 (유저 2026-10-19): 「A의 1,2라는 프레임이있고, B의 3,1이라는
 /// 프레임있을때, A1,A2를 B행으로 옮기면 1이라는 이름의 그림이 두개존재함.
@@ -57,7 +58,7 @@ void main() {
   })
   heldOverB(EditorSessionManager s) {
     final a = s.activeLayer!.id;
-    s.layerStack.addLayer();
+    addAnEmptyDrawingRow(s);
     final b = s.activeLayer!.id;
     final a1 = drawNamed(s, a, 0, '1');
     final a2 = drawNamed(s, a, 1, '2');
@@ -153,7 +154,7 @@ void main() {
     test('in a 겸용 cut, a name only the other cut shows asks too', () {
       final cut1 = s.requireActiveCut.id;
       final aIn1 = s.activeLayer!.id;
-      s.layerStack.addLayer();
+      addAnEmptyDrawingRow(s);
       final bIn1 = s.activeLayer!.id;
       final held = drawNamed(s, bIn1, 0, '1');
       s.cutVerbs.createLinkedCutFromActiveCut();

@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 import '../../helpers/onion_ghosts.dart';
 import '../../helpers/placement_reading.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// canvas-follows-block-moves — 유저 2026-09-28: 「따라가게 — 끄는 동안
 /// 캔버스도 바뀐다」.
@@ -82,7 +83,7 @@ void main() {
     final a = session.activeLayer!.id;
     session.selectFrameIndex(3);
     session.createDrawingAtCurrentFrame();
-    session.layerStack.addLayer();
+    addAnEmptyDrawingRow(session);
     final b = session.activeLayer!.id;
     session.createDrawingAtCurrentFrame();
     session.selectLayer(a);
@@ -556,10 +557,10 @@ void main() {
       final session = open();
       session.createDrawingAtCurrentFrame();
       final a = session.activeLayer!.id;
-      session.layerStack.addLayer();
+      addAnEmptyDrawingRow(session);
       final b = session.activeLayer!.id;
       session.createDrawingAtCurrentFrame();
-      session.layerStack.addLayer();
+      addAnEmptyDrawingRow(session);
       final c = session.activeLayer!.id;
       final aCel = celAt(session, a, 0);
       final bCel = celAt(session, b, 0);

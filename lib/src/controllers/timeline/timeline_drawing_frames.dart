@@ -242,16 +242,31 @@ typedef DrawingToMake = ({
   String? seName,
 });
 
+/// [row] as a drawing row is BORN: with its first cel — one comma on its
+/// cut's first frame, unnamed — the ＋ press made there before anyone has
+/// pressed ([layerWithDrawingFrameAt]), not a second way to spell a drawing.
+///
+/// F-211 (유저 2026-09-28) gave a new project's layer A this cel: 「1번인덱스에
+/// 프레임도 만들어서 키자마자 그리는게 가능하도록」. 🗣️I-138 (유저 2026-10-28)
+/// gave it to every animation row Add Layer makes: 「애니메이션 레이어
+/// 생성시 기본값을 프레임 없는 상태에서 프레임 1개 생성되는걸로 변경.
+/// 프로젝트 생성시에만 지금 그렇게 되있으니 법 통일」. ↩️A row Add Layer made
+/// was empty cells only.
+Layer layerBornWithItsFirstCel(Layer row, FrameId frameId) =>
+    layerWithDrawingFrameAt(row, 0, (
+      frameId: frameId,
+      length: 1,
+      name: null,
+      seName: null,
+    ));
+
 /// [before] with a drawing made at [frameIndex] — THE ONE BODY of the ＋
 /// press ([_TimelineDrawingFrames.createDrawingFrameForLayer]), as an edit
 /// of a row: the divide-a-held-block rule, the push at a head, the ghost
 /// shed and the clamp.
 ///
-/// A function as well as a verb because a row can be BORN with a drawing —
-/// F-211 (유저 2026-09-28): 「1번인덱스에 프레임도 만들어서 키자마자 그리는게
-/// 가능하도록」. The new project's first cel is this press made on a row that
-/// has not been pressed yet (`newUntitledProject`), not a second way to
-/// spell a drawing.
+/// A function as well as a verb because a row can be BORN with a drawing
+/// ([layerBornWithItsFirstCel]).
 ///
 /// ⛔It asks nothing: whether the cell MAY take a drawing is
 /// [_TimelineDrawingFrames.canCreateDrawingAt]'s, asked before it. The

@@ -13,6 +13,7 @@ import 'package:anicel/src/services/project_lookup.dart' show requireLayer;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/block_naming.dart';
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/an_empty_drawing_row.dart';
 
 /// 🗣️I-18 — 자동 이름 지정, said of the TIMELINE (유저): 「대상은 선택된
 /// 블록들(컷이나 프레임)이 있으면 선택한 대상만. 없으면 현재 인덱스에 위치한
@@ -124,7 +125,7 @@ void main() {
     final first = s.activeLayerId!;
     drawn(s, 0, 'a');
     drawn(s, 1, 'b');
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     final second = s.activeLayerId!;
     drawn(s, 0, 'c');
     drawn(s, 1, 'd');
@@ -168,7 +169,7 @@ void main() {
     s.selectFrameIndex(0);
     expect(namingOf(s).timelineTargets, isNotNull, reason: 'the block');
 
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     s.selectFrameIndex(0);
     expect(namingOf(s).timelineTargets, isNull, reason: 'an empty cell');
   });
@@ -419,7 +420,7 @@ void main() {
     drawn(s, 0, 'a');
     drawn(s, 1, 'b');
     drawn(s, 2, 'c');
-    s.layerStack.addLayerOfKind(LayerKind.animation);
+    addAnEmptyDrawingRow(s);
     final second = s.activeLayerId!;
     drawn(s, 0, 'd');
     drawn(s, 1, 'e');

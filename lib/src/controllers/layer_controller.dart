@@ -171,7 +171,12 @@ class LayerController {
     _activeLayerId = layerId;
   }
 
-  void addLayer({required Layer layer, int? insertionIndex}) {
+  /// [bornWithACel]: see `planAddLayersCommandInput`.
+  void addLayer({
+    required Layer layer,
+    int? insertionIndex,
+    bool bornWithACel = false,
+  }) {
     final cutId = _cutId;
     if (cutId == null) {
       return; // Gap state: nowhere to add (the UI stands down too).
@@ -185,6 +190,7 @@ class LayerController {
         cutId: cutId,
         layer: layer,
         insertionIndex: insertionIndex ?? insertionIndexAboveActiveLayer(),
+        bornWithACel: bornWithACel,
       ),
     );
     _activeLayerId = layer.id;
