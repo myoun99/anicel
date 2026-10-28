@@ -99,6 +99,18 @@ void main() {
     expect(_window, findsNothing);
   });
 
+  testWidgets('a test that hands none in sees no notice — and reads no '
+      'settings file for one', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(_window, findsNothing);
+  });
+
   testWidgets('it waits for the saved language and opens in it', (
     tester,
   ) async {
