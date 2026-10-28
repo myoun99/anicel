@@ -426,11 +426,14 @@ void main() {
       for (final row in ['rider', 'a1']) {
         session.onionSkin.toggleLayerOnionSkin(LayerId(row));
       }
-      final ghosts = session.onionSkin.ghostsAt(session.requireActiveCut, 1);
+      final ghosts = session.onionSkin.ghostsAt(
+        session.requireActiveCut,
+        1,
+        null,
+      );
       List<EffectKind> ghostOf(String row) => [
-        for (final ghost in ghosts)
-          if (ghost.frameKey.layerId == LayerId(row))
-            for (final effect in ghost.effects) effect.kind,
+        for (final ghost in [...?ghosts[LayerId(row)]])
+          for (final effect in ghost.effects) effect.kind,
       ];
       expect(
         ghostOf('rider'),
