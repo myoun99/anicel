@@ -678,23 +678,31 @@ void main() {
       pen(),
     ];
 
-    /// The frame laid whole, with nothing held — its texels over [rect].
-    Future<Uint8List> laidWhole(Rect rect) async {
-      final whole = frame(blurred(), live: stroke, page: page, cels: cels);
+    /// [nodes]' frame laid whole, with nothing held — read over a rect.
+    Future<Uint8List Function(Rect rect)> laidWholeOf(
+      List<CompositeNode<CanvasStackRow>> nodes,
+    ) async {
+      final whole = frame(nodes, live: stroke, page: page, cels: cels);
       final extent = whole.drawing.extent;
       expect(extent.left % 16, isNot(0), reason: '⛔premise: off the grid');
       final all = await drawn(whole, extent);
       final width = extent.width.ceil();
-      final left = (rect.left - extent.left).toInt();
-      final top = (rect.top - extent.top).toInt();
-      return Uint8List.fromList([
-        for (var y = top; y < top + rect.height.toInt(); y += 1)
-          ...all.sublist(
-            (y * width + left) * 4,
-            (y * width + left + rect.width.toInt()) * 4,
-          ),
-      ]);
+      return (Rect rect) {
+        final left = (rect.left - extent.left).toInt();
+        final top = (rect.top - extent.top).toInt();
+        return Uint8List.fromList([
+          for (var y = top; y < top + rect.height.toInt(); y += 1)
+            ...all.sublist(
+              (y * width + left) * 4,
+              (y * width + left + rect.width.toInt()) * 4,
+            ),
+        ]);
+      };
     }
+
+    /// The frame laid whole, with nothing held — its texels over [rect].
+    Future<Uint8List> laidWhole(Rect rect) async =>
+        (await laidWholeOf(blurred()))(rect);
 
     for (final (name, at, cells) in [
       ('beside the edge the blur spills over', const Rect.fromLTWH(258, 84, 13, 11), 1),
@@ -725,6 +733,62 @@ void main() {
         );
         expect(again.rasters, 0);
         expect(again.pixels, stepped.pixels);
+      });
+    }
+
+    // 🚨A STEP DRAWN WITH NOTHING HELD READS AS FAR AS THE FRAME (card
+    // a-step-drawn-in-place-reads-short-of-the-one-picture, 2026-10-28): a
+    // row blurred on its own in the blurred folder, beside the step's
+    // edge, was 12 to 47/255 off the frame laid whole — the walk stood in
+    // the step alone, and the row's buffer grew by its own spread, short
+    // of what the folder reads past it.
+    for (final (folderBlur, rowBlur) in <(double, double?)>[
+      (8, 1),
+      (8, 2),
+      (30, 1),
+      (30, null),
+      (8, null),
+    ]) {
+      final row = rowBlur == null ? 'a row' : 'a row blurred $rowBlur';
+      test('a step drawn with nothing held is the frame laid whole — $row in '
+          'a folder blurred $folderBlur', () async {
+        final nodes = [
+          rowOf('far'),
+          folder(
+            [
+              CompositeLeaf<CanvasStackRow>(
+                CanvasLayerImageRequest(
+                  frameKey: cel('below'),
+                  opacity: 1,
+                  effects: [
+                    if (rowBlur != null)
+                      ResolvedLayerEffect(
+                        kind: EffectKind.blur,
+                        values: [rowBlur, 0],
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            effects: [
+              ResolvedLayerEffect(kind: EffectKind.blur, values: [folderBlur, 0]),
+            ],
+          ),
+          pen(),
+        ];
+        final whole = await laidWholeOf(nodes);
+        // Across the folder's spread over the cells' edge, x = 256.
+        for (var x = 256.0; x <= 290; x += 2) {
+          final at = Rect.fromLTWH(x, 84, 13, 11);
+          expect(
+            await drawn(
+              frame(nodes, live: stroke, page: page, cels: cels),
+              at,
+            ),
+            whole(at),
+            reason: 'a step at x = $x',
+          );
+        }
       });
     }
   });

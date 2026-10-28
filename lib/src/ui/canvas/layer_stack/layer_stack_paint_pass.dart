@@ -347,7 +347,17 @@ class _LayerStackPaintPass {
 
   void _paintFrame(Canvas into) {
     final reach = _reachOf(into, Rect.largest);
-    _standInTheWorld(within: reach);
+    // 🚨As far past what is drawn as the frame's chains read, as the cells
+    // stand ([_paintCells]): a step's patch stood in the patch alone, and a
+    // row blurred on its own in a blurred folder beside its edge was 12 to
+    // 47/255 off the frame laid whole — the row's buffer grew by its own
+    // spread, short of what the folder reads past it (card a-step-drawn-
+    // in-place-reads-short-of-the-one-picture, 2026-10-29).
+    _standInTheWorld(
+      within: reach.inflate(
+        readsPastOf(_rootNodes, paper: _painter.canvasSize.canvasRect),
+      ),
+    );
     final extent = wholeLevelPixelsOutward(_contentExtent, 0);
     if (extent.isEmpty) {
       return;
