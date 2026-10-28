@@ -1146,7 +1146,7 @@ void main() {
   /// effects naming the copies of the rows they named.
   /// `_LayerStackPainter._whereTheRowShows` went under as each node it
   /// stands in came to be asked of by `_whereItShowsIn`. 🔬`clean_code_diff`
-  /// against master (`32c32632f`, at 413) named those four added and that
+  /// against master (`2a9750ac3`, at 413) named those four added and that
   /// one gone. ⛔Not split to fit: each is one table — of a node's kinds,
   /// of what every row a chain's write reaches takes, of a member's copy
   /// field for field.
@@ -1520,7 +1520,7 @@ void main() {
   /// shows): the rows painted afresh into the step that reads them
   /// (`_painterOf`), the reader handed them (`_reading`), and the pen's
   /// cells kept through it. 🔬`clean_code_diff` against master
-  /// (`32c32632f`) names this one and no other class. ⛔Not split to fit:
+  /// (`2a9750ac3`) names this one and no other class. ⛔Not split to fit:
   /// the walk is one recursion over the tree, and a node that reads rows is
   /// one more kind of node in it.
   const longClasses = 79;
