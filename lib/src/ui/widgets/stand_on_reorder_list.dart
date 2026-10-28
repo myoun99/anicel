@@ -150,39 +150,42 @@ class _StandOnReorderListState extends State<StandOnReorderList> {
       });
     },
     onReorderItem: widget.onReorderItem,
-    itemBuilder: (context, index) {
-      Widget grip(Widget handle) => widget.canMove(index)
-          ? dismissTooltipsOnPress(
-              // ⛔The Builder is here for its CONTEXT, as the brush cell's
-              // is: the predicate needs the handle's own box.
-              Builder(
-                builder: (handleContext) => _StandOnDragStartListener(
-                  index: index,
-                  stillOnTheThing: (global) =>
-                      pointerIsStillOn(handleContext, global),
-                  // The WHOLE handle is stood on, its empty room too — a
-                  // press anywhere on it is its own ([ControlPressClaim]),
-                  // and a palette's name is shorter than the row it stands
-                  // in. Measured: a drag begun beside the name's last
-                  // letter never reached the listener.
-                  child: Listener(
-                    behavior: HitTestBehavior.opaque,
-                    child: handle,
-                  ),
-                ),
-              ),
-            )
-          : handle;
-      return KeyedSubtree(
-        key: widget.entryKeyOf(index),
-        child: widget.itemBuilder(
-          context,
-          index,
-          StandOnRow._(reordering: _reordering, grip: grip),
-        ),
-      );
-    },
+    itemBuilder: _row,
   );
+
+  /// Row [index], gripped where it says ([StandOnRow.grip]).
+  Widget _row(BuildContext context, int index) => KeyedSubtree(
+    key: widget.entryKeyOf(index),
+    child: widget.itemBuilder(
+      context,
+      index,
+      StandOnRow._(
+        reordering: _reordering,
+        grip: (handle) => _grip(index, handle),
+      ),
+    ),
+  );
+
+  /// [handle] as what row [index] is moved by — when it moves at all.
+  Widget _grip(int index, Widget handle) => widget.canMove(index)
+      ? dismissTooltipsOnPress(
+          // ⛔The Builder is here for its CONTEXT, as the brush cell's is:
+          // the predicate needs the handle's own box.
+          Builder(
+            builder: (handleContext) => _StandOnDragStartListener(
+              index: index,
+              stillOnTheThing: (global) =>
+                  pointerIsStillOn(handleContext, global),
+              // The WHOLE handle is stood on, its empty room too — a press
+              // anywhere on it is its own ([ControlPressClaim]), and a
+              // palette's name is shorter than the row it stands in.
+              // Measured: a drag begun beside the name's last letter never
+              // reached the listener.
+              child: Listener(behavior: HitTestBehavior.opaque, child: handle),
+            ),
+          ),
+        )
+      : handle;
 }
 
 /// A row's reorder, started by the brush cell's own recogniser.

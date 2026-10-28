@@ -824,6 +824,41 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
     );
   }
 
+  /// The recent colours over the palettes, standing still while they move.
+  Widget _header(_Hands hands) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _top(),
+      Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 4),
+        child: Text(
+          AppText.strings.colorRecent,
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      ),
+      _RecentPlaces(hands: hands),
+    ],
+  );
+
+  /// [palette]: its name row, and its places unless it is folded.
+  Widget _entry(NamedPalette palette, StandOnRow row, _Hands hands) =>
+      // No tooltip while a palette is carried — see StandOnReorderList.
+      TooltipVisibility(
+        visible: !row.reordering,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _head(palette, row),
+            if (!palette.folded)
+              _PalettePlaces(
+                palette: palette,
+                view: widget.palettes.view,
+                hands: hands,
+              ),
+          ],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final palettes = widget.palettes;
@@ -846,20 +881,7 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
       child: StandOnReorderList(
         listKey: const ValueKey<String>('palette-panel'),
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        header: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _top(),
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 4),
-              child: Text(
-                AppText.strings.colorRecent,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
-            _RecentPlaces(hands: hands),
-          ],
-        ),
+        header: _header(hands),
         itemCount: listed.length,
         entryKeyOf: (index) => ValueKey<String>('palette-${listed[index].id}'),
         canMove: (_) => true,
@@ -871,25 +893,8 @@ class _ColorPalettesPanelState extends State<ColorPalettesPanel> {
           );
           _change((now) => now.moved(listed[from].id, anchor?.id));
         },
-        itemBuilder: (context, index, row) {
-          final palette = listed[index];
-          // No tooltip while a palette is carried — see StandOnReorderList.
-          return TooltipVisibility(
-            visible: !row.reordering,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _head(palette, row),
-                if (!palette.folded)
-                  _PalettePlaces(
-                    palette: palette,
-                    view: palettes.view,
-                    hands: hands,
-                  ),
-              ],
-            ),
-          );
-        },
+        itemBuilder: (context, index, row) =>
+            _entry(listed[index], row, hands),
       ),
     );
   }

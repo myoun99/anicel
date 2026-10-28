@@ -1103,7 +1103,11 @@ void main() {
   /// ⚠️415 → 414 on 2026-10-28, following one down (I-132-Q12 b):
   /// `_effectBox` went under the line as a point's cross came beside a cel
   /// number's box — the wide signatures' note names the two halves.
-  const longBodies = 414;
+  ///
+  /// ⚠️414 → 413 on 2026-10-28, following one down (I-131): the brush
+  /// rail's `_buildRailFresh` went with its reorderable list into
+  /// `StandOnReorderList`, which the palette panel stands on too.
+  const longBodies = 413;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
