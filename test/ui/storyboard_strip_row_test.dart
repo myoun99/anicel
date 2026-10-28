@@ -758,7 +758,7 @@ void main() {
       // 2026-10-08). ↩️The rail's own label stood there, lit by the key its
       // other rows still wear.
       expect(
-        find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        find.named('storyboard-selected-row'),
         findsNothing,
         reason: 'no other row of the rail is lit',
       );

@@ -131,9 +131,9 @@ void main() {
         of: find.byKey(
           const ValueKey<String>('storyboard-track-label-row-sb-se-track'),
         ),
-        matching: find.byKey(
-          const ValueKey<String>('storyboard-selected-row'),
-        ),
+        // The lit row's name is on the row's own plate.
+        matching: find.named('storyboard-selected-row'),
+        matchRoot: true,
       ),
       findsOneWidget,
     );
@@ -157,7 +157,7 @@ void main() {
     // ONE row is selected, never two: the V row let go the moment the S
     // row took it.
     expect(
-      find.byKey(const ValueKey<String>('storyboard-selected-row')),
+      find.named('storyboard-selected-row'),
       findsNothing,
     );
     expect(find.named('storyboard-selected-layer'), findsOneWidget);

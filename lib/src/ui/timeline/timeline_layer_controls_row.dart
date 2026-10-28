@@ -24,6 +24,7 @@ import 'berth_row.dart';
 import 'layer_rail_columns.dart';
 import 'rail_eyes.dart';
 import '../widgets/rail_glyph_button.dart';
+import '../widgets/row_plate.dart';
 import 'timeline_double_tap.dart'
     show TimelineLabelDoubleClick, timelineLabelDoubleTapDetector;
 import '../text/app_strings.dart' show AppText;
@@ -465,43 +466,37 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// selection speaks through the background alone; only the buttons may
   /// brighten.
   ///
-  /// 🚨NAMES, NOT KEYS (I-57, 10-13): the row's handles are [Named]s. A
+  /// 🚨NAMES, NOT KEYS (I-57, 10-13): the row's handles are names
+  /// ([NamesItself] — the tap hold and the plate wear theirs). A
   /// key spelled from the layer made a cut switch remount the row, and the
   /// selected row's key — there while the row was active, gone when it was
   /// not — remade the row's whole content whenever the selection moved.
-  Widget _surface(BuildContext context, ColorScheme colorScheme) => Named(
-    _rowName,
-    child: ArenaTapHold(
-      child: Container(
-        width: _size.width,
-        height: _size.height,
-        padding: _padding,
-        decoration: _plate(colorScheme),
-        child: Named(
-          active ? '$keyPrefix-selected-layer' : null,
-          child: Semantics(
-            label: active ? 'selected layer' : 'layer',
-            container: true,
-            explicitChildNodes: true,
-            // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
-            // shared skeleton in the shared order at the shared extents,
-            // running downward: the same list the rail's rows and the
-            // legend above read.
-            child: Flex(
-              direction: axis,
-              crossAxisAlignment: _crossAxisAlignment,
-              children: [
-                ..._leadingCells(context),
-                ?_depthGuides(colorScheme),
-                _nameArea(context, colorScheme),
-                ..._trailingCells(context, colorScheme),
-              ],
-            ),
+  Widget _surface(BuildContext context, ColorScheme colorScheme) =>
+      ArenaTapHold(
+        name: _rowName,
+        child: RowPlate(
+          name: active ? '$keyPrefix-selected-layer' : null,
+          width: _size.width,
+          height: _size.height,
+          padding: _padding,
+          decoration: _plate(colorScheme),
+          label: active ? 'selected layer' : 'layer',
+          // R10 R6 — THE RAIL ROW, STOOD UP. The sheet's column is the
+          // shared skeleton in the shared order at the shared extents,
+          // running downward: the same list the rail's rows and the legend
+          // above read.
+          child: Flex(
+            direction: axis,
+            crossAxisAlignment: _crossAxisAlignment,
+            children: [
+              ..._leadingCells(context),
+              ?_depthGuides(colorScheme),
+              _nameArea(context, colorScheme),
+              ..._trailingCells(context, colorScheme),
+            ],
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   /// `timeline-folder-row-…` / `xsheet-layer-row-…`: the kind's word and the
   /// surface's word, one grammar.

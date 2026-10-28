@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/input/arena_tap_hold.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerMarkEdit;
 import 'package:anicel/src/models/layer.dart';
@@ -9,13 +11,14 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
-    show noOptionalRailColumns;
+    show layerRailEndPadding, noOptionalRailColumns;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:anicel/src/ui/widgets/row_plate.dart';
 import '../helpers/app_icon_button_probe.dart';
 import '../helpers/named_finders.dart';
 
@@ -103,15 +106,13 @@ void main() {
       final layer = _layer();
 
       Border borderOf() {
-        final container = tester.widget<Container>(
-          find
-              .descendant(
-                of: find.named('timeline-layer-row-${layer.id}'),
-                matching: find.byType(Container),
-              )
-              .first,
+        final plate = tester.widget<RowPlate>(
+          find.descendant(
+            of: find.named('timeline-layer-row-${layer.id}'),
+            matching: find.byType(RowPlate),
+          ),
         );
-        return (container.decoration! as BoxDecoration).border! as Border;
+        return plate.decoration!.border! as Border;
       }
 
       await tester.pumpWidget(_row(layer: layer));
@@ -271,6 +272,61 @@ void main() {
         find.named('timeline-selected-layer'),
         findsNothing,
       );
+    });
+
+    testWidgets('the row stands on ONE plate: the tap hold wears the row\'s '
+        'name, the plate holds the slots inside its borders and says the '
+        'row\'s node over them (card frame-panels-build-in-one-frame)', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final layer = _layer();
+      final row = find.named('timeline-layer-row-${layer.id}');
+      final plate = find.descendant(of: row, matching: find.byType(RowPlate));
+      final slots = find.descendant(of: plate, matching: find.byType(Flex));
+
+      Widget? parentOf(Finder finder) {
+        Widget? parent;
+        tester.element(finder).visitAncestorElements((element) {
+          parent = element.widget;
+          return false;
+        });
+        return parent;
+      }
+
+      // Where a screen reader is told the node stands — up to the view,
+      // whose own transform is the device's pixel ratio.
+      Rect placeOf(SemanticsNode node) {
+        var rect = node.rect;
+        for (var at = node; at.parent != null; at = at.parent!) {
+          if (at.transform case final transform?) {
+            rect = MatrixUtils.transformRect(transform, rect);
+          }
+        }
+        return rect;
+      }
+
+      await tester.pumpWidget(_row(layer: layer));
+      expect(tester.widget(row), isA<ArenaTapHold>());
+      expect(parentOf(plate), isA<ArenaTapHold>());
+      expect(parentOf(slots.first), isA<RowPlate>());
+      expect(
+        tester.getRect(slots.first),
+        const EdgeInsets.fromLTRB(
+          timelineLayerRowLeadingBorder,
+          0,
+          layerRailEndPadding + 1,
+          1,
+        ).deflateRect(tester.getRect(plate)),
+        reason: 'the borders and the end padding stand the slots in',
+      );
+      final node = tester.getSemantics(plate);
+      expect(node.label, 'layer');
+      expect(placeOf(node), tester.getRect(slots.first));
+
+      await tester.pumpWidget(_row(layer: layer, active: true));
+      expect(tester.getSemantics(plate).label, 'selected layer');
+      semantics.dispose();
     });
 
     testWidgets('tapping timesheet toggle reports the layer', (tester) async {

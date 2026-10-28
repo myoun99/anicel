@@ -165,6 +165,7 @@ import 'timeline/transform_lane_policy.dart'
         transformGroupHeaderLane;
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
+import 'widgets/row_plate.dart';
 import 'timeline/timeline_beat_lines.dart'
     show
         TimelineGridDash,
@@ -3086,8 +3087,12 @@ class _StoryboardLabelShell extends StatelessWidget {
       // holds a tap in the arena so scroll slop over a row behaves the way
       // it always has. A display-only row holds none, inert as it was.
       holds: onTap != null,
-      child: Container(
+      // The timeline row's plate too. The lit row is a NAME, as the
+      // timeline's is (I-57): a key there while the row was lit, gone when
+      // it was not, remade the row's content whenever the selection moved.
+      child: RowPlate(
         key: rowKey,
+        name: active ? 'storyboard-selected-row' : null,
         width: StoryboardPanel.railWidthIn(context),
         height: height,
         padding: const EdgeInsets.only(right: layerRailEndPadding),
@@ -3103,15 +3108,8 @@ class _StoryboardLabelShell extends StatelessWidget {
                   bottom: BorderSide(color: colorScheme.outlineVariant),
                 ),
               ),
-        child: Semantics(
-          key: active
-              ? const ValueKey<String>('storyboard-selected-row')
-              : null,
-          label: semanticsLabel,
-          container: true,
-          explicitChildNodes: true,
-          child: child,
-        ),
+        label: semanticsLabel,
+        child: child,
       ),
     );
   }

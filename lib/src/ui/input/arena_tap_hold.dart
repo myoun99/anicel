@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../widgets/named.dart';
 import 'recognizer_box.dart';
 
 /// A ROW BODY'S TAP: held in the gesture arena and answered with nothing —
@@ -22,8 +23,20 @@ import 'recognizer_box.dart';
 /// win outside its columns nothing. It keeps the arena the `InkWell` left
 /// when the pick moved off it (T10, 2026-08-14) — a tap the row answers with
 /// nothing, which a tap of an ancestor's would lose to.
-class ArenaTapHold extends RecognizerBox<TapGestureRecognizer> {
-  const ArenaTapHold({super.key, this.holds = true, required super.child});
+///
+/// It carries the row's [name] itself, where a [Named] over it was one
+/// element more a row (card frame-panels-build-in-one-frame, 2026-10-28).
+class ArenaTapHold extends RecognizerBox<TapGestureRecognizer>
+    implements NamesItself {
+  const ArenaTapHold({
+    super.key,
+    this.name,
+    this.holds = true,
+    required super.child,
+  });
+
+  @override
+  final String? name;
 
   /// False holds nothing — a display-only row stays inert, as an `InkWell`
   /// with no `onTap` left it.

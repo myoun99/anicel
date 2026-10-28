@@ -195,7 +195,9 @@ void main() {
         of: find.byKey(
           const ValueKey<String>('storyboard-track-label-row-cells-track'),
         ),
-        matching: find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        // The lit row's name is on the row's own plate.
+        matching: find.named('storyboard-selected-row'),
+        matchRoot: true,
       ),
       findsOneWidget,
     );
@@ -207,5 +209,5 @@ void main() {
 /// timeline row's marker, the V row and a headless row the rail's own.
 int _litRows() =>
     find.named('storyboard-selected-layer').evaluate().length +
-    find.byKey(const ValueKey<String>('storyboard-selected-row')).evaluate()
+    find.named('storyboard-selected-row').evaluate()
         .length;

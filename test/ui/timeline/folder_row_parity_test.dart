@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show layerRailNameIndent;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/widgets/row_plate.dart';
 
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/named_finders.dart';
@@ -169,15 +170,13 @@ void main() {
     expect(selected, const LayerId('f'));
 
     Color? rowColor(WidgetTester tester) {
-      final container = tester.widget<Container>(
-        find
-            .descendant(
-              of: find.named('timeline-folder-row-f'),
-              matching: find.byType(Container),
-            )
-            .first,
+      final plate = tester.widget<RowPlate>(
+        find.descendant(
+          of: find.named('timeline-folder-row-f'),
+          matching: find.byType(RowPlate),
+        ),
       );
-      return (container.decoration! as BoxDecoration).color;
+      return plate.decoration!.color;
     }
 
     final resting = rowColor(tester);
