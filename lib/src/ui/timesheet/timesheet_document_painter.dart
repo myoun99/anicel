@@ -29,7 +29,8 @@ import '../text/vertical_writing.dart'
 import '../canvas/display_resample.dart' show displayScaleOf;
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
-import '../text/word_condensation.dart' show paintScaledText;
+import '../text/word_condensation.dart'
+    show WordFit, paintScaledText, wordCondensation;
 import '../theme/app_theme.dart';
 import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/se_crossing_mark_painter.dart';
@@ -39,6 +40,7 @@ import '../timeline/timeline_cut_end_handle.dart'
 import '../timeline/timeline_drag_preview.dart';
 import '../timeline/timeline_frame_ruler_painter.dart'
     show timelineRulerSecondsLabel;
+import '../timeline/timeline_glyph_cache.dart' show timelineWordSetOnto;
 import '../repaint_props.dart';
 import '../sheet/sheet_image_cache.dart' show SheetImageLookup;
 import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
@@ -1162,3 +1164,48 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
     effectiveRatio,
   );
 }
+
+/// A column's title — its row's name — in [style] set onto [room], the
+/// column's width less its margin, by the block word's law
+/// ([timelineWordSetOnto]): its letter gaps give way first, then it
+/// narrows — and where it would narrow past [columnTitleNarrowest], it is
+/// cut short with 「…」 to as much of it as narrows no further.
+///
+/// 🗣️F-500 (유저 2026-10-29): 「이름칸에서 글자 2개까지만 보이고 넘어가면
+/// ...이렇게 생략되는데, 전각 기준 3글자까지 보이도록. 그 후론 글자수
+/// 작게하면서 버티다가 임계점넘어가면 ...으로 생략」 — Q2 b 「블록 글자의 법으로
+/// — 크기는 그대로, 가로만 좁힌다」. ↩️It was cut short at its size as it ran
+/// past the column, so three full-width letters showed two.
+({TextPainter glyph, WordFit fit}) columnTitleSetOnto(
+  String label,
+  TextStyle style,
+  double room,
+) {
+  ({TextPainter glyph, WordFit fit}) setOnto(String text) {
+    final glyph = timelineWordSetOnto(text, style, room).glyph;
+    return (
+      glyph: glyph,
+      fit: (x: wordCondensation(extent: glyph.width, room: room), y: 1.0),
+    );
+  }
+
+  final whole = setOnto(label);
+  if (whole.fit.x >= columnTitleNarrowest) {
+    return whole;
+  }
+  final letters = label.runes.toList();
+  for (var kept = letters.length - 1; kept > 0; kept -= 1) {
+    final short = setOnto('${String.fromCharCodes(letters.take(kept))}…');
+    if (short.fit.x >= columnTitleNarrowest) {
+      return short;
+    }
+  }
+  return setOnto('…');
+}
+
+/// How far a column's title narrows before it is cut short
+/// ([columnTitleSetOnto]): to half — the mark the question put
+/// (🗣️F-500-Q2 b: 「좁힘이 절반(50%)보다 더 가야 하면 「…」 — 절반은 내
+/// 제안이고 숫자는 바꿔도 된다」), answered as it was put. Only a column's
+/// title stops there: a block's word narrows on and is never cut.
+const double columnTitleNarrowest = 0.5;
