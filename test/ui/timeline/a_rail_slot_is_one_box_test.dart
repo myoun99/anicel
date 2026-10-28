@@ -1,9 +1,14 @@
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart' show LayerFxState;
 import 'package:anicel/src/ui/input/control_press_claim.dart';
+import 'package:anicel/src/ui/input/value_control_pointers.dart'
+    show valueControlOwnsPointer;
 import 'package:anicel/src/ui/timeline/axis_turn.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
 import 'package:anicel/src/ui/timeline/row_control_surface.dart';
-import 'package:flutter/widgets.dart';
+import 'package:anicel/src/ui/widgets/rail_glyph_button.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Every slot of every rail row wears these two, so a wrapper that only
@@ -165,6 +170,101 @@ void main() {
         tester.getCenter(find.byKey(box)),
       ),
       isFalse,
+    );
+  });
+
+  testWidgets('a swipe column in its slot is ONE box: the slot, the claim '
+      'and the column it says', (tester) async {
+    const body = ValueKey<String>('body');
+    RailSwipeColumn? said;
+    bool? held;
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Align(
+          // Dispatch runs deepest-first, so the slot has spoken by the time
+          // a box above it hears the same press — as the rail does.
+          child: Listener(
+            onPointerDown: (down) {
+              said = railSwipeColumnPressedBy(down);
+              held = valueControlOwnsPointer(down.pointer);
+            },
+            child: layerRailSlot(
+              Axis.horizontal,
+              30,
+              RailSwipeColumnPointer(
+                column: RailSwipeColumn.fx,
+                child: Listener(
+                  key: body,
+                  behavior: HitTestBehavior.opaque,
+                  child: const SizedBox(height: 24),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(RailSwipeColumnPointer), findsNothing);
+    final slot = tester.element(find.byType(RailSwipeColumnSlot));
+    expect(only(slot).widget.key, body);
+    expect(
+      tester.renderObject(find.byType(RailSwipeColumnSlot)),
+      isA<RenderRowControlSurface>().having(
+        (box) => box is HoldsDragVerb,
+        'holds its drag',
+        isTrue,
+      ),
+    );
+    expect(
+      tester.getSize(find.byType(RailSwipeColumnSlot)),
+      const Size(30, 24),
+    );
+    expect(
+      RowControlSurface.covers(
+        tester.element(find.byType(Listener).first),
+        tester.getCenter(find.byKey(body)),
+      ),
+      isTrue,
+    );
+
+    final press = await tester.startGesture(tester.getCenter(find.byKey(body)));
+    expect(said, RailSwipeColumn.fx);
+    expect(held, isTrue);
+    await press.up();
+  });
+
+  testWidgets('the eye, the fx switch and the sheet toggle are their faces — '
+      'no box over them, and the size the box gave', (tester) async {
+    Future<void> check(Widget toggle, Size size) async {
+      await tester.pumpWidget(
+        MaterialApp(home: Align(child: toggle)),
+      );
+      final face = only(tester.element(find.byWidget(toggle)));
+      expect(face.widget, isA<RailGlyphButton>(), reason: '$toggle');
+      expect(tester.getSize(find.byWidget(toggle)), size, reason: '$toggle');
+    }
+
+    await check(
+      LayerVisibilityToggleButton(
+        name: 'eye',
+        isVisible: true,
+        onToggle: () {},
+      ),
+      const Size(layerVisibilitySlotWidth, 26),
+    );
+    await check(
+      FxToggleButton(name: 'fx', state: LayerFxState.on, onToggle: () {}),
+      const Size(layerFxSlotWidth, 26),
+    );
+    await check(
+      LayerTimesheetToggleButton(
+        keyPrefix: 'timeline',
+        layerId: const LayerId('a'),
+        onTimesheet: true,
+        onToggle: (_) {},
+      ),
+      const Size(layerTimesheetSlotWidth, layerTimesheetSlotWidth),
     );
   });
 

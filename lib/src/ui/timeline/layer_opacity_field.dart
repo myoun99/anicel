@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../widgets/field_slider.dart';
-import '../widgets/named.dart';
 import 'berth_row.dart';
 
 /// A layer row's opacity slider, live-following the session's drag preview
@@ -22,32 +21,29 @@ Widget layerOpacityField({
   void Function(LayerId layerId, double opacity)? onChangeEnd,
 }) {
   // 18 at 1×, and its digits' growth where it is shown ([FieldSlider
-  // .growthIn], text-scale-rail-rows).
-  Widget slider(double value) => Builder(
-    builder: (context) => Named(
-      '$keyPrefix-layer-opacity-${layer.id}',
-      child: FieldSlider.opacity(
-        axis: axis,
-        value: value,
-        height: 18 + FieldSlider.growthIn(context),
-        onChanged: (opacity) =>
-            onChanged(layerIdNow(context, layer.id), opacity),
-        onChangeEnd: onChangeEnd == null
-            ? null
-            : (opacity) => onChangeEnd(layerIdNow(context, layer.id), opacity),
-      ),
-    ),
+  // .growthIn], text-scale-rail-rows). Built under the context that holds
+  // it — the preview's builder's, or a [Builder]'s where there is none.
+  Widget slider(BuildContext context, double value) => FieldSlider.opacity(
+    name: '$keyPrefix-layer-opacity-${layer.id}',
+    axis: axis,
+    value: value,
+    height: 18 + FieldSlider.growthIn(context),
+    onChanged: (opacity) => onChanged(layerIdNow(context, layer.id), opacity),
+    onChangeEnd: onChangeEnd == null
+        ? null
+        : (opacity) => onChangeEnd(layerIdNow(context, layer.id), opacity),
   );
 
   // ↩️R27 #9 read the camera row's here, off the window's dim notifier,
   // until the dim became the row's own opacity (F-363).
   final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
   if (dragPreview == null) {
-    return slider(resting);
+    return Builder(builder: (context) => slider(context, resting));
   }
   return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
     valueListenable: dragPreview,
     builder: (context, dragging, _) => slider(
+      context,
       dragging != null &&
               dragging.layerIds.contains((BerthRow.of(context) ?? layer).id)
           ? dragging.opacity

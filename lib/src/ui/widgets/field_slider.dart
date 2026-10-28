@@ -17,6 +17,7 @@ import '../timeline/axis_turn.dart';
 import '../timeline/memo_token.dart' show ByList, Kept, keptWhileSame;
 import 'ground_ink_writing.dart';
 import 'keyboard_press.dart';
+import 'named.dart' show NamesItself;
 import 'number_pad.dart';
 import 'owning_axis_grip.dart';
 import 'rail_glyph_button.dart' show RailPlateButton;
@@ -76,9 +77,10 @@ typedef FieldSliderLevel = ({double value, Color color});
 /// ↩️It types again, never on a tap of the bar: through its pencil since
 /// 2026-10-10 ([ValuePencil]), and through its readout's press where its
 /// readout stands for the pencil (I-135).
-class FieldSlider extends StatefulWidget {
+class FieldSlider extends StatefulWidget implements NamesItself {
   const FieldSlider({
     super.key,
+    this.name,
     required this.value,
     required this.min,
     required this.max,
@@ -135,6 +137,7 @@ class FieldSlider extends StatefulWidget {
   /// screen reader.
   const FieldSlider.cell({
     super.key,
+    this.name,
     required String this.label,
     required this.value,
     required this.min,
@@ -190,6 +193,7 @@ class FieldSlider extends StatefulWidget {
   /// tool's scale is the exception 유저 named in the same sentence.
   const FieldSlider.opacity({
     super.key,
+    this.name,
     required this.value,
     required this.onChanged,
     this.onChangeEnd,
@@ -249,6 +253,7 @@ class FieldSlider extends StatefulWidget {
   /// (F-480-Q2 a: 「사용량 채움 위에 허용치 손잡이」).
   const FieldSlider.ceiling({
     super.key,
+    this.name,
     required this.value,
     required this.max,
     required double this.floor,
@@ -327,6 +332,12 @@ class FieldSlider extends StatefulWidget {
 
   /// Inside-left label; `null` renders the micro variant (value only).
   final String? label;
+
+  /// What a finder calls this bar ([NamesItself]) — its own, where a
+  /// [Named] over it was an element more on every row that wears one (card
+  /// frame-panels-build-in-one-frame, 2026-10-28).
+  @override
+  final String? name;
 
   /// What the bar reads WHILE NOBODY IS TOUCHING IT, when that is not its
   /// number at all: the legend's master bar reads `OPAC` at rest and its per
