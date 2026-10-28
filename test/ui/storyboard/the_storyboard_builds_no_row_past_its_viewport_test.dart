@@ -66,7 +66,13 @@ void main() {
     session.selectLayer(
       session.layers.firstWhere((layer) => layer.kind == LayerKind.se).id,
     );
-    for (var count = 1; count < _seRows; count += 1) {
+    while (session.repository
+            .requireProject()
+            .tracks
+            .single
+            .seLayers
+            .length <
+        _seRows) {
       session.layerStack.addLayerOfKind(LayerKind.se);
     }
     await showStoryboardPanel(tester);
@@ -86,6 +92,27 @@ void main() {
         built.length,
         lessThan(_seRows),
         reason: '⛔전제: $where, not every S row fits the viewport',
+      );
+      expect(
+        {
+          for (final element in find
+              .byWidgetPredicate(
+                (widget) => switch (widget.key) {
+                  ValueKey<String>(:final value) => value.startsWith(
+                    'storyboard-se-row-0-',
+                  ),
+                  _ => false,
+                },
+              )
+              .evaluate())
+            int.parse(
+              (element.widget.key! as ValueKey<String>).value.substring(
+                'storyboard-se-row-0-'.length,
+              ),
+            ),
+        },
+        built.keys.toSet(),
+        reason: '$where: the strips build the rows the rail builds',
       );
       for (final MapEntry(key: slot, value: row) in built.entries) {
         expect(
@@ -108,6 +135,60 @@ void main() {
     rows(tester).jumpTo(rows(tester).maxScrollExtent);
     await tester.pumpAndSettle();
     expectEveryRowShown('at the end');
+  });
+
+  testWidgets('a row stands at one place in the rows whatever the scroll, '
+      'its lanes twirled open under it or not', (tester) async {
+    await pumpManyRows(tester);
+    final session = sessionOf(tester);
+    // Every third S row twirled open: units of a row and its lanes among
+    // rows of one.
+    final seLayers = session.layers
+        .where((layer) => layer.kind == LayerKind.se)
+        .toList();
+    for (var index = 0; index < seLayers.length; index += 3) {
+      session.layerSwitches.toggleLayerLanes(seLayers[index].id);
+    }
+    await tester.pumpAndSettle();
+    final rail = find.byKey(
+      const ValueKey<String>('storyboard-track-label-rail'),
+    );
+
+    final placed = <int, double>{};
+    final position = rows(tester);
+    expect(
+      position.maxScrollExtent,
+      greaterThan(position.viewportDimension),
+      reason: '⛔전제: the rows run past the view more than once',
+    );
+    for (
+      var offset = 0.0;
+      offset <= position.maxScrollExtent;
+      offset += position.viewportDimension / 3
+    ) {
+      position.jumpTo(offset);
+      await tester.pumpAndSettle();
+      final top = tester.getRect(rail).top;
+      for (final MapEntry(key: slot, value: row)
+          in builtSeRows(tester).entries) {
+        final at = row.label.top - top;
+        expect(
+          at,
+          moreOrLessEquals(placed.putIfAbsent(slot, () => at)),
+          reason: 'S$slot at scroll $offset stands where it stood before',
+        );
+        expect(
+          row.strip?.top,
+          row.label.top,
+          reason: 'S$slot\'s strip stands on its label\'s line',
+        );
+      }
+    }
+    expect(
+      placed.length,
+      _seRows,
+      reason: '⛔전제: the scroll passed every S row',
+    );
   });
 
   testWidgets('a row a pointer holds stays built while the rows scroll it '
@@ -150,4 +231,3 @@ void main() {
 
 /// The S rows the track holds — more than the view shows.
 const int _seRows = 30;
-

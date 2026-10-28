@@ -1402,11 +1402,7 @@ void main() {
       );
 
       final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
-      final firstRow = find.byKey(
-        const ValueKey<String>('storyboard-track-row-track-0'),
-      );
       final rulerTopLeft = tester.getTopLeft(ruler);
-      final firstRowTop = tester.getTopLeft(firstRow).dy;
 
       await tester.drag(
         find.byKey(const ValueKey<String>('storyboard-vertical-viewport')),
@@ -1415,7 +1411,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Tracks scrolled under the ruler; the ruler did not move.
-      expect(tester.getTopLeft(firstRow).dy, lessThan(firstRowTop));
+      expect(_tracksScroll(tester).pixels, greaterThan(0));
       expect(tester.getTopLeft(ruler), rulerTopLeft);
     });
 
@@ -1464,18 +1460,13 @@ void main() {
         reason: '⛔fixture premise: the frames scroll too, so they are a '
             'scroller running across the tracks',
       );
-      final firstRow = find.byKey(
-        const ValueKey<String>('storyboard-track-row-track-0'),
-      );
-      final firstRowTop = tester.getTopLeft(firstRow).dy;
-
       await tester.drag(
         find.byKey(const ValueKey<String>('storyboard-vertical-viewport')),
         const Offset(0, -200),
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getTopLeft(firstRow).dy, lessThan(firstRowTop));
+      expect(_tracksScroll(tester).pixels, greaterThan(0));
     });
 
     testWidgets('the pinned ruler follows horizontal scrolling with the '
@@ -2129,6 +2120,21 @@ Future<void> _pumpStoryboardPanel(
     ),
   );
 }
+
+/// Where the tracks stand scrolled — read off the scroller, as a row that
+/// leaves the view is no longer built (`TimelineRowEdges.window`).
+ScrollPosition _tracksScroll(WidgetTester tester) => tester
+    .state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(
+              const ValueKey<String>('storyboard-vertical-viewport'),
+            ),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    )
+    .position;
 
 Project _singleTrackProject(List<Cut> cuts) {
   return _project([
