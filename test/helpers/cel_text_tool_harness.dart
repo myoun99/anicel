@@ -70,12 +70,17 @@ const textToolSecondKey = BrushFrameKey(
   frameId: textToolSecondFrameId,
 );
 
+/// The row [textToolProject] adds with no cel at all.
+const textToolEmptyLayerId = LayerId('text-tool-empty-layer');
+
 /// One cut, one layer, a drawing at the first frame — and with [drawings]
 /// two, another at the second. Every frame after them is EMPTY: no cel.
-/// The layer wears [effects].
+/// The layer wears [effects]. With [emptyLayer], a second row beside it
+/// has no cel anywhere ([textToolEmptyLayerId]).
 Project textToolProject({
   int drawings = 1,
   List<LayerEffect> effects = const [],
+  bool emptyLayer = false,
 }) => Project(
   id: const ProjectId('text-tool-project'),
   name: 'Text Tool',
@@ -109,6 +114,12 @@ Project textToolProject({
                   index: TimelineExposure.drawing(id, length: 1),
               },
             ),
+            if (emptyLayer)
+              Layer(
+                id: textToolEmptyLayerId,
+                name: 'Empty Layer',
+                frames: [],
+              ),
           ],
         ),
       ],

@@ -2,6 +2,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:flutter/gestures.dart'
     show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
@@ -601,6 +602,80 @@ void main() {
     expect(celOf(tester, textToolSecondKey).texts, isEmpty);
     expect(textToolOf(tester).session, isNull);
     expect(history.undoCount, steps + 1);
+  });
+
+  group('🚨the step a walk landed was made where the text was held — I-41 '
+      '(board undo-walks-to-the-frame-a-text-landed-from)', () {
+    /// A text typed on frame 0's cel, landed by [walkOff] — standing back
+    /// on frame 0's cel after it when [back].
+    Future<EditorSessionManager> typedThenWalkedOff(
+      WidgetTester tester, {
+      required void Function(EditorSessionManager session) walkOff,
+      required bool back,
+    }) async {
+      await pumpTextToolApp(
+        tester,
+        project: textToolProject(drawings: 2, emptyLayer: true),
+      );
+      await takeTextTool(tester);
+      final c = canvasPixelInView(tester);
+      final session = sessionOf(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      walkOff(session);
+      await pumpFrames(tester);
+      expect(celOf(tester).texts.single.content.text, 'hi', reason: '⛔');
+      if (back) {
+        session.selectLayer(textToolLayerId);
+        session.selectFrameIndex(0);
+        await pumpFrames(tester);
+      }
+      return session;
+    }
+
+    final walks = <String, void Function(EditorSessionManager)>{
+      'another frame': (session) => session.selectFrameIndex(1),
+      'another layer': (session) => session.selectLayer(textToolEmptyLayerId),
+    };
+    for (final MapEntry(key: walk, value: walkOff) in walks.entries) {
+      testWidgets('$walk: back where it was typed, ONE undo takes it back', (
+        tester,
+      ) async {
+        final session = await typedThenWalkedOff(
+          tester,
+          walkOff: walkOff,
+          back: true,
+        );
+
+        session.undo();
+        await pumpFrames(tester);
+
+        expect(celOf(tester).texts, isEmpty, reason: 'no walk first');
+        expect(session.standingPlace?.frame, 0);
+        expect(session.activeLayerId, textToolLayerId);
+      });
+
+      testWidgets('$walk: from where the walk took them, the first undo '
+          'walks back to it and the next takes it back', (tester) async {
+        final session = await typedThenWalkedOff(
+          tester,
+          walkOff: walkOff,
+          back: false,
+        );
+
+        session.undo();
+        await pumpFrames(tester);
+
+        expect(session.standingPlace?.frame, 0, reason: 'walked back');
+        expect(session.activeLayerId, textToolLayerId);
+        expect(celOf(tester).texts.single.content.text, 'hi');
+
+        session.undo();
+        await pumpFrames(tester);
+
+        expect(celOf(tester).texts, isEmpty);
+      });
+    }
   });
 
   testWidgets('another frame taken mid-drag ends the drag where it is: the '

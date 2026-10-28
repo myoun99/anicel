@@ -96,6 +96,48 @@ class HistoryPlaces {
       _places[entry] = place;
     }
   }
+
+  /// How many times the user has walked off where they stood ([leave]),
+  /// ever — what a hand held across a walk counts by.
+  int get walks => _walks;
+  int _walks = 0;
+
+  /// Where the last walk ([leave]) left from.
+  StandingPlace? get walkedFrom => _walkedFrom;
+  StandingPlace? _walkedFrom;
+
+  /// The user walks off where they stand — what every door that moves them
+  /// does first (`EditorSessionManager.selectCut` and the rest): the last
+  /// action settles HERE ([settle]), and here is kept as [walkedFrom].
+  void leave() {
+    settle();
+    _walks += 1;
+    _walkedFrom = placeNow?.call();
+  }
+
+  /// Runs [write] as made at [place]: what it pushes or folds is stamped
+  /// there, and settles there.
+  ///
+  /// 🗣️For a hand the user WALKED OFF (I-41's 「그곳으로 이동해서 편집되돌리고」,
+  /// 유저 2026-09-24): a text in hand lands on its cel once another cel is
+  /// under the tool — after the walk, where the user no longer stands. Its
+  /// edit is where they stood holding it, and that is where the first undo
+  /// has to walk. ↩️Stamped where the walk took them, the first undo
+  /// walked away from the text, and the second took it back from there
+  /// (board `undo-walks-to-the-frame-a-text-landed-from`).
+  void madeAt(StandingPlace place, void Function() write) {
+    // The action before it settles where the user stands, as [stamp] has
+    // it settle — only what [write] writes was made at [place].
+    settle();
+    final placeNow = this.placeNow;
+    this.placeNow = () => place;
+    try {
+      write();
+      settle();
+    } finally {
+      this.placeNow = placeNow;
+    }
+  }
 }
 
 /// The way back from an undo that walked to an edit (I-41): redone, it

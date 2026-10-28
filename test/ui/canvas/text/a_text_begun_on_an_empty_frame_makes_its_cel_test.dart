@@ -74,6 +74,26 @@ void main() {
     expect(celsOfTheRow(tester), hasLength(1));
   });
 
+  testWidgets('🚨landed by another frame taken, the cel and its text are the '
+      'step of the frame they were typed on: one undo there leaves it empty '
+      '(I-41)', (tester) async {
+    final c = await onTheEmptyFrame(tester);
+    final session = sessionOf(tester);
+    await clickAt(tester, c.dx, c.dy);
+    await typeText(tester, 'hi');
+    session.selectFrameIndex(2);
+    await pumpFrames(tester);
+    session.selectFrameIndex(1);
+    await pumpFrames(tester);
+    expect(textsUnderTool(tester).single.content.text, 'hi', reason: '⛔');
+
+    session.undo();
+    await pumpFrames(tester);
+
+    expect(celsOfTheRow(tester), hasLength(1), reason: 'one undo, no walk');
+    expect(session.currentFrameIndex, 1);
+  });
+
   testWidgets('a DRAG makes the cel and begins a box as wide as the drag — '
       'the press it would have been on any frame', (tester) async {
     final c = await onTheEmptyFrame(tester);
