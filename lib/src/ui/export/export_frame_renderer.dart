@@ -317,11 +317,7 @@ class ExportFrameRenderer {
     final key = session.brushFrameKeyForCut(cut, layerId, frameId);
     return (
       key: key,
-      revision:
-          session.renderCaches.brushFrameStore
-              .frameOrNull(key)
-              ?.sourceRevision ??
-          0,
+      revision: session.renderCaches.brushFrameStore.sourceRevisionOf(key),
     );
   }
 

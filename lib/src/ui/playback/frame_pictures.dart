@@ -229,7 +229,7 @@ class FramePictures implements PlaybackPictures {
       (cel: cel, drawn: _drawn(cel), revision: _revisionOf(cel));
 
   int _revisionOf(BrushFrameKey cel) =>
-      layerImages.frameStore.frameOrNull(cel)?.sourceRevision ?? 0;
+      layerImages.frameStore.sourceRevisionOf(cel);
 
   /// Whether the frame [key] is of draws no row — its page alone, the paper
   /// or nothing — which the store keeps no picture of: there by definition,

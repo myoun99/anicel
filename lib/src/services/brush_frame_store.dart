@@ -506,6 +506,14 @@ class BrushFrameStore {
             : getOrCreateFrame(canonical));
   }
 
+  /// The revision [key]'s cel stands at — what a composite signature reads
+  /// it by; 0 for a cel the store has never held.
+  ///
+  /// ↩️The export renderer and the playback's frame pictures each read it
+  /// for themselves; the merge (I-78) was the third.
+  int sourceRevisionOf(BrushFrameKey key) =>
+      frameOrNull(key)?.sourceRevision ?? 0;
+
   BrushFrameDisplayCache? displayCacheOrNull(BrushFrameKey key) =>
       _displayCaches[_canonicalize(key)];
 
