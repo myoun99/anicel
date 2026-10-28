@@ -196,6 +196,52 @@ void main() {
     );
   });
 
+  // 🗣️F-499 (유저 2026-10-29): 「재생누르고 멈춰있을때 … 멈출땐 화면중앙에
+  // 그림은 유지한채 로딩 ui 띄우도록? 미디어플레이어들이 하는거처럼」 — Q1
+  // 「뷰어만」: the F-315 widget, over the picture the run is parked on.
+  group('🗣️parked, it stands the loading widget in the middle', () {
+    final loading = find.byKey(const ValueKey<String>('media-viewer-loading'));
+    final play = find.byKey(
+      const ValueKey<String>('media-viewer-transport-play'),
+    );
+
+    /// A run of twelve pages parked on the first, the rest not drawn.
+    Future<FakePdfDocument> parked(WidgetTester tester) async {
+      final fake = await open(tester, pages: 12, framesPerSecond: 24);
+      expect(loading, findsNothing, reason: '⛔premise: page 0 landed');
+      for (var page = 1; page < 12; page += 1) {
+        fake.holdRender(page);
+      }
+      await tester.tap(play);
+      await tester.pump();
+      for (var frame = 0; frame < 3; frame += 1) {
+        await tester.pump(const Duration(milliseconds: 42));
+      }
+      expect(loading, findsOneWidget, reason: 'the run waits');
+      expect(drawnImage(tester), isNotNull, reason: 'over its picture');
+      return fake;
+    }
+
+    testWidgets('and going on, takes it down', (tester) async {
+      final fake = await parked(tester);
+      final parkedAt = slot.position.value;
+      for (var page = 1; page < 12; page += 1) {
+        fake.releaseRender(page);
+      }
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 42));
+      expect(slot.position.value, greaterThan(parkedAt), reason: 'premise');
+      expect(loading, findsNothing);
+    });
+
+    testWidgets('and stopped there, takes it down', (tester) async {
+      await parked(tester);
+      await tester.tap(play);
+      await tester.pump();
+      expect(loading, findsNothing);
+    });
+  });
+
   testWidgets('🚨ONE frame landing does not unpark it — it waits for the '
       'cushion', (tester) async {
     final fake = await open(tester, pages: 12, framesPerSecond: 24);
