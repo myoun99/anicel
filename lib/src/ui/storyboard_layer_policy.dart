@@ -11,6 +11,7 @@ import '../models/cut_camera.dart' show cameraDrawnFrameFloor;
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
+import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
@@ -26,6 +27,7 @@ import '../models/track_id.dart';
 import '../models/track_projection_row.dart';
 import '../services/editing/default_cut_helpers.dart' show cameraRowBornName;
 import '../services/editing/default_layer_helpers.dart' show conteRowBornName;
+import 'timeline/property_lane_model.dart' show folderBandOf;
 
 /// ⚠️Which row is a cut's conte — [storyboardLayerForCut] and its two
 /// neighbours — moved inward (`models/conte_group.dart`) so that the
@@ -213,7 +215,13 @@ Layer _conteRowLaid(
   if (row == null) {
     return null;
   }
-  final shown = attachedRowAsShown(row, entry.cut.layers);
+  // The row as the timeline's rows show it: a synced attach row its mirror
+  // of the conte, and a 공정 folder its BAND — the union of the rows it
+  // files (I-99), the display clone the timeline draws a folder's row with.
+  final layers = entry.cut.layers;
+  final shown = row.kind.groupsLayers
+      ? folderBandOf(row, layers.subtreeMembersOf(row.id))
+      : attachedRowAsShown(row, layers);
   return (
     row: shown,
     blocks: captureTimelineRun(

@@ -135,9 +135,19 @@ void main() {
       );
     });
 
-    test('a seat counts ROWS: an organizer folder among them is passed '
-        'over, and the rows it files keep their place', () {
+    // 🗣️I-99 (유저 2026-10-28): 「콘티행은 어태치폴더 못가진다는데 그게 일단
+    // 버그임. 법 통일해서 가질수있게하고 진행」. ↩️The folder was passed over,
+    // and the conte panel drew none.
+    test('🚨an organizer folder of the group holds a seat of its own, over '
+        'the rows it files — as the timeline draws it', () {
       final filed = cutOf('filed', [
+        row(
+          'conte-1',
+          ridesOn: 'conte',
+          placement: AttachedPlacement.below,
+          folder: 'low',
+        ),
+        row('low', kind: LayerKind.folder),
         row('conte'),
         row('conte+1', ridesOn: 'conte', folder: 'process'),
         row('process', kind: LayerKind.folder),
@@ -146,8 +156,28 @@ void main() {
 
       expect(
         seatsOf(filed),
-        [(2, 'conte+2'), (1, 'conte+1'), (0, 'conte')],
+        [
+          (3, 'conte+2'),
+          (2, 'process'),
+          (1, 'conte+1'),
+          (0, 'conte'),
+          (-1, 'low'),
+          (-2, 'conte-1'),
+        ],
       );
+    });
+
+    test('a folder that files rows of ANOTHER base — or files nothing — is '
+        'no seat of the conte', () {
+      final mixed = cutOf('mixed', [
+        row('cel', kind: LayerKind.animation),
+        row('cel+1', kind: LayerKind.animation, ridesOn: 'cel', folder: 'f'),
+        row('f', kind: LayerKind.folder),
+        row('conte'),
+        row('empty', kind: LayerKind.folder),
+      ]);
+
+      expect([for (final seat in conteGroupOf(mixed)) seat.seat], [0]);
     });
 
     test('a row riding ANOTHER base is no seat of the conte — under it or '

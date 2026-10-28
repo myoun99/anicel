@@ -7,7 +7,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/timeline_row_address.dart';
+import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../timeline/layer_drop_policy.dart'
     show detachLandingIndex, resolveLayerDrop;
 import '../text/app_strings.dart';
@@ -15,7 +15,6 @@ import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'rail_view.dart' show StandingLaw;
-import 'row_selection.dart';
 import 'layer_id_mint.dart';
 import 'session_roles.dart';
 
@@ -35,7 +34,7 @@ class FoldersAndAttachments {
     required ActiveCutControllers controllers,
     required LayerIdMint layerIds,
     required ActiveCutEdits activeCut,
-    required FoldHandOff handOffOnFold,
+    required void Function(LayerId folderId) handOffOnFolderFold,
     required StandingLaw keepStandingShown,
   }) : _project = project,
        _selection = selection,
@@ -43,7 +42,7 @@ class FoldersAndAttachments {
        _controllers = controllers,
        _layerIds = layerIds,
        _activeCut = activeCut,
-       _handOffOnFold = handOffOnFold,
+       _handOffOnFolderFold = handOffOnFolderFold,
        _keepStandingShown = keepStandingShown;
 
   final ProjectAccess _project;
@@ -52,7 +51,7 @@ class FoldersAndAttachments {
   final ActiveCutControllers _controllers;
   final LayerIdMint _layerIds;
   final ActiveCutEdits _activeCut;
-  final FoldHandOff _handOffOnFold;
+  final void Function(LayerId folderId) _handOffOnFolderFold;
 
   /// The standing law with its reveal — a new attach row is where you went
   /// (`Standing.keepStandingShown`).
@@ -269,33 +268,28 @@ class FoldersAndAttachments {
   /// fold simply wouldn't look folded (the member row would have to stay
   /// on screen to keep something selected).
   void toggleLayerCollapsed(LayerId layerId) {
-    final cut = _project.activeCutOrNull;
-    if (cut == null) {
+    // Found wherever it is: the conte panel presses a folder of the conte
+    // in hand, which need not be the cut stood in (I-99).
+    final folder = layerAnywhereOrNull(
+      _project.repository.requireProject(),
+      layerId,
+    );
+    if (folder == null) {
       return;
     }
-    final wasCollapsed = cut.layers.folderById(layerId)?.collapsed ?? false;
     _controllers.layerController.toggleLayerCollapsed(layerId);
     // H6: the fold law's selection half, on the FOLDER fold too — every
     // row inside a folder that just shut is off the screen, and the band
     // must not go on drawing over them ([RowSelection.foldRowSelection]).
-    // The active layer's own hand-off below is the standing-row half of
-    // the same law.
-    if (!wasCollapsed) {
+    // The active layer's own hand-off is the standing-row half of the same
+    // law.
+    if (!folder.collapsed) {
       // ↩️Both halves go through the fold law's one body since F-81
       // ([Standing.handOffOnFold]) — the standing half was
       // `layerController.selectLayer` here, beside the lane fold's own copy
-      // and the attach fold's.
-      bool insideThisFolder(LayerId? id) =>
-          id != null &&
-          cut.layers.isInsideFolder(cut.layers.byId(id)?.folderId, layerId);
-      _handOffOnFold(
-        swallower: LayerRowAddress(layerId),
-        vanished: (address) => switch (address) {
-          LayerRowAddress(:final layerId) => insideThisFolder(layerId),
-          LaneRowAddress(:final layerId) => insideThisFolder(layerId),
-          _ => false,
-        },
-      );
+      // and the attach fold's — and through the group fold's since I-99,
+      // which hands the storyboard on as well.
+      _handOffOnFolderFold(layerId);
     }
     _changes.notifyChanged();
   }

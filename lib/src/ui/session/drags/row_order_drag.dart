@@ -410,11 +410,16 @@ class RowOrderDrag {
   /// Everything past the intent is [resolveLayerDropOnRow]'s, which hands
   /// the ordinary resolver the same stack — so an on-row landing and a gap
   /// landing cannot disagree about what is legal.
+  ///
+  /// [drawnTarget] is the row the rail lights for [targetId] where it names
+  /// that row otherwise — a conte row's address, as [drawnAs] is its
+  /// subject's.
   void updateLayerRowDropOnRow(
     List<Layer> displayLayers,
     int slot,
-    LayerId targetId,
-  ) {
+    LayerId targetId, {
+    LayerId? drawnTarget,
+  }) {
     final subject = _subject;
     final cut = _activeCutOrNull();
     // Track-owned SE rows re-order a flat list of their own and hold
@@ -467,7 +472,7 @@ class RowOrderDrag {
       subject: _drawn,
       caretSlot: -1,
       legal: true,
-      onRowTarget: targetId,
+      onRowTarget: drawnTarget ?? targetId,
       joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }

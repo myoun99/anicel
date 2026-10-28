@@ -322,10 +322,12 @@ void main() {
 
       final inA = conteGroupOf(cutIn(session, 'a'));
       final inB = conteGroupOf(cutIn(session, 'b'));
-      expect(inA, hasLength(3), reason: '⛔전제');
-      expect(inB, hasLength(3));
+      expect(inA, hasLength(4), reason: '⛔전제: the folder holds a seat too');
+      expect(inB, hasLength(4));
       bool isNew(ConteSeat entry) =>
-          entry.seat != 0 && entry.row.id != const LayerId('a-over');
+          entry.seat != 0 &&
+          !entry.row.kind.groupsLayers &&
+          entry.row.id != const LayerId('a-over');
       final bornSeat = inA.firstWhere(isNew).seat;
       final bornInB = inB.firstWhere((entry) => entry.seat == bornSeat).row;
       expect(bornInB.id, isNot(const LayerId('b-over')), reason: 'a new row');

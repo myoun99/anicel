@@ -483,6 +483,39 @@ class _StoryboardRailRows {
     return rows.where(open.contains).firstOrNull ?? rows.firstOrNull;
   }
 
+  /// [rowId]'s group fold: a conte row's is THE TIMELINE ROW'S answer for
+  /// the layer it has in hand ([timelineGroupFoldFor]) — a 공정 folder
+  /// folds the rows it files, the conte the rows riding it — and no other
+  /// row of this rail folds. ONE answer for the row's label and the column
+  /// sweep that paints it (F-475).
+  ///
+  /// ↩️The label and the sweep each asked 「the conte's seat, with rows
+  /// over or under it」 — the attach half alone, twice, and no folder
+  /// ([conteGroupOf], I-99).
+  ///
+  /// The host's verb is the one chevron (I-32) — a folder's fold or a
+  /// base's group — so both halves press it.
+  TimelineGroupFold _conteGroupFoldOf(LayerId rowId) {
+    final inHand = trackIdOfConteRow(rowId) == null
+        ? null
+        : _rowInHand(rowId);
+    if (inHand == null) {
+      return (has: false, expanded: true, onToggle: null);
+    }
+    final layers = inHand.cut.layers;
+    final toggle = _state.widget.onToggleAttachGroup;
+    return timelineGroupFoldFor(
+      row: TimelineDisplayRow.layer(
+        inHand.layer,
+        layerIndex: layers.indexOf(inHand.layer),
+      ),
+      layers: layers,
+      collapsedAttachBaseIds: _state.widget.collapsedAttachBaseIds,
+      onToggleLayerCollapsed: toggle,
+      onToggleAttachGroup: toggle,
+    );
+  }
+
   /// [row]'s lanes in [cut] — THE list its timeline row twirls down
   /// ([propertyLanesForRow]), with its groups twirled as the timeline's
   /// are; [valued] reads them at a frame of the cut's own.
@@ -580,39 +613,64 @@ class _StoryboardRailRows {
   }
 
   /// The seats of [track]'s conte group the rail SHOWS, top row first — the
-  /// attach rows above the conte, the conte, the ones below it
-  /// ([conteSeatsOf]) — under the V row (I-73): its section is the one the
-  /// timeline puts the kind in, and the legend's filter judges each row as
-  /// it judges every row ([_filterAllowsConteSeat]). The conte's own row is
-  /// there whether or not a cut has a conte layer yet — a cut with none
-  /// wears the button that makes one there. An attach row is there while
-  /// some cut holds one at its seat and the group is not folded.
+  /// attach rows above the conte and the 공정 folders filing them, the
+  /// conte, the ones below it ([conteSeatsOf]) — under the V row (I-73).
+  /// A seat is there while the timeline would show its head
+  /// ([_conteSeatShown]). The conte's own row is there whether or not a
+  /// cut has a conte layer yet — a cut with none wears the button that
+  /// makes one there.
   ///
   /// 🚨ONE LIST for the three places that lay these rows out — the row
   /// table, the rail's labels and the strips — as [_shownSeSlots] is.
   List<int> _shownConteSeats(Track track) {
-    if (!_sectionShown(timelineSectionForLayerKind(LayerKind.storyboard))) {
-      return const [];
-    }
-    final base = conteHeadRowAt(track.cuts, 0);
-    final folded =
-        base != null &&
-        _state.widget.collapsedAttachBaseIds.contains(base.id);
+    final folders = <Cut, LayerFolderIndex>{};
     return [
-      for (final seat in folded ? const [0] : conteSeatsOf(track.cuts))
-        if (_filterAllowsConteSeat(track, seat)) seat,
+      for (final seat in conteSeatsOf(track.cuts))
+        if (_conteSeatShown(track, seat, folders)) seat,
     ];
   }
 
-  /// Whether the legend's filter lets the conte row at [seat] show
-  /// ([_filterAllowsProjectionRow]) — with no head while no cut holds a
-  /// layer there.
-  bool _filterAllowsConteSeat(Track track, int seat) =>
-      _filterAllowsProjectionRow(
-        LayerRowAddress(trackConteRowId(track.id, seat: seat)),
-        head: conteHeadRowAt(track.cuts, seat),
-        kind: LayerKind.storyboard,
-      );
+  /// Whether the rail shows [track]'s conte row at [seat]: THE TIMELINE'S
+  /// ANSWER for its head in the head's cut ([layerRowHiddenBy]) — its
+  /// section, its group's fold, the legend's filter, a folder above it
+  /// shut — and while no cut holds a layer there, the section and the
+  /// filter's answer for its kind ([_filterAllowsProjectionRow]).
+  ///
+  /// ↩️It asked the section, the base's fold and the filter of its own,
+  /// and no folder: the group's folders were no seats ([conteGroupOf],
+  /// I-99).
+  ///
+  /// [folders] holds each head cut's index for one pass over the seats.
+  bool _conteSeatShown(
+    Track track,
+    int seat,
+    Map<Cut, LayerFolderIndex> folders,
+  ) {
+    final address = LayerRowAddress(trackConteRowId(track.id, seat: seat));
+    final head = conteHeadAt(track.cuts, seat);
+    if (head == null) {
+      return _sectionShown(timelineSectionForLayerKind(LayerKind.storyboard)) &&
+          _filterAllowsProjectionRow(
+            address,
+            head: null,
+            kind: LayerKind.storyboard,
+          );
+    }
+    final widget = _state.widget;
+    final layers = head.cut.layers;
+    return layerRowHiddenBy(
+          head.row,
+          folders: folders[head.cut] ??= LayerFolderIndex(layers),
+          attachBaseId: attachGroupBaseOf(head.row, layers),
+          hiddenSections: widget.hiddenSections,
+          rowFilter: widget.rowFilter,
+          collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+          standingLayerId: widget.selectedRow == address ? head.row.id : null,
+          fxEnabledOf: (id) =>
+              fxEnabledFromState(widget.layerFxStateOf?.call(id)),
+        ) ==
+        null;
+  }
 
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)

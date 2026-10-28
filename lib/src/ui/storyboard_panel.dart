@@ -21,6 +21,8 @@ import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
 import '../models/layer_effect.dart'
     show EffectId, LayerEffect, effectParameterValueAtTime;
+import '../models/layer_folder.dart'
+    show LayerFolderIndex, attachFolderLevelsAbove, attachGroupBaseOf;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
@@ -94,6 +96,7 @@ import 'timeline/property_lane_model.dart'
         TimelineDisplayRow,
         laneAsPreviewed,
         laneGroupKey,
+        layerRowHiddenBy,
         parseLaneGroupKey,
         previewedLaneRow;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
@@ -250,7 +253,11 @@ import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_legend_menus.dart';
 import 'timeline/timeline_layer_controls_row.dart'
-    show ControlsRowFace, TimelineGroupFold, TimelineLayerControlsRow;
+    show
+        ControlsRowFace,
+        TimelineGroupFold,
+        TimelineLayerControlsRow,
+        timelineGroupFoldFor;
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
@@ -3319,6 +3326,7 @@ class _StoryboardRailHead extends KeptPiece {
     required this.active,
     required this.fxState,
     this.chromeless = false,
+    this.depth = 0,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -3362,6 +3370,11 @@ class _StoryboardRailHead extends KeptPiece {
   final bool active;
   final LayerFxState fxState;
   final bool chromeless;
+
+  /// How far the row hangs in — the timeline row's indent
+  /// ([TimelineLayerControlsRow.depth]): a conte row filed in a 공정
+  /// folder, one level per folder (I-99).
+  final int depth;
   final bool hasLanes;
   final bool lanesExpanded;
 
@@ -3437,6 +3450,7 @@ class _StoryboardRailHead extends KeptPiece {
     active,
     fxState,
     chromeless,
+    depth,
     hasLanes,
     lanesExpanded,
     onToggleLanes != null,
@@ -3477,6 +3491,7 @@ class _StoryboardRailHead extends KeptPiece {
     final openMixer = onOpenLayerMixer;
     return TimelineLayerControlsRow(
       chromeless: chromeless,
+      depth: depth,
       keyPrefix: 'storyboard',
       layer: layer,
       active: active,

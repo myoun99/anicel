@@ -1,14 +1,16 @@
 import 'cut.dart';
 import 'layer.dart';
+import 'layer_folder.dart' show attachGroupBaseOf;
 import 'layer_id.dart';
 import 'layer_kind.dart';
 
 /// A CUT'S CONTE GROUP, AND THE SEATS IN IT (I-73).
 ///
 /// A cut's conte is a GROUP: its BASE — the cut's storyboard row that rides
-/// no other — and the attach rows riding it, above and below. The
-/// storyboard panel lays every cut's group out as one set of rows on the
-/// track's axis, and each of those rows wears ONE head for all the cuts
+/// no other — and the attach rows riding it, above and below, with the 공정
+/// folders filing them. The storyboard panel lays every cut's group out as
+/// one set of rows on the track's axis, and each of those rows wears ONE
+/// head for all the cuts
 /// (유저 2026-10-08: 「콘티레이어 권고한대로 머리만 한벌 ok. 맘에드는
 /// 생각이야. 겸용컷이랑 같은 느낌이네」 · 「이거만 눈이랑 불투명도조차
 /// 링크하도록. 그거마저 머리로서 하나로되도록 통일」).
@@ -17,7 +19,7 @@ import 'layer_kind.dart';
 /// no layer id is one — each cut keeps its own layers. That name is its
 /// row of the TRACK'S CONTE STRUCTURE ([Layer.conteKey], F-343), which
 /// lays every cut's conte alike — so the rail reads the rows by their
-/// SEAT: 0 for the base, +k for the k-th attach row above it and −k for
+/// SEAT: 0 for the base, +k for the k-th member above it and −k for
 /// the k-th below, counted from the base outward in the cut's stack.
 
 /// Whether [layer] is a cut's conte BASE: a storyboard row that rides no
@@ -100,13 +102,19 @@ bool cutAcceptsAnotherStoryboardLayer(Cut cut, {LayerId? exceptLayerId}) {
 typedef ConteSeat = ({int seat, Layer row});
 
 /// [cut]'s conte group, TOP ROW FIRST — the order a rail draws it: the
-/// attach rows above the base from the farthest (+N) down to the nearest
-/// (+1), the base (0), then the rows below it from the nearest (−1) to the
+/// members above the base from the farthest (+N) down to the nearest (+1),
+/// the base (0), then the members below it from the nearest (−1) to the
 /// farthest (−N). Empty when the cut has no conte.
 ///
-/// A seat counts the base's attach ROWS in the cut's own stack — the list
-/// keeps a group as `[below…, base, above…]` — and passes over the
-/// organizer folders among them: a folder files rows, it is not one.
+/// A seat counts the base's attach group in the cut's own stack — the list
+/// keeps a group as `[below…, base, above…]` — its attach rows AND the 공정
+/// folders filing them ([attachGroupBaseOf]), each one seat: a rail draws a
+/// folder where the timeline's does, over the rows it files.
+///
+/// 🗣️I-99 (유저 2026-10-28): 「콘티행은 어태치폴더 못가진다는데 그게 일단
+/// 버그임. 법 통일해서 가질수있게하고 진행」. ↩️It passed over the folders
+/// (「a folder files rows, it is not one」 — 10-08, a rule nobody asked
+/// for), and the conte panel drew none of the folders the timeline draws.
 ///
 /// 🚨ONE GROUP PER CUT (I-57, 10-14): a cut is immutable, so its group is
 /// what it was the first time it was asked, and every later ask is handed
@@ -130,11 +138,11 @@ List<ConteSeat> _conteGroupReadOff(Cut cut) {
   final base = layers[baseIndex];
   final above = <Layer>[
     for (var index = baseIndex + 1; index < layers.length; index += 1)
-      if (layers[index].attachedToLayerId == base.id) layers[index],
+      if (attachGroupBaseOf(layers[index], layers) == base.id) layers[index],
   ];
   final below = <Layer>[
     for (var index = baseIndex - 1; index >= 0; index -= 1)
-      if (layers[index].attachedToLayerId == base.id) layers[index],
+      if (attachGroupBaseOf(layers[index], layers) == base.id) layers[index],
   ];
   return List.unmodifiable([
     for (var k = above.length; k >= 1; k -= 1) (seat: k, row: above[k - 1]),

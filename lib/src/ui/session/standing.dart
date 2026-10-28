@@ -11,7 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart' show Project;
 import '../../models/standing_place.dart';
 import '../../models/layer_folder.dart'
-    show LayerFolderIndex, attachGroupBaseOf;
+    show LayerFolderIndex, LayerFolderQueries, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart' show Track;
 import '../../models/track_camera_row.dart';
@@ -827,16 +827,42 @@ class Standing {
   /// `conte-attach-fold-leaves-the-conte-panel-standing-inside`). ↩️Only the
   /// timeline was handed on, and the conte panel went on standing in a row
   /// the fold had taken off its rail.
-  void handOffCurrentRowOnAttachFold(LayerId baseId) {
-    final home = _homeOf(baseId);
+  void handOffCurrentRowOnAttachFold(LayerId baseId) => _handOffOnGroupFold(
+    baseId,
+    (cut) => {
+      for (final layer in cut.layers)
+        if (attachGroupBaseOf(layer, cut.layers) == baseId) layer.id,
+    },
+  );
+
+  /// A FOLDER folding shut: every row filed in it leaves, and the FOLDER
+  /// swallows them (R27 #24) — on the storyboard's rail too, where it is a
+  /// 공정 folder of a track's conte (I-99).
+  ///
+  /// ↩️The folder's fold handed the timeline on alone, from the cut stood
+  /// in, and the conte panel went on standing in a row the fold had taken
+  /// off its rail — the attach fold's lesson above, learned again.
+  void handOffCurrentRowOnFolderFold(LayerId folderId) => _handOffOnGroupFold(
+    folderId,
+    (cut) => {
+      for (final layer in cut.layers.subtreeMembersOf(folderId)) layer.id,
+    },
+  );
+
+  /// THE GROUP FOLD's hand-off: the rows of [head]'s group — [membersIn]
+  /// its cut — leave, and [head] swallows them, on the timeline and on the
+  /// storyboard, where the same rows are rows of a track's conte
+  /// ([projectionRowIdOf]).
+  void _handOffOnGroupFold(
+    LayerId head,
+    Set<LayerId> Function(Cut cut) membersIn,
+  ) {
+    final home = _homeOf(head);
     if (home == null) {
       return;
     }
     final (trackId, cut) = home;
-    final group = {
-      for (final layer in cut.layers)
-        if (attachGroupBaseOf(layer, cut.layers) == baseId) layer.id,
-    };
+    final group = membersIn(cut);
     bool holds(TimelineRowAddress address, Set<LayerId> rows) =>
         switch (address) {
           LayerRowAddress(:final layerId) => rows.contains(layerId),
@@ -845,11 +871,11 @@ class Standing {
         };
 
     handOffOnFold(
-      swallower: LayerRowAddress(baseId),
+      swallower: LayerRowAddress(head),
       vanished: (address) => holds(address, group),
     );
-    final shownBase = projectionRowIdOf(trackId, cut, baseId);
-    if (shownBase == null) {
+    final shownHead = projectionRowIdOf(trackId, cut, head);
+    if (shownHead == null) {
       return;
     }
     final shown = group
@@ -857,7 +883,7 @@ class Standing {
         .whereType<LayerId>()
         .toSet();
     handOffOnFold(
-      swallower: LayerRowAddress(shownBase),
+      swallower: LayerRowAddress(shownHead),
       vanished: (address) => holds(address, shown),
       panel: WorkingPanel.storyboard,
     );

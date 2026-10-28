@@ -760,8 +760,8 @@ ConteKey? _keyOfFolder(
 
 /// The SEAT of the member at [index] among the ones [counts] marks, the
 /// conte standing at [baseIndex]: +k for the k-th counted one over it, −k
-/// for the k-th under it, counted from the conte outward — the seat
-/// `conteGroupOf` gives an attach row, which passes over the folders.
+/// for the k-th under it, counted from the conte outward. [_placeOf] counts
+/// a row among the rows and a folder among the folders.
 int _seatIn(List<bool> counts, int baseIndex, int index) {
   var seat = 0;
   if (index > baseIndex) {

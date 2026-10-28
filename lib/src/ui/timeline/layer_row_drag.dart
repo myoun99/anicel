@@ -49,6 +49,10 @@ sealed class LayerRowDragSubject {
   /// kind — one layer stack for layer rows, one layer's chain for effects
   /// (a Blur dragged on layer A must raise no caret on layer B).
   bool sharesLaneWith(LayerRowDragSubject other);
+
+  /// Whether this is the row [rowId] names — the row an ON-ROW drop lights
+  /// ([LayerRowDragState.onRowTarget]).
+  bool namesRow(LayerId rowId) => false;
 }
 
 /// A rail ROW: the layer stack's own order.
@@ -64,6 +68,9 @@ final class LayerRowSubject extends LayerRowDragSubject {
   bool sharesLaneWith(LayerRowDragSubject other) =>
       (other is LayerRowSubject && other is! TrackSeRowSubject) ||
       other is MediaPlacementSubject;
+
+  @override
+  bool namesRow(LayerId rowId) => rowId == layerId;
 
   @override
   bool operator ==(Object other) =>
@@ -159,6 +166,11 @@ final class ConteSeatRowSubject extends LayerRowDragSubject {
   bool sharesLaneWith(LayerRowDragSubject other) =>
       other is ConteSeatRowSubject &&
       trackIdOfConteRow(other.rowId) == trackIdOfConteRow(rowId);
+
+  /// By its address: a drop ON a conte row lights the rail's row, never
+  /// the one cut's layer the drag is planned on (I-99).
+  @override
+  bool namesRow(LayerId rowId) => rowId == this.rowId;
 
   @override
   bool operator ==(Object other) =>
@@ -292,7 +304,9 @@ class LayerRowDragState {
   /// R5 #15: the row the pointer is ON, when it is over a row's middle
   /// rather than near a boundary. Non-null replaces the caret entirely —
   /// the drop is "into this row" and the row lights instead, because a line
-  /// between two rows cannot mean "inside one of them".
+  /// between two rows cannot mean "inside one of them". Named as the rail
+  /// names the row ([LayerRowDragSubject.namesRow]) — a conte row by its
+  /// address.
   final LayerId? onRowTarget;
 }
 
@@ -945,7 +959,7 @@ class _LayerRowDragTargetState extends State<LayerRowDragTarget> {
         final onRow =
             showing != null &&
             showing.onRowTarget != null &&
-            widget.subject == LayerRowSubject(showing.onRowTarget!);
+            widget.subject.namesRow(showing.onRowTarget!);
         final caretShowing = showing != null && showing.onRowTarget == null;
         final slot = widget.slotBefore;
         final leading = caretShowing && showing.caretSlot == slot;
